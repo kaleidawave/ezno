@@ -35,11 +35,12 @@ jobs:
           git config user.email github-actions@github.com
       - id: set-arguments
         run: |
-          $ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
+          ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
           echo "::debug::$ARGS"
-          $VALUE=$(echo $ARGS | jq --raw-input 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
+          VALUE=$(echo $ARGS | jq --raw-input 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
           echo "::debug::$VALUE"
           echo "publish-args=$VALUE" >> $GITHUB_OUTPUT
+        shell: bash
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
         id: release
