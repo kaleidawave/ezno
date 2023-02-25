@@ -1,0 +1,13 @@
+[package]
+name = "ezno-checker"
+description = "A JavaScript type checker"
+authors = ["Ben <kaleidawave@gmail.com>"]
+license = "MIT"
+version = "0.0.0"
+edition = "2021"
+homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
+repository = "https://github.com/kaleidawave/ezno"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

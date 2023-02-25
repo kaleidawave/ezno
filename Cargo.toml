@@ -1,0 +1,31 @@
+[workspace]
+members = ["parser", "parser/visitable-derive", "parser/generator", "checker"]
+
+[package]
+name = "ezno"
+description = "A JavaScript checker and compiler. For use as a library or cli"
+authors = ["Ben <kaleidawave@gmail.com>"]
+version = "0.0.0"
+edition = "2021"
+homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
+repository = "https://github.com/kaleidawave/ezno"
+default-run = "ezno-cli"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "ezno-cli"
+path = "src/main.rs"
+
+[dependencies]
+parser = { path = "./parser", version = "0.0.0", package = "ezno-parser" }
+checker = { path = "./checker", version = "0.0.0", package = "ezno-checker" }
+# ezno-web-framework = { path = "./plugins/web" }
+
+console = "0.14.1"
+codespan-reporting = { git = "https://github.com/brendanzab/codespan" }
+argh = "0.1.6"
+base64 = "0.13.0"
+multiline-term-input = "0.1.0"
+enum-variants-strings = "0.1.0"
+notify = "4.0.17"

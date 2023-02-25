@@ -1,0 +1,20 @@
+[package]
+name = "ezno-ast-generator"
+description = "Quasi-quoted constant compiled TS definitions for Ezno AST"
+authors = ["Ben <kaleidawave@gmail.com>"]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/kaleidawave/ezno"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "generator.rs"
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0"
+self-rust-tokenize = "0.3.3"
+parser = { path = "..", package = "ezno-parser", features = ["self-rust-tokenize"]}

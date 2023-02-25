@@ -1,0 +1,47 @@
+[package]
+name = "ezno-parser"
+description = "Parser and AST definitions for Ezno"
+authors = ["Ben <kaleidawave@gmail.com>"]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/kaleidawave/ezno"
+homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
+
+[features]
+# TODO these shouldn't be default
+default = ["self-rust-tokenize", "extras"]
+self-rust-tokenize = ["dep:self-rust-tokenize", "source-map/self-rust-tokenize"]
+extras = []
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+visitable-derive = { path = "./visitable-derive", version = "0.0.0", package = "ezno-parser-visitable-derive" }
+
+derive-finite-automaton = "0.1.0"
+derive-debug-extras = { version = "0.2.2", features = [
+    "auto-debug-single-tuple-inline",
+] }
+derive-partial-eq-extras = "0.1.2"
+derive-enum-from-into = "0.1.1"
+
+# TODO needs buffered for WASM
+tokenizer-lib = { version = "1.5.0", features = [
+    "parallel",
+], default_features = false }
+
+temporary-annex = "0.1.0"
+iterator-endiate = "0.1.0"
+
+enum_variant_type = "0.3.1"
+enum-variants-strings = "0.2"
+
+source-map = { version = "0.11.2", features = [
+    "span-serialize",
+    "self-rust-tokenize",
+] }
+self-rust-tokenize = { version = "0.3.3", optional = true }
+
+[dev-dependencies]
+match_deref = "0.1.1"

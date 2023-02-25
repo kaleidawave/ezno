@@ -1,0 +1,17 @@
+[package]
+name = "ezno-parser-visitable-derive"
+description = "Derives 'Visitable' trait for Ezno AST"
+authors = ["Ben <kaleidawave@gmail.com>"]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/kaleidawave/ezno"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "macro.rs"
+proc-macro = true
+
+[dependencies]
+syn-helpers = "0.4.2"
