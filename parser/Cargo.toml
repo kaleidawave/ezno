@@ -17,7 +17,7 @@ extras = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-visitable-derive = { path = "./visitable-derive", version = "0.0.0", package = "ezno-parser-visitable-derive" }
+visitable-derive = { path = "./visitable-derive", version = "0.0.1", package = "ezno-parser-visitable-derive" }
 
 derive-finite-automaton = "0.1.0"
 derive-debug-extras = { version = "0.2.2", features = [
