@@ -88,7 +88,8 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "codespan-reporting"
 version = "0.11.1"
-source = "git+https://github.com/brendanzab/codespan#c84116f5a667bfce2aa1e045205c5832cfee1548"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
 dependencies = [
  "termcolor",
  "unicode-width",
@@ -252,11 +253,11 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.0"
+version = "0.0.1"
 
 [[package]]
 name = "ezno-parser"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",

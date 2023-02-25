@@ -18,12 +18,12 @@ name = "ezno-cli"
 path = "src/main.rs"
 
 [dependencies]
-parser = { path = "./parser", version = "0.0.0", package = "ezno-parser" }
-checker = { path = "./checker", version = "0.0.0", package = "ezno-checker" }
+parser = { path = "./parser", version = "0.0.1", package = "ezno-parser" }
+checker = { path = "./checker", version = "0.0.1", package = "ezno-checker" }
 # ezno-web-framework = { path = "./plugins/web" }
 
 console = "0.14.1"
-codespan-reporting = { git = "https://github.com/brendanzab/codespan" }
+codespan-reporting = "0.11.1"
 argh = "0.1.6"
 base64 = "0.13.0"
 multiline-term-input = "0.1.0"

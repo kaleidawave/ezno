@@ -17,4 +17,4 @@ proc-macro = true
 quote = "1.0"
 proc-macro2 = "1.0"
 self-rust-tokenize = "0.3.3"
-parser = { path = "..", package = "ezno-parser", features = ["self-rust-tokenize"]}
+parser = { path = "..", package = "ezno-parser", version = "0.0.1", features = ["self-rust-tokenize"]}

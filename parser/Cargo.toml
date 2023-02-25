@@ -2,7 +2,7 @@
 name = "ezno-parser"
 description = "Parser and AST definitions for Ezno"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.0"
+version = "0.0.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
