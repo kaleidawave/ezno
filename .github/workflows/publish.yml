@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       ezno-version:
-        description: "major/minor/patch or semver"
+        description: "major/minor/patch or semver for Ezno (cli)"
         required: false
         default: "none"
       ezno-parser-version:
-        description: "major/minor/patch or semver for parse"
+        description: "major/minor/patch or semver for parser"
         required: false
         default: "none"
       ezno-checker-version:
@@ -36,8 +36,9 @@ jobs:
       - id: set-arguments
         run: |
           $ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
-          $VALUE=$(jq --raw-input 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
-          echo $VALUE
+          echo "::debug::$ARGS"
+          $VALUE=$(echo $ARGS | jq --raw-input 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
+          echo "::debug::$VALUE"
           echo "publish-args=$VALUE" >> $GITHUB_OUTPUT
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
