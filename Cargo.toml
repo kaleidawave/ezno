@@ -7,6 +7,7 @@ description = "A JavaScript checker and compiler. For use as a library or cli"
 authors = ["Ben <kaleidawave@gmail.com>"]
 version = "0.0.0"
 edition = "2021"
+license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
 default-run = "ezno-cli"
