@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "ezno"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "argh",
  "base64",

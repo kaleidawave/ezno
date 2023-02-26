@@ -50,9 +50,12 @@ jobs:
   publish-ability:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - name: Check that it will publish to crates
         run: |
+          ls
           cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r _n _v pathInfo ; do
+            echo ${pathInfo:13:-1}
             cd ${pathInfo:13:-1}
             pwd
             cargo publish --dry-run
