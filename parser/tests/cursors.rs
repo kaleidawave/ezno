@@ -3,9 +3,6 @@ use ezno_parser::{
 	SourceId, Span, Statement,
 };
 
-// TODO this should be in source_map
-const NULL_SPAN: Span = Span { start: 0, end: 0, source_id: SourceId::NULL };
-
 #[test]
 fn cursor_in_expression() {
 	let expression = "function x() { return }";
@@ -57,11 +54,11 @@ fn cursor_at_property_access() {
 		Expression::PropertyAccess {
 			parent: Box::new(Expression::VariableReference(
 				"x".to_owned(),
-				NULL_SPAN,
+				Span::NULL_SPAN,
 				ExpressionId::NULL
 			)),
 			property: ezno_parser::PropertyReference::Cursor(CursorId(0, Default::default())),
-			position: NULL_SPAN,
+			position: Span::NULL_SPAN,
 			expression_id: ExpressionId::NULL,
 			is_optional: false
 		}

@@ -617,14 +617,15 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		match self.get_ast_mut() {
-			VariableField::Name(_id) => {
-				todo!()
-				// visitors.visit_variable_mut(
-				// 	&mut MutableVariablePart::VariableFieldName(name, *variable_id),
-				// 	data,
-				// 	functions,
-				// 	chain,
-				// );
+			VariableField::Name(identifier) => {
+				if let VariableIdentifier::Standard(name, variable_id, _span) = identifier {
+					visitors.visit_variable_mut(
+						&mut MutableVariablePart::VariableFieldName(name, *variable_id),
+						data,
+						functions,
+						chain,
+					);
+				}
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields.iter_mut() {

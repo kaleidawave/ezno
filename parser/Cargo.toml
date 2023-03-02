@@ -37,7 +37,7 @@ iterator-endiate = "0.1.0"
 enum_variant_type = "0.3.1"
 enum-variants-strings = "0.2"
 
-source-map = { version = "0.11.2", features = [
+source-map = { version = "0.11.3", features = [
     "span-serialize",
     "self-rust-tokenize",
 ] }

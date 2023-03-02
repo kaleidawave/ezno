@@ -132,7 +132,7 @@ impl ASTNode for Statement {
 			Statement::DeclareInterfaceDeclaration(did) => did.get_position(),
 			Statement::Block(blk) => blk.get_position(),
 			Statement::EnumDeclaration(enum_declaration) => enum_declaration.get_position(),
-			Statement::ExtractedFunction(..) => todo!(),
+			Statement::ExtractedFunction(extracted_function) => extracted_function.get_position(),
 		}
 	}
 

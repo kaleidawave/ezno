@@ -288,15 +288,15 @@ impl ASTNode for Expression {
 			| Self::ConstructorCall { position: pos, .. }
 			| Self::Cursor { position: pos, .. } => Cow::Borrowed(pos),
 			Self::JSXRoot(root) => root.get_position(),
-			Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
 			Self::ObjectLiteral(object_literal) => object_literal.get_position(),
 			Self::TemplateLiteral(template_literal) => template_literal.get_position(),
 			Self::CustomBlock(custom_block, _) => custom_block.get_position(),
 			Self::ClassExpression(class_expression, _) => class_expression.get_position(),
 			Self::IsExpression(is) => is.get_position(),
-			Self::ExpressionFunction(_function) => todo!("function.0.get_position()"),
-			Self::ExtractedArrowFunction(ext) => Cow::Borrowed(&ext.1),
-			Self::ExtractedExpressionFunction(ext) => Cow::Borrowed(&ext.1),
+			Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
+			Self::ExpressionFunction(function) => function.get_position(),
+			Self::ExtractedArrowFunction(ext) => ext.get_position(),
+			Self::ExtractedExpressionFunction(ext) => ext.get_position(),
 		}
 	}
 }

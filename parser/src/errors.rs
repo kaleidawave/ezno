@@ -2,7 +2,7 @@
 use std::fmt::{self, Display};
 
 use crate::TSXToken;
-use source_map::{SourceId, Span};
+use source_map::Span;
 use tokenizer_lib::Token;
 
 #[allow(missing_docs)]
@@ -156,7 +156,7 @@ impl From<Option<(TSXToken, Token<TSXToken, Span>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span { start: 0, end: 0, source_id: SourceId::NULL })
+	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
 }
 
 pub trait ParserErrorReason: Display {}

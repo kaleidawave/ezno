@@ -96,11 +96,13 @@ impl ASTNode for Block {
 		depth: u8,
 	) {
 		buf.push('{');
-		if depth > 0 {
+		if depth > 0 && settings.0.pretty {
 			buf.push_new_line();
 		}
 		statements_to_string(&self.0, buf, settings, depth);
-		buf.push_new_line();
+		if settings.0.pretty {
+			buf.push_new_line();
+		}
 		if depth > 1 {
 			settings.0.add_indent(depth - 1, buf);
 		}
@@ -221,7 +223,15 @@ impl ASTNode for BlockOrSingleStatement {
 				block.to_string_from_buffer(buf, settings, depth)
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
-				stmt.to_string_from_buffer(buf, settings, depth)
+				if settings.0.pretty {
+					buf.push_new_line();
+					settings.0.add_gap(buf);
+					stmt.to_string_from_buffer(buf, settings, depth);
+				} else {
+					buf.push('{');
+					stmt.to_string_from_buffer(buf, settings, depth);
+					buf.push('}');
+				}
 			}
 		}
 	}

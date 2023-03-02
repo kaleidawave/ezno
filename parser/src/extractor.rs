@@ -2,6 +2,8 @@ use crate::functions::bases::*;
 
 use crate::{FunctionBase, FunctionBased, FunctionId, Visitable};
 use derive_enum_from_into::EnumFrom;
+use source_map::Span;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 pub trait GetFunction<T: FunctionBased + 'static> {
@@ -76,6 +78,12 @@ impl<T: FunctionBased> self_rust_tokenize::SelfRustTokenize for ExtractedFunctio
 		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
 		todo!("extracted function to tokens")
+	}
+}
+
+impl<T: FunctionBased> ExtractedFunction<T> {
+	pub fn get_position(&self) -> Cow<Span> {
+		Cow::Borrowed(&self.1)
 	}
 }
 
