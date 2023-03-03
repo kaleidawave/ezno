@@ -38,7 +38,7 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	assert_eq!(output1, output2);
 
-	return Corpus::Keep;
+	Corpus::Keep
 }
 
 fuzz_target!(|data: &str| {
