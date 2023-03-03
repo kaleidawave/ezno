@@ -5,7 +5,7 @@ use libfuzzer_sys::fuzz_target;
 use pretty_assertions::assert_eq;
 use std::str;
 
-fuzz_target!(|data: &str| {
+fn do_fuzz(data: &str) {
 	let input = data.trim_start();
 
 	let Ok(ParseOutput(module, state)) = Module::from_string(
@@ -35,4 +35,8 @@ fuzz_target!(|data: &str| {
 		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
 
 	assert_eq!(output1, output2);
+}
+
+fuzz_target!(|data: &str| {
+	let _ = do_fuzz(data);
 });
