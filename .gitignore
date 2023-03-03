@@ -1,6 +1,5 @@
 /target
 /pkg
 /private
-.vscode
 .env
 /checker/examples
