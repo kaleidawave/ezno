@@ -4,13 +4,12 @@ mod common {
 	include!(concat!(env!("OUT_DIR"), "/common.rs")); // from build.rs
 }
 
-use boa_interner::ToInternedString;
 use ezno_parser::{ASTNode, Module, ParseOutput, SourceId, ToStringSettingsAndData};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 
-fn do_fuzz(data: common::FuzzData) -> Corpus {
-	let input = data.ast.to_interned_string(&data.interner);
+fn do_fuzz(data: common::FuzzSource) -> Corpus {
+	let input = data.source;
 
 	let Ok(ParseOutput(module, state)) = Module::from_string(
 		input.to_owned(),
@@ -42,6 +41,6 @@ fn do_fuzz(data: common::FuzzData) -> Corpus {
 	Corpus::Keep
 }
 
-fuzz_target!(|data: common::FuzzData| {
+fuzz_target!(|data: common::FuzzSource| {
 	do_fuzz(data);
 });
