@@ -31,7 +31,7 @@ fn do_fuzz(data: &str) -> Corpus {
 		None,
 		Vec::new(),
 	)
-	.expect("This parse should not error because it was just parsed above");
+	.expect(&(format!("\ninput: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above")));
 
 	let output2 =
 		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
