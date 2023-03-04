@@ -13,14 +13,14 @@ fn do_fuzz(data: common::FuzzData) -> Corpus {
 	let input = data.ast.to_interned_string(&data.interner);
 
 	let Ok(ParseOutput(module, state)) = Module::from_string(
-        input.to_owned(),
-        Default::default(),
-        SourceId::NULL,
-        None,
-        Vec::new(),
-    ) else {
-        return Corpus::Reject
-    };
+		input.to_owned(),
+		Default::default(),
+		SourceId::NULL,
+		None,
+		Vec::new(),
+	) else {
+		return Corpus::Reject
+	};
 
 	let output1 =
 		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
