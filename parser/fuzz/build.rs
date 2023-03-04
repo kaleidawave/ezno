@@ -1,3 +1,5 @@
+//! Copies fuzz_targets from [boa](https://github.com/boa-dev/boa)s repository
+
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
