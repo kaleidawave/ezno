@@ -24,14 +24,15 @@ fn do_fuzz(data: &str) -> Corpus {
 	let output1 =
 		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
 
-	let ParseOutput(module, state) = Module::from_string(
+	let Ok(ParseOutput(module, state)) = Module::from_string(
 		output1.to_owned(),
 		Default::default(),
 		SourceId::NULL,
 		None,
 		Vec::new(),
-	)
-	.expect(&(format!("\ninput: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above")));
+	) else {
+		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
+	};
 
 	let output2 =
 		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
