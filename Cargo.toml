@@ -5,7 +5,7 @@ members = ["parser", "parser/visitable-derive", "parser/generator", "checker"]
 name = "ezno"
 description = "A JavaScript checker and compiler. For use as a library or cli"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -19,7 +19,7 @@ name = "ezno-cli"
 path = "src/main.rs"
 
 [dependencies]
-parser = { path = "./parser", version = "0.0.1", package = "ezno-parser" }
+parser = { path = "./parser", version = "0.0.2", package = "ezno-parser" }
 checker = { path = "./checker", version = "0.0.1", package = "ezno-checker" }
 # ezno-web-framework = { path = "./plugins/web" }
 
