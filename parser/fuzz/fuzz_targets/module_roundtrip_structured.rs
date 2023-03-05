@@ -8,6 +8,8 @@ use ezno_parser::{ASTNode, Module, ParseOutput, SourceId, ToStringSettingsAndDat
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 
+/// do_fuzz will accept a valid JS string and attempt to parse it twice and compare
+/// the rendered output of both parses.
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
