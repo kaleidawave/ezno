@@ -85,6 +85,7 @@ impl ASTNode for DoWhileStatement {
 		buf.push_str("do");
 		settings.0.add_gap(buf);
 		self.statements.to_string_from_buffer(buf, settings, depth + 1);
+		settings.0.add_gap(buf);
 		buf.push_str("while");
 		settings.0.add_gap(buf);
 		buf.push('(');

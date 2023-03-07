@@ -217,7 +217,7 @@ impl ASTNode for Statement {
 				WhileStatement::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Do) => {
-				todo!()
+				DoWhileStatement::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Export) => {
 				ExportStatement::from_reader_2(reader, state, settings)

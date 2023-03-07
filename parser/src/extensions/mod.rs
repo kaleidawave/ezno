@@ -1,6 +1,5 @@
-//! Extensions other than type stuff
+//! Extensions to the syntax
 
-pub(super) mod custom_blocks;
 pub mod decorators;
 pub mod is_expression;
 pub mod jsx;
