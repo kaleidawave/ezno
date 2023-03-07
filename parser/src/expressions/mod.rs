@@ -1,9 +1,6 @@
 use crate::{
 	errors::parse_lexing_error,
-	extensions::{
-		custom_blocks::{CustomBlock, CustomBlockKeywords},
-		is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
-	},
+	extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
 	extractor::{ExtractedFunction, ExtractedFunctions, GetFunction},
 	functions::GeneralFunctionBase,
 	operators::{
@@ -214,8 +211,6 @@ pub enum Expression {
 	/// Not to be confused with binary operator `is`
 	IsExpression(IsExpression),
 	/// TODO under cfg
-	CustomBlock(CustomBlock, ExpressionId),
-	/// TODO under cfg
 	#[self_tokenize_field(cursor_id)]
 	Cursor {
 		#[visit_skip_field]
@@ -290,7 +285,6 @@ impl ASTNode for Expression {
 			Self::JSXRoot(root) => root.get_position(),
 			Self::ObjectLiteral(object_literal) => object_literal.get_position(),
 			Self::TemplateLiteral(template_literal) => template_literal.get_position(),
-			Self::CustomBlock(custom_block, _) => custom_block.get_position(),
 			Self::ClassExpression(class_expression, _) => class_expression.get_position(),
 			Self::IsExpression(is) => is.get_position(),
 			Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
@@ -699,28 +693,6 @@ impl Expression {
 					}
 				}
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Server), start) if settings.server_blocks => {
-				if reader.conditional_next(|tok| *tok == TSXToken::OpenBrace).is_some() {
-					let keyword = CustomBlockKeywords::Server(Keyword::new(start));
-					Expression::CustomBlock(
-						CustomBlock::from_reader_with_keyword(reader, state, settings, keyword)?,
-						ExpressionId::new(),
-					)
-				} else {
-					Expression::VariableReference("server".to_owned(), start, ExpressionId::new())
-				}
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Module), start) if settings.module_blocks => {
-				if reader.conditional_next(|tok| *tok == TSXToken::OpenBrace).is_some() {
-					let keyword = CustomBlockKeywords::Module(Keyword::new(start));
-					Expression::CustomBlock(
-						CustomBlock::from_reader_with_keyword(reader, state, settings, keyword)?,
-						ExpressionId::new(),
-					)
-				} else {
-					Expression::VariableReference("module".to_owned(), start, ExpressionId::new())
-				}
-			}
 			#[cfg(feature = "extras")]
 			Token(TSXToken::Keyword(TSXKeyword::Is), span) => is_expression_from_reader_sub_is_keyword(
 				reader,
@@ -729,24 +701,6 @@ impl Expression {
 				Keyword::new(span),
 			)
 			.map(Expression::IsExpression)?,
-			// Token(TSXToken::Keyword(TSXKeyword::Match), _start) if settings.match_proposal => {
-			// 	panic!("not doing this anymore")
-			// TODO this will still break for a function named match
-			// if matches!(reader.peek(), Some(Token(TSXToken::OpenParentheses, _))) {
-			// 	return Ok(Self::Match(
-			// 		MatchExpression::from_reader_sub_match_keyword(
-			// 			reader, state, settings, start,
-			// 		)?,
-			// 		ExpressionId::new(),
-			// 	));
-			// } else {
-			// 	Expression::VariableReference(
-			// 		"match".to_owned(),
-			// 		Some(start),
-			// 		ExpressionId::new(),
-			// 	)
-			// }
-			// }
 			token => {
 				if let Ok(unary_operator) = UnaryOperator::try_from(&token.0) {
 					let op_precedence = unary_operator.precedence();
@@ -1097,7 +1051,6 @@ impl Expression {
             | Self::Null(..)
             | Self::ObjectLiteral(..)
             | Self::Throw(..)
-            | Self::CustomBlock(..)
             | Self::BooleanLiteral(..)
             | Self::VariableReference(..)
             | Self::ThisReference(..)
@@ -1340,9 +1293,6 @@ impl Expression {
 			}
 			Self::Null(..) => buf.push_str("null"),
 			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, settings, depth),
-			Self::CustomBlock(custom_block, _) => {
-				custom_block.to_string_from_buffer(buf, settings, depth)
-			}
 			Self::SuperExpression(super_expr, _, _) => {
 				buf.push_str("super");
 				match super_expr {
@@ -1612,7 +1562,6 @@ impl Expression {
 			| Self::TemplateLiteral(TemplateLiteral { expression_id: id, .. })
 			| Self::Throw(_, _, id)
 			| Self::DynamicImport { expression_id: id, .. }
-			| Self::CustomBlock(_, id)
 			| Self::ClassExpression(_, id)
 			| Self::PrefixComment(_, _, _, id)
 			| Self::PostfixComment(_, _, _, id)

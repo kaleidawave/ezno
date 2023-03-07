@@ -40,9 +40,8 @@ impl ExplorerArguments {
 				} else if let Some(new_mode) = input.strip_prefix("#switch_mode ") {
 					self.nested = match ExplorerSubCommand::from_str(new_mode.trim()) {
 						Ok(mode) => mode,
-						Err(_expected) => {
-							// TODO enum-variants-strings needs an update
-							println!("Unexpected mode");
+						Err(expected) => {
+							println!("Unexpected mode, options are {:?}", expected);
 							continue;
 						}
 					};
