@@ -99,6 +99,12 @@ pub enum Expression {
 	NumberLiteral(NumberStructure, Span, ExpressionId),
 	StringLiteral(String, #[partial_eq_ignore] Quoted, Span, ExpressionId),
 	BooleanLiteral(bool, Span, ExpressionId),
+	RegexLiteral {
+		pattern: String,
+		flags: Option<String>,
+		position: Span,
+		id: ExpressionId,
+	},
 	ArrayLiteral(Vec<SpreadExpression>, Span, ExpressionId),
 	ObjectLiteral(ObjectLiteral),
 	TemplateLiteral(TemplateLiteral),
@@ -256,8 +262,12 @@ impl ASTNode for Expression {
 			Self::Assignment { lhs, rhs, .. } => {
 				Cow::Owned(lhs.get_position().union(&rhs.get_position()))
 			}
-			Self::TernaryExpression { .. } => todo!(),
-			Self::BinaryAssignmentOperation { .. } => todo!(),
+			Self::TernaryExpression { condition, falsy_result, .. } => {
+				Cow::Owned(condition.get_position().union(&falsy_result.get_position()))
+			}
+			Self::BinaryAssignmentOperation { lhs, rhs, .. } => {
+				Cow::Owned(lhs.get_position().union(&rhs.get_position()))
+			}
 			Self::NumberLiteral(_, pos, _)
 			| Self::StringLiteral(_, _, pos, _)
 			| Self::BooleanLiteral(_, pos, _)
@@ -281,6 +291,7 @@ impl ASTNode for Expression {
 			| Self::DynamicImport { position: pos, .. }
 			| Self::Throw(_, pos, _)
 			| Self::ConstructorCall { position: pos, .. }
+			| Self::RegexLiteral { position: pos, .. }
 			| Self::Cursor { position: pos, .. } => Cow::Borrowed(pos),
 			Self::JSXRoot(root) => root.get_position(),
 			Self::ObjectLiteral(object_literal) => object_literal.get_position(),
@@ -321,6 +332,19 @@ impl Expression {
 				position,
 				ExpressionId::new(),
 			),
+			Token(TSXToken::RegexLiteral(pattern), mut position) => {
+				let flag_token =
+					reader.conditional_next(|t| matches!(t, TSXToken::RegexFlagLiteral(..)));
+				let flags = if let Some(Token(TSXToken::RegexFlagLiteral(flags), flags_position)) =
+					flag_token
+				{
+					position = position.union(&flags_position);
+					Some(flags)
+				} else {
+					None
+				};
+				Expression::RegexLiteral { pattern, flags, position, id: ExpressionId::new() }
+			}
 			Token(TSXToken::Keyword(TSXKeyword::True), position) => {
 				Expression::BooleanLiteral(true, position, ExpressionId::new())
 			}
@@ -1039,7 +1063,9 @@ impl Expression {
 	pub fn get_precedence(&self) -> u8 {
 		match self {
             Self::NumberLiteral(..)
+            | Self::BooleanLiteral(..)
             | Self::StringLiteral(..)
+            | Self::RegexLiteral { .. }
             | Self::ArrayLiteral(..)
             | Self::TemplateLiteral(..)
             | Self::ParenthesizedExpression(..)
@@ -1051,7 +1077,6 @@ impl Expression {
             | Self::Null(..)
             | Self::ObjectLiteral(..)
             | Self::Throw(..)
-            | Self::BooleanLiteral(..)
             | Self::VariableReference(..)
             | Self::ThisReference(..)
             | Self::SuperExpression(..)
@@ -1107,6 +1132,17 @@ impl Expression {
 				buf.push(quoted.as_char());
 				buf.push_str(string);
 				buf.push(quoted.as_char());
+			}
+			Self::BooleanLiteral(expression, _, _) => {
+				buf.push_str(if *expression { "true" } else { "false" });
+			}
+			Self::RegexLiteral { pattern, flags, .. } => {
+				buf.push('/');
+				buf.push_str(pattern);
+				buf.push('/');
+				if let Some(flags) = flags {
+					buf.push_str(flags);
+				}
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
 				let op_precedence = operator.precedence();
@@ -1219,9 +1255,6 @@ impl Expression {
 			}
 			Self::ArrayLiteral(values, _, _) => {
 				to_string_bracketed(values, ('[', ']'), buf, settings, depth);
-			}
-			Self::BooleanLiteral(expression, _, _) => {
-				buf.push_str(if *expression { "true" } else { "false" });
 			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, settings, depth),
 			Self::Throw(thrown_expression, _, _) => {
@@ -1539,9 +1572,10 @@ impl From<Expression> for SpreadExpression {
 impl Expression {
 	pub fn get_expression_id(&self) -> Option<ExpressionId> {
 		match self {
-			Self::NumberLiteral(_, _, id)
-			| Self::StringLiteral(_, _, _, id)
-			| Self::BooleanLiteral(_, _, id)
+			Self::NumberLiteral(.., id)
+			| Self::StringLiteral(.., id)
+			| Self::BooleanLiteral(.., id)
+			| Self::RegexLiteral { id, .. }
 			| Self::ArrayLiteral(_, _, id)
 			| Self::ParenthesizedExpression(_, _, id)
 			| Self::BinaryOperation { id, .. }
