@@ -506,7 +506,7 @@ impl Expression {
 					_ => false,
 				});
 				if let Some(Token(token_type, _)) = next {
-					if let TSXToken::Arrow | TSXToken::Colon = token_type {
+					if let TSXToken::Arrow = token_type {
 						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
 							reader,
 							state,

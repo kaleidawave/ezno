@@ -10,7 +10,7 @@ mod types;
 mod variable;
 mod while_statement;
 
-use crate::tsx_keywords;
+use crate::{tokens::token_as_identifier, tsx_keywords};
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -47,9 +47,6 @@ use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
 /// A statement
-/// TODO Import and Export are only allowed in top level modules. Could there be a `TopLevelStatement` which
-/// extends Statement and includes them, therefore retaining type safety
-///
 /// Throw is on [Expression] (non-standard)
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras)]
 #[try_into_references(&, &mut)]
@@ -57,11 +54,7 @@ pub use while_statement::{DoWhileStatement, WhileStatement};
 #[visit_self]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum Statement {
-	Expression(MultipleExpression),
-	/// { ... } statement
-	Block(Block),
-	Debugger(Span),
-	// Declarations:
+	// Declarations (TODO separate):
 	VariableDeclaration(VariableStatement),
 	FunctionDeclaration(Decorated<StatementFunction>),
 	ExtractedFunction(ExtractedFunction<StatementFunctionBase>),
@@ -74,6 +67,13 @@ pub enum Statement {
 	DeclareFunctionDeclaration(DeclareFunctionDeclaration),
 	#[from_ignore]
 	DeclareInterfaceDeclaration(InterfaceDeclaration),
+	// Top level only
+	ImportStatement(ImportStatement),
+	ExportStatement(Decorated<ExportStatement>),
+	Expression(MultipleExpression),
+	/// { ... } statement
+	Block(Block),
+	Debugger(Span),
 	// Loops and "condition-aries"
 	IfStatement(IfStatement),
 	ForLoopStatement(ForLoopStatement),
@@ -82,15 +82,17 @@ pub enum Statement {
 	DoWhileStatement(DoWhileStatement),
 	// Control flow
 	ReturnStatement(Keyword<tsx_keywords::Return>, Option<MultipleExpression>),
-	// TODO labels on these:
-	Continue(Span),
-	Break(Span),
+	// TODO maybe an actual label struct:
+	Continue(Option<String>, Span),
+	Break(Option<String>, Span),
 	// Comments
 	Comment(String, Span),
 	MultiLineComment(String, Span),
-	// Top level only
-	ImportStatement(ImportStatement),
-	ExportStatement(Decorated<ExportStatement>),
+	Labelled {
+		position: Span,
+		name: String,
+		statement: Box<Statement>,
+	},
 	/// TODO under cfg
 	#[self_tokenize_field(0)]
 	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
@@ -108,10 +110,11 @@ impl ASTNode for Statement {
 			Statement::InterfaceDeclaration(dec) => dec.get_position(),
 			Statement::VariableDeclaration(dec) => dec.get_position(),
 			Statement::Debugger(pos)
-			| Statement::Continue(pos)
+			| Statement::Continue(_, pos)
+			| Statement::Break(_, pos)
 			| Statement::Cursor(_, pos)
-			| Statement::Break(pos)
 			| Statement::Comment(_, pos)
+			| Statement::Labelled { position: pos, .. }
 			| Statement::MultiLineComment(_, pos) => Cow::Borrowed(pos),
 			Statement::ReturnStatement(kw, expr) => {
 				if let Some(expr) = expr {
@@ -145,8 +148,17 @@ impl ASTNode for Statement {
 		// then need to throw a parse error
 		let decorators = decorators::decorators_from_reader(reader, state, settings)?;
 
+		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
+			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
+			let _colon = reader.next().unwrap();
+			let statement = Statement::from_reader(reader, state, settings).map(Box::new)?;
+			let position = label_name_pos.union(&statement.get_position());
+			return Ok(Statement::Labelled { name, statement, position });
+		}
+
 		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
-		match token {
+
+		let stmt = match token {
 			TSXToken::Cursor(_) => {
 				if let Token(TSXToken::Cursor(cursor_id), span) = reader.next().unwrap() {
 					Ok(Statement::Cursor(cursor_id.into_cursor(), span))
@@ -160,8 +172,7 @@ impl ASTNode for Statement {
 			}
 			// Const can be either variable declaration or const enum
 			TSXToken::Keyword(TSXKeyword::Const) => {
-				// Lol I think there needs to be a change in tokenizer-lib
-				let after_const = reader.scan(move |_, _| true);
+				let after_const = reader.peek_n(2);
 				if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum), _)) = after_const {
 					EnumDeclaration::from_reader(reader, state, settings)
 						.map(|on| Statement::EnumDeclaration(Decorated { decorators, on }))
@@ -251,11 +262,23 @@ impl ASTNode for Statement {
 			}
 			TSXToken::Keyword(TSXKeyword::Break) => {
 				let Token(_, span) = reader.next().unwrap();
-				Ok(Statement::Break(span))
+				// TODO token is semi-colon
+				let label = if !matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
+					Some(token_as_identifier(reader.next().unwrap(), "break label")?.0)
+				} else {
+					None
+				};
+				Ok(Statement::Break(label, span))
 			}
 			TSXToken::Keyword(TSXKeyword::Continue) => {
 				let Token(_, span) = reader.next().unwrap();
-				Ok(Statement::Continue(span))
+				// TODO token is semi-colon
+				let label = if !matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
+					Some(token_as_identifier(reader.next().unwrap(), "continue label")?.0)
+				} else {
+					None
+				};
+				Ok(Statement::Continue(label, span))
 			}
 			TSXToken::Comment(_) => Ok({
 				let (comment, position) =
@@ -305,7 +328,11 @@ impl ASTNode for Statement {
 			_ => {
 				MultipleExpression::from_reader(reader, state, settings).map(Statement::Expression)
 			}
-		}
+		};
+
+		// TODO check automatic semi-colon tokens
+		reader.expect_next(TSXToken::SemiColon)?;
+		stmt
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -319,7 +346,6 @@ impl ASTNode for Statement {
 				// TODO panic under setting
 			}
 			Statement::ReturnStatement(_, expression) => {
-				// TODO check iife properties of expression
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
@@ -373,25 +399,30 @@ impl ASTNode for Statement {
 				block.to_string_from_buffer(buf, settings, depth + 1);
 			}
 			Statement::Debugger(_) => buf.push_str("debugger"),
-			Statement::Continue(_) => buf.push_str("continue"),
-			Statement::Break(_) => buf.push_str("break"),
+			Statement::Continue(label, _) => {
+				buf.push_str("continue");
+				if let Some(label) = label {
+					buf.push(' ');
+					buf.push_str(label);
+				}
+			}
+			Statement::Break(label, _) => {
+				buf.push_str("break");
+				if let Some(label) = label {
+					buf.push(' ');
+					buf.push_str(label);
+				}
+			}
 			Statement::EnumDeclaration(enum_declaration) => {
 				enum_declaration.to_string_from_buffer(buf, settings, depth)
 			}
 			Statement::Expression(val) => {
-				if let Some(body) = val.is_iife(&settings.1) {
-					match body {
-						crate::expressions::ExpressionOrBlock::Expression(expression) => {
-							expression.to_string_from_buffer(buf, settings, depth)
-						}
-						crate::expressions::ExpressionOrBlock::Block(block) => {
-							// TODO if block returns then this will break:::
-							block.to_string_from_buffer(buf, settings, depth);
-						}
-					}
-				} else {
-					val.to_string_from_buffer(buf, settings, depth);
-				}
+				val.to_string_from_buffer(buf, settings, depth);
+			}
+			Statement::Labelled { name, statement, .. } => {
+				buf.push_str(name);
+				buf.push(':');
+				statement.to_string_from_buffer(buf, settings, depth);
 			}
 		}
 	}

@@ -681,7 +681,7 @@ pub(crate) mod test_utils {
 	#[macro_export]
 	macro_rules! assert_matches_ast {
 		($source:literal, $ast_pattern:pat) => {{
-			let crate::ParseOutput(node, _state) = ASTNode::from_string(
+			let crate::ParseOutput(node, _state) = crate::ASTNode::from_string(
 				$source.to_owned(),
 				Default::default(),
 				crate::SourceId::NULL,
