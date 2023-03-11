@@ -178,6 +178,10 @@ pub enum VariableKeyword {
 }
 
 impl VariableKeyword {
+	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
+		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
+	}
+
 	pub(crate) fn from_reader(token: Token<TSXToken, Span>) -> ParseResult<Self> {
 		match token {
 			Token(TSXToken::Keyword(TSXKeyword::Const), pos) => Ok(Self::Const(Keyword::new(pos))),
@@ -197,11 +201,19 @@ impl VariableKeyword {
 		}
 	}
 
-	pub(crate) fn as_str(&self) -> &str {
+	pub fn as_str(&self) -> &str {
 		match self {
 			VariableKeyword::Const(_) => "const ",
 			VariableKeyword::Let(_) => "let ",
 			VariableKeyword::Var(_) => "var ",
+		}
+	}
+
+	pub fn get_position(&self) -> &Span {
+		match self {
+			VariableKeyword::Const(kw) => kw.get_position(),
+			VariableKeyword::Let(kw) => kw.get_position(),
+			VariableKeyword::Var(kw) => kw.get_position(),
 		}
 	}
 }
