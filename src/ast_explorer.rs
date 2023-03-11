@@ -28,7 +28,7 @@ impl ExplorerArguments {
 				_ => {}
 			}
 		} else {
-			// println!("EZNO REPL\nUse #exit to leave and #switch_mode to um... switch mode");
+			println!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*");
 			loop {
 				print!("{}> ", self.nested.to_str());
 				io::Write::flush(&mut io::stdout()).unwrap();
@@ -37,7 +37,7 @@ impl ExplorerArguments {
 					continue;
 				} else if input.trim() == "#exit" {
 					break;
-				} else if let Some(new_mode) = input.strip_prefix("#switch_mode ") {
+				} else if let Some(new_mode) = input.strip_prefix("#switch-mode ") {
 					self.nested = match ExplorerSubCommand::from_str(new_mode.trim()) {
 						Ok(mode) => mode,
 						Err(expected) => {
@@ -46,7 +46,7 @@ impl ExplorerArguments {
 						}
 					};
 					continue;
-				} else if let Some(path) = input.strip_prefix("#load_file ") {
+				} else if let Some(path) = input.strip_prefix("#load-file ") {
 					input = match fs::read_to_string(path.trim()) {
 						Ok(string) => string,
 						Err(err) => {
@@ -64,6 +64,7 @@ impl ExplorerArguments {
 
 #[derive(FromArgs, Debug, EnumVariantsStrings)]
 #[argh(subcommand)]
+#[enum_variants_strings_transform(transform = "kebab_case")]
 pub(crate) enum ExplorerSubCommand {
 	AST(ASTArgs),
 	FullAST(FullASTArgs),
