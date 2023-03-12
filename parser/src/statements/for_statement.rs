@@ -1,15 +1,13 @@
 use std::borrow::Cow;
 
 use crate::{
-	block::BlockOrSingleStatement, ParseSettings, TSXKeyword, VariableField,
-	VariableFieldInSourceCode, WithComment,
+	block::BlockOrSingleStatement,
+	declarations::variable::{VariableDeclaration, VariableDeclarationKeyword},
+	ParseSettings, TSXKeyword, VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
-use super::{
-	variable::VariableKeyword, ASTNode, Expression, ParseResult, Span, TSXToken, Token,
-	TokenReader, VariableStatement,
-};
+use super::{ASTNode, Expression, ParseResult, Span, TSXToken, Token, TokenReader};
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -53,7 +51,7 @@ impl ASTNode for ForLoopStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ForLoopStatementInitializer {
-	Statement(VariableStatement),
+	Statement(VariableDeclaration),
 	Expression(Expression),
 }
 
@@ -61,13 +59,13 @@ pub enum ForLoopStatementInitializer {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ForLoopCondition {
 	ForOf {
-		keyword: Option<VariableKeyword>,
+		keyword: Option<VariableDeclarationKeyword>,
 		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
 		// TODO box...?
 		of: Expression,
 	},
 	ForIn {
-		keyword: Option<VariableKeyword>,
+		keyword: Option<VariableDeclarationKeyword>,
 		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
 		// TODO box...?
 		r#in: Expression,
@@ -86,7 +84,7 @@ impl ASTNode for ForLoopCondition {
 			| ForLoopCondition::ForIn { keyword, variable, r#in: rhs } => Cow::Owned(
 				keyword
 					.as_ref()
-					.map(VariableKeyword::get_position)
+					.map(VariableDeclarationKeyword::get_position)
 					.map(Cow::Borrowed)
 					.unwrap_or_else(|| variable.get_position())
 					.union(&rhs.get_position()),
@@ -126,7 +124,7 @@ impl ASTNode for ForLoopCondition {
 					destructuring_depth == 0
 				} else {
 					ate_variable_specifier = true;
-					!VariableKeyword::is_token_variable_keyword(token)
+					!VariableDeclarationKeyword::is_token_variable_keyword(token)
 				}
 			})
 			.map(|Token(tok, _)| tok);
@@ -134,9 +132,9 @@ impl ASTNode for ForLoopCondition {
 		let condition = match next {
 			Some(TSXToken::Keyword(TSXKeyword::Of)) => {
 				let keyword = if let Some(token) =
-					reader.conditional_next(VariableKeyword::is_token_variable_keyword)
+					reader.conditional_next(VariableDeclarationKeyword::is_token_variable_keyword)
 				{
-					Some(VariableKeyword::from_reader(token).unwrap())
+					Some(VariableDeclarationKeyword::from_reader(token).unwrap())
 				} else {
 					None
 				};
@@ -149,9 +147,9 @@ impl ASTNode for ForLoopCondition {
 			}
 			Some(TSXToken::Keyword(TSXKeyword::In)) => {
 				let keyword = if let Some(token) =
-					reader.conditional_next(VariableKeyword::is_token_variable_keyword)
+					reader.conditional_next(VariableDeclarationKeyword::is_token_variable_keyword)
 				{
-					Some(VariableKeyword::from_reader(token).unwrap())
+					Some(VariableDeclarationKeyword::from_reader(token).unwrap())
 				} else {
 					None
 				};
@@ -169,8 +167,8 @@ impl ASTNode for ForLoopCondition {
 					_,
 				)) = peek
 				{
-					let stmt = VariableStatement::from_reader(reader, state, settings)?;
-					Some(ForLoopStatementInitializer::Statement(stmt))
+					let declaration = VariableDeclaration::from_reader(reader, state, settings)?;
+					Some(ForLoopStatementInitializer::Statement(declaration))
 				} else if let Some(Token(TSXToken::SemiColon, _)) = peek {
 					None
 				} else {
@@ -230,7 +228,7 @@ impl ASTNode for ForLoopCondition {
 							stmt.to_string_from_buffer(buf, settings, depth)
 						}
 						ForLoopStatementInitializer::Expression(expr) => {
-							expr.to_string_from_buffer(buf, settings, depth)
+							expr.to_string_from_buffer(buf, settings, depth);
 						}
 					}
 				}

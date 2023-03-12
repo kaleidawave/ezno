@@ -100,7 +100,9 @@ pub enum TSXToken {
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
     TemplateLiteralExpressionStart, TemplateLiteralExpressionEnd,
-    Comma, SemiColon, Colon, Dot, At,
+    Comma, SemiColon, Colon, Dot, 
+    /// @
+    At,
     Spread, Assign, 
     /// `=>`
     Arrow,

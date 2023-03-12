@@ -39,7 +39,7 @@ impl self_rust_tokenize::SelfRustTokenize for ImportStatementId {
 /// TODO a few more thing needed here
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct ImportStatement {
+pub struct ImportDeclaration {
 	pub default_import: Option<String>,
 	pub imports: Option<Vec<ImportPart>>,
 	pub import_statement_id: ImportStatementId,
@@ -48,7 +48,7 @@ pub struct ImportStatement {
 	pub position: Span,
 }
 
-impl ASTNode for ImportStatement {
+impl ASTNode for ImportDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
@@ -118,7 +118,7 @@ impl ASTNode for ImportStatement {
 				));
 			}
 		};
-		Ok(ImportStatement {
+		Ok(ImportDeclaration {
 			default_import,
 			imports,
 			only_type,

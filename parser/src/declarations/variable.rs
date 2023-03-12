@@ -2,10 +2,10 @@ use std::borrow::Cow;
 
 use iterator_endiate::EndiateIteratorExt;
 
-use super::{ASTNode, ParseError, Span, Token, TokenReader};
 use crate::{
-	errors::parse_lexing_error, tsx_keywords, Expression, Keyword, ParseResult, ParseSettings,
-	TSXKeyword, TSXToken, TypeReference, VariableField, VariableFieldInSourceCode, WithComment,
+	errors::parse_lexing_error, tsx_keywords, ASTNode, Expression, Keyword, ParseError,
+	ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeReference,
+	VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -99,13 +99,13 @@ impl DeclarationExpression for crate::Expression {
 /// Represents a name =
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct VariableDeclaration<TExpr: DeclarationExpression> {
+pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_reference: Option<TypeReference>,
 	pub expression: TExpr,
 }
 
-impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclaration<TExpr> {
+impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
 	fn get_position(&self) -> Cow<Span> {
 		let name_position = self.name.get_position();
 		if let Some(expr_pos) = TExpr::get_decl_position(&self.expression) {
@@ -147,52 +147,45 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclaration<TEx
 			buf.push_str(": ");
 			type_reference.to_string_from_buffer(buf, settings, depth);
 		}
-		self.expression.decl_to_string_from_buffer(buf, settings, depth)
+		self.expression.decl_to_string_from_buffer(buf, settings, depth);
 	}
 }
 
 /// TODO smallvec the declarations
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum VariableStatement {
+pub enum VariableDeclaration {
 	ConstDeclaration {
 		keyword: Keyword<tsx_keywords::Const>,
-		declarations: Vec<VariableDeclaration<Expression>>,
+		declarations: Vec<VariableDeclarationItem<Expression>>,
 	},
 	LetDeclaration {
 		keyword: Keyword<tsx_keywords::Let>,
-		declarations: Vec<VariableDeclaration<Option<Expression>>>,
-	},
-	VarDeclaration {
-		keyword: Keyword<tsx_keywords::Var>,
-		declarations: Vec<VariableDeclaration<Option<Expression>>>,
+		declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 	},
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum VariableKeyword {
+pub enum VariableDeclarationKeyword {
 	Const(Keyword<tsx_keywords::Const>),
 	Let(Keyword<tsx_keywords::Let>),
-	Var(Keyword<tsx_keywords::Var>),
 }
 
-impl VariableKeyword {
+impl VariableDeclarationKeyword {
 	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
+		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
 
 	pub(crate) fn from_reader(token: Token<TSXToken, Span>) -> ParseResult<Self> {
 		match token {
 			Token(TSXToken::Keyword(TSXKeyword::Const), pos) => Ok(Self::Const(Keyword::new(pos))),
 			Token(TSXToken::Keyword(TSXKeyword::Let), pos) => Ok(Self::Let(Keyword::new(pos))),
-			Token(TSXToken::Keyword(TSXKeyword::Var), pos) => Ok(Self::Var(Keyword::new(pos))),
 			Token(token, position) => Err(ParseError::new(
 				crate::ParseErrors::UnexpectedToken {
 					expected: &[
 						TSXToken::Keyword(TSXKeyword::Const),
 						TSXToken::Keyword(TSXKeyword::Let),
-						TSXToken::Keyword(TSXKeyword::Var),
 					],
 					found: token,
 				},
@@ -203,65 +196,57 @@ impl VariableKeyword {
 
 	pub fn as_str(&self) -> &str {
 		match self {
-			VariableKeyword::Const(_) => "const ",
-			VariableKeyword::Let(_) => "let ",
-			VariableKeyword::Var(_) => "var ",
+			VariableDeclarationKeyword::Const(_) => "const ",
+			VariableDeclarationKeyword::Let(_) => "let ",
 		}
 	}
 
 	pub fn get_position(&self) -> &Span {
 		match self {
-			VariableKeyword::Const(kw) => kw.get_position(),
-			VariableKeyword::Let(kw) => kw.get_position(),
-			VariableKeyword::Var(kw) => kw.get_position(),
+			VariableDeclarationKeyword::Const(kw) => kw.get_position(),
+			VariableDeclarationKeyword::Let(kw) => kw.get_position(),
 		}
 	}
 }
 
-impl ASTNode for VariableStatement {
+impl ASTNode for VariableDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
 		settings: &ParseSettings,
 	) -> ParseResult<Self> {
-		let kind = VariableKeyword::from_reader(reader.next().ok_or_else(parse_lexing_error)?)?;
+		let kind =
+			VariableDeclarationKeyword::from_reader(reader.next().ok_or_else(parse_lexing_error)?)?;
 		Ok(match kind {
-			VariableKeyword::Let(..) | VariableKeyword::Var(..) => {
+			VariableDeclarationKeyword::Let(keyword) => {
 				let mut declarations = Vec::new();
 				loop {
-					let value = VariableDeclaration::<Option<Expression>>::from_reader(
+					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
 						reader, state, settings,
 					)?;
 					declarations.push(value);
-					if matches!(reader.peek(), Some(Token(TSXToken::Comma, _))) {
+					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
 					} else {
 						break;
 					}
 				}
-				match kind {
-					VariableKeyword::Let(keyword) => {
-						VariableStatement::LetDeclaration { keyword, declarations }
-					}
-					VariableKeyword::Var(keyword) => {
-						VariableStatement::VarDeclaration { keyword, declarations }
-					}
-					_ => unreachable!(),
-				}
+				VariableDeclaration::LetDeclaration { keyword, declarations }
 			}
-			VariableKeyword::Const(keyword) => {
+			VariableDeclarationKeyword::Const(keyword) => {
 				let mut declarations = Vec::new();
 				loop {
-					let value =
-						VariableDeclaration::<Expression>::from_reader(reader, state, settings)?;
+					let value = VariableDeclarationItem::<Expression>::from_reader(
+						reader, state, settings,
+					)?;
 					declarations.push(value);
-					if matches!(reader.peek().unwrap().0, TSXToken::Comma) {
+					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
 					} else {
 						break;
 					}
 				}
-				VariableStatement::ConstDeclaration { keyword, declarations }
+				VariableDeclaration::ConstDeclaration { keyword, declarations }
 			}
 		})
 	}
@@ -272,29 +257,12 @@ impl ASTNode for VariableStatement {
 		settings: &crate::ToStringSettingsAndData,
 		depth: u8,
 	) {
-		fn declarations_to_string<T: source_map::ToString, U: DeclarationExpression + 'static>(
-			declarations: &[VariableDeclaration<U>],
-			buf: &mut T,
-			settings: &crate::ToStringSettingsAndData,
-			depth: u8,
-		) {
-			for (at_end, declaration) in declarations.iter().endiate() {
-				declaration.to_string_from_buffer(buf, settings, depth);
-				if !at_end {
-					buf.push(',');
-					settings.0.add_gap(buf);
-				}
-			}
-		}
-
 		match self {
-			VariableStatement::VarDeclaration { declarations, .. }
-			| VariableStatement::LetDeclaration { declarations, .. } => {
-				let is_let = matches!(self, VariableStatement::LetDeclaration { .. });
-				buf.push_str(if is_let { "let " } else { "var " });
+			VariableDeclaration::LetDeclaration { declarations, .. } => {
+				buf.push_str("let ");
 				declarations_to_string(declarations, buf, settings, depth);
 			}
-			VariableStatement::ConstDeclaration { declarations, .. } => {
+			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				buf.push_str("const ");
 				declarations_to_string(declarations, buf, settings, depth);
 			}
@@ -303,21 +271,36 @@ impl ASTNode for VariableStatement {
 
 	fn get_position(&self) -> Cow<Span> {
 		match self {
-			VariableStatement::ConstDeclaration { keyword, declarations } => {
+			VariableDeclaration::ConstDeclaration { keyword, declarations } => {
 				Cow::Owned(keyword.1.union(&declarations.last().unwrap().get_position()))
 			}
-			VariableStatement::LetDeclaration { keyword, declarations } => {
-				Cow::Owned(keyword.1.union(&declarations.last().unwrap().get_position()))
-			}
-			VariableStatement::VarDeclaration { keyword, declarations } => {
+			VariableDeclaration::LetDeclaration { keyword, declarations } => {
 				Cow::Owned(keyword.1.union(&declarations.last().unwrap().get_position()))
 			}
 		}
 	}
 }
 
-impl VariableStatement {
+impl VariableDeclaration {
 	pub fn is_constant(&self) -> bool {
-		matches!(self, VariableStatement::ConstDeclaration { .. })
+		matches!(self, VariableDeclaration::ConstDeclaration { .. })
+	}
+}
+
+pub(crate) fn declarations_to_string<
+	T: source_map::ToString,
+	U: DeclarationExpression + 'static,
+>(
+	declarations: &[VariableDeclarationItem<U>],
+	buf: &mut T,
+	settings: &crate::ToStringSettingsAndData,
+	depth: u8,
+) {
+	for (at_end, declaration) in declarations.iter().endiate() {
+		declaration.to_string_from_buffer(buf, settings, depth);
+		if !at_end {
+			buf.push(',');
+			settings.0.add_gap(buf);
+		}
 	}
 }

@@ -1,4 +1,5 @@
 use crate::{
+	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
 	extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
 	extractor::{ExtractedFunction, ExtractedFunctions, GetFunction},
@@ -8,9 +9,7 @@ use crate::{
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
 		FUNCTION_CALL_PRECEDENCE, OPTIONAL_CHAINING_PRECEDENCE,
 	},
-	parse_bracketed,
-	statements::ClassDeclaration,
-	to_string_bracketed,
+	parse_bracketed, to_string_bracketed,
 	type_references::generic_arguments_from_reader_sub_open_angle,
 	CursorId, ExpressionPosition, FunctionHeader, FunctionId, Keyword, NumberStructure,
 	ParseResult, Quoted, TSXKeyword,
@@ -195,9 +194,6 @@ pub enum Expression {
 		falsy_result: Box<Expression>,
 		id: ExpressionId,
 	},
-	/// e.g `throw ...`
-	/// JS treats these as statements
-	Throw(Box<Expression>, Span, ExpressionId),
 	// Functions
 	ArrowFunction(ArrowFunction),
 	ExpressionFunction(ExpressionFunction),
@@ -289,7 +285,6 @@ impl ASTNode for Expression {
 			| Self::NewTarget(pos, _)
 			| Self::SuperExpression(_, pos, _)
 			| Self::DynamicImport { position: pos, .. }
-			| Self::Throw(_, pos, _)
 			| Self::ConstructorCall { position: pos, .. }
 			| Self::RegexLiteral { position: pos, .. }
 			| Self::Cursor { position: pos, .. } => Cow::Borrowed(pos),
@@ -610,11 +605,6 @@ impl Expression {
 					reader, state, settings, None, start_pos,
 				)
 				.map(Expression::TemplateLiteral);
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Throw), start_pos) => {
-				let expression = Expression::from_reader(reader, state, settings)?;
-				let position = start_pos.union(&expression.get_position());
-				return Ok(Expression::Throw(expression.into(), position, ExpressionId::new()));
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Function), span) => {
 				let header = FunctionHeader::VirginFunctionHeader {
@@ -1076,7 +1066,6 @@ impl Expression {
             | Self::ExtractedExpressionFunction(..)
             | Self::Null(..)
             | Self::ObjectLiteral(..)
-            | Self::Throw(..)
             | Self::VariableReference(..)
             | Self::ThisReference(..)
             | Self::SuperExpression(..)
@@ -1257,10 +1246,6 @@ impl Expression {
 				to_string_bracketed(values, ('[', ']'), buf, settings, depth);
 			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, settings, depth),
-			Self::Throw(thrown_expression, _, _) => {
-				buf.push_str("throw ");
-				thrown_expression.to_string_from_buffer(buf, settings, depth);
-			}
 			Self::ObjectLiteral(object_literal) => {
 				object_literal.to_string_from_buffer(buf, settings, depth)
 			}
@@ -1594,7 +1579,6 @@ impl Expression {
 			| Self::ThisReference(_, id)
 			| Self::NewTarget(_, id)
 			| Self::TemplateLiteral(TemplateLiteral { expression_id: id, .. })
-			| Self::Throw(_, _, id)
 			| Self::DynamicImport { expression_id: id, .. }
 			| Self::ClassExpression(_, id)
 			| Self::PrefixComment(_, _, _, id)

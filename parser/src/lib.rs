@@ -4,6 +4,7 @@
 mod block;
 mod comments;
 pub mod cursor;
+pub mod declarations;
 mod errors;
 pub mod expressions;
 mod extensions;
@@ -16,14 +17,16 @@ pub mod parameters;
 mod property_key;
 pub mod statements;
 mod tokens;
-mod types;
+pub mod types;
 mod variable_fields;
 mod visiting;
 
 #[doc(hidden)]
 pub mod lexer;
 
-pub use block::{Block, BlockId, BlockLike, BlockLikeMut, BlockOrSingleStatement};
+pub use block::{
+	Block, BlockId, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration,
+};
 pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -39,15 +42,16 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader, FunctionId};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_source, LexSettings};
-pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleStatement};
+pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
 pub use parameters::{
 	FunctionParameters, OptionalOrWithDefaultValueParameter, Parameter, SpreadParameter,
 };
 pub use property_key::{PropertyId, PropertyKey};
 pub use source_map::{SourceId, Span};
-pub(crate) use statements::parse_interface_members;
-use statements::StatementFunctionBase;
-pub use statements::{InterfaceMember, Statement};
+// pub(crate) use types;
+pub use declarations::Declaration;
+use declarations::StatementFunctionBase;
+pub use statements::Statement;
 use temporary_annex::Annex;
 pub use tokens::{tsx_keywords, TSXKeyword, TSXToken};
 pub use types::{
@@ -663,6 +667,15 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 		}
 	}
 	buf.push(brackets.1);
+}
+
+/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+pub(crate) fn expect_semi_colon(reader: &mut impl TokenReader<TSXToken, Span>) -> ParseResult<()> {
+	if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+		return Ok(());
+	}
+	reader.expect_next(TSXToken::SemiColon)?;
+	Ok(())
 }
 
 /// Re-exports or generator and general use
