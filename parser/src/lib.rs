@@ -681,8 +681,8 @@ pub(crate) fn expect_semi_colon(reader: &mut impl TokenReader<TSXToken, Span>) -
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
-		expressions::*, extensions::jsx::*, statements::*, Keyword, NumberStructure, VariableField,
-		VariableId, VariableIdentifier, WithComment,
+		expressions::*, extensions::jsx::*, statements::*, declarations::*, Keyword, NumberStructure, VariableField,
+		VariableId, VariableIdentifier, WithComment, StatementOrDeclaration
 	};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};

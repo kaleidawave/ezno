@@ -1,5 +1,4 @@
 use std::error::Error;
-
 use proc_macro::TokenStream;
 use syn_helpers::{
 	derive_trait,
@@ -8,6 +7,7 @@ use syn_helpers::{
 	syn::{parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident},
 	Constructable, FieldMut, HasAttributes, NamedOrUnnamedFieldMut, Trait, TraitItem,
 };
+use string_cases::StringCasesExt;
 
 /// On the top structure
 const VISIT_SELF_NAME: &str = "visit_self";
@@ -87,7 +87,7 @@ fn generated_visit_item(
 	}
 
 	if visit_self {
-		let struct_name_as_snake_case = str_to_snake_case(&item.structure.get_name().to_string());
+		let struct_name_as_snake_case = &item.structure.get_name().to_string().to_snake_case();
 		let mut_postfix =
 			matches!(visit_type, VisitType::Mutable).then_some("_mut").unwrap_or_default();
 		let func_name = format_ident!("visit_{}{}", struct_name_as_snake_case, mut_postfix);
@@ -134,25 +134,4 @@ fn generated_visit_item(
 	lines.append(&mut field_lines);
 
 	Ok(lines)
-}
-
-fn str_to_snake_case(s: &str) -> String {
-	fn is_divider(c: char) -> bool {
-		c.is_uppercase() || c.is_numeric() || c == '_'
-	}
-
-	let mut peekable = s.chars().peekable();
-	let mut string: String = peekable.next().unwrap().to_lowercase().collect();
-	while let Some(char) = peekable.next() {
-		if let Some(next) = peekable.peek() {
-			if next.is_lowercase() && is_divider(char) {
-				string.push('_');
-			}
-			string.extend(char.to_lowercase());
-		} else {
-			string.push(char);
-		}
-	}
-
-	string
 }

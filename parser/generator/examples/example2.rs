@@ -5,10 +5,10 @@ fn main() {
 	println!("{:#?}", x);
 
 	let number = 4.2f64.sin();
-	let y = stmt!(let y = #number;);
+	let y = stmt!(let y = #number);
 	println!("{:#?}", y);
 
 	let name = "test";
-	let z = stmt!(let #name = 4;);
+	let z = stmt!(let #name = 4);
 	println!("{:#?}", z);
 }
