@@ -123,10 +123,12 @@ pub fn lex_source(
 		},
 		String {
 			double_quoted: bool,
+			escaped: bool,
 		},
 		TemplateLiteral {
 			interpolation_depth: u16,
 			last_char_was_dollar: bool,
+			escaped: bool,
 		},
 		JSXLiteral {
 			state: JSXLexingState,
@@ -143,6 +145,8 @@ pub fn lex_source(
 		},
 		RegexLiteral {
 			escaped: bool,
+			/// aka on flags
+			after_last_slash: bool,
 		},
 	}
 
@@ -362,11 +366,11 @@ pub fn lex_source(
 					set_state!(LexingState::None, EXPECT_EXPRESSION: is_expression_prefix);
 				}
 			},
-			LexingState::String { ref mut double_quoted } => match chr {
+			LexingState::String { ref mut double_quoted, ref mut escaped } => match chr {
 				'\n' => {
 					return_err!(LexingErrors::NewLineInStringLiteral);
 				}
-				'\'' if !*double_quoted => {
+				'\'' if !*double_quoted && !*escaped => {
 					push_token!(TSXToken::SingleQuotedStringLiteral(
 						script[(start + 1)..idx].to_owned()
 					));
@@ -375,7 +379,7 @@ pub fn lex_source(
 					expect_expression = false;
 					continue;
 				}
-				'"' if *double_quoted => {
+				'"' if *double_quoted && !*escaped => {
 					push_token!(TSXToken::DoubleQuotedStringLiteral(
 						script[(start + 1)..idx].to_owned()
 					));
@@ -385,9 +389,11 @@ pub fn lex_source(
 					continue;
 				}
 				'\\' => {
-					unimplemented!();
+					*escaped = true;
 				}
-				_ => {}
+				_ => {
+					*escaped = false;
+				}
 			},
 			LexingState::Comment => {
 				if let '\n' = chr {
@@ -415,30 +421,43 @@ pub fn lex_source(
 					*last_char_was_star = chr == '*';
 				}
 			},
-			LexingState::RegexLiteral { ref mut escaped } => match chr {
-				'/' if start + 1 == idx => {
-					state = LexingState::Comment;
-					continue;
+			LexingState::RegexLiteral { ref mut escaped, ref mut after_last_slash } => {
+				if *after_last_slash {
+					if !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y') {
+						if start != idx {
+							push_token!(TSXToken::RegexFlagLiteral(script[start..idx].to_owned()));
+						}
+						set_state!(LexingState::None);
+					}
+				} else {
+					match chr {
+						'/' if start + 1 == idx => {
+							state = LexingState::Comment;
+							continue;
+						}
+						'*' if start + 1 == idx => {
+							state = LexingState::MultiLineComment { last_char_was_star: false };
+							continue;
+						}
+						'/' if !*escaped => {
+							push_token!(TSXToken::RegexLiteral(
+								script[(start + 1)..idx].to_owned()
+							));
+							*after_last_slash = true;
+							start = idx + 1;
+						}
+						chr => {
+							*escaped = chr == '\\';
+						}
+					}
 				}
-				'*' if start + 1 == idx => {
-					state = LexingState::MultiLineComment { last_char_was_star: false };
-					continue;
-				}
-				'/' if !*escaped => {
-					push_token!(TSXToken::RegexLiteral(script[(start + 1)..idx].to_owned()));
-					set_state!(LexingState::None);
-					continue;
-					// TODO set regex literal flags state maybe...?
-				}
-				chr => {
-					*escaped = chr == '\\';
-				}
-			},
+			}
 			LexingState::TemplateLiteral {
 				ref mut last_char_was_dollar,
 				ref mut interpolation_depth,
+				ref mut escaped,
 			} => match chr {
-				'$' => *last_char_was_dollar = true,
+				'$' if !*escaped => *last_char_was_dollar = true,
 				'{' if *last_char_was_dollar => {
 					if idx > start + 1 {
 						// TODO using push token
@@ -459,7 +478,7 @@ pub fn lex_source(
 					state = LexingState::None;
 					continue;
 				}
-				'`' => {
+				'`' if !*escaped => {
 					if idx > start + 1 {
 						push_token!(
 							EXCLUDING_LAST_CHAR,
@@ -471,7 +490,12 @@ pub fn lex_source(
 					state = LexingState::None;
 					continue;
 				}
-				_ => {}
+				'\\' => {
+					*escaped = true;
+				}
+				_ => {
+					*escaped = false;
+				}
 			},
 			LexingState::JSXLiteral {
 				ref mut interpolation_depth,
@@ -895,8 +919,8 @@ pub fn lex_source(
 					literal_type: Default::default(),
 					last_character_zero: false
 				}),
-				'"' => set_state!(LexingState::String { double_quoted: true }),
-				'\'' => set_state!(LexingState::String { double_quoted: false }),
+				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
+				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
 				'_' | '$' => {
 					set_state!(LexingState::Identifier)
 				}
@@ -961,6 +985,7 @@ pub fn lex_source(
 							state = LexingState::TemplateLiteral {
 								interpolation_depth: 0,
 								last_char_was_dollar: false,
+								escaped: false,
 							};
 							continue;
 						}
@@ -978,7 +1003,10 @@ pub fn lex_source(
 							continue;
 						}
 						(true, '/') => {
-							state = LexingState::RegexLiteral { escaped: false };
+							state = LexingState::RegexLiteral {
+								escaped: false,
+								after_last_slash: false,
+							};
 							continue;
 						}
 						(_, _) => {}
@@ -1042,7 +1070,7 @@ pub fn lex_source(
 				}
 			}
 		}
-		LexingState::String { double_quoted: _ } => {
+		LexingState::String { .. } => {
 			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		LexingState::Comment => {

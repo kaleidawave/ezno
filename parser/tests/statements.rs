@@ -10,11 +10,11 @@ if (true) {
 for (const x in [4, 2]) {
     switch (x) {
         case 4:
-            doThing()
+            doThing();
         case 2:
-            break
+            break;
         default:
-            break
+            break;
     }
 }
 for (let i = 0; i < 4; i++) {

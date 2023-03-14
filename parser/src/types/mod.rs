@@ -1,5 +1,12 @@
+pub mod declares;
+pub mod enum_declaration;
+pub mod interface;
+pub mod namespace;
+pub mod type_alias;
 pub mod type_declarations;
 pub mod type_references;
+
+pub use interface::InterfaceDeclaration;
 
 use std::sync::atomic::{AtomicU16, Ordering};
 

@@ -3,12 +3,10 @@ use std::borrow::Cow;
 use tokenizer_lib::Token;
 
 use crate::{
-	errors::parse_lexing_error,
-	parse_bracketed, to_string_bracketed,
-	tokens::token_as_identifier,
-	types::{type_declarations::TypeDeclaration, type_references::TypeReferenceFunctionParameters},
-	ASTNode, Decorator, GenericTypeConstraint, ParseResult, ParseSettings, Span, TSXKeyword,
-	TSXToken, TokenReader, TypeDefinitionModuleStatement, TypeId, TypeReference, VariableId,
+	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
+	types::type_references::TypeReferenceFunctionParameters, ASTNode, Decorator,
+	GenericTypeConstraint, ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, TokenReader,
+	TypeId, TypeReference, VariableId,
 };
 
 /// A `declare var` thingy.
@@ -156,92 +154,6 @@ impl DeclareFunctionDeclaration {
 			variable_id: VariableId::new(),
 			position,
 		})
-	}
-}
-
-/// e.g. `type NumberArray = Array<number>`
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct TypeAlias {
-	pub type_name: TypeDeclaration,
-	pub type_expression: TypeReference,
-	pub type_id: TypeId,
-	position: Span,
-}
-
-impl ASTNode for TypeAlias {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
-	}
-
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
-		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Type))?;
-		let type_name = TypeDeclaration::from_reader(reader, state, settings)?;
-		reader.expect_next(TSXToken::Assign)?;
-		let type_expression = TypeReference::from_reader(reader, state, settings)?;
-		let position = start.union(&type_expression.get_position());
-		Ok(Self { type_name, type_expression, type_id: TypeId::new(), position })
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
-		depth: u8,
-	) {
-		if settings.0.include_types {
-			buf.push_str("type ");
-			self.type_name.to_string_from_buffer(buf, settings, depth);
-			buf.push_str(" = ");
-			self.type_expression.to_string_from_buffer(buf, settings, depth);
-		} else {
-			panic!()
-		}
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Namespace(String, Vec<TypeDefinitionModuleStatement>);
-
-impl ASTNode for Namespace {
-	fn get_position(&self) -> Cow<Span> {
-		unimplemented!()
-	}
-
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
-		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
-	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::Namespace))?;
-		let (namespace_name, _) =
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "namespace name")?;
-		reader.expect_next(TSXToken::OpenBrace)?;
-		let mut declarations = Vec::new();
-		while let Some(token) = reader.peek() {
-			if let Token(TSXToken::CloseBrace, _) = token {
-				break;
-			}
-			declarations.push(TypeDefinitionModuleStatement::from_reader(reader, state, settings)?);
-			if matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
-				reader.next();
-			}
-		}
-		reader.next();
-		Ok(Self(namespace_name, declarations))
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
-		_depth: u8,
-	) {
-		todo!()
 	}
 }
 

@@ -18,13 +18,13 @@ use tokenizer_lib::{Token, TokenReader};
 
 pub mod bases {
 	pub use crate::{
+		declarations::{
+			classes::{ClassConstructorBase, ClassFunctionBase},
+			StatementFunctionBase,
+		},
 		expressions::{
 			arrow_function::ArrowFunctionBase, object_literal::ObjectLiteralMethodBase,
 			ExpressionFunctionBase,
-		},
-		statements::{
-			classes::{ClassConstructorBase, ClassFunctionBase},
-			StatementFunctionBase,
 		},
 	};
 }

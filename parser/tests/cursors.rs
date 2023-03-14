@@ -1,6 +1,6 @@
 use ezno_parser::{
 	expressions::ExpressionId, extractor::GetFunction, ASTNode, CursorId, Expression, ParseOutput,
-	SourceId, Span, Statement,
+	SourceId, Span, Statement, StatementOrDeclaration,
 };
 
 #[test]
@@ -24,7 +24,9 @@ fn cursor_in_expression() {
 		panic!()
 	};
 
-	if let [Statement::ReturnStatement(_, expr)] = function.body.0.as_slice() {
+	if let [StatementOrDeclaration::Statement(Statement::Return(_, expr))] =
+		function.body.0.as_slice()
+	{
 		let multiple_expression = expr.as_ref().unwrap();
 		assert!(multiple_expression.lhs.is_none());
 		if let Expression::Cursor { cursor_id, .. } = &multiple_expression.rhs {
