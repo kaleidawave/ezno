@@ -1,0 +1,20 @@
+{
+    "name": "ezno",
+    "version": "0.0.0",
+    "description": "A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance",
+    "license": "MIT",
+    "repository": "https://github.com/kaleidawave/ezno",
+    "main": "index.js",
+    "author": {
+        "name": "Ben",
+        "email": "kaleidawave@gmail.com",
+        "url": "https://kaleidawave.github.io/"
+    },
+    "bin": {
+        "ezno": "./bin.js"
+    },
+    "funding": {
+        "type" : "individual",
+        "url" : "https://github.com/sponsors/kaleidawave"
+    }
+}

@@ -3,11 +3,12 @@
 use std::{fs, io, path::PathBuf};
 
 use argh::FromArgs;
-use codespan_reporting::term::Config;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{
 	ASTNode, Expression, Module, ParseOutput, SourceId, ToStringSettings, ToStringSettingsAndData,
 };
+
+use crate::error_handling::emit_parser_error;
 
 /// Repl for testing out AST
 #[derive(FromArgs, Debug)]
@@ -32,7 +33,7 @@ impl ExplorerArguments {
 			loop {
 				print!("{}> ", self.nested.to_str());
 				io::Write::flush(&mut io::stdout()).unwrap();
-				let (n, mut input) = crate::utilities::read_string_from_cli(&mut io::stdin());
+				let (n, mut input) = crate::utilities::read_from_cli(&mut io::stdin());
 				if n == 0 {
 					continue;
 				} else if input.trim() == "#exit" {
@@ -70,7 +71,6 @@ pub(crate) enum ExplorerSubCommand {
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),
 	Uglifier(UglifierArgs),
-	// Lex(LexerArgs),
 }
 
 /// Prints AST for given expression
@@ -83,11 +83,6 @@ pub(crate) struct ASTArgs {}
 #[argh(subcommand, name = "full-ast")]
 pub(crate) struct FullASTArgs {}
 
-// /// Returns the tokens from lexing
-// #[derive(FromArgs, Debug, Default)]
-// #[argh(subcommand, name = "lexer")]
-// pub(crate) struct LexerArgs {}
-
 /// Prettifies source code (full whitespace)
 #[derive(FromArgs, Debug, Default)]
 #[argh(subcommand, name = "prettifier")]
@@ -97,29 +92,6 @@ pub(crate) struct PrettyArgs {}
 #[derive(FromArgs, Debug, Default)]
 #[argh(subcommand, name = "uglifier")]
 pub(crate) struct UglifierArgs {}
-
-fn parse_error_to_codespan_error(input: String, error: parser::ParseError) {
-	use codespan_reporting::{
-		diagnostic::{Diagnostic, Label},
-		files::SimpleFile,
-	};
-
-	let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
-		codespan_reporting::term::termcolor::ColorChoice::Always,
-	);
-	let reason = error.reason;
-	codespan_reporting::term::emit(
-		&mut writer.lock(),
-		&Config { start_context_lines: 3, end_context_lines: 3, ..Default::default() },
-		&SimpleFile::new("input", input),
-		&Diagnostic::error().with_labels(vec![Label::primary(
-			(),
-			std::ops::Range::from(error.position),
-		)
-		.with_message(reason)]),
-	)
-	.unwrap();
-}
 
 impl ExplorerSubCommand {
 	pub fn run(&self, input: String) {
@@ -140,7 +112,7 @@ impl ExplorerSubCommand {
 							println!("{:#?}", res);
 						}
 					}
-					Err(err) => parse_error_to_codespan_error(input.clone(), err),
+					Err(err) => emit_parser_error(input.clone(), err).unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(_) => {
@@ -153,7 +125,7 @@ impl ExplorerSubCommand {
 				);
 				match res {
 					Ok(res) => println!("{:#?}", res),
-					Err(err) => parse_error_to_codespan_error(input, err),
+					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -174,7 +146,7 @@ impl ExplorerSubCommand {
 						let d = ToStringSettingsAndData(settings, state.function_extractor);
 						println!("{}", value.to_string(&d));
 					}
-					Err(err) => parse_error_to_codespan_error(input, err),
+					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
 			}
 		}
