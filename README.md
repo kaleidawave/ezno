@@ -2,6 +2,7 @@ A JavaScript compiler and TypeScript checker written in Rust with a focus on sta
 
 ![](https://projects.kaleidawave.workers.dev/project/ezno/badge)
 
+
 This project is a workspace consisting of a few crates:
 
 | Crate | Lines Of Code <div style="min-width: 150px"><div> | Description  |
