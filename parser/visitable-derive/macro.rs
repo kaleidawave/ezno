@@ -1,5 +1,6 @@
-use std::error::Error;
 use proc_macro::TokenStream;
+use std::error::Error;
+use string_cases::StringCasesExt;
 use syn_helpers::{
 	derive_trait,
 	proc_macro2::{Ident, Span},
@@ -7,7 +8,6 @@ use syn_helpers::{
 	syn::{parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident},
 	Constructable, FieldMut, HasAttributes, NamedOrUnnamedFieldMut, Trait, TraitItem,
 };
-use string_cases::StringCasesExt;
 
 /// On the top structure
 const VISIT_SELF_NAME: &str = "visit_self";

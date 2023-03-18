@@ -20,7 +20,6 @@ use crate::{
 };
 
 use super::{lexer, ASTNode, EmptyCursorId, ParseError, Span, TSXToken, Token, TokenReader};
-use crate::ParseOutput;
 use std::{borrow::Cow, io::Error as IOError};
 
 #[cfg(not(target_family = "wasm"))]
@@ -85,10 +84,11 @@ impl Module {
 	pub fn to_string_with_source_map(
 		&self,
 		settings: &crate::ToStringSettingsAndData,
-	) -> (String, String) {
+		fs: &impl source_map::FileSystem,
+	) -> (String, source_map::SourceMap) {
 		let mut buf = source_map::StringWithSourceMap::new();
 		self.to_string_from_buffer(&mut buf, settings, 0);
-		buf.build()
+		buf.build(fs)
 	}
 
 	pub fn length(&self, settings: &crate::ToStringSettingsAndData) -> usize {
@@ -102,9 +102,10 @@ impl Module {
 		path: impl AsRef<Path>,
 		settings: ParseSettings,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> Result<ParseOutput<Self>, FromFileError> {
+		fs: &mut impl source_map::FileSystem,
+	) -> Result<crate::ParseOutput<Self>, FromFileError> {
 		let source = fs::read_to_string(&path)?;
-		let source_id = SourceId::new(path.as_ref().to_path_buf(), source.clone());
+		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
 		Self::from_string(source, settings, source_id, None, cursors).map_err(Into::into)
 	}
 }
@@ -209,17 +210,19 @@ impl TypeDefinitionModule {
 		loop {
 			declarations
 				.push(TypeDefinitionModuleDeclaration::from_reader(reader, state, settings)?);
-			match reader.peek().unwrap().0 {
-				TSXToken::SemiColon => {
+			match reader.peek() {
+				Some(Token(TSXToken::SemiColon, _)) => {
 					reader.next();
 					if matches!(reader.peek().unwrap().0, TSXToken::EOS) {
 						break;
 					}
 				}
-				TSXToken::EOS => {
+				Some(Token(TSXToken::EOS, _)) => {
 					break;
 				}
-				_ => {}
+				_ => {
+					// TODO
+				}
 			}
 		}
 		Ok(Self { declarations })
@@ -231,7 +234,7 @@ impl TypeDefinitionModule {
 		settings: ParseSettings,
 		source_id: SourceId,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<Self> {
+	) -> ParseResult<(Self, ParsingState)> {
 		// TODO this should be covered by settings
 		let lex_settings = lexer::LexSettings {
 			// Unfortunately some comments contain data (variable ids)
@@ -242,9 +245,16 @@ impl TypeDefinitionModule {
 		};
 
 		// Extension which includes pulling in the string as source
-		let mut channel = tokenizer_lib::BufferedTokenQueue::new();
-		lexer::lex_source(&source, &mut channel, &lex_settings, Some(source_id), None, cursors)?;
-		Self::from_reader(&mut channel, &settings)
+		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
+		lexer::lex_source(&source, &mut queue, &lex_settings, Some(source_id), None, cursors)?;
+
+		let mut state = ParsingState::default();
+		let res = Self::from_reader(&mut queue, &mut state, &settings);
+		if res.is_ok() {
+			queue.expect_next(TSXToken::EOS)?;
+		}
+
+		res.map(|ast| (ast, state))
 	}
 
 	#[cfg(not(target_family = "wasm"))]
@@ -288,9 +298,10 @@ impl TypeDefinitionModule {
 		path: impl AsRef<Path>,
 		settings: ParseSettings,
 		cursors: Vec<(usize, EmptyCursorId)>,
+		fs: &mut impl source_map::FileSystem,
 	) -> Result<(Self, ParsingState), FromFileError> {
 		let source = fs::read_to_string(&path)?;
-		let source_id = SourceId::new(path.as_ref().to_path_buf(), source.clone());
+		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
 		Self::from_string(source, settings, source_id, cursors).map_err(Into::into)
 	}
 }

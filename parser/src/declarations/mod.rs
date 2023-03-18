@@ -10,7 +10,10 @@ use crate::{
 	TypeDefinitionModuleDeclaration,
 };
 
-pub use self::{export::ExportDeclaration, variable::{VariableDeclaration, VariableDeclarationItem}};
+pub use self::{
+	export::ExportDeclaration,
+	variable::{VariableDeclaration, VariableDeclarationItem},
+};
 
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
