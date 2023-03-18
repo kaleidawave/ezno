@@ -107,7 +107,7 @@ fn parse_error_to_codespan_error(input: String, error: parser::ParseError) {
 	let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
 		codespan_reporting::term::termcolor::ColorChoice::Always,
 	);
-	let reason = error.get_reason().to_owned();
+	let reason = error.reason;
 	codespan_reporting::term::emit(
 		&mut writer.lock(),
 		&Config { start_context_lines: 3, end_context_lines: 3, ..Default::default() },
