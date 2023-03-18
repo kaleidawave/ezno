@@ -237,6 +237,7 @@ dependencies = [
 name = "ezno-parser-visitable-derive"
 version = "0.0.1"
 dependencies = [
+ "string-cases",
  "syn-helpers",
 ]
 
@@ -582,6 +583,12 @@ dependencies = [
  "self-rust-tokenize",
  "serde",
 ]
+
+[[package]]
+name = "string-cases"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31d23461f9e0fbe756cf9d5a36be93740fe12c8b094409a5f78f0f912ee2b6f"
 
 [[package]]
 name = "syn"

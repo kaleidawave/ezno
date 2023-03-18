@@ -3,20 +3,23 @@ use source_map::SourceId;
 use temporary_annex::Annex;
 
 use crate::{
+	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
 	errors::parse_lexing_error,
 	extensions::decorators::decorators_from_reader,
 	extractor::ExtractedFunctions,
-	statements::{
-		parse_statements, statements_to_string, DeclareClassDeclaration,
-		DeclareFunctionDeclaration, DeclareVariableDeclaration, InterfaceDeclaration, Namespace,
-		TypeAlias,
+	types::{
+		declares::{
+			DeclareClassDeclaration, DeclareFunctionDeclaration, DeclareVariableDeclaration,
+		},
+		namespace::Namespace,
+		type_alias::TypeAlias,
+		InterfaceDeclaration,
 	},
 	BlockId, BlockLike, BlockLikeMut, Chain, ChainVariable, Decorated, Decorator, ParseResult,
-	ParseSettings, ParsingState, Statement, TSXKeyword, VisitSettings, Visitable,
+	ParseSettings, ParsingState, StatementOrDeclaration, TSXKeyword, VisitSettings, Visitable,
 };
 
 use super::{lexer, ASTNode, EmptyCursorId, ParseError, Span, TSXToken, Token, TokenReader};
-use crate::ParseOutput;
 use std::{borrow::Cow, io::Error as IOError};
 
 #[cfg(not(target_family = "wasm"))]
@@ -28,11 +31,17 @@ pub enum FromFileError {
 	ParseError(ParseError),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Module {
-	pub statements: Vec<Statement>,
+	pub items: Vec<StatementOrDeclaration>,
 	pub block_id: BlockId,
 	pub source_id: SourceId,
+}
+
+impl PartialEq for Module {
+	fn eq(&self, other: &Self) -> bool {
+		self.items == other.items
+	}
 }
 
 impl ASTNode for Module {
@@ -42,16 +51,16 @@ impl ASTNode for Module {
 		settings: &crate::ToStringSettingsAndData,
 		depth: u8,
 	) {
-		statements_to_string(&self.statements, buf, settings, depth)
+		statements_and_declarations_to_string(&self.items, buf, settings, depth)
 	}
 
 	fn get_position(&self) -> Cow<Span> {
 		Cow::Owned(
-			self.statements
+			self.items
 				.first()
 				.unwrap()
 				.get_position()
-				.union(&self.statements.last().unwrap().get_position()),
+				.union(&self.items.last().unwrap().get_position()),
 		)
 	}
 
@@ -60,13 +69,13 @@ impl ASTNode for Module {
 		state: &mut crate::ParsingState,
 		settings: &ParseSettings,
 	) -> ParseResult<Self> {
-		parse_statements(reader, state, settings).map(|(statements, block_id)| {
+		parse_statements_and_declarations(reader, state, settings).map(|(statements, block_id)| {
 			// TODO null bad
 			let source_id = statements
 				.last()
 				.map(|stmt| stmt.get_position().source_id)
 				.unwrap_or(SourceId::NULL);
-			Module { source_id, statements, block_id }
+			Module { source_id, items: statements, block_id }
 		})
 	}
 }
@@ -75,10 +84,11 @@ impl Module {
 	pub fn to_string_with_source_map(
 		&self,
 		settings: &crate::ToStringSettingsAndData,
-	) -> (String, String) {
+		fs: &impl source_map::FileSystem,
+	) -> (String, source_map::SourceMap) {
 		let mut buf = source_map::StringWithSourceMap::new();
 		self.to_string_from_buffer(&mut buf, settings, 0);
-		buf.build()
+		buf.build(fs)
 	}
 
 	pub fn length(&self, settings: &crate::ToStringSettingsAndData) -> usize {
@@ -92,9 +102,10 @@ impl Module {
 		path: impl AsRef<Path>,
 		settings: ParseSettings,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> Result<ParseOutput<Self>, FromFileError> {
+		fs: &mut impl source_map::FileSystem,
+	) -> Result<crate::ParseOutput<Self>, FromFileError> {
 		let source = fs::read_to_string(&path)?;
-		let source_id = SourceId::new(path.as_ref().to_path_buf(), source.clone());
+		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
 		Self::from_string(source, settings, source_id, None, cursors).map_err(Into::into)
 	}
 }
@@ -114,15 +125,11 @@ impl Module {
 
 		visitors.visit_block(&crate::block::BlockLike::from(self), data, functions, &chain);
 
-		let iter = self.statements.iter();
+		let iter = self.items.iter();
 		if settings.reverse_statements {
-			iter.rev().for_each(|statement| {
-				statement.visit(visitors, data, settings, functions, &mut chain)
-			});
+			iter.rev().for_each(|item| item.visit(visitors, data, settings, functions, &mut chain));
 		} else {
-			iter.for_each(|statement| {
-				statement.visit(visitors, data, settings, functions, &mut chain)
-			});
+			iter.for_each(|item| item.visit(visitors, data, settings, functions, &mut chain));
 		}
 	}
 
@@ -140,48 +147,44 @@ impl Module {
 
 		{
 			visitors.visit_block_mut(
-				&mut crate::block::BlockLikeMut {
-					block_id: self.block_id,
-					statements: &mut self.statements,
-				},
+				&mut crate::block::BlockLikeMut { block_id: self.block_id, items: &mut self.items },
 				data,
 				functions,
 				&chain,
 			);
 		}
 
-		let iter_mut = self.statements.iter_mut();
+		let iter_mut = self.items.iter_mut();
 		if settings.reverse_statements {
-			iter_mut.for_each(|statement| {
-				statement.visit_mut(visitors, data, settings, functions, &mut chain)
-			});
+			iter_mut
+				.for_each(|item| item.visit_mut(visitors, data, settings, functions, &mut chain));
 		} else {
-			iter_mut.rev().for_each(|statement| {
-				statement.visit_mut(visitors, data, settings, functions, &mut chain)
-			});
+			iter_mut
+				.rev()
+				.for_each(|item| item.visit_mut(visitors, data, settings, functions, &mut chain));
 		}
 	}
 }
 
 impl<'a> From<&'a Module> for BlockLike<'a> {
 	fn from(module: &'a Module) -> Self {
-		BlockLike { block_id: module.block_id, statements: &module.statements }
+		BlockLike { block_id: module.block_id, items: &module.items }
 	}
 }
 
 impl<'a> From<&'a mut Module> for BlockLikeMut<'a> {
 	fn from(module: &'a mut Module) -> Self {
-		BlockLikeMut { block_id: module.block_id, statements: &mut module.statements }
+		BlockLikeMut { block_id: module.block_id, items: &mut module.items }
 	}
 }
 
 /// Statements for '.d.ts' files
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeDefinitionModuleStatement {
-	VariableDeclaration(DeclareVariableDeclaration),
-	FunctionDeclaration(DeclareFunctionDeclaration),
-	ClassDeclaration(DeclareClassDeclaration),
-	InterfaceDeclaration(Decorated<InterfaceDeclaration>),
+pub enum TypeDefinitionModuleDeclaration {
+	Variable(DeclareVariableDeclaration),
+	Function(DeclareFunctionDeclaration),
+	Class(DeclareClassDeclaration),
+	Interface(Decorated<InterfaceDeclaration>),
 	TypeAlias(TypeAlias),
 	Namespace(Namespace),
 	/// Information for upcoming declaration
@@ -194,7 +197,7 @@ pub enum TypeDefinitionModuleStatement {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDefinitionModule {
-	pub declarations: Vec<TypeDefinitionModuleStatement>,
+	pub declarations: Vec<TypeDefinitionModuleDeclaration>,
 }
 
 impl TypeDefinitionModule {
@@ -205,18 +208,21 @@ impl TypeDefinitionModule {
 	) -> ParseResult<Self> {
 		let mut declarations = Vec::new();
 		loop {
-			declarations.push(TypeDefinitionModuleStatement::from_reader(reader, state, settings)?);
-			match reader.peek().unwrap().0 {
-				TSXToken::SemiColon => {
+			declarations
+				.push(TypeDefinitionModuleDeclaration::from_reader(reader, state, settings)?);
+			match reader.peek() {
+				Some(Token(TSXToken::SemiColon, _)) => {
 					reader.next();
 					if matches!(reader.peek().unwrap().0, TSXToken::EOS) {
 						break;
 					}
 				}
-				TSXToken::EOS => {
+				Some(Token(TSXToken::EOS, _)) => {
 					break;
 				}
-				_ => {}
+				_ => {
+					// TODO
+				}
 			}
 		}
 		Ok(Self { declarations })
@@ -228,7 +234,7 @@ impl TypeDefinitionModule {
 		settings: ParseSettings,
 		source_id: SourceId,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<Self> {
+	) -> ParseResult<(Self, ParsingState)> {
 		// TODO this should be covered by settings
 		let lex_settings = lexer::LexSettings {
 			// Unfortunately some comments contain data (variable ids)
@@ -239,9 +245,16 @@ impl TypeDefinitionModule {
 		};
 
 		// Extension which includes pulling in the string as source
-		let mut channel = tokenizer_lib::BufferedTokenQueue::new();
-		lexer::lex_source(&source, &mut channel, &lex_settings, Some(source_id), None, cursors)?;
-		Self::from_reader(&mut channel, &settings)
+		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
+		lexer::lex_source(&source, &mut queue, &lex_settings, Some(source_id), None, cursors)?;
+
+		let mut state = ParsingState::default();
+		let res = Self::from_reader(&mut queue, &mut state, &settings);
+		if res.is_ok() {
+			queue.expect_next(TSXToken::EOS)?;
+		}
+
+		res.map(|ast| (ast, state))
 	}
 
 	#[cfg(not(target_family = "wasm"))]
@@ -285,14 +298,15 @@ impl TypeDefinitionModule {
 		path: impl AsRef<Path>,
 		settings: ParseSettings,
 		cursors: Vec<(usize, EmptyCursorId)>,
+		fs: &mut impl source_map::FileSystem,
 	) -> Result<(Self, ParsingState), FromFileError> {
 		let source = fs::read_to_string(&path)?;
-		let source_id = SourceId::new(path.as_ref().to_path_buf(), source.clone());
+		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
 		Self::from_string(source, settings, source_id, cursors).map_err(Into::into)
 	}
 }
 
-impl ASTNode for TypeDefinitionModuleStatement {
+impl ASTNode for TypeDefinitionModuleDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
@@ -306,18 +320,15 @@ impl ASTNode for TypeDefinitionModuleStatement {
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
 				let on = InterfaceDeclaration::from_reader(reader, state, settings)?;
-				Ok(TypeDefinitionModuleStatement::InterfaceDeclaration(Decorated {
-					decorators,
-					on,
-				}))
+				Ok(TypeDefinitionModuleDeclaration::Interface(Decorated { decorators, on }))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-				Ok(TypeDefinitionModuleStatement::LocalTypeAlias(TypeAlias::from_reader(
+				Ok(TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias::from_reader(
 					reader, state, settings,
 				)?))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
-				Ok(TypeDefinitionModuleStatement::LocalVariableDeclaration(
+				Ok(TypeDefinitionModuleDeclaration::LocalVariableDeclaration(
 					DeclareVariableDeclaration::from_reader_sub_declare(
 						reader, state, settings, None, decorators,
 					)?,
@@ -329,7 +340,7 @@ impl ASTNode for TypeDefinitionModuleStatement {
 					TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment) => comment,
 					_ => unreachable!(),
 				};
-				Ok(TypeDefinitionModuleStatement::Comment(comment))
+				Ok(TypeDefinitionModuleDeclaration::Comment(comment))
 			}
 			_ => {
 				let Token(token, position) = reader.next().unwrap();
@@ -370,10 +381,10 @@ pub(crate) fn parse_declare_item(
 	settings: &ParseSettings,
 	decorators: Vec<Decorator>,
 	declare_span: Span,
-) -> Result<TypeDefinitionModuleStatement, ParseError> {
+) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
 	match reader.peek().unwrap() {
 		Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
-			Ok(TypeDefinitionModuleStatement::VariableDeclaration(
+			Ok(TypeDefinitionModuleDeclaration::Variable(
 				DeclareVariableDeclaration::from_reader_sub_declare(
 					reader,
 					state,
@@ -384,24 +395,24 @@ pub(crate) fn parse_declare_item(
 			))
 		}
 		Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-			Ok(TypeDefinitionModuleStatement::ClassDeclaration(
+			Ok(TypeDefinitionModuleDeclaration::Class(
 				DeclareClassDeclaration::from_reader_sub_declare(reader, state, settings)?,
 			))
 		}
 		Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
-			Ok(TypeDefinitionModuleStatement::FunctionDeclaration(
+			Ok(TypeDefinitionModuleDeclaration::Function(
 				DeclareFunctionDeclaration::from_reader_sub_declare_with_decorators(
 					reader, state, settings, decorators,
 				)?,
 			))
 		}
 		Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-			Ok(TypeDefinitionModuleStatement::TypeAlias(TypeAlias::from_reader(
+			Ok(TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias::from_reader(
 				reader, state, settings,
 			)?))
 		}
 		Token(TSXToken::Keyword(TSXKeyword::Namespace), _) => {
-			Ok(TypeDefinitionModuleStatement::Namespace(Namespace::from_reader(
+			Ok(TypeDefinitionModuleDeclaration::Namespace(Namespace::from_reader(
 				reader, state, settings,
 			)?))
 		}

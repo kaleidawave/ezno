@@ -10,11 +10,14 @@ use crate::{parse_bracketed, to_string_bracketed};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 
-use super::type_declarations::GenericTypeConstraint;
+use super::{
+	interface::{parse_interface_members, InterfaceMember},
+	type_declarations::GenericTypeConstraint,
+};
 
 use crate::{
-	parse_interface_members, tokens::token_as_identifier, ASTNode, InterfaceMember,
-	NumberStructure, ParseError, ParseSettings, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	tokens::token_as_identifier, ASTNode, NumberStructure, ParseError, ParseSettings, Span,
+	TSXKeyword, TSXToken, Token, TokenReader,
 };
 
 /// A reference to a type

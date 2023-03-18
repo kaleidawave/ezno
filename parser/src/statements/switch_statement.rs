@@ -60,12 +60,16 @@ impl ASTNode for SwitchStatement {
 				_ => todo!(),
 			};
 			let mut statements = Vec::new();
-			while !matches!(
-				&reader.peek().unwrap().0,
-				TSXToken::Keyword(TSXKeyword::Case)
+			loop {
+				if let Some(Token(
+					TSXToken::Keyword(TSXKeyword::Case)
 					| TSXToken::Keyword(TSXKeyword::Default)
-					| TSXToken::CloseBrace
-			) {
+					| TSXToken::CloseBrace,
+					_,
+				)) = reader.peek()
+				{
+					break;
+				}
 				statements.push(Statement::from_reader(reader, state, settings)?);
 				if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
 					reader.next();
@@ -101,17 +105,16 @@ impl ASTNode for SwitchStatement {
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
-					for (at_end, statement) in statements.iter().endiate() {
+					for (at_end, stmt) in statements.iter().endiate() {
 						if settings.0.pretty {
 							buf.push_new_line();
 							settings.0.add_indent(depth + 2, buf);
 						}
-						statement.to_string_from_buffer(buf, settings, depth + 2);
-						if settings.0.pretty {
-							if !at_end {
-								buf.push(';');
-							}
-						} else {
+						stmt.to_string_from_buffer(buf, settings, depth + 2);
+						if stmt.requires_semi_colon() {
+							buf.push(';');
+						}
+						if settings.0.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}
@@ -120,17 +123,16 @@ impl ASTNode for SwitchStatement {
 					buf.push_str("case ");
 					case.to_string_from_buffer(buf, settings, depth);
 					buf.push(':');
-					for (at_end, statement) in statements.iter().endiate() {
+					for (at_end, stmt) in statements.iter().endiate() {
 						if settings.0.pretty {
 							buf.push_new_line();
 							settings.0.add_indent(depth + 2, buf);
 						}
-						statement.to_string_from_buffer(buf, settings, depth + 2);
-						if settings.0.pretty {
-							if !at_end {
-								buf.push(';');
-							}
-						} else {
+						stmt.to_string_from_buffer(buf, settings, depth + 2);
+						if stmt.requires_semi_colon() {
+							buf.push(';');
+						}
+						if settings.0.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}

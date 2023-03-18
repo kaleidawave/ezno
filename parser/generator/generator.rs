@@ -14,7 +14,7 @@ pub fn expr(item: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn stmt(item: TokenStream) -> TokenStream {
-	token_stream_to_ast_node::<parser::Statement>(item)
+	token_stream_to_ast_node::<parser::StatementOrDeclaration>(item)
 }
 
 struct InterpolationPoint {
@@ -40,16 +40,21 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 		})
 		.collect();
 
-	// dbg!(&cursors, &string);
-
-	let parser::ParseOutput(node, _) = T::from_string(
+	let parse_result = T::from_string(
 		string,
 		parser::ParseSettings::default(),
 		parser::SourceId::NULL,
 		None,
 		cursors,
-	)
-	.unwrap();
+	);
+
+	let node = match parse_result {
+		Ok(parser::ParseOutput(node, _)) => node,
+		Err(err) => {
+			let reason = err.reason;
+			return quote!(compile_error!(#reason)).into();
+		}
+	};
 
 	let node_as_tokens = self_rust_tokenize::SelfRustTokenize::to_tokens(&node);
 

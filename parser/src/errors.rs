@@ -167,17 +167,13 @@ impl ParserErrorReason for LexingErrors {}
 /// A error for not parsing
 #[derive(Debug)]
 pub struct ParseError {
-	reason: String,
+	pub reason: String,
 	pub position: Span,
 }
 
 impl ParseError {
 	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
 		Self { reason: reason.to_string(), position }
-	}
-
-	pub fn get_reason(&self) -> &str {
-		&self.reason
 	}
 }
 

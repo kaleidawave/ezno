@@ -15,3 +15,4 @@ proc-macro = true
 
 [dependencies]
 syn-helpers = "0.4.2"
+string-cases = "0.2"

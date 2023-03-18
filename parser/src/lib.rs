@@ -4,6 +4,7 @@
 mod block;
 mod comments;
 pub mod cursor;
+pub mod declarations;
 mod errors;
 pub mod expressions;
 mod extensions;
@@ -16,16 +17,20 @@ pub mod parameters;
 mod property_key;
 pub mod statements;
 mod tokens;
-mod types;
+pub mod types;
 mod variable_fields;
 mod visiting;
 
 #[doc(hidden)]
 pub mod lexer;
 
-pub use block::{Block, BlockId, BlockLike, BlockLikeMut, BlockOrSingleStatement};
+pub use block::{
+	Block, BlockId, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration,
+};
 pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
+pub use declarations::Declaration;
+use declarations::StatementFunctionBase;
 pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
 pub use extensions::{
@@ -39,15 +44,13 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader, FunctionId};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_source, LexSettings};
-pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleStatement};
+pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
 pub use parameters::{
 	FunctionParameters, OptionalOrWithDefaultValueParameter, Parameter, SpreadParameter,
 };
 pub use property_key::{PropertyId, PropertyKey};
-pub use source_map::{SourceId, Span};
-pub(crate) use statements::parse_interface_members;
-use statements::StatementFunctionBase;
-pub use statements::{InterfaceMember, Statement};
+pub use source_map::{self, SourceId, Span};
+pub use statements::Statement;
 use temporary_annex::Annex;
 pub use tokens::{tsx_keywords, TSXKeyword, TSXToken};
 pub use types::{
@@ -202,13 +205,15 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 			lex_jsx: settings.jsx,
 			..Default::default()
 		};
-		let mut reader = BufferedTokenQueue::new();
-		lexer::lex_source(&string, &mut reader, &lex_settings, Some(source_id), offset, cursors)?;
-		let ret = Self::from_reader(&mut reader, &settings);
-		if ret.is_ok() {
-			reader.expect_next(TSXToken::EOS)?;
+		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
+		lexer::lex_source(&string, &mut queue, &lex_settings, Some(source_id), offset, cursors)?;
+
+		let mut state = ParsingState::default();
+		let res = Self::from_reader(&mut queue, &mut state, &settings);
+		if res.is_ok() {
+			queue.expect_next(TSXToken::EOS)?;
 		}
-		ret
+		res.map(|ast| ParseOutput(ast, state))
 	}
 
 	/// From string, with default impl to call abstract method from_reader
@@ -665,11 +670,21 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	buf.push(brackets.1);
 }
 
+/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+pub(crate) fn expect_semi_colon(reader: &mut impl TokenReader<TSXToken, Span>) -> ParseResult<()> {
+	if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+		return Ok(());
+	}
+	reader.expect_next(TSXToken::SemiColon)?;
+	Ok(())
+}
+
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
-		expressions::*, extensions::jsx::*, statements::*, Keyword, NumberStructure, VariableField,
-		VariableId, VariableIdentifier, WithComment,
+		declarations::*, expressions::*, extensions::jsx::*, statements::*, Keyword,
+		NumberStructure, StatementOrDeclaration, VariableField, VariableId, VariableIdentifier,
+		WithComment,
 	};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};
@@ -681,7 +696,7 @@ pub(crate) mod test_utils {
 	#[macro_export]
 	macro_rules! assert_matches_ast {
 		($source:literal, $ast_pattern:pat) => {{
-			let crate::ParseOutput(node, _state) = ASTNode::from_string(
+			let crate::ParseOutput(node, _state) = crate::ASTNode::from_string(
 				$source.to_owned(),
 				Default::default(),
 				crate::SourceId::NULL,
