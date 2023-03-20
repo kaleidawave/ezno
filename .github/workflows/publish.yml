@@ -29,10 +29,12 @@ jobs:
       new-ezno-version: ${{ steps.push.outputs.new-ezno-version }}
     steps:
       - uses: actions/checkout@v3
+
       - name: Set git credentials
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
+
       - id: set-arguments
         run: |
           ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
@@ -41,12 +43,34 @@ jobs:
           echo "::debug::$VALUE"
           echo "publish-args=$VALUE" >> $GITHUB_OUTPUT
         shell: bash
+
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
         id: release
         with:
           version: ${{ steps.set-arguments.outputs.publish-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Node build & NPM publish
+        run: |
+          cat package.json <(echo ${{ steps.release.outputs.new-versions-json-object }}) | jq --slurp '.[0].version = .[1].ezno | .[0]' > package.json
+
+          # Temp checks
+          cat package.json
+          rustup show
+          #
+
+          rustup target add wasm32-unknown-unknown
+
+          # not in root but still works
+          cargo build --release --lib --target wasm32-unknown-unknown
+          wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno.wasm
+
+          npm publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
+        working-directory: src/js-cli-and-library
+
       - name: Push updated Cargo.toml
         id: push
         run: |
@@ -58,6 +82,7 @@ jobs:
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
+
       - name: Discord
         uses: dusmartijngames/discord-webhook-notify@master
         with:
@@ -78,6 +103,7 @@ jobs:
           - os: ubuntu-latest
             platform_name: x86_64-unknown-linux
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v3
       - name: Build binary
@@ -103,6 +129,7 @@ jobs:
       with:
         name: build-artifacts
         path: build-artifacts
+        
     - name: GitHub release
       uses: softprops/action-gh-release@v1
       with:

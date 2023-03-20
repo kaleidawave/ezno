@@ -1,0 +1,20 @@
+{
+	"name": "unplugin-ezno",
+	"version": "0.0.0",
+	"description": "Ezno as a plugin",
+	"main": "index.mjs",
+	"license": "MIT",
+	"dependencies": {
+		"ezno": "file:../js-cli-and-library",
+		"unplugin": "^1.3.1"
+	},
+	"author": {
+		"name": "Ben",
+		"email": "kaleidawave@gmail.com",
+		"url": "https://kaleidawave.github.io/"
+	},
+	"funding": {
+		"type" : "individual",
+		"url" : "https://github.com/sponsors/kaleidawave"
+	}
+}
