@@ -11,7 +11,7 @@ license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
 default-run = "ezno"
-keywords = ["javascript", "typescript", "type checker"]
+keywords = ["javascript", "typescript", "type-checker"]
 categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -27,7 +27,7 @@ name = "ezno"
 path = "src/main.rs"
 
 [dependencies]
-parser = { path = "./parser", version = "0.0.2", package = "ezno-parser" }
+parser = { path = "./parser", version = "0.0.3", package = "ezno-parser" }
 checker = { path = "./checker", version = "0.0.1", package = "ezno-checker" }
 # ezno-web-framework = { path = "./plugins/web" }
 

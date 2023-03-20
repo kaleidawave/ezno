@@ -25,9 +25,7 @@ impl ExplorerArguments {
 	pub(crate) fn run(&mut self) {
 		if let Some(ref file) = self.file {
 			let file = fs::read_to_string(file).unwrap();
-			match self.nested.run(file) {
-				_ => {}
-			}
+			self.nested.run(file);
 		} else {
 			println!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*");
 			loop {
@@ -112,7 +110,7 @@ impl ExplorerSubCommand {
 							println!("{:#?}", res);
 						}
 					}
-					Err(err) => emit_parser_error(input.clone(), err).unwrap(),
+					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(_) => {

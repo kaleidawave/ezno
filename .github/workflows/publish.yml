@@ -1,4 +1,4 @@
-name: Crates and GitHub release
+name: Crates, NPM & GitHub release
 
 on:
   workflow_dispatch:

@@ -8,20 +8,20 @@ use parser::{
 use crate::error_handling::{self, TempDiagnostic};
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
-pub(crate) struct Output {
+pub struct Output {
 	pub output_path: String,
 	pub content: String,
 	pub mappings: String,
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
-pub(crate) struct BuildOutput {
+pub struct BuildOutput {
 	pub outputs: Vec<Output>,
 	pub temp_warnings_and_infos: Vec<TempDiagnostic>,
 }
 
 // Just builds one file temporarily
-pub(crate) fn build(
+pub fn build(
 	content: String,
 	input_path: String,
 	output_path: String,

@@ -57,5 +57,5 @@ pub(crate) fn get_cli_args() -> Vec<String> {
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn get_cli_args() -> Vec<String> {
-	std::env::args().into_iter().skip(1).collect()
+	std::env::args().skip(1).collect()
 }

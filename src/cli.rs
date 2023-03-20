@@ -132,7 +132,7 @@ pub fn run_cli() {
 		return;
 	}
 
-	let command = match FromArgs::from_args(&["ezno-cli"], &arguments.as_slice()) {
+	let command = match FromArgs::from_args(&["ezno-cli"], arguments.as_slice()) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
 			print_to_cli(format_args!("{}", err.output));
