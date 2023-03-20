@@ -7,9 +7,9 @@
 	"main": "index.mjs",
 	"types": "ezno.d.ts",
 	"scripts": {
-		"clean": "rm ezno.* && rm ezno_bg.*",
+		"clean": "rm ezno_lib.* && rm ezno_lib_bg.*",
 		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind",
-		"bind": "wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/debug/ezno.wasm"
+		"bind": "wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm"
 	},
 	"bin": {
 		"ezno": "./cli.js"

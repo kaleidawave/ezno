@@ -1,1 +1,1 @@
-require("./ezno").run_cli()
+require("./ezno_lib").run_cli()

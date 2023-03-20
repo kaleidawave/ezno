@@ -39,8 +39,10 @@ jobs:
         run: |
           ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
           echo "::debug::$ARGS"
+          
           VALUE=$(echo $ARGS | jq --raw-input --compact-output 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
           echo "::debug::$VALUE"
+
           echo "publish-args=$VALUE" >> $GITHUB_OUTPUT
         shell: bash
 
@@ -51,27 +53,34 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Install WASM build dependencies
+        run: |
+          rustup target add wasm32-unknown-unknown
+          
+          mkdir wasm-bindgen
+          cd wasm-bindgen
+          gh release download 0.2.84 -R rustwasm/wasm-bindgen -p '*x86_64-unknown-linux-musl.tar.gz' -O wasm-bindgen.tar.gz
+          tar -xf wasm-bindgen.tar.gz
+          mv wasm-bindgen-0.2.84-x86_64-unknown-linux-musl/wasm-bindgen wasm-bindgen
+          pwd >> $GITHUB_PATH
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Node build & NPM publish
         run: |
           # Update version. Note done in two steps as breaks writing to something reading to & to keep tabs
-          cat package.json <(echo ${{ steps.release.outputs.new-versions-json-object }}) | jq --slurp '.[0].version = .[1].ezno | .[0]' > package2.json
-
+          cat package.json <(echo '${{ steps.release.outputs.new-versions-json-object }}') | jq --slurp '.[0].version = .[1].ezno | .[0]' > package2.json
           cat package2.json | unexpand -t2 > package.json
           rm package2.json
 
-          cat package.json
-
-          rustup target add wasm32-unknown-unknown
-          cargo install -f wasm-bindgen-cli
-
           # not in root but still works
           cargo build --release --lib --target wasm32-unknown-unknown
-          wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno.wasm
+          wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm
 
           npm publish
+        working-directory: src/js-cli-and-library
         env:
           NPM_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
-        working-directory: src/js-cli-and-library
 
       - name: Push updated Cargo.toml
         id: push

@@ -43,7 +43,7 @@ pub(crate) fn read_fs_path_to_string(path: impl AsRef<Path>) -> io::Result<Strin
 	std::fs::read_to_string(path)
 }
 
-// TODO ...
+// TODO pass on IO error...
 #[cfg(target_family = "wasm")]
 pub(crate) fn read_fs_path_to_string(path: impl AsRef<Path>) -> io::Result<String> {
 	Ok(super::wasm_bindings::read_from_path(path.as_ref().to_str().expect("Invalid path")))
@@ -52,7 +52,11 @@ pub(crate) fn read_fs_path_to_string(path: impl AsRef<Path>) -> io::Result<Strin
 #[cfg(target_family = "wasm")]
 pub(crate) fn get_cli_args() -> Vec<String> {
 	let args = super::wasm_bindings::get_cli_args();
-	args.split('\0').map(ToOwned::to_owned).collect::<Vec<_>>()
+	if args.is_empty() {
+		Vec::new()
+	} else {
+		args.split('\0').map(ToOwned::to_owned).collect::<Vec<_>>()
+	}
 }
 
 #[cfg(not(target_family = "wasm"))]

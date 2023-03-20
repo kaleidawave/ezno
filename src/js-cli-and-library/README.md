@@ -13,9 +13,11 @@ console.dir(build(content, "input.js"), { depth: 5 })
 
 ## Commands for building this package
 
-Run from this folder, **not the root**
+Run from this folder, **not the root**:
 
 ```shell
-cargo build --lib --target wasm32-unknown-unknown
-wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/debug/ezno.wasm
+npm run clean
+npm run build
 ```
+
+See `package.json` for the full commands.

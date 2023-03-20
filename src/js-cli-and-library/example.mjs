@@ -1,4 +1,4 @@
-import { build_wasm as build } from "./ezno.js";
+import { build_wasm as build } from "./ezno_lib.js";
 
 const content = `
 export function setupCounter(element) {
