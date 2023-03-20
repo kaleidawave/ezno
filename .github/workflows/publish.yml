@@ -53,14 +53,16 @@ jobs:
 
       - name: Node build & NPM publish
         run: |
-          cat package.json <(echo ${{ steps.release.outputs.new-versions-json-object }}) | jq --slurp '.[0].version = .[1].ezno | .[0]' > package.json
+          # Update version. Note done in two steps as breaks writing to something reading to & to keep tabs
+          cat package.json <(echo ${{ steps.release.outputs.new-versions-json-object }}) | jq --slurp '.[0].version = .[1].ezno | .[0]' > package2.json
 
-          # Temp checks
+          cat package2.json | unexpand -t2 > package.json
+          rm package2.json
+
           cat package.json
-          rustup show
-          #
 
           rustup target add wasm32-unknown-unknown
+          cargo install -f wasm-bindgen-cli
 
           # not in root but still works
           cargo build --release --lib --target wasm32-unknown-unknown
