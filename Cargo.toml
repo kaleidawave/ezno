@@ -5,7 +5,7 @@ members = ["parser", "parser/visitable-derive", "parser/generator", "checker"]
 name = "ezno"
 description = "A JavaScript checker and compiler. For use as a library or cli"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.3"
+version = "0.0.5"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -35,11 +35,13 @@ console = "0.14.1"
 codespan-reporting = "0.11.1"
 argh = "0.1.6"
 base64 = "0.13.0"
-multiline-term-input = "0.1.0"
 enum-variants-strings = "0.2.2"
-notify = "4.0.17"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.5.0"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+multiline-term-input = "0.1.0"
+notify = "4.0.17"

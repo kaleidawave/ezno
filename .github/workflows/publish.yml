@@ -77,10 +77,11 @@ jobs:
           cargo build --release --lib --target wasm32-unknown-unknown
           wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm
 
+          npm run build
           npm publish
         working-directory: src/js-cli-and-library
         env:
-          NPM_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
 
       - name: Push updated Cargo.toml
         id: push
