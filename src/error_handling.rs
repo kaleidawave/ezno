@@ -1,110 +1,98 @@
-use std::{collections::HashMap, env, iter};
-
-use checker::Diagnostic as CheckerDiagnostic;
+// use checker::{Diagnostic as CheckerDiagnostic, ErrorWarningInfoHandler};
 use codespan_reporting::{
-	diagnostic::{Diagnostic, Label},
-	files::SimpleFiles,
-	term::{
-		termcolor::{ColorChoice, StandardStream},
-		Config,
-	},
+	diagnostic::{Diagnostic, Label, Severity},
+	files::Files,
+	term::{emit, Config},
 };
-use parser::SourceId;
+use parser::{source_map::FileSystem, Span};
 
-const ADDITIONAL_LINES_IN_DIAGNOSTIC: usize = 0;
-
-pub(crate) fn print_error_warning_info_handler(error_handler: checker::ErrorWarningInfoHandler) {
-	let mut files = SimpleFiles::new();
-	let mut file_id_to_source_id = HashMap::<SourceId, usize>::new();
-
-	// Handling adding filename-file id mappings
-	for source_id in error_handler.sources() {
-		let (filename, file_content) = source_id.get_file().unwrap();
-		let name =
-			filename.strip_prefix(env::current_dir().unwrap()).unwrap_or(&filename).to_owned();
-		let file_id = files.add(name.display().to_string(), file_content);
-		file_id_to_source_id.insert(source_id, file_id);
-	}
-
-	for item in error_handler.into_iter().rev() {
-		// TODO tidy this up:
-		let (diagnostic, info) = match item {
-			checker::ErrorWarningInfo::Error(error) => (Diagnostic::error(), error),
-			checker::ErrorWarningInfo::Warning(warning) => (Diagnostic::warning(), warning),
-			checker::ErrorWarningInfo::Info(info) => (Diagnostic::note(), info),
-			checker::ErrorWarningInfo::Data(_) => {
-				continue;
-			}
-		};
-
-		let diagnostic =
-			checker_diagnostic_to_code_span_diagnostic(diagnostic, info, &file_id_to_source_id);
-
-		emit(&files, &diagnostic);
-
-		#[cfg(target_arch = "wasm")]
-		fn emit<'a, F: codespan_reporting::files::Files<'a>>(
-			files: &F,
-			diagnostic: &Diagnostic<F::FileId>,
-		) {
-			todo!("buffer then print")
-		}
-
-		#[cfg(not(target_arch = "wasm"))]
-		fn emit<'a, F: codespan_reporting::files::Files<'a>>(
-			files: &'a F,
-			diagnostic: &Diagnostic<F::FileId>,
-		) {
-			let writer = StandardStream::stderr(ColorChoice::Always);
-
-			// TODO lines in diagnostic could be different
-			codespan_reporting::term::emit(
-				&mut writer.lock(),
-				&Config {
-					before_label_lines: ADDITIONAL_LINES_IN_DIAGNOSTIC,
-					after_label_lines: ADDITIONAL_LINES_IN_DIAGNOSTIC,
-					..Default::default()
-				},
-				files,
-				diagnostic,
-			)
-			.unwrap();
-		}
-	}
+/// This actually exists in the checker
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+pub struct TempDiagnostic {
+	pub label: String,
+	pub position: Span,
+	pub kind: ErrorWarningInfo,
 }
 
-fn checker_diagnostic_to_code_span_diagnostic(
-	diagnostic: Diagnostic<usize>,
-	information: CheckerDiagnostic,
-	source_map: &HashMap<SourceId, usize>,
-) -> Diagnostic<usize> {
-	match information {
-		CheckerDiagnostic::Global(message) => diagnostic.with_message(message),
-		CheckerDiagnostic::Position { reason: message, pos } => {
-			diagnostic.with_labels(vec![Label::primary(
-				*source_map.get(&pos.source_id).unwrap(),
-				pos,
-			)
-			.with_message(message)])
-		}
-		CheckerDiagnostic::PositionWithAdditionLabels { reason, pos, labels } => {
-			let (labels, notes) =
-				labels.into_iter().partition::<Vec<_>, _>(|(_, value)| value.is_some());
+#[allow(unused)]
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+pub enum ErrorWarningInfo {
+	Error,
+	Warning,
+	Info,
+}
 
-			diagnostic
-				.with_labels(
-					iter::once(
-						Label::primary(*source_map.get(&pos.source_id).unwrap(), pos)
-							.with_message(reason),
-					)
-					.chain(labels.into_iter().map(|(message, pos)| {
-						let pos = pos.unwrap();
-						Label::secondary(*source_map.get(&pos.source_id).unwrap(), pos)
-							.with_message(message)
-					}))
-					.collect(),
-				)
-				.with_notes(notes.into_iter().map(|(message, _)| message).collect())
-		}
-	}
+pub(crate) fn emit_ezno_diagnostic(
+	fs: &impl FileSystem,
+	error: crate::error_handling::TempDiagnostic,
+) -> Result<(), codespan_reporting::files::Error> {
+	let reason = error.label;
+	let id = error.position.source_id;
+	let range = std::ops::Range::from(error.position);
+
+	let diagnostic = Diagnostic {
+		severity: match error.kind {
+			ErrorWarningInfo::Error => Severity::Error,
+			ErrorWarningInfo::Warning => Severity::Warning,
+			ErrorWarningInfo::Info => Severity::Note,
+		},
+		code: None,
+		message: Default::default(),
+		labels: vec![Label::primary(id, range).with_message(reason)],
+		notes: Vec::default(),
+	};
+
+	emit_diagnostic(&fs.into_code_span_store(), &diagnostic)
+}
+
+pub(crate) fn emit_parser_error(
+	source: String,
+	error: parser::ParseError,
+) -> Result<(), codespan_reporting::files::Error> {
+	use codespan_reporting::files::SimpleFile;
+
+	let simple_file = SimpleFile::new("INPUT", source);
+	let label =
+		Label::primary((), std::ops::Range::from(error.position)).with_message(error.reason);
+	emit_diagnostic(
+		&simple_file,
+		&Diagnostic {
+			severity: Severity::Error,
+			code: None,
+			message: Default::default(),
+			labels: vec![label],
+			notes: Vec::default(),
+		},
+	)
+}
+
+#[cfg(target_family = "wasm")]
+fn emit_diagnostic<'files, F: Files<'files>>(
+	files: &'files F,
+	diagnostic: &Diagnostic<<F as Files<'files>>::FileId>,
+) -> Result<(), codespan_reporting::files::Error> {
+	use crate::utilities::print_to_cli;
+	use codespan_reporting::term::termcolor::Buffer;
+
+	let config = Config::default();
+
+	let mut buffer = Buffer::ansi();
+	emit(&mut buffer, &config, files, diagnostic).unwrap();
+	let output = String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
+	print_to_cli(format_args!("{output}"));
+	Ok(())
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn emit_diagnostic<'files, F: Files<'files>>(
+	files: &'files F,
+	diagnostic: &Diagnostic<<F as Files<'files>>::FileId>,
+) -> Result<(), codespan_reporting::files::Error> {
+	use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+
+	let config = Config::default();
+
+	let writer = StandardStream::stderr(ColorChoice::Always);
+	let mut lock = writer.lock();
+	emit(&mut lock, &config, files, diagnostic)
 }

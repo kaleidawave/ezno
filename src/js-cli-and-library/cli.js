@@ -1,0 +1,1 @@
+require("./ezno").run_cli()

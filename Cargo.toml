@@ -10,12 +10,20 @@ edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
-default-run = "ezno-cli"
+default-run = "ezno"
+keywords = ["javascript", "typescript", "type checker"]
+categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "ezno_lib"
+path = "src/lib.rs"
+# cdylib is for WASM
+crate-type = ["cdylib", "rlib"]
+
 [[bin]]
-name = "ezno-cli"
+name = "ezno"
 path = "src/main.rs"
 
 [dependencies]
@@ -30,3 +38,8 @@ base64 = "0.13.0"
 multiline-term-input = "0.1.0"
 enum-variants-strings = "0.2.2"
 notify = "4.0.17"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.5.0"

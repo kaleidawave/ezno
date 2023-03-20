@@ -115,25 +115,26 @@ impl ASTNode for ExportDeclaration {
 		depth: u8,
 	) {
 		match self {
-			ExportDeclaration::Variable { exported, .. } => match exported {
-				Exportable::Class(class_declaration) => {
-					class_declaration.to_string_from_buffer(buf, settings, depth);
+			ExportDeclaration::Variable { exported, .. } => {
+				buf.push_str("export ");
+				match exported {
+					Exportable::Class(class_declaration) => {
+						class_declaration.to_string_from_buffer(buf, settings, depth);
+					}
+					Exportable::Function(function_declaration) => {
+						function_declaration.to_string_from_buffer(buf, settings, depth);
+					}
+					Exportable::Interface(interface_declaration) => {
+						interface_declaration.to_string_from_buffer(buf, settings, depth);
+					}
+					Exportable::Variable(variable_dec_stmt) => {
+						variable_dec_stmt.to_string_from_buffer(buf, settings, depth);
+					}
+					Exportable::TypeAlias(type_alias) => {
+						type_alias.to_string_from_buffer(buf, settings, depth);
+					}
 				}
-				Exportable::Function(function_declaration) => {
-					function_declaration.to_string_from_buffer(buf, settings, depth);
-				}
-				Exportable::Interface(interface_declaration) => {
-					interface_declaration.to_string_from_buffer(buf, settings, depth);
-				}
-				Exportable::Variable(variable_dec_stmt) => {
-					buf.push_str("export ");
-					variable_dec_stmt.to_string_from_buffer(buf, settings, depth);
-				}
-				Exportable::TypeAlias(type_alias) => {
-					buf.push_str("export ");
-					type_alias.to_string_from_buffer(buf, settings, depth);
-				}
-			},
+			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");
 				expression.to_string_from_buffer(buf, settings, depth);
