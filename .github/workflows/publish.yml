@@ -26,7 +26,7 @@ jobs:
   crates-publish:
     runs-on: ubuntu-latest
     outputs:
-      new-ezno-version: ${{ steps.push.outputs.new-ezno-version }}
+      new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
     steps:
       - uses: actions/checkout@v3
 
@@ -37,56 +37,78 @@ jobs:
 
       - id: set-arguments
         run: |
-          ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
-          echo "::debug::$ARGS"
-          
-          VALUE=$(echo $ARGS | jq --raw-input --compact-output 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
-          echo "::debug::$VALUE"
+          KEY_PAIR_ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
 
-          echo "publish-args=$VALUE" >> $GITHUB_OUTPUT
+          echo "::debug::$KEY_PAIR_ARGS"
+
+          KEY_PAIR_ARGS_JSON=$(echo $KEY_PAIR_ARGS | jq --raw-input --compact-output 'split(",") | map(select(length > 0 and . != "none")) | map_values(split("=") | { (.[0]): .[1] }) | reduce .[] as $o ({}; . + $o)')
+
+          echo "::debug::$KEY_PAIR_ARGS_JSON"
+
+          echo "publish-json-args=$KEY_PAIR_ARGS_JSON" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
         id: release
         with:
-          version: ${{ steps.set-arguments.outputs.publish-args }}
+          version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Get new Ezno version
+        id: get-version
+        run: |
+          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq ".ezno" )" >> $GITHUB_OUTPUT
 
       - name: Install WASM build dependencies
         run: |
+          # Make sure Rust can target WASM
           rustup target add wasm32-unknown-unknown
           
+          # Install WASM bindgen
+          mkdir private
+          cd private
           mkdir wasm-bindgen
           cd wasm-bindgen
+
           gh release download 0.2.84 -R rustwasm/wasm-bindgen -p '*x86_64-unknown-linux-musl.tar.gz' -O wasm-bindgen.tar.gz
           tar -xf wasm-bindgen.tar.gz
           mv wasm-bindgen-0.2.84-x86_64-unknown-linux-musl/wasm-bindgen wasm-bindgen
+          
           pwd >> $GITHUB_PATH
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Node build & NPM publish
-        run: |
-          # Update version. Note done in two steps as breaks writing to something reading to & to keep tabs
-          cat package.json <(echo '${{ steps.release.outputs.new-versions-json-object }}') | jq --slurp '.[0].version = .[1].ezno | .[0]' > package2.json
-          cat package2.json | unexpand -t2 > package.json
-          rm package2.json
-
-          # not in root but still works
-          cargo build --release --lib --target wasm32-unknown-unknown
-          wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm
-
-          npm run build
-          npm publish
+      - name: Set NPM package version & build
+        run: | 
+          npm ci
+          npm version ${{ steps.get-version.outputs.new-ezno-version }}
+          npm run build-release
         working-directory: src/js-cli-and-library
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
 
-      - name: Push updated Cargo.toml
-        id: push
+      - name: NPM publish (cli and library)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-cli-and-library/package.json
+        
+      - name: Update plugin version and dependencies
         run: |
-          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq ".ezno" )" >> $GITHUB_OUTPUT
+          # Hopefully propagated in 30 seconds
+          sleep 30
+          npm ci
+          npm install ezno@${{ steps.get-version.outputs.new-ezno-version }}
+          npm version ${{ steps.get-version.outputs.new-ezno-version }}
+        working-directory: src/js-based-plugin
+
+      - name: NPM publish (plugin)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-based-plugin/package.json
+
+      - name: Push updated manifests
+        run: |
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"
@@ -105,6 +127,7 @@ jobs:
   build:
     if: ${{ github.event.inputs.ezno-version != 'none' }}
     needs: crates-publish
+
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -114,16 +137,20 @@ jobs:
             platform_name: x86_64-pc-windows
           - os: ubuntu-latest
             platform_name: x86_64-unknown-linux
+
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v3
+
       - name: Build binary
         run: cargo build --release
+
       - name: Rename and move release assets
         run: |
           mkdir artifacts
           mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.crates-publish.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
+
       - uses: actions/upload-artifact@v3
         with:
           name: build-artifacts
@@ -136,11 +163,18 @@ jobs:
     needs: [crates-publish, build]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
     - uses: actions/download-artifact@v3
       with:
         name: build-artifacts
         path: build-artifacts
+
+    - name: Print artifacts
+      run: |
+        echo "::group::Print Artifacts"
+        ls -R build-artifacts
+        echo "::endgroup::"
         
     - name: GitHub release
       uses: softprops/action-gh-release@v1
