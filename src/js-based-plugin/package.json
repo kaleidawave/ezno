@@ -5,16 +5,17 @@
 	"main": "index.mjs",
 	"license": "MIT",
 	"dependencies": {
-		"ezno": "file:../js-cli-and-library",
+		"ezno": "^0.0.1",
 		"unplugin": "^1.3.1"
 	},
+	"keywords": ["type-checker", "vite", "webpack", "ezno"],
 	"author": {
 		"name": "Ben",
 		"email": "kaleidawave@gmail.com",
 		"url": "https://kaleidawave.github.io/"
 	},
 	"funding": {
-		"type" : "individual",
-		"url" : "https://github.com/sponsors/kaleidawave"
+		"type": "individual",
+		"url": "https://github.com/sponsors/kaleidawave"
 	}
 }

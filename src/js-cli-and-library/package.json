@@ -1,6 +1,6 @@
 {
 	"name": "ezno",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance",
 	"license": "MIT",
 	"repository": "https://github.com/kaleidawave/ezno",
@@ -11,6 +11,7 @@
 		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind",
 		"bind": "wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm"
 	},
+	"keywords": ["typescript", "checker", "type-checker", "compiler"],
 	"bin": {
 		"ezno": "./cli.js"
 	},

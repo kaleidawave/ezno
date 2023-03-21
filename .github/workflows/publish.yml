@@ -26,7 +26,7 @@ jobs:
   crates-publish:
     runs-on: ubuntu-latest
     outputs:
-      new-ezno-version: ${{ steps.push.outputs.new-ezno-version }}
+      new-ezno-version: ${{ steps.version.outputs.new-ezno-version }}
     steps:
       - uses: actions/checkout@v3
 
@@ -53,6 +53,10 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Get new Ezno version
+        id: version
+        run: echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq ".ezno" )" >> $GITHUB_OUTPUT
+
       - name: Install WASM build dependencies
         run: |
           rustup target add wasm32-unknown-unknown
@@ -66,27 +70,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Node build & NPM publish
-        run: |
-          # Update version. Note done in two steps as breaks writing to something reading to & to keep tabs
-          cat package.json <(echo '${{ steps.release.outputs.new-versions-json-object }}') | jq --slurp '.[0].version = .[1].ezno | .[0]' > package2.json
-          cat package2.json | unexpand -t2 > package.json
-          rm package2.json
-
-          # not in root but still works
-          cargo build --release --lib --target wasm32-unknown-unknown
-          wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm
-
+      - name: Set NPM package version & build
+        run: | 
+          npm install
+          npm version ${{ steps.version.outputs.new-ezno-version }}
           npm run build
-          npm publish
         working-directory: src/js-cli-and-library
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
 
-      - name: Push updated Cargo.toml
-        id: push
+      - name: NPM publish (cli and library)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-cli-and-library/package.json
+        
+      - name: Node plugin build
         run: |
-          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq ".ezno" )" >> $GITHUB_OUTPUT
+          # Hopefully propagated in 20 seconds
+          sleep 20
+          npm install ezno@${{ steps.version.outputs.new-ezno-version }}
+          npm version ${{ steps.version.outputs.new-ezno-version }}
+        working-directory: src/js-based-plugin
+
+      - name: NPM publish (plugin)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-based-plugin/package.json
+
+      - name: Push updated manifests
+        run: |
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"
@@ -105,6 +117,7 @@ jobs:
   build:
     if: ${{ github.event.inputs.ezno-version != 'none' }}
     needs: crates-publish
+
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -114,16 +127,20 @@ jobs:
             platform_name: x86_64-pc-windows
           - os: ubuntu-latest
             platform_name: x86_64-unknown-linux
+
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v3
+
       - name: Build binary
         run: cargo build --release
+
       - name: Rename and move release assets
         run: |
           mkdir artifacts
           mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.crates-publish.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
+
       - uses: actions/upload-artifact@v3
         with:
           name: build-artifacts
@@ -137,6 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+
     - uses: actions/download-artifact@v3
       with:
         name: build-artifacts
