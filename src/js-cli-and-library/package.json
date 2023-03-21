@@ -1,6 +1,6 @@
 {
 	"name": "ezno",
-	"version": "0.0.1",
+	"version": "0.0.8",
 	"description": "A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance",
 	"license": "MIT",
 	"repository": "https://github.com/kaleidawave/ezno",
