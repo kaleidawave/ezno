@@ -5,7 +5,7 @@ A plugin to use Ezno in systems like Vite and webpack. See the [unplugin repo fo
 For example in Vite, `vite.config.js` should look like:
 
 ```javascript
-import Ezno from 'unplugin-ezno-plugin'
+import Ezno from 'unplugin-ezno'
 
 export default {
     plugins: [
