@@ -4,11 +4,19 @@
 	"description": "A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance",
 	"license": "MIT",
 	"repository": "https://github.com/kaleidawave/ezno",
-	"main": "index.mjs",
-	"types": "ezno.d.ts",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./ezno.d.ts",
+	"exports": {
+		".": {
+		  "require": "./dist/index.cjs",
+		  "import": "./dist/index.mjs",
+		  "types": "./ezno.d.ts"
+		}
+	},
 	"scripts": {
 		"clean": "rm ezno_lib.* && rm ezno_lib_bg.*",
-		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind",
+		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind && unbuild",
 		"bind": "wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm",
 		"build-release": "cargo build --lib --release --target wasm32-unknown-unknown && npm run bind-release",
 		"bind-release": "wasm-bindgen --out-dir . --target nodejs ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm"
@@ -18,6 +26,11 @@
 		"checker",
 		"type-checker",
 		"compiler"
+	],
+	"files": [
+		"dist",
+		"cli.js",
+		"ezno.d.ts"
 	],
 	"bin": {
 		"ezno": "./cli.js"
@@ -30,5 +43,21 @@
 	"funding": {
 		"type": "individual",
 		"url": "https://github.com/sponsors/kaleidawave"
+	},
+	"build": {
+	 	"failOnWarn": false,
+		"entries": [
+			{
+				"builder": "rollup",
+				"input": "./index"
+			}
+		],
+		"rollup": {
+			"emitCJS": true,
+			"commonjs": true
+		}
+	},
+	"devDependencies": {
+		"unbuild": "^1.1.2"
 	}
 }
