@@ -38,5 +38,15 @@
 	},
 	"scripts": {
 		"build": "unbuild"
+	},
+	"build": {
+		"entries": [{
+			"builder": "rollup",
+			"input": "./index"
+		}],
+		"rollup": {
+			"emitCJS": true,
+			"commonjs": true
+		}
 	}
 }
