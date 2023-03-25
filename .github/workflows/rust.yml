@@ -64,6 +64,27 @@ jobs:
       - name: Lint code with clippy
         run: cargo clippy
 
+  wasm-test:
+    needs: validity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli
+      - name: Build
+        run: |
+          rustup target add wasm32-unknown-unknown
+          npm install
+          npm run build
+        working-directory: src/js-cli-and-library
+        shell: bash
+      - name: Test
+        run: node test.mjs
+        working-directory: src/js-cli-and-library
+        shell: bash
+
+   
   publish-ability:
     runs-on: ubuntu-latest
     steps:
@@ -74,22 +95,4 @@ jobs:
             cd ${pathInfo:13:-1}
             cargo publish --no-verify --dry-run
           done
-        shell: bash
-
-  wasm-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: wasm-bindgen-cli
-      - name: Build
-        run: |
-          rustup target add wasm32-unknown-unknown
-          npm run build
-        working-directory: src/js-cli-and-library
-        shell: bash
-      - name: Test
-        run: node test.mjs
-        working-directory: src/js-cli-and-library
         shell: bash

@@ -11,7 +11,7 @@ run_cli(cli_arguments, (path) => {
     return readFileSync(path).toString()
 }, (prompt_msg) => {
     if (typeof Deno !== "undefined") {
-        return prompt(`${prompt_msg}> `)
+        return prompt(`${prompt_msg}>`)
     } else {
         console.error("Prompt not supported in NodeJS (sync issue)");
         throw new Error("Prompt not supported in NodeJS")
