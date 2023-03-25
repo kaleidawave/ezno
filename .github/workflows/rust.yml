@@ -75,3 +75,15 @@ jobs:
             cargo publish --no-verify --dry-run
           done
         shell: bash
+
+  wasm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: npm run build
+        working-directory: src/js-cli-and-library
+      - name: Test
+        run: node test.mjs
+        working-directory: src/js-cli-and-library
+        shell: bash

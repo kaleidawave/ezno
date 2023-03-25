@@ -20,8 +20,9 @@ pub struct BuildOutput {
 	pub temp_warnings_and_infos: Vec<TempDiagnostic>,
 }
 
-// Just builds one file temporarily
-pub fn build(
+/// Just builds one file temporarily
+pub fn build<T: crate::FSResolver>(
+	_fs_resolver: T,
 	content: String,
 	input_path: String,
 	output_path: String,

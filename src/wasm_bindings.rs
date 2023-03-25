@@ -6,21 +6,39 @@ extern "C" {
 	pub(crate) fn log(s: &str);
 }
 
-#[wasm_bindgen(raw_module = "./bindings.js")]
-extern "C" {
-	#[wasm_bindgen]
-	pub(crate) fn read_from_cli() -> String;
-
-	// TODO error
-	#[wasm_bindgen]
-	pub(crate) fn read_from_path(path: &str) -> String;
-
-	#[wasm_bindgen(raw_module = "./bindings")]
-	pub(crate) fn get_cli_args() -> String;
+#[wasm_bindgen(js_name = build)]
+pub fn build_wasm(fs_resolver_js: &js_sys::Function, content: String, path: String) -> JsValue {
+	let fs_resolver = |path: &std::path::Path| {
+		let res =
+			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+		res.ok().and_then(|res| res.as_string().map(|content| (content, Vec::new())))
+	};
+	let (_fs, result) = crate::temp::build(fs_resolver, content, path, "OUTPUT".to_owned());
+	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
-#[wasm_bindgen]
-pub fn build_wasm(content: String, path: String) -> JsValue {
-	let (_fs, result) = crate::temp::build(content, path, "OUTPUT".to_owned());
-	serde_wasm_bindgen::to_value(&result).unwrap()
+#[wasm_bindgen(js_name = run_cli)]
+pub fn run_cli_wasm(
+	cli_arguments: Box<[JsValue]>,
+	fs_resolver_js: &js_sys::Function,
+	cli_input_resolver_js: &js_sys::Function,
+) {
+	let arguments = cli_arguments.into_iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
+	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+
+	let fs_resolver = |path: &std::path::Path| {
+		let res =
+			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+		res.ok().and_then(|res| res.as_string().map(|content| (content, Vec::new())))
+	};
+
+	let cli_input_resolver = |prompt: &str| {
+		cli_input_resolver_js
+			.call1(&JsValue::null(), &JsValue::from(prompt.to_owned()))
+			.ok()
+			.as_ref()
+			.and_then(JsValue::as_string)
+	};
+
+	crate::run_cli(&arguments, fs_resolver, cli_input_resolver)
 }

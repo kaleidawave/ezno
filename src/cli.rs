@@ -122,17 +122,12 @@ fn file_system_resolver(path: &Path) -> Option<(String, Vec<(usize, parser::Empt
 	}
 }
 
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
-pub fn run_cli() {
-	let get_cli_args = crate::utilities::get_cli_args();
-	let arguments: Vec<&str> = get_cli_args.iter().map(AsRef::as_ref).collect();
-
-	if arguments.is_empty() {
-		utilities::print_info();
-		return;
-	}
-
-	let command = match FromArgs::from_args(&["ezno-cli"], arguments.as_slice()) {
+pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
+	cli_arguments: &[&str],
+	fs_resolver: T,
+	cli_input_resolver: U,
+) {
+	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
 			print_to_cli(format_args!("{}", err.output));
@@ -145,9 +140,9 @@ pub fn run_cli() {
 			utilities::print_info();
 		}
 		CompilerSubCommand::Build(build_config) => {
-			let _output = build(build_config);
+			let _output = build(fs_resolver, build_config);
 		}
-		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(),
+		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(fs_resolver, cli_input_resolver),
 		// CompilerSubCommand::Run(run_arguments) => {
 		// 	let build_arguments = BuildArguments {
 		// 		input: run_arguments.input,
@@ -298,7 +293,7 @@ struct _Settings {
 // }
 
 // TODO needs settings information structure
-fn build(build_arguments: BuildArguments) -> Result<(), ()> {
+fn build<T: crate::FSResolver>(fs_resolver: T, build_arguments: BuildArguments) -> Result<(), ()> {
 	// let _cwd = env::current_dir().unwrap();
 	let BuildArguments {
 		minify,
@@ -377,12 +372,15 @@ fn build(build_arguments: BuildArguments) -> Result<(), ()> {
 	let now = Instant::now();
 	// let result = project.build(entry_point, output_settings);
 
+	let content = fs_resolver(&entry_path).expect("Could not read input path");
 	let (fs, result) = crate::temp::build(
-		utilities::read_fs_path_to_string(entry_path.clone()).expect("Could not read path"),
+		fs_resolver,
+		// Ignore cursors for now
+		content.0,
 		// TODO
 		entry_path.display().to_string(),
 		output_path
-			.map(|path| path.into_os_string().into_string().expect("Invalid path"))
+			.map(|path| path.into_os_string().into_string().expect("Invalid output path"))
 			.unwrap_or_default(),
 	);
 

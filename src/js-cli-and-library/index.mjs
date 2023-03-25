@@ -1,1 +1,0 @@
-export { build_wasm as build } from "./ezno_lib.js";

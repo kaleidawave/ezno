@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{fs, io, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use argh::FromArgs;
 use enum_variants_strings::EnumVariantsStrings;
@@ -8,7 +8,7 @@ use parser::{
 	ASTNode, Expression, Module, ParseOutput, SourceId, ToStringSettings, ToStringSettingsAndData,
 };
 
-use crate::error_handling::emit_parser_error;
+use crate::{error_handling::emit_parser_error, utilities::print_to_cli};
 
 /// Repl for testing out AST
 #[derive(FromArgs, Debug)]
@@ -22,17 +22,19 @@ pub(crate) struct ExplorerArguments {
 }
 
 impl ExplorerArguments {
-	pub(crate) fn run(&mut self) {
+	pub(crate) fn run<T: crate::FSResolver, U: crate::CLIInputResolver>(
+		&mut self,
+		fs_resolver: T,
+		cli_input_resolver: U,
+	) {
 		if let Some(ref file) = self.file {
-			let file = fs::read_to_string(file).unwrap();
-			self.nested.run(file);
+			let file = fs_resolver(file).unwrap();
+			self.nested.run(file.0);
 		} else {
-			println!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*");
+			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
-				print!("{}> ", self.nested.to_str());
-				io::Write::flush(&mut io::stdout()).unwrap();
-				let (n, mut input) = crate::utilities::read_from_cli(&mut io::stdin());
-				if n == 0 {
+				let mut input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
+				if input.len() == 0 {
 					continue;
 				} else if input.trim() == "#exit" {
 					break;
@@ -40,7 +42,10 @@ impl ExplorerArguments {
 					self.nested = match ExplorerSubCommand::from_str(new_mode.trim()) {
 						Ok(mode) => mode,
 						Err(expected) => {
-							println!("Unexpected mode, options are {:?}", expected);
+							print_to_cli(format_args!(
+								"Unexpected mode, options are {:?}",
+								expected
+							));
 							continue;
 						}
 					};
@@ -49,13 +54,12 @@ impl ExplorerArguments {
 					input = match fs::read_to_string(path.trim()) {
 						Ok(string) => string,
 						Err(err) => {
-							println!("{:?}", err);
+							print_to_cli(format_args!("{:?}", err));
 							continue;
 						}
 					};
 				};
 				self.nested.run(input);
-				io::Write::flush(&mut io::stdout()).unwrap();
 			}
 		}
 	}
@@ -105,9 +109,9 @@ impl ExplorerSubCommand {
 				match res {
 					Ok(res) => {
 						if res.1.function_extractor.is_empty() {
-							println!("{:#?}", res.0);
+							print_to_cli(format_args!("{:#?}", res.0));
 						} else {
-							println!("{:#?}", res);
+							print_to_cli(format_args!("{:#?}", res));
 						}
 					}
 					Err(err) => emit_parser_error(input, err).unwrap(),
@@ -122,7 +126,7 @@ impl ExplorerSubCommand {
 					Vec::new(),
 				);
 				match res {
-					Ok(res) => println!("{:#?}", res),
+					Ok(res) => print_to_cli(format_args!("{:#?}", res)),
 					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
 			}
@@ -142,7 +146,7 @@ impl ExplorerSubCommand {
 							ToStringSettings::minified()
 						};
 						let d = ToStringSettingsAndData(settings, state.function_extractor);
-						println!("{}", value.to_string(&d));
+						print_to_cli(format_args!("{}", value.to_string(&d)));
 					}
 					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
