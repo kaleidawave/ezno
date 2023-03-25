@@ -80,9 +80,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli
       - name: Build
-        run: npm run build
+        run: |
+          rustup target add wasm32-unknown-unknown
+          npm run build
         working-directory: src/js-cli-and-library
+        shell: bash
       - name: Test
         run: node test.mjs
         working-directory: src/js-cli-and-library

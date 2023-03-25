@@ -8,7 +8,6 @@ initSync(readFileSync(wasmPath));
 const cli_arguments = typeof Deno !== "undefined" ? Deno.args : process.argv.slice(2);
 
 run_cli(cli_arguments, (path) => {
-    console.info(`Reading '${path}'`);
     return readFileSync(path).toString()
 }, (prompt_msg) => {
     if (typeof Deno !== "undefined") {
