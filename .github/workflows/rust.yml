@@ -94,8 +94,8 @@ jobs:
 
       - name: Check CLI works
         run: |
-          node .\dist\cli.cjs info
-          deno run -A .\dist\cli.mjs info
+          node ./dist/cli.cjs info
+          deno run -A ./dist/cli.mjs info
         working-directory: src/js-cli-and-library
         shell: bash
 
