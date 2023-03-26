@@ -1,5 +1,5 @@
-import { build } from "./dist/initialized.mjs";
-import { deepStrictEqual } from "node:assert";
+const { build } = require("./dist/initialized.cjs");
+const { deepStrictEqual } = require("node:assert");
 
 const content = `
 export function setupCounter(element) {

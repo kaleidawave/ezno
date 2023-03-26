@@ -2,22 +2,47 @@
 
 This contains a JavaScript edition of [Ezno](https://github.com/kaleidawave/ezno)
 
-## Example
+## CLI
+
+This package includes a JS & WASM based version of the CLI. You can use as follows
+
+```shell
+node dist/cli.cjs info
+# or
+deno run -A dist/cli.mjs info
+```
+
+## Library example
+
+For a environment that supports `node:fs`, you can use a version that initializes the WASM for you
 
 ```js
-import { build } from "ezno";
+import { build } from "ezno/initialized";
 
-const content = "const x = !t ? 4 : 5;";
-console.dir(build(content, "input.js"), { depth: 5 })
+// Just use a local string. Could use readFileSync for FS access
+const fs_handler = (_path) => "const x = !t ? 4 : 5;";
+console.dir(build(fs_handler, "input.js"), { depth: 5 })
+```
+
+For the web, `init()` is needed to load the WASM before calling any functions.
+
+```js
+import { init, build } from "ezno";
+
+await init();
+
+const res = build(() => "const x = 2 + 5;", "input.js");
+
+document.querySelector('#app').innerHTML = `<pre>${JSON.stringify(res)}</pre>`;
 ```
 
 ## Commands for building this package
 
-Run from this folder, **not the root**:
+Run this **from this folder, not the root**:
 
 ```shell
 npm run clean
 npm run build
 ```
 
-See `package.json` for the full commands.
+See `package.json` for the other building commands.

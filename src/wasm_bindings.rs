@@ -1,3 +1,4 @@
+use std::path::Path;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -7,13 +8,14 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = build)]
-pub fn build_wasm(fs_resolver_js: &js_sys::Function, content: String, path: String) -> JsValue {
+pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string().map(|content| (content, Vec::new())))
 	};
-	let (_fs, result) = crate::temp::build(fs_resolver, content, path, "OUTPUT".to_owned());
+	let (_fs, result) =
+		crate::temp::build(fs_resolver, Path::new(&entry_path), Path::new("out.js"));
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 

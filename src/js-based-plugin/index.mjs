@@ -24,10 +24,14 @@ export default createUnplugin((_options) => {
 		},
 		transform(code, id) {
 			function resolver(path) {
-				console.error(`tried to read path '${path}' which is currently unsupported by the plugin`)
-				return "ERROR";
+				if (path !== id) {
+					console.error(`tried to read another path '${path}' which is currently unsupported by the plugin`)
+					return "ERROR";
+				} else {
+					return code;
+				}
 			}
-			const output = build(resolver, code, id);
+			const output = build(resolver, id);
 			if (output.Ok) {
 				emitDiagnostics(code, output.Ok.temp_warnings_and_infos, this)
 				return {

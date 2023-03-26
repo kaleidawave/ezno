@@ -370,18 +370,11 @@ fn build<T: crate::FSResolver>(fs_resolver: T, build_arguments: BuildArguments) 
 
 	#[cfg(not(target_family = "wasm"))]
 	let now = Instant::now();
-	// let result = project.build(entry_point, output_settings);
 
-	let content = fs_resolver(&entry_path).expect("Could not read input path");
 	let (fs, result) = crate::temp::build(
 		fs_resolver,
-		// Ignore cursors for now
-		content.0,
-		// TODO
-		entry_path.display().to_string(),
-		output_path
-			.map(|path| path.into_os_string().into_string().expect("Invalid output path"))
-			.unwrap_or_default(),
+		&entry_path,
+		output_path.unwrap_or(PathBuf::from("ezno-output.js")).as_path(),
 	);
 
 	// TODO this should be integrated with project for a breakdown of

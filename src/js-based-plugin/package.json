@@ -7,8 +7,8 @@
 	"license": "MIT",
 	"exports": {
 		".": {
-		  "require": "./dist/index.cjs",
-		  "import": "./dist/index.mjs"
+			"require": "./dist/index.cjs",
+			"import": "./dist/index.mjs"
 		}
 	},
 	"dependencies": {
@@ -40,10 +40,12 @@
 		"build": "unbuild"
 	},
 	"build": {
-		"entries": [{
-			"builder": "rollup",
-			"input": "./index"
-		}],
+		"entries": [
+			{
+				"builder": "rollup",
+				"input": "./index"
+			}
+		],
 		"rollup": {
 			"emitCJS": true,
 			"commonjs": true
