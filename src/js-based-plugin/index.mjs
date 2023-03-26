@@ -1,5 +1,5 @@
 import { createUnplugin } from "unplugin";
-import { build } from "ezno";
+import { build } from "ezno/initialized";
 
 function emitDiagnostics(on, diagnostics, plugin) {
 	const lineSplits = [0];
@@ -23,7 +23,15 @@ export default createUnplugin((_options) => {
 			return ["ts", "tsx", "js", "jsx"].includes(extension);
 		},
 		transform(code, id) {
-			const output = build(code, id);
+			function resolver(path) {
+				if (path !== id) {
+					console.error(`tried to read another path '${path}' which is currently unsupported by the plugin`)
+					return "ERROR";
+				} else {
+					return code;
+				}
+			}
+			const output = build(resolver, id);
 			if (output.Ok) {
 				emitDiagnostics(code, output.Ok.temp_warnings_and_infos, this)
 				return {

@@ -1,10 +1,10 @@
+dist
 /target
 /pkg
 /private
 .vscode
 .env
 /checker/examples
-src/js-cli-and-library/**.wasm
-src/js-cli-and-library/**.d.ts
-src/js-cli-and-library/ezno_lib.js
+build
 node_modules
+/TODO.txt
