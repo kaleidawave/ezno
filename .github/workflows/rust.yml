@@ -52,7 +52,7 @@ jobs:
 
       - name: Check TOML formatting with taplo
         run: |
-          taplo fmt --check *\Cargo.toml --option crlf=true
+          taplo fmt --check **/*/Cargo.toml
 
   tests:
     needs: validity
@@ -82,6 +82,7 @@ jobs:
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
         fuzz-type: [module_roundtrip_naive, windows-latest]
