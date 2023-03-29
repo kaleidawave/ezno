@@ -1,5 +1,15 @@
 name: Rust
 
+# Contains checks:
+# - That the code compiles
+# - That the code complies with formatting
+# - Lints (using clippy) to find errors
+# - That crates that are published are publish-able
+# - Testing 
+#   - Standard Rust integration and unit tests
+#   - Fuzz tests
+#   - WASM edition works tests
+
 on:
   push:
     branches: [main]
@@ -8,6 +18,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
 
 jobs:
   validity:
@@ -16,11 +32,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+          path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Check source is valid
         run: cargo check --workspace
 
@@ -28,32 +42,77 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Check formatting with rustfmt
+
+      - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
+
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: taplo-cli
+
+      - name: Check TOML formatting with taplo
+        run: |
+          taplo fmt --check **/*/Cargo.toml
 
   tests:
     needs: validity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run all tests
-        run: cargo test --workspace --verbose --all-features
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            parser:
+              - 'parser/**'
+
+      - name: Run parser tests
+        if: steps.changes.outputs.parser == 'true'
+        run: cargo test
+        working-directory: parser
+
+      - name: Run base tests
+        run: cargo test
 
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        fuzz-target: [module_roundtrip_naive, module_roundtrip_structured]
+
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            parser:
+              - 'parser/**'
+
       - name: Install latest nightly and set it as default
+        if: steps.changes.outputs.parser == 'true'
         run: |
           rustup install nightly
           rustup default nightly
-      - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        if: steps.changes.outputs.parser == 'true'
+        with:
+          packages: cargo-fuzz
       - name: Run fuzzing
+        if: steps.changes.outputs.parser == 'true'
         run: |
-          cargo fuzz run -s none module_roundtrip_naive -- -timeout=10 -max_total_time=120 -use_value_profile=1 || true
-          cargo fuzz run -s none module_roundtrip_structured -- -timeout=10 -max_total_time=120 -use_value_profile=1 || true
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=120 -use_value_profile=1
         working-directory: parser/fuzz
 
   clippy:
@@ -61,6 +120,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint code with clippy
         run: cargo clippy
 
@@ -69,6 +132,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
           packages: wasm-bindgen-cli
@@ -99,7 +166,6 @@ jobs:
         working-directory: src/js-cli-and-library
         shell: bash
 
-   
   publish-ability:
     runs-on: ubuntu-latest
     steps:

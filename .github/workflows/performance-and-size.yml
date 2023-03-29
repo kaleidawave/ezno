@@ -1,0 +1,43 @@
+name: Performance and size
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  hyperfine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: hyperfine
+
+      - name: Build Ezno
+        run: cargo build --release
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
+
+      - name: Run hyperfine
+        run: |
+          curl -O https://gist.githubusercontent.com/kaleidawave/9554eb0ec0a2efc5727a3227fe997c8d/raw/6445ec1b802b52081e6dbb9c3a99e6de3f33dcfa/example.js
+          hyperfine './target/release/ezno build example.js'
+
+      - name: Print (linux) binary size
+        run: |
+          echo "Binary is $(stat -c %s ./target/release/ezno) bytes"

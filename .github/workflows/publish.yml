@@ -22,6 +22,14 @@ on:
 
 concurrency: release-crate
 
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
 jobs:
   crates-publish:
     runs-on: ubuntu-latest
@@ -29,6 +37,10 @@ jobs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set git credentials
         run: |
@@ -58,26 +70,14 @@ jobs:
       - name: Get new Ezno version
         id: get-version
         run: |
-          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq ".ezno" )" >> $GITHUB_OUTPUT
+          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r ".ezno" )" >> $GITHUB_OUTPUT
 
-      - name: Install WASM build dependencies
-        run: |
-          # Make sure Rust can target WASM
-          rustup target add wasm32-unknown-unknown
-          
-          # Install WASM bindgen
-          mkdir private
-          cd private
-          mkdir wasm-bindgen
-          cd wasm-bindgen
+      - name: Add WASM to rustup
+        run: rustup target add wasm32-unknown-unknown
 
-          gh release download 0.2.84 -R rustwasm/wasm-bindgen -p '*x86_64-unknown-linux-musl.tar.gz' -O wasm-bindgen.tar.gz
-          tar -xf wasm-bindgen.tar.gz
-          mv wasm-bindgen-0.2.84-x86_64-unknown-linux-musl/wasm-bindgen wasm-bindgen
-          
-          pwd >> $GITHUB_PATH
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli
 
       - name: Set NPM package version & build
         run: | 
@@ -94,8 +94,8 @@ jobs:
         
       - name: Update plugin version and dependencies
         run: |
-          # Hopefully propagated in 30 seconds
-          sleep 30
+          # Hopefully propagated in 20 seconds
+          sleep 20
           npm ci
           npm install ezno@${{ steps.get-version.outputs.new-ezno-version }}
           npm version ${{ steps.get-version.outputs.new-ezno-version }}
@@ -116,6 +116,7 @@ jobs:
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
+          sleep 20
 
       - name: Discord
         uses: dusmartijngames/discord-webhook-notify@master
@@ -142,6 +143,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check repo
+        run: |
+          git describe --tags --abbrev=0
+          cat Cargo.toml
 
       - name: Build binary
         run: cargo build --release
@@ -162,6 +172,7 @@ jobs:
     if: ${{ github.event.inputs.ezno-version != 'none' }}
     needs: [crates-publish, build]
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v3
 
@@ -179,8 +190,9 @@ jobs:
     - name: GitHub release
       uses: softprops/action-gh-release@v1
       with:
-        body: "Release ${{ needs.crates-publish.outputs.new-ezno-version }}"
-        tag_name: "release/${{ needs.crates-publish.outputs.new-ezno-version }}"
+        name: "Ezno ${{ needs.crates-publish.outputs.new-ezno-version }}"
+        tag_name: "release/ezno-${{ needs.crates-publish.outputs.new-ezno-version }}"
+        body: "For @kaleidawave to update"
         files: |
           README.md
           build-artifacts/*
