@@ -85,7 +85,7 @@ jobs:
     continue-on-error: true
     strategy:
       matrix:
-        fuzz-type: [module_roundtrip_naive, windows-latest]
+        fuzz-target: [module_roundtrip_naive, module_roundtrip_structured]
 
     steps:
       - uses: actions/checkout@v3
@@ -112,7 +112,7 @@ jobs:
       - name: Run fuzzing
         if: steps.changes.outputs.parser == 'true'
         run: |
-          cargo fuzz run -s none ${{ matrix.fuzz-type }} -- -timeout=10 -max_total_time=120 -use_value_profile=1
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=120 -use_value_profile=1
         working-directory: parser/fuzz
 
   clippy:

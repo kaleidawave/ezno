@@ -116,7 +116,7 @@ jobs:
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
-          sleep 10
+          sleep 20
 
       - name: Discord
         uses: dusmartijngames/discord-webhook-notify@master
@@ -148,8 +148,10 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Check version
-        run: cat Cargo.toml
+      - name: Check repo
+        run: |
+          git describe --tags --abbrev=0
+          cat Cargo.toml
 
       - name: Build binary
         run: cargo build --release
