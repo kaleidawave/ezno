@@ -55,11 +55,11 @@ impl ASTNode for IsExpression {
 		buf.push_str("is (");
 		self.matcher.to_string_from_buffer(buf, settings, depth);
 		buf.push_str(") {");
-		for (at_end, (l, r)) in self.branches.iter().endiate() {
+		for (not_at_end, (l, r)) in self.branches.iter().nendiate() {
 			l.to_string_from_buffer(buf, settings, depth);
 			buf.push_str(" => ");
 			r.to_string_from_buffer(buf, settings, depth);
-			if !at_end {
+			if not_at_end {
 				buf.push_str(", ");
 			}
 		}

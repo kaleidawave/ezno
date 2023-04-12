@@ -275,7 +275,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		settings: &crate::ParseSettings,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader, state, settings)?;
-		let (name, _) = T::from_reader(reader, state, settings)?;
+		let name = T::from_reader(reader, state, settings)?;
 		Ok((header, name))
 	}
 

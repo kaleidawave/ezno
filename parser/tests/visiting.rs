@@ -8,9 +8,7 @@ fn visiting() {
 	let input = r#"
         const x = "hello world";
         function y() {
-            if (condition) {
-                do_thing("hello world" + " test")
-            }
+            if (condition) do_thing("hello world" + " test")
         }
         "#;
 
@@ -29,7 +27,7 @@ fn visiting() {
 
 	let output = module.to_string(&ToStringSettings::minified());
 
-	let expected = r#"const x="HELLO WORLD";function y(){if(condition){do_thing("HELLO WORLD"+" TEST")}else{console.log("ELSE!")}}"#;
+	let expected = r#"const x="HELLO WORLD";function y(){if(condition)do_thing("HELLO WORLD"+" TEST");else console.log("ELSE!")}"#;
 	assert_eq!(output, expected);
 }
 

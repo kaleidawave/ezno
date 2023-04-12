@@ -282,9 +282,7 @@ impl ASTNode for BlockOrSingleStatement {
 					settings.add_gap(buf);
 					stmt.to_string_from_buffer(buf, settings, depth);
 				} else {
-					buf.push('{');
 					stmt.to_string_from_buffer(buf, settings, depth);
-					buf.push('}');
 				}
 			}
 		}
@@ -319,10 +317,10 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	settings: &crate::ToStringSettings,
 	depth: u8,
 ) {
-	for (at_end, item) in items.iter().endiate() {
+	for (not_at_end, item) in items.iter().nendiate() {
 		settings.add_indent(depth, buf);
 		item.to_string_from_buffer(buf, settings, depth);
-		if !at_end {
+		if not_at_end {
 			// TODO only append new line if something added
 			if item.requires_semi_colon() {
 				buf.push(';');

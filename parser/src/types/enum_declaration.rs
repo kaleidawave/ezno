@@ -69,13 +69,13 @@ impl ASTNode for EnumDeclaration {
 		buf.push_str(&self.name);
 		settings.add_gap(buf);
 		buf.push_str("{");
-		for (at_end, member) in self.members.iter().endiate() {
+		for (not_at_end, member) in self.members.iter().nendiate() {
 			if settings.pretty {
 				buf.push_new_line();
 				settings.add_indent(depth + 1, buf);
 			}
 			member.to_string_from_buffer(buf, settings, depth);
-			if !settings.pretty && !at_end {
+			if !settings.pretty && not_at_end {
 				buf.push(',');
 			}
 		}

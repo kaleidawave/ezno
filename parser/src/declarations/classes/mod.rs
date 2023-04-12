@@ -2,14 +2,14 @@ mod class_member;
 
 use std::{borrow::Cow, fmt::Debug};
 
-use crate::{to_string_bracketed, tsx_keywords};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	GenericTypeConstraint, Keyword, ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, TypeId,
-	TypeReference, VariableId, VisitSettings,
+	extensions::decorators::Decorated, parse_bracketed, to_string_bracketed, tsx_keywords,
+	visiting::Visitable, ASTNode, ExpressionOrStatementPosition, GenericTypeConstraint, Keyword,
+	ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, TypeId, TypeReference, VariableId,
+	VisitSettings,
 };
 use tokenizer_lib::{Token, TokenReader};
 
@@ -74,7 +74,15 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		settings: &ParseSettings,
 		class_keyword: Keyword<tsx_keywords::Class>,
 	) -> ParseResult<Self> {
-		let (name, type_parameters) = U::from_reader(reader, state, settings)?;
+		let name = U::from_reader(reader, state, settings)?;
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
 		let extends = match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
@@ -125,13 +133,13 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		}
 		settings.add_gap(buf);
 		buf.push('{');
-		for (at_end, member) in self.members.iter().endiate() {
+		for (not_at_end, member) in self.members.iter().nendiate() {
 			if settings.pretty {
 				buf.push_new_line();
 				settings.add_indent(depth + 1, buf);
 			}
 			member.to_string_from_buffer(buf, settings, depth);
-			if !settings.pretty && !at_end {
+			if !settings.pretty && not_at_end {
 				buf.push(';');
 			}
 		}

@@ -86,19 +86,19 @@ impl ASTNode for FunctionParameters {
 	) {
 		let FunctionParameters { parameters, optional_parameters, rest_parameter, .. } = self;
 		buf.push('(');
-		for (at_end, Parameter { name, type_reference, .. }) in parameters.iter().endiate() {
+		for (not_at_end, Parameter { name, type_reference, .. }) in parameters.iter().nendiate() {
 			// decorators_to_string_from_buffer(decorators, buf, settings, depth);
 			name.to_string_from_buffer(buf, settings, depth);
 			if let (true, Some(ref type_reference)) = (settings.include_types, type_reference) {
 				buf.push_str(": ");
 				type_reference.to_string_from_buffer(buf, settings, depth);
 			}
-			if !at_end || !optional_parameters.is_empty() || rest_parameter.is_some() {
+			if not_at_end || !optional_parameters.is_empty() || rest_parameter.is_some() {
 				buf.push(',');
 				settings.add_gap(buf);
 			}
 		}
-		for (at_end, parameter) in optional_parameters.iter().endiate() {
+		for (not_at_end, parameter) in optional_parameters.iter().nendiate() {
 			match parameter {
 				OptionalOrWithDefaultValueParameter::Optional { name, type_reference, .. } => {
 					buf.push_str(name.as_str());
@@ -123,7 +123,7 @@ impl ASTNode for FunctionParameters {
 					value.to_string_from_buffer(buf, settings, depth);
 				}
 			}
-			if !at_end || rest_parameter.is_some() {
+			if not_at_end || rest_parameter.is_some() {
 				buf.push(',');
 				settings.add_gap(buf);
 			}

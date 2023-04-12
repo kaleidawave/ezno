@@ -194,9 +194,9 @@ impl LHSOfAssignment {
 			LHSOfAssignment::ObjectDestructuring(members, _, _) => {
 				buf.push('{');
 				settings.add_gap(buf);
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 						settings.add_gap(buf);
 					}
@@ -206,9 +206,9 @@ impl LHSOfAssignment {
 			}
 			LHSOfAssignment::ArrayDestructuring(members, _, _) => {
 				buf.push('[');
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 					}
 				}

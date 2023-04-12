@@ -23,19 +23,21 @@ impl ASTNode for TypeDeclaration {
 		settings: &ParseSettings,
 	) -> ParseResult<Self> {
 		// Get initial name
-		let (name, mut position) = token_as_identifier(
+		let (name, position) = token_as_identifier(
 			reader.next().ok_or_else(parse_lexing_error)?,
 			"type declaration name",
 		)?;
-		let type_parameters =
-			if reader.conditional_next(|tok| matches!(tok, TSXToken::OpenChevron)).is_some() {
-				let (type_parameters, span) =
-					parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)?;
-				position = position.union(&span);
-				Some(type_parameters)
-			} else {
-				None
-			};
+
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
+
+		// TODO modify position?
 		Ok(Self { name, position, type_parameters })
 	}
 

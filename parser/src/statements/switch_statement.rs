@@ -105,7 +105,7 @@ impl ASTNode for SwitchStatement {
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
-					for (at_end, stmt) in statements.iter().endiate() {
+					for (not_at_end, stmt) in statements.iter().nendiate() {
 						if settings.pretty {
 							buf.push_new_line();
 							settings.add_indent(depth + 2, buf);
@@ -114,7 +114,7 @@ impl ASTNode for SwitchStatement {
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.pretty && !at_end {
+						if settings.pretty && not_at_end {
 							buf.push_new_line();
 						}
 					}
@@ -123,7 +123,7 @@ impl ASTNode for SwitchStatement {
 					buf.push_str("case ");
 					case.to_string_from_buffer(buf, settings, depth);
 					buf.push(':');
-					for (at_end, stmt) in statements.iter().endiate() {
+					for (not_at_end, stmt) in statements.iter().nendiate() {
 						if settings.pretty {
 							buf.push_new_line();
 							settings.add_indent(depth + 2, buf);
@@ -132,7 +132,7 @@ impl ASTNode for SwitchStatement {
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.pretty && !at_end {
+						if settings.pretty && not_at_end {
 							buf.push_new_line();
 						}
 					}

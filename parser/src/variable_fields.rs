@@ -299,9 +299,9 @@ impl<U: VariableFieldTypes> ASTNode for VariableField<U> {
 			Self::Name(identifier) => buf.push_str(identifier.as_str()),
 			Self::Array(members, _) => {
 				buf.push('[');
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 						settings.add_gap(buf);
 					}
@@ -311,9 +311,9 @@ impl<U: VariableFieldTypes> ASTNode for VariableField<U> {
 			Self::Object(members, _) => {
 				buf.push('{');
 				settings.add_gap(buf);
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 						settings.add_gap(buf);
 					}

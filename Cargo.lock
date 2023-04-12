@@ -329,9 +329,9 @@ dependencies = [
 
 [[package]]
 name = "iterator-endiate"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cfeef3929ed54a0312797e6e75a9a962df67a30beda87029387e810e61a44cc"
+checksum = "cab947031a0a0cb37f982ef2a0ab3bacfd3de5ed97dd5c7e98bcc92bba357112"
 
 [[package]]
 name = "js-sys"

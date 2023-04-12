@@ -525,7 +525,7 @@ pub trait ExpressionOrStatementPosition:
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
 		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)>;
+	) -> ParseResult<Self::Name>;
 
 	fn as_option_str(name: &Self::Name) -> Option<&str>;
 	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String>;
@@ -541,16 +541,8 @@ impl ExpressionOrStatementPosition for StatementPosition {
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
 		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)> {
-		let type_declaration = TypeDeclaration::from_reader(reader, state, settings)?;
-		Ok((
-			VariableIdentifier::Standard(
-				type_declaration.name,
-				VariableId::new(),
-				type_declaration.position,
-			),
-			type_declaration.type_parameters,
-		))
+	) -> ParseResult<Self::Name> {
+		VariableIdentifier::from_reader(reader, state, settings)
 	}
 
 	fn as_option_str(name: &Self::Name) -> Option<&str> {
@@ -580,12 +572,11 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
 		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)> {
-		if let Token(TSXToken::OpenBrace, _) = reader.peek().unwrap() {
-			Ok((None, None))
+	) -> ParseResult<Self::Name> {
+		if let Some(Token(TSXToken::OpenBrace, _)) | None = reader.peek() {
+			Ok(None)
 		} else {
-			StatementPosition::from_reader(reader, state, settings)
-				.map(|(name, constraints)| (Some(name), constraints))
+			StatementPosition::from_reader(reader, state, settings).map(Some)
 		}
 	}
 
@@ -640,9 +631,9 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	depth: u8,
 ) {
 	buf.push(brackets.0);
-	for (at_end, node) in nodes.iter().endiate() {
+	for (not_at_end, node) in nodes.iter().nendiate() {
 		node.to_string_from_buffer(buf, settings, depth);
-		if !at_end {
+		if not_at_end {
 			buf.push(',');
 			settings.add_gap(buf);
 		}

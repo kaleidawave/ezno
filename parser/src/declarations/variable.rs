@@ -296,9 +296,9 @@ pub(crate) fn declarations_to_string<
 	settings: &crate::ToStringSettings,
 	depth: u8,
 ) {
-	for (at_end, declaration) in declarations.iter().endiate() {
+	for (not_at_end, declaration) in declarations.iter().nendiate() {
 		declaration.to_string_from_buffer(buf, settings, depth);
-		if !at_end {
+		if not_at_end {
 			buf.push(',');
 			settings.add_gap(buf);
 		}

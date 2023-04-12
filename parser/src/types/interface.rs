@@ -114,9 +114,9 @@ impl ASTNode for InterfaceDeclaration {
 			settings.add_gap(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
-				for (at_end, extends) in extends.iter().endiate() {
+				for (not_at_end, extends) in extends.iter().nendiate() {
 					extends.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 					}
 				}

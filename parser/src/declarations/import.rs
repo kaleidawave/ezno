@@ -147,9 +147,9 @@ impl ASTNode for ImportDeclaration {
 		}
 		if let Some(imports) = &self.imports {
 			buf.push('{');
-			for (at_end, import) in imports.iter().endiate() {
+			for (not_at_end, import) in imports.iter().nendiate() {
 				import.to_string_from_buffer(buf, _settings, _depth);
-				if !at_end {
+				if not_at_end {
 					buf.push(',');
 				}
 			}

@@ -1,8 +1,8 @@
-use std::borrow::Cow;
-
 use crate::{
 	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseSettings, TSXKeyword,
 };
+use iterator_endiate::EndiateIteratorExt;
+use std::borrow::Cow;
 use visitable_derive::Visitable;
 
 use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
@@ -49,7 +49,7 @@ impl ASTNode for IfStatement {
 		let (mut else_conditions, mut trailing_else) = (Vec::new(), None);
 		while let Some(Token(TSXToken::Keyword(TSXKeyword::Else), _)) = reader.peek() {
 			let Token(_, else_position) = reader.next().unwrap();
-			if matches!(reader.peek().unwrap().0, TSXToken::Keyword(TSXKeyword::If)) {
+			if let Some(Token(TSXToken::Keyword(TSXKeyword::If), _)) = reader.peek() {
 				let value = ConditionalElseStatement::from_reader_sub_without_else(
 					reader,
 					state,
@@ -90,9 +90,22 @@ impl ASTNode for IfStatement {
 		buf.push(')');
 		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
-		for else_statement in self.else_conditions.iter() {
+		if !settings.pretty
+			&& matches!(self.inner, BlockOrSingleStatement::SingleStatement(_))
+			&& (!self.else_conditions.is_empty() || self.trailing_else.is_some())
+		{
+			buf.push(';');
+		}
+
+		for (at_end, else_statement) in self.else_conditions.iter().endiate() {
 			settings.add_gap(buf);
 			else_statement.to_string_from_buffer(buf, settings, depth);
+			if !settings.pretty
+				&& matches!(else_statement.inner, BlockOrSingleStatement::SingleStatement(_))
+				&& at_end
+			{
+				buf.push(';');
+			}
 		}
 		if let Some(else_statement) = &self.trailing_else {
 			settings.add_gap(buf);
@@ -172,6 +185,9 @@ impl ASTNode for UnconditionalElseStatement {
 		depth: u8,
 	) {
 		buf.push_str("else");
+		if !settings.pretty && matches!(self.inner, BlockOrSingleStatement::SingleStatement(_)) {
+			buf.push(' ');
+		}
 		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
 	}

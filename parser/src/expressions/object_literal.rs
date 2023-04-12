@@ -126,9 +126,9 @@ impl ASTNode for ObjectLiteral {
 	) {
 		buf.push('{');
 		settings.add_gap(buf);
-		for (at_end, member) in self.members.iter().endiate() {
+		for (not_at_end, member) in self.members.iter().nendiate() {
 			member.to_string_from_buffer(buf, settings, depth + 1);
-			if !at_end {
+			if not_at_end {
 				buf.push(',');
 				settings.add_gap(buf);
 			}

@@ -234,17 +234,17 @@ impl ASTNode for TypeReference {
 				buf.push('"');
 			}
 			Self::Union(union_members) => {
-				for (at_end, member) in union_members.iter().endiate() {
+				for (not_at_end, member) in union_members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push_str(" | ");
 					}
 				}
 			}
 			Self::Intersection(intersection_members) => {
-				for (at_end, member) in intersection_members.iter().endiate() {
+				for (not_at_end, member) in intersection_members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push_str(" & ");
 					}
 				}
@@ -252,9 +252,9 @@ impl ASTNode for TypeReference {
 			Self::NamespacedName(..) => unimplemented!(),
 			Self::ObjectLiteral(members, _, _) => {
 				buf.push('{');
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					member.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push_str(", ");
 					}
 				}
@@ -262,7 +262,7 @@ impl ASTNode for TypeReference {
 			}
 			Self::TupleLiteral(members, _, _) => {
 				buf.push('[');
-				for (at_end, member) in members.iter().endiate() {
+				for (not_at_end, member) in members.iter().nendiate() {
 					match member {
 						TupleElement::NonSpread { name, ty }
 						| TupleElement::Spread { name, ty } => {
@@ -276,7 +276,7 @@ impl ASTNode for TypeReference {
 							ty.to_string_from_buffer(buf, settings, depth);
 						}
 					}
-					if !at_end {
+					if not_at_end {
 						buf.push_str(", ");
 					}
 				}

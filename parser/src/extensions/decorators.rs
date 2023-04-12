@@ -43,9 +43,9 @@ impl ASTNode for Decorator {
 			buf.push_str(self.name.as_str());
 			if let Some(arguments) = &self.arguments {
 				buf.push('(');
-				for (at_end, argument) in arguments.iter().endiate() {
+				for (not_at_end, argument) in arguments.iter().nendiate() {
 					argument.to_string_from_buffer(buf, settings, depth);
-					if !at_end {
+					if not_at_end {
 						buf.push(',');
 						settings.add_gap(buf);
 					}
