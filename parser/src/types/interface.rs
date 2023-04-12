@@ -102,16 +102,16 @@ impl ASTNode for InterfaceDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		if settings.0.include_types {
+		if settings.include_types {
 			buf.push_str("interface ");
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, settings, depth);
 			}
-			settings.0.add_gap(buf);
+			settings.add_gap(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
@@ -122,13 +122,13 @@ impl ASTNode for InterfaceDeclaration {
 				}
 			}
 			buf.push('{');
-			if settings.0.pretty && !self.members.is_empty() {
+			if settings.pretty && !self.members.is_empty() {
 				buf.push_new_line();
 			}
 			for member in self.members.iter() {
-				settings.0.add_indent(depth, buf);
+				settings.add_indent(depth, buf);
 				member.to_string_from_buffer(buf, settings, depth + 1);
-				if settings.0.pretty {
+				if settings.pretty {
 					buf.push_new_line();
 				}
 			}
@@ -181,7 +181,7 @@ impl ASTNode for InterfaceMemberBody {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		todo!()
@@ -623,7 +623,7 @@ impl ASTNode for InterfaceMember {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -633,7 +633,7 @@ impl ASTNode for InterfaceMember {
 				}
 				name.to_string_from_buffer(buf, settings, depth);
 				buf.push(':');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				type_reference.to_string_from_buffer(buf, settings, depth);
 			}
 			Self::Method {
@@ -649,7 +649,7 @@ impl ASTNode for InterfaceMember {
 				parameters.to_string_from_buffer(buf, settings, depth);
 				if let Some(return_type) = return_type {
 					buf.push(':');
-					settings.0.add_gap(buf);
+					settings.add_gap(buf);
 					return_type.to_string_from_buffer(buf, settings, depth);
 				}
 			}
@@ -663,7 +663,7 @@ impl ASTNode for InterfaceMember {
 				indexer_type.to_string_from_buffer(buf, settings, depth);
 				buf.push(']');
 				buf.push(':');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				return_type.to_string_from_buffer(buf, settings, depth);
 			}
 			_ => unimplemented!(),

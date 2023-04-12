@@ -5,21 +5,17 @@ use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 
 use crate::{
-	extractor::{ExtractedFunction, GetFunction},
-	functions::FunctionBased,
-	ASTNode, Block, ChainVariable, Expression, FunctionBase, GetSetGeneratorOrNone, Keyword,
-	ParseError, ParseErrors, ParseResult, ParseSettings, PropertyKey, TSXKeyword, TSXToken,
-	TypeReference, VariableId, VisitSettings, WithComment,
+	functions::FunctionBased, ASTNode, Block, ChainVariable, Expression, FunctionBase,
+	GetSetGeneratorOrNone, Keyword, ParseError, ParseErrors, ParseResult, ParseSettings,
+	PropertyKey, TSXKeyword, TSXToken, TypeReference, VariableId, VisitSettings, WithComment,
 };
 
 /// The variable id's of these is handled by their [PropertyKey]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClassMember {
-	Constructor(ExtractedFunction<ClassConstructorBase>),
-	Function(Option<Keyword<tsx_keywords::Static>>, ExtractedFunction<ClassFunctionBase>),
+	Constructor(ClassConstructor),
+	Function(Option<Keyword<tsx_keywords::Static>>, ClassFunction),
 	Property(Option<Keyword<tsx_keywords::Static>>, ClassProperty),
-	// Constructor(ClassConstructor),
-	// Method(Option<Keyword<tsx_keywords::Static>>, ClassMethod),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -54,8 +50,7 @@ impl ASTNode for ClassMember {
 	) -> ParseResult<Self> {
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
 			let constructor = ClassConstructor::from_reader(reader, state, settings)?;
-			let extracted = state.function_extractor.new_extracted_function(constructor);
-			return Ok(ClassMember::Constructor(extracted));
+			return Ok(ClassMember::Constructor(constructor));
 		}
 
 		let is_static = reader
@@ -70,7 +65,7 @@ impl ASTNode for ClassMember {
 
 		match reader.peek().unwrap() {
 			Token(TSXToken::OpenParentheses, _) => {
-				let class_method = ClassFunction::from_reader_with_config(
+				let function = ClassFunction::from_reader_with_config(
 					reader,
 					state,
 					settings,
@@ -78,9 +73,7 @@ impl ASTNode for ClassMember {
 					get_set_generator_or_none,
 					key,
 				)?;
-				let extracted = state.function_extractor.new_extracted_function(class_method);
-				Ok(ClassMember::Function(is_static, extracted))
-				// class_method.map(|func| Self::Method(is_static, func))
+				Ok(ClassMember::Function(is_static, function))
 			}
 			Token(token, _) => {
 				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
@@ -124,7 +117,7 @@ impl ASTNode for ClassMember {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -133,33 +126,23 @@ impl ASTNode for ClassMember {
 					buf.push_str("static ");
 				}
 				key.to_string_from_buffer(buf, settings, depth);
-				if let (true, Some(type_reference)) = (settings.0.include_types, type_reference) {
+				if let (true, Some(type_reference)) = (settings.include_types, type_reference) {
 					buf.push_str(": ");
 					type_reference.to_string_from_buffer(buf, settings, depth);
 				}
 				if let Some(value) = value {
-					buf.push_str(if settings.0.pretty { " = " } else { "=" });
+					buf.push_str(if settings.pretty { " = " } else { "=" });
 					value.to_string_from_buffer(buf, settings, depth);
 				}
 			}
-			Self::Function(is_static, method) => {
+			Self::Function(is_static, function) => {
 				if is_static.is_some() {
 					buf.push_str("static ");
 				}
-				if let Some(method) =
-					GetFunction::<ClassFunctionBase>::get_function_ref(&settings.1, method.0)
-				{
-					method.to_string_from_buffer(buf, settings, depth + 1)
-				}
+				function.to_string_from_buffer(buf, settings, depth + 1)
 			}
 			Self::Constructor(constructor) => {
-				if let Some(constructor) = GetFunction::<ClassConstructorBase>::get_function_ref(
-					&settings.1,
-					constructor.0,
-				) {
-					constructor.to_string_from_buffer(buf, settings, depth + 1)
-				}
-				// constructor.to_string_from_buffer(buf, settings, depth)
+				constructor.to_string_from_buffer(buf, settings, depth + 1)
 			}
 		}
 	}
@@ -322,7 +305,7 @@ impl FunctionBased for ClassFunctionBase {
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		if let Some(_header) = &header.0 {
@@ -359,7 +342,7 @@ impl FunctionBased for ClassConstructorBase {
 		buf: &mut T,
 		_header: &Self::Header,
 		_name: &Self::Name,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		buf.push_str("constructor")

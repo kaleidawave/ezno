@@ -1,6 +1,6 @@
 use ezno_parser::{
-	expressions::ExpressionId, extractor::GetFunction, ASTNode, CursorId, Expression, ParseOutput,
-	SourceId, Span, Statement, StatementOrDeclaration,
+	expressions::ExpressionId, ASTNode, CursorId, Expression, SourceId, Span, Statement,
+	StatementOrDeclaration,
 };
 
 #[test]
@@ -9,7 +9,7 @@ fn cursor_in_expression() {
 	let position_of_return = expression.find("return").unwrap() + "return".len() + 1;
 	let cursors = vec![(position_of_return, CursorId(0, Default::default()))];
 
-	let ParseOutput(expression, mut state) = Expression::from_string(
+	let expression = Expression::from_string(
 		expression.to_owned(),
 		Default::default(),
 		SourceId::NULL,
@@ -18,9 +18,7 @@ fn cursor_in_expression() {
 	)
 	.unwrap();
 
-	let function = if let Expression::ExtractedExpressionFunction(id) = expression {
-		state.function_extractor.get_function(id.0)
-	} else {
+	let Expression::ExpressionFunction(function) = expression else {
 		panic!()
 	};
 
@@ -42,7 +40,7 @@ fn cursor_in_expression() {
 #[test]
 fn cursor_at_property_access() {
 	let expression = "x.";
-	let ParseOutput(expression, _) = Expression::from_string(
+	let expression = Expression::from_string(
 		expression.to_owned(),
 		Default::default(),
 		SourceId::NULL,

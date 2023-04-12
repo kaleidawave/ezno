@@ -49,7 +49,7 @@ impl ASTNode for IsExpression {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("is (");

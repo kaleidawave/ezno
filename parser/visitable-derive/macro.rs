@@ -29,7 +29,6 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
 			parse_quote!(settings: &crate::VisitSettings),
-			parse_quote!(functions: &mut crate::ExtractedFunctions),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -44,7 +43,6 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
 			parse_quote!(settings: &crate::VisitSettings),
-			parse_quote!(functions: &mut crate::ExtractedFunctions),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -92,7 +90,7 @@ fn generated_visit_item(
 			matches!(visit_type, VisitType::Mutable).then_some("_mut").unwrap_or_default();
 		let func_name = format_ident!("visit_{}{}", struct_name_as_snake_case, mut_postfix);
 
-		lines.push(parse_quote!( visitors.#func_name(self, data, functions, chain); ))
+		lines.push(parse_quote!( visitors.#func_name(self, data,  chain); ))
 	}
 
 	let mut field_lines = item.map_constructable(|mut constructable| {
@@ -118,10 +116,10 @@ fn generated_visit_item(
 					let reference = field.get_reference();
 					Some(match visit_type {
 						VisitType::Immutable => parse_quote! {
-							crate::Visitable::visit(#reference, visitors, data, settings, functions, #chain);
+							crate::Visitable::visit(#reference, visitors, data, settings, #chain);
 						},
 						VisitType::Mutable => parse_quote! {
-							crate::Visitable::visit_mut(#reference, visitors, data, settings, functions, #chain);
+							crate::Visitable::visit_mut(#reference, visitors, data, settings, #chain);
 						},
 					})
 				} else {

@@ -33,10 +33,10 @@ impl ASTNode for TypeAlias {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		if settings.0.include_types {
+		if settings.include_types {
 			buf.push_str("type ");
 			self.type_name.to_string_from_buffer(buf, settings, depth);
 			buf.push_str(" = ");

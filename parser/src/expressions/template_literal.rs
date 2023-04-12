@@ -50,12 +50,10 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &crate::VisitSettings,
-		// TODO could be &
-		functions: &mut crate::extractor::ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit(visitors, data, settings, functions, chain)
+			dynamic.visit(visitors, data, settings, chain)
 		}
 	}
 
@@ -64,11 +62,10 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &crate::VisitSettings,
-		functions: &mut crate::extractor::ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit_mut(visitors, data, settings, functions, chain)
+			dynamic.visit_mut(visitors, data, settings, chain)
 		}
 	}
 }
@@ -90,7 +87,7 @@ impl ASTNode for TemplateLiteral {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		if let Some(tag) = &self.tag {

@@ -106,7 +106,7 @@ impl TypeCondition {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -168,7 +168,7 @@ impl ASTNode for TypeConditionResult {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -195,12 +195,12 @@ impl ASTNode for TypeReference {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			Self::Cursor(..) => {
-				if !settings.0.expect_cursors {
+				if !settings.expect_cursors {
 					panic!()
 				}
 			}
@@ -788,7 +788,7 @@ impl ASTNode for TypeReferenceFunctionParameters {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		for parameter in self.parameters.iter() {

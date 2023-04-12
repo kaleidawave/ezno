@@ -8,10 +8,10 @@ use std::{
 };
 
 use crate::{
-	errors::parse_lexing_error, extractor::ExtractedFunctions, parse_bracketed,
-	property_key::PropertyKey, tokens::token_as_identifier, ASTNode, CursorId, Expression,
-	ImmutableVariableOrPropertyPart, MutableVariablePart, ParseError, ParseErrors, ParseResult,
-	ParseSettings, Span, TSXToken, Token, VisitSettings, Visitable, WithComment,
+	errors::parse_lexing_error, parse_bracketed, property_key::PropertyKey,
+	tokens::token_as_identifier, ASTNode, CursorId, Expression, ImmutableVariableOrPropertyPart,
+	MutableVariablePart, ParseError, ParseErrors, ParseResult, ParseSettings, Span, TSXToken,
+	Token, VisitSettings, Visitable, WithComment,
 };
 
 use derive_debug_extras::DebugExtras;
@@ -89,7 +89,7 @@ impl ASTNode for VariableIdentifier {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		buf.push_str(self.as_str());
@@ -190,7 +190,7 @@ pub trait VariableFieldTypes: PartialEq + Eq + Debug + Clone + 'static {
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	);
 
@@ -220,11 +220,11 @@ impl VariableFieldTypes for VariableFieldInSourceCode {
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		if let Some(optional_expression) = optional_expression {
-			buf.push_str(if settings.0.pretty { " = " } else { "=" });
+			buf.push_str(if settings.pretty { " = " } else { "=" });
 			optional_expression.to_string_from_buffer(buf, settings, depth)
 		}
 	}
@@ -254,7 +254,7 @@ impl VariableFieldTypes for VariableFieldInTypeReference {
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		_optional_expression: &Self::OptionalExpression,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 	}
@@ -292,7 +292,7 @@ impl<U: VariableFieldTypes> ASTNode for VariableField<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -303,22 +303,22 @@ impl<U: VariableFieldTypes> ASTNode for VariableField<U> {
 					member.to_string_from_buffer(buf, settings, depth);
 					if !at_end {
 						buf.push(',');
-						settings.0.add_gap(buf);
+						settings.add_gap(buf);
 					}
 				}
 				buf.push(']');
 			}
 			Self::Object(members, _) => {
 				buf.push('{');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, settings, depth);
 					if !at_end {
 						buf.push(',');
-						settings.0.add_gap(buf);
+						settings.add_gap(buf);
 					}
 				}
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				buf.push('}');
 			}
 		}
@@ -432,7 +432,7 @@ impl<U: VariableFieldTypes> ASTNode for ObjectDestructuringField<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -519,7 +519,7 @@ impl<U: VariableFieldTypes> ASTNode for ArrayDestructuringField<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -555,7 +555,6 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &VisitSettings,
-		functions: &mut ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		// TODO map
@@ -564,7 +563,7 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 				if let VariableIdentifier::Standard(name, variable_id, pos) = id {
 					let item =
 						ImmutableVariableOrPropertyPart::VariableFieldName(name, *variable_id, pos);
-					visitors.visit_variable(&item, data, functions, chain);
+					visitors.visit_variable(&item, data, chain);
 				}
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
@@ -572,15 +571,14 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 					visitors.visit_variable(
 						&ImmutableVariableOrPropertyPart::ArrayDestructuringMember(field),
 						data,
-						functions,
 						chain,
 					);
 					match field {
 						ArrayDestructuringField::Spread(_, _id) => todo!(),
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, expression) => {
-							variable_field.visit(visitors, data, settings, functions, chain);
-							expression.visit(visitors, data, settings, functions, chain);
+							variable_field.visit(visitors, data, settings, chain);
+							expression.visit(visitors, data, settings, chain);
 						}
 					}
 				}
@@ -590,17 +588,16 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 					visitors.visit_variable(
 						&ImmutableVariableOrPropertyPart::ObjectDestructuringMember(field),
 						data,
-						functions,
 						chain,
 					);
 					match field.get_ast() {
 						ObjectDestructuringField::Spread(_, _name) => {}
 						ObjectDestructuringField::Name(_name, default_value) => {
-							default_value.visit(visitors, data, settings, functions, chain);
+							default_value.visit(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map { variable_name, default_value, .. } => {
-							variable_name.visit(visitors, data, settings, functions, chain);
-							default_value.visit(visitors, data, settings, functions, chain);
+							variable_name.visit(visitors, data, settings, chain);
+							default_value.visit(visitors, data, settings, chain);
 						}
 					}
 				}
@@ -613,7 +610,6 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &VisitSettings,
-		functions: &mut ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		match self.get_ast_mut() {
@@ -622,7 +618,6 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 					visitors.visit_variable_mut(
 						&mut MutableVariablePart::VariableFieldName(name, *variable_id),
 						data,
-						functions,
 						chain,
 					);
 				}
@@ -632,15 +627,14 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 					visitors.visit_variable_mut(
 						&mut MutableVariablePart::ArrayDestructuringMember(field),
 						data,
-						functions,
 						chain,
 					);
 					match field {
 						ArrayDestructuringField::Spread(_, _id) => todo!(),
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, default_value) => {
-							variable_field.visit_mut(visitors, data, settings, functions, chain);
-							default_value.visit_mut(visitors, data, settings, functions, chain);
+							variable_field.visit_mut(visitors, data, settings, chain);
+							default_value.visit_mut(visitors, data, settings, chain);
 						}
 					}
 				}
@@ -650,17 +644,16 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 					visitors.visit_variable_mut(
 						&mut MutableVariablePart::ObjectDestructuringMember(field),
 						data,
-						functions,
 						chain,
 					);
 					match field.get_ast_mut() {
 						ObjectDestructuringField::Spread(_, _id) => {}
 						ObjectDestructuringField::Name(_id, default_value) => {
-							default_value.visit_mut(visitors, data, settings, functions, chain);
+							default_value.visit_mut(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map { variable_name, default_value, .. } => {
-							variable_name.visit_mut(visitors, data, settings, functions, chain);
-							default_value.visit_mut(visitors, data, settings, functions, chain);
+							variable_name.visit_mut(visitors, data, settings, chain);
+							default_value.visit_mut(visitors, data, settings, chain);
 						}
 					}
 				}

@@ -6,7 +6,6 @@ use crate::{
 	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
 	errors::parse_lexing_error,
 	extensions::decorators::decorators_from_reader,
-	extractor::ExtractedFunctions,
 	types::{
 		declares::{
 			DeclareClassDeclaration, DeclareFunctionDeclaration, DeclareVariableDeclaration,
@@ -48,7 +47,7 @@ impl ASTNode for Module {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		statements_and_declarations_to_string(&self.items, buf, settings, depth)
@@ -83,7 +82,7 @@ impl ASTNode for Module {
 impl Module {
 	pub fn to_string_with_source_map(
 		&self,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		fs: &impl source_map::FileSystem,
 	) -> (String, source_map::SourceMap) {
 		let mut buf = source_map::StringWithSourceMap::new();
@@ -91,7 +90,7 @@ impl Module {
 		buf.build(fs)
 	}
 
-	pub fn length(&self, settings: &crate::ToStringSettingsAndData) -> usize {
+	pub fn length(&self, settings: &crate::ToStringSettings) -> usize {
 		let mut buf = source_map::Counter::new();
 		self.to_string_from_buffer(&mut buf, settings, 0);
 		buf.get_count()
@@ -103,7 +102,7 @@ impl Module {
 		settings: ParseSettings,
 		cursors: Vec<(usize, EmptyCursorId)>,
 		fs: &mut impl source_map::FileSystem,
-	) -> Result<crate::ParseOutput<Self>, FromFileError> {
+	) -> Result<Self, FromFileError> {
 		let source = fs::read_to_string(&path)?;
 		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
 		Self::from_string(source, settings, source_id, None, cursors).map_err(Into::into)
@@ -115,7 +114,6 @@ impl Module {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		functions: &mut ExtractedFunctions,
 		settings: &VisitSettings,
 	) {
 		let mut chain =
@@ -123,13 +121,13 @@ impl Module {
 
 		let mut chain = Annex::new(&mut chain);
 
-		visitors.visit_block(&crate::block::BlockLike::from(self), data, functions, &chain);
+		visitors.visit_block(&crate::block::BlockLike::from(self), data, &chain);
 
 		let iter = self.items.iter();
 		if settings.reverse_statements {
-			iter.rev().for_each(|item| item.visit(visitors, data, settings, functions, &mut chain));
+			iter.rev().for_each(|item| item.visit(visitors, data, settings, &mut chain));
 		} else {
-			iter.for_each(|item| item.visit(visitors, data, settings, functions, &mut chain));
+			iter.for_each(|item| item.visit(visitors, data, settings, &mut chain));
 		}
 	}
 
@@ -137,7 +135,6 @@ impl Module {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		functions: &mut ExtractedFunctions,
 		settings: &VisitSettings,
 	) {
 		let mut chain =
@@ -149,19 +146,15 @@ impl Module {
 			visitors.visit_block_mut(
 				&mut crate::block::BlockLikeMut { block_id: self.block_id, items: &mut self.items },
 				data,
-				functions,
 				&chain,
 			);
 		}
 
 		let iter_mut = self.items.iter_mut();
 		if settings.reverse_statements {
-			iter_mut
-				.for_each(|item| item.visit_mut(visitors, data, settings, functions, &mut chain));
+			iter_mut.for_each(|item| item.visit_mut(visitors, data, settings, &mut chain));
 		} else {
-			iter_mut
-				.rev()
-				.for_each(|item| item.visit_mut(visitors, data, settings, functions, &mut chain));
+			iter_mut.rev().for_each(|item| item.visit_mut(visitors, data, settings, &mut chain));
 		}
 	}
 }
@@ -364,7 +357,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		todo!("tdms to_string_from_buffer");

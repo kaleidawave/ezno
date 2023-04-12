@@ -56,7 +56,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		self.to_string_from_buffer(buf, settings, depth)
@@ -111,7 +111,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("class ");
@@ -123,19 +123,19 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_str(" extends ");
 			extends.to_string_from_buffer(buf, settings, depth);
 		}
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
-			if settings.0.pretty {
+			if settings.pretty {
 				buf.push_new_line();
-				settings.0.add_indent(depth + 1, buf);
+				settings.add_indent(depth + 1, buf);
 			}
 			member.to_string_from_buffer(buf, settings, depth);
-			if !settings.0.pretty && !at_end {
+			if !settings.pretty && !at_end {
 				buf.push(';');
 			}
 		}
-		if settings.0.pretty && !self.members.is_empty() {
+		if settings.pretty && !self.members.is_empty() {
 			buf.push_new_line();
 		}
 		buf.push('}');
@@ -152,8 +152,6 @@ impl<T: ExpressionOrStatementPosition> Visitable for ClassDeclaration<T> {
 		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		_data: &mut TData,
 		_settings: &VisitSettings,
-		// TODO could be &
-		_functions: &mut crate::extractor::ExtractedFunctions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 	}
@@ -163,7 +161,6 @@ impl<T: ExpressionOrStatementPosition> Visitable for ClassDeclaration<T> {
 		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
 		_settings: &VisitSettings,
-		_functions: &mut crate::extractor::ExtractedFunctions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 	}

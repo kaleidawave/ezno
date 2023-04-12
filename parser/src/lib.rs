@@ -8,7 +8,6 @@ pub mod declarations;
 mod errors;
 pub mod expressions;
 mod extensions;
-pub mod extractor;
 pub mod functions;
 mod generator_helpers;
 mod modules;
@@ -30,7 +29,7 @@ pub use block::{
 pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
 pub use declarations::Declaration;
-use declarations::StatementFunctionBase;
+
 pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
 pub use extensions::{
@@ -38,8 +37,6 @@ pub use extensions::{
 	is_expression,
 	jsx::*,
 };
-use extractor::ExtractedFunctions;
-pub use extractor::UniversalFunctionId;
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader, FunctionId};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
@@ -65,7 +62,7 @@ pub use visiting::*;
 
 use tokenizer_lib::{Token, TokenReader};
 
-use std::{borrow::Cow, collections::HashMap, ops::Neg, str::FromStr};
+use std::{borrow::Cow, ops::Neg, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -112,9 +109,6 @@ impl Default for ParseSettings {
 		}
 	}
 }
-
-#[derive(Default)]
-pub struct ToStringSettingsAndData(pub ToStringSettings, pub ExtractedFunctions);
 
 /// Settings for serializing ASTNodes
 pub struct ToStringSettings {
@@ -176,16 +170,6 @@ impl ToStringSettings {
 	}
 }
 
-#[derive(Debug)]
-pub struct ParseOutput<T>(pub T, pub ParsingState);
-
-impl<T: ASTNode> ParseOutput<T> {
-	// TODO shouldn't take owned self but `ToStringSettingsAndData` needs a owned `FunctionExtractor` for some reason
-	pub fn to_string(self, settings: crate::ToStringSettings) -> String {
-		self.0.to_string(&crate::ToStringSettingsAndData(settings, self.1.function_extractor))
-	}
-}
-
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from settings.
 ///
@@ -199,7 +183,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		source_id: SourceId,
 		offset: Option<usize>,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<ParseOutput<Self>> {
+	) -> ParseResult<Self> {
 		let lex_settings = lexer::LexSettings {
 			include_comments: false,
 			lex_jsx: settings.jsx,
@@ -213,7 +197,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		if res.is_ok() {
 			queue.expect_next(TSXToken::EOS)?;
 		}
-		res.map(|ast| ParseOutput(ast, state))
+		res
 	}
 
 	/// From string, with default impl to call abstract method from_reader
@@ -224,7 +208,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		source_id: SourceId,
 		offset: Option<usize>,
 		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<ParseOutput<Self>> {
+	) -> ParseResult<Self> {
 		use std::thread;
 		use tokenizer_lib::ParallelTokenQueue;
 
@@ -240,7 +224,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 			if res.is_ok() {
 				reader.expect_next(TSXToken::EOS)?;
 			}
-			res.map(|ast| ParseOutput(ast, state))
+			res
 		});
 
 		lexer::lex_source(&source, &mut sender, &lex_settings, Some(source_id), offset, cursors)?;
@@ -261,23 +245,21 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	);
 
 	/// Returns structure as valid string
-	fn to_string(&self, settings: &crate::ToStringSettingsAndData) -> String {
+	fn to_string(&self, settings: &crate::ToStringSettings) -> String {
 		let mut buf = String::new();
 		self.to_string_from_buffer(&mut buf, settings, 0);
 		buf
 	}
 }
 
+/// TODO local identifiers
 #[derive(Default, Debug)]
-pub struct ParsingState {
-	pub function_extractor: extractor::ExtractedFunctions,
-	pub hoisted_functions: HashMap<BlockId, Vec<FunctionId<StatementFunctionBase>>>,
-}
+pub struct ParsingState {}
 
 /// A keyword
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -315,10 +297,9 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		_settings: &VisitSettings,
-		_functions: &mut ExtractedFunctions,
 		chain: &mut Annex<Chain>,
 	) {
-		visitors.visit_keyword(&(self.0.into(), &self.1), data, _functions, chain);
+		visitors.visit_keyword(&(self.0.into(), &self.1), data, chain);
 	}
 
 	fn visit_mut<TData>(
@@ -326,7 +307,6 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		_visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
 		_settings: &VisitSettings,
-		_functions: &mut ExtractedFunctions,
 		_chain: &mut Annex<Chain>,
 	) {
 		// TODO should this have a implementation?
@@ -656,7 +636,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),
 	buf: &mut T,
-	settings: &crate::ToStringSettingsAndData,
+	settings: &crate::ToStringSettings,
 	depth: u8,
 ) {
 	buf.push(brackets.0);
@@ -664,7 +644,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 		node.to_string_from_buffer(buf, settings, depth);
 		if !at_end {
 			buf.push(',');
-			settings.0.add_gap(buf);
+			settings.add_gap(buf);
 		}
 	}
 	buf.push(brackets.1);
@@ -696,7 +676,7 @@ pub(crate) mod test_utils {
 	#[macro_export]
 	macro_rules! assert_matches_ast {
 		($source:literal, $ast_pattern:pat) => {{
-			let crate::ParseOutput(node, _state) = crate::ASTNode::from_string(
+			let node = crate::ASTNode::from_string(
 				$source.to_owned(),
 				Default::default(),
 				crate::SourceId::NULL,

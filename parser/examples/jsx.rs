@@ -1,8 +1,8 @@
-use ezno_parser::{ASTNode, JSXRoot, ParseOutput, SourceId, ToStringSettingsAndData};
+use ezno_parser::{ASTNode, JSXRoot, SourceId, ToStringSettings};
 
 fn main() {
 	let source = "<MySiteLayout> <p>My page content, wrapped in a layout!</p> </MySiteLayout>";
-	let ParseOutput(result, state) = JSXRoot::from_string(
+	let result = JSXRoot::from_string(
 		source.to_owned(),
 		Default::default(),
 		SourceId::NULL,
@@ -11,8 +11,5 @@ fn main() {
 	)
 	.unwrap();
 
-	println!(
-		"{}",
-		result.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor))
-	);
+	println!("{}", result.to_string(&ToStringSettings::default()));
 }

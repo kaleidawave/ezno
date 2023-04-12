@@ -22,7 +22,7 @@ pub trait DeclarationExpression:
 	fn decl_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	);
 
@@ -49,11 +49,11 @@ impl DeclarationExpression for Option<Expression> {
 	fn decl_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		if let Some(expr) = self {
-			buf.push_str(if settings.0.pretty { " = " } else { "=" });
+			buf.push_str(if settings.pretty { " = " } else { "=" });
 			expr.to_string_from_buffer(buf, settings, depth)
 		}
 	}
@@ -80,10 +80,10 @@ impl DeclarationExpression for crate::Expression {
 	fn decl_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		buf.push_str(if settings.0.pretty { " = " } else { "=" });
+		buf.push_str(if settings.pretty { " = " } else { "=" });
 		ASTNode::to_string_from_buffer(self, buf, settings, depth)
 	}
 
@@ -139,11 +139,11 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		self.name.to_string_from_buffer(buf, settings, depth);
-		if let (true, Some(type_reference)) = (settings.0.include_types, &self.type_reference) {
+		if let (true, Some(type_reference)) = (settings.include_types, &self.type_reference) {
 			buf.push_str(": ");
 			type_reference.to_string_from_buffer(buf, settings, depth);
 		}
@@ -254,7 +254,7 @@ impl ASTNode for VariableDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -293,14 +293,14 @@ pub(crate) fn declarations_to_string<
 >(
 	declarations: &[VariableDeclarationItem<U>],
 	buf: &mut T,
-	settings: &crate::ToStringSettingsAndData,
+	settings: &crate::ToStringSettings,
 	depth: u8,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
 		declaration.to_string_from_buffer(buf, settings, depth);
 		if !at_end {
 			buf.push(',');
-			settings.0.add_gap(buf);
+			settings.add_gap(buf);
 		}
 	}
 }
