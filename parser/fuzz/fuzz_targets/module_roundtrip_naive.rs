@@ -1,6 +1,6 @@
 #![no_main]
 
-use ezno_parser::{ASTNode, Module, ParseOutput, SourceId, ToStringSettings};
+use ezno_parser::{ASTNode, Module, SourceId, ToStringSettings};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 use std::str;
