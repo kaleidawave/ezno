@@ -1,4 +1,4 @@
-use ezno_parser::{FromFileError, Module, ParseSettings, ToStringSettings, ASTNode};
+use ezno_parser::{ASTNode, FromFileError, Module, ParseSettings, ToStringSettings};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let path = std::env::args().skip(1).next().ok_or("expected argument")?;
@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	match Module::from_file(&path, ParseSettings::default(), Vec::default(), &mut fs) {
 		Ok(module) => {
 			println!("{module:#?}");
-			
+
 			let output = module.to_string(&ToStringSettings::default());
 			println!("In string form:");
 			println!("{output}");
