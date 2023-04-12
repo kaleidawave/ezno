@@ -124,7 +124,7 @@ impl ASTNode for PropertyKey {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -151,13 +151,11 @@ impl ASTNode for PropertyKey {
 // 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 // 		data: &mut TData,
 // 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-// 		functions: &mut ExtractedFunctions,
 // 		location: PropertyKeyLocation,
 // 	) {
 // 		visitors.visit_variable(
 // 			&ImmutableVariableOrPropertyPart::PropertyKey(self, location),
 // 			data,
-// 			functions,
 // 			chain,
 // 		);
 // 	}
@@ -167,13 +165,11 @@ impl ASTNode for PropertyKey {
 // 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 // 		data: &mut TData,
 // 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-// 		functions: &mut ExtractedFunctions,
 // 		location: PropertyKeyLocation,
 // 	) {
 // 		visitors.visit_variable_mut(
 // 			&mut MutableVariablePart::PropertyKey(self, location),
 // 			data,
-// 			functions,
 // 			chain,
 // 		);
 // 	}

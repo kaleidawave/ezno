@@ -13,10 +13,7 @@ pub use visitors_mut::*;
 mod ast {
 	use temporary_annex::Annex;
 
-	use crate::{
-		block::{BlockLike, BlockLikeMut},
-		extractor::ExtractedFunctions,
-	};
+	use crate::block::{BlockLike, BlockLikeMut};
 
 	use super::*;
 
@@ -67,8 +64,6 @@ mod ast {
 			visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 			data: &mut TData,
 			settings: &VisitSettings,
-			// TODO could be &
-			functions: &mut ExtractedFunctions,
 			chain: &mut Annex<Chain>,
 		);
 
@@ -77,7 +72,6 @@ mod ast {
 			visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			data: &mut TData,
 			settings: &VisitSettings,
-			functions: &mut ExtractedFunctions,
 			chain: &mut Annex<Chain>,
 		);
 	}
@@ -89,10 +83,9 @@ mod ast {
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit(&**self, v, d, s, f, c)
+			Visitable::visit(&**self, v, d, s, c)
 		}
 
 		fn visit_mut<TData>(
@@ -100,10 +93,9 @@ mod ast {
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit_mut(&mut **self, v, d, s, f, c)
+			Visitable::visit_mut(&mut **self, v, d, s, c)
 		}
 	}
 
@@ -113,10 +105,9 @@ mod ast {
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			self.iter().for_each(|item| item.visit(v, d, s, f, c));
+			self.iter().for_each(|item| item.visit(v, d, s, c));
 		}
 
 		fn visit_mut<TData>(
@@ -124,10 +115,9 @@ mod ast {
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			self.iter_mut().for_each(|item| item.visit_mut(v, d, s, f, c));
+			self.iter_mut().for_each(|item| item.visit_mut(v, d, s, c));
 		}
 	}
 
@@ -137,11 +127,10 @@ mod ast {
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
 			if let Some(item) = self {
-				item.visit(v, d, s, f, c);
+				item.visit(v, d, s, c);
 			}
 		}
 
@@ -150,11 +139,10 @@ mod ast {
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
 			if let Some(item) = self {
-				item.visit_mut(v, d, s, f, c);
+				item.visit_mut(v, d, s, c);
 			}
 		}
 	}
@@ -165,11 +153,10 @@ mod ast {
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			self.0.visit(v, d, s, f, c);
-			self.1.visit(v, d, s, f, c);
+			self.0.visit(v, d, s, c);
+			self.1.visit(v, d, s, c);
 		}
 
 		fn visit_mut<TData>(
@@ -177,37 +164,10 @@ mod ast {
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
 			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
 			c: &mut Annex<Chain>,
 		) {
-			self.0.visit_mut(v, d, s, f, c);
-			self.1.visit_mut(v, d, s, f, c);
-		}
-	}
-
-	impl<T: Visitable, U: Visitable, V: Visitable> Visitable for (T, U, V) {
-		fn visit<TData>(
-			&self,
-			v: &mut (impl VisitorReceiver<TData> + ?Sized),
-			d: &mut TData,
-			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
-			c: &mut Annex<Chain>,
-		) {
-			self.0.visit(v, d, s, f, c);
-			self.1.visit(v, d, s, f, c);
-		}
-
-		fn visit_mut<TData>(
-			&mut self,
-			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
-			d: &mut TData,
-			s: &VisitSettings,
-			f: &mut ExtractedFunctions,
-			c: &mut Annex<Chain>,
-		) {
-			self.0.visit_mut(v, d, s, f, c);
-			self.1.visit_mut(v, d, s, f, c);
+			self.0.visit_mut(v, d, s, c);
+			self.1.visit_mut(v, d, s, c);
 		}
 	}
 
@@ -220,7 +180,6 @@ mod ast {
                         _visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
                         _data: &mut TData,
                         _settings: &VisitSettings,
-						_functions: &mut ExtractedFunctions,
                         _chain: &mut Annex<Chain>,
                     ) {}
 
@@ -229,7 +188,6 @@ mod ast {
                         _visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
                         _data: &mut TData,
                         _settings: &VisitSettings,
-						_functions: &mut ExtractedFunctions,
                         _chain: &mut Annex<Chain>,
                     ) {}
                 }
@@ -540,76 +498,34 @@ mod structures {
 
 mod visitors {
 	use super::*;
-	use crate::{block::BlockLike, extractor::ExtractedFunctions, TSXKeyword};
+	use crate::{block::BlockLike, TSXKeyword};
 	use source_map::Span;
 
 	/// A visitor over something which is hooked/is SelfVisitable with some Data
 	pub trait Visitor<Item: SelfVisitable, Data> {
-		fn visit(
-			&mut self,
-			item: &Item,
-			data: &mut Data,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		);
+		fn visit(&mut self, item: &Item, data: &mut Data, chain: &Chain);
 	}
 
 	/// These are a receiver traits of the visitor
 	#[allow(unused_variables)]
 	pub trait VisitorReceiver<T> {
-		fn visit_expression(
-			&mut self,
-			expression: &Expression,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {}
 
-		fn visit_statement(
-			&mut self,
-			statement: &Statement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_statement(&mut self, statement: &Statement, data: &mut T, chain: &Chain) {}
 
-		fn visit_jsx_element(
-			&mut self,
-			element: &JSXElement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_jsx_element(&mut self, element: &JSXElement, data: &mut T, chain: &Chain) {}
 
 		fn visit_variable(
 			&mut self,
 			variable: &ImmutableVariableOrPropertyPart,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
 		}
 
-		fn visit_block(
-			&mut self,
-			block: &BlockLike,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {}
 
-		fn visit_keyword(
-			&mut self,
-			keyword: &(TSXKeyword, &Span),
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_keyword(&mut self, keyword: &(TSXKeyword, &Span), data: &mut T, chain: &Chain) {}
 	}
 
 	// impl<T, U: VisitorReceiver<T>> VisitorReceiver<T> for [U] {
@@ -617,132 +533,89 @@ mod visitors {
 	// 		&mut self,
 	// 		expression: &Expression,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
 	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_expression(expression, data, functions, chain));
+	// 			.for_each(|visitor| visitor.visit_expression(expression, data, chain));
 	// 	}
 
 	// 	fn visit_statement(
 	// 		&mut self,
 	// 		statement: &Statement,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
 	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_statement(statement, data, functions, chain));
+	// 			.for_each(|visitor| visitor.visit_statement(statement, data, chain));
 	// 	}
 
 	// 	fn visit_jsx_element(
 	// 		&mut self,
 	// 		element: &JSXElement,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
 	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_jsx_element(element, data, functions, chain));
+	// 			.for_each(|visitor| visitor.visit_jsx_element(element, data, chain));
 	// 	}
 
 	// 	fn visit_variable(
 	// 		&mut self,
 	// 		variable: &ImmutableVariableOrPropertyPart,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
 	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_variable(variable, data, functions, chain));
+	// 			.for_each(|visitor| visitor.visit_variable(variable, data,  chain));
 	// 	}
 
 	// 	fn visit_block(
 	// 		&mut self,
 	// 		block: &BlockLike,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
-	// 		self.iter_mut().for_each(|visitor| visitor.visit_block(block, data, functions, chain));
+	// 		self.iter_mut().for_each(|visitor| visitor.visit_block(block, data,  chain));
 	// 	}
 
 	// 	fn visit_keyword(
 	// 		&mut self,
 	// 		_keyword: &(TSXKeyword, &Span),
 	// 		_data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		_chain: &Chain,
 	// 	) {
 	// 	}
 	// }
 
 	impl<T> VisitorReceiver<T> for Visitors<T> {
-		fn visit_expression(
-			&mut self,
-			expression: &Expression,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-			self.expression_visitors
-				.iter_mut()
-				.for_each(|vis| vis.visit(expression, data, functions, chain));
+		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {
+			self.expression_visitors.iter_mut().for_each(|vis| vis.visit(expression, data, chain));
 		}
 
-		fn visit_statement(
-			&mut self,
-			statement: &Statement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-			self.statement_visitors
-				.iter_mut()
-				.for_each(|vis| vis.visit(statement, data, functions, chain));
+		fn visit_statement(&mut self, statement: &Statement, data: &mut T, chain: &Chain) {
+			self.statement_visitors.iter_mut().for_each(|vis| vis.visit(statement, data, chain));
 		}
 
-		fn visit_jsx_element(
-			&mut self,
-			jsx_element: &JSXElement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
+		fn visit_jsx_element(&mut self, jsx_element: &JSXElement, data: &mut T, chain: &Chain) {
 			self.jsx_element_visitors
 				.iter_mut()
-				.for_each(|vis| vis.visit(jsx_element, data, functions, chain));
+				.for_each(|vis| vis.visit(jsx_element, data, chain));
 		}
 
 		fn visit_variable(
 			&mut self,
 			variable: &ImmutableVariableOrPropertyPart,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
-			self.variable_visitors
-				.iter_mut()
-				.for_each(|vis| vis.visit(variable, data, functions, chain))
+			self.variable_visitors.iter_mut().for_each(|vis| vis.visit(variable, data, chain))
 		}
 
-		fn visit_block(
-			&mut self,
-			block: &BlockLike,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, functions, chain))
+		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {
+			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain))
 		}
 
-		fn visit_keyword(
-			&mut self,
-			_keyword: &(TSXKeyword, &Span),
-			_data: &mut T,
-			_functions: &mut ExtractedFunctions,
-			_chain: &Chain,
-		) {
+		fn visit_keyword(&mut self, _keyword: &(TSXKeyword, &Span), _data: &mut T, _chain: &Chain) {
 		}
 	}
 
@@ -783,7 +656,6 @@ mod visitors {
 	// 		&mut self,
 	// 		variable: &ImmutableVariableOrPropertyPart<'a>,
 	// 		data: &mut T,
-	// 		_extracted_functions: &mut ExtractedFunctions,
 	// 		_chain: &Chain,
 	// 	) {
 	// 		(self)(variable, data)
@@ -792,19 +664,13 @@ mod visitors {
 }
 
 mod visitors_mut {
-	use crate::{block::BlockLikeMut, extractor::ExtractedFunctions};
+	use crate::block::BlockLikeMut;
 
 	use super::*;
 
 	/// A visitor over something which is hooked/is SelfVisitable with some Data
 	pub trait VisitorMut<Item: SelfVisitableMut, Data> {
-		fn visit_mut(
-			&mut self,
-			item: &mut Item,
-			data: &mut Data,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		);
+		fn visit_mut(&mut self, item: &mut Item, data: &mut Data, chain: &Chain);
 	}
 
 	/// These are a receiver traits of the visitor
@@ -814,46 +680,24 @@ mod visitors_mut {
 			&mut self,
 			expression: &mut Expression,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
 		}
 
-		fn visit_statement_mut(
-			&mut self,
-			statement: &mut Statement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_statement_mut(&mut self, statement: &mut Statement, data: &mut T, chain: &Chain) {}
 
-		fn visit_jsx_element_mut(
-			&mut self,
-			element: &mut JSXElement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
+		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
 		}
 
 		fn visit_variable_mut(
 			&mut self,
 			variable: &mut MutableVariablePart,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
 		}
 
-		fn visit_block_mut(
-			&mut self,
-			block: &mut BlockLikeMut,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-		}
+		fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {}
 	}
 
 	#[derive(Default)]
@@ -870,7 +714,6 @@ mod visitors_mut {
 	// 		&mut self,
 	// 		expression: &mut Expression,
 	// 		data: &mut T,
-	// 		functions: &mut ExtractedFunctions,
 	// 		chain: &Chain,
 	// 	) {
 	// 		self.iter_mut().for_each(|vis| vis.visit_expression_mut(expression, data, chain));
@@ -903,60 +746,38 @@ mod visitors_mut {
 			&mut self,
 			expression: &mut Expression,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
 			self.expression_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(expression, data, functions, chain));
+				.for_each(|vis| vis.visit_mut(expression, data, chain));
 		}
 
-		fn visit_statement_mut(
-			&mut self,
-			statement: &mut Statement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
+		fn visit_statement_mut(&mut self, statement: &mut Statement, data: &mut T, chain: &Chain) {
 			self.statement_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(statement, data, functions, chain));
+				.for_each(|vis| vis.visit_mut(statement, data, chain));
 		}
 
-		fn visit_jsx_element_mut(
-			&mut self,
-			element: &mut JSXElement,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
+		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
 			self.jsx_element_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(element, data, functions, chain));
+				.for_each(|vis| vis.visit_mut(element, data, chain));
 		}
 
 		fn visit_variable_mut(
 			&mut self,
 			variable: &mut MutableVariablePart,
 			data: &mut T,
-			functions: &mut ExtractedFunctions,
 			chain: &Chain,
 		) {
 			self.variable_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(variable, data, functions, chain));
+				.for_each(|vis| vis.visit_mut(variable, data, chain));
 		}
 
-		fn visit_block_mut(
-			&mut self,
-			block: &mut BlockLikeMut,
-			data: &mut T,
-			functions: &mut ExtractedFunctions,
-			chain: &Chain,
-		) {
-			self.block_visitors_mut
-				.iter_mut()
-				.for_each(|vis| vis.visit_mut(block, data, functions, chain));
+		fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {
+			self.block_visitors_mut.iter_mut().for_each(|vis| vis.visit_mut(block, data, chain));
 		}
 	}
 

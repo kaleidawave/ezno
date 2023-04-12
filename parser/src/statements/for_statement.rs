@@ -37,13 +37,13 @@ impl ASTNode for ForLoopStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("for");
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		self.condition.to_string_from_buffer(buf, settings, depth);
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
 	}
 }
@@ -198,7 +198,7 @@ impl ASTNode for ForLoopCondition {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push('(');
@@ -234,12 +234,12 @@ impl ASTNode for ForLoopCondition {
 				}
 				buf.push(';');
 				if let Some(condition) = condition {
-					settings.0.add_gap(buf);
+					settings.add_gap(buf);
 					condition.to_string_from_buffer(buf, settings, depth);
 				}
 				buf.push(';');
 				if let Some(afterthought) = afterthought {
-					settings.0.add_gap(buf);
+					settings.add_gap(buf);
 					afterthought.to_string_from_buffer(buf, settings, depth);
 				}
 			}

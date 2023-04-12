@@ -139,13 +139,13 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn to_string_from_buffer<U: source_map::ToString>(
 		&self,
 		buf: &mut U,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			Self::None(ast) => ast.to_string_from_buffer(buf, settings, depth),
 			Self::PrefixComment(comment, ast) => {
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
@@ -154,7 +154,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			}
 			Self::PostfixComment(ast, comment) => {
 				ast.to_string_from_buffer(buf, settings, depth);
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");

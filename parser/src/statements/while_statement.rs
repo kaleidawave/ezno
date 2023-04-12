@@ -34,15 +34,15 @@ impl ASTNode for WhileStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("while");
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, settings, depth);
 		buf.push(')');
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
 	}
 }
@@ -79,15 +79,15 @@ impl ASTNode for DoWhileStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("do");
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push_str("while");
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, settings, depth);
 		buf.push(')');

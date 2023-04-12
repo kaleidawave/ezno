@@ -5,12 +5,9 @@ use visitable_derive::Visitable;
 
 use super::ExpressionId;
 use crate::{
-	errors::parse_lexing_error,
-	extractor::{ExtractedFunction, GetFunction},
-	functions::FunctionBased,
-	property_key::PropertyId,
-	ASTNode, Block, Expression, FunctionBase, GetSetGeneratorOrNone, ParseError, ParseErrors,
-	ParseResult, ParseSettings, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
+	errors::parse_lexing_error, functions::FunctionBased, property_key::PropertyId, ASTNode, Block,
+	Expression, FunctionBase, GetSetGeneratorOrNone, ParseError, ParseErrors, ParseResult,
+	ParseSettings, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
@@ -28,8 +25,7 @@ pub enum ObjectLiteralMember {
 	SpreadExpression(Expression, Span),
 	Shorthand(String, Span, ExpressionId, PropertyId),
 	Property(WithComment<PropertyKey>, Expression, Span),
-	// Method(ObjectLiteralMethod),
-	Method(ExtractedFunction<ObjectLiteralMethodBase>),
+	Method(ObjectLiteralMethod),
 }
 
 impl crate::Visitable for ObjectLiteralMember {
@@ -38,17 +34,13 @@ impl crate::Visitable for ObjectLiteralMember {
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &crate::VisitSettings,
-		// TODO could be &
-		functions: &mut crate::extractor::ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
 			ObjectLiteralMember::SpreadExpression(_, _) => {}
 			ObjectLiteralMember::Shorthand(_, _, _, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
-			ObjectLiteralMember::Method(method) => {
-				method.visit(visitors, data, settings, functions, chain)
-			}
+			ObjectLiteralMember::Method(method) => method.visit(visitors, data, settings, chain),
 		}
 	}
 
@@ -57,7 +49,6 @@ impl crate::Visitable for ObjectLiteralMember {
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &crate::VisitSettings,
-		functions: &mut crate::extractor::ExtractedFunctions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
@@ -65,7 +56,7 @@ impl crate::Visitable for ObjectLiteralMember {
 			ObjectLiteralMember::Shorthand(_, _, _, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
 			ObjectLiteralMember::Method(method) => {
-				method.visit_mut(visitors, data, settings, functions, chain)
+				method.visit_mut(visitors, data, settings, chain)
 			}
 		}
 	}
@@ -99,7 +90,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		header.to_string_from_buffer(buf);
@@ -130,19 +121,19 @@ impl ASTNode for ObjectLiteral {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push('{');
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		for (at_end, member) in self.members.iter().endiate() {
 			member.to_string_from_buffer(buf, settings, depth + 1);
 			if !at_end {
 				buf.push(',');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 			}
 		}
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('}');
 	}
 }
@@ -210,17 +201,15 @@ impl ASTNode for ObjectLiteralMember {
 		match token {
 			// Functions, (OpenChevron is for generic parameters)
 			TSXToken::OpenParentheses | TSXToken::OpenChevron => {
-				let object_method: FunctionBase<ObjectLiteralMethodBase> =
-					FunctionBase::from_reader_with_header_and_name(
-						reader,
-						state,
-						settings,
-						get_set_generator_or_none,
-						key,
-					)?;
+				let method: ObjectLiteralMethod = FunctionBase::from_reader_with_header_and_name(
+					reader,
+					state,
+					settings,
+					get_set_generator_or_none,
+					key,
+				)?;
 
-				let extracted = state.function_extractor.new_extracted_function(object_method);
-				Ok(Self::Method(extracted))
+				Ok(Self::Method(method))
 			}
 			_ => {
 				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
@@ -253,29 +242,22 @@ impl ASTNode for ObjectLiteralMember {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			Self::Property(name, expression, _) => {
 				name.to_string_from_buffer(buf, settings, depth);
 				buf.push(':');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				expression.to_string_from_buffer(buf, settings, depth);
 			}
 			Self::Shorthand(name, ..) => {
 				buf.push_str(name.as_str());
 			}
 			Self::Method(func) => {
-				if let Some(func) =
-					GetFunction::<ObjectLiteralMethodBase>::get_function_ref(&settings.1, func.0)
-				{
-					func.to_string_from_buffer(buf, settings, depth);
-				}
+				func.to_string_from_buffer(buf, settings, depth);
 			}
-			// Self::Method(ObjectLiteralMethod(func)) => {
-			// 	func.to_string_from_buffer(buf, settings, depth);
-			// }
 			Self::SpreadExpression(spread_expr, _) => {
 				buf.push_str("...");
 				spread_expr.to_string_from_buffer(buf, settings, depth);

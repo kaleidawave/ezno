@@ -4,7 +4,7 @@ mod common {
 	include!(concat!(env!("OUT_DIR"), "/common.rs")); // from build.rs
 }
 
-use ezno_parser::{ASTNode, Module, ParseOutput, SourceId, ToStringSettingsAndData};
+use ezno_parser::{ASTNode, Module, SourceId, ToStringSettings};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 
@@ -13,7 +13,7 @@ use pretty_assertions::assert_eq;
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
-	let Ok(ParseOutput(module, state)) = Module::from_string(
+	let Ok(module) = Module::from_string(
 		input.to_owned(),
 		Default::default(),
 		SourceId::NULL,
@@ -24,9 +24,9 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	};
 
 	let output1 =
-		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
+		module.to_string(&ToStringSettings::default());
 
-	let Ok(ParseOutput(module, state)) = Module::from_string(
+	let Ok(module) = Module::from_string(
 		output1.to_owned(),
 		Default::default(),
 		SourceId::NULL,
@@ -37,7 +37,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	};
 
 	let output2 =
-		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
+		module.to_string(&ToStringSettings::default());
 
 	assert_eq!(output1, output2);
 

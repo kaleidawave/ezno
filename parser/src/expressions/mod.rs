@@ -2,7 +2,6 @@ use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
 	extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
-	extractor::{ExtractedFunction, ExtractedFunctions, GetFunction},
 	functions::GeneralFunctionBase,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
@@ -16,7 +15,6 @@ use crate::{
 };
 
 use self::{
-	arrow_function::ArrowFunctionBase,
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
 	object_literal::ObjectLiteral,
 };
@@ -197,8 +195,6 @@ pub enum Expression {
 	// Functions
 	ArrowFunction(ArrowFunction),
 	ExpressionFunction(ExpressionFunction),
-	ExtractedArrowFunction(ExtractedFunction<ArrowFunctionBase>),
-	ExtractedExpressionFunction(ExtractedFunction<ExpressionFunctionBase>),
 	/// Yes classes can exist in expr position :?
 	ClassExpression(ClassDeclaration<ExpressionPosition>, ExpressionId),
 	Null(Span, ExpressionId),
@@ -244,7 +240,7 @@ impl ASTNode for Expression {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		self.to_string_using_precedence(buf, settings, depth, COMMA_PRECEDENCE)
@@ -295,8 +291,6 @@ impl ASTNode for Expression {
 			Self::IsExpression(is) => is.get_position(),
 			Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
 			Self::ExpressionFunction(function) => function.get_position(),
-			Self::ExtractedArrowFunction(ext) => ext.get_position(),
-			Self::ExtractedExpressionFunction(ext) => ext.get_position(),
 		}
 	}
 }
@@ -509,8 +503,7 @@ impl Expression {
 							None,
 							open_paren_span,
 						)?;
-						let id = state.function_extractor.new_extracted_function(arrow_function);
-						Expression::ExtractedArrowFunction(id)
+						Expression::ArrowFunction(arrow_function)
 					} else {
 						let parenthesize_expression =
 							MultipleExpression::from_reader(reader, state, settings)?;
@@ -620,12 +613,10 @@ impl Expression {
 						token_as_identifier(reader.next().unwrap(), "function name")?;
 					Some(crate::VariableIdentifier::Standard(token, crate::VariableId::new(), span))
 				};
-				let expression_function: ExpressionFunction =
-					FunctionBase::from_reader_with_header_and_name(
-						reader, state, settings, header, name,
-					)?;
-				let id = state.function_extractor.new_extracted_function(expression_function);
-				Expression::ExtractedExpressionFunction(id)
+				let function: ExpressionFunction = FunctionBase::from_reader_with_header_and_name(
+					reader, state, settings, header, name,
+				)?;
+				Expression::ExpressionFunction(function)
 			}
 			// TODO this should be extracted to a function that allows it to also work for leading `generator`
 			Token(TSXToken::Keyword(TSXKeyword::Async), async_span) => {
@@ -672,26 +663,22 @@ impl Expression {
 								span,
 							))
 						};
-						let expression_function: ExpressionFunction =
+						let function: ExpressionFunction =
 							FunctionBase::from_reader_with_header_and_name(
 								reader, state, settings, header, name,
 							)?;
-						let id =
-							state.function_extractor.new_extracted_function(expression_function);
-
-						Expression::ExtractedExpressionFunction(id)
+						Expression::ExpressionFunction(function)
 					}
 					Token(TSXToken::OpenParentheses, start_pos) => {
 						assert!(generator_keyword.is_none(), "TODO");
-						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
+						let function = ArrowFunction::from_reader_sub_open_paren(
 							reader,
 							state,
 							settings,
 							async_keyword,
 							start_pos,
 						)?;
-						let id = state.function_extractor.new_extracted_function(arrow_function);
-						Expression::ExtractedArrowFunction(id)
+						Expression::ArrowFunction(function)
 					}
 					Token(token, position) => {
 						return Err(ParseError::new(
@@ -743,14 +730,13 @@ impl Expression {
 				} else {
 					let (name, position) = token_as_identifier(token, "variable reference")?;
 					if let Some(Token(TSXToken::Arrow, _)) = reader.peek() {
-						let arrow_function = ArrowFunction::from_reader_with_first_parameter(
+						let function = ArrowFunction::from_reader_with_first_parameter(
 							reader,
 							state,
 							settings,
 							(name, position),
 						)?;
-						let id = state.function_extractor.new_extracted_function(arrow_function);
-						Expression::ExtractedArrowFunction(id)
+						Expression::ArrowFunction(function)
 					} else {
 						Expression::VariableReference(name, position, ExpressionId::new())
 					}
@@ -1062,8 +1048,6 @@ impl Expression {
             | Self::JSXRoot(..)
             | Self::ArrowFunction(..)
             | Self::ExpressionFunction(..)
-            | Self::ExtractedArrowFunction(..)
-            | Self::ExtractedExpressionFunction(..)
             | Self::Null(..)
             | Self::ObjectLiteral(..)
             | Self::VariableReference(..)
@@ -1106,13 +1090,13 @@ impl Expression {
 	pub(crate) fn to_string_using_precedence<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 		_parent_precedence: u8,
 	) {
 		match self {
 			Self::Cursor { .. } => {
-				if !settings.0.expect_cursors {
+				if !settings.expect_cursors {
 					panic!();
 				}
 			}
@@ -1136,9 +1120,9 @@ impl Expression {
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
 				let op_precedence = operator.precedence();
 				lhs.to_string_using_precedence(buf, settings, depth, op_precedence);
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				buf.push_str(operator.to_str());
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				rhs.to_string_using_precedence(buf, settings, depth, op_precedence);
 			}
 			Self::SpecialOperators(special, _, _) => match special {
@@ -1147,7 +1131,7 @@ impl Expression {
 				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, settings, depth);
 					// TODO is
-					if settings.0.include_types {
+					if settings.include_types {
 						buf.push_str(match special {
 							SpecialOperators::AsExpression { .. } => " as ",
 							SpecialOperators::IsExpression { .. } => " is ",
@@ -1163,14 +1147,14 @@ impl Expression {
 			}
 			Self::Assignment { lhs, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, settings, depth);
-				buf.push_str(if settings.0.pretty { " = " } else { "=" });
+				buf.push_str(if settings.pretty { " = " } else { "=" });
 				rhs.to_string_from_buffer(buf, settings, depth)
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, settings, depth);
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				buf.push_str(operator.to_str());
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				rhs.to_string_from_buffer(buf, settings, depth)
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
@@ -1203,7 +1187,7 @@ impl Expression {
 				buf.push('.');
 				if let PropertyReference::Standard(property) = property {
 					buf.push_str(property);
-				} else if !settings.0.expect_cursors {
+				} else if !settings.expect_cursors {
 					panic!("found cursor");
 				}
 			}
@@ -1219,12 +1203,13 @@ impl Expression {
 				buf.push(']');
 			}
 			Self::FunctionCall { function, type_arguments, arguments, .. } => {
-				if let Some(ExpressionOrBlock::Expression(expression)) = self.is_iife(&settings.1) {
+				// TODO is this okay?
+				if let Some(ExpressionOrBlock::Expression(expression)) = self.is_iife() {
 					expression.to_string_from_buffer(buf, settings, depth);
 					return;
 				}
 				function.to_string_from_buffer(buf, settings, depth);
-				if let (true, Some(type_arguments)) = (settings.0.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) = (settings.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, settings, depth);
 				}
 				to_string_bracketed(arguments, ('(', ')'), buf, settings, depth);
@@ -1232,7 +1217,7 @@ impl Expression {
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
 				constructor.to_string_from_buffer(buf, settings, depth);
-				if let (true, Some(type_arguments)) = (settings.0.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) = (settings.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, settings, depth);
 				}
 				if let Some(arguments) = arguments {
@@ -1255,29 +1240,9 @@ impl Expression {
 			Self::ExpressionFunction(function) => {
 				function.to_string_from_buffer(buf, settings, depth);
 			}
-			Self::ExtractedArrowFunction(function) => {
-				if let Some(func) =
-					GetFunction::<ArrowFunctionBase>::get_function_ref(&settings.1, function.0)
-				{
-					func.to_string_from_buffer(buf, settings, depth);
-				} else {
-					// TODO not the same, but oh well
-					buf.push_str("null");
-				}
-			}
-			Self::ExtractedExpressionFunction(function) => {
-				if let Some(func) =
-					GetFunction::<ExpressionFunctionBase>::get_function_ref(&settings.1, function.0)
-				{
-					func.to_string_from_buffer(buf, settings, depth);
-				} else {
-					// TODO not the same, but oh well
-					buf.push_str("null");
-				}
-			}
 			Self::ClassExpression(class, _) => class.to_string_from_buffer(buf, settings, depth),
 			Self::PrefixComment(comment, expression, _, _) => {
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
@@ -1286,14 +1251,14 @@ impl Expression {
 			}
 			Self::PostfixComment(expression, comment, _, _) => {
 				expression.to_string_from_buffer(buf, settings, depth);
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");
 				}
 			}
 			Self::Comment(comment, _) => {
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");
@@ -1304,9 +1269,9 @@ impl Expression {
 			}
 			Self::TernaryExpression { condition, truthy_result, falsy_result, .. } => {
 				condition.to_string_using_precedence(buf, settings, depth, TERNARY_PRECEDENCE);
-				buf.push_str(if settings.0.pretty { " ? " } else { "?" });
+				buf.push_str(if settings.pretty { " ? " } else { "?" });
 				truthy_result.to_string_using_precedence(buf, settings, depth, TERNARY_PRECEDENCE);
-				buf.push_str(if settings.0.pretty { " : " } else { ":" });
+				buf.push_str(if settings.pretty { " : " } else { ":" });
 				falsy_result.to_string_using_precedence(buf, settings, depth, TERNARY_PRECEDENCE);
 			}
 			Self::Null(..) => buf.push_str("null"),
@@ -1341,9 +1306,9 @@ pub struct MultipleExpression {
 }
 
 impl MultipleExpression {
-	pub fn is_iife<'a>(&self, functions: &'a ExtractedFunctions) -> Option<&'a ExpressionOrBlock> {
+	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
 		if self.lhs.is_none() {
-			self.rhs.is_iife(functions)
+			self.rhs.is_iife()
 		} else {
 			None
 		}
@@ -1377,7 +1342,7 @@ impl ASTNode for MultipleExpression {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		if let Some(ref lhs) = self.lhs {
@@ -1509,7 +1474,7 @@ impl ASTNode for SpreadExpression {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -1591,8 +1556,6 @@ impl Expression {
 			Self::IsExpression(is_expr) => Some(is_expr.expression_id),
 			Self::Comment(..) => None,
 			Self::ExpressionFunction(..) | Self::ArrowFunction(..) => None,
-			Self::ExtractedArrowFunction(..) => None,
-			Self::ExtractedExpressionFunction(..) => None,
 		}
 	}
 
@@ -1630,17 +1593,15 @@ impl Expression {
 		}
 	}
 
-	pub fn is_iife<'a>(&self, functions: &'a ExtractedFunctions) -> Option<&'a ExpressionOrBlock> {
+	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
 		if let Expression::FunctionCall { arguments, function, .. } = self {
 			if let (true, Expression::ParenthesizedExpression(expression, _, _)) =
 				(arguments.is_empty(), &**function)
 			{
-				if let MultipleExpression {
-					lhs: None,
-					rhs: Expression::ExtractedArrowFunction(arrow_function),
-				} = &**expression
+				if let MultipleExpression { lhs: None, rhs: Expression::ArrowFunction(function) } =
+					&**expression
 				{
-					return Some(&functions.get_function_ref(arrow_function.0).unwrap().body);
+					return Some(&function.body);
 				}
 			}
 		}
@@ -1693,8 +1654,7 @@ pub enum SuperReference {
 mod tests {
 	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
 	use crate::{
-		assert_matches_ast, operators::BinaryOperator, span, NumberStructure, ParseOutput, Quoted,
-		SourceId,
+		assert_matches_ast, operators::BinaryOperator, span, NumberStructure, Quoted, SourceId,
 	};
 
 	#[test]
@@ -1730,7 +1690,7 @@ mod tests {
 
 	#[test]
 	fn is_iife() {
-		let ParseOutput(expr, state) = Expression::from_string(
+		let expr = Expression::from_string(
 			"(() => 2)()".to_owned(),
 			Default::default(),
 			SourceId::NULL,
@@ -1738,7 +1698,7 @@ mod tests {
 			Default::default(),
 		)
 		.unwrap();
-		assert!(expr.is_iife(&state.function_extractor).is_some())
+		assert!(expr.is_iife().is_some())
 	}
 
 	#[test]

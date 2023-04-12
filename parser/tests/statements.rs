@@ -1,4 +1,4 @@
-use ezno_parser::{ASTNode, Module, ParseOutput, SourceId, ToStringSettingsAndData};
+use ezno_parser::{ASTNode, Module, SourceId};
 
 #[test]
 fn statements() {
@@ -24,12 +24,11 @@ for (let i = 0; i < 4; i++) {
 }"#
 	.trim_start();
 
-	let ParseOutput(module, state) =
+	let module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None, Vec::new())
 			.unwrap();
 
-	let output =
-		module.to_string(&ToStringSettingsAndData(Default::default(), state.function_extractor));
+	let output = module.to_string(&Default::default());
 
 	assert_eq!(output, input);
 }

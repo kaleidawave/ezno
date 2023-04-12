@@ -3,11 +3,8 @@ use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error,
-	extensions::decorators,
-	extractor::{ExtractedFunction, GetFunction},
-	Decorated, Keyword, ParseError, ParseErrors, StatementPosition, TSXKeyword, TSXToken,
-	TypeDefinitionModuleDeclaration,
+	errors::parse_lexing_error, extensions::decorators, Decorated, Keyword, ParseError,
+	ParseErrors, StatementPosition, TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
 };
 
 pub use self::{
@@ -38,7 +35,6 @@ pub use import::{ImportDeclaration, ImportPart, ImportStatementId};
 pub enum Declaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),
-	ExtractedFunction(ExtractedFunction<StatementFunctionBase>),
 	Class(Decorated<ClassDeclaration<StatementPosition>>),
 	Enum(Decorated<EnumDeclaration>),
 	Interface(Decorated<InterfaceDeclaration>),
@@ -80,7 +76,6 @@ impl crate::ASTNode for Declaration {
 		match self {
 			Declaration::Variable(item) => item.get_position(),
 			Declaration::Function(item) => item.get_position(),
-			Declaration::ExtractedFunction(item) => item.get_position(),
 			Declaration::Class(item) => item.get_position(),
 			Declaration::Enum(item) => item.get_position(),
 			Declaration::Interface(item) => item.get_position(),
@@ -123,20 +118,12 @@ impl crate::ASTNode for Declaration {
 					.map(|on| Declaration::Enum(Decorated { decorators, on }))
 			}
 			TSXToken::Keyword(TSXKeyword::Generator) if settings.generator_keyword => {
-				let func = StatementFunction::from_reader(reader, state, settings)?;
-				if !decorators.is_empty() {
-					todo!();
-				}
-				let extracted = state.function_extractor.new_extracted_function(func);
-				Ok(Declaration::ExtractedFunction(extracted))
+				let function = StatementFunction::from_reader(reader, state, settings)?;
+				Ok(Declaration::Function(Decorated { decorators, on: function }))
 			}
 			TSXToken::Keyword(TSXKeyword::Function | TSXKeyword::Async) => {
-				let func = StatementFunction::from_reader(reader, state, settings)?;
-				if !decorators.is_empty() {
-					todo!();
-				}
-				let extracted = state.function_extractor.new_extracted_function(func);
-				Ok(Declaration::ExtractedFunction(extracted))
+				let function = StatementFunction::from_reader(reader, state, settings)?;
+				Ok(Declaration::Function(Decorated { decorators, on: function }))
 			}
 
 			TSXToken::Keyword(TSXKeyword::Class) => {
@@ -221,18 +208,11 @@ impl crate::ASTNode for Declaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			Declaration::Function(f) => f.to_string_from_buffer(buf, settings, depth),
-			Declaration::ExtractedFunction(func) => {
-				if let Some(func) =
-					GetFunction::<StatementFunctionBase>::get_function_ref(&settings.1, func.0)
-				{
-					func.to_string_from_buffer(buf, settings, depth)
-				}
-			}
 			Declaration::Variable(var) => var.to_string_from_buffer(buf, settings, depth),
 			Declaration::Class(cls) => cls.to_string_from_buffer(buf, settings, depth),
 			Declaration::Import(is) => is.to_string_from_buffer(buf, settings, depth),

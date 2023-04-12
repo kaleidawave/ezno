@@ -81,7 +81,7 @@ impl ASTNode for FunctionParameters {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		let FunctionParameters { parameters, optional_parameters, rest_parameter, .. } = self;
@@ -89,13 +89,13 @@ impl ASTNode for FunctionParameters {
 		for (at_end, Parameter { name, type_reference, .. }) in parameters.iter().endiate() {
 			// decorators_to_string_from_buffer(decorators, buf, settings, depth);
 			name.to_string_from_buffer(buf, settings, depth);
-			if let (true, Some(ref type_reference)) = (settings.0.include_types, type_reference) {
+			if let (true, Some(ref type_reference)) = (settings.include_types, type_reference) {
 				buf.push_str(": ");
 				type_reference.to_string_from_buffer(buf, settings, depth);
 			}
 			if !at_end || !optional_parameters.is_empty() || rest_parameter.is_some() {
 				buf.push(',');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 			}
 		}
 		for (at_end, parameter) in optional_parameters.iter().endiate() {
@@ -103,8 +103,7 @@ impl ASTNode for FunctionParameters {
 				OptionalOrWithDefaultValueParameter::Optional { name, type_reference, .. } => {
 					buf.push_str(name.as_str());
 					buf.push('?');
-					if let (true, Some(type_reference)) = (settings.0.include_types, type_reference)
-					{
+					if let (true, Some(type_reference)) = (settings.include_types, type_reference) {
 						buf.push_str(": ");
 						type_reference.to_string_from_buffer(buf, settings, depth);
 					}
@@ -116,18 +115,17 @@ impl ASTNode for FunctionParameters {
 					..
 				} => {
 					name.to_string_from_buffer(buf, settings, depth);
-					if let (true, Some(type_reference)) = (settings.0.include_types, type_reference)
-					{
+					if let (true, Some(type_reference)) = (settings.include_types, type_reference) {
 						buf.push_str(": ");
 						type_reference.to_string_from_buffer(buf, settings, depth);
 					}
-					buf.push_str(if settings.0.pretty { " = " } else { "=" });
+					buf.push_str(if settings.pretty { " = " } else { "=" });
 					value.to_string_from_buffer(buf, settings, depth);
 				}
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {

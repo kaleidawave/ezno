@@ -219,12 +219,12 @@ impl ASTNode for Statement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			Statement::Cursor(..) => {
-				if !settings.0.expect_cursors {
+				if !settings.expect_cursors {
 					panic!("tried to to-string cursor")
 				}
 			}
@@ -241,13 +241,13 @@ impl ASTNode for Statement {
 			Statement::WhileStatement(ws) => ws.to_string_from_buffer(buf, settings, depth),
 			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, settings, depth),
 			Statement::Comment(comment, _) => {
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str("//");
 					buf.push_str_contains_new_line(comment.as_str().trim_end());
 				}
 			}
 			Statement::MultiLineComment(comment, _) => {
-				if settings.0.should_add_comment() {
+				if settings.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");
@@ -346,7 +346,7 @@ impl ASTNode for VarVariableStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("var ");

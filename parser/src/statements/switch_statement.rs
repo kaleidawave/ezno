@@ -87,34 +87,34 @@ impl ASTNode for SwitchStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		buf.push_str("switch");
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('(');
 		self.case.to_string_from_buffer(buf, settings, depth);
 		buf.push(')');
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 		buf.push('{');
 		for branch in self.branches.iter() {
-			if settings.0.pretty {
+			if settings.pretty {
 				buf.push_new_line();
-				settings.0.add_indent(depth + 1, buf);
+				settings.add_indent(depth + 1, buf);
 			}
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
 					for (at_end, stmt) in statements.iter().endiate() {
-						if settings.0.pretty {
+						if settings.pretty {
 							buf.push_new_line();
-							settings.0.add_indent(depth + 2, buf);
+							settings.add_indent(depth + 2, buf);
 						}
 						stmt.to_string_from_buffer(buf, settings, depth + 2);
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.0.pretty && !at_end {
+						if settings.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}
@@ -124,24 +124,24 @@ impl ASTNode for SwitchStatement {
 					case.to_string_from_buffer(buf, settings, depth);
 					buf.push(':');
 					for (at_end, stmt) in statements.iter().endiate() {
-						if settings.0.pretty {
+						if settings.pretty {
 							buf.push_new_line();
-							settings.0.add_indent(depth + 2, buf);
+							settings.add_indent(depth + 2, buf);
 						}
 						stmt.to_string_from_buffer(buf, settings, depth + 2);
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.0.pretty && !at_end {
+						if settings.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}
 				}
 			}
 		}
-		if settings.0.pretty {
+		if settings.pretty {
 			buf.push_new_line();
-			settings.0.add_indent(depth, buf);
+			settings.add_indent(depth, buf);
 		}
 		buf.push('}');
 	}

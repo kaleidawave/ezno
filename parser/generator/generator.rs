@@ -49,7 +49,7 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 	);
 
 	let node = match parse_result {
-		Ok(parser::ParseOutput(node, _)) => node,
+		Ok(node) => node,
 		Err(err) => {
 			let reason = err.reason;
 			return quote!(compile_error!(#reason)).into();

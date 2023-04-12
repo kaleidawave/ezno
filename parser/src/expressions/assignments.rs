@@ -53,7 +53,7 @@ impl ASTNode for VariableOrPropertyAccess {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
@@ -65,7 +65,7 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push('.');
 				if let PropertyReference::Standard(property) = property {
 					buf.push_str(property);
-				} else if !settings.0.expect_cursors {
+				} else if !settings.expect_cursors {
 					panic!("found cursor");
 				}
 			}
@@ -187,21 +187,21 @@ impl LHSOfAssignment {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(members, _, _) => {
 				buf.push('{');
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, settings, depth);
 					if !at_end {
 						buf.push(',');
-						settings.0.add_gap(buf);
+						settings.add_gap(buf);
 					}
 				}
-				settings.0.add_gap(buf);
+				settings.add_gap(buf);
 				buf.push('}');
 			}
 			LHSOfAssignment::ArrayDestructuring(members, _, _) => {

@@ -1,7 +1,6 @@
 use ezno_parser::{
-	statements::UnconditionalElseStatement, ASTNode, Expression, Module, ParseOutput, SourceId,
-	Span, Statement, ToStringSettings, ToStringSettingsAndData, VisitSettings, VisitorMut,
-	VisitorsMut,
+	statements::UnconditionalElseStatement, ASTNode, Expression, Module, SourceId, Span, Statement,
+	ToStringSettings, VisitSettings, VisitorMut, VisitorsMut,
 };
 
 #[test]
@@ -15,7 +14,7 @@ fn visiting() {
         }
         "#;
 
-	let ParseOutput(mut module, mut state) =
+	let mut module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None, Vec::new())
 			.unwrap();
 
@@ -26,17 +25,9 @@ fn visiting() {
 		variable_visitors_mut: Default::default(),
 		block_visitors_mut: Default::default(),
 	};
-	module.visit_mut(
-		&mut visitors,
-		&mut (),
-		&mut state.function_extractor,
-		&VisitSettings::default(),
-	);
+	module.visit_mut(&mut visitors, &mut (), &VisitSettings::default());
 
-	let output = module.to_string(&ToStringSettingsAndData(
-		ToStringSettings::minified(),
-		state.function_extractor,
-	));
+	let output = module.to_string(&ToStringSettings::minified());
 
 	let expected = r#"const x="HELLO WORLD";function y(){if(condition){do_thing("HELLO WORLD"+" TEST")}else{console.log("ELSE!")}}"#;
 	assert_eq!(output, expected);
@@ -46,13 +37,7 @@ fn visiting() {
 struct MakeStringsUppercase;
 
 impl VisitorMut<Expression, ()> for MakeStringsUppercase {
-	fn visit_mut(
-		&mut self,
-		item: &mut Expression,
-		_data: &mut (),
-		_functions: &mut ezno_parser::extractor::ExtractedFunctions,
-		_chain: &ezno_parser::Chain,
-	) {
+	fn visit_mut(&mut self, item: &mut Expression, _data: &mut (), _chain: &ezno_parser::Chain) {
 		if let Expression::StringLiteral(content, _quoted, _, _) = item {
 			*content = content.to_uppercase();
 		}
@@ -63,13 +48,7 @@ impl VisitorMut<Expression, ()> for MakeStringsUppercase {
 struct AddElseClause;
 
 impl VisitorMut<Statement, ()> for AddElseClause {
-	fn visit_mut(
-		&mut self,
-		item: &mut Statement,
-		_data: &mut (),
-		_functions: &mut ezno_parser::extractor::ExtractedFunctions,
-		_chain: &ezno_parser::Chain,
-	) {
+	fn visit_mut(&mut self, item: &mut Statement, _data: &mut (), _chain: &ezno_parser::Chain) {
 		if let Statement::IfStatement(if_statement) = item {
 			if if_statement.trailing_else.is_none() {
 				let inner = Statement::from_string(
@@ -80,7 +59,6 @@ impl VisitorMut<Statement, ()> for AddElseClause {
 					Vec::new(),
 				)
 				.unwrap()
-				.0
 				.into();
 				if_statement.trailing_else =
 					Some(UnconditionalElseStatement { inner, position: Span::NULL_SPAN })

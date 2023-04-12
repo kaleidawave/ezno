@@ -37,10 +37,10 @@ impl ASTNode for DeclareVariableDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		if settings.0.include_types {
+		if settings.include_types {
 			buf.push_str("declare var ");
 			buf.push_str(&self.name);
 			buf.push_str(": ");
@@ -95,10 +95,10 @@ impl ASTNode for DeclareFunctionDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		if settings.0.include_types {
+		if settings.include_types {
 			buf.push_str("declare function ");
 			buf.push_str(self.name.as_str());
 			if let Some(type_parameters) = &self.type_parameters {
@@ -183,7 +183,7 @@ impl ASTNode for DeclareClassDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		todo!()

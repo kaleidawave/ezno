@@ -4,9 +4,7 @@ use std::{fs, path::PathBuf};
 
 use argh::FromArgs;
 use enum_variants_strings::EnumVariantsStrings;
-use parser::{
-	ASTNode, Expression, Module, ParseOutput, SourceId, ToStringSettings, ToStringSettingsAndData,
-};
+use parser::{ASTNode, Expression, Module, SourceId, ToStringSettings};
 
 use crate::{error_handling::emit_parser_error, utilities::print_to_cli};
 
@@ -108,11 +106,7 @@ impl ExplorerSubCommand {
 				);
 				match res {
 					Ok(res) => {
-						if res.1.function_extractor.is_empty() {
-							print_to_cli(format_args!("{:#?}", res.0));
-						} else {
-							print_to_cli(format_args!("{:#?}", res));
-						}
+						print_to_cli(format_args!("{:#?}", res));
 					}
 					Err(err) => emit_parser_error(input, err).unwrap(),
 				}
@@ -139,14 +133,13 @@ impl ExplorerSubCommand {
 					Vec::new(),
 				);
 				match res {
-					Ok(ParseOutput(value, state)) => {
+					Ok(module) => {
 						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
 							ToStringSettings::default()
 						} else {
 							ToStringSettings::minified()
 						};
-						let d = ToStringSettingsAndData(settings, state.function_extractor);
-						print_to_cli(format_args!("{}", value.to_string(&d)));
+						print_to_cli(format_args!("{}", module.to_string(&settings)));
 					}
 					Err(err) => emit_parser_error(input, err).unwrap(),
 				}

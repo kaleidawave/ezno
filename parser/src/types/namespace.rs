@@ -38,7 +38,7 @@ impl crate::ASTNode for Namespace {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		todo!()

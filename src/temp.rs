@@ -58,17 +58,10 @@ pub fn build<T: crate::FSResolver>(
 
 	let mut temp_errors = Vec::new();
 
-	output.0.visit_mut(
-		&mut visitors_mut,
-		&mut temp_errors,
-		&mut output.1.function_extractor,
-		&parser::VisitSettings::default(),
-	);
+	output.visit_mut(&mut visitors_mut, &mut temp_errors, &parser::VisitSettings::default());
 
-	let (content, source_map) = output.0.to_string_with_source_map(
-		&parser::ToStringSettingsAndData(ToStringSettings::minified(), output.1.function_extractor),
-		&fs,
-	);
+	let (content, source_map) =
+		output.to_string_with_source_map(&ToStringSettings::minified(), &fs);
 
 	let output =
 		Output { output_path: output_path.to_path_buf(), content, mappings: source_map.mappings };
@@ -83,7 +76,6 @@ impl parser::VisitorMut<parser::Expression, Vec<TempDiagnostic>> for InvertTerna
 		&mut self,
 		item: &mut parser::Expression,
 		data: &mut Vec<TempDiagnostic>,
-		_functions: &mut parser::extractor::ExtractedFunctions,
 		_chain: &parser::Chain,
 	) {
 		if let parser::Expression::TernaryExpression {

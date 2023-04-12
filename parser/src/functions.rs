@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-	extractor::ExtractedFunctions, parameters::*, parse_bracketed, to_string_bracketed, ASTNode,
-	Block, ChainVariable, ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint,
-	Keyword, ParseResult, ParseSettings, TSXToken, TypeReference, VisitSettings, Visitable,
+	parameters::*, parse_bracketed, to_string_bracketed, ASTNode, Block, ChainVariable,
+	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, Keyword, ParseResult,
+	ParseSettings, TSXToken, TypeReference, VisitSettings, Visitable,
 };
 use crate::{tsx_keywords, TSXKeyword};
 use derive_debug_extras::DebugExtras;
@@ -32,15 +32,13 @@ pub mod bases {
 static FUNCTION_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
 
 /// Id given to AST that declares a function
-#[derive(PartialEq, Eq, Clone, DebugExtras, Hash)]
-pub struct FunctionId<T: FunctionBased>(u16, PhantomData<T>);
-
-impl<T: FunctionBased> Copy for FunctionId<T> {}
+#[derive(PartialEq, Eq, Copy, Clone, DebugExtras, Hash)]
+pub struct FunctionId(u16);
 
 // TODO better than global counter
-impl<T: FunctionBased> FunctionId<T> {
+impl FunctionId {
 	pub fn new() -> Self {
-		Self(FUNCTION_ID_COUNTER.fetch_add(1, Ordering::SeqCst), Default::default())
+		Self(FUNCTION_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
 	}
 
 	pub fn get_id(self) -> u16 {
@@ -48,7 +46,7 @@ impl<T: FunctionBased> FunctionId<T> {
 	}
 
 	pub fn from_id(value: u16) -> Self {
-		Self(value, Default::default())
+		Self(value)
 	}
 }
 
@@ -75,7 +73,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	);
 
@@ -97,7 +95,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	fn parameters_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		parameters: &FunctionParameters,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		parameters.to_string_from_buffer(buf, settings, depth);
@@ -106,9 +104,9 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// For [crate::ArrowFunction]
 	fn parameter_body_boundary_token_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 	) {
-		settings.0.add_gap(buf);
+		settings.add_gap(buf);
 	}
 }
 
@@ -119,7 +117,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 pub struct FunctionBase<T: FunctionBased> {
 	/// TODO should be private
 	#[partial_eq_ignore]
-	pub function_id: FunctionId<T>,
+	pub function_id: FunctionId,
 	pub header: T::Header,
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -153,15 +151,15 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn to_string_from_buffer<TS: source_map::ToString>(
 		&self,
 		buf: &mut TS,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, settings, depth);
-		if let (true, Some(type_parameters)) = (settings.0.include_types, &self.type_parameters) {
+		if let (true, Some(type_parameters)) = (settings.include_types, &self.type_parameters) {
 			to_string_bracketed(type_parameters, ('<', '>'), buf, settings, depth);
 		}
 		T::parameters_to_string_from_buffer(buf, &self.parameters, settings, depth);
-		if let (true, Some(return_type)) = (settings.0.include_types, &self.return_type) {
+		if let (true, Some(return_type)) = (settings.include_types, &self.return_type) {
 			buf.push_str(": ");
 			return_type.to_string_from_buffer(buf, settings, depth);
 		}
@@ -195,7 +193,6 @@ impl<T: FunctionBased> FunctionBase<T> {
 					.map(|(params, _)| params)
 			})
 			.transpose()?;
-
 		let parameters = FunctionParameters::from_reader(reader, state, settings)?;
 		let return_type = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
@@ -218,7 +215,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 		})
 	}
 
-	pub fn get_function_id(&self) -> FunctionId<T> {
+	pub fn get_function_id(&self) -> FunctionId {
 		self.function_id
 	}
 }
@@ -233,12 +230,12 @@ where
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &VisitSettings,
-		functions: &mut ExtractedFunctions,
+
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.parameters.visit(visitors, data, settings, functions, chain);
+		self.parameters.visit(visitors, data, settings, chain);
 		if settings.visit_function_bodies {
-			self.body.visit(visitors, data, settings, functions, chain);
+			self.body.visit(visitors, data, settings, chain);
 		}
 	}
 
@@ -247,12 +244,12 @@ where
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		settings: &VisitSettings,
-		functions: &mut ExtractedFunctions,
+
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.parameters.visit_mut(visitors, data, settings, functions, chain);
+		self.parameters.visit_mut(visitors, data, settings, chain);
 		if settings.visit_function_bodies {
-			self.body.visit_mut(visitors, data, settings, functions, chain);
+			self.body.visit_mut(visitors, data, settings, chain);
 		}
 	}
 }
@@ -286,7 +283,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		buf: &mut U,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettingsAndData,
+		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
 		header.to_string_from_buffer(buf, settings, depth);
@@ -385,7 +382,7 @@ impl ASTNode for FunctionHeader {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringSettingsAndData,
+		_settings: &crate::ToStringSettings,
 		_depth: u8,
 	) {
 		if self.is_async() {
