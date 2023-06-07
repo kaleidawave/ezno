@@ -28,7 +28,7 @@ path = "src/main.rs"
 
 [dependencies]
 parser = { path = "./parser", version = "0.0.3", package = "ezno-parser" }
-checker = { path = "./checker", version = "0.0.1", package = "ezno-checker" }
+checker = { path = "./checker", version = "0.0.2", package = "ezno-checker" }
 # ezno-web-framework = { path = "./plugins/web" }
 
 console = "0.14.1"

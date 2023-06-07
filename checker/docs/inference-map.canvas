@@ -1,0 +1,23 @@
+{
+	"nodes":[
+		{"type":"text","text":"### Simple (non-nested) assignment\ne.g. `string <: T (auto)` leaves `T < string`","id":"de9c017be94eef9d","x":340,"y":-105,"width":419,"height":150},
+		{"type":"text","text":"# Parameter Inference\nexplicit, closed over state & `this`","id":"b5a488207a0be25a","x":-146,"y":-80,"width":330,"height":100},
+		{"type":"text","text":"### Nesting assignment\n- How to add properties to properties of ","id":"3ecda97ca73e7d85","x":-320,"y":-560,"width":434,"height":228},
+		{"type":"text","text":"Splitting types from property proofs?\n\n*How to do callable types*","id":"755646c6b69b02f2","x":300,"y":-350,"width":314,"height":104},
+		{"id":"f3d3b26856b42581","x":-570,"y":-200,"width":250,"height":60,"type":"text","text":"### Merging"},
+		{"type":"text","text":"## Resolving\nWhether to keep the same parameter types OR instead modify the parameter types, after a function body has been synthesized\n","id":"e9b6581416cc972e","x":-146,"y":60,"width":330,"height":160},
+		{"id":"407ce9b2a054b340","x":-288,"y":340,"width":285,"height":402,"type":"text","text":"### Modify types\nPros\n- Keep same shape as"},
+		{"id":"8c4d947d9de289f4","x":35,"y":340,"width":305,"height":402,"type":"text","text":"### Don't modify types\nCons\n- Fixed and inferred types have different forms outside of function\n- Once above function, have to keep track that the inferred types are now fixed\n- What a generic type is fixed to can now be in two places: on the `Type` or in the `fixed` section of `bases` in environment"}
+	],
+	"edges":[
+		{"id":"38229605a48058c9","fromNode":"b5a488207a0be25a","fromSide":"top","toNode":"3ecda97ca73e7d85","toSide":"bottom"},
+		{"id":"0bbc86a45d52a2fc","fromNode":"b5a488207a0be25a","fromSide":"right","toNode":"de9c017be94eef9d","toSide":"left"},
+		{"id":"0c2f40acc80ea321","fromNode":"b5a488207a0be25a","fromSide":"bottom","toNode":"e9b6581416cc972e","toSide":"top"},
+		{"id":"01d4e5996781b2a4","fromNode":"3ecda97ca73e7d85","fromSide":"right","toNode":"755646c6b69b02f2","toSide":"left"},
+		{"id":"cb36a1d4a5f64333","fromNode":"755646c6b69b02f2","fromSide":"bottom","toNode":"de9c017be94eef9d","toSide":"top","label":"How does this work with simple assignment?"},
+		{"id":"d77d9c3cfdde5906","fromNode":"b5a488207a0be25a","fromSide":"left","toNode":"f3d3b26856b42581","toSide":"right"},
+		{"id":"0111546fb0539b1d","fromNode":"755646c6b69b02f2","fromSide":"left","toNode":"f3d3b26856b42581","toSide":"right","fromEnd":"arrow"},
+		{"id":"f68d11f6d9a38297","fromNode":"e9b6581416cc972e","fromSide":"bottom","toNode":"407ce9b2a054b340","toSide":"top"},
+		{"id":"56fed540ce48c207","fromNode":"e9b6581416cc972e","fromSide":"bottom","toNode":"8c4d947d9de289f4","toSide":"top"}
+	]
+}

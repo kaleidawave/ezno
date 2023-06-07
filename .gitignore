@@ -1,5 +1,5 @@
 dist
-/target
+target
 /pkg
 /private
 .vscode
