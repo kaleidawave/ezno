@@ -1,13 +1,51 @@
 [package]
 name = "ezno-checker"
-description = "A JavaScript type checker"
-authors = ["Ben <kaleidawave@gmail.com>"]
+description = "A type checker for JavaScript"
+version = "0.0.2"
 license = "MIT"
-version = "0.0.1"
-edition = "2021"
-homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
+homepage = "https://kaleidawave.github.io/posts/introducing-ezno"
+authors = ["Ben <kaleidawave@gmail.com>"]
+edition = "2021"
+categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+declaration-synthesis = []
+ezno-parser = ["parser"]
+
 [dependencies]
+source-map = { version = "0.12.0", features = ["span-serialize"] }
+
+binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
+
+temporary-annex = "0.1.0"
+derive-enum-from-into = "0.1.0"
+derive-debug-extras = { version = "0.2.0", features = [
+    "auto-debug-single-tuple-inline",
+] }
+enum-variants-strings = "0.2"
+iterator-endiate = "0.2"
+bimap = "0.6.2"
+
+path-absolutize = { version = "3.0.14", features = ["use_unix_paths_on_wasm"] }
+indexmap = "1.7.0"
+either = "1.6.1"
+levenshtein = "1.0.5"
+once_cell = "1.10.0"
+ordered-float = "3.0.0"
+map_vec = "0.3.0"
+
+serde = { version = "1.0", features = ["derive"] }
+# For trait object safe thingy
+erased-serde = "0.3"
+
+[dependencies.parser]
+git = "https://github.com/kaleidawave/ezno.git"
+optional = true
+branch = "parser-fixes2"
+version = "0.0.3"
+features = ["extras"]
+package = "ezno-parser"

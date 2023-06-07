@@ -43,6 +43,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "bimap"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
+
+[[package]]
+name = "binary-serialize-derive"
+version = "0.0.1"
+dependencies = [
+ "syn-helpers",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -147,6 +160,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fcaabb2fef8c910e7f4c7ce9f67a1283a1715879a7c230ca9d6d1ae31f16d91"
+
+[[package]]
 name = "either_n"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -192,6 +211,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "erased-serde"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f2b0c2380453a92ea8b6c8e5f64ecaafccddde8ceab55ff7a8ac1029f894569"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ezno"
 version = "0.0.8"
 dependencies = [
@@ -201,7 +229,7 @@ dependencies = [
  "console",
  "enum-variants-strings",
  "ezno-checker",
- "ezno-parser",
+ "ezno-parser 0.0.3",
  "js-sys",
  "multiline-term-input",
  "notify",
@@ -214,7 +242,7 @@ dependencies = [
 name = "ezno-ast-generator"
 version = "0.0.3"
 dependencies = [
- "ezno-parser",
+ "ezno-parser 0.0.3",
  "proc-macro2",
  "quote",
  "self-rust-tokenize",
@@ -222,7 +250,27 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.1"
+version = "0.0.2"
+dependencies = [
+ "bimap",
+ "binary-serialize-derive",
+ "derive-debug-extras",
+ "derive-enum-from-into",
+ "either",
+ "enum-variants-strings",
+ "erased-serde",
+ "ezno-parser 0.0.3 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
+ "indexmap",
+ "iterator-endiate 0.2.1",
+ "levenshtein",
+ "map_vec",
+ "once_cell",
+ "ordered-float",
+ "path-absolutize",
+ "serde",
+ "source-map",
+ "temporary-annex",
+]
 
 [[package]]
 name = "ezno-parser"
@@ -234,9 +282,28 @@ dependencies = [
  "derive-partial-eq-extras",
  "enum-variants-strings",
  "enum_variant_type",
- "ezno-parser-visitable-derive",
- "iterator-endiate",
+ "ezno-parser-visitable-derive 0.0.1",
+ "iterator-endiate 0.1.0",
  "match_deref",
+ "self-rust-tokenize",
+ "source-map",
+ "temporary-annex",
+ "tokenizer-lib",
+]
+
+[[package]]
+name = "ezno-parser"
+version = "0.0.3"
+source = "git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2#0e650d04af26bb1537344a63015ad1f7a3b75de6"
+dependencies = [
+ "derive-debug-extras",
+ "derive-enum-from-into",
+ "derive-finite-automaton",
+ "derive-partial-eq-extras",
+ "enum-variants-strings",
+ "enum_variant_type",
+ "ezno-parser-visitable-derive 0.0.1 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
+ "iterator-endiate 0.2.1",
  "self-rust-tokenize",
  "source-map",
  "temporary-annex",
@@ -246,6 +313,15 @@ dependencies = [
 [[package]]
 name = "ezno-parser-visitable-derive"
 version = "0.0.1"
+dependencies = [
+ "string-cases",
+ "syn-helpers",
+]
+
+[[package]]
+name = "ezno-parser-visitable-derive"
+version = "0.0.1"
+source = "git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2#0e650d04af26bb1537344a63015ad1f7a3b75de6"
 dependencies = [
  "string-cases",
  "syn-helpers",
@@ -299,6 +375,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 
 [[package]]
+name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+
+[[package]]
+name = "indexmap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown",
+]
+
+[[package]]
 name = "inotify"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -334,6 +426,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5cfeef3929ed54a0312797e6e75a9a962df67a30beda87029387e810e61a44cc"
 
 [[package]]
+name = "iterator-endiate"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab947031a0a0cb37f982ef2a0ab3bacfd3de5ed97dd5c7e98bcc92bba357112"
+
+[[package]]
 name = "js-sys"
 version = "0.3.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -365,6 +463,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
+name = "levenshtein"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
+
+[[package]]
 name = "libc"
 version = "0.2.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,6 +481,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if 1.0.0",
+]
+
+[[package]]
+name = "map_vec"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43e9839b06bd5129fa636a93cb53601ffae739b8ff115841374d110cafb02cad"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -472,10 +585,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-traits"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+
+[[package]]
+name = "ordered-float"
+version = "3.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fc2dbde8f8a79f2102cc474ceb0ad68e3b80b85289ea62389b60e66777e4213"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "path-absolutize"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43eb3595c63a214e1b37b44f44b0a84900ef7ae0b4c5efce59e123d246d7a0de"
+dependencies = [
+ "path-dedot",
+]
+
+[[package]]
+name = "path-dedot"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d55e486337acb9973cdea3ec5638c1b3bcb22e573b2b7b41969e0c744d5a15e"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "proc-macro2"
@@ -715,9 +864,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.84"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31f8dcbc21f30d9b8f2ea926ecb58f6b91192c17e9d33594b3df58b2007ca53b"
+checksum = "5bba0e8cb82ba49ff4e229459ff22a191bbe9a1cb3a341610c9c33efc27ddf73"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen-macro",
@@ -725,24 +874,24 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.84"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95ce90fd5bcc06af55a641a86428ee4229e44e07033963a2290a8e241607ccb9"
+checksum = "19b04bc93f9d6bdee709f6bd2118f57dd6679cf1176a1af464fca3ab0d66d8fb"
 dependencies = [
  "bumpalo",
  "log",
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.4",
  "wasm-bindgen-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.84"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c21f77c0bedc37fd5dc21f897894a5ca01e7bb159884559461862ae90c0b4c5"
+checksum = "14d6b024f1a526bb0234f52840389927257beb670610081360e5a03c5df9c258"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -750,22 +899,22 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.84"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aff81306fcac3c7515ad4e177f521b5c9a15f2b08f4e32d823066102f35a5f6"
+checksum = "e128beba882dd1eb6200e1dc92ae6c5dbaa4311aa7bb211ca035779e5efc39f8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.4",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.84"
+version = "0.2.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0046fef7e28c3804e5e38bfa31ea2a0f73905319b677e57ebe37e49358989b5d"
+checksum = "ed9d5b4305409d1fc9482fee2d7f9bcbf24b3972bf59817ef757e23982242a93"
 
 [[package]]
 name = "winapi"
