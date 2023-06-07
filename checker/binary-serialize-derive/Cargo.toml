@@ -1,6 +1,6 @@
 [package]
 name = "binary-serialize-derive"
-description = "A small representation for objects in the Ezno checker, used for caching to make checking faster" 
+description = "A small representation for objects in the Ezno checker, used for caching to make checking faster"
 version = "0.0.1"
 edition = "2021"
 license = "MIT"
