@@ -22,6 +22,7 @@ use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
+pub use try_catch_statement::TryCatchStatement;
 use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
@@ -43,6 +44,7 @@ pub enum Statement {
 	SwitchStatement(SwitchStatement),
 	WhileStatement(WhileStatement),
 	DoWhileStatement(DoWhileStatement),
+	TryCatchStatement(TryCatchStatement),
 	// Control flow
 	Return(Keyword<tsx_keywords::Return>, Option<MultipleExpression>),
 	// TODO maybe an actual label struct:
@@ -91,6 +93,7 @@ impl ASTNode for Statement {
 			Statement::SwitchStatement(ss) => ss.get_position(),
 			Statement::WhileStatement(ws) => ws.get_position(),
 			Statement::DoWhileStatement(dws) => dws.get_position(),
+			Statement::TryCatchStatement(tcs) => tcs.get_position(),
 			Statement::Block(blk) => blk.get_position(),
 		}
 	}
@@ -144,7 +147,7 @@ impl ASTNode for Statement {
 				DoWhileStatement::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Try) => {
-				todo!()
+				TryCatchStatement::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::OpenBrace => {
 				Block::from_reader(reader, state, settings).map(Statement::Block)
@@ -240,6 +243,7 @@ impl ASTNode for Statement {
 			Statement::SwitchStatement(ss) => ss.to_string_from_buffer(buf, settings, depth),
 			Statement::WhileStatement(ws) => ws.to_string_from_buffer(buf, settings, depth),
 			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, settings, depth),
+			Statement::TryCatchStatement(tcs) => tcs.to_string_from_buffer(buf, settings, depth),
 			Statement::Comment(comment, _) => {
 				if settings.should_add_comment() {
 					buf.push_str("//");
