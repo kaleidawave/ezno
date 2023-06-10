@@ -19,6 +19,7 @@ pub enum ParseErrors<'a> {
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
 	LexingFailed,
+	ExpectedCatchOrFinally,
 }
 
 #[allow(missing_docs)]
@@ -132,6 +133,9 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Function parameter cannot be have default value here")
 			}
 			ParseErrors::InvalidLHSAssignment => f.write_str("Invalid syntax on LHS of assignment"),
+			ParseErrors::ExpectedCatchOrFinally => {
+				f.write_str("Expected 'catch' or 'finally' to follow 'try'")
+			}
 			ParseErrors::LexingFailed => {
 				// unreachable!("This should never be written"),
 				f.write_str("Lexing issue")
