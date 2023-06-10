@@ -4,53 +4,40 @@ use pretty_assertions::assert_eq;
 #[test]
 fn try_catch() {
 	let input = r#"
-// Ordinary/typical usage
 try {
-    doThing()
+    console.log("ordinary usage")
 } catch (e) {
     console.error(e)
 }
-
-// No catch variable
 try {
-    doThing()
+    console.log("no exception var")
 } catch {
-    doOtherThing()
+    console.error("error")
 }
-
-
-// Destructured catch
 try {
-    doThing()
+    console.log("destructured catch")
 } catch ({ message }) {
     console.error(message)
 }
-
-// Type annotation
 try {
-    doThing()
+    console.log("catch with type annotation")
 } catch (error: unknown) {
     console.error(error)
 }
-
-// Finally clause
 try {
-    doThing()
+    console.log("finally clause")
 } catch (e) {
     console.error(e)
 } finally {
     console.log("done")
 }
-
-// Finally without catch
 try {
-    doThing()
+    console.log("omitted catch clause")
 } finally {
     console.log("done")
 }
-
-// Nesting
 try {
+    console.log("nesting");
     try {
         doThing()
     } catch (e) {
@@ -68,8 +55,7 @@ try {
     } catch (e) {
         console.error(e)
     }
-}
-"#
+}"#
 	.trim_start();
 
 	let module =

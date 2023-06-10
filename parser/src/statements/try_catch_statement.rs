@@ -8,42 +8,21 @@ use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
-// Note: Removing "WithComment" causes a trait bound error here
 pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
 
-/// Try/catch/finally clauses can be used in 3 specific combinations.
-///
-/// See: https://developer.mozilla.org/en-US/docs/web/javascript/reference/statements/try...catch#description
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum TryCatchStatement {
-	TryCatch {
-		try_inner: Block,
-		catch_inner: Block,
-		exception_var: Option<(ExceptionVarField, Option<TypeReference>)>,
-		position: Span,
-	},
-	TryFinally {
-		try_inner: Block,
-		finally_inner: Block,
-		position: Span,
-	},
-	TryCatchFinally {
-		try_inner: Block,
-		catch_inner: Block,
-		exception_var: Option<(ExceptionVarField, Option<TypeReference>)>,
-		finally_inner: Block,
-		position: Span,
-	},
+pub struct TryCatchStatement {
+	try_inner: Block,
+	catch_inner: Option<Block>,
+	exception_var: Option<(ExceptionVarField, Option<TypeReference>)>,
+	finally_inner: Option<Block>,
+	position: Span,
 }
 
 impl ASTNode for TryCatchStatement {
 	fn get_position(&self) -> Cow<Span> {
-		match self {
-			TryCatchStatement::TryCatch { position, .. }
-			| TryCatchStatement::TryFinally { position, .. }
-			| TryCatchStatement::TryCatchFinally { position, .. } => Cow::Borrowed(position),
-		}
+		Cow::Borrowed(&self.position)
 	}
 
 	fn from_reader(
@@ -79,6 +58,8 @@ impl ASTNode for TryCatchStatement {
 
 				reader.expect_next(TSXToken::CloseParentheses)?;
 			}
+
+			catch_inner = Some(Block::from_reader(reader, state, settings)?);
 		}
 
 		// Optional `finally` clause
@@ -88,35 +69,17 @@ impl ASTNode for TryCatchStatement {
 			finally_inner = Some(Block::from_reader(reader, state, settings)?);
 		}
 
-		// Wrap in enum variant and return
-		if let Some(catch_inner) = catch_inner {
-			if let Some(finally_inner) = finally_inner {
-				return Ok(Self::TryCatchFinally {
-					position: start_span.union(&finally_inner.get_position()),
-					try_inner,
-					exception_var,
-					catch_inner,
-					finally_inner,
-				});
-			} else {
-				Ok(Self::TryCatch {
-					position: start_span.union(&catch_inner.get_position()),
-					try_inner,
-					exception_var,
-					catch_inner,
-				})
-			}
+		// Determine span based on which clauses are present
+		let position: Span = if let Some(finally_block) = &finally_inner {
+			start_span.union(&finally_block.get_position())
+		} else if let Some(catch_block) = &catch_inner {
+			start_span.union(&catch_block.get_position())
 		} else {
-			if let Some(finally_inner) = finally_inner {
-				Ok(Self::TryFinally {
-					position: start_span.union(&finally_inner.get_position()),
-					try_inner,
-					finally_inner,
-				})
-			} else {
-				Err(ParseError::new(ParseErrors::ExpectedCatchOrFinally, start_span))
-			}
-		}
+			// Parse error if neither catch nor finally clause is present
+			return Err(ParseError::new(ParseErrors::ExpectedCatchOrFinally, start_span));
+		};
+
+		Ok(Self { position, try_inner, exception_var, catch_inner, finally_inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -125,17 +88,40 @@ impl ASTNode for TryCatchStatement {
 		settings: &crate::ToStringSettings,
 		depth: u8,
 	) {
-		// todo
+		// Required `try` block
 		buf.push_str("try");
 		settings.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, settings, depth + 1);
-		settings.add_gap(buf);
-		buf.push_str("catch");
-		settings.add_gap(buf);
-		buf.push('(');
-		self.exception_var.to_string_from_buffer(buf, settings, depth);
-		buf.push(')');
-		settings.add_gap(buf);
-		self.catch_inner.to_string_from_buffer(buf, settings, depth + 1);
+		self.try_inner.to_string_from_buffer(buf, settings, depth + 1);
+
+		// Optional `catch` block
+		if let Some(catch) = &self.catch_inner {
+			settings.add_gap(buf);
+			buf.push_str("catch");
+			settings.add_gap(buf);
+
+			// Optional exception variable: `catch (e)`
+			if let Some((exception_var, exception_var_type)) = &self.exception_var {
+				buf.push('(');
+				exception_var.to_string_from_buffer(buf, settings, depth);
+
+				// Optional type annotation: `catch (e: any)`
+				if let Some(exception_var_type) = exception_var_type {
+					buf.push_str(": ");
+					exception_var_type.to_string_from_buffer(buf, settings, depth);
+				}
+				buf.push(')');
+				settings.add_gap(buf);
+			}
+
+			catch.to_string_from_buffer(buf, settings, depth + 1);
+		}
+
+		// Optional `finally` block
+		if let Some(finally) = &self.finally_inner {
+			settings.add_gap(buf);
+			buf.push_str("finally");
+			settings.add_gap(buf);
+			finally.to_string_from_buffer(buf, settings, depth + 1);
+		}
 	}
 }
