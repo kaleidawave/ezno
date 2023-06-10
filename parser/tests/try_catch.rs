@@ -1,4 +1,5 @@
 use ezno_parser::{ASTNode, Module, SourceId};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn try_catch() {
