@@ -21,6 +21,11 @@ for (let i = 0; i < 4; i++) {
     while (true) {
         break
     }
+}
+try {
+    doThing()
+} catch (e) {
+    console.error(e)
 }"#
 	.trim_start();
 
