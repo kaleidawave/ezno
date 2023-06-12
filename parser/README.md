@@ -2,13 +2,13 @@
 
 Contains "string to AST" parser, AST definitions, AST back to text/string form methods and hooks for traversing/visiting AST. Used in the Ezno checker.
 
-![](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge)
-[![](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
-[![](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
+![parser lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge)
+[![crates.io badge](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
+[![docs.rs badge](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
 
 This is more of an exercise project in getting better at writing Rust and doesn't offer too much over other great Rust based JS parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/Boshen/oxc) and [boa](https://github.com/boa-dev/boa).
 
-## Goals:
+## Goals
 
 - Keep under 15k lines of code (excluding `/tests` and `/examples` folders)
 - Easy to use (see `/tests` and `/examples` folders)
@@ -31,7 +31,7 @@ This is more of an exercise project in getting better at writing Rust and doesn'
 - CSTs, close to source operations etc
     - Source with unbalanced parenthesis/brackets
 - Increase code size or decrease readability for speed improvements
-- Allow adding new syntax at runtime, that would require modifying the lexer at runtime adding new tokens 
+- Allow adding new syntax at runtime, that would require modifying the lexer at runtime adding new tokens
 
 ## Features
 
@@ -46,10 +46,6 @@ Most expressions, functions, blocks and some other AST has a unique identifier. 
 ### "Cursors"
 
 Allows holes in AST where a cursor exists. This allows for LSP to provide suggestions here while the whole source might not be valid.
-
-### Function extraction
-
-All functions end up in a map rather than in the AST, which can make some static analysis and transformation operations easier.
 
 ### Visiting
 

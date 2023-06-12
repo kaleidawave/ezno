@@ -1,11 +1,12 @@
-![](https://badge-store.kaleidawave.workers.dev/visiting-proc-macro-loc)
+![visiting-proc-macro lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser-visitable-derive/badge)
 
 A package which generates mutable and immutable *visiting* implementations for AST nodes.
 
 A visitor is a implementor a trait of which the a function is called of a each node.
 
 This module is specific for the *parser* module and contains the ability to extend with data.
-## Usage:
+## Usage
+
 ```rust
 use visitable_derive::Visitable;
 
@@ -14,9 +15,11 @@ struct MyAstNode {
     ...
 }
 ```
-## Attributes:
-#### `visit_self`
+
+## Attributes
+### `visit_self`
 Will visit all fields **first then** self
+
 ```rust
 #[derive(Visitable)]
 #[visit_self]
@@ -24,6 +27,7 @@ struct MyAstNode {
     ...
 }
 ```
+
 Options:
 - `also_visit_first_if`
 Will visit self additionally before if predicate is true
@@ -41,8 +45,10 @@ impl MyAstNode {
     }
 }
 ```
+
 ### `visit_skip_field`
 Skips visiting the field. Used if type does not implement `Visitable`
+
 ```rust
 #[derive(Visitable)]
 struct MyAstNode {

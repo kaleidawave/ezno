@@ -19,6 +19,7 @@ jobs:
           pwd >> $GITHUB_PATH
         env:
           GH_TOKEN: ${{ github.token }}
+          
       - name: Run update script
         run: |
           cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r name version pathInfo ; do
