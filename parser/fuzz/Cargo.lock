@@ -105,6 +105,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "codespan-reporting"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
+dependencies = [
+ "termcolor",
+ "unicode-width",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser"
-version = "0.0.1"
+version = "0.0.3"
 dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",
@@ -293,6 +303,7 @@ dependencies = [
 name = "ezno-parser-fuzz"
 version = "0.0.0"
 dependencies = [
+ "arbitrary",
  "boa_ast",
  "boa_interner",
  "ezno-parser",
@@ -305,6 +316,7 @@ dependencies = [
 name = "ezno-parser-visitable-derive"
 version = "0.0.1"
 dependencies = [
+ "string-cases",
  "syn-helpers",
 ]
 
@@ -1083,11 +1095,11 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.11.3"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef719fab974d0ad7d0f888be47f711355c528fc2d28731d08bd59be1d6bd313b"
+checksum = "fedd4de16a29859eebdc14368c1fc2f5227ba58e1fdaba748072bf80ed9c5a35"
 dependencies = [
- "lazy_static",
+ "codespan-reporting",
  "self-rust-tokenize",
  "serde",
 ]
@@ -1097,6 +1109,12 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "string-cases"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31d23461f9e0fbe756cf9d5a36be93740fe12c8b094409a5f78f0f912ee2b6f"
 
 [[package]]
 name = "syn"
@@ -1151,6 +1169,15 @@ name = "temporary-annex"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e9c16d33fb2759286102fa235fd7029a8de2c2961165b2942c9cac81607a044"
+
+[[package]]
+name = "termcolor"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be55cf8942feac5c765c2c993422806843c9a9a45d4d5c407ad6dd2ea95eb9b6"
+dependencies = [
+ "winapi-util",
+]
 
 [[package]]
 name = "tinyvec"
@@ -1266,6 +1293,12 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
+
+[[package]]
+name = "unicode-width"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
 
 [[package]]
 name = "unicode-xid"
@@ -1397,6 +1430,15 @@ name = "winapi-i686-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
+name = "winapi-util"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70ec6ce85bb158151cae5e5c87f95a8e97d2c0c4b001223f33a334e3ce5de178"
+dependencies = [
+ "winapi",
+]
 
 [[package]]
 name = "winapi-x86_64-pc-windows-gnu"
