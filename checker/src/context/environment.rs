@@ -3,9 +3,14 @@ use std::collections::HashMap;
 use source_map::Span;
 
 use crate::{
+	behavior::assignments::{Assignable, Reference, SynthesizableExpression},
 	errors::TypeCheckError,
-	events::{Event, Reference},
-	structures::variables::{VariableMutability, VariableWithValue},
+	evaluate_binary_operator,
+	events::{Event, RootReference},
+	structures::{
+		operators::BinaryOperator,
+		variables::{VariableMutability, VariableWithValue},
+	},
 	subtyping::BasicEquality,
 	types::{
 		properties::PropertyResult,
@@ -32,7 +37,7 @@ pub struct Syntax<'a> {
 	pub async_events: Vec<Event>,
 
 	/// TODO rhs type is what...?
-	pub closed_over_variables: HashMap<Reference, TypeId>,
+	pub closed_over_variables: HashMap<RootReference, TypeId>,
 }
 
 impl<'a> ContextType for Syntax<'a> {
@@ -84,7 +89,116 @@ pub enum Scope {
 }
 
 impl<'a> Environment<'a> {
-	pub fn assign_variable_handle_errors<T: crate::FSResolver>(
+	/// Handles all assignments, including updates (based of operators) and destructuring
+	///
+	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
+	pub fn assign_to_assignable_handle_errors<U: crate::FSResolver>(
+		&mut self,
+		lhs: Assignable,
+		operator: Option<BinaryOperator>,
+		expression: &impl SynthesizableExpression,
+		assignment_span: Span,
+		checking_data: &mut CheckingData<U>,
+	) -> TypeId {
+		match lhs {
+			Assignable::Reference(reference) => match reference {
+				Reference::Variable(name) => {
+					// Order matters here
+					let new_ty = if let Some(operator) = operator {
+						// TODO not assignment_span
+						let value =
+							self.get_variable_or_error(&name, &assignment_span, checking_data);
+						let existing = match value {
+							Ok(VariableWithValue(_, value)) => value,
+							Err(_) => todo!(),
+						};
+						evaluate_binary_operator(
+							operator,
+							existing,
+							expression.synthesize_expression(self, checking_data),
+							self,
+							false,
+							&mut checking_data.types,
+						)
+						.unwrap()
+					} else {
+						expression.synthesize_expression(self, checking_data)
+					};
+
+					self.assign_to_variable_handle_errors(
+						&name,
+						assignment_span,
+						new_ty,
+						checking_data,
+					)
+				}
+				Reference::Property { on, with } => {
+					let new_ty = if let Some(operator) = operator {
+						// TODO not assignment_span
+						let existing = self.get_property_handle_errors(
+							on,
+							with,
+							checking_data,
+							assignment_span.clone(),
+						);
+						let result = evaluate_binary_operator(
+							operator,
+							existing,
+							expression.synthesize_expression(self, checking_data),
+							self,
+							false,
+							&mut checking_data.types,
+						);
+						match result {
+							Ok(ty) => ty,
+							Err(x) => {
+								todo!()
+							}
+						}
+					} else {
+						expression.synthesize_expression(self, checking_data)
+					};
+					match self.set_property(on, with, new_ty, &mut checking_data.types) {
+						Ok(ty) => ty.unwrap_or(new_ty),
+						Err(err) => {
+							let error = match err {
+								SetPropertyError::NotWriteable => {
+									todo!()
+								}
+								SetPropertyError::DoesNotMeetConstraint(expected, _err) => {
+									TypeCheckError::CannotAssign {
+										pos: assignment_span,
+										value_pos: expression.get_position(),
+										constraint:
+											crate::errors::TypeStringRepresentation::from_type_id(
+												expected,
+												&self.into_general_environment(),
+												&checking_data.types,
+												false,
+											),
+										to: crate::errors::TypeStringRepresentation::from_type_id(
+											new_ty,
+											&self.into_general_environment(),
+											&checking_data.types,
+											false,
+										),
+									}
+								}
+							};
+							checking_data.diagnostics_container.add_error(error);
+
+							// new_ty
+							TypeId::ERROR_TYPE
+						}
+					}
+				}
+			},
+			Assignable::ObjectDestructuring(_) => todo!(),
+			Assignable::ArrayDestructuring(_) => todo!(),
+		}
+	}
+
+	pub fn assign_to_variable_handle_errors<T: crate::FSResolver>(
 		&mut self,
 		variable_name: &str,
 		assignment_span: Span,
@@ -137,12 +251,8 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	/// This is top level variables, not properties (for now maybe).
-	/// This is also for both updates and initial initialisation
+	/// This is top level variables, not properties.
 	/// TODO check read has occurred
-	///
-	/// TODO Event is for...?
-	/// TODO setters
 	pub fn assign_variable<'b>(
 		&mut self,
 		variable_name: &'b str,
@@ -159,24 +269,28 @@ impl<'a> Environment<'a> {
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					let variable = variable.clone();
-					// TODO tuple with position:
-					let mut basic_subtyping = BasicEquality {
-						add_property_restrictions: false,
-						position: variable.declared_at.clone(),
-					};
-					let result = type_is_subtype(
-						reassignment_constraint,
-						new_type,
-						None,
-						&mut basic_subtyping,
-						self,
-						store,
-					);
-					if let SubTypeResult::IsNotSubType(mismatches) = result {
-						return Err(ReassignmentError::DoesNotMatchRestrictionType {
-							variable_declared_at: variable.declared_at.clone(),
-							variable_type: reassignment_constraint,
-						});
+
+					if let Some(reassignment_constraint) = reassignment_constraint {
+						// TODO tuple with position:
+						let mut basic_subtyping = BasicEquality {
+							add_property_restrictions: false,
+							position: variable.declared_at.clone(),
+						};
+						let result = type_is_subtype(
+							reassignment_constraint,
+							new_type,
+							None,
+							&mut basic_subtyping,
+							self,
+							store,
+						);
+
+						if let SubTypeResult::IsNotSubType(mismatches) = result {
+							return Err(ReassignmentError::DoesNotMatchRestrictionType {
+								variable_declared_at: variable.declared_at.clone(),
+								variable_type: reassignment_constraint,
+							});
+						}
 					}
 
 					let variable_id = variable.get_id();
@@ -287,19 +401,31 @@ impl<'a> Environment<'a> {
 			}
 		};
 
-		let reference = Reference::VariableId(og_var.get_id());
+		let reference = RootReference::VariableId(og_var.get_id());
 		// TODO
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		let (value, reflects_dependency) = if let Some(boundary) = crossed_boundary {
 			crate::utils::notify!("Found closed over type");
 
+			let based_on = match og_var.mutability {
+				VariableMutability::Constant => {
+					todo!("object contraint")
+				}
+				VariableMutability::Mutable { reassignment_constraint } => {
+					match reassignment_constraint {
+						Some(constraint) => crate::types::PolyPointer::Fixed(constraint),
+						None => todo!(),
+					}
+				}
+			};
+
 			// TODO
-			let r#type = Type::RootPolyType(crate::types::PolyNature::ParentScope {
+			let ty = Type::RootPolyType(crate::types::PolyNature::ParentScope {
 				reference: reference.clone(),
-				based_on: crate::types::PolyPointer::Fixed(TypeId::ERROR_TYPE),
+				based_on,
 			});
-			let type_id = checking_data.types.register_type(r#type);
+			let type_id = checking_data.types.register_type(ty);
 			// TODO what is rhs
 			self.context_type.closed_over_variables.insert(reference, type_id);
 			// if inferred {
@@ -312,7 +438,7 @@ impl<'a> Environment<'a> {
 		};
 
 		self.context_type.events.push(Event::ReadsReference {
-			reference: crate::events::Reference::VariableId(og_var.get_id()),
+			reference: crate::events::RootReference::VariableId(og_var.get_id()),
 			reflects_dependency,
 		});
 

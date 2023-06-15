@@ -31,9 +31,13 @@ use structures::functions::AutoConstructorId;
 
 use types::TypeStore;
 
-pub use behavior::{functions::SynthesizableFunction, variables::check_variable_initialization};
+pub use behavior::{
+	assignments::{Assignable, Reference, SynthesizableExpression},
+	functions::SynthesizableFunction,
+	variables::check_variable_initialization,
+};
 pub use context::{GeneralEnvironment, Root};
-pub use errors::{Diagnostic, DiagnosticsContainer, ErrorWarningInfo};
+pub use errors::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use settings::TypeCheckSettings;
 pub use structures::{
 	functions::{FunctionPointer, InternalFunctionId},
@@ -42,8 +46,7 @@ pub use structures::{
 	variables::Variable,
 };
 pub use types::{
-	calling::call_type_handle_errors, operations::*, poly_types::GenericFunctionTypeParameters,
-	subtyping,
+	calling::call_type_handle_errors, operations::*, poly_types::GenericTypeParameters, subtyping,
 };
 
 pub use type_mappings::*;
@@ -165,14 +168,21 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		// 	.unwrap();
 
 		// // module.get_exports()
-		// Ok((todo!(), &mut self.error_warning_info_handler, &mut self.type_mappings))
+		// Ok((todo!(), &mut self.diagnostics_container, &mut self.type_mappings))
 	}
 
+	/// TODO temp, needs better place
 	pub fn raise_decidable_result_error(&mut self, span: Span, value: bool) {
 		self.diagnostics_container.add_error(TypeCheckWarning::DeadBranch {
 			expression_span: span,
 			expression_value: value,
 		})
+	}
+
+	/// TODO temp, needs better place
+	pub fn raise_unimplemented_error(&mut self, item: &'static str, span: Span) {
+		self.diagnostics_container
+			.add_warning(TypeCheckWarning::Unimplemented { thing: item, at: span })
 	}
 }
 

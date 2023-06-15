@@ -23,7 +23,7 @@ use crate::{
 
 use map_vec::Map as SmallMap;
 
-use super::{apply_event, EarlyReturn, Reference};
+use super::{apply_event, EarlyReturn, RootReference};
 
 /// TODO *result* name bad
 pub struct FunctionCallResult {
@@ -68,9 +68,7 @@ impl FunctionType {
 		// Type arguments of the function
 		let local_arguments: map_vec::Map<TypeId, FunctionTypeArgument> =
 			if let Some(call_site_type_arguments) = call_site_type_arguments {
-				if let GenericFunctionTypeParameters::TypedParameters(ref typed_parameters) =
-					self.generic_type_parameters
-				{
+				if let Some(ref typed_parameters) = self.type_parameters {
 					typed_parameters
 						.0
 						.iter()
@@ -348,11 +346,17 @@ impl FunctionType {
 						}
 					}
 				} else {
-					todo!("Collect extra arguments")
-					// types.settings.allow_extra_arguments
-					// for idx in arguments.len()..all_parameters_length {
-					// 	errors.push(FunctionCallingError::ExtraArgument { idx });
-					// }
+					// TODO types.settings.allow_extra_arguments
+					let mut left_over = arguments.iter().skip(all_parameters_length);
+					let first = left_over.next();
+					let mut count = 1;
+					let mut _end = None;
+					while let arg @ Some(_) = left_over.next() {
+						count += 1;
+						_end = arg;
+					}
+					// TODO position using a union of first and end
+					errors.push(FunctionCallingError::ExtraArguments { count });
 				}
 			}
 
@@ -363,7 +367,7 @@ impl FunctionType {
 
 		for (reference, restriction) in self.closed_over_references.clone().into_iter() {
 			match reference {
-				Reference::VariableId(ref variable) => {
+				RootReference::VariableId(ref variable) => {
 					let current_value = environment.get_value_of_variable(variable.clone());
 
 					let mut basic_subtyping = BasicEquality {
@@ -386,8 +390,8 @@ impl FunctionType {
 						});
 					}
 				}
-				Reference::This if matches!(called_with_new, CalledWithNew::None) => {}
-				Reference::This => {
+				RootReference::This if matches!(called_with_new, CalledWithNew::None) => {}
+				RootReference::This => {
 					crate::utils::notify!("Here1");
 					let value_of_this =
 						this_argument.unwrap_or_else(|| environment.get_value_of_this(types));

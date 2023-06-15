@@ -131,10 +131,18 @@ pub enum SubTypeResult {
 #[derive(Debug)]
 pub enum NonEqualityReason {
 	Mismatch,
-	PropertiesInvalid { key: Vec<(TypeId, PropertyError)> },
+	PropertiesInvalid {
+		key: Vec<(TypeId, PropertyError)>,
+	},
 	// For function call-site type arguments
-	GenericRestrictionMismatch { restriction: TypeId, reason: Box<NonEqualityReason>, pos: Span },
+	GenericRestrictionMismatch {
+		restriction: TypeId,
+		reason: Box<NonEqualityReason>,
+		pos: Span,
+	},
 	TooStrict,
+	/// TODO more information
+	MissingParameter,
 }
 
 #[derive(Debug)]
@@ -170,7 +178,38 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 	let right_ty = types.get_type_by_id(ty);
 
 	match left_ty {
-		Type::Function(..) => todo!(),
+		Type::Function(left_func, _) => {
+			if let Type::Function(func, _) = right_ty {
+				// TODO optional and rest parameters
+				for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
+					match func.parameters.get_type_constraint_at_index(idx) {
+						Some(ty) => {
+							let result = type_is_subtype(
+								lhs_param.ty,
+								ty,
+								ty_arguments,
+								behavior,
+								environment,
+								types,
+							);
+							match result {
+								SubTypeResult::IsSubtype => {}
+								err @ SubTypeResult::IsNotSubType(_) => {
+									// TODO don't short circuit
+									return err;
+								}
+							}
+						}
+						None => {
+							return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter)
+						}
+					}
+				}
+				SubTypeResult::IsSubtype
+			} else {
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
+		}
 		Type::Constant(lhs) => {
 			if let Type::Constant(rhs) = right_ty {
 				if lhs == rhs {
@@ -191,6 +230,19 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			{
 				return value;
 			}
+			if behavior.add_property_restrictions() {
+				match environment.object_constraints.entry(ty) {
+					std::collections::hash_map::Entry::Occupied(entry) => {
+						todo!()
+						// let new = types.new_and_type(lhs, rhs);
+						// entry.insert(new);
+					}
+					std::collections::hash_map::Entry::Vacant(vacant) => {
+						vacant.insert(base_type);
+					}
+				};
+			}
+
 			SubTypeResult::IsSubtype
 		}
 		Type::And(_, _) => todo!(),
@@ -260,7 +312,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 					right_ty,
 					Type::RootPolyType(..) | Type::Constructor(..) | Type::Constant(..)
 				) {
-				crate::utils::notify!("Skipped checking a nominal");
+				crate::utils::notify!("Short circuited checking a nominal");
 				// TODO not primitive error
 				// TODO this might break with *properties* proofs on primitives
 				// e.g. number :< Nat
@@ -425,7 +477,7 @@ impl NonEqualityReason {
 		environment: &GeneralEnvironment,
 	) -> ReadableSubTypeErrorMessage {
 		match self {
-			NonEqualityReason::Mismatch => Vec::new(),
+			NonEqualityReason::MissingParameter | NonEqualityReason::Mismatch => Vec::new(),
 			NonEqualityReason::GenericRestrictionMismatch { restriction, reason, pos } => todo!(),
 			NonEqualityReason::PropertiesInvalid { key } => todo!(),
 			NonEqualityReason::TooStrict => todo!(),

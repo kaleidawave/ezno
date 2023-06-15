@@ -8,9 +8,9 @@ use source_map::Span;
 
 use crate::{
 	context::FunctionId,
-	events::{Event, Reference},
+	events::{Event, RootReference},
 	types::{
-		poly_types::{GenericFunctionTypeParameters, ResolveGenerics, TypeArguments},
+		poly_types::{GenericTypeParameters, ResolveGenerics, TypeArguments},
 		TypeId,
 	},
 	CheckingData,
@@ -75,9 +75,9 @@ pub struct SynthesizedFunction {
 	pub(crate) returned: TypeId,
 	pub(crate) events: Vec<Event>,
 	/// TODO explain
-	pub(crate) closed_over_references: HashMap<Reference, TypeId>,
+	pub(crate) closed_over_references: HashMap<RootReference, TypeId>,
 	pub(crate) synthesized_parameters: SynthesizedParameters,
-	pub(crate) type_parameters: GenericFunctionTypeParameters,
+	pub(crate) type_parameters: Option<GenericTypeParameters>,
 }
 
 /// The type of `this` that a function has ....?
@@ -99,14 +99,14 @@ impl ThisBinding {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionType {
 	/// TODO not sure about this field and how it tails with Pi Types
-	pub generic_type_parameters: GenericFunctionTypeParameters,
+	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesizedParameters,
 	pub return_type: TypeId,
 	/// Side effects of the function
 	pub effects: Vec<Event>,
 
 	/// TODO type alias
-	pub closed_over_references: HashMap<Reference, TypeId>,
+	pub closed_over_references: HashMap<RootReference, TypeId>,
 
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
@@ -200,15 +200,15 @@ pub enum FunctionCallingError {
 	MissingArgument {
 		parameter_pos: Span,
 	},
-	ExtraArgument {
-		idx: usize,
-		position: Span,
+	ExtraArguments {
+		count: usize,
+		// TODO position: Span,
 	},
 	NotCallable {
 		calling: TypeId,
 	},
 	ReferenceRestrictionDoesNotMatch {
-		reference: Reference,
+		reference: RootReference,
 		requirement: TypeId,
 		found: TypeId,
 	},

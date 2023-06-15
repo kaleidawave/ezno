@@ -20,7 +20,7 @@ pub use terms::Constant;
 
 use crate::{
 	context::{get_env, GeneralEnvironment, InferenceBoundary},
-	events::Reference,
+	events::RootReference,
 	functions::FunctionType,
 	structures::{functions::SynthesizedArgument, operators::*},
 	InternalFunctionId,
@@ -135,7 +135,7 @@ pub enum PolyNature {
 	/// For functions and for loops where something in the scope can mutate (so not constant)
 	/// between runs.
 	ParentScope {
-		reference: Reference,
+		reference: RootReference,
 		based_on: PolyPointer,
 	},
 	RecursiveFunction(FunctionId, PolyPointer),
@@ -195,6 +195,7 @@ pub enum FunctionNature {
 	/// TODO needs improvement
 	Source(FunctionId, Option<GetterSetter>, Option<TypeId>),
 	Constructor(FunctionId),
+	Reference,
 }
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]

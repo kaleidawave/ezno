@@ -4,10 +4,13 @@ pub enum BinaryOperator {
 	Add,
 	Multiply,
 	Modulo,
-	/// TODO undecided
 	Exponent,
 	BitwiseOperators(BitwiseOperators),
 	RelationOperator(RelationOperator),
+	/// TODO undecided, how to represent of as composite of others?
+	Subtract,
+	Divide,
+	LogicalOperator(LogicalOperator),
 }
 
 #[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
@@ -36,7 +39,7 @@ pub enum LogicalOperator {
 pub enum UnaryOperator {
 	/// `-x`
 	Negation,
-	/// `1/x`
+	/// TODO non standard `1/x`
 	MultiplicativeInverse,
 	LogicalNegation,
 }

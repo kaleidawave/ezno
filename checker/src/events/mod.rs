@@ -14,12 +14,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
-pub enum Reference {
+pub enum RootReference {
 	VariableId(VariableId),
 	This,
 }
 
-impl Reference {
+impl RootReference {
 	pub fn get_name(self, environment: &Environment) -> String {
 		match self {
 			Self::VariableId(id) => environment.get_variable_name(&id),
@@ -31,13 +31,18 @@ impl Reference {
 /// Events which happen
 ///
 /// Used for getting values and states
+///
+/// `reflects_dependency` means the result goes into the type argument map. This corresponds to the
+/// type id (of constructor) it goes under
+///
+/// TODO store positions?
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Event {
 	/// Reads variable
 	///
 	/// Can be used for DCE reasons, or finding variables in context
 	ReadsReference {
-		reference: Reference,
+		reference: RootReference,
 		reflects_dependency: Option<TypeId>,
 	},
 	/// Also used for DCE
@@ -66,9 +71,7 @@ pub enum Event {
 	CallsType {
 		on: TypeId,
 		with: Box<[SynthesizedArgument]>,
-		/// The result of the call can go into the type argument map. This corresponds to the
-		/// key it goes under
-		return_type_matches: Option<TypeId>,
+		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
 	},
@@ -139,8 +142,10 @@ pub(crate) fn apply_event(
 			if let Some(id) = reflects_dependency {
 				// TODO checking constraints if inferred
 				let value = match variable {
-					Reference::VariableId(variable) => environment.get_value_of_variable(variable),
-					Reference::This => {
+					RootReference::VariableId(variable) => {
+						environment.get_value_of_variable(variable)
+					}
+					RootReference::This => {
 						this_argument.unwrap_or_else(|| environment.get_value_of_this(types))
 					}
 				};
@@ -196,7 +201,7 @@ pub(crate) fn apply_event(
 				type_arguments.set_id(id, value.into(), types);
 			}
 		}
-		Event::CallsType { on, with, return_type_matches, timing, called_with_new } => {
+		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
 			let on = specialize(on, type_arguments, environment, types);
 
 			let with = with
@@ -224,8 +229,8 @@ pub(crate) fn apply_event(
 					)
 					.expect("Inference and/or checking failed");
 
-					if let Some(return_type_matches) = return_type_matches {
-						type_arguments.set_id(return_type_matches, result.returned_type, types);
+					if let Some(reflects_dependency) = reflects_dependency {
+						type_arguments.set_id(reflects_dependency, result.returned_type, types);
 					}
 				}
 				// TODO different

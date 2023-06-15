@@ -14,13 +14,14 @@ pub(crate) use bases::InferenceBoundary;
 use source_map::Span;
 
 use crate::{
-	behavior,
-	errors::{CannotRedeclareVariable, TypeCheckError},
-	events::{Event, Reference},
+	behavior::{self},
+	errors::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
+	events::{Event, RootReference},
 	structures::{
 		functions::{FunctionType, SynthesizedFunction},
 		variables::VariableMutability,
 	},
+	subtyping::{type_is_subtype, BasicEquality},
 	types::{
 		cast_as_boolean, Constant, Constructor, PolyNature, PolyPointer, Type, TypeId, TypeStore,
 	},
@@ -208,7 +209,7 @@ pub enum VariableRegisterBehavior {
 	},
 	FunctionParameter {
 		/// TODO what happens to it
-		base: TypeId,
+		annotation: Option<TypeId>,
 	},
 	// TODO document behavior
 	CatchVariable {
@@ -357,7 +358,7 @@ impl<T: ContextType> Context<T> {
 		behavior: VariableRegisterBehavior,
 		types: &mut TypeStore,
 	) -> Result<TypeId, CannotRedeclareVariable<'a>> {
-		let (existing_variable, r#type) = match behavior {
+		let (existing_variable, ty) = match behavior {
 			VariableRegisterBehavior::Declare { base } => {
 				// TODO
 				let kind = VariableMutability::Constant;
@@ -382,7 +383,7 @@ impl<T: ContextType> Context<T> {
 				self.variable_names.insert(id, name.to_owned());
 				(self.variables.insert(name.to_owned(), variable), TypeId::ANY_TYPE)
 			}
-			VariableRegisterBehavior::FunctionParameter { base } => {
+			VariableRegisterBehavior::FunctionParameter { annotation } => {
 				// TODO maybe store separately
 
 				// TODO mutability constant
@@ -392,17 +393,23 @@ impl<T: ContextType> Context<T> {
 				};
 				self.variable_names.insert(id.clone(), name.to_owned());
 				let existing_variable = self.variables.insert(name.to_owned(), variable);
-				// TODO inferred
-				let parameter_ty = types.register_type(Type::RootPolyType(PolyNature::Parameter {
-					fixed_to: PolyPointer::Fixed(base),
-				}));
+				let parameter_ty = if let Some(annotation) = annotation {
+					types.register_type(Type::RootPolyType(PolyNature::Parameter {
+						fixed_to: PolyPointer::Fixed(annotation),
+					}))
+				} else {
+					types.register_type(Type::RootPolyType(PolyNature::Parameter {
+						fixed_to: PolyPointer::Inferred(InferenceBoundary(self.context_id)),
+					}))
+				};
+
 				self.variable_current_value.insert(id, parameter_ty);
 				(existing_variable, parameter_ty)
 			}
 		};
 
 		if existing_variable.is_none() {
-			Ok(r#type)
+			Ok(ty)
 		} else {
 			Err(CannotRedeclareVariable { name })
 		}
@@ -435,7 +442,12 @@ impl<T: ContextType> Context<T> {
 						let to = self
 							.parents_iter()
 							.find_map(|ctx| get_env!(ctx.bases.get_local_type_base(on)))
-							.unwrap();
+							// TODO temp
+							.unwrap_or_else(|| {
+								crate::utils::notify!("No type base on inferred poly type");
+								TypeId::ANY_TYPE
+							});
+
 						Some(PolyBase::Dynamic { to, boundary })
 					}
 				}
@@ -750,6 +762,7 @@ impl<T: ContextType> Context<T> {
 			.map(Logical::to_type)
 	}
 
+	/// Note: this also returns base generic types like `Array`
 	pub fn get_type_from_name(&self, name: &str) -> Option<TypeId> {
 		self.parents_iter().find_map(|env| get_env!(env.named_types.get(name))).cloned()
 	}
@@ -804,14 +817,11 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_value_of_variable(&self, id: VariableId) -> TypeId {
-		if let Some(found) = self.parents_iter().find_map(|env| {
-			// crate::utils::notify!(
-			// 	"Current values {:?} {:?}",
-			// 	get_env!(&env.variable_current_value),
-			// 	id
-			// );
-			get_env!(env.variable_current_value.get(&id)).copied()
-		}) {
+		let variable = self
+			.parents_iter()
+			.find_map(|env| get_env!(env.variable_current_value.get(&id)).copied());
+
+		if let Some(found) = variable {
 			found
 		} else {
 			panic!(
@@ -925,7 +935,7 @@ impl<T: ContextType> Context<T> {
 		// TODO could reuse existing if hoisted
 		let synthesized_parameters = func.parameters(&mut func_env, checking_data);
 
-		let return_type = func.return_type(&mut func_env, checking_data);
+		let return_type_annotation = func.return_type_annotation(&mut func_env, checking_data);
 
 		// TODO temp
 		let returned = if !func.is_declare() {
@@ -947,11 +957,45 @@ impl<T: ContextType> Context<T> {
 				})
 				.unwrap_or(TypeId::UNDEFINED_TYPE);
 
-			// TODO check returned against return type here
+			if let Some((expected_return_type, annotation_span)) = return_type_annotation {
+				let mut behavior = BasicEquality {
+					add_property_restrictions: true,
+					position: annotation_span.clone(),
+				};
+
+				let result = type_is_subtype(
+					expected_return_type,
+					returned,
+					None,
+					&mut behavior,
+					&mut func_env,
+					&checking_data.types,
+				);
+
+				if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type: TypeStringRepresentation::from_type_id(
+								expected_return_type,
+								&func_env.into_general_environment(),
+								&checking_data.types,
+								false,
+							),
+							returned_type: TypeStringRepresentation::from_type_id(
+								returned,
+								&func_env.into_general_environment(),
+								&checking_data.types,
+								false,
+							),
+							position: annotation_span,
+						},
+					);
+				}
+			}
 
 			returned
 		} else {
-			return_type.expect("declare without return type")
+			return_type_annotation.expect("declare without return type").0
 		};
 
 		SynthesizedFunction {
@@ -1001,7 +1045,7 @@ impl<T: ContextType> Context<T> {
 		environment_type: Scope,
 		checking_data: &mut CheckingData<U>,
 		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>) -> Res,
-	) -> (Res, Option<(Vec<Event>, HashMap<Reference, TypeId>)>, ContextId) {
+	) -> (Res, Option<(Vec<Event>, HashMap<RootReference, TypeId>)>, ContextId) {
 		let mut new_environment = self.new_lexical_environment(environment_type);
 		let res = cb(&mut new_environment, checking_data);
 		let context_id = new_environment.context_id;
@@ -1123,7 +1167,7 @@ impl<T: ContextType> Context<T> {
 		mut chain: Vec<(ContextId, ExistingContext)>,
 		checking_data: &mut CheckingData<U>,
 		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>) -> Res,
-	) -> (Res, Option<(Vec<Event>, HashMap<Reference, TypeId>)>, ContextId) {
+	) -> (Res, Option<(Vec<Event>, HashMap<RootReference, TypeId>)>, ContextId) {
 		let (context_id, environment) = chain.pop().unwrap();
 
 		let mut environment = Environment {
@@ -1156,7 +1200,7 @@ impl<T: ContextType> Context<T> {
 
 		enum Results<U> {
 			U(U),
-			Bottom((U, Option<(Vec<Event>, HashMap<Reference, TypeId>)>, ContextId)),
+			Bottom((U, Option<(Vec<Event>, HashMap<RootReference, TypeId>)>, ContextId)),
 		}
 
 		let results = if !chain.is_empty() {
@@ -1344,9 +1388,9 @@ impl<T: ContextType> Context<T> {
 		types: &mut TypeStore,
 		function_id: FunctionId,
 	) {
-		let r#type = types.register_type(Type::Function(
+		let ty = types.register_type(Type::Function(
 			FunctionType {
-				generic_type_parameters: returned.type_parameters,
+				type_parameters: returned.type_parameters,
 				parameters: returned.synthesized_parameters,
 				return_type: returned.returned,
 				effects: returned.events,
@@ -1360,7 +1404,7 @@ impl<T: ContextType> Context<T> {
 
 		let variable_id = self.variables.get(as_str).unwrap().declared_at.clone();
 
-		self.variable_current_value.insert(VariableId(variable_id), r#type);
+		self.variable_current_value.insert(VariableId(variable_id), ty);
 	}
 
 	pub fn new_explicit_type_parameter(
@@ -1370,17 +1414,17 @@ impl<T: ContextType> Context<T> {
 		default_type: Option<TypeId>,
 		types: &mut TypeStore,
 	) -> crate::types::poly_types::GenericTypeParameter {
-		let r#type = Type::RootPolyType(PolyNature::Generic {
+		let ty = Type::RootPolyType(PolyNature::Generic {
 			name: name.to_owned(),
 			eager_fixed: PolyPointer::Fixed(constraint_type.unwrap_or(TypeId::ANY_TYPE)),
 		});
 
-		let r#type = types.register_type(r#type);
-		self.named_types.insert(name.to_owned(), r#type);
+		let ty = types.register_type(ty);
+		self.named_types.insert(name.to_owned(), ty);
 
 		crate::types::poly_types::GenericTypeParameter {
 			name: name.to_owned(),
-			id: r#type,
+			id: ty,
 			default: default_type,
 		}
 	}
@@ -1406,8 +1450,8 @@ impl<T: ContextType> Context<T> {
 	/// TODO extends + parameters
 	pub fn new_interface(&mut self, name: &str, position: Span, types: &mut TypeStore) -> TypeId {
 		// TODO temp
-		let r#type = Type::NamedRooted { name: name.to_owned(), parameters: None };
-		let interface_ty = types.register_type(r#type);
+		let ty = Type::NamedRooted { name: name.to_owned(), parameters: None };
+		let interface_ty = types.register_type(ty);
 
 		// Interface merging!
 		let existing =
@@ -1424,8 +1468,8 @@ impl<T: ContextType> Context<T> {
 	/// TODO parameters
 	pub fn new_alias(&mut self, name: &str, to: TypeId, types: &mut TypeStore) -> TypeId {
 		// TODO temp
-		let r#type = Type::AliasTo { to, name: name.to_owned(), parameters: None };
-		let alias_ty = types.register_type(r#type);
+		let ty = Type::AliasTo { to, name: name.to_owned(), parameters: None };
+		let alias_ty = types.register_type(ty);
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
 		if existing_type.is_some() {
@@ -1435,7 +1479,11 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn set_variable_declaration_value(&mut self, id: VariableId, value_ty: TypeId) {
+	pub fn register_initial_variable_declaration_value(
+		&mut self,
+		id: VariableId,
+		value_ty: TypeId,
+	) {
 		self.variable_current_value.insert(id, value_ty);
 	}
 
@@ -1552,5 +1600,5 @@ impl Logical<TypeId> {
 #[derive(Debug)]
 pub enum SetPropertyError {
 	NotWriteable,
-	DoesNotMeetConstraint(crate::types::subtyping::NonEqualityReason),
+	DoesNotMeetConstraint(TypeId, crate::types::subtyping::NonEqualityReason),
 }

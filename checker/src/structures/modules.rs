@@ -28,15 +28,7 @@ pub enum ModuleFromPathError {
 
 impl From<ModuleFromPathError> for Diagnostic {
 	fn from(err: ModuleFromPathError) -> Self {
-		match err {
-			ModuleFromPathError::ParseError(parse_error) => todo!("parse_error.into()"),
-			ModuleFromPathError::PathDoesNotExist(path) => {
-				Diagnostic::Global(format!("Cannot find module '{}'", path.display()))
-			}
-			ModuleFromPathError::NoResolverForExtension(extension) => {
-				Diagnostic::Global(format!("No resolver for extension '.{}'", extension))
-			}
-		}
+		todo!()
 	}
 }
 

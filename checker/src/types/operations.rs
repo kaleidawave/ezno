@@ -63,6 +63,9 @@ pub fn evaluate_binary_operator(
 			}
 			RelationOperator::GreaterThan => todo!(),
 		},
+		BinaryOperator::Subtract => todo!(),
+		BinaryOperator::Divide => todo!(),
+		BinaryOperator::LogicalOperator(_) => todo!(),
 	};
 	// TODO handle things and convert to bin exprs
 	super::calling::call_type(
@@ -78,17 +81,17 @@ pub fn evaluate_binary_operator(
 		types,
 		crate::events::CalledWithNew::None,
 	)
-	.map(|x| x.returned_type)
+	.map(|op| op.returned_type)
 	.map_err(|err| {
 		for error in err {
 			match error {
 				crate::structures::functions::FunctionCallingError::InvalidArgumentType { parameter_type, argument_type, argument_position, parameter_position, restriction } => {
 					crate::utils::notify!("{} {}", types.debug_type(parameter_type), types.debug_type(argument_type));
 				},
-				crate::structures::functions::FunctionCallingError::MissingArgument { parameter_pos } => todo!(),
-				crate::structures::functions::FunctionCallingError::ExtraArgument { idx, position } => todo!(),
-				crate::structures::functions::FunctionCallingError::NotCallable { calling } => todo!(),
-				crate::structures::functions::FunctionCallingError::ReferenceRestrictionDoesNotMatch { reference, requirement, found } => todo!(),
+				crate::structures::functions::FunctionCallingError::MissingArgument { .. } => unreachable!("binary operator should accept two operands"),
+				crate::structures::functions::FunctionCallingError::ExtraArguments { .. } => unreachable!("binary operator should have two operands"),
+				crate::structures::functions::FunctionCallingError::NotCallable { .. } => unreachable!("operator should be callable"),
+				crate::structures::functions::FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => unreachable!("..."),
 			}
 		}
 		()
