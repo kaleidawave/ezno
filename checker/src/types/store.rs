@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::{Context, ContextType, FunctionId, InferenceBoundary},
+	context::{Context, ContextType, InferenceBoundary},
 	structures::functions::FunctionType,
 	types::{PolyNature, Type},
 	GeneralEnvironment, TypeId,
@@ -26,6 +26,7 @@ pub struct TypeStore {
 
 impl Default for TypeStore {
 	fn default() -> Self {
+		// These have to be in the order of TypeId
 		let mut types = vec![
 			Type::NamedRooted { name: "error".to_owned(), parameters: None },
 			Type::NamedRooted { name: "never".to_owned(), parameters: None },
@@ -43,6 +44,7 @@ impl Default for TypeStore {
 			}),
 			Type::NamedRooted { name: "object".to_owned(), parameters: None },
 			Type::NamedRooted { name: "Function".to_owned(), parameters: None },
+			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -160,10 +162,12 @@ impl TypeStore {
 				// TODO
 				closed_over_references: Default::default(),
 				// TODO
-				nature: crate::structures::functions::FunctionNature::Arrow,
+				kind: crate::structures::functions::FunctionKind::Arrow {
+					get_set: crate::GetSetGeneratorOrNone::None,
+				},
 				constant_id,
 			},
-			super::FunctionNature::Source(crate::context::FunctionId(span), None, None),
+			super::FunctionNature::Source(crate::context::FunctionId(span), None),
 		))
 	}
 
@@ -194,31 +198,7 @@ impl TypeStore {
 	}
 
 	/// From something like: let a: number => string. Rather than a actual function
-	pub(crate) fn new_type_annotation_function_type(
-		&mut self,
-		function_type: FunctionType,
-	) -> TypeId {
+	pub fn new_type_annotation_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		self.register_type(Type::Function(function_type, super::FunctionNature::Reference))
-	}
-
-	pub(crate) fn new_non_hoisted_function(
-		&mut self,
-		result: crate::structures::functions::SynthesizedFunction,
-		function_id: FunctionId,
-	) -> TypeId {
-		self.register_type(Type::Function(
-			FunctionType {
-				type_parameters: result.type_parameters,
-				parameters: result.synthesized_parameters,
-				// TODO explain
-				return_type: result.returned,
-				effects: result.events,
-				closed_over_references: result.closed_over_references,
-				// TODO temp
-				nature: crate::structures::functions::FunctionNature::Arrow,
-				constant_id: None,
-			},
-			crate::types::FunctionNature::Source(function_id, None, None),
-		))
 	}
 }

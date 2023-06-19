@@ -2,7 +2,7 @@ use source_map::Span;
 
 use crate::{
 	context::{Environment, PolyBase},
-	errors::{TypeCheckError, TypeStringRepresentation},
+	errors::TypeCheckError,
 	events::{CalledWithNew, Event, FunctionCallResult},
 	structures::{
 		functions::{FunctionType, SynthesizedArgument},
@@ -37,89 +37,10 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	match result {
 		Ok(FunctionCallResult { returned_type, warnings }) => returned_type,
 		Err(errors) => {
-			use crate::structures::functions::FunctionCallingError;
-			// TODO map
 			for error in errors {
-				let error = match error {
-					FunctionCallingError::InvalidArgumentType {
-						argument_type,
-						argument_position,
-						parameter_type,
-						parameter_position,
-						restriction,
-					} => TypeCheckError::ArgumentDoesNotMatchParameter {
-						parameter_type: TypeStringRepresentation::from_type_id(
-							parameter_type,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						argument_type: TypeStringRepresentation::from_type_id(
-							argument_type,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						parameter_position,
-						argument_position,
-						restriction: restriction.map(|(pos, restriction)| {
-							(
-								pos,
-								TypeStringRepresentation::from_type_id(
-									restriction,
-									&environment.into_general_environment(),
-									&checking_data.types,
-									checking_data.settings.debug_types,
-								),
-							)
-						}),
-					},
-					FunctionCallingError::MissingArgument { parameter_pos } => {
-						TypeCheckError::MissingArguments {
-							function: TypeStringRepresentation::from_type_id(
-								ty,
-								&environment.into_general_environment(),
-								&checking_data.types,
-								checking_data.settings.debug_types,
-							),
-							parameter_pos,
-							call_site: call_site.clone(),
-						}
-					}
-					FunctionCallingError::ExtraArguments { count } => {
-						TypeCheckError::ExtraArguments { count }
-					}
-					FunctionCallingError::NotCallable { calling } => TypeCheckError::NotCallable {
-						at: call_site.clone(),
-						calling: TypeStringRepresentation::from_type_id(
-							ty,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-					},
-					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-						reference,
-						requirement,
-						found,
-					} => TypeCheckError::HiddenArgumentDoesNotMatch {
-						identifier: reference.get_name(environment),
-						requirement: TypeStringRepresentation::from_type_id(
-							requirement,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						found: TypeStringRepresentation::from_type_id(
-							found,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						call_site: call_site.clone(),
-					},
-				};
-				checking_data.diagnostics_container.add_error(error)
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::FunctionCallingError(error))
 			}
 			TypeId::ERROR_TYPE
 		}
@@ -142,7 +63,8 @@ pub fn call_type(
 	} else if let Type::Function(function_type, variant) = types.get_type_by_id(on) {
 		// TODO as Rc to avoid expensive clone
 		let function_type = function_type.clone();
-		let arg = if let FunctionNature::Source(_, _, id) = variant { id.clone() } else { None };
+		let arg =
+			if let FunctionNature::Source(_, this_arg) = variant { this_arg.clone() } else { None };
 
 		// TODO should be done after call to check that arguments are correct
 		if let Some(const_fn_ident) = function_type.constant_id.as_deref() {
@@ -296,7 +218,9 @@ pub fn call_type(
 						effects: Default::default(),
 						closed_over_references: Default::default(),
 						// TODO
-						nature: crate::structures::functions::FunctionNature::Arrow,
+						kind: crate::structures::functions::FunctionKind::Arrow {
+							get_set: crate::GetSetGeneratorOrNone::None,
+						},
 						constant_id: None,
 					};
 

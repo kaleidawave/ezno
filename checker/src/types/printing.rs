@@ -21,7 +21,6 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 				print_type(types, ty, env)
 			}
 			PolyNature::Open(to) => print_type(types, *to, env),
-
 			nature => {
 				todo!()
 				// let modified_base = match env {
@@ -67,6 +66,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 					if let Some(ref default) = param.default {
 						todo!()
 					}
+					buf.push_str(", ")
 				}
 				buf.push('>');
 			}
@@ -75,6 +75,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 				buf.push_str(&param.name);
 				buf.push_str(": ");
 				buf.push_str(&print_type(types, param.ty, env));
+				buf.push_str(", ");
 			}
 			buf.push_str(") => ");
 			buf.push_str(&print_type(types, func.return_type, env));

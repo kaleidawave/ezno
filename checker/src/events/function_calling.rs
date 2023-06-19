@@ -6,7 +6,7 @@ use source_map::{SourceId, Span};
 
 use crate::{
 	structures::functions::{
-		FunctionCallingError, FunctionNature, FunctionType, SynthesizedArgument,
+		FunctionCallingError, FunctionKind, FunctionType, SynthesizedArgument,
 	},
 	types::{
 		poly_types::{
@@ -122,13 +122,18 @@ impl FunctionType {
 		let mut type_arguments =
 			TypeArguments { structure_arguments: parent_type_arguments.clone(), local_arguments };
 
-		match self.nature {
-			FunctionNature::Arrow => {
-				if !matches!(called_with_new, CalledWithNew::None) {
-					todo!("Error");
+		match self.kind {
+			FunctionKind::Arrow { get_set } => match get_set {
+				crate::GetSetGeneratorOrNone::Generator => todo!(),
+				crate::GetSetGeneratorOrNone::Get
+				| crate::GetSetGeneratorOrNone::Set
+				| crate::GetSetGeneratorOrNone::None => {
+					if !matches!(called_with_new, CalledWithNew::None) {
+						todo!("Error");
+					}
 				}
-			}
-			FunctionNature::ClassConstructor { class_prototype, class_constructor } => {
+			},
+			FunctionKind::ClassConstructor { class_prototype, class_constructor } => {
 				match called_with_new {
 					CalledWithNew::New { .. } => {}
 					CalledWithNew::SpecialSuperCall { on } => {
@@ -140,7 +145,7 @@ impl FunctionType {
 					}
 				}
 			}
-			FunctionNature::Function { function_prototype: function } => {
+			FunctionKind::Function { function_prototype } => {
 				if let (CalledWithNew::None { .. }, Some(arg)) = (called_with_new, &this_argument) {
 					type_arguments.set_this(*arg);
 				}
@@ -207,13 +212,31 @@ impl FunctionType {
 							pos,
 						} = reasons
 						{
-							Some((pos, restriction))
+							Some((
+								pos,
+								crate::errors::TypeStringRepresentation::from_type_id(
+									restriction,
+									&environment.into_general_environment(),
+									types,
+									false,
+								),
+							))
 						} else {
 							None
 						};
 						errors.push(FunctionCallingError::InvalidArgumentType {
-							parameter_type: parameter.ty,
-							argument_type: *argument_type,
+							parameter_type: crate::errors::TypeStringRepresentation::from_type_id(
+								parameter.ty,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
+							argument_type: crate::errors::TypeStringRepresentation::from_type_id(
+								*argument_type,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
 							parameter_position: parameter.position.clone(),
 							argument_position: argument_position.clone(),
 							restriction,
@@ -276,13 +299,31 @@ impl FunctionType {
 						pos,
 					} = reasons
 					{
-						Some((pos, restriction))
+						Some((
+							pos,
+							crate::errors::TypeStringRepresentation::from_type_id(
+								restriction,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
+						))
 					} else {
 						None
 					};
 					errors.push(FunctionCallingError::InvalidArgumentType {
-						parameter_type: parameter.ty,
-						argument_type: *argument_type,
+						parameter_type: crate::errors::TypeStringRepresentation::from_type_id(
+							parameter.ty,
+							&environment.into_general_environment(),
+							types,
+							false,
+						),
+						argument_type: crate::errors::TypeStringRepresentation::from_type_id(
+							*argument_type,
+							&environment.into_general_environment(),
+							types,
+							false,
+						),
 						argument_position: argument_pos.clone(),
 						parameter_position: parameter.position.clone(),
 						restriction,
@@ -332,13 +373,33 @@ impl FunctionType {
 									pos,
 								} = reasons
 								{
-									Some((pos, restriction))
+									Some((
+										pos,
+										crate::errors::TypeStringRepresentation::from_type_id(
+											restriction,
+											&environment.into_general_environment(),
+											types,
+											false,
+										),
+									))
 								} else {
 									None
 								};
 							errors.push(FunctionCallingError::InvalidArgumentType {
-								parameter_type: rest_parameter.item_type,
-								argument_type: *argument_type,
+								parameter_type:
+									crate::errors::TypeStringRepresentation::from_type_id(
+										rest_parameter.item_type,
+										&environment.into_general_environment(),
+										types,
+										false,
+									),
+								argument_type:
+									crate::errors::TypeStringRepresentation::from_type_id(
+										*argument_type,
+										&environment.into_general_environment(),
+										types,
+										false,
+									),
 								argument_position: argument_pos.clone(),
 								parameter_position: rest_parameter.position.clone(),
 								restriction,
@@ -348,15 +409,19 @@ impl FunctionType {
 				} else {
 					// TODO types.settings.allow_extra_arguments
 					let mut left_over = arguments.iter().skip(all_parameters_length);
-					let first = left_over.next();
+					let first = left_over.next().unwrap();
 					let mut count = 1;
-					let mut _end = None;
+					let mut end = None;
 					while let arg @ Some(_) = left_over.next() {
 						count += 1;
-						_end = arg;
+						end = arg;
 					}
-					// TODO position using a union of first and end
-					errors.push(FunctionCallingError::ExtraArguments { count });
+					let position = if let Some(end) = end {
+						first.get_position().union(&end.get_position())
+					} else {
+						first.get_position()
+					};
+					errors.push(FunctionCallingError::ExtraArguments { count, position });
 				}
 			}
 
@@ -385,14 +450,23 @@ impl FunctionType {
 					) {
 						errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 							reference,
-							requirement: restriction,
-							found: current_value,
+							requirement: crate::errors::TypeStringRepresentation::from_type_id(
+								restriction,
+								&environment.into_general_environment(),
+								&types,
+								false,
+							),
+							found: crate::errors::TypeStringRepresentation::from_type_id(
+								current_value,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
 						});
 					}
 				}
 				RootReference::This if matches!(called_with_new, CalledWithNew::None) => {}
 				RootReference::This => {
-					crate::utils::notify!("Here1");
 					let value_of_this =
 						this_argument.unwrap_or_else(|| environment.get_value_of_this(types));
 
@@ -411,8 +485,18 @@ impl FunctionType {
 					) {
 						errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 							reference,
-							requirement: restriction,
-							found: value_of_this,
+							requirement: crate::errors::TypeStringRepresentation::from_type_id(
+								restriction,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
+							found: crate::errors::TypeStringRepresentation::from_type_id(
+								value_of_this,
+								&environment.into_general_environment(),
+								types,
+								false,
+							),
 						});
 					}
 				}

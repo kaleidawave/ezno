@@ -7,7 +7,7 @@ use std::{
 };
 
 #[derive(Serialize, Debug)]
-// #[serde(tag = "type")]
+#[serde(tag = "type")]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -16,7 +16,7 @@ pub enum DiagnosticKind {
 
 /// Contains information
 #[derive(Serialize, Debug)]
-// #[serde(tag = "type")]
+#[serde(tag = "type")]
 pub enum Diagnostic {
 	/// Does not have positional information
 	Global {
@@ -62,7 +62,7 @@ impl Diagnostic {
 #[derive(Default, serde::Serialize)]
 #[serde(transparent)]
 pub struct DiagnosticsContainer {
-	container: Vec<Diagnostic>,
+	diagnostics: Vec<Diagnostic>,
 	// Quick way to check whether a error was added
 	#[serde(skip_serializing)]
 	has_error: bool,
@@ -75,15 +75,15 @@ impl DiagnosticsContainer {
 
 	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {
 		self.has_error = true;
-		self.container.push(error.into())
+		self.diagnostics.push(error.into())
 	}
 
 	pub fn add_warning<T: Into<Diagnostic>>(&mut self, warning: T) {
-		self.container.push(warning.into())
+		self.diagnostics.push(warning.into())
 	}
 
 	pub fn add_info<T: Into<Diagnostic>>(&mut self, info: T) {
-		self.container.push(info.into())
+		self.diagnostics.push(info.into())
 	}
 
 	pub fn has_error(&self) -> bool {
@@ -91,11 +91,16 @@ impl DiagnosticsContainer {
 	}
 
 	pub fn sources<'a>(&'a self) -> impl Iterator<Item = SourceId> + 'a {
-		self.container.iter().flat_map(|item| item.sources())
+		self.diagnostics.iter().flat_map(|item| item.sources())
 	}
 
 	pub fn into_iter(self) -> impl DoubleEndedIterator<Item = Diagnostic> {
-		self.container.into_iter()
+		self.diagnostics.into_iter()
+	}
+
+	#[doc(hidden)]
+	pub fn get_diagnostics(self) -> Vec<Diagnostic> {
+		self.diagnostics
 	}
 
 	pub fn into_result(self) -> Result<Self, Self> {
@@ -115,7 +120,7 @@ use crate::{
 };
 
 /// TODO could be more things, for instance a property missing etc
-pub(crate) enum TypeStringRepresentation {
+pub enum TypeStringRepresentation {
 	Type(String),
 }
 
@@ -156,28 +161,38 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contains known internal errors and warnings
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
+	use crate::context::AssignmentError;
 	use source_map::Span;
 
 	use crate::{
-		structures::{self, operators::UnaryOperator},
+		structures::{self, functions::FunctionCallingError, operators::UnaryOperator},
 		Diagnostic,
 	};
 	use std::path;
 
 	use super::TypeStringRepresentation;
 
+	/// Covers multiplication, subtraction, modulo etc
+	/// TODO something better?
+	pub struct InvalidMathematicalOperation {
+		pub(crate) lhs: TypeStringRepresentation,
+		pub(crate) rhs: TypeStringRepresentation,
+		pub(crate) operator: structures::operators::BinaryOperator,
+		pub(crate) position: Span,
+	}
+
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
 	/// e.g. cannot Call, cannot equate, duplicate key etc
 	pub(crate) enum TypeCheckError<'a> {
+		FunctionCallingError(FunctionCallingError),
 		PropertyDoesNotExist {
 			property: TypeStringRepresentation,
-			ty: TypeStringRepresentation,
+			on: TypeStringRepresentation,
 			site: Span,
 		},
 		RestParameterAnnotationShouldBeArrayType(Span),
 		/// TODO better name
 		NonExistentType(String),
-		CannotIndexType,
 		CouldNotFindVariable {
 			variable: &'a str,
 			possibles: Vec<&'a str>,
@@ -185,30 +200,28 @@ mod defined_errors_and_warnings {
 		},
 		CouldNotFindType(&'a str, Span),
 		TypeHasNoGenericParameters(String, Span),
-		ArgumentDoesNotMatchParameter {
-			parameter_type: TypeStringRepresentation,
-			parameter_position: Span,
-			argument_type: TypeStringRepresentation,
-			argument_position: Span,
-			restriction: Option<(Span, TypeStringRepresentation)>,
+		AssignmentError(AssignmentError),
+		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
+		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
+		InvalidMathematicalOperation(InvalidMathematicalOperation),
+		InvalidBitwiseOperation(
+			TypeStringRepresentation,
+			TypeStringRepresentation,
+			structures::operators::BitwiseOperators,
+		),
+		InvalidUnaryOperation(UnaryOperator, TypeStringRepresentation),
+		ReturnedTypeDoesNotMatch {
+			expected_return_type: TypeStringRepresentation,
+			returned_type: TypeStringRepresentation,
+			position: Span,
 		},
-		/// TODO this also covers readonly
-		/// TODO should this contain information about the constant
-		CannotAssignToConstant {
-			variable_name: &'a str,
-			variable_position: Span,
-			assignment_position: Span,
-		},
-		CannotAssignToFrozen {
-			variable_type: TypeStringRepresentation,
-			assignment_position: Span,
-		},
-		InvalidAssignmentOrDeclaration {
-			variable_type: TypeStringRepresentation,
-			value_type: TypeStringRepresentation,
-			variable_site: Span,
-			value_site: Span,
-		},
+		// TODO are these the same errors?
+		TypeIsNotIndexable(TypeStringRepresentation),
+		TypeIsNotIterable(TypeStringRepresentation),
+		// This could be a syntax error but that is difficult to type...
+		NonTopLevelExport,
+		// TODO implies the presence of, which isn't always true
+		FieldNotExported(&'a str, &'a path::Path, Span),
 		InvalidJSXAttribute {
 			attribute_name: String,
 			attribute_type: TypeStringRepresentation,
@@ -217,47 +230,10 @@ mod defined_errors_and_warnings {
 			attribute_type_site: (),
 			value_site: Span,
 		},
-		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
-		/// Covers multiplication, subtraction, modulo etc
-		/// TODO something better?
-		InvalidMathematicalOperation(
-			TypeStringRepresentation,
-			TypeStringRepresentation,
-			structures::operators::BinaryOperator,
-			Span,
-		),
-		InvalidBitwiseOperation(
-			TypeStringRepresentation,
-			TypeStringRepresentation,
-			structures::operators::BitwiseOperators,
-		),
-		ReturnedTypeDoesNotMatch {
-			expected_return_type: TypeStringRepresentation,
-			returned_type: TypeStringRepresentation,
-			position: Span,
-		},
-		InvalidUnaryOperation(UnaryOperator, TypeStringRepresentation),
-		// TODO are these the same errors?
-		TypeIsNotIndexable(TypeStringRepresentation),
-		TypeIsNotIterable(TypeStringRepresentation),
-		// This could be a syntax error but that is difficult to type...
-		NonTopLevelExport,
-		// TODO implies the presence of, which isn't always true
-		FieldNotExported(&'a str, &'a path::Path, Span),
-		MissingArguments {
-			function: TypeStringRepresentation,
-			parameter_pos: Span,
-			call_site: Span,
-		},
 		InvalidJSXInterpolatedValue {
 			interpolation_site: Span,
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
-		},
-		NotCallable {
-			at: Span,
-			calling: TypeStringRepresentation,
 		},
 		/// for the `satisfies` keyword
 		NotSatisfied {
@@ -265,31 +241,13 @@ mod defined_errors_and_warnings {
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
 		},
-		ExtraArguments {
-			count: usize, // argument_position: Span,
-		},
 		Unsupported {
 			thing: &'static str,
 			at: Span,
 		},
-		NotWritable {
-			pos: Span,
-		},
-		CannotAssign {
-			constraint: TypeStringRepresentation,
-			to: TypeStringRepresentation,
-			pos: Span,
-			value_pos: Span,
-		},
 		ReDeclaredVariable {
 			name: &'a str,
 			pos: Span,
-		},
-		HiddenArgumentDoesNotMatch {
-			identifier: String,
-			requirement: TypeStringRepresentation,
-			found: TypeStringRepresentation,
-			call_site: Span,
 		},
 		/// TODO temp, needs more info
 		FunctionDoesNotMeetConstraint {
@@ -321,67 +279,94 @@ mod defined_errors_and_warnings {
 					position: pos,
 					kind: super::DiagnosticKind::Error,
 				},
-				TypeCheckError::PropertyDoesNotExist { property, ty, site } => {
+				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
 					Diagnostic::Position {
-						reason: format!("No property with {} on {}", property, ty),
+						reason: format!("No property with {} on {}", property, on),
 						position: site,
 						kind: super::DiagnosticKind::Error,
 					}
 				}
-				TypeCheckError::ArgumentDoesNotMatchParameter {
-					parameter_type,
-					argument_type,
-					argument_position,
-					parameter_position,
-					restriction,
-				} => {
-					if let Some((restriction_pos, restriction)) = restriction {
-						Diagnostic::PositionWithAdditionLabels {
-							reason: format!(
-								"Argument of type {} is not assignable to {}",
-								argument_type, restriction
-							),
-							position: argument_position,
-							labels: vec![(
-								format!(
-									"Parameter {} was specialized with type {}",
-									parameter_type, restriction
+				TypeCheckError::FunctionCallingError(error) => match error {
+					FunctionCallingError::InvalidArgumentType {
+						parameter_type,
+						argument_type,
+						argument_position,
+						parameter_position,
+						restriction,
+					} => {
+						if let Some((restriction_pos, restriction)) = restriction {
+							Diagnostic::PositionWithAdditionLabels {
+								reason: format!(
+									"Argument of type {} is not assignable to {}",
+									argument_type, restriction
 								),
-								Some(restriction_pos),
-							)],
-							kind: super::DiagnosticKind::Error,
-						}
-					} else {
-						Diagnostic::PositionWithAdditionLabels {
-							reason: format!(
-								"Argument of type {} is not assignable to {}",
-								argument_type, parameter_type
-							),
-							position: argument_position,
-							labels: vec![(
-								format!("Parameter has type {}", parameter_type),
-								Some(parameter_position),
-							)],
-							kind: super::DiagnosticKind::Error,
+								position: argument_position,
+								labels: vec![(
+									format!(
+										"Parameter {} was specialized with type {}",
+										parameter_type, restriction
+									),
+									Some(restriction_pos),
+								)],
+								kind: super::DiagnosticKind::Error,
+							}
+						} else {
+							Diagnostic::PositionWithAdditionLabels {
+								reason: format!(
+									"Argument of type {} is not assignable to {}",
+									argument_type, parameter_type
+								),
+								position: argument_position,
+								labels: vec![(
+									format!("Parameter has type {}", parameter_type),
+									Some(parameter_position),
+								)],
+								kind: super::DiagnosticKind::Error,
+							}
 						}
 					}
-				}
-				TypeCheckError::InvalidAssignmentOrDeclaration {
-					variable_type,
-					value_type,
-					value_site,
-					variable_site,
-				} => Diagnostic::PositionWithAdditionLabels {
-					reason: format!(
-						"Type {} is not assignable to type {}",
-						value_type, variable_type
-					),
-					position: value_site,
-					labels: vec![(
-						format!("Variable declared with type {}", variable_type),
-						Some(variable_site),
-					)],
-					kind: super::DiagnosticKind::Error,
+					FunctionCallingError::MissingArgument { parameter_pos } => todo!(),
+					FunctionCallingError::ExtraArguments { count, position } => todo!(),
+					FunctionCallingError::NotCallable { calling } => todo!(),
+					//  Diagnostic::Position {
+					// 	reason: format!("Cannot call {}", calling),
+					// 	position: at,
+					// 	kind: super::DiagnosticKind::Error,
+					// },
+					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
+						reference,
+						requirement,
+						found,
+					} => todo!(),
+					// Diagnostic::Position {
+					// 	reason: format!(
+					// 		"Calling function requires {} to be {}, found {}",
+					// 		identifier, requirement, found
+					// 	),
+					// 	position: call_site,
+					// 	kind: super::DiagnosticKind::Error,
+					// },
+				},
+				//  => ,
+				TypeCheckError::AssignmentError(error) => match error {
+					AssignmentError::InvalidDeclaration {
+						variable_type,
+						variable_site,
+						value_type,
+						value_site,
+					} => Diagnostic::PositionWithAdditionLabels {
+						reason: format!(
+							"Type {} is not assignable to type {}",
+							value_type, variable_type
+						),
+						position: value_site,
+						labels: vec![(
+							format!("Variable declared with type {}", variable_type),
+							Some(variable_site),
+						)],
+						kind: super::DiagnosticKind::Error,
+					},
+					_ => todo!(),
 				},
 				TypeCheckError::InvalidJSXAttribute {
 					attribute_name,
@@ -409,49 +394,48 @@ mod defined_errors_and_warnings {
 					position,
 					kind: super::DiagnosticKind::Error,
 				},
-				TypeCheckError::MissingArguments { function, parameter_pos, call_site } => {
-					Diagnostic::PositionWithAdditionLabels {
-						reason: format!("Calling {}, found missing arguments", function),
-						position: call_site,
-						labels: vec![("Parameter defined here".to_owned(), Some(parameter_pos))],
-						kind: super::DiagnosticKind::Error,
-					}
-				}
+				// TypeCheckError::MissingArguments { function, parameter_pos, call_site } => {
+				// Diagnostic::PositionWithAdditionLabels {
+				// 		reason: format!("Calling {}, found missing arguments", function),
+				// 		position: call_site,
+				// 		labels: vec![("Parameter defined here".to_owned(), Some(parameter_pos))],
+				// 		kind: super::DiagnosticKind::Error,
+				// 	}
+				// }
 				TypeCheckError::NonExistentType(_) => todo!(),
-				TypeCheckError::CannotIndexType => todo!(),
 				TypeCheckError::TypeHasNoGenericParameters(_, _) => todo!(),
-				TypeCheckError::CannotAssignToConstant {
-					variable_name,
-					variable_position,
-					assignment_position,
-				} => Diagnostic::PositionWithAdditionLabels {
-					reason: format!("Cannot reassign to constant variable '{}'", variable_name),
-					position: assignment_position,
-					labels: vec![(
-						"Constant variable defined here".to_owned(),
-						Some(variable_position),
-					)],
-					kind: super::DiagnosticKind::Error,
-				},
-				TypeCheckError::CannotAssignToFrozen { variable_type, assignment_position } => {
-					Diagnostic::Position {
-						reason: format!("{} is frozen", variable_type),
-						position: assignment_position,
-						kind: super::DiagnosticKind::Error,
-					}
-				}
+				// TypeCheckError::CannotAssignToConstant {
+				// 	variable_name,
+				// 	variable_position,
+				// 	assignment_position,
+				// } => Diagnostic::PositionWithAdditionLabels {
+				// 	reason: format!("Cannot reassign to constant variable '{}'", variable_name),
+				// 	position: assignment_position,
+				// 	labels: vec![(
+				// 		"Constant variable defined here".to_owned(),
+				// 		Some(variable_position),
+				// 	)],
+				// 	kind: super::DiagnosticKind::Error,
+				// },
+				// TypeCheckError::CannotAssignToFrozen { variable_type, assignment_position } => {
+				// 	Diagnostic::Position {
+				// 		reason: format!("{} is frozen", variable_type),
+				// 		position: assignment_position,
+				// 		kind: super::DiagnosticKind::Error,
+				// 	}
+				// }
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
-				TypeCheckError::InvalidMathematicalOperation(lhs, rhs, operation, pos) => {
-					Diagnostic::Position {
-						reason: format!(
-							"Invalid operation {}, between {} and {}",
-							"todo", lhs, rhs
-						),
-						position: pos,
-						kind: super::DiagnosticKind::Error,
-					}
-				}
+				TypeCheckError::InvalidMathematicalOperation(InvalidMathematicalOperation {
+					lhs,
+					rhs,
+					operator,
+					position,
+				}) => Diagnostic::Position {
+					reason: format!("Cannot {:?} {} and {}", operator, lhs, rhs),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
 				TypeCheckError::InvalidBitwiseOperation(_, _, _) => todo!(),
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
@@ -475,43 +459,25 @@ mod defined_errors_and_warnings {
 					position: at,
 					kind: super::DiagnosticKind::Error,
 				},
-				TypeCheckError::NotCallable { at, calling } => Diagnostic::Position {
-					reason: format!("Cannot call {}", calling),
-					position: at,
-					kind: super::DiagnosticKind::Error,
-				},
-				TypeCheckError::ExtraArguments { count } => todo!(),
-				TypeCheckError::NotWritable { pos } => Diagnostic::Position {
-					reason: format!("Cannot assign to immutable property"),
-					position: pos,
-					kind: super::DiagnosticKind::Error,
-				},
-				TypeCheckError::CannotAssign { pos, value_pos, constraint, to } => {
-					Diagnostic::PositionWithAdditionLabels {
-						reason: format!("Cannot assign {} to property of type {}", to, constraint),
-						position: pos,
-						labels: vec![(format!("Expression has type {to}"), Some(value_pos))],
-						kind: super::DiagnosticKind::Error,
-					}
-				}
-				TypeCheckError::ReDeclaredVariable { name, pos } => Diagnostic::Position {
-					reason: format!("Cannot redeclare {} in scope", name),
-					position: pos,
-					kind: super::DiagnosticKind::Error,
-				},
-				TypeCheckError::HiddenArgumentDoesNotMatch {
-					identifier,
-					requirement,
-					found,
-					call_site,
-				} => Diagnostic::Position {
-					reason: format!(
-						"Calling function requires {} to be {}, found {}",
-						identifier, requirement, found
-					),
-					position: call_site,
-					kind: super::DiagnosticKind::Error,
-				},
+				// TypeCheckError::NotWritable { pos } => Diagnostic::Position {
+				// 	reason: format!("Cannot assign to immutable property"),
+				// 	position: pos,
+				// 	kind: super::DiagnosticKind::Error,
+				// },
+				// TypeCheckError::CannotAssign { pos, value_pos, constraint, to } => {
+				// 	Diagnostic::PositionWithAdditionLabels {
+				// 		reason: format!("Cannot assign {} to property of type {}", to, constraint),
+				// 		position: pos,
+				// 		labels: vec![(format!("Expression has type {to}"), Some(value_pos))],
+				// 		kind: super::DiagnosticKind::Error,
+				// 	}
+				// }
+				// TypeCheckError::ReDeclaredVariable { name, pos } => Diagnostic::Position {
+				// 	reason: format!("Cannot redeclare {} in scope", name),
+				// 	position: pos,
+				// 	kind: super::DiagnosticKind::Error,
+				// },
+				TypeCheckError::ReDeclaredVariable { name, pos } => todo!(),
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,

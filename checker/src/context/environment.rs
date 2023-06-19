@@ -1,11 +1,10 @@
+use source_map::Span;
 use std::collections::HashMap;
 
-use source_map::Span;
-
 use crate::{
-	behavior::assignments::{Assignable, Reference, SynthesizableExpression},
-	errors::TypeCheckError,
-	evaluate_binary_operator,
+	behavior::assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
+	errors::{TypeCheckError, TypeStringRepresentation},
+	evaluate_binary_operator_handle_errors,
 	events::{Event, RootReference},
 	structures::{
 		operators::BinaryOperator,
@@ -13,7 +12,7 @@ use crate::{
 	},
 	subtyping::BasicEquality,
 	types::{
-		properties::PropertyResult,
+		properties::{Property, PropertyResult},
 		subtyping::{type_is_subtype, SubTypeResult},
 		Type, TypeStore,
 	},
@@ -21,7 +20,7 @@ use crate::{
 };
 
 use super::{
-	Context, ContextType, Environment, GeneralEnvironment, ReassignmentError, SetPropertyError,
+	AssignmentError, Context, ContextType, Environment, GeneralEnvironment, SetPropertyError,
 };
 
 #[derive(Debug)]
@@ -37,7 +36,7 @@ pub struct Syntax<'a> {
 	pub async_events: Vec<Event>,
 
 	/// TODO rhs type is what...?
-	pub closed_over_variables: HashMap<RootReference, TypeId>,
+	pub closed_over_references: HashMap<RootReference, TypeId>,
 }
 
 impl<'a> ContextType for Syntax<'a> {
@@ -89,110 +88,118 @@ pub enum Scope {
 }
 
 impl<'a> Environment<'a> {
-	/// Handles all assignments, including updates (based of operators) and destructuring
+	/// Handles all assignments, including updates and destructuring
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
+	///
+	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
 	pub fn assign_to_assignable_handle_errors<U: crate::FSResolver>(
 		&mut self,
 		lhs: Assignable,
-		operator: Option<BinaryOperator>,
-		expression: &impl SynthesizableExpression,
+		operator: AssignmentKind,
+		// Can be `None` for increment and decrement
+		expression: Option<&impl SynthesizableExpression>,
 		assignment_span: Span,
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId {
 		match lhs {
-			Assignable::Reference(reference) => match reference {
-				Reference::Variable(name) => {
-					// Order matters here
-					let new_ty = if let Some(operator) = operator {
-						// TODO not assignment_span
-						let value =
-							self.get_variable_or_error(&name, &assignment_span, checking_data);
-						let existing = match value {
-							Ok(VariableWithValue(_, value)) => value,
-							Err(_) => todo!(),
-						};
-						evaluate_binary_operator(
-							operator,
-							existing,
-							expression.synthesize_expression(self, checking_data),
-							self,
-							false,
-							&mut checking_data.types,
-						)
-						.unwrap()
-					} else {
-						expression.synthesize_expression(self, checking_data)
-					};
-
-					self.assign_to_variable_handle_errors(
-						&name,
-						assignment_span,
-						new_ty,
-						checking_data,
-					)
-				}
-				Reference::Property { on, with } => {
-					let new_ty = if let Some(operator) = operator {
-						// TODO not assignment_span
-						let existing = self.get_property_handle_errors(
-							on,
-							with,
-							checking_data,
-							assignment_span.clone(),
-						);
-						let result = evaluate_binary_operator(
-							operator,
-							existing,
-							expression.synthesize_expression(self, checking_data),
-							self,
-							false,
-							&mut checking_data.types,
-						);
-						match result {
-							Ok(ty) => ty,
-							Err(x) => {
-								todo!()
-							}
+			Assignable::Reference(reference) => {
+				/// Returns
+				fn get_reference<U: crate::FSResolver>(
+					env: &mut Environment,
+					reference: Reference,
+					checking_data: &mut CheckingData<U>,
+				) -> TypeId {
+					match reference {
+						Reference::Variable(name, position) => {
+							env.get_variable_or_error(&name, &position, checking_data).unwrap().1
 						}
-					} else {
-						expression.synthesize_expression(self, checking_data)
-					};
-					match self.set_property(on, with, new_ty, &mut checking_data.types) {
-						Ok(ty) => ty.unwrap_or(new_ty),
-						Err(err) => {
-							let error = match err {
-								SetPropertyError::NotWriteable => {
-									todo!()
-								}
-								SetPropertyError::DoesNotMeetConstraint(expected, _err) => {
-									TypeCheckError::CannotAssign {
-										pos: assignment_span,
-										value_pos: expression.get_position(),
-										constraint:
-											crate::errors::TypeStringRepresentation::from_type_id(
-												expected,
-												&self.into_general_environment(),
-												&checking_data.types,
-												false,
-											),
-										to: crate::errors::TypeStringRepresentation::from_type_id(
-											new_ty,
-											&self.into_general_environment(),
-											&checking_data.types,
-											false,
-										),
-									}
-								}
-							};
-							checking_data.diagnostics_container.add_error(error);
-
-							// new_ty
-							TypeId::ERROR_TYPE
+						Reference::Property { on, with, span } => {
+							env.get_property_handle_errors(on, with, checking_data, span)
 						}
 					}
 				}
-			},
+
+				/// Returns
+				fn set_reference<U: crate::FSResolver>(
+					env: &mut Environment,
+					reference: Reference,
+					new: TypeId,
+					checking_data: &mut CheckingData<U>,
+				) -> TypeId {
+					match reference {
+						Reference::Variable(name, position) => env
+							.assign_to_variable_handle_errors(
+								name.as_str(),
+								position,
+								new,
+								checking_data,
+							),
+						Reference::Property { on, with, span } => env
+							.set_property(on, with, new, &mut checking_data.types)
+							.unwrap()
+							.unwrap_or(new),
+					}
+				}
+
+				match operator {
+					AssignmentKind::Assign => {
+						let new = expression.unwrap().synthesize_expression(self, checking_data);
+						set_reference(self, reference, new, checking_data)
+					}
+					AssignmentKind::Update(operator) => {
+						// Order matters here
+						let span = reference.get_position();
+						let existing = get_reference(self, reference.clone(), checking_data);
+
+						let expression = expression.unwrap();
+						let rhs = (
+							expression.synthesize_expression(self, checking_data),
+							expression.get_position(),
+						);
+						let new = evaluate_binary_operator_handle_errors(
+							operator,
+							(existing, span),
+							rhs,
+							self,
+							checking_data,
+						);
+						set_reference(self, reference, new, checking_data)
+					}
+					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
+						// let value =
+						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
+						let span = reference.get_position();
+						let existing = get_reference(self, reference.clone(), checking_data);
+
+						// TODO existing needs to be cast to number!!
+
+						let new = evaluate_binary_operator_handle_errors(
+							match direction {
+								crate::behavior::assignments::IncrementOrDecrement::Increment => {
+									BinaryOperator::Add
+								}
+								crate::behavior::assignments::IncrementOrDecrement::Decrement => {
+									BinaryOperator::Subtract
+								}
+							},
+							(existing, span),
+							(TypeId::ONE, Span::NULL_SPAN),
+							self,
+							checking_data,
+						);
+
+						let new = set_reference(self, reference, new, checking_data);
+
+						match return_kind {
+							crate::behavior::assignments::AssignmentReturnStatus::Previous => {
+								existing
+							}
+							crate::behavior::assignments::AssignmentReturnStatus::New => new,
+						}
+					}
+				}
+			}
 			Assignable::ObjectDestructuring(_) => todo!(),
 			Assignable::ArrayDestructuring(_) => todo!(),
 		}
@@ -205,67 +212,32 @@ impl<'a> Environment<'a> {
 		new_type: TypeId,
 		checking_data: &mut CheckingData<T>,
 	) -> TypeId {
-		let result = self.assign_variable(variable_name, new_type, &checking_data.types);
+		let result = self.assign_to_variable(variable_name, new_type, &checking_data.types);
 		match result {
 			Ok(ok) => ok,
 			Err(error) => {
-				let error = match error {
-					ReassignmentError::Constant(declared_at) => {
-						TypeCheckError::CannotAssignToConstant {
-							variable_name,
-							variable_position: declared_at,
-							assignment_position: assignment_span,
-						}
-					}
-					ReassignmentError::VariableNotFound { variable } => {
-						TypeCheckError::CouldNotFindVariable {
-							variable: variable_name,
-							possibles: Default::default(),
-							position: assignment_span,
-						}
-					}
-					ReassignmentError::DoesNotMatchRestrictionType {
-						variable_type,
-						variable_declared_at,
-					} => TypeCheckError::InvalidAssignmentOrDeclaration {
-						variable_type: crate::errors::TypeStringRepresentation::from_type_id(
-							variable_type,
-							&self.into_general_environment(),
-							&checking_data.types,
-							false,
-						),
-						value_type: crate::errors::TypeStringRepresentation::from_type_id(
-							new_type,
-							&self.into_general_environment(),
-							&checking_data.types,
-							false,
-						),
-						variable_site: variable_declared_at,
-						// TODO not quite right
-						value_site: assignment_span,
-					},
-				};
-				checking_data.diagnostics_container.add_error(error);
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::AssignmentError(error));
 				TypeId::ERROR_TYPE
 			}
 		}
 	}
 
 	/// This is top level variables, not properties.
-	/// TODO check read has occurred
-	pub fn assign_variable<'b>(
+	pub fn assign_to_variable(
 		&mut self,
-		variable_name: &'b str,
+		variable_name: &str,
 		new_type: TypeId,
 		store: &TypeStore,
-	) -> Result<TypeId, ReassignmentError<'b>> {
+	) -> Result<TypeId, AssignmentError> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
 		if let Some((_, variable)) = variable_in_map {
 			match variable.mutability {
 				VariableMutability::Constant => {
-					return Err(ReassignmentError::Constant(variable.declared_at.clone()))
+					return Err(AssignmentError::Constant(variable.declared_at.clone()));
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					let variable = variable.clone();
@@ -286,14 +258,20 @@ impl<'a> Environment<'a> {
 						);
 
 						if let SubTypeResult::IsNotSubType(mismatches) = result {
-							return Err(ReassignmentError::DoesNotMatchRestrictionType {
+							return Err(AssignmentError::DoesNotMatchRestrictionType {
 								variable_declared_at: variable.declared_at.clone(),
-								variable_type: reassignment_constraint,
+								variable_type: TypeStringRepresentation::from_type_id(
+									reassignment_constraint,
+									&self.into_general_environment(),
+									store,
+									false,
+								),
 							});
 						}
 					}
 
 					let variable_id = variable.get_id();
+
 					self.context_type
 						.events
 						.push(Event::SetsVariable(variable_id.clone(), new_type));
@@ -304,7 +282,7 @@ impl<'a> Environment<'a> {
 			}
 		} else {
 			crate::utils::notify!("Could say it is on the window here");
-			Err(ReassignmentError::VariableNotFound { variable: variable_name })
+			Err(AssignmentError::VariableNotFound { variable: variable_name.to_owned() })
 		}
 	}
 
@@ -347,12 +325,12 @@ impl<'a> Environment<'a> {
 
 	pub fn get_property_handle_errors<U: crate::FSResolver>(
 		&mut self,
-		parent: TypeId,
+		on: TypeId,
 		property: TypeId,
 		checking_data: &mut CheckingData<U>,
 		site: Span,
 	) -> TypeId {
-		match self.get_property(parent, property, &mut checking_data.types, None) {
+		match self.get_property(on, property, &mut checking_data.types, None) {
 			Some(ty) => ty.into(),
 			None => {
 				checking_data.diagnostics_container.add_error(
@@ -363,8 +341,8 @@ impl<'a> Environment<'a> {
 							&checking_data.types,
 							false,
 						),
-						ty: crate::errors::TypeStringRepresentation::from_type_id(
-							parent,
+						on: crate::errors::TypeStringRepresentation::from_type_id(
+							on,
 							&self.into_general_environment(),
 							&checking_data.types,
 							false,
@@ -410,7 +388,7 @@ impl<'a> Environment<'a> {
 
 			let based_on = match og_var.mutability {
 				VariableMutability::Constant => {
-					todo!("object contraint")
+					todo!("object constraint")
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					match reassignment_constraint {
@@ -427,7 +405,7 @@ impl<'a> Environment<'a> {
 			});
 			let type_id = checking_data.types.register_type(ty);
 			// TODO what is rhs
-			self.context_type.closed_over_variables.insert(reference, type_id);
+			self.context_type.closed_over_references.insert(reference, type_id);
 			// if inferred {
 			// 	self.context_type.get_inferrable_constraints_mut().unwrap().insert(type_id);
 			// }
@@ -463,7 +441,7 @@ impl<'a> Environment<'a> {
 		new: TypeId,
 		types: &mut TypeStore,
 	) -> Result<Option<TypeId>, SetPropertyError> {
-		crate::types::properties::set_property(self, on, under, new, types)
+		crate::types::properties::set_property(self, on, under, Property::Value(new), types)
 	}
 
 	/// Initializing
@@ -471,7 +449,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		under: TypeId,
-		new: TypeId,
+		new: Property,
 		checking_data: &mut CheckingData<U>,
 	) {
 		self.properties.entry(on).or_default().push((under, new));

@@ -18,12 +18,13 @@ use crate::{
 	errors::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
 	structures::{
-		functions::{FunctionType, SynthesizedFunction},
+		functions::{FunctionKind, FunctionType},
 		variables::VariableMutability,
 	},
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
-		cast_as_boolean, Constant, Constructor, PolyNature, PolyPointer, Type, TypeId, TypeStore,
+		cast_as_boolean, properties::Property, Constant, Constructor, PolyNature, PolyPointer,
+		Type, TypeId, TypeStore,
 	},
 	utils::{EnforcedOr, EnforcedOrExt},
 	CheckingData, TruthyFalsy, Variable,
@@ -174,8 +175,7 @@ pub struct Context<T: ContextType> {
 	/// TODO explain
 	pub(crate) tasks_to_run: Vec<(TypeId, FunctionId)>,
 
-	/// **Right hand side may be getter**
-	pub(crate) properties: HashMap<TypeId, Vec<(TypeId, TypeId)>>,
+	pub(crate) properties: HashMap<TypeId, Vec<(TypeId, Property)>>,
 	/// PropertyValue -> fst[snd]
 	pub(crate) reverse_properties: HashMap<TypeId, Vec<(TypeId, TypeId)>>,
 
@@ -242,7 +242,7 @@ impl<T: ContextType> Context<T> {
 		// 			match nature {
 		// 				PolyNature::ParentScope { reference } => {
 		// 					self.context_type
-		// 						.get_closed_over_variables_mut()
+		// 						.get_closed_over_references_mut()
 		// 						.insert(*reference, new_constraint);
 
 		// 					*aliases = new_constraint;
@@ -386,17 +386,24 @@ impl<T: ContextType> Context<T> {
 			VariableRegisterBehavior::FunctionParameter { annotation } => {
 				// TODO maybe store separately
 
-				// TODO mutability constant
-				let variable = Variable {
-					mutability: VariableMutability::Constant,
-					declared_at: id.0.clone(),
+				// TODO via a setting
+				const FUNCTION_PARAM_MUTABLE: bool = true;
+				let mutability = if FUNCTION_PARAM_MUTABLE {
+					VariableMutability::Mutable { reassignment_constraint: annotation }
+				} else {
+					VariableMutability::Constant
 				};
+				let variable = Variable { mutability, declared_at: id.0.clone() };
 				self.variable_names.insert(id.clone(), name.to_owned());
 				let existing_variable = self.variables.insert(name.to_owned(), variable);
 				let parameter_ty = if let Some(annotation) = annotation {
-					types.register_type(Type::RootPolyType(PolyNature::Parameter {
-						fixed_to: PolyPointer::Fixed(annotation),
-					}))
+					if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
+						annotation
+					} else {
+						types.register_type(Type::RootPolyType(PolyNature::Parameter {
+							fixed_to: PolyPointer::Fixed(annotation),
+						}))
+					}
 				} else {
 					types.register_type(Type::RootPolyType(PolyNature::Parameter {
 						fixed_to: PolyPointer::Inferred(InferenceBoundary(self.context_id)),
@@ -572,7 +579,10 @@ impl<T: ContextType> Context<T> {
 					// TODO temp
 					let result = self
 						.get_property_unbound(on_constraint, property_constraint, types)
-						.map(Logical::to_type)
+						.map(|property| match property {
+							Logical::Pure(Property::Value(v)) => v,
+							_ => todo!(),
+						})
 						.expect("Inference did not change type");
 
 					// TODO property boundary
@@ -601,7 +611,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	/// Only on current
+	/// Only on current environment, doesn't walk
 	fn get_this_constraint(&self) -> Option<TypeId> {
 		match self.into_general_environment() {
 			GeneralEnvironment::Syntax(syn) => match &syn.context_type.scope {
@@ -721,7 +731,7 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter()
 			.flat_map(|env| get_env!(env.properties.get(&base)).map(|v| v.iter()))
 			.flatten()
-			.cloned()
+			.map(|(key, prop)| (*key, prop.as_get_type()))
 			.collect()
 	}
 
@@ -730,18 +740,18 @@ impl<T: ContextType> Context<T> {
 		on: TypeId,
 		under: TypeId,
 		types: &TypeStore,
-	) -> Option<Logical<TypeId>> {
+	) -> Option<Logical<Property>> {
 		fn get_property(
 			env: GeneralEnvironment,
 			on: TypeId,
 			under: (&TypeStore, &Constant),
-		) -> Option<TypeId> {
+		) -> Option<Property> {
 			get_env!(env.properties.get(&on)).and_then(|properties| {
 				// TODO rev is important
 				properties.iter().rev().find_map(|(key, value)| {
 					let key_ty = under.0.get_type_by_id(*key);
 					if let Type::Constant(cst) = key_ty {
-						(cst == under.1).then_some(*value)
+						(cst == under.1).then_some(value.clone())
 					} else {
 						todo!("key {key:?} returned {key_ty:?}")
 					}
@@ -759,7 +769,7 @@ impl<T: ContextType> Context<T> {
 	/// TODO temp
 	pub(crate) fn get_tag_name(&self, tag_name: TypeId, types: &TypeStore) -> Option<TypeId> {
 		self.get_property_unbound(TypeId::HTML_ELEMENT_TAG_NAME_MAP, tag_name, types)
-			.map(Logical::to_type)
+			.map(Logical::prop_to_type)
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -774,17 +784,21 @@ impl<T: ContextType> Context<T> {
 			CanUseThis::ConstructorCalled { this_ty } => this_ty,
 			CanUseThis::Yeah { this_ty } => {
 				// TODO `this_ty` can be error here..?
+				if this_ty == TypeId::ERROR_TYPE {
+					unreachable!()
+				}
+
 				todo!();
 
 				// let mut last = None;
 				// for parent in self.parents_iter() {
 				// 	if let Some(constraint) = get_env!(parent.get_this_constraint()) {
-				// 		// last = Some((constraint, get_env!(parent.context_id)));
+				// 		last = Some((constraint, get_env!(parent.context_id)));
 				// 		break;
 				// 	}
 				// }
 
-				// let reference = Reference::This;
+				// let reference = RootReference::This;
 
 				// let (value, reflects_dependency) = if let Some(boundary) = crossed_boundary {
 				// 	let this_inferred = constraint_of_this.is_none();
@@ -793,7 +807,7 @@ impl<T: ContextType> Context<T> {
 				// 		None => PolyPointer::Inferred(boundary),
 				// 	};
 				// 	let poly_nature = PolyNature::ParentScope { reference, based_on };
-				// 	let ty = types.new_type(Type::RootPolyType(poly_nature));
+				// 	let ty = types.register_type(Type::RootPolyType(poly_nature));
 				// 	(ty, Some(ty))
 				// } else {
 				// 	// TODO... always replace
@@ -802,7 +816,7 @@ impl<T: ContextType> Context<T> {
 
 				// if let Some(events) = self.context_type.get_events() {
 				// 	events.push(Event::ReadsReference {
-				// 		reference: Reference::This,
+				// 		reference: RootReference::This,
 				// 		reflects_dependency,
 				// 	});
 				// }
@@ -891,7 +905,7 @@ impl<T: ContextType> Context<T> {
 				parent: T::into_parent_or_root(self),
 				events: Default::default(),
 				async_events: Default::default(),
-				closed_over_variables: Default::default(),
+				closed_over_references: Default::default(),
 			},
 			can_use_this,
 			// TODO maybe based on something in the AST
@@ -914,14 +928,16 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_function_context<
+	pub fn new_function<
 		U: crate::FSResolver,
+		V: crate::behavior::functions::RegisterBehavior,
 		F: behavior::functions::SynthesizableFunction,
 	>(
-		&self,
+		&mut self,
 		checking_data: &mut CheckingData<U>,
 		func: &F,
-	) -> SynthesizedFunction {
+		register_behavior: V,
+	) -> V::Return {
 		let mut func_env = self.new_lexical_environment(Scope::Function {
 			// TODO
 			this_constraint: TypeId::ERROR_TYPE,
@@ -930,7 +946,17 @@ impl<T: ContextType> Context<T> {
 			constructor_on: None,
 		});
 
+		if func.is_async() {
+			todo!()
+		}
+
 		let type_parameters = func.type_parameters(&mut func_env, checking_data);
+
+		if let Some(_) = func.this_constraint(&mut func_env, checking_data) {
+			todo!();
+		} else {
+			// TODO inferred
+		}
 
 		// TODO could reuse existing if hoisted
 		let synthesized_parameters = func.parameters(&mut func_env, checking_data);
@@ -940,8 +966,6 @@ impl<T: ContextType> Context<T> {
 		// TODO temp
 		let returned = if !func.is_declare() {
 			func.body(&mut func_env, checking_data);
-
-			crate::utils::notify!("Found events {:#?}", func_env.context_type.events);
 
 			// TODO check with annotation
 			let returned = func_env
@@ -998,13 +1022,32 @@ impl<T: ContextType> Context<T> {
 			return_type_annotation.expect("declare without return type").0
 		};
 
-		SynthesizedFunction {
-			type_parameters,
-			returned,
-			events: func_env.context_type.events,
-			closed_over_references: func_env.context_type.closed_over_variables,
-			synthesized_parameters,
+		let Syntax { events, closed_over_references, .. } = func_env.context_type;
+
+		// crate::utils::notify!("Function returned events {:#?}", events);
+
+		// TODO temp ...
+		for (on, mut properties) in func_env.properties.into_iter() {
+			match self.properties.entry(on) {
+				hash_map::Entry::Occupied(mut occupied) => {}
+				hash_map::Entry::Vacant(vacant) => {
+					vacant.insert(properties);
+				}
+			}
 		}
+
+		let get_set = func.get_set_generator_or_none();
+		let func_ty = FunctionType {
+			type_parameters,
+			return_type: returned,
+			effects: events,
+			closed_over_references,
+			parameters: synthesized_parameters,
+			constant_id: None,
+			kind: FunctionKind::Arrow { get_set },
+		};
+
+		register_behavior.func(func, func_ty, self, &mut checking_data.types)
 	}
 
 	pub fn new_try_context<U: crate::FSResolver>(
@@ -1061,7 +1104,7 @@ impl<T: ContextType> Context<T> {
 					parent: _,
 					mut events,
 					async_events,
-					closed_over_variables,
+					closed_over_references,
 				},
 			can_use_this,
 			bases,
@@ -1113,7 +1156,7 @@ impl<T: ContextType> Context<T> {
 				);
 				self.properties.extend(properties.into_iter());
 
-				Some((events, closed_over_variables))
+				Some((events, closed_over_references))
 			}
 			Scope::InterfaceEnvironment { .. }
 			| Scope::ClassEnvironment {}
@@ -1127,8 +1170,8 @@ impl<T: ContextType> Context<T> {
 
 				// 	// TODO temp
 				// 	self.context_type
-				// 		.get_closed_over_variables_mut()
-				// 		.extend(closed_over_variables.into_iter());
+				// 		.get_closed_over_references_mut()
+				// 		.extend(closed_over_references.into_iter());
 				// }
 
 				// self.proofs.merge(proofs);
@@ -1176,7 +1219,7 @@ impl<T: ContextType> Context<T> {
 				parent: self.into_general_environment(),
 				events: Default::default(),
 				async_events: Default::default(),
-				closed_over_variables: Default::default(),
+				closed_over_references: Default::default(),
 			},
 			context_id,
 			variables: environment.variables,
@@ -1224,7 +1267,7 @@ impl<T: ContextType> Context<T> {
 						parent: _,
 						mut events,
 						async_events,
-						closed_over_variables,
+						closed_over_references,
 					},
 				can_use_this,
 				bases,
@@ -1270,7 +1313,7 @@ impl<T: ContextType> Context<T> {
 				Scope::Function { .. } => {
 					// self.proofs.merge(proofs);
 
-					Some((events, closed_over_variables))
+					Some((events, closed_over_references))
 				}
 				Scope::InterfaceEnvironment { .. }
 				| Scope::TryBlock {}
@@ -1289,8 +1332,8 @@ impl<T: ContextType> Context<T> {
 
 					// 	// TODO temp
 					// 	self.context_type
-					// 		.get_closed_over_variables_mut()
-					// 		.extend(closed_over_variables.into_iter());
+					// 		.get_closed_over_references_mut()
+					// 		.extend(closed_over_references.into_iter());
 					// }
 
 					// self.proofs.merge(proofs);
@@ -1363,14 +1406,9 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO temp
-	pub fn register_property(&mut self, on: TypeId, under: TypeId, to: TypeId) {
+	pub fn register_property(&mut self, on: TypeId, under: TypeId, to: Property) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
-		self.properties.entry(on).or_default().push((under, to));
-	}
-
-	/// TODO should use above and be automatic
-	pub fn register_property_on_object(&mut self, on: TypeId, under: TypeId, to: TypeId) {
-		self.properties.entry(on).or_default().push((under, to));
+		self.properties.entry(on).or_default().push((under, to.clone()));
 		self.context_type.get_events().unwrap().push(Event::Setter {
 			on,
 			under,
@@ -1378,33 +1416,6 @@ impl<T: ContextType> Context<T> {
 			reflects_dependency: None,
 			initialization: true,
 		});
-	}
-
-	/// TODO temp
-	pub fn attach_to_existing_function(
-		&mut self,
-		as_str: &str,
-		returned: SynthesizedFunction,
-		types: &mut TypeStore,
-		function_id: FunctionId,
-	) {
-		let ty = types.register_type(Type::Function(
-			FunctionType {
-				type_parameters: returned.type_parameters,
-				parameters: returned.synthesized_parameters,
-				return_type: returned.returned,
-				effects: returned.events,
-				closed_over_references: returned.closed_over_references,
-				// TODO temp
-				nature: crate::structures::functions::FunctionNature::Arrow,
-				constant_id: None,
-			},
-			crate::types::FunctionNature::Source(function_id, None, None),
-		));
-
-		let variable_id = self.variables.get(as_str).unwrap().declared_at.clone();
-
-		self.variable_current_value.insert(VariableId(variable_id), ty);
 	}
 
 	pub fn new_explicit_type_parameter(
@@ -1519,16 +1530,22 @@ fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Eve
 	new_events
 }
 
-#[derive(Debug)]
-pub enum ReassignmentError<'a> {
+pub enum AssignmentError {
 	/// Non writable, could have position info
 	Constant(Span),
 	VariableNotFound {
-		variable: &'a str,
+		variable: String,
 	},
 	DoesNotMatchRestrictionType {
-		variable_type: TypeId,
+		variable_type: TypeStringRepresentation,
 		variable_declared_at: Span,
+	},
+	// TODO merge with above
+	InvalidDeclaration {
+		variable_type: TypeStringRepresentation,
+		variable_site: Span,
+		value_type: TypeStringRepresentation,
+		value_site: Span,
 	},
 }
 
@@ -1587,10 +1604,22 @@ impl<'a, T: Clone> Logical<&'a T> {
 	}
 }
 
+// TODO temp
 impl Logical<TypeId> {
 	pub(crate) fn to_type(self) -> TypeId {
 		match self {
 			Logical::Pure(ty) => ty,
+			Logical::Or(_) => todo!(),
+			Logical::Implies(_, _) => todo!(),
+		}
+	}
+}
+
+// TODO temp
+impl Logical<Property> {
+	pub(crate) fn prop_to_type(self) -> TypeId {
+		match self {
+			Logical::Pure(ty) => ty.as_get_type(),
 			Logical::Or(_) => todo!(),
 			Logical::Implies(_, _) => todo!(),
 		}

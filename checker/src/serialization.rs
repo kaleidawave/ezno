@@ -62,6 +62,16 @@ impl<T: BinarySerializable> BinarySerializable for Vec<T> {
 	}
 }
 
+impl<T: BinarySerializable> BinarySerializable for Box<T> {
+	fn serialize(self, buf: &mut Vec<u8>) {
+		BinarySerializable::serialize(*self, buf)
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+		Box::new(T::deserialize(iter, buf_source))
+	}
+}
+
 impl<T: BinarySerializable> BinarySerializable for Box<[T]> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());

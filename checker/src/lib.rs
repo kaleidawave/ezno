@@ -32,8 +32,11 @@ use structures::functions::AutoConstructorId;
 use types::TypeStore;
 
 pub use behavior::{
-	assignments::{Assignable, Reference, SynthesizableExpression},
-	functions::SynthesizableFunction,
+	assignments::{
+		Assignable, AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
+		SynthesizableExpression,
+	},
+	functions::{GetSetGeneratorOrNone, SynthesizableFunction, RegisterOnExisting, RegisterOnExistingObject, RegisterAsType},
 	variables::check_variable_initialization,
 };
 pub use context::{GeneralEnvironment, Root};
@@ -50,7 +53,7 @@ pub use types::{
 };
 
 pub use type_mappings::*;
-pub use types::{Constant, Type, TypeId};
+pub use types::{Constant, Type, TypeId, properties::Property};
 
 pub use context::{Environment, Scope};
 pub(crate) use structures::functions;

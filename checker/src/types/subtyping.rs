@@ -164,6 +164,8 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 	environment: &mut Environment,
 	types: &TypeStore,
 ) -> SubTypeResult {
+	crate::utils::notify!("Checking {} <: {}", types.debug_type(base_type), types.debug_type(ty));
+
 	if (base_type == TypeId::ERROR_TYPE || base_type == TypeId::ANY_TYPE)
 		|| (ty == TypeId::ERROR_TYPE || ty == TypeId::NEVER_TYPE)
 	{
@@ -176,6 +178,61 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 	let left_ty = types.get_type_by_id(base_type);
 	let right_ty = types.get_type_by_id(ty);
+
+	match right_ty {
+		// This is reverse and
+		Type::Or(left, right) => {
+			let right = *right;
+			let left_result = type_is_subtype(
+				base_type,
+				*left,
+				ty_arguments.as_deref(),
+				behavior,
+				environment,
+				types,
+			);
+
+			return if let SubTypeResult::IsSubtype = left_result {
+				type_is_subtype(
+					base_type,
+					right,
+					ty_arguments.as_deref(),
+					behavior,
+					environment,
+					types,
+				)
+			} else {
+				left_result
+			};
+		}
+		Type::Constructor(..) | Type::RootPolyType(..) => {
+			if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type)) {
+				return type_is_subtype(
+					base_type,
+					*argument,
+					ty_arguments.as_deref(),
+					behavior,
+					environment,
+					types,
+				);
+			} else {
+				let constraint = environment.get_poly_base(ty, types).unwrap();
+
+				crate::utils::notify!(
+					"Checking via constraint {:?}... think this is okay in function bodies",
+					constraint
+				);
+
+				return match constraint {
+					crate::context::PolyBase::Fixed { to, .. } => {
+						type_is_subtype(base_type, to, ty_arguments, behavior, environment, types)
+					}
+					_ => todo!(),
+				};
+			}
+		}
+		_ => {}
+	}
 
 	match left_ty {
 		Type::Function(left_func, _) => {
@@ -219,7 +276,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				}
 			} else {
 				// TODO what about if LHS has inferred constraint
-				crate::utils::notify!("Constant {:?} against RHS {:?}", lhs, right_ty);
+				crate::utils::notify!("Constant {:?} against RHS {:#?}", lhs, right_ty);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
@@ -245,7 +302,17 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 			SubTypeResult::IsSubtype
 		}
-		Type::And(_, _) => todo!(),
+		Type::And(left, right) => {
+			let right = *right;
+			let left_result =
+				type_is_subtype(*left, ty, ty_arguments.as_deref(), behavior, environment, types);
+
+			if let SubTypeResult::IsSubtype = left_result {
+				type_is_subtype(right, ty, ty_arguments.as_deref(), behavior, environment, types)
+			} else {
+				left_result
+			}
+		}
 		Type::Or(left, right) => {
 			let right = *right;
 			let left_result =
@@ -258,6 +325,13 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			}
 		}
 		Type::RootPolyType(nature) => {
+			// let name = if let crate::types::PolyNature::Generic { name, .. } = nature {
+			// 	Some(name)
+			// } else {
+			// 	crate::utils::notify!("Here {:?}", nature);
+			// 	None
+			// };
+
 			let constraint = environment.get_poly_base(base_type, types).unwrap().get_type();
 
 			if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
@@ -268,6 +342,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				environment,
 				types,
 			) {
+				crate::utils::notify!("RPT not subtype");
 				return SubTypeResult::IsNotSubType(reasons);
 			}
 
@@ -310,9 +385,11 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			if matches!(base_type, TypeId::STRING_TYPE | TypeId::NUMBER_TYPE | TypeId::BOOLEAN_TYPE)
 				&& !matches!(
 					right_ty,
-					Type::RootPolyType(..) | Type::Constructor(..) | Type::Constant(..)
+					Type::RootPolyType(..)
+						| Type::Constructor(..) | Type::Constant(..)
+						| Type::Or(..)
 				) {
-				crate::utils::notify!("Short circuited checking a nominal");
+				crate::utils::notify!("Short circuited on {:?} as it is nominal", right_ty);
 				// TODO not primitive error
 				// TODO this might break with *properties* proofs on primitives
 				// e.g. number :< Nat
@@ -340,34 +417,37 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 					crate::utils::notify!("TODO implement function checking");
 					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
 				}
-				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
-					todo!()
-				}
 				Type::And(_, _) => todo!(),
 				Type::Or(left, right) => {
-					let right = *right;
-					let left = type_is_subtype(
-						base_type,
-						*left,
-						ty_arguments.as_deref(),
-						behavior,
-						environment,
-						types,
-					);
-					if let SubTypeResult::IsSubtype = left {
-						type_is_subtype(
-							base_type,
-							right,
-							ty_arguments,
-							behavior,
-							environment,
-							types,
-						)
-					} else {
-						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-					}
+					unreachable!()
+					// TODO fails if RHS is also OR type :(
+					// let right = *right;
+					// let left = type_is_subtype(
+					// 	base_type,
+					// 	*left,
+					// 	ty_arguments.as_deref(),
+					// 	behavior,
+					// 	environment,
+					// 	types,
+					// );
+					// if let SubTypeResult::IsSubtype = left {
+					// 	type_is_subtype(
+					// 		base_type,
+					// 		right,
+					// 		ty_arguments,
+					// 		behavior,
+					// 		environment,
+					// 		types,
+					// 	)
+					// } else {
+					// 	crate::utils::notify!("Left failed");
+					// 	SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					// }
 				}
 				Type::Constructor(Constructor::StructureGenerics { on, with }) => {
+					todo!()
+				}
+				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
 					todo!()
 				}
 				Type::Constructor(..) | Type::RootPolyType(..) => {
@@ -382,11 +462,12 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 							types,
 						)
 					} else {
-						crate::utils::notify!(
-							"Checking via constraint... think this is okay in function bodies"
-						);
-
 						let constraint = environment.get_poly_base(ty, types).unwrap();
+
+						crate::utils::notify!(
+							"Checking via constraint {:?}... think this is okay in function bodies",
+							constraint
+						);
 
 						match constraint {
 							crate::context::PolyBase::Fixed { to, .. } => type_is_subtype(
@@ -441,13 +522,15 @@ fn check_properties<T: SubtypeBehavior>(
 	for (key, property) in environment.get_properties_on_type(base_type) {
 		// TODO
 		let rhs_property = environment.get_property_unbound(ty, key, types);
+
 		match rhs_property {
 			Some(rhs_property) => {
 				match rhs_property {
 					Logical::Pure(rhs_property) => {
+						let rhs_type = rhs_property.as_get_type();
 						let result = type_is_subtype(
 							property,
-							rhs_property,
+							rhs_type,
 							ty_arguments,
 							behavior,
 							environment,
@@ -484,3 +567,6 @@ impl NonEqualityReason {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {}

@@ -7,7 +7,9 @@ use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use source_map::Span;
 
 use crate::{
+	behavior::functions::GetSetGeneratorOrNone,
 	context::FunctionId,
+	errors::TypeStringRepresentation,
 	events::{Event, RootReference},
 	types::{
 		poly_types::{GenericTypeParameters, ResolveGenerics, TypeArguments},
@@ -70,16 +72,6 @@ impl AutoConstructorId {
 
 impl Eq for FunctionPointer {}
 
-/// TODO ...
-pub struct SynthesizedFunction {
-	pub(crate) returned: TypeId,
-	pub(crate) events: Vec<Event>,
-	/// TODO explain
-	pub(crate) closed_over_references: HashMap<RootReference, TypeId>,
-	pub(crate) synthesized_parameters: SynthesizedParameters,
-	pub(crate) type_parameters: Option<GenericTypeParameters>,
-}
-
 /// The type of `this` that a function has ....?
 /// TODO needs for work
 #[derive(Clone, Debug)]
@@ -111,13 +103,13 @@ pub struct FunctionType {
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
 
-	pub nature: FunctionNature,
+	pub kind: FunctionKind,
 }
 
 /// Decides what to do with `new`
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionNature {
-	Arrow,
+pub enum FunctionKind {
+	Arrow { get_set: GetSetGeneratorOrNone },
 	Function { function_prototype: TypeId },
 	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
 }
@@ -188,28 +180,27 @@ impl ResolveGenerics for SynthesizedArgument {
 }
 
 /// Errors from trying to call a function
-#[derive(Debug)]
 pub enum FunctionCallingError {
 	InvalidArgumentType {
-		parameter_type: TypeId,
-		argument_type: TypeId,
+		parameter_type: TypeStringRepresentation,
+		argument_type: TypeStringRepresentation,
 		argument_position: Span,
 		parameter_position: Span,
-		restriction: Option<(Span, TypeId)>,
+		restriction: Option<(Span, TypeStringRepresentation)>,
 	},
 	MissingArgument {
 		parameter_pos: Span,
 	},
 	ExtraArguments {
 		count: usize,
-		// TODO position: Span,
+		position: Span,
 	},
 	NotCallable {
-		calling: TypeId,
+		calling: TypeStringRepresentation,
 	},
 	ReferenceRestrictionDoesNotMatch {
 		reference: RootReference,
-		requirement: TypeId,
-		found: TypeId,
+		requirement: TypeStringRepresentation,
+		found: TypeStringRepresentation,
 	},
 }

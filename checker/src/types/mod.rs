@@ -62,32 +62,33 @@ impl TypeId {
 
 	pub const OBJECT_TYPE: Self = Self(10);
 	pub const FUNCTION_TYPE: Self = Self(11);
+	pub const REGEXP_TYPE: Self = Self(12);
 
-	pub const STRING_OR_NUMBER: Self = Self(12);
+	pub const STRING_OR_NUMBER: Self = Self(13);
 
 	/// For more direct stuff and the rules
-	pub const TRUE: Self = Self(13);
-	pub const FALSE: Self = Self(14);
-	pub const ZERO: Self = Self(15);
-	pub const ONE: Self = Self(16);
-	pub const NAN_TYPE: Self = Self(17);
+	pub const TRUE: Self = Self(14);
+	pub const FALSE: Self = Self(15);
+	pub const ZERO: Self = Self(16);
+	pub const ONE: Self = Self(17);
+	pub const NAN_TYPE: Self = Self(18);
 	/// For arrays
-	pub const LENGTH_AS_STRING: Self = Self(18);
+	pub const LENGTH_AS_STRING: Self = Self(19);
 
 	/// For this_arg for type constraints only
-	pub const THIS_ARG: Self = Self(19);
+	pub const THIS_ARG: Self = Self(20);
 	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
-	pub const NEW_TARGET_ARG: Self = Self(20);
+	pub const NEW_TARGET_ARG: Self = Self(21);
 
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(22);
 
 	// This exists in TS
-	pub const HTML_ELEMENT_TAG_NAME_MAP: Self = Self(22);
+	pub const HTML_ELEMENT_TAG_NAME_MAP: Self = Self(23);
 
 	/// TODO explain, also might go
-	pub const OPERATORS_SPECIAL: Self = Self(23);
+	pub const OPERATORS_SPECIAL: Self = Self(24);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 24;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 25;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -192,8 +193,7 @@ pub enum FunctionNature {
 		this_type: Option<TypeId>,
 	},
 	/// Last is 'this' type,
-	/// TODO needs improvement
-	Source(FunctionId, Option<GetterSetter>, Option<TypeId>),
+	Source(FunctionId, Option<TypeId>),
 	Constructor(FunctionId),
 	Reference,
 }

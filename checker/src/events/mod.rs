@@ -2,7 +2,10 @@
 //!
 //! Events is the general name for the IR. Effect = Events of a function
 
-use crate::{context::VariableId, types::TypeStore};
+use crate::{
+	context::VariableId,
+	types::{properties::Property, TypeStore},
+};
 
 mod function_calling;
 pub use function_calling::*;
@@ -52,7 +55,8 @@ pub enum Event {
 	Setter {
 		on: TypeId,
 		under: TypeId,
-		new: TypeId,
+		// Can be a getter through define property
+		new: Property,
 		reflects_dependency: Option<TypeId>,
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
@@ -164,7 +168,15 @@ pub(crate) fn apply_event(
 			let on = specialize(on, type_arguments, environment, types);
 			let under = specialize(under, type_arguments, environment, types);
 
-			let new = specialize(new, type_arguments, environment, types);
+			let new = match new {
+				Property::Value(new) => {
+					Property::Value(specialize(new, type_arguments, environment, types))
+				}
+				Property::Get(_) => todo!(),
+				Property::Set(_) => todo!(),
+				Property::GetAndSet(_, _) => todo!(),
+			};
+
 			// crate::utils::notify!(
 			// 	"[Event::Setter] {}[{}] = {}",
 			// 	environment.debug_type(under),
@@ -173,19 +185,23 @@ pub(crate) fn apply_event(
 			// );
 
 			if initialization {
-				environment.properties.entry(on).or_default().push((under, new));
-				environment.context_type.events.push(Event::Setter {
-					on,
-					new,
-					under,
-					reflects_dependency: None,
-					initialization: true,
-				});
+				environment.register_property(on, under, new);
 			} else {
-				let returned = environment.set_property(on, under, new, types).unwrap();
+				match new {
+					Property::Value(new) => {
+						let returned = environment.set_property(on, under, new, types).unwrap();
 
-				if let Some(id) = reflects_dependency {
-					type_arguments.set_id(id, returned.unwrap_or(TypeId::UNDEFINED_TYPE), types);
+						if let Some(id) = reflects_dependency {
+							type_arguments.set_id(
+								id,
+								returned.unwrap_or(TypeId::UNDEFINED_TYPE),
+								types,
+							);
+						}
+					}
+					Property::Get(_) => todo!(),
+					Property::Set(_) => todo!(),
+					Property::GetAndSet(_, _) => todo!(),
 				}
 			}
 		}
@@ -226,11 +242,18 @@ pub(crate) fn apply_event(
 						environment,
 						types,
 						called_with_new,
-					)
-					.expect("Inference and/or checking failed");
-
-					if let Some(reflects_dependency) = reflects_dependency {
-						type_arguments.set_id(reflects_dependency, result.returned_type, types);
+					);
+					match result {
+						Ok(result) => {
+							if let Some(reflects_dependency) = reflects_dependency {
+								type_arguments.set_id(
+									reflects_dependency,
+									result.returned_type,
+									types,
+								);
+							}
+						}
+						Err(_) => todo!("inference and or checking failed at function"),
 					}
 				}
 				// TODO different
