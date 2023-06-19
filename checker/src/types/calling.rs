@@ -2,7 +2,7 @@ use source_map::Span;
 
 use crate::{
 	context::{Environment, PolyBase},
-	errors::{TypeCheckError, TypeStringRepresentation},
+	errors::TypeCheckError,
 	events::{CalledWithNew, Event, FunctionCallResult},
 	structures::{
 		functions::{FunctionType, SynthesizedArgument},
@@ -12,7 +12,7 @@ use crate::{
 	TypeId,
 };
 
-use super::{poly_types::GenericFunctionTypeParameters, Constructor, FunctionNature, TypeStore};
+use super::{Constructor, FunctionNature, TypeStore};
 
 pub fn call_type_handle_errors<T: crate::FSResolver>(
 	ty: TypeId,
@@ -37,89 +37,10 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	match result {
 		Ok(FunctionCallResult { returned_type, warnings }) => returned_type,
 		Err(errors) => {
-			use crate::structures::functions::FunctionCallingError;
-			// TODO map
 			for error in errors {
-				let error = match error {
-					FunctionCallingError::InvalidArgumentType {
-						argument_type,
-						argument_position,
-						parameter_type,
-						parameter_position,
-						restriction,
-					} => TypeCheckError::ArgumentDoesNotMatchParameter {
-						parameter_type: TypeStringRepresentation::from_type_id(
-							parameter_type,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						argument_type: TypeStringRepresentation::from_type_id(
-							argument_type,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						parameter_position,
-						argument_position,
-						restriction: restriction.map(|(pos, restriction)| {
-							(
-								pos,
-								TypeStringRepresentation::from_type_id(
-									restriction,
-									&environment.into_general_environment(),
-									&checking_data.types,
-									checking_data.settings.debug_types,
-								),
-							)
-						}),
-					},
-					FunctionCallingError::MissingArgument { parameter_pos } => {
-						TypeCheckError::MissingArguments {
-							function: TypeStringRepresentation::from_type_id(
-								ty,
-								&environment.into_general_environment(),
-								&checking_data.types,
-								checking_data.settings.debug_types,
-							),
-							parameter_pos,
-							call_site: call_site.clone(),
-						}
-					}
-					FunctionCallingError::ExtraArgument { idx, position } => {
-						TypeCheckError::ExtraArgument { argument_position: position }
-					}
-					FunctionCallingError::NotCallable { calling } => TypeCheckError::NotCallable {
-						at: call_site.clone(),
-						calling: TypeStringRepresentation::from_type_id(
-							ty,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-					},
-					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-						reference,
-						requirement,
-						found,
-					} => TypeCheckError::HiddenArgumentDoesNotMatch {
-						identifier: reference.get_name(environment),
-						requirement: TypeStringRepresentation::from_type_id(
-							requirement,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						found: TypeStringRepresentation::from_type_id(
-							found,
-							&environment.into_general_environment(),
-							&checking_data.types,
-							checking_data.settings.debug_types,
-						),
-						call_site: call_site.clone(),
-					},
-				};
-				checking_data.diagnostics_container.add_error(error)
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::FunctionCallingError(error))
 			}
 			TypeId::ERROR_TYPE
 		}
@@ -140,14 +61,11 @@ pub fn call_type(
 	if on == TypeId::ERROR_TYPE {
 		Ok(FunctionCallResult { returned_type: on, warnings: Default::default() })
 	} else if let Type::Function(function_type, variant) = types.get_type_by_id(on) {
-		let arg = if let FunctionNature::Source(_, _, id) = variant { id.clone() } else { None };
-		environment.context_type.events.push(Event::CallsType {
-			on,
-			with: arguments.clone().into_boxed_slice(),
-			return_type_matches: None,
-			timing: crate::events::CallingTiming::Synchronous,
-			called_with_new,
-		});
+		// TODO as Rc to avoid expensive clone
+		let function_type = function_type.clone();
+		let arg =
+			if let FunctionNature::Source(_, this_arg) = variant { this_arg.clone() } else { None };
+
 		// TODO should be done after call to check that arguments are correct
 		if let Some(const_fn_ident) = function_type.constant_id.as_deref() {
 			let this_argument = this_argument.or(arg);
@@ -171,8 +89,7 @@ pub fn call_type(
 						types,
 						environment,
 						called_with_new,
-					)
-					.unwrap()
+					)?
 					.returned_type;
 
 				let new_type = Type::Constructor(Constructor::FunctionResult {
@@ -180,10 +97,22 @@ pub fn call_type(
 					with: with.clone(),
 					result: super::PolyPointer::Fixed(result),
 				});
+
+				crate::utils::notify!("{:?}", types.debug_type(result));
+
 				let ty = types.register_type(new_type);
+
+				environment.context_type.events.push(Event::CallsType {
+					on,
+					with: arguments.clone().into_boxed_slice(),
+					reflects_dependency: Some(ty),
+					timing: crate::events::CallingTiming::Synchronous,
+					called_with_new,
+				});
 
 				return Ok(FunctionCallResult { returned_type: ty, warnings: Default::default() });
 			} else {
+				// TODO event
 				let returned_type = crate::behavior::constant_functions::call_constant_function(
 					// TODO temp
 					&const_fn_ident.to_owned(),
@@ -193,23 +122,23 @@ pub fn call_type(
 				);
 
 				if let Ok(returned_type) = returned_type {
-					Ok(FunctionCallResult { returned_type, warnings: Default::default() })
+					return Ok(FunctionCallResult { returned_type, warnings: Default::default() });
 				} else {
-					panic!("Constant function calling failed");
+					crate::utils::notify!("Constant function calling failed, not constant pararms");
 				}
 			}
-		} else {
-			function_type.clone().call(
-				&arguments,
-				this_argument,
-				call_site_type_arguments,
-				// TODO
-				&None,
-				types,
-				environment,
-				called_with_new,
-			)
 		}
+
+		function_type.call(
+			&arguments,
+			this_argument,
+			call_site_type_arguments,
+			// TODO
+			&None,
+			types,
+			environment,
+			called_with_new,
+		)
 	} else if let Some(constraint) = environment.get_poly_base(on, &types) {
 		match constraint {
 			PolyBase::Fixed { to, is_open_poly } => {
@@ -276,7 +205,7 @@ pub fn call_type(
 
 					let function_type = FunctionType {
 						// TODO explain
-						generic_type_parameters: GenericFunctionTypeParameters::None,
+						type_parameters: None,
 						parameters: SynthesizedParameters {
 							parameters,
 							// TODO I think this is okay
@@ -289,7 +218,9 @@ pub fn call_type(
 						effects: Default::default(),
 						closed_over_references: Default::default(),
 						// TODO
-						nature: crate::structures::functions::FunctionNature::Arrow,
+						kind: crate::structures::functions::FunctionKind::Arrow {
+							get_set: crate::GetSetGeneratorOrNone::None,
+						},
 						constant_id: None,
 					};
 

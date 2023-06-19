@@ -7,10 +7,12 @@ use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use source_map::Span;
 
 use crate::{
+	behavior::functions::GetSetGeneratorOrNone,
 	context::FunctionId,
-	events::{Event, Reference},
+	errors::TypeStringRepresentation,
+	events::{Event, RootReference},
 	types::{
-		poly_types::{GenericFunctionTypeParameters, ResolveGenerics, TypeArguments},
+		poly_types::{GenericTypeParameters, ResolveGenerics, TypeArguments},
 		TypeId,
 	},
 	CheckingData,
@@ -70,16 +72,6 @@ impl AutoConstructorId {
 
 impl Eq for FunctionPointer {}
 
-/// TODO ...
-pub struct SynthesizedFunction {
-	pub(crate) returned: TypeId,
-	pub(crate) events: Vec<Event>,
-	/// TODO explain
-	pub(crate) closed_over_references: HashMap<Reference, TypeId>,
-	pub(crate) synthesized_parameters: SynthesizedParameters,
-	pub(crate) type_parameters: GenericFunctionTypeParameters,
-}
-
 /// The type of `this` that a function has ....?
 /// TODO needs for work
 #[derive(Clone, Debug)]
@@ -99,25 +91,25 @@ impl ThisBinding {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionType {
 	/// TODO not sure about this field and how it tails with Pi Types
-	pub generic_type_parameters: GenericFunctionTypeParameters,
+	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesizedParameters,
 	pub return_type: TypeId,
 	/// Side effects of the function
 	pub effects: Vec<Event>,
 
 	/// TODO type alias
-	pub closed_over_references: HashMap<Reference, TypeId>,
+	pub closed_over_references: HashMap<RootReference, TypeId>,
 
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
 
-	pub nature: FunctionNature,
+	pub kind: FunctionKind,
 }
 
 /// Decides what to do with `new`
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionNature {
-	Arrow,
+pub enum FunctionKind {
+	Arrow { get_set: GetSetGeneratorOrNone },
 	Function { function_prototype: TypeId },
 	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
 }
@@ -188,28 +180,27 @@ impl ResolveGenerics for SynthesizedArgument {
 }
 
 /// Errors from trying to call a function
-#[derive(Debug)]
 pub enum FunctionCallingError {
 	InvalidArgumentType {
-		parameter_type: TypeId,
-		argument_type: TypeId,
+		parameter_type: TypeStringRepresentation,
+		argument_type: TypeStringRepresentation,
 		argument_position: Span,
 		parameter_position: Span,
-		restriction: Option<(Span, TypeId)>,
+		restriction: Option<(Span, TypeStringRepresentation)>,
 	},
 	MissingArgument {
 		parameter_pos: Span,
 	},
-	ExtraArgument {
-		idx: usize,
+	ExtraArguments {
+		count: usize,
 		position: Span,
 	},
 	NotCallable {
-		calling: TypeId,
+		calling: TypeStringRepresentation,
 	},
 	ReferenceRestrictionDoesNotMatch {
-		reference: Reference,
-		requirement: TypeId,
-		found: TypeId,
+		reference: RootReference,
+		requirement: TypeStringRepresentation,
+		found: TypeStringRepresentation,
 	},
 }

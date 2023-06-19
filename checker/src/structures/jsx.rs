@@ -1,15 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{context::VariableId, FunctionPointer, TypeId};
-
-/// Different *components* for JSX elements
-/// e.g `<*component_name*>`
-#[derive(Debug, Clone)]
-pub enum JSXComponentReference {
-	Function(Vec<FunctionPointer>),
-	Class(VariableId),
-	// ViaTagName(TagNamedMapping),
-}
+use crate::TypeId;
 
 // /// TODO not sure might be TypeId
 // #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]

@@ -1,10 +1,12 @@
 use crate::{context::get_env, GeneralEnvironment};
 
-use super::{poly_types::GenericFunctionTypeParameters, PolyNature, Type, TypeId, TypeStore};
+use super::{PolyNature, Type, TypeId, TypeStore};
 
 /// TODO temp, needs recursion safe, reuse buffer
 pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> String {
-	match types.get_type_by_id(id) {
+	let ty = types.get_type_by_id(id);
+	// crate::utils::notify!("Printing {:?}", ty);
+	match ty {
 		Type::AliasTo { to, name, parameters } => name.clone(),
 		Type::And(a, b) => {
 			format!("{} & {}", print_type(types, *a, env), print_type(types, *b, env))
@@ -14,7 +16,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, .. } => name.clone(),
-			PolyNature::Parameter { .. } => {
+			PolyNature::ParentScope { .. } | PolyNature::Parameter { .. } => {
 				let ty = get_env!(env.get_poly_base(id, types)).unwrap().get_type();
 				print_type(types, ty, env)
 			}
@@ -51,9 +53,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 		Type::Constant(cst) => cst.as_type_name(),
 		Type::Function(func, _) => {
 			let mut buf = String::new();
-			if let GenericFunctionTypeParameters::TypedParameters(ref parameters) =
-				func.generic_type_parameters
-			{
+			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
 				for param in parameters.0.iter() {
 					buf.push_str(&param.name);
@@ -66,6 +66,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 					if let Some(ref default) = param.default {
 						todo!()
 					}
+					buf.push_str(", ")
 				}
 				buf.push('>');
 			}
@@ -74,6 +75,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 				buf.push_str(&param.name);
 				buf.push_str(": ");
 				buf.push_str(&print_type(types, param.ty, env));
+				buf.push_str(", ");
 			}
 			buf.push_str(") => ");
 			buf.push_str(&print_type(types, func.return_type, env));

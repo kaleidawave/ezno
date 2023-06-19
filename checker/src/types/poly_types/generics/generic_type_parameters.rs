@@ -27,12 +27,6 @@ impl From<Vec<GenericTypeParameter>> for GenericTypeParameters {
 	}
 }
 
-#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
-pub enum GenericFunctionTypeParameters {
-	TypedParameters(GenericTypeParameters),
-	None,
-}
-
 /// A generic type parameter. Used in verifying generic constructs.
 /// Ids used for parameter subtyping
 /// TODO could redesign later

@@ -71,21 +71,21 @@ pub fn shorten(s: &str) -> &str {
 macro_rules! notify {
     () => {
 		if crate::utils::is_debug_mode() {
-			#[cfg(debug_assertions)]
+			#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 			eprintln!("[{}:{}]", crate::utils::shorten(file!()), line!())
 		}
     };
 
     ($content:expr) => {
 		if crate::utils::is_debug_mode() {
-			#[cfg(debug_assertions)]
+			#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 			eprintln!("[{}:{}] {}", crate::utils::shorten(file!()), line!(), $content)
 		}
     };
 
     ($content:literal, $($es:expr),+) => {
 		if crate::utils::is_debug_mode() {
-			#[cfg(debug_assertions)]
+			#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 			eprintln!("[{}:{}] {}", crate::utils::shorten(file!()), line!(), format_args!($content, $($es),+))
 		}
     };

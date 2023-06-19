@@ -53,7 +53,7 @@ pub struct AssertTypeExplainer;
 // 		data.type_mappings.get_instance_for_expression(&argument.get_expression_id().unwrap());
 // 	let diagnostic = if let Some(instance) = instance {
 // 		let type_id = instance.get_type();
-// 		let r#type = data.environment.get_type_by_id(type_id);
+// 		let ty = data.environment.get_type_by_id(type_id);
 // 		let mut value_as_string =
 // 			TypeDisplay::to_string(&type_id, &data.environment.into_general_environment());
 
@@ -61,7 +61,7 @@ pub struct AssertTypeExplainer;
 // 		if let Some(specializations) = specializations {
 // 			value_as_string.push_str(" specialized with ");
 // 			for specialization in specializations.iter().copied() {
-// 				let r#type = data.environment.get_type_by_id(specialization);
+// 				let ty = data.environment.get_type_by_id(specialization);
 // 				let specializations_as_string = TypeDisplay::to_string(
 // 					&specialization,
 // 					&data.environment.into_general_environment(),
@@ -123,8 +123,8 @@ pub struct AssertTypeExplainer;
 // 			todo!()
 // 		// value_as_string.push_str(" specialized with ");
 // 		// for specialization in specializations.iter().copied() {
-// 		// 	let r#type = data.environment.get_type_by_id(specialization);
-// 		// 	let specializations_as_string = (specialization, r#type)
+// 		// 	let ty = data.environment.get_type_by_id(specialization);
+// 		// 	let specializations_as_string = (specialization, ty)
 // 		// 		.to_string(&data.environment.into_general_environment());
 
 // 		// 	value_as_string.push_str(&specializations_as_string);

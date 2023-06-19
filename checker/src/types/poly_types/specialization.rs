@@ -21,9 +21,9 @@ pub(crate) fn specialize(
 		return value;
 	}
 
-	let r#type = types.get_type_by_id(id);
+	let ty = types.get_type_by_id(id);
 
-	match r#type {
+	match ty {
 		Type::Constant(_) | Type::Object(..) => id,
 		// TODO temp
 		Type::Function(_, _) => id,
@@ -53,14 +53,16 @@ pub(crate) fn specialize(
 					types,
 				);
 
-				let value = evaluate_binary_operator.unwrap();
+				todo!()
 
-				crate::utils::notify!(
-					"Specialized returned {}",
-					environment.debug_type(value, types)
-				);
+				// match e
 
-				value
+				// crate::utils::notify!(
+				// 	"Specialized returned {}",
+				// 	environment.debug_type(value, types)
+				// );
+
+				// value
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
 				evaluate_unary_operator(
@@ -74,9 +76,22 @@ pub(crate) fn specialize(
 				.unwrap()
 			}
 			Constructor::ConditionalTernary { on, true_res, false_res, result_union } => {
+				crate::utils::notify!(
+					"before {:?} {:?} {:?}",
+					types.debug_type(on),
+					types.debug_type(true_res),
+					types.debug_type(false_res)
+				);
 				let on = specialize(on, arguments, environment, types);
 				let true_res = specialize(true_res, arguments, environment, types);
 				let false_res = specialize(false_res, arguments, environment, types);
+
+				crate::utils::notify!(
+					"after {:?} {:?} {:?}",
+					types.debug_type(on),
+					types.debug_type(true_res),
+					types.debug_type(false_res)
+				);
 
 				// TODO falsy
 				if let Type::Constant(cst) = types.get_type_by_id(on) {
@@ -87,13 +102,15 @@ pub(crate) fn specialize(
 						false_res
 					}
 				} else {
+					// TODO result_union
 					let ty =
 						Constructor::ConditionalTernary { on, true_res, false_res, result_union };
+
 					types.register_type(Type::Constructor(ty))
 				}
 			}
 			Constructor::Property { .. } | Constructor::FunctionResult { .. } => {
-				unreachable!("todo this should have covered by event specialization");
+				unreachable!("this should have covered by event specialization");
 
 				// let on = specialize(on, arguments, environment);
 
