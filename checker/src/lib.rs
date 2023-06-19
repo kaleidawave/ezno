@@ -36,7 +36,10 @@ pub use behavior::{
 		Assignable, AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
 		SynthesizableExpression,
 	},
-	functions::{GetSetGeneratorOrNone, SynthesizableFunction, RegisterOnExisting, RegisterOnExistingObject, RegisterAsType},
+	functions::{
+		GetSetGeneratorOrNone, RegisterAsType, RegisterOnExisting, RegisterOnExistingObject,
+		SynthesizableFunction,
+	},
 	variables::check_variable_initialization,
 };
 pub use context::{GeneralEnvironment, Root};
@@ -53,7 +56,7 @@ pub use types::{
 };
 
 pub use type_mappings::*;
-pub use types::{Constant, Type, TypeId, properties::Property};
+pub use types::{properties::Property, Constant, Type, TypeId};
 
 pub use context::{Environment, Scope};
 pub(crate) use structures::functions;
