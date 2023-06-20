@@ -6,7 +6,10 @@ use std::{
 use source_map::Span;
 
 use crate::{
-	context::VariableId, structures::variables::VariableWithValue, types::TypeId, Variable,
+	context::{FunctionId, VariableId},
+	structures::variables::VariableWithValue,
+	types::{printing::print_type, TypeId, TypeStore},
+	GeneralEnvironment, Variable,
 };
 
 /// TODO temp
@@ -44,7 +47,43 @@ pub struct TypeMappings {
 	pub types_to_types: HashMap<HashableSpan, TypeId>,
 	pub import_statements_to_pointing_path: HashMap<HashableSpan, PathBuf>,
 	/// can be used for tree shaking
-	pub called_functions: HashSet<HashableSpan>,
+	pub called_functions: HashSet<FunctionId>,
+}
+
+// TODO these are temp
+impl TypeMappings {
+	pub fn print_called_functions(&self, source: &str) -> String {
+		let mut buf = "Called functions:\n".to_owned();
+		for func_id in self.called_functions.iter() {
+			if *func_id != FunctionId::NULL {
+				buf.push_str(
+					source
+						.get((func_id.0.start as usize)..(func_id.0.end as usize))
+						.unwrap_or_default(),
+				);
+				buf.push('\n')
+			}
+		}
+		buf
+	}
+
+	pub fn print_type_mappings(
+		&self,
+		source: &str,
+		env: &GeneralEnvironment,
+		types: &TypeStore,
+	) -> String {
+		let mut buf = "Expression type mappings:\n".to_owned();
+		for (pos, instance) in self.expressions_to_instances.iter() {
+			buf.push_str(
+				source.get((pos.0.start as usize)..(pos.0.end as usize)).unwrap_or_default(),
+			);
+			buf.push_str(" has type ");
+			buf.push_str(&print_type(types, instance.get_value(), env));
+			buf.push('\n')
+		}
+		buf
+	}
 }
 
 /// See https://www.internalpointers.com/post/understanding-meaning-lexpressions-and-rexpressions-c for a understanding

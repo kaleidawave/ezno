@@ -10,14 +10,14 @@ mod settings;
 pub mod structures;
 pub mod temp;
 mod type_mappings;
-mod types;
+pub mod types;
 mod utils;
 
 // TODO temp pub
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use errors::TypeCheckWarning;
+use errors::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
 use context::store::ExistingContextStore;
@@ -29,7 +29,10 @@ use std::{
 };
 use structures::functions::AutoConstructorId;
 
-use types::TypeStore;
+use types::{
+	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	TypeStore,
+};
 
 pub use behavior::{
 	assignments::{
@@ -59,7 +62,6 @@ pub use type_mappings::*;
 pub use types::{properties::Property, Constant, Type, TypeId};
 
 pub use context::{Environment, Scope};
-pub(crate) use structures::functions;
 pub(crate) use structures::modules::ModuleFromPathError;
 
 pub trait FSResolver: Fn(&std::path::Path) -> Option<String> {}
@@ -103,13 +105,14 @@ pub enum TruthyFalsy {
 
 /// Contains logic for **checking phase** (none of the later steps)
 /// All data is global, non local to current scope
+/// TODO some of these should be mutex / ref cell
 pub struct CheckingData<'a, T> {
 	// pub(crate) type_resolving_visitors: [Box<dyn TypeResolvingExpressionVisitor>],
 	// pub(crate) pre_type_visitors: FirstPassVisitors,
 	/// Type checking errors
 	pub diagnostics_container: DiagnosticsContainer,
-	/// TODO these should be mutex / ref cell
-	pub(crate) type_mappings: TypeMappings,
+	/// TODO temp pub
+	pub type_mappings: TypeMappings,
 	/// All module information
 	pub(crate) modules: ModuleData<'a, T>,
 	/// Settings for checking
@@ -190,11 +193,42 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		self.diagnostics_container
 			.add_warning(TypeCheckWarning::Unimplemented { thing: item, at: span })
 	}
-}
 
-/// TODO this is a bad name
-#[derive(Debug)]
-pub(crate) struct FunctionDoesNotMeetConstraint {
-	constraint: String,
-	function: String,
+	pub fn add_expression_mapping(&mut self, span: Span, instance: Instance) {
+		self.type_mappings.expressions_to_instances.insert(HashableSpan(span), instance);
+	}
+
+	pub fn check_satisfies(
+		&mut self,
+		expr_ty: TypeId,
+		to_satisfy: TypeId,
+		pos: Span,
+		environment: &mut Environment,
+	) {
+		let result = type_is_subtype(
+			to_satisfy,
+			expr_ty,
+			None,
+			&mut BasicEquality { add_property_restrictions: false, position: pos.clone() },
+			environment,
+			&self.types,
+		);
+		if let SubTypeResult::IsNotSubType(_) = result {
+			self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
+				at: pos,
+				expected: errors::TypeStringRepresentation::from_type_id(
+					to_satisfy,
+					&environment.into_general_environment(),
+					&self.types,
+					false,
+				),
+				found: errors::TypeStringRepresentation::from_type_id(
+					expr_ty,
+					&environment.into_general_environment(),
+					&self.types,
+					false,
+				),
+			})
+		}
+	}
 }

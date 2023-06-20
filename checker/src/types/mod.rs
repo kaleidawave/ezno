@@ -1,5 +1,6 @@
 pub mod calling;
 mod casts;
+pub mod functions;
 pub mod indexing;
 pub mod operations;
 pub mod poly_types;
@@ -21,13 +22,17 @@ pub use terms::Constant;
 use crate::{
 	context::{get_env, GeneralEnvironment, InferenceBoundary},
 	events::RootReference,
-	functions::FunctionType,
 	structures::{functions::SynthesizedArgument, operators::*},
-	InternalFunctionId,
+	GenericTypeParameters,
 };
 
 use crate::context::FunctionId;
-use std::{collections::HashSet, fmt::Debug};
+use std::{
+	collections::{HashMap, HashSet},
+	fmt::Debug,
+};
+
+use self::functions::SynthesizedParameters;
 
 /// References [Type]
 ///
@@ -63,8 +68,7 @@ impl TypeId {
 	pub const OBJECT_TYPE: Self = Self(10);
 	pub const FUNCTION_TYPE: Self = Self(11);
 	pub const REGEXP_TYPE: Self = Self(12);
-
-	pub const STRING_OR_NUMBER: Self = Self(13);
+	pub const SYMBOL_TYPE: Self = Self(13);
 
 	/// For more direct stuff and the rules
 	pub const TRUE: Self = Self(14);
@@ -184,17 +188,46 @@ impl PolyNature {
 	}
 }
 
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct FunctionType {
+	/// TODO not sure about this field and how it tails with Pi Types
+	pub type_parameters: Option<GenericTypeParameters>,
+	pub parameters: SynthesizedParameters,
+	pub return_type: TypeId,
+	/// Side effects of the function
+	pub effects: Vec<crate::events::Event>,
+
+	/// TODO type alias
+	pub closed_over_references: HashMap<RootReference, TypeId>,
+
+	/// Can be called for constant result
+	pub constant_id: Option<String>,
+
+	/// TODO somewhat temp
+	pub kind: FunctionKind,
+
+	pub id: FunctionId,
+}
+
+/// Decides what to do with `new`
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum FunctionKind {
+	Arrow { get_set: crate::GetSetGeneratorOrNone },
+	Function { function_prototype: TypeId },
+	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
+}
+
 /// TODO needs improvement
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionNature {
 	BehindPoly {
 		/// TODO function id?
-		function_id_if_open_poly: Option<InternalFunctionId>,
+		function_id_if_open_poly: Option<FunctionId>,
 		this_type: Option<TypeId>,
 	},
 	/// Last is 'this' type,
-	Source(FunctionId, Option<TypeId>),
-	Constructor(FunctionId),
+	Source(Option<TypeId>),
+	Constructor,
 	Reference,
 }
 

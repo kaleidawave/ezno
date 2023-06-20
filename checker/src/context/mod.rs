@@ -17,14 +17,11 @@ use crate::{
 	behavior::{self},
 	errors::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::{
-		functions::{FunctionKind, FunctionType},
-		variables::VariableMutability,
-	},
+	structures::variables::VariableMutability,
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
-		cast_as_boolean, properties::Property, Constant, Constructor, PolyNature, PolyPointer,
-		Type, TypeId, TypeStore,
+		cast_as_boolean, properties::Property, Constant, Constructor, FunctionKind, FunctionType,
+		PolyNature, PolyPointer, Type, TypeId, TypeStore,
 	},
 	utils::{EnforcedOr, EnforcedOrExt},
 	CheckingData, TruthyFalsy, Variable,
@@ -130,6 +127,11 @@ pub struct VariableId(pub Span);
 
 #[derive(Debug, PartialEq, Eq, Clone, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub Span);
+
+impl FunctionId {
+	/// For inferred restrictions...
+	pub const NULL: Self = Self(Span::NULL_SPAN);
+}
 
 // TODO temp
 impl Hash for VariableId {
@@ -1045,6 +1047,7 @@ impl<T: ContextType> Context<T> {
 			parameters: synthesized_parameters,
 			constant_id: None,
 			kind: FunctionKind::Arrow { get_set },
+			id: func.id(),
 		};
 
 		register_behavior.func(func, func_ty, self, &mut checking_data.types)

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
 	context::{Context, ContextType, InferenceBoundary},
-	structures::functions::FunctionType,
+	types::FunctionType,
 	types::{PolyNature, Type},
 	GeneralEnvironment, TypeId,
 };
@@ -147,7 +147,7 @@ impl TypeStore {
 	pub fn new_function_type_reference(
 		&mut self,
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
-		parameters: crate::structures::parameters::SynthesizedParameters,
+		parameters: crate::types::functions::SynthesizedParameters,
 		return_type: TypeId,
 		span: source_map::Span,
 		effects: Vec<crate::events::Event>,
@@ -162,12 +162,13 @@ impl TypeStore {
 				// TODO
 				closed_over_references: Default::default(),
 				// TODO
-				kind: crate::structures::functions::FunctionKind::Arrow {
+				kind: crate::types::FunctionKind::Arrow {
 					get_set: crate::GetSetGeneratorOrNone::None,
 				},
 				constant_id,
+				id: crate::context::FunctionId(span),
 			},
-			super::FunctionNature::Source(crate::context::FunctionId(span), None),
+			super::FunctionNature::Source(None),
 		))
 	}
 

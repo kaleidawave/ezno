@@ -2,8 +2,10 @@ use source_map::Span;
 
 use crate::{
 	context::{Context, ContextType, FunctionId, VariableId},
-	structures::{functions::FunctionType, parameters::SynthesizedParameters},
-	types::{poly_types::GenericTypeParameters, properties::Property, FunctionNature, TypeStore},
+	types::{
+		functions::SynthesizedParameters, poly_types::GenericTypeParameters, properties::Property,
+		FunctionNature, FunctionType, TypeStore,
+	},
 	CheckingData, Environment, FSResolver, Type, TypeId,
 };
 
@@ -42,7 +44,7 @@ impl RegisterBehavior for RegisterAsType {
 	) -> Self::Return {
 		types.register_type(crate::Type::Function(
 			func_ty,
-			crate::types::FunctionNature::Source(func.id(), None),
+			crate::types::FunctionNature::Source(None),
 		))
 	}
 }
@@ -62,7 +64,7 @@ impl RegisterBehavior for RegisterOnExisting {
 	) -> Self::Return {
 		let ty = types.register_type(crate::Type::Function(
 			func_ty,
-			crate::types::FunctionNature::Source(func.id(), None),
+			crate::types::FunctionNature::Source(None),
 		));
 		let variable_id = environment.variables.get(&self.0).unwrap().declared_at.clone();
 		environment.variable_current_value.insert(VariableId(variable_id), ty);
@@ -85,7 +87,7 @@ impl RegisterBehavior for RegisterOnExistingObject {
 			crate::GetSetGeneratorOrNone::Get => Property::Get(Box::new(func_ty)),
 			crate::GetSetGeneratorOrNone::Set => Property::Set(Box::new(func_ty)),
 			crate::GetSetGeneratorOrNone::Generator | crate::GetSetGeneratorOrNone::None => {
-				let ty = Type::Function(func_ty, FunctionNature::Source(func.id(), None));
+				let ty = Type::Function(func_ty, FunctionNature::Source(None));
 				let ty = types.register_type(ty);
 				Property::Value(ty)
 			}

@@ -1,8 +1,8 @@
 use crate::{
 	context::{get_env, Environment, Logical, PolyBase, SetPropertyError},
 	events::Event,
-	structures::functions::FunctionType,
 	subtyping::{type_is_subtype, SubTypeResult},
+	types::FunctionType,
 	TypeId,
 };
 
@@ -185,16 +185,16 @@ pub(crate) fn get_property(
 						match ty {
 							Type::Function(func, nature) => match nature {
 								super::FunctionNature::BehindPoly { .. } => todo!(),
-								super::FunctionNature::Source(id, this) => {
+								super::FunctionNature::Source(this) => {
 									if this.is_some() {
 										panic!()
 									}
 									types.register_type(Type::Function(
 										func.clone(),
-										super::FunctionNature::Source(id.clone(), Some(on)),
+										super::FunctionNature::Source(Some(on)),
 									))
 								}
-								super::FunctionNature::Constructor(_) => todo!(),
+								super::FunctionNature::Constructor => todo!(),
 								super::FunctionNature::Reference => unreachable!(),
 							},
 							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {

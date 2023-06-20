@@ -7,24 +7,20 @@ use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use source_map::Span;
 
 use crate::{
-	behavior::functions::GetSetGeneratorOrNone,
 	context::FunctionId,
 	errors::TypeStringRepresentation,
-	events::{Event, RootReference},
+	events::RootReference,
 	types::{
-		poly_types::{GenericTypeParameters, ResolveGenerics, TypeArguments},
+		poly_types::{ResolveGenerics, TypeArguments},
 		TypeId,
 	},
 	CheckingData,
 };
 
 use std::{
-	collections::HashMap,
 	fmt::Debug,
 	sync::atomic::{AtomicU16, Ordering},
 };
-
-use super::parameters::SynthesizedParameters;
 
 static INTERNAL_FUNCTION_COUNTER: AtomicU16 = AtomicU16::new(1000);
 static AUTO_CONSTRUCTOR_COUNTER: AtomicU16 = AtomicU16::new(0);
@@ -86,32 +82,6 @@ impl ThisBinding {
 			ThisBinding::FixedTo(ty) | ThisBinding::Dynamic(ty) => *ty,
 		}
 	}
-}
-
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub struct FunctionType {
-	/// TODO not sure about this field and how it tails with Pi Types
-	pub type_parameters: Option<GenericTypeParameters>,
-	pub parameters: SynthesizedParameters,
-	pub return_type: TypeId,
-	/// Side effects of the function
-	pub effects: Vec<Event>,
-
-	/// TODO type alias
-	pub closed_over_references: HashMap<RootReference, TypeId>,
-
-	/// Can be called for constant result
-	pub constant_id: Option<String>,
-
-	pub kind: FunctionKind,
-}
-
-/// Decides what to do with `new`
-#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionKind {
-	Arrow { get_set: GetSetGeneratorOrNone },
-	Function { function_prototype: TypeId },
-	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
 }
 
 // pub type CallableFunctionType = FunctionType<SourceFunction>;

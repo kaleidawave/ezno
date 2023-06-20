@@ -4,8 +4,7 @@ use source_map::Span;
 
 use crate::{
 	context::{Environment, FunctionId, GeneralEnvironment, Logical},
-	structures::functions::FunctionType,
-	types::TypeStore,
+	types::{FunctionType, TypeStore},
 	TypeId,
 };
 
