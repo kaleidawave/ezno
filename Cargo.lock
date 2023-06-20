@@ -245,7 +245,7 @@ dependencies = [
  "console",
  "enum-variants-strings",
  "ezno-checker",
- "ezno-parser 0.0.3",
+ "ezno-parser 0.0.3 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
  "js-sys",
  "multiline-term-input",
  "notify",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "bimap",
  "binary-serialize-derive",
