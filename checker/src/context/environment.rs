@@ -19,9 +19,7 @@ use crate::{
 	CheckingData, Root, TypeId,
 };
 
-use super::{
-	AssignmentError, Context, ContextType, Environment, GeneralContext, SetPropertyError,
-};
+use super::{AssignmentError, Context, ContextType, Environment, GeneralContext, SetPropertyError};
 
 #[derive(Debug)]
 pub struct Syntax<'a> {
