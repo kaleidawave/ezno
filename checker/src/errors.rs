@@ -115,7 +115,7 @@ impl DiagnosticsContainer {
 pub(super) use defined_errors_and_warnings::*;
 
 use crate::{
-	context::GeneralEnvironment,
+	context::GeneralContext,
 	types::{printing::print_type, TypeId, TypeStore},
 };
 
@@ -127,13 +127,13 @@ pub enum TypeStringRepresentation {
 impl TypeStringRepresentation {
 	pub fn from_type_id(
 		id: TypeId,
-		env: &GeneralEnvironment,
+		env: &GeneralContext,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
 		if debug_mode {
 			todo!()
-		// 	let ty = get_env!(env.get_type_by_id(id));
+		// 	let ty = get_ctx!(env.get_type_by_id(id));
 		// 	Self::Type(format!("{:#?}", ty))
 		} else {
 			let value = print_type(types, id, env);

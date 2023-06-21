@@ -26,14 +26,14 @@ pub(crate) fn format_list<D: Display>(mut iterator: impl ExactSizeIterator<Item 
 // 		buf: &mut String,
 // 		indent: usize,
 // 		cycles: &mut HashSet<usize>,
-// 		environment: &GeneralEnvironment,
+// 		environment: &GeneralContext,
 // 		store: &TypeStore,
 // 	) {
 // 		// TODO temp
 // 		todo!("fmt not implemented")
 // 	}
 
-// 	fn to_string(&self, environment: &GeneralEnvironment) -> String {
+// 	fn to_string(&self, environment: &GeneralContext) -> String {
 // 		let mut buf = String::new();
 // 		TypeDisplay::fmt(self, &mut buf, 0, &mut HashSet::new(), environment);
 // 		buf
@@ -46,7 +46,7 @@ pub(crate) fn format_list<D: Display>(mut iterator: impl ExactSizeIterator<Item 
 // 		buf: &mut String,
 // 		indent: usize,
 // 		cycles: &mut HashSet<usize>,
-// 		environment: &GeneralEnvironment,
+// 		environment: &GeneralContext,
 // 		store: &TypeStore,
 // 	) {
 // 		match self {

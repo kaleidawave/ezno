@@ -1,9 +1,9 @@
-use crate::{context::get_env, GeneralEnvironment};
+use crate::{context::get_ctx, GeneralContext};
 
 use super::{PolyNature, Type, TypeId, TypeStore};
 
 /// TODO temp, needs recursion safe, reuse buffer
-pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> String {
+pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralContext) -> String {
 	let ty = types.get_type_by_id(id);
 	// crate::utils::notify!("Printing {:?}", ty);
 	match ty {
@@ -17,17 +17,17 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, .. } => name.clone(),
 			PolyNature::ParentScope { .. } | PolyNature::Parameter { .. } => {
-				let ty = get_env!(env.get_poly_base(id, types)).unwrap().get_type();
+				let ty = get_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
 				print_type(types, ty, env)
 			}
 			PolyNature::Open(to) => print_type(types, *to, env),
 			nature => {
 				todo!()
 				// let modified_base = match env {
-				// 	GeneralEnvironment::Syntax(syn) => {
-				// 		syn.parents_iter().find_map(|env| get_env!(env.bases.get(&id)).copied())
+				// 	GeneralContext::Syntax(syn) => {
+				// 		syn.parents_iter().find_map(|env| get_ctx!(env.bases.get(&id)).copied())
 				// 	}
-				// 	GeneralEnvironment::Root(root) => root.bases.get(&id).copied(),
+				// 	GeneralContext::Root(root) => root.bases.get(&id).copied(),
 				// };
 
 				// print_type(types, aliases, env)
@@ -40,7 +40,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 			}
 			super::Constructor::StructureGenerics { on, with } => todo!(),
 			_ => {
-				let base = get_env!(env.get_poly_base(id, types)).unwrap().get_type();
+				let base = get_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
 				print_type(types, base, env)
 			}
 		},
@@ -83,7 +83,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralEnvironment) -> St
 		}
 		Type::Object(..) => {
 			let mut buf = String::from("{ ");
-			for (key, value) in get_env!(env.get_properties_on_type(id)) {
+			for (key, value) in get_ctx!(env.get_properties_on_type(id)) {
 				buf.push_str(&print_type(types, key, env));
 				buf.push_str(": ");
 				buf.push_str(&print_type(types, value, env));

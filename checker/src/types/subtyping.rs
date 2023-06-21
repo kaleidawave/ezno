@@ -3,7 +3,7 @@
 use source_map::Span;
 
 use crate::{
-	context::{Environment, FunctionId, GeneralEnvironment, Logical},
+	context::{Environment, FunctionId, GeneralContext, Logical},
 	types::{FunctionType, TypeStore},
 	TypeId,
 };
@@ -556,7 +556,7 @@ type ReadableSubTypeErrorMessage = Vec<String>;
 impl NonEqualityReason {
 	pub(crate) fn into_error_message(
 		self,
-		environment: &GeneralEnvironment,
+		environment: &GeneralContext,
 	) -> ReadableSubTypeErrorMessage {
 		match self {
 			NonEqualityReason::MissingParameter | NonEqualityReason::Mismatch => Vec::new(),

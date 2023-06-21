@@ -20,7 +20,7 @@ pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
-	context::{get_env, GeneralEnvironment, InferenceBoundary},
+	context::{get_ctx, GeneralContext, InferenceBoundary},
 	events::RootReference,
 	structures::{functions::SynthesizedArgument, operators::*},
 	GenericTypeParameters,
@@ -339,7 +339,7 @@ pub enum TypeRelationOperator {
 // 		buf: &mut String,
 // 		indent: usize,
 // 		cycles: &mut std::collections::HashSet<usize>,
-// 		environment: &GeneralEnvironment,
+// 		environment: &GeneralContext,
 // 		types: &TypeStore,
 // 	) {
 // 		use std::fmt::Write;
@@ -359,13 +359,13 @@ pub enum TypeRelationOperator {
 // 					if let Some(parameters) = parameters {
 // 						todo!()
 // 					}
-// 				} else if let Some(constant) = get_env!(environment.get_constant_type(*id)) {
+// 				} else if let Some(constant) = get_ctx!(environment.get_constant_type(*id)) {
 // 					match constant {
 // 						Constant::Number(num) => write!(buf, "{}", num).unwrap(),
 // 						Constant::String(str) => write!(buf, "\"{}\"", str).unwrap(),
 // 						Constant::Boolean(val) => write!(buf, "{}", val).unwrap(),
 // 						Constant::FunctionReference { .. } => {
-// 							let function = get_env!(environment.get_function(*id));
+// 							let function = get_ctx!(environment.get_function(*id));
 // 							if let Some(function) = function {
 // 								TypeDisplay::fmt(function, buf, indent, cycles, environment)
 // 							} else {
@@ -381,7 +381,7 @@ pub enum TypeRelationOperator {
 // 					|| *to == TypeId::NODE_LIST_TYPE
 // 				{
 // 					print_object(*id, buf, environment, indent, cycles);
-// 				} else if let Some(function) = get_env!(environment.get_function(*id)) {
+// 				} else if let Some(function) = get_ctx!(environment.get_function(*id)) {
 // 					TypeDisplay::fmt(function, buf, indent, cycles, environment)
 // 				} else {
 // 					TypeDisplay::fmt(to, buf, indent, cycles, environment);
@@ -398,9 +398,9 @@ pub enum TypeRelationOperator {
 // 				// TODO temp
 // 				if let Some(Constant::FunctionReference(FunctionPointer::Internal(
 // 					internal_function_id,
-// 				))) = get_env!(environment.get_constant_type(*id))
+// 				))) = get_ctx!(environment.get_constant_type(*id))
 // 				{
-// 					let function = get_env!(environment.get_function(*id));
+// 					let function = get_ctx!(environment.get_function(*id));
 // 					if let Some(function) = function {
 // 						TypeDisplay::fmt(function, buf, indent, cycles, environment)
 // 					} else {
@@ -460,13 +460,13 @@ pub enum TypeRelationOperator {
 fn print_object(
 	id: TypeId,
 	buf: &mut String,
-	environment: &GeneralEnvironment,
+	environment: &GeneralContext,
 	indent: usize,
 	cycles: &mut HashSet<usize>,
 	types: &TypeStore,
 ) {
 	let ty = types.get_type_by_id(id);
-	let property_iterator = get_env!(environment.get_properties_on_type(id));
+	let property_iterator = get_ctx!(environment.get_properties_on_type(id));
 
 	// TODO needs work
 	let is_tuple = matches!(ty, Type::AliasTo { to: TypeId::ARRAY_TYPE, .. });
@@ -474,7 +474,7 @@ fn print_object(
 	// TODO temp
 	// if let Type::AliasTo { to: TypeId::TEXT_TYPE, .. } = ty {
 	// 	let property =
-	// 		get_env!(environment.get_property_unbound(id, TypeId::DATA_AS_STRING, types));
+	// 		get_ctx!(environment.get_property_unbound(id, TypeId::DATA_AS_STRING, types));
 	// 	if let Some(TypeLogical::Og(value)) = property {
 	// 		todo!();
 	// 	// buf.push_str("Text { data: ");
@@ -489,7 +489,7 @@ fn print_object(
 	// 	// TODO length here
 	// 	buf.push_str("NodeList [");
 	// 	for (at_end, key) in property_iterator.into_iter().endiate() {
-	// 		let value = get_env!(environment.get_property_unbound(id, key, types))
+	// 		let value = get_ctx!(environment.get_property_unbound(id, key, types))
 	// 			.expect("No property or property constraint");
 
 	// 		let value = match value {
@@ -512,7 +512,7 @@ fn print_object(
 	buf.push_str(if is_tuple { "[" } else { "{ " });
 
 	for (at_end, key) in property_iterator.into_iter().endiate() {
-		// let value = get_env!(environment.get_property_unbound(id, key, types))
+		// let value = get_ctx!(environment.get_property_unbound(id, key, types))
 		// 	.expect("No property or property constraint");
 
 		// let value = match value {
@@ -524,10 +524,10 @@ fn print_object(
 		// };
 
 		// // TODO getters and setters
-		// let is_function = get_env!(environment.get_function(value)).is_some();
+		// let is_function = get_ctx!(environment.get_function(value)).is_some();
 
 		// if !is_tuple {
-		// 	if let Some(Constant::String(string)) = get_env!(environment.get_constant_type(key)) {
+		// 	if let Some(Constant::String(string)) = get_ctx!(environment.get_constant_type(key)) {
 		// 		buf.push_str(&string);
 		// 	} else {
 		// 		buf.push('[');

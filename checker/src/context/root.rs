@@ -1,5 +1,5 @@
 use super::{Context, ContextId, ContextType};
-use crate::{types::TypeId, GeneralEnvironment};
+use crate::{types::TypeId, GeneralContext};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
@@ -10,11 +10,11 @@ pub type Root = Context<RootContext>;
 pub struct RootContext;
 
 impl ContextType for RootContext {
-	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralEnvironment<'a> {
-		GeneralEnvironment::Root(et)
+	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a> {
+		GeneralContext::Root(et)
 	}
 
-	fn get_parent<'a>(&'a self) -> Option<&'a GeneralEnvironment<'a>> {
+	fn get_parent<'a>(&'a self) -> Option<&'a GeneralContext<'a>> {
 		None
 	}
 

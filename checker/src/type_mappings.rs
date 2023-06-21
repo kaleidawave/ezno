@@ -9,7 +9,7 @@ use crate::{
 	context::{FunctionId, VariableId},
 	structures::variables::VariableWithValue,
 	types::{printing::print_type, TypeId, TypeStore},
-	GeneralEnvironment, Variable,
+	GeneralContext, Variable,
 };
 
 /// TODO temp
@@ -70,7 +70,7 @@ impl TypeMappings {
 	pub fn print_type_mappings(
 		&self,
 		source: &str,
-		env: &GeneralEnvironment,
+		env: &GeneralContext,
 		types: &TypeStore,
 	) -> String {
 		let mut buf = "Expression type mappings:\n".to_owned();

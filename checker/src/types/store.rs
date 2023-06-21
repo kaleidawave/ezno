@@ -4,7 +4,7 @@ use crate::{
 	context::{Context, ContextType, InferenceBoundary},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	GeneralEnvironment, TypeId,
+	GeneralContext, TypeId,
 };
 
 use super::TypeRelationOperator;
@@ -113,7 +113,7 @@ impl TypeStore {
 	}
 
 	pub fn new_any_parameter<S: ContextType>(&mut self, environment: &mut Context<S>) -> TypeId {
-		if let GeneralEnvironment::Syntax(env) = environment.into_general_environment() {
+		if let GeneralContext::Syntax(env) = environment.into_general_environment() {
 			// TODO not sure about this:
 			if environment.context_type.is_dynamic_boundary() {
 				crate::utils::notify!("TODO is context different in the param synthesis?");

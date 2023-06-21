@@ -68,7 +68,7 @@ impl PartialEq for GenericTypeParameter {
 // 	// 	buf: &mut String,
 // 	// 	_indent: usize,
 // 	// 	_cycles: &mut collections::HashSet<usize>,
-// 	// 	_environment: &GeneralEnvironment
+// 	// 	_environment: &GeneralContext
 // 	// ) {
 // 	// 	buf.push_str(&self.name)
 // 	// }

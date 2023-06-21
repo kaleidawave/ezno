@@ -36,7 +36,7 @@ pub struct SynthesizedParameters {
 // 		buf: &mut String,
 // 		indent: usize,
 // 		cycles: &mut std::collections::HashSet<usize>,
-// 		environment: &GeneralEnvironment,
+// 		environment: &GeneralContext,
 // 		store: &TypeStore,
 // 	) {
 // 		buf.push('(');
@@ -46,7 +46,7 @@ pub struct SynthesizedParameters {
 // 		{
 // 			buf.push_str(name);
 // 			buf.push_str(": ");
-// 			let constraint_ty = get_env!(environment.get_type_by_id(*constraint));
+// 			let constraint_ty = get_ctx!(environment.get_type_by_id(*constraint));
 // 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment, store);
 // 			if !at_end || !self.optional_parameters.is_empty() || self.rest_parameter.is_some() {
 // 				buf.push_str(", ");
@@ -58,7 +58,7 @@ pub struct SynthesizedParameters {
 // 		{
 // 			buf.push_str(name);
 // 			buf.push_str("?: ");
-// 			let constraint_ty = get_env!(environment.get_type_by_id(*constraint));
+// 			let constraint_ty = get_ctx!(environment.get_type_by_id(*constraint));
 // 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment);
 // 			if !at_end || self.rest_parameter.is_some() {
 // 				buf.push_str(", ");
@@ -70,7 +70,7 @@ pub struct SynthesizedParameters {
 // 			buf.push_str("...");
 // 			buf.push_str(&name);
 // 			buf.push_str(": ");
-// 			let item_type_ty = get_env!(environment.get_type_by_id(*item_type));
+// 			let item_type_ty = get_ctx!(environment.get_type_by_id(*item_type));
 // 			TypeDisplay::fmt(item_type, buf, indent, cycles, environment);
 // 		}
 
