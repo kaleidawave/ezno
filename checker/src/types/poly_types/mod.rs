@@ -20,7 +20,7 @@ pub enum ParameterDependentType {
 
 #[derive(Clone, Debug)]
 pub struct ClosureGenericType {
-	pub variable_id: crate::context::VariableId,
+	pub variable_id: crate::VariableId,
 	// These will need to also be stored in type mapping
 	// TODO mutable thing
 	pub constraint: TypeId,

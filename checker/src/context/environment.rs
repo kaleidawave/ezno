@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::{
 	behavior::assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
-	errors::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	evaluate_binary_operator_handle_errors,
 	events::{Event, RootReference},
 	structures::{
@@ -333,13 +333,13 @@ impl<'a> Environment<'a> {
 			None => {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::PropertyDoesNotExist {
-						property: crate::errors::TypeStringRepresentation::from_type_id(
+						property: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							property,
 							&self.into_general_environment(),
 							&checking_data.types,
 							false,
 						),
-						on: crate::errors::TypeStringRepresentation::from_type_id(
+						on: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							on,
 							&self.into_general_environment(),
 							&checking_data.types,

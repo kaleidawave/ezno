@@ -2,9 +2,9 @@ use source_map::Span;
 
 use crate::{
 	context::Environment,
-	errors::{InvalidMathematicalOperation, TypeCheckError, TypeStringRepresentation},
-	structures::{functions::SynthesizedArgument, operators::*},
-	types::TypeStore,
+	diagnostics::{InvalidMathematicalOperation, TypeCheckError, TypeStringRepresentation},
+	structures::operators::*,
+	types::{functions::SynthesizedArgument, TypeStore},
 	CheckingData, TypeId,
 };
 
@@ -86,9 +86,15 @@ pub fn evaluate_binary_operator(
 	)
 	.map(|op| op.returned_type)
 	.map_err(|errors| {
-		// TODO temp
+		use crate::events::FunctionCallingError;
 		match errors.into_iter().next().unwrap() {
-			crate::structures::functions::FunctionCallingError::InvalidArgumentType { parameter_type, argument_type, argument_position, parameter_position, restriction } => {
+			FunctionCallingError::InvalidArgumentType {
+				parameter_type,
+				argument_type,
+				argument_position,
+				parameter_position,
+				restriction,
+			} => {
 				crate::utils::notify!("{} {}", parameter_type, argument_type);
 				return InvalidMathematicalOperation {
 					lhs: TypeStringRepresentation::from_type_id(
@@ -106,11 +112,15 @@ pub fn evaluate_binary_operator(
 					operator,
 					position: Span::NULL_SPAN, // lhs.1.union(&rhs.1),
 				};
-			},
-			crate::structures::functions::FunctionCallingError::MissingArgument { .. } => unreachable!("binary operator should accept two operands"),
-			crate::structures::functions::FunctionCallingError::ExtraArguments { .. } => unreachable!("binary operator should have two operands"),
-			crate::structures::functions::FunctionCallingError::NotCallable { .. } => unreachable!("operator should be callable"),
-			crate::structures::functions::FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => unreachable!("..."),
+			}
+			FunctionCallingError::MissingArgument { .. } => {
+				unreachable!("binary operator should accept two operands")
+			}
+			FunctionCallingError::ExtraArguments { .. } => {
+				unreachable!("binary operator should have two operands")
+			}
+			FunctionCallingError::NotCallable { .. } => unreachable!("operator should be callable"),
+			FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => unreachable!("..."),
 		}
 	})
 }

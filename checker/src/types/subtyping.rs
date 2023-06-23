@@ -3,9 +3,9 @@
 use source_map::Span;
 
 use crate::{
-	context::{Environment, FunctionId, GeneralContext, Logical},
+	context::{Environment, GeneralContext, Logical},
 	types::{FunctionType, TypeStore},
-	TypeId,
+	FunctionId, TypeId,
 };
 
 use super::{poly_types::SeedingContext, Constructor, Type};

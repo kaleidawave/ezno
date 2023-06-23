@@ -10,7 +10,7 @@ pub(crate) use generic_type_arguments::TypeArguments;
 pub use generic_type_parameters::*;
 pub use specialized_generic_structure::*;
 
-use crate::{context::FunctionId, types::FunctionType, CheckingData};
+use crate::{types::FunctionType, CheckingData, FunctionId};
 
 pub(crate) struct UnmatchedGenericsError;
 

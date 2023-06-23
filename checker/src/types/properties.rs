@@ -1,5 +1,5 @@
 use crate::{
-	context::{get_ctx, Environment, Logical, PolyBase, SetPropertyError},
+	context::{get_on_ctx, Environment, Logical, PolyBase, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
 	types::FunctionType,
@@ -306,7 +306,7 @@ pub(crate) fn set_property(
 ) -> Result<Option<TypeId>, SetPropertyError> {
 	let pair = (on, under);
 
-	if environment.parents_iter().any(|env| get_ctx!(env.writable.get(&pair)).is_some()) {
+	if environment.parents_iter().any(|env| get_on_ctx!(env.writable.get(&pair)).is_some()) {
 		return Err(SetPropertyError::NotWriteable);
 	}
 
@@ -314,7 +314,7 @@ pub(crate) fn set_property(
 		let property_constraint = {
 			let constraint = environment
 				.parents_iter()
-				.find_map(|env| get_ctx!(env.object_constraints.get(&on)).cloned());
+				.find_map(|env| get_on_ctx!(env.object_constraints.get(&on)).cloned());
 
 			match constraint {
 				Some(constraint) => {

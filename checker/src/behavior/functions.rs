@@ -1,12 +1,12 @@
 use source_map::Span;
 
 use crate::{
-	context::{Context, ContextType, FunctionId, VariableId},
+	context::{Context, ContextType},
 	types::{
 		functions::SynthesizedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionNature, FunctionType, TypeStore,
 	},
-	CheckingData, Environment, FSResolver, Type, TypeId,
+	CheckingData, Environment, FSResolver, FunctionId, Type, TypeId, VariableId,
 };
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]

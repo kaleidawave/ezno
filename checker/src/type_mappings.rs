@@ -6,10 +6,9 @@ use std::{
 use source_map::Span;
 
 use crate::{
-	context::{FunctionId, VariableId},
 	structures::variables::VariableWithValue,
 	types::{printing::print_type, TypeId, TypeStore},
-	GeneralContext, Variable,
+	FunctionId, GeneralContext, Variable, VariableId,
 };
 
 /// TODO temp

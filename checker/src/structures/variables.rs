@@ -12,8 +12,8 @@ pub struct Variable {
 }
 
 impl Variable {
-	pub(crate) fn get_id(&self) -> crate::context::VariableId {
-		crate::context::VariableId(self.declared_at.clone())
+	pub(crate) fn get_id(&self) -> crate::VariableId {
+		crate::VariableId(self.declared_at.clone())
 	}
 }
 

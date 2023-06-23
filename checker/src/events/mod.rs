@@ -3,15 +3,15 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	context::VariableId,
 	types::{properties::Property, TypeStore},
+	VariableId,
 };
 
 mod function_calling;
 pub use function_calling::*;
 
 use crate::{
-	structures::functions::SynthesizedArgument,
+	types::functions::SynthesizedArgument,
 	types::{poly_types::TypeArguments, specialize, TypeId},
 	Environment,
 };

@@ -2,6 +2,8 @@
 
 Consider checking out [current standing issues](https://github.com/kaleidawave/ezno/issues) before contributing. In general, leave an issue before putting in a PR.
 
+*If any problems come up following the steps. Leave an issue*
+
 #### Setting up
 
 Want to contribute, here is how to set up the environment?
@@ -34,6 +36,10 @@ Now in the `ezno` directory, `cargo run` should show the CLI
 - Check that code is formatted in accordance with the specification with `cargo fmt --all --check`
 - Run all tests `cargo test --workspace --verbose`
 
-### The notify macro
+### The notify! macro
 
 The checker crate has the `crate::utils::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
+
+### Oxc
+
+If working on [oxc_type_synthesis](https://github.com/Boshen/oxc/tree/main/crates/oxc_type_synthesis). You can (git) clone [oxc](https://github.com/Boshen/oxc) alongside Ezno and then use path dependencies to work on them simultaneously.
