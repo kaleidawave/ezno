@@ -4,18 +4,7 @@
 
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 
-use source_map::Span;
-
-use crate::{
-	context::FunctionId,
-	errors::TypeStringRepresentation,
-	events::RootReference,
-	types::{
-		poly_types::{ResolveGenerics, TypeArguments},
-		TypeId,
-	},
-	CheckingData,
-};
+use crate::{types::TypeId, FunctionId};
 
 use std::{
 	fmt::Debug,
@@ -104,73 +93,4 @@ pub enum FunctionPointer {
 	/// Properties without a constructor
 	AutoConstructor(AutoConstructorId),
 	Internal(InternalFunctionId),
-}
-
-/// TODO spread should of tuples should expand into `NonSpread`
-/// TODO spread for non heterogenous things
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-#[non_exhaustive]
-pub enum SynthesizedArgument {
-	/// This is the get value of a argument
-	NonSpread { ty: TypeId, position: Span },
-	// TODO
-	// Spread(Instance),
-}
-
-impl SynthesizedArgument {
-	pub(crate) fn get_position(&self) -> Span {
-		match self {
-			SynthesizedArgument::NonSpread { ty: _, position } => position.clone(),
-		}
-	}
-
-	pub(crate) fn into_type(&self) -> Result<TypeId, ()> {
-		match self {
-			SynthesizedArgument::NonSpread { ty, position: _ } => Ok(*ty),
-		}
-	}
-}
-
-// For when SynthesizedFunctionArgument are held on dependent types
-impl ResolveGenerics for SynthesizedArgument {
-	fn resolve_generics<T: crate::FSResolver>(
-		self,
-		type_arguments: &TypeArguments,
-		checking_data: &mut CheckingData<T>,
-	) -> Self {
-		match self {
-			SynthesizedArgument::NonSpread { ty, position: pos } => {
-				todo!()
-				// SynthesizedFunctionArgument::NonSpread(
-				//     non_spread.resolve_generics(type_arguments, checking_data),
-				// )
-			} // SynthesizedFunctionArgument::Spread(_) => todo!(),
-		}
-	}
-}
-
-/// Errors from trying to call a function
-pub enum FunctionCallingError {
-	InvalidArgumentType {
-		parameter_type: TypeStringRepresentation,
-		argument_type: TypeStringRepresentation,
-		argument_position: Span,
-		parameter_position: Span,
-		restriction: Option<(Span, TypeStringRepresentation)>,
-	},
-	MissingArgument {
-		parameter_pos: Span,
-	},
-	ExtraArguments {
-		count: usize,
-		position: Span,
-	},
-	NotCallable {
-		calling: TypeStringRepresentation,
-	},
-	ReferenceRestrictionDoesNotMatch {
-		reference: RootReference,
-		requirement: TypeStringRepresentation,
-		found: TypeStringRepresentation,
-	},
 }

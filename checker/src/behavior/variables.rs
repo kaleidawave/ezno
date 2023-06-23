@@ -24,23 +24,24 @@ pub fn check_variable_initialization<T: crate::FSResolver>(
 	);
 
 	if let SubTypeResult::IsNotSubType(matches) = type_is_subtype {
-		let error =
-			crate::errors::TypeCheckError::AssignmentError(AssignmentError::InvalidDeclaration {
-				variable_type: crate::errors::TypeStringRepresentation::from_type_id(
+		let error = crate::diagnostics::TypeCheckError::AssignmentError(
+			AssignmentError::InvalidDeclaration {
+				variable_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					variable_declared_type,
 					&environment.into_general_environment(),
 					&checking_data.types,
 					checking_data.settings.debug_types,
 				),
 				variable_site: basic_subtyping.position,
-				value_type: crate::errors::TypeStringRepresentation::from_type_id(
+				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
 					&environment.into_general_environment(),
 					&checking_data.types,
 					checking_data.settings.debug_types,
 				),
 				value_site: expression_declared_pos.into_owned(),
-			});
+			},
+		);
 
 		checking_data.diagnostics_container.add_error(error);
 	}

@@ -15,7 +15,7 @@ use source_map::Span;
 
 use crate::{
 	behavior::{self},
-	errors::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
+	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
 	structures::variables::VariableMutability,
 	subtyping::{type_is_subtype, BasicEquality},
@@ -24,7 +24,7 @@ use crate::{
 		PolyNature, PolyPointer, Type, TypeId, TypeStore,
 	},
 	utils::{EnforcedOr, EnforcedOrExt},
-	CheckingData, TruthyFalsy, Variable,
+	CheckingData, FunctionId, TruthyFalsy, Variable, VariableId,
 };
 
 use map_vec::Map;
@@ -65,7 +65,7 @@ pub enum GeneralContext<'a> {
 }
 
 /// Used for doing things with a Context that is either [Root] or [Environment]
-macro_rules! get_ctx {
+macro_rules! get_on_ctx {
 	(&$env:ident$(.$field:ident)*) => {
 		match $env {
 			crate::context::GeneralContext::Syntax(env) => &env$(.$field)*,
@@ -94,7 +94,7 @@ macro_rules! get_ctx {
     };
 }
 
-pub(crate) use get_ctx;
+pub(crate) use get_on_ctx;
 
 use self::store::ExistingContext;
 
@@ -119,33 +119,6 @@ impl<'a> From<&'a Root> for GeneralContext<'a> {
 impl<'a> From<&'a Environment<'a>> for GeneralContext<'a> {
 	fn from(env: &'a Environment<'a>) -> Self {
 		GeneralContext::Syntax(env)
-	}
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, binary_serialize_derive::BinarySerializable)]
-pub struct VariableId(pub Span);
-
-#[derive(Debug, PartialEq, Eq, Clone, binary_serialize_derive::BinarySerializable)]
-pub struct FunctionId(pub Span);
-
-impl FunctionId {
-	/// For inferred restrictions...
-	pub const NULL: Self = Self(Span::NULL_SPAN);
-}
-
-// TODO temp
-impl Hash for VariableId {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.start.hash(state);
-		self.0.end.hash(state);
-	}
-}
-
-// TODO temp
-impl Hash for FunctionId {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.start.hash(state);
-		self.0.end.hash(state);
 	}
 }
 
@@ -234,7 +207,7 @@ impl<T: ContextType> Context<T> {
 		// self.bases.insert(on, new_constraint);
 
 		// let env = self.context_type.get_parent();
-		// let starts_on = env.map(|env| get_ctx!(env.get_type_counter())).unwrap_or_default();
+		// let starts_on = env.map(|env| get_on_ctx!(env.get_type_counter())).unwrap_or_default();
 		// if let Some(val) = (on.0 as usize).checked_sub(starts_on) {
 		// 	match ty {
 		// 		Type::AliasTo { to, .. } => {
@@ -315,8 +288,8 @@ impl<T: ContextType> Context<T> {
 		for (indent, parent) in enumerate {
 			let indent = INDENT.repeat(indent);
 
-			let types = get_ctx!(parent.named_types.len());
-			let variables = get_ctx!(parent.variables.len());
+			let types = get_on_ctx!(parent.named_types.len());
+			let variables = get_on_ctx!(parent.variables.len());
 			let ty = if let GeneralContext::Syntax(syn) = parent {
 				match &syn.context_type.scope {
 					Scope::Function { .. } => "function",
@@ -333,7 +306,7 @@ impl<T: ContextType> Context<T> {
 				"root"
 			};
 
-			println!("{}Context#{} - {}", indent, get_ctx!(parent.context_id.clone()).0, ty);
+			println!("{}Context#{} - {}", indent, get_on_ctx!(parent.context_id.clone()).0, ty);
 			println!("{}> {} types, {} variables", indent, types, variables);
 			if let GeneralContext::Syntax(syn) = parent {
 				println!("{}> Events:", indent);
@@ -450,7 +423,7 @@ impl<T: ContextType> Context<T> {
 					PolyPointer::Inferred(boundary) => {
 						let to = self
 							.parents_iter()
-							.find_map(|ctx| get_ctx!(ctx.bases.get_local_type_base(on)))
+							.find_map(|ctx| get_on_ctx!(ctx.bases.get_local_type_base(on)))
 							// TODO temp
 							.unwrap_or_else(|| {
 								crate::utils::notify!("No type base on inferred poly type");
@@ -470,7 +443,7 @@ impl<T: ContextType> Context<T> {
 				// 	Some(PolyBase::Dynamic { to: (), boundary: () })
 
 				// 	// let modified_base =
-				// 	// 	self.parents_iter().find_map(|env| get_ctx!(env.bases.get(&on)).copied());
+				// 	// 	self.parents_iter().find_map(|env| get_on_ctx!(env.bases.get(&on)).copied());
 
 				// 	// let aliases = modified_base.unwrap_or(*aliases);
 
@@ -648,7 +621,7 @@ impl<T: ContextType> Context<T> {
 			Some((None, local))
 		} else {
 			let parent = self.context_type.get_parent()?;
-			let (parent_boundary, var) = get_ctx!(parent.get_variable_unbound(variable_name))?;
+			let (parent_boundary, var) = get_on_ctx!(parent.get_variable_unbound(variable_name))?;
 			/* Sometimes the top might not be dynamic (example below) so adding that here.
 			```
 			let x = 2
@@ -661,7 +634,7 @@ impl<T: ContextType> Context<T> {
 			*/
 			let is_dynamic_boundary = self.context_type.is_dynamic_boundary();
 			Some(if is_dynamic_boundary && parent_boundary.is_none() {
-				let inference_boundary = InferenceBoundary(get_ctx!(parent.context_id));
+				let inference_boundary = InferenceBoundary(get_on_ctx!(parent.context_id));
 				(Some(inference_boundary), var)
 			} else {
 				(parent_boundary, var)
@@ -731,7 +704,7 @@ impl<T: ContextType> Context<T> {
 	/// TODO make aware of ands and aliases
 	pub(crate) fn get_properties_on_type(&self, base: TypeId) -> Vec<(TypeId, TypeId)> {
 		self.parents_iter()
-			.flat_map(|env| get_ctx!(env.properties.get(&base)).map(|v| v.iter()))
+			.flat_map(|env| get_on_ctx!(env.properties.get(&base)).map(|v| v.iter()))
 			.flatten()
 			.map(|(key, prop)| (*key, prop.as_get_type()))
 			.collect()
@@ -748,7 +721,7 @@ impl<T: ContextType> Context<T> {
 			on: TypeId,
 			under: (&TypeStore, &Constant),
 		) -> Option<Property> {
-			get_ctx!(env.properties.get(&on)).and_then(|properties| {
+			get_on_ctx!(env.properties.get(&on)).and_then(|properties| {
 				// TODO rev is important
 				properties.iter().rev().find_map(|(key, value)| {
 					let key_ty = under.0.get_type_by_id(*key);
@@ -776,7 +749,7 @@ impl<T: ContextType> Context<T> {
 
 	/// Note: this also returns base generic types like `Array`
 	pub fn get_type_from_name(&self, name: &str) -> Option<TypeId> {
-		self.parents_iter().find_map(|env| get_ctx!(env.named_types.get(name))).cloned()
+		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).cloned()
 	}
 
 	pub(crate) fn get_value_of_this(&mut self, types: &mut TypeStore) -> TypeId {
@@ -794,8 +767,8 @@ impl<T: ContextType> Context<T> {
 
 				// let mut last = None;
 				// for parent in self.parents_iter() {
-				// 	if let Some(constraint) = get_ctx!(parent.get_this_constraint()) {
-				// 		last = Some((constraint, get_ctx!(parent.context_id)));
+				// 	if let Some(constraint) = get_on_ctx!(parent.get_this_constraint()) {
+				// 		last = Some((constraint, get_on_ctx!(parent.context_id)));
 				// 		break;
 				// 	}
 				// }
@@ -829,13 +802,16 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_variable_name(&self, id: &VariableId) -> String {
-		self.parents_iter().find_map(|env| get_ctx!(env.variable_names.get(id))).cloned().unwrap()
+		self.parents_iter()
+			.find_map(|env| get_on_ctx!(env.variable_names.get(id)))
+			.cloned()
+			.unwrap()
 	}
 
 	pub(crate) fn get_value_of_variable(&self, id: VariableId) -> TypeId {
 		let variable = self
 			.parents_iter()
-			.find_map(|env| get_ctx!(env.variable_current_value.get(&id)).copied());
+			.find_map(|env| get_on_ctx!(env.variable_current_value.get(&id)).copied());
 
 		if let Some(found) = variable {
 			found
@@ -854,7 +830,7 @@ impl<T: ContextType> Context<T> {
 
 	/// TODO doesn't look at aliases using get_type_fact!
 	pub fn is_frozen(&self, value: TypeId) -> Option<TypeId> {
-		self.parents_iter().find_map(|env| get_ctx!(env.frozen.get(&value))).cloned()
+		self.parents_iter().find_map(|env| get_on_ctx!(env.frozen.get(&value))).cloned()
 	}
 
 	// TODO temp declaration
@@ -1469,7 +1445,7 @@ impl<T: ContextType> Context<T> {
 
 		// Interface merging!
 		let existing =
-			self.parents_iter().find_map(|env| get_ctx!(env.named_types.get(name))).copied();
+			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied();
 
 		if let Some(existing) = existing {
 			existing

@@ -1,3 +1,5 @@
+//! Contains type checking errors, warnings and related structures
+
 use serde::Serialize;
 use source_map::{SourceId, Span};
 use std::{
@@ -133,7 +135,7 @@ impl TypeStringRepresentation {
 	) -> Self {
 		if debug_mode {
 			todo!()
-		// 	let ty = get_ctx!(env.get_type_by_id(id));
+		// 	let ty = get_on_ctx!(env.get_type_by_id(id));
 		// 	Self::Type(format!("{:#?}", ty))
 		} else {
 			let value = print_type(types, id, env);
@@ -165,7 +167,8 @@ mod defined_errors_and_warnings {
 	use source_map::Span;
 
 	use crate::{
-		structures::{self, functions::FunctionCallingError, operators::UnaryOperator},
+		events::FunctionCallingError,
+		structures::{self, operators::UnaryOperator},
 		Diagnostic,
 	};
 	use std::path;

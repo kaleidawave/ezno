@@ -3,7 +3,7 @@
 
 mod behavior;
 pub mod context;
-pub mod errors;
+pub mod diagnostics;
 pub mod events;
 mod serialization;
 mod settings;
@@ -17,7 +17,7 @@ mod utils;
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use errors::{TypeCheckError, TypeCheckWarning};
+use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
 use context::store::ExistingContextStore;
@@ -46,7 +46,7 @@ pub use behavior::{
 	variables::check_variable_initialization,
 };
 pub use context::{GeneralContext, Root};
-pub use errors::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
+pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use settings::TypeCheckSettings;
 pub use structures::{
 	functions::{FunctionPointer, InternalFunctionId},
@@ -94,6 +94,33 @@ impl<'a, T: crate::FSResolver> ModuleData<'a, T> {
 			fs_resolver,
 			current_working_directory,
 		}
+	}
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct VariableId(pub Span);
+
+#[derive(Debug, PartialEq, Eq, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct FunctionId(pub Span);
+
+impl FunctionId {
+	/// For inferred restrictions...
+	pub const NULL: Self = Self(Span::NULL_SPAN);
+}
+
+// TODO temp
+impl std::hash::Hash for VariableId {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.0.start.hash(state);
+		self.0.end.hash(state);
+	}
+}
+
+// TODO temp
+impl std::hash::Hash for FunctionId {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.0.start.hash(state);
+		self.0.end.hash(state);
 	}
 }
 
@@ -216,13 +243,13 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		if let SubTypeResult::IsNotSubType(_) = result {
 			self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
 				at: pos,
-				expected: errors::TypeStringRepresentation::from_type_id(
+				expected: diagnostics::TypeStringRepresentation::from_type_id(
 					to_satisfy,
 					&environment.into_general_environment(),
 					&self.types,
 					false,
 				),
-				found: errors::TypeStringRepresentation::from_type_id(
+				found: diagnostics::TypeStringRepresentation::from_type_id(
 					expr_ty,
 					&environment.into_general_environment(),
 					&self.types,

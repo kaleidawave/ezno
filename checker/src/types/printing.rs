@@ -1,4 +1,4 @@
-use crate::{context::get_ctx, GeneralContext};
+use crate::{context::get_on_ctx, GeneralContext};
 
 use super::{PolyNature, Type, TypeId, TypeStore};
 
@@ -17,7 +17,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralContext) -> String
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, .. } => name.clone(),
 			PolyNature::ParentScope { .. } | PolyNature::Parameter { .. } => {
-				let ty = get_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
+				let ty = get_on_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
 				print_type(types, ty, env)
 			}
 			PolyNature::Open(to) => print_type(types, *to, env),
@@ -25,7 +25,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralContext) -> String
 				todo!()
 				// let modified_base = match env {
 				// 	GeneralContext::Syntax(syn) => {
-				// 		syn.parents_iter().find_map(|env| get_ctx!(env.bases.get(&id)).copied())
+				// 		syn.parents_iter().find_map(|env| get_on_ctx!(env.bases.get(&id)).copied())
 				// 	}
 				// 	GeneralContext::Root(root) => root.bases.get(&id).copied(),
 				// };
@@ -40,7 +40,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralContext) -> String
 			}
 			super::Constructor::StructureGenerics { on, with } => todo!(),
 			_ => {
-				let base = get_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
+				let base = get_on_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
 				print_type(types, base, env)
 			}
 		},
@@ -83,7 +83,7 @@ pub fn print_type(types: &TypeStore, id: TypeId, env: &GeneralContext) -> String
 		}
 		Type::Object(..) => {
 			let mut buf = String::from("{ ");
-			for (key, value) in get_ctx!(env.get_properties_on_type(id)) {
+			for (key, value) in get_on_ctx!(env.get_properties_on_type(id)) {
 				buf.push_str(&print_type(types, key, env));
 				buf.push_str(": ");
 				buf.push_str(&print_type(types, value, env));

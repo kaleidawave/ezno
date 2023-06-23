@@ -1,5 +1,5 @@
 use crate::{
-	structures::functions::SynthesizedArgument,
+	types::functions::SynthesizedArgument,
 	types::{cast_as_string, Type, TypeStore},
 	Constant, TypeId,
 };

@@ -1,6 +1,57 @@
+use std::collections::HashMap;
+
 use source_map::Span;
 
-use crate::TypeId;
+use crate::{events::RootReference, FunctionId, GenericTypeParameters, TypeId};
+
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct FunctionType {
+	/// TODO not sure about this field and how it tails with Pi Types
+	pub type_parameters: Option<GenericTypeParameters>,
+	pub parameters: SynthesizedParameters,
+	pub return_type: TypeId,
+	/// Side effects of the function
+	pub effects: Vec<crate::events::Event>,
+
+	/// TODO type alias
+	pub closed_over_references: HashMap<RootReference, TypeId>,
+
+	/// Can be called for constant result
+	pub constant_id: Option<String>,
+
+	/// TODO somewhat temp
+	pub kind: FunctionKind,
+
+	pub id: FunctionId,
+}
+
+/// Decides what to do with `new`
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum FunctionKind {
+	Arrow { get_set: crate::GetSetGeneratorOrNone },
+	Function { function_prototype: TypeId },
+	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
+}
+
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum GetterSetter {
+	Getter,
+	Setter,
+}
+
+/// TODO needs improvement
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum FunctionNature {
+	BehindPoly {
+		/// TODO function id?
+		function_id_if_open_poly: Option<FunctionId>,
+		this_type: Option<TypeId>,
+	},
+	/// Last is 'this' type,
+	Source(Option<TypeId>),
+	Constructor,
+	Reference,
+}
 
 /// Optionality is indicated by what vector it is in [SynthesizedParameters]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -46,7 +97,7 @@ pub struct SynthesizedParameters {
 // 		{
 // 			buf.push_str(name);
 // 			buf.push_str(": ");
-// 			let constraint_ty = get_ctx!(environment.get_type_by_id(*constraint));
+// 			let constraint_ty = get_on_ctx!(environment.get_type_by_id(*constraint));
 // 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment, store);
 // 			if !at_end || !self.optional_parameters.is_empty() || self.rest_parameter.is_some() {
 // 				buf.push_str(", ");
@@ -58,7 +109,7 @@ pub struct SynthesizedParameters {
 // 		{
 // 			buf.push_str(name);
 // 			buf.push_str("?: ");
-// 			let constraint_ty = get_ctx!(environment.get_type_by_id(*constraint));
+// 			let constraint_ty = get_on_ctx!(environment.get_type_by_id(*constraint));
 // 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment);
 // 			if !at_end || self.rest_parameter.is_some() {
 // 				buf.push_str(", ");
@@ -70,7 +121,7 @@ pub struct SynthesizedParameters {
 // 			buf.push_str("...");
 // 			buf.push_str(&name);
 // 			buf.push_str(": ");
-// 			let item_type_ty = get_ctx!(environment.get_type_by_id(*item_type));
+// 			let item_type_ty = get_on_ctx!(environment.get_type_by_id(*item_type));
 // 			TypeDisplay::fmt(item_type, buf, indent, cycles, environment);
 // 		}
 
@@ -88,5 +139,30 @@ impl SynthesizedParameters {
 				self.optional_parameters.get(self.parameters.len() + idx).map(|param| param.ty)
 			})
 			.or(self.rest_parameter.as_ref().map(|param| param.item_type))
+	}
+}
+
+/// TODO spread should of tuples should expand into `NonSpread`
+/// TODO spread for non heterogenous things
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[non_exhaustive]
+pub enum SynthesizedArgument {
+	/// This is the get value of a argument
+	NonSpread { ty: TypeId, position: Span },
+	// TODO
+	// Spread(Instance),
+}
+
+impl SynthesizedArgument {
+	pub(crate) fn get_position(&self) -> Span {
+		match self {
+			SynthesizedArgument::NonSpread { ty: _, position } => position.clone(),
+		}
+	}
+
+	pub(crate) fn into_type(&self) -> Result<TypeId, ()> {
+		match self {
+			SynthesizedArgument::NonSpread { ty, position: _ } => Ok(*ty),
+		}
 	}
 }

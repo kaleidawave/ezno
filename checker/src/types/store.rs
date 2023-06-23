@@ -166,7 +166,7 @@ impl TypeStore {
 					get_set: crate::GetSetGeneratorOrNone::None,
 				},
 				constant_id,
-				id: crate::context::FunctionId(span),
+				id: crate::FunctionId(span),
 			},
 			super::FunctionNature::Source(None),
 		))
