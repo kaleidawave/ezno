@@ -540,7 +540,7 @@ pub fn lex_source(
 							continue;
 						}
 						// Tag name characters:
-						'A'..='Z' | 'a'..='z' | '0'..='9' | ' ' => {
+						'A'..='Z' | 'a'..='z' | '0'..='9' => {
 							// Add the opening tag here as know it is not closing
 							if !*lexed_start {
 								match direction {
