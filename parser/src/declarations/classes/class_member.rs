@@ -5,9 +5,9 @@ use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 
 use crate::{
-	functions::FunctionBased, ASTNode, Block, ChainVariable, Expression, FunctionBase,
-	GetSetGeneratorOrNone, Keyword, ParseError, ParseErrors, ParseResult, ParseSettings,
-	PropertyKey, TSXKeyword, TSXToken, TypeReference, VariableId, VisitSettings, WithComment,
+	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, GetSetGeneratorOrNone,
+	Keyword, ParseError, ParseErrors, ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken,
+	TypeAnnotation, VisitSettings, WithComment,
 };
 
 /// The variable id's of these is handled by their [PropertyKey]
@@ -29,7 +29,7 @@ pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassProperty {
 	pub key: WithComment<PropertyKey>,
-	pub type_reference: Option<TypeReference>,
+	pub type_annotation: Option<TypeAnnotation>,
 	pub value: Option<Box<Expression>>,
 }
 
@@ -46,7 +46,7 @@ impl ASTNode for ClassMember {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
 			let constructor = ClassConstructor::from_reader(reader, state, settings)?;
@@ -86,11 +86,11 @@ impl ASTNode for ClassMember {
 						position,
 					));
 				}
-				let member_type: Option<TypeReference> = match token {
+				let member_type: Option<TypeAnnotation> = match token {
 					TSXToken::Colon => {
 						reader.next();
-						let type_reference = TypeReference::from_reader(reader, state, settings)?;
-						Some(type_reference)
+						let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
+						Some(type_annotation)
 					}
 					_ => None,
 				};
@@ -106,7 +106,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						key,
-						type_reference: member_type,
+						type_annotation: member_type,
 						value: member_expression.map(Box::new),
 					},
 				))
@@ -117,18 +117,18 @@ impl ASTNode for ClassMember {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			Self::Property(is_static, ClassProperty { key, type_reference, value }) => {
+			Self::Property(is_static, ClassProperty { key, type_annotation, value }) => {
 				if is_static.is_some() {
 					buf.push_str("static ");
 				}
 				key.to_string_from_buffer(buf, settings, depth);
-				if let (true, Some(type_reference)) = (settings.include_types, type_reference) {
+				if let (true, Some(type_annotation)) = (settings.include_types, type_annotation) {
 					buf.push_str(": ");
-					type_reference.to_string_from_buffer(buf, settings, depth);
+					type_annotation.to_string_from_buffer(buf, settings, depth);
 				}
 				if let Some(value) = value {
 					buf.push_str(if settings.pretty { " = " } else { "=" });
@@ -166,8 +166,6 @@ impl ClassMember {
 		data: &mut TData,
 		settings: &VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-		// TODO VariableId and TypeId
-		class_variable_id: VariableId,
 	) {
 		match self {
 			ClassMember::Constructor(..) => {
@@ -212,8 +210,6 @@ impl ClassMember {
 		data: &mut TData,
 		settings: &VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-		// TODO remove
-		class_variable_id: VariableId,
 	) {
 		match self {
 			ClassMember::Constructor(..) => {
@@ -264,7 +260,7 @@ impl ClassFunction {
 	fn from_reader_with_config(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		is_async: Option<Keyword<tsx_keywords::Async>>,
 		get_set_generator_or_none: GetSetGeneratorOrNone,
 		key: WithComment<PropertyKey>,
@@ -284,14 +280,14 @@ impl FunctionBased for ClassFunctionBase {
 	type Header = (Option<Keyword<tsx_keywords::Async>>, GetSetGeneratorOrNone);
 	type Name = WithComment<PropertyKey>;
 
-	fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
-		ChainVariable::UnderClassMethod(this.body.1)
-	}
+	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
+	// 	ChainVariable::UnderClassMethod(this.body.1)
+	// }
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		let async_keyword = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
@@ -305,7 +301,7 @@ impl FunctionBased for ClassFunctionBase {
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		if let Some(_header) = &header.0 {
@@ -325,14 +321,14 @@ impl FunctionBased for ClassConstructorBase {
 	type Header = Keyword<tsx_keywords::Constructor>;
 	type Name = ();
 
-	fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
-		ChainVariable::UnderClassConstructor(this.body.1)
-	}
+	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
+	// 	ChainVariable::UnderClassConstructor(this.body.1)
+	// }
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseSettings,
+		_settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Constructor))?;
 		Ok((Keyword::new(span), ()))
@@ -342,7 +338,7 @@ impl FunctionBased for ClassConstructorBase {
 		buf: &mut T,
 		_header: &Self::Header,
 		_name: &Self::Name,
-		_settings: &crate::ToStringSettings,
+		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		buf.push_str("constructor")

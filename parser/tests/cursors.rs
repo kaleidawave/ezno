@@ -1,6 +1,5 @@
 use ezno_parser::{
-	expressions::ExpressionId, ASTNode, CursorId, Expression, SourceId, Span, Statement,
-	StatementOrDeclaration,
+	ASTNode, CursorId, Expression, SourceId, Span, Statement, StatementOrDeclaration,
 };
 
 #[test]
@@ -52,14 +51,9 @@ fn cursor_at_property_access() {
 	assert_eq!(
 		expression,
 		Expression::PropertyAccess {
-			parent: Box::new(Expression::VariableReference(
-				"x".to_owned(),
-				Span::NULL_SPAN,
-				ExpressionId::NULL
-			)),
+			parent: Box::new(Expression::VariableReference("x".to_owned(), Span::NULL_SPAN,)),
 			property: ezno_parser::PropertyReference::Cursor(CursorId(0, Default::default())),
 			position: Span::NULL_SPAN,
-			expression_id: ExpressionId::NULL,
 			is_optional: false
 		}
 	);

@@ -38,8 +38,8 @@ pub enum BinaryAssignmentOperator {
     
     AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ModuloAssign, ExponentAssign,
     LogicalAndAssign, LogicalOrAssign,
-    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsignedAssign, 
-    BitwiseAndAssign, BitwiseXOrAssign, BitOrAssign,
+    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsigned, 
+    BitwiseAndAssign, BitwiseXorAssign, BitwiseOrAssign,
 }
 
 #[rustfmt::skip]
@@ -238,10 +238,10 @@ impl Operator for BinaryAssignmentOperator {
 			BinaryAssignmentOperator::ExponentAssign => "**=",
 			BinaryAssignmentOperator::BitwiseShiftLeftAssign => "<<=",
 			BinaryAssignmentOperator::BitwiseShiftRightAssign => ">>=",
-			BinaryAssignmentOperator::BitwiseShiftRightUnsignedAssign => ">>>=",
+			BinaryAssignmentOperator::BitwiseShiftRightUnsigned => ">>>=",
 			BinaryAssignmentOperator::BitwiseAndAssign => "&=",
-			BinaryAssignmentOperator::BitwiseXOrAssign => "^=",
-			BinaryAssignmentOperator::BitOrAssign => "|=",
+			BinaryAssignmentOperator::BitwiseXorAssign => "^=",
+			BinaryAssignmentOperator::BitwiseOrAssign => "|=",
 			BinaryAssignmentOperator::LogicalAndAssign => "&&=",
 			BinaryAssignmentOperator::LogicalOrAssign => "||=",
 		}
@@ -323,12 +323,12 @@ impl From<BinaryAssignmentOperator> for BinaryOperator {
 			BinaryAssignmentOperator::LogicalOrAssign => BinaryOperator::LogicalOr,
 			BinaryAssignmentOperator::BitwiseShiftLeftAssign => BinaryOperator::BitwiseShiftLeft,
 			BinaryAssignmentOperator::BitwiseShiftRightAssign => BinaryOperator::BitwiseShiftRight,
-			BinaryAssignmentOperator::BitwiseShiftRightUnsignedAssign => {
+			BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
 				BinaryOperator::BitwiseShiftRightUnsigned
 			}
 			BinaryAssignmentOperator::BitwiseAndAssign => BinaryOperator::BitwiseAnd,
-			BinaryAssignmentOperator::BitwiseXOrAssign => BinaryOperator::BitwiseXOr,
-			BinaryAssignmentOperator::BitOrAssign => BinaryOperator::BitwiseOr,
+			BinaryAssignmentOperator::BitwiseXorAssign => BinaryOperator::BitwiseXOr,
+			BinaryAssignmentOperator::BitwiseOrAssign => BinaryOperator::BitwiseOr,
 		}
 	}
 }
@@ -345,8 +345,18 @@ impl TryFrom<&TSXToken> for BinaryAssignmentOperator {
 			TSXToken::ExponentAssign => Ok(BinaryAssignmentOperator::ExponentAssign),
 			TSXToken::LogicalAndAssign => Ok(BinaryAssignmentOperator::LogicalAndAssign),
 			TSXToken::LogicalOrAssign => Ok(BinaryAssignmentOperator::LogicalOrAssign),
-			TSXToken::BitwiseOrAssign => Ok(BinaryAssignmentOperator::BitOrAssign),
-			TSXToken::BitwiseXorAssign => Ok(BinaryAssignmentOperator::BitwiseXOrAssign),
+			TSXToken::BitwiseAndAssign => Ok(BinaryAssignmentOperator::BitwiseAndAssign),
+			TSXToken::BitwiseOrAssign => Ok(BinaryAssignmentOperator::BitwiseOrAssign),
+			TSXToken::BitwiseXorAssign => Ok(BinaryAssignmentOperator::BitwiseXorAssign),
+			TSXToken::BitwiseShiftLeftAssign => {
+				Ok(BinaryAssignmentOperator::BitwiseShiftLeftAssign)
+			}
+			TSXToken::BitwiseShiftRightAssign => {
+				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
+			}
+			TSXToken::BitwiseShiftRightUnsigned => {
+				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
+			}
 			TSXToken::NullishCoalescingAssign => {
 				Ok(BinaryAssignmentOperator::LogicalNullishAssignment)
 			}

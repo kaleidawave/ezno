@@ -6,7 +6,6 @@ mod while_statement;
 
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
-	expect_semi_colon,
 	tokens::token_as_identifier,
 	tsx_keywords,
 };
@@ -15,8 +14,8 @@ use derive_partial_eq_extras::PartialEqExtras;
 use std::{borrow::Cow, fmt::Debug};
 
 use super::{
-	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, Keyword, ParseResult,
-	ParseSettings, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, Keyword, ParseOptions,
+	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
@@ -51,7 +50,7 @@ pub enum Statement {
 	Continue(Option<String>, Span),
 	Break(Option<String>, Span),
 	/// e.g `throw ...`
-	Throw(Keyword<tsx_keywords::Throw>, Box<Expression>),
+	Throw(Keyword<tsx_keywords::Throw>, Box<MultipleExpression>),
 	// Comments
 	Comment(String, Span),
 	MultiLineComment(String, Span),
@@ -61,6 +60,8 @@ pub enum Statement {
 		statement: Box<Statement>,
 	},
 	VarVariable(VarVariableStatement),
+	// TODO position
+	Empty(Span),
 	/// TODO under cfg
 	#[self_tokenize_field(0)]
 	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
@@ -78,6 +79,7 @@ impl ASTNode for Statement {
 			| Statement::Break(_, pos)
 			| Statement::Cursor(_, pos)
 			| Statement::Comment(_, pos)
+			| Statement::Empty(pos)
 			| Statement::Labelled { position: pos, .. }
 			| Statement::MultiLineComment(_, pos) => Cow::Borrowed(pos),
 			Statement::Return(kw, expr) => {
@@ -101,7 +103,7 @@ impl ASTNode for Statement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
@@ -123,12 +125,11 @@ impl ASTNode for Statement {
 			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
 				let stmt = VarVariableStatement::from_reader(reader, state, settings)?;
-				expect_semi_colon(reader)?;
 				Ok(Statement::VarVariable(stmt))
 			}
 			TSXToken::Keyword(TSXKeyword::Throw) => {
 				let Token(_, throw_pos) = reader.next().unwrap();
-				let expression = Expression::from_reader(reader, state, settings)?;
+				let expression = ASTNode::from_reader(reader, state, settings)?;
 				Ok(Statement::Throw(Keyword::new(throw_pos), Box::new(expression)))
 			}
 			TSXToken::Keyword(TSXKeyword::If) => {
@@ -211,6 +212,10 @@ impl ASTNode for Statement {
 					unreachable!()
 				}
 			}
+			TSXToken::SemiColon => {
+				let pos = reader.next().unwrap().1;
+				Ok(Statement::Empty(pos))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, settings)?;
@@ -222,7 +227,7 @@ impl ASTNode for Statement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -230,6 +235,9 @@ impl ASTNode for Statement {
 				if !settings.expect_cursors {
 					panic!("tried to to-string cursor")
 				}
+			}
+			Statement::Empty(..) => {
+				buf.push(';');
 			}
 			Statement::Return(_, expression) => {
 				buf.push_str("return");
@@ -314,7 +322,7 @@ impl Statement {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct VarVariableStatement {
 	keyword: Keyword<tsx_keywords::Var>,
@@ -329,7 +337,7 @@ impl ASTNode for VarVariableStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let keyword = Keyword::new(reader.expect_next(TSXToken::Keyword(TSXKeyword::Var))?);
 		let mut declarations = Vec::new();
@@ -350,11 +358,10 @@ impl ASTNode for VarVariableStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("var ");
 		declarations_to_string(&self.declarations, buf, settings, depth);
-		buf.push(';');
 	}
 }

@@ -1,4 +1,5 @@
-use ezno_parser::{ASTNode, Module, SourceId};
+use ezno_parser::{ASTNode, Module, SourceId, ToStringOptions};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn statements() {
@@ -26,6 +27,9 @@ try {
     doThing()
 } catch (e) {
     console.error(e)
+}
+interface X {
+    a: string
 }"#
 	.trim_start();
 
@@ -33,7 +37,7 @@ try {
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None, Vec::new())
 			.unwrap();
 
-	let output = module.to_string(&Default::default());
+	let output = module.to_string(&ToStringOptions::typescript());
 
 	assert_eq!(output, input);
 }

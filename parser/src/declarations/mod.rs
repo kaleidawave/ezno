@@ -63,7 +63,8 @@ impl Declaration {
 						| TSXKeyword::Class | TSXKeyword::Enum
 						| TSXKeyword::Type | TSXKeyword::Declare
 						| TSXKeyword::Import | TSXKeyword::Export
-						| TSXKeyword::Async | TSXKeyword::Generator
+						| TSXKeyword::Interface | TSXKeyword::Async
+						| TSXKeyword::Generator
 				) | TSXToken::At,
 				_
 			))
@@ -91,7 +92,7 @@ impl crate::ASTNode for Declaration {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		// TODO assert decorators are used. If they exist but item is not `Decorated`
 		// then need to throw a parse error
@@ -208,7 +209,7 @@ impl crate::ASTNode for Declaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {

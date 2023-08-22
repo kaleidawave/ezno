@@ -14,7 +14,6 @@ pub enum ParseErrors<'a> {
 	TypeArgumentsNotValidOnReference,
 	UnmatchedBrackets,
 	FunctionParameterOptionalAndDefaultValue,
-	NonOptionalFunctionParameterAfterOptionalFunctionParameter,
 	ExpectedIdent { found: TSXToken, at_location: &'a str },
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
@@ -122,9 +121,6 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::UnmatchedBrackets => f.write_str("Unmatched brackets"),
 			ParseErrors::FunctionParameterOptionalAndDefaultValue => {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
-			}
-			ParseErrors::NonOptionalFunctionParameterAfterOptionalFunctionParameter => {
-				f.write_str("Function parameter cannot be non optional after optional")
 			}
 			ParseErrors::ExpectedIdent { found, at_location } => {
 				write!(f, "Expected identifier at {at_location}, found {found:?}")

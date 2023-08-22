@@ -1,7 +1,7 @@
 //! Contains wrappers for AST with comments
 
 use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
-use crate::ParseSettings;
+use crate::ParseOptions;
 use std::{borrow::Cow, mem};
 use tokenizer_lib::Token;
 
@@ -102,7 +102,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> Result<WithComment<T>, ParseError> {
 		if matches!(reader.peek(), Some(Token(TSXToken::MultiLineComment(..), _))) {
 			let comment = if let TSXToken::MultiLineComment(comment) = reader.next().unwrap().0 {
@@ -139,7 +139,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn to_string_from_buffer<U: source_map::ToString>(
 		&self,
 		buf: &mut U,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {

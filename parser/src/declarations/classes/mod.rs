@@ -8,8 +8,8 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	GenericTypeConstraint, Keyword, ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, TypeId,
-	TypeReference, VariableId, VisitSettings,
+	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
+	TypeAnnotation, VisitSettings,
 };
 use tokenizer_lib::{Token, TokenReader};
 
@@ -19,12 +19,8 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	/// TODO shouldn't be type reference
-	pub extends: Option<TypeReference>,
+	pub extends: Option<TypeAnnotation>,
 	pub members: Vec<Decorated<ClassMember>>,
-	/// The [TypeId] is the type of the instance the class defines
-	pub type_id: TypeId,
-	/// The [VariableId] is for `SomeClass.constructor` and possible static properties etc
-	pub variable_id: VariableId,
 	pub position: Span,
 }
 
@@ -46,7 +42,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let class_keyword_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Class))?;
 		let class_keyword = Keyword::new(class_keyword_pos);
@@ -56,7 +52,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		self.to_string_from_buffer(buf, settings, depth)
@@ -71,14 +67,23 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn from_reader_sub_class_keyword(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		class_keyword: Keyword<tsx_keywords::Class>,
 	) -> ParseResult<Self> {
-		let (name, type_parameters) = U::from_reader(reader, state, settings)?;
+		let name = U::from_reader(reader, state, settings)?;
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				crate::parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
+
 		let extends = match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
-				Some(TypeReference::from_reader(reader, state, settings)?)
+				Some(TypeAnnotation::from_reader(reader, state, settings)?)
 			}
 			_ => None,
 		};
@@ -96,22 +101,13 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			}
 		}
 		let position = class_keyword.1.union(&reader.expect_next(TSXToken::CloseBrace)?);
-		Ok(ClassDeclaration {
-			class_keyword,
-			name,
-			type_id: TypeId::new(),
-			variable_id: VariableId::new(),
-			extends,
-			members,
-			type_parameters,
-			position,
-		})
+		Ok(ClassDeclaration { class_keyword, name, extends, members, type_parameters, position })
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("class ");
@@ -139,10 +135,6 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_new_line();
 		}
 		buf.push('}');
-	}
-
-	pub fn get_variable_id(&self) -> VariableId {
-		self.variable_id
 	}
 }
 

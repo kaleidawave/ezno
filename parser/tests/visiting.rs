@@ -1,7 +1,8 @@
 use ezno_parser::{
 	statements::UnconditionalElseStatement, ASTNode, Expression, Module, SourceId, Span, Statement,
-	ToStringSettings, VisitSettings, VisitorMut, VisitorsMut,
+	ToStringOptions, VisitSettings, VisitorMut, VisitorsMut,
 };
+use pretty_assertions::assert_eq;
 
 #[test]
 fn visiting() {
@@ -27,9 +28,9 @@ fn visiting() {
 	};
 	module.visit_mut(&mut visitors, &mut (), &VisitSettings::default());
 
-	let output = module.to_string(&ToStringSettings::minified());
+	let output = module.to_string(&ToStringOptions::minified());
 
-	let expected = r#"const x="HELLO WORLD";function y(){if(condition){do_thing("HELLO WORLD"+" TEST")}else{console.log("ELSE!")}}"#;
+	let expected = r#"const x="HELLO WORLD";function y(){if(condition){do_thing("HELLO WORLD"+" TEST")}else console.log("ELSE!")}"#;
 	assert_eq!(output, expected);
 }
 
@@ -38,7 +39,7 @@ struct MakeStringsUppercase;
 
 impl VisitorMut<Expression, ()> for MakeStringsUppercase {
 	fn visit_mut(&mut self, item: &mut Expression, _data: &mut (), _chain: &ezno_parser::Chain) {
-		if let Expression::StringLiteral(content, _quoted, _, _) = item {
+		if let Expression::StringLiteral(content, _quoted, _) = item {
 			*content = content.to_uppercase();
 		}
 	}

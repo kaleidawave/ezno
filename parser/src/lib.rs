@@ -23,9 +23,7 @@ mod visiting;
 #[doc(hidden)]
 pub mod lexer;
 
-pub use block::{
-	Block, BlockId, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration,
-};
+pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
 pub use declarations::Declaration;
@@ -42,20 +40,15 @@ pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_source, LexSettings};
 pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
-pub use parameters::{
-	FunctionParameters, OptionalOrWithDefaultValueParameter, Parameter, SpreadParameter,
-};
-pub use property_key::{PropertyId, PropertyKey};
+pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
+pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
 use temporary_annex::Annex;
 pub use tokens::{tsx_keywords, TSXKeyword, TSXToken};
 pub use types::{
-	type_declarations,
-	type_declarations::{GenericTypeConstraint, TypeDeclaration},
-	type_references,
-	type_references::TypeReference,
-	TypeId,
+	type_annotations::{self, TypeAnnotation},
+	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
 };
 pub use variable_fields::*;
 pub use visiting::*;
@@ -84,7 +77,7 @@ impl Quoted {
 /// Settings to customize parsing
 #[allow(unused)]
 #[derive(Clone)]
-pub struct ParseSettings {
+pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
 	pub decorators: bool,
@@ -97,7 +90,7 @@ pub struct ParseSettings {
 }
 
 // TODO not sure about some of these defaults, may change in future
-impl Default for ParseSettings {
+impl Default for ParseOptions {
 	fn default() -> Self {
 		Self {
 			jsx: true,
@@ -111,7 +104,7 @@ impl Default for ParseSettings {
 }
 
 /// Settings for serializing ASTNodes
-pub struct ToStringSettings {
+pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
 	/// Include type annotation syntax
@@ -125,9 +118,9 @@ pub struct ToStringSettings {
 	pub expect_cursors: bool,
 }
 
-impl Default for ToStringSettings {
+impl Default for ToStringOptions {
 	fn default() -> Self {
-		ToStringSettings {
+		ToStringOptions {
 			pretty: true,
 			include_types: false,
 			include_decorators: false,
@@ -139,9 +132,9 @@ impl Default for ToStringSettings {
 	}
 }
 
-impl ToStringSettings {
+impl ToStringOptions {
 	pub fn minified() -> Self {
-		ToStringSettings {
+		ToStringOptions {
 			pretty: false,
 			include_comments: false,
 			indent_with: "".to_owned(),
@@ -151,7 +144,7 @@ impl ToStringSettings {
 
 	/// With typescript type syntax
 	pub fn typescript() -> Self {
-		ToStringSettings { include_types: true, ..Default::default() }
+		ToStringOptions { include_types: true, ..Default::default() }
 	}
 
 	/// Whether to include comment in source
@@ -179,8 +172,8 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	#[cfg(target_arch = "wasm32")]
 	fn from_string(
 		string: String,
-		settings: ParseSettings,
-		source_id: SourceId,
+		settings: ParseOptions,
+		source: SourceId,
 		offset: Option<usize>,
 		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
@@ -190,7 +183,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 			..Default::default()
 		};
 		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-		lexer::lex_source(&string, &mut queue, &lex_settings, Some(source_id), offset, cursors)?;
+		lexer::lex_source(&string, &mut queue, &lex_settings, Some(source), offset, cursors)?;
 
 		let mut state = ParsingState::default();
 		let res = Self::from_reader(&mut queue, &mut state, &settings);
@@ -204,11 +197,12 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	#[cfg(not(target_arch = "wasm32"))]
 	fn from_string(
 		source: String,
-		settings: ParseSettings,
+		settings: ParseOptions,
 		source_id: SourceId,
 		offset: Option<usize>,
 		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
+		use source_map::LineStarts;
 		use std::thread;
 		use tokenizer_lib::ParallelTokenQueue;
 
@@ -217,9 +211,12 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 			lex_jsx: settings.jsx,
 			..Default::default()
 		};
+
+		let line_starts = LineStarts::new(source.as_str());
+
 		let (mut sender, mut reader) = ParallelTokenQueue::new();
 		let parsing_thread = thread::spawn(move || {
-			let mut state = ParsingState::default();
+			let mut state = ParsingState { line_starts };
 			let res = Self::from_reader(&mut reader, &mut state, &settings);
 			if res.is_ok() {
 				reader.expect_next(TSXToken::EOS)?;
@@ -239,27 +236,28 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	);
 
 	/// Returns structure as valid string
-	fn to_string(&self, settings: &crate::ToStringSettings) -> String {
+	fn to_string(&self, settings: &crate::ToStringOptions) -> String {
 		let mut buf = String::new();
 		self.to_string_from_buffer(&mut buf, settings, 0);
 		buf
 	}
 }
 
-/// TODO local identifiers
-#[derive(Default, Debug)]
-pub struct ParsingState {}
+#[derive(Debug)]
+pub struct ParsingState {
+	pub(crate) line_starts: source_map::LineStarts,
+}
 
 /// A keyword
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -391,7 +389,7 @@ impl From<f64> for NumberStructure {
 }
 
 impl FromStr for NumberStructure {
-	type Err = ();
+	type Err = String;
 
 	// TODO separators
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -406,17 +404,57 @@ impl FromStr for NumberStructure {
 		if let Some(s) = s.strip_prefix('0') {
 			let next_char = s.chars().next();
 			match next_char {
-				Some('.') => Ok(Self::Number(sign.apply(s.parse().map_err(|_| ())?))),
-				// TODO this is broken, needs to hex decoding etc
-				Some('X' | 'x') => Ok(Self::Hex(sign, s[2..].parse().map_err(|_| ())?)),
-				Some('b' | 'B') => Ok(Self::Bin(sign, s[2..].parse().map_err(|_| ())?)),
-				Some('o' | 'O') => Ok(Self::Octal(sign, s[2..].parse().map_err(|_| ())?)),
-				Some(_) => Ok(Self::Octal(sign, s[1..].parse().map_err(|_| ())?)),
-
+				Some('.') => Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?))),
+				Some('X' | 'x') => {
+					let mut number = 0u64;
+					for c in s[2..].as_bytes().iter().rev() {
+						number <<= 4; // 16=2^4
+						match c {
+							b'0'..=b'9' => {
+								number += (c - b'0') as u64;
+							}
+							b'a'..=b'f' => {
+								number += (c - b'a') as u64 + 10;
+							}
+							b'A'..=b'F' => {
+								number += (c - b'A') as u64 + 10;
+							}
+							_ => return Err(s.to_owned()),
+						}
+					}
+					Ok(Self::Hex(sign, number))
+				}
+				Some('b' | 'B') => {
+					let mut number = 0u64;
+					for c in s[2..].as_bytes().iter().rev() {
+						number <<= 1;
+						match c {
+							b'0' | b'1' => {
+								number += (c - b'0') as u64;
+							}
+							_ => return Err(s.to_owned()),
+						}
+					}
+					Ok(Self::Bin(sign, number))
+				}
+				// 'o' | 'O' but can also be missed
+				Some(c) => {
+					let start = if matches!(c, 'o' | 'O') { 2 } else { 1 };
+					let mut number = 0u64;
+					for c in s[start..].as_bytes().iter().rev() {
+						number <<= 3; // 8=2^3
+						if matches!(c, b'0'..=b'7') {
+							number += (c - b'0') as u64;
+						} else {
+							return Err(s.to_owned());
+						}
+					}
+					Ok(Self::Octal(sign, number))
+				}
 				None => Ok(Self::Number(0.)),
 			}
 		} else {
-			Ok(Self::Number(sign.apply(s.parse().map_err(|_| ())?)))
+			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
 		}
 	}
 }
@@ -524,8 +562,8 @@ pub trait ExpressionOrStatementPosition:
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)>;
+		settings: &ParseOptions,
+	) -> ParseResult<Self::Name>;
 
 	fn as_option_str(name: &Self::Name) -> Option<&str>;
 	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String>;
@@ -540,17 +578,9 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)> {
-		let type_declaration = TypeDeclaration::from_reader(reader, state, settings)?;
-		Ok((
-			VariableIdentifier::Standard(
-				type_declaration.name,
-				VariableId::new(),
-				type_declaration.position,
-			),
-			type_declaration.type_parameters,
-		))
+		settings: &ParseOptions,
+	) -> ParseResult<Self::Name> {
+		VariableIdentifier::from_reader(reader, state, settings)
 	}
 
 	fn as_option_str(name: &Self::Name) -> Option<&str> {
@@ -579,13 +609,12 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
-	) -> ParseResult<(Self::Name, Option<Vec<GenericTypeConstraint>>)> {
-		if let Token(TSXToken::OpenBrace, _) = reader.peek().unwrap() {
-			Ok((None, None))
+		settings: &ParseOptions,
+	) -> ParseResult<Self::Name> {
+		if let Some(Token(TSXToken::OpenBrace, _)) | None = reader.peek() {
+			Ok(None)
 		} else {
-			StatementPosition::from_reader(reader, state, settings)
-				.map(|(name, constraints)| (Some(name), constraints))
+			StatementPosition::from_reader(reader, state, settings).map(Some)
 		}
 	}
 
@@ -602,7 +631,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 pub(crate) fn parse_bracketed<T: ASTNode>(
 	reader: &mut impl TokenReader<TSXToken, Span>,
 	state: &mut crate::ParsingState,
-	settings: &ParseSettings,
+	settings: &ParseOptions,
 	start: Option<TSXToken>,
 	end: TSXToken,
 ) -> ParseResult<(Vec<T>, Span)> {
@@ -636,7 +665,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),
 	buf: &mut T,
-	settings: &crate::ToStringSettings,
+	settings: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	buf.push(brackets.0);
@@ -651,20 +680,33 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 }
 
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
-pub(crate) fn expect_semi_colon(reader: &mut impl TokenReader<TSXToken, Span>) -> ParseResult<()> {
-	if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
-		return Ok(());
+pub(crate) fn expect_semi_colon(
+	reader: &mut impl TokenReader<TSXToken, Span>,
+	line_starts: &source_map::LineStarts,
+	prev: u32,
+) -> ParseResult<()> {
+	if let Some(token) = reader.peek() {
+		let Token(kind, Span { start: next, .. }) = token;
+		// eprintln!("{:?} {:?} {:?}", prev, next, line_starts);
+		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
+			Ok(())
+		} else if !matches!(kind, TSXToken::SemiColon)
+			&& line_starts.byte_indexes_on_different_lines(prev as usize, *next as usize)
+		{
+			Ok(())
+		} else {
+			reader.expect_next(TSXToken::SemiColon).map(|_| ()).map_err(Into::into)
+		}
+	} else {
+		Ok(())
 	}
-	reader.expect_next(TSXToken::SemiColon)?;
-	Ok(())
 }
 
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
 		declarations::*, expressions::*, extensions::jsx::*, statements::*, Keyword,
-		NumberStructure, StatementOrDeclaration, VariableField, VariableId, VariableIdentifier,
-		WithComment,
+		NumberStructure, StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
 	};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};

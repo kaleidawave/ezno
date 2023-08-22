@@ -1,14 +1,13 @@
 use source_map::Span;
 
-use crate::{ASTNode, TSXToken, TypeDeclaration, TypeId, TypeReference};
+use crate::{ASTNode, TSXToken, TypeAnnotation, TypeDeclaration};
 
 /// e.g. `type NumberArray = Array<number>`
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct TypeAlias {
 	pub type_name: TypeDeclaration,
-	pub type_expression: TypeReference,
-	pub type_id: TypeId,
+	pub type_expression: TypeAnnotation,
 	position: Span,
 }
 
@@ -20,20 +19,20 @@ impl ASTNode for TypeAlias {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::Keyword(crate::TSXKeyword::Type))?;
 		let type_name = TypeDeclaration::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::Assign)?;
-		let type_expression = TypeReference::from_reader(reader, state, settings)?;
+		let type_expression = TypeAnnotation::from_reader(reader, state, settings)?;
 		let position = start.union(&type_expression.get_position());
-		Ok(Self { type_name, type_expression, type_id: TypeId::new(), position })
+		Ok(Self { type_name, type_expression, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		if settings.include_types {

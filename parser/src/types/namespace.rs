@@ -11,7 +11,7 @@ impl crate::ASTNode for Namespace {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Namespace))?;
 		let (namespace_name, _) = crate::tokens::token_as_identifier(
@@ -38,7 +38,7 @@ impl crate::ASTNode for Namespace {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringSettings,
+		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		todo!()

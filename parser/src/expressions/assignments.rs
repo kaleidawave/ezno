@@ -12,31 +12,29 @@ use crate::{
 	ParseResult, VariableFieldInSourceCode, WithComment,
 };
 
-use super::{ExpressionId, MultipleExpression};
+use super::MultipleExpression;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum VariableOrPropertyAccess {
-	Variable(String, Span, ExpressionId),
+	Variable(String, Span),
 	PropertyAccess {
 		parent: Box<Expression>,
 		property: PropertyReference,
 		position: Span,
-		expression_id: ExpressionId,
 	},
 	/// Using `x[y]`
 	Index {
 		indexee: Box<Expression>,
 		indexer: Box<MultipleExpression>,
 		position: Span,
-		expression_id: ExpressionId,
 	},
 }
 
 impl ASTNode for VariableOrPropertyAccess {
 	fn get_position(&self) -> Cow<Span> {
 		match self {
-			VariableOrPropertyAccess::Variable(_, position, _)
+			VariableOrPropertyAccess::Variable(_, position)
 			| VariableOrPropertyAccess::PropertyAccess { position, .. }
 			| VariableOrPropertyAccess::Index { position, .. } => Cow::Borrowed(position),
 		}
@@ -45,7 +43,7 @@ impl ASTNode for VariableOrPropertyAccess {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> ParseResult<Self> {
 		Expression::from_reader(reader, state, settings)?.try_into()
 	}
@@ -53,7 +51,7 @@ impl ASTNode for VariableOrPropertyAccess {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -79,28 +77,32 @@ impl ASTNode for VariableOrPropertyAccess {
 	}
 }
 
+impl VariableOrPropertyAccess {
+	pub(crate) fn from_reader_with_precedence(
+		reader: &mut impl TokenReader<TSXToken, Span>,
+		state: &mut crate::ParsingState,
+		settings: &crate::ParseOptions,
+		return_precedence: u8,
+	) -> ParseResult<Self> {
+		Expression::from_reader_with_precedence(reader, state, settings, return_precedence)?
+			.try_into()
+	}
+}
+
 impl TryFrom<Expression> for VariableOrPropertyAccess {
 	type Error = ParseError;
 
 	fn try_from(expression: Expression) -> Result<Self, Self::Error> {
 		match expression {
-			Expression::VariableReference(name, position, expression_id) => {
-				Ok(Self::Variable(name, position, expression_id))
-			}
-			Expression::PropertyAccess {
-				parent,
-				position,
-				expression_id,
-				property,
-				is_optional,
-			} => {
+			Expression::VariableReference(name, position) => Ok(Self::Variable(name, position)),
+			Expression::PropertyAccess { parent, position, property, is_optional } => {
 				if is_optional {
 					todo!()
 				}
-				Ok(Self::PropertyAccess { parent, position, expression_id, property })
+				Ok(Self::PropertyAccess { parent, position, property })
 			}
-			Expression::Index { expression_id, indexer, position, indexee } => {
-				Ok(Self::Index { indexer, position, indexee, expression_id })
+			Expression::Index { indexer, position, indexee } => {
+				Ok(Self::Index { indexer, position, indexee })
 			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
@@ -113,24 +115,15 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 impl From<VariableOrPropertyAccess> for Expression {
 	fn from(this: VariableOrPropertyAccess) -> Self {
 		match this {
-			VariableOrPropertyAccess::Variable(variable, position, expression_id) => {
-				Expression::VariableReference(variable, position, expression_id)
+			VariableOrPropertyAccess::Variable(variable, position) => {
+				Expression::VariableReference(variable, position)
 			}
-			VariableOrPropertyAccess::Index { expression_id, indexee, indexer, position } => {
-				Expression::Index { indexee, indexer, position, expression_id }
+			VariableOrPropertyAccess::Index { indexee, indexer, position } => {
+				Expression::Index { indexee, indexer, position }
 			}
-			VariableOrPropertyAccess::PropertyAccess {
-				expression_id,
-				parent,
-				position,
-				property,
-			} => Expression::PropertyAccess {
-				expression_id,
-				parent,
-				position,
-				property,
-				is_optional: false,
-			},
+			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
+				Expression::PropertyAccess { parent, position, property, is_optional: false }
+			}
 		}
 	}
 }
@@ -158,17 +151,15 @@ impl VariableOrPropertyAccess {
 /// TODO cursor
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[partial_eq_ignore_types(Span, ExpressionId)]
+#[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	ObjectDestructuring(
 		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>>,
 		Span,
-		ExpressionId,
 	),
 	ArrayDestructuring(
 		#[visit_skip_field] Vec<ArrayDestructuringField<VariableFieldInSourceCode>>,
 		Span,
-		ExpressionId,
 	),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 }
@@ -176,8 +167,8 @@ pub enum LHSOfAssignment {
 impl LHSOfAssignment {
 	pub fn get_position(&self) -> Cow<Span> {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(_, _, _) => todo!(),
-			LHSOfAssignment::ArrayDestructuring(_, _, _) => todo!(),
+			LHSOfAssignment::ObjectDestructuring(_, pos)
+			| LHSOfAssignment::ArrayDestructuring(_, pos) => Cow::Borrowed(pos),
 			LHSOfAssignment::VariableOrPropertyAccess(var_prop_access) => {
 				var_prop_access.get_position()
 			}
@@ -187,11 +178,11 @@ impl LHSOfAssignment {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(members, _, _) => {
+			LHSOfAssignment::ObjectDestructuring(members, _) => {
 				buf.push('{');
 				settings.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
@@ -204,7 +195,7 @@ impl LHSOfAssignment {
 				settings.add_gap(buf);
 				buf.push('}');
 			}
-			LHSOfAssignment::ArrayDestructuring(members, _, _) => {
+			LHSOfAssignment::ArrayDestructuring(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, settings, depth);
