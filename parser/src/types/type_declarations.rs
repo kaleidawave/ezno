@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
-	ASTNode, ParseResult, ParseSettings, Span, TSXKeyword, TSXToken, TypeReference,
+	ASTNode, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
 use tokenizer_lib::{Token, TokenReader};
 
@@ -20,29 +20,29 @@ impl ASTNode for TypeDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		// Get initial name
-		let (name, mut position) = token_as_identifier(
+		let (name, position) = token_as_identifier(
 			reader.next().ok_or_else(parse_lexing_error)?,
 			"type declaration name",
 		)?;
-		let type_parameters =
-			if reader.conditional_next(|tok| matches!(tok, TSXToken::OpenChevron)).is_some() {
-				let (type_parameters, span) =
-					parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)?;
-				position = position.union(&span);
-				Some(type_parameters)
-			} else {
-				None
-			};
+
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
 		Ok(Self { name, position, type_parameters })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str(&self.name);
@@ -62,11 +62,11 @@ impl ASTNode for TypeDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum GenericTypeConstraint {
-	Parameter { name: String, default: Option<TypeReference> },
-	Extends(String, TypeReference),
-	ExtendsKeyOf(String, TypeReference),
+	Parameter { name: String, default: Option<TypeAnnotation> },
+	Extends(String, TypeAnnotation),
+	ExtendsKeyOf(String, TypeAnnotation),
 	// TODO this should go
-	Spread { name: String, default: Option<TypeReference> },
+	Spread { name: String, default: Option<TypeAnnotation> },
 }
 
 impl GenericTypeConstraint {
@@ -84,7 +84,7 @@ impl ASTNode for GenericTypeConstraint {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		// Get name:
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
@@ -96,7 +96,7 @@ impl ASTNode for GenericTypeConstraint {
 					.conditional_next(|token| *token == TSXToken::Keyword(TSXKeyword::KeyOf))
 					.is_some();
 				let extends_type =
-					TypeReference::from_reader_with_config(reader, state, settings, false)?;
+					TypeAnnotation::from_reader_with_config(reader, state, settings, false)?;
 				if key_of {
 					Ok(Self::ExtendsKeyOf(name, extends_type))
 				} else {
@@ -106,7 +106,7 @@ impl ASTNode for GenericTypeConstraint {
 			Some(Token(TSXToken::Assign, _)) => {
 				reader.next();
 				let default_type =
-					TypeReference::from_reader_with_config(reader, state, settings, false)?;
+					TypeAnnotation::from_reader_with_config(reader, state, settings, false)?;
 				Ok(Self::Parameter { name, default: Some(default_type) })
 			}
 			_ => Ok(Self::Parameter { name, default: None }),
@@ -116,7 +116,7 @@ impl ASTNode for GenericTypeConstraint {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {

@@ -21,7 +21,7 @@ impl ASTNode for WhileStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
@@ -34,7 +34,7 @@ impl ASTNode for WhileStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("while");
@@ -65,7 +65,7 @@ impl ASTNode for DoWhileStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Do))?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
@@ -79,7 +79,7 @@ impl ASTNode for DoWhileStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("do");

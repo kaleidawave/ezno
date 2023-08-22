@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
 use crate::{
-	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseSettings, TSXKeyword,
+	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseOptions, TSXKeyword,
 };
+use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
 
 use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
@@ -39,7 +40,7 @@ impl ASTNode for IfStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::If))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
@@ -80,7 +81,7 @@ impl ASTNode for IfStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("if");
@@ -90,9 +91,22 @@ impl ASTNode for IfStatement {
 		buf.push(')');
 		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
-		for else_statement in self.else_conditions.iter() {
+		if !settings.pretty
+			&& matches!(self.inner, BlockOrSingleStatement::SingleStatement(_))
+			&& (!self.else_conditions.is_empty() || self.trailing_else.is_some())
+		{
+			buf.push(';');
+		}
+
+		for (at_end, else_statement) in self.else_conditions.iter().endiate() {
 			settings.add_gap(buf);
 			else_statement.to_string_from_buffer(buf, settings, depth);
+			if !settings.pretty
+				&& matches!(else_statement.inner, BlockOrSingleStatement::SingleStatement(_))
+				&& at_end
+			{
+				buf.push(';');
+			}
 		}
 		if let Some(else_statement) = &self.trailing_else {
 			settings.add_gap(buf);
@@ -105,7 +119,7 @@ impl ASTNode for ConditionalElseStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let else_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Else))?;
 		Self::from_reader_sub_without_else(reader, state, settings, else_position)
@@ -118,7 +132,7 @@ impl ASTNode for ConditionalElseStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("else if");
@@ -135,7 +149,7 @@ impl ConditionalElseStatement {
 	fn from_reader_sub_without_else(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		else_position: Span,
 	) -> ParseResult<Self> {
 		reader.expect_next(TSXToken::Keyword(TSXKeyword::If))?;
@@ -155,7 +169,7 @@ impl ASTNode for UnconditionalElseStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let else_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Else))?;
 		Self::from_reader_sub_without_else(reader, state, settings, else_position)
@@ -168,10 +182,13 @@ impl ASTNode for UnconditionalElseStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("else");
+		if !settings.pretty && matches!(self.inner, BlockOrSingleStatement::SingleStatement(_)) {
+			buf.push(' ');
+		}
 		settings.add_gap(buf);
 		self.inner.to_string_from_buffer(buf, settings, depth + 1);
 	}
@@ -181,7 +198,7 @@ impl UnconditionalElseStatement {
 	fn from_reader_sub_without_else(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		else_position: Span,
 	) -> ParseResult<Self> {
 		let statements = BlockOrSingleStatement::from_reader(reader, state, settings)?;

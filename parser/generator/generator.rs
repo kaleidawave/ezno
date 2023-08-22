@@ -42,7 +42,7 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 
 	let parse_result = T::from_string(
 		string,
-		parser::ParseSettings::default(),
+		parser::ParseOptions::default(),
 		parser::SourceId::NULL,
 		None,
 		cursors,

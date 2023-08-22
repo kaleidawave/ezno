@@ -6,7 +6,7 @@ use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseSettings, Statement, TSXKeyword, TSXToken,
+	errors::parse_lexing_error, ASTNode, Expression, ParseOptions, Statement, TSXKeyword, TSXToken,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
@@ -32,7 +32,7 @@ impl ASTNode for SwitchStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
@@ -87,7 +87,7 @@ impl ASTNode for SwitchStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("switch");

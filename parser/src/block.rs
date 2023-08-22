@@ -1,9 +1,5 @@
-use std::{
-	borrow::Cow,
-	sync::atomic::{AtomicU16, Ordering},
-};
+use std::borrow::Cow;
 
-use derive_debug_extras::DebugExtras;
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::Token;
@@ -11,36 +7,8 @@ use visitable_derive::Visitable;
 
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
-	expect_semi_colon, Declaration, ParseResult, ParseSettings, Statement, VisitSettings, Visitable,
+	expect_semi_colon, Declaration, ParseOptions, ParseResult, Statement, VisitSettings, Visitable,
 };
-
-static BLOCK_ID_COUNTER: AtomicU16 = AtomicU16::new(0);
-
-/// A identifier for a group of statements
-#[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
-pub struct BlockId(u16);
-
-// TODO not sure
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for BlockId {
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		token_stream.extend(self_rust_tokenize::quote!(BlockId::new()))
-	}
-}
-
-impl BlockId {
-	pub fn new() -> Self {
-		Self(BLOCK_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
-	}
-
-	/// TODO temp
-	pub fn unwrap_counter(&self) -> u16 {
-		self.0
-	}
-}
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -72,7 +40,7 @@ impl ASTNode for StatementOrDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		if Declaration::is_declaration_start(reader) {
 			let dec = Declaration::from_reader(reader, state, settings)?;
@@ -87,7 +55,7 @@ impl ASTNode for StatementOrDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -104,7 +72,7 @@ impl ASTNode for StatementOrDeclaration {
 /// A "block" of braced statements and declarations
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct Block(pub Vec<StatementOrDeclaration>, pub BlockId, pub Span);
+pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}
 
@@ -115,24 +83,22 @@ impl PartialEq for Block {
 }
 
 pub struct BlockLike<'a> {
-	pub block_id: BlockId,
 	pub items: &'a Vec<StatementOrDeclaration>,
 }
 
 pub struct BlockLikeMut<'a> {
-	pub block_id: BlockId,
 	pub items: &'a mut Vec<StatementOrDeclaration>,
 }
 
 impl<'a> From<&'a Block> for BlockLike<'a> {
 	fn from(block: &'a Block) -> Self {
-		BlockLike { block_id: block.1, items: &block.0 }
+		BlockLike { items: &block.0 }
 	}
 }
 
 impl<'a> From<&'a mut Block> for BlockLikeMut<'a> {
 	fn from(block: &'a mut Block) -> Self {
-		BlockLikeMut { block_id: block.1, items: &mut block.0 }
+		BlockLikeMut { items: &mut block.0 }
 	}
 }
 
@@ -140,18 +106,18 @@ impl ASTNode for Block {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_span = reader.expect_next(TSXToken::OpenBrace)?;
-		let (items, block_id) = parse_statements_and_declarations(reader, state, settings)?;
+		let items = parse_statements_and_declarations(reader, state, settings)?;
 		let end_span = reader.expect_next(TSXToken::CloseBrace)?;
-		Ok(Self(items, block_id, start_span.union(&end_span)))
+		Ok(Self(items, start_span.union(&end_span)))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('{');
@@ -169,7 +135,7 @@ impl ASTNode for Block {
 	}
 
 	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.2)
+		Cow::Borrowed(&self.1)
 	}
 }
 
@@ -193,11 +159,7 @@ impl Visitable for Block {
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		{
-			visitors.visit_block(
-				&crate::block::BlockLike { block_id: self.1, items: &self.0 },
-				data,
-				chain,
-			);
+			visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
 		}
 		let iter = self.iter();
 		if settings.reverse_statements {
@@ -217,7 +179,7 @@ impl Visitable for Block {
 	) {
 		{
 			visitors.visit_block_mut(
-				&mut crate::block::BlockLikeMut { block_id: self.1, items: &mut self.0 },
+				&mut crate::block::BlockLikeMut { items: &mut self.0 },
 				data,
 				chain,
 			);
@@ -258,18 +220,24 @@ impl ASTNode for BlockOrSingleStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		Statement::from_reader(reader, state, settings).map(|stmt| match stmt {
+		let stmt = Statement::from_reader(reader, state, settings)?;
+		Ok(match stmt {
 			Statement::Block(blk) => Self::Braced(blk),
-			stmt => Box::new(stmt).into(),
+			stmt => {
+				if stmt.requires_semi_colon() {
+					expect_semi_colon(reader, &state.line_starts, stmt.get_position().start)?;
+				}
+				Box::new(stmt).into()
+			}
 		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -282,9 +250,7 @@ impl ASTNode for BlockOrSingleStatement {
 					settings.add_gap(buf);
 					stmt.to_string_from_buffer(buf, settings, depth);
 				} else {
-					buf.push('{');
 					stmt.to_string_from_buffer(buf, settings, depth);
-					buf.push('}');
 				}
 			}
 		}
@@ -295,10 +261,9 @@ impl ASTNode for BlockOrSingleStatement {
 pub(crate) fn parse_statements_and_declarations(
 	reader: &mut impl TokenReader<TSXToken, Span>,
 	state: &mut crate::ParsingState,
-	settings: &ParseSettings,
-) -> ParseResult<(Vec<StatementOrDeclaration>, BlockId)> {
+	settings: &ParseOptions,
+) -> ParseResult<Vec<StatementOrDeclaration>> {
 	let mut items = Vec::new();
-	let block_id = BlockId::new();
 	while let Some(Token(token_type, _)) = reader.peek() {
 		if let TSXToken::EOS | TSXToken::CloseBrace = token_type {
 			break;
@@ -306,17 +271,17 @@ pub(crate) fn parse_statements_and_declarations(
 
 		let value = StatementOrDeclaration::from_reader(reader, state, settings)?;
 		if value.requires_semi_colon() {
-			expect_semi_colon(reader)?;
+			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
 		}
 		items.push(value);
 	}
-	Ok((items, block_id))
+	Ok(items)
 }
 
 pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	items: &[StatementOrDeclaration],
 	buf: &mut T,
-	settings: &crate::ToStringSettings,
+	settings: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	for (at_end, item) in items.iter().endiate() {

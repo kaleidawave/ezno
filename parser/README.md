@@ -33,15 +33,27 @@ This is more of an exercise project in getting better at writing Rust and doesn'
 - Increase code size or decrease readability for speed improvements
 - Allow adding new syntax at runtime, that would require modifying the lexer at runtime adding new tokens
 
+### Testing
+
+> If in main root rather than this folder, add `-p ezno-parser` after `cargo run` to the following commands.
+
+For testing whether the parser can lex a file
+
+```shell
+cargo run --example lex path/to/file.js
+```
+
+and parse
+
+```shell
+cargo run --example parse path/to/file.js
+```
+
 ## Features
 
 ### Positions
 
 All syntax has reference to where it was in the source using a [Span](https://docs.rs/ezno-parser/0.0.2/ezno_parser/struct.Span.html). This uses the [source-map](https://github.com/kaleidawave/source-map) crate, so it can generate source maps.
-
-### Identifiers
-
-Most expressions, functions, blocks and some other AST has a unique identifier. This can be used to associate information with the node. For example Ezno's checker associates type information with variable reference AST for later visitors or for hover information in the LSP.
 
 ### "Cursors"
 

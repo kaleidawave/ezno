@@ -10,7 +10,7 @@ use tokenizer_lib::{Token, TokenReader};
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, tokens::token_as_identifier, ASTNode, ParseError,
-	ParseErrors, ParseResult, ParseSettings, TSXKeyword, TSXToken, VariableId, VariableIdentifier,
+	ParseErrors, ParseOptions, ParseResult, TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -52,7 +52,7 @@ impl ASTNode for ImportDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
 		let only_type: bool =
@@ -131,7 +131,7 @@ impl ASTNode for ImportDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringSettings,
+		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		buf.push_str("import ");
@@ -173,7 +173,7 @@ impl ASTNode for ImportDeclaration {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ImportPart {
 	Name(VariableIdentifier),
-	NameWithAlias { name: String, alias: String, variable_id: VariableId, position: Span },
+	NameWithAlias { name: String, alias: String, position: Span },
 }
 
 impl ASTNode for ImportPart {
@@ -187,7 +187,7 @@ impl ASTNode for ImportPart {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseSettings,
+		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let (name, pos) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "imported name")?;
@@ -196,16 +196,16 @@ impl ASTNode for ImportPart {
 			let (alias, alias_pos) =
 				token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "import alias")?;
 			let position = pos.union(&alias_pos);
-			Ok(Self::NameWithAlias { name, alias, position, variable_id: VariableId::new() })
+			Ok(Self::NameWithAlias { name, alias, position })
 		} else {
-			Ok(Self::Name(VariableIdentifier::Standard(name, VariableId::new(), pos)))
+			Ok(Self::Name(VariableIdentifier::Standard(name, pos)))
 		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringSettings,
+		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		match self {

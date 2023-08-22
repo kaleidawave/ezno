@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseResult, ParseSettings, Span,
+	errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseOptions, ParseResult, Span,
 	TSXToken, Token, TokenReader,
 };
 use visitable_derive::Visitable;
@@ -18,7 +18,6 @@ pub enum JSXRoot {
 pub struct JSXFragment {
 	pub children: Vec<JSXNode>,
 	pub position: Span,
-	pub expression_id: crate::expressions::ExpressionId,
 }
 
 impl ASTNode for JSXFragment {
@@ -29,7 +28,7 @@ impl ASTNode for JSXFragment {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_pos = reader.expect_next(TSXToken::JSXFragmentStart)?;
 		Self::from_reader_sub_start(reader, state, settings, start_pos)
@@ -38,7 +37,7 @@ impl ASTNode for JSXFragment {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("<>");
@@ -51,16 +50,12 @@ impl JSXFragment {
 	fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		start_pos: Span,
 	) -> ParseResult<Self> {
 		let children = parse_jsx_children(reader, state, settings)?;
 		let end_pos = reader.expect_next(TSXToken::JSXFragmentEnd)?;
-		Ok(Self {
-			children,
-			position: start_pos.union(&end_pos),
-			expression_id: crate::expressions::ExpressionId::new(),
-		})
+		Ok(Self { children, position: start_pos.union(&end_pos) })
 	}
 }
 
@@ -68,7 +63,7 @@ impl ASTNode for JSXRoot {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let (is_fragment, span) = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::JSXOpeningTagStart, span) => (false, span),
@@ -81,7 +76,7 @@ impl ASTNode for JSXRoot {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -101,7 +96,7 @@ impl ASTNode for JSXRoot {
 fn parse_jsx_children(
 	reader: &mut impl TokenReader<TSXToken, Span>,
 	state: &mut crate::ParsingState,
-	settings: &ParseSettings,
+	settings: &ParseOptions,
 ) -> Result<Vec<JSXNode>, ParseError> {
 	let mut children = Vec::new();
 	loop {
@@ -135,7 +130,7 @@ fn parse_jsx_children(
 fn jsx_children_to_string<T: source_map::ToString>(
 	children: &[JSXNode],
 	buf: &mut T,
-	settings: &crate::ToStringSettings,
+	settings: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	for node in children.iter() {
@@ -154,7 +149,7 @@ impl JSXRoot {
 	pub(crate) fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		is_fragment: bool,
 		start_position: Span,
 	) -> ParseResult<Self> {
@@ -172,13 +167,6 @@ impl JSXRoot {
 				settings,
 				start_position,
 			)?))
-		}
-	}
-
-	pub fn get_expression_id(&self) -> crate::expressions::ExpressionId {
-		match self {
-			JSXRoot::Element(element) => element.expression_id,
-			JSXRoot::Fragment(fragment) => fragment.expression_id,
 		}
 	}
 }
@@ -207,7 +195,7 @@ impl ASTNode for JSXNode {
 	fn from_reader(
 		_reader: &mut impl TokenReader<TSXToken, Span>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseSettings,
+		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		todo!()
 	}
@@ -215,7 +203,7 @@ impl ASTNode for JSXNode {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -269,9 +257,6 @@ pub struct JSXElement {
 	pub tag_name: String,
 	pub attributes: Vec<JSXAttribute>,
 	pub children: JSXElementChildren,
-	/// Used for getting the type of the element, (e.g. HTMLElement, HTMLButton) for
-	/// the expression cache
-	pub expression_id: crate::expressions::ExpressionId,
 	pub position: Span,
 }
 
@@ -285,7 +270,7 @@ impl ASTNode for JSXElement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
 		Self::from_reader_sub_start(reader, state, settings, start_position)
@@ -294,7 +279,7 @@ impl ASTNode for JSXElement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('<');
@@ -341,7 +326,7 @@ impl ASTNode for JSXAttribute {
 	fn from_reader(
 		_reader: &mut impl TokenReader<TSXToken, Span>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseSettings,
+		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		todo!()
 	}
@@ -349,7 +334,7 @@ impl ASTNode for JSXAttribute {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -385,7 +370,7 @@ impl JSXElement {
 	pub(crate) fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		mut start_position: Span,
 	) -> ParseResult<Self> {
 		let tag_name = if let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() {
@@ -406,7 +391,6 @@ impl JSXElement {
 						tag_name,
 						attributes,
 						children: JSXElementChildren::SelfClosing,
-						expression_id: crate::expressions::ExpressionId::new(),
 						position: start_position.union(&position),
 					});
 				}
@@ -475,7 +459,6 @@ impl JSXElement {
 			tag_name,
 			attributes,
 			children: JSXElementChildren::Children(children),
-			expression_id: crate::expressions::ExpressionId::new(),
 			position: start_position,
 		})
 	}

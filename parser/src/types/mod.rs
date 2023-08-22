@@ -3,48 +3,15 @@ pub mod enum_declaration;
 pub mod interface;
 pub mod namespace;
 pub mod type_alias;
+pub mod type_annotations;
 pub mod type_declarations;
-pub mod type_references;
+
+use std::borrow::Cow;
 
 pub use interface::InterfaceDeclaration;
+use source_map::Span;
 
-use std::sync::atomic::{AtomicU16, Ordering};
-
-use derive_debug_extras::DebugExtras;
-
-static TYPE_COUNTER: AtomicU16 = AtomicU16::new(1);
-
-/// A id of a syntax types
-#[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
-pub struct TypeId(u16);
-
-impl TypeId {
-	pub fn new() -> Self {
-		TypeId(TYPE_COUNTER.fetch_add(1, Ordering::SeqCst))
-	}
-
-	pub const fn new_from_id(id: u16) -> Self {
-		TypeId(id)
-	}
-
-	#[doc(hidden)]
-	pub fn unwrap_identifier(self) -> u16 {
-		self.0
-	}
-
-	pub const NULL: Self = Self(0);
-}
-
-// TODO not sure
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for TypeId {
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		token_stream.extend(self_rust_tokenize::quote!(TypeId::new()))
-	}
-}
+use crate::{tsx_keywords, ASTNode, Block, Keyword};
 
 // [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
 // #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,3 +30,50 @@ impl self_rust_tokenize::SelfRustTokenize for TypeId {
 // 		}
 // 	}
 // }
+
+#[cfg(feature = "extras")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+pub enum AnnotationPerforms {
+	PerformsStatements { performs_keyword: Keyword<tsx_keywords::Performs>, statements: Block },
+	PerformsConst { performs_keyword: Keyword<tsx_keywords::Performs>, identifier: String },
+}
+
+#[cfg(feature = "extras")]
+impl ASTNode for AnnotationPerforms {
+	fn get_position(&self) -> Cow<Span> {
+		todo!()
+	}
+
+	fn from_reader(
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		state: &mut crate::ParsingState,
+		settings: &crate::ParseOptions,
+	) -> crate::ParseResult<Self> {
+		let performs_keyword = Keyword::new(
+			reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Performs))?,
+		);
+		if let Some(tokenizer_lib::Token(crate::TSXToken::OpenBrace, _)) = reader.peek() {
+			// let expression = Expression::from_reader(reader, state, settings)?;
+			// reader.expect_next(TSXToken::CloseParentheses)?;
+			// Some(Box::new(expression))
+
+			let body = Block::from_reader(reader, state, settings)?;
+			Ok(AnnotationPerforms::PerformsStatements { performs_keyword, statements: body })
+		} else {
+			reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Const))?;
+			let (identifier, _) =
+				crate::tokens::token_as_identifier(reader.next().unwrap(), "performs const")?;
+			Ok(AnnotationPerforms::PerformsConst { performs_keyword, identifier })
+		}
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		_buf: &mut T,
+		_settings: &crate::ToStringOptions,
+		_depth: u8,
+	) {
+		todo!()
+	}
+}

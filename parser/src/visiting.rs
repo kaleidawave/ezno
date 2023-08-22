@@ -1,8 +1,8 @@
 use source_map::SourceId;
 
 use crate::{
-	expressions::ExpressionId, ArrayDestructuringField, BlockId, Expression, JSXElement,
-	ObjectDestructuringField, PropertyKey, Statement, VariableId, WithComment,
+	ArrayDestructuringField, Expression, JSXElement, ObjectDestructuringField, PropertyKey,
+	Statement, WithComment,
 };
 
 pub use ast::*;
@@ -222,9 +222,7 @@ mod ast {
 		std::path::Path,
 		std::path::PathBuf,
 		source_map::Span,
-		crate::expressions::ExpressionId,
-		crate::variable_fields::VariableId,
-		crate::TypeReference,
+		crate::TypeAnnotation,
 		crate::NumberStructure,
 		crate::operators::BinaryOperator,
 		crate::operators::BinaryAssignmentOperator,
@@ -236,7 +234,6 @@ mod ast {
 		crate::types::type_alias::TypeAlias,
 		crate::types::declares::DeclareFunctionDeclaration,
 		crate::types::declares::DeclareVariableDeclaration,
-		crate::PropertyId,
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
@@ -248,49 +245,15 @@ mod ast {
 mod structures {
 	use std::borrow::Cow;
 
-	use crate::{property_key::PropertyId, VariableFieldInSourceCode};
+	use crate::VariableFieldInSourceCode;
 
 	use super::*;
-	use derive_enum_from_into::EnumFrom;
 	use source_map::Span;
 	use temporary_annex::{Annex, Annexable};
 
-	/// Could borrow identifiers but most of them are smaller than a pointer so it doesn't matter =
-	///
-	/// TODO work out all the use cases for this
-	/// Currently used for
 	#[derive(Debug, Clone)]
 	pub enum ChainVariable {
-		Block(BlockId),
-		UnderFunction(BlockId, VariableId),
-		UnderClassMethod(BlockId),
-		UnderClassConstructor(BlockId),
-		UnderObjectLiteralMethod,
-		UnderExpressionFunctionBlock(BlockId, ExpressionId),
-		UnderArrowFunction(Option<BlockId>),
-		UnderRhsOfOperation(ExpressionId),
-		UnderMatchArm(BlockId),
-		UnderModule(BlockId, SourceId),
-		SingleStatementOrExpression,
-	}
-
-	impl ChainVariable {
-		pub fn get_block_id(&self) -> BlockId {
-			match self {
-				ChainVariable::Block(block_id)
-				| ChainVariable::UnderFunction(block_id, _)
-				| ChainVariable::UnderClassMethod(block_id)
-				| ChainVariable::UnderClassConstructor(block_id)
-				| ChainVariable::UnderModule(block_id, _)
-				| ChainVariable::UnderArrowFunction(Some(block_id))
-				| ChainVariable::UnderExpressionFunctionBlock(block_id, _) => *block_id,
-				ChainVariable::UnderMatchArm(block_id) => *block_id,
-				ChainVariable::UnderArrowFunction(None)
-				| ChainVariable::SingleStatementOrExpression => panic!(),
-				ChainVariable::UnderObjectLiteralMethod => todo!(),
-				ChainVariable::UnderRhsOfOperation(_) => todo!(),
-			}
-		}
+		Module(SourceId),
 	}
 
 	/// The current location in the AST
@@ -321,51 +284,13 @@ mod structures {
 			&self.0
 		}
 
-		// Returns the variableId this chain may be under
-		pub fn last_variable_id(&self) -> Option<VariableId> {
-			self.0.iter().rev().find_map(|chain_variable| {
-				// | ChainVariable::UnderClassMethod(_, variable_id)
-				if let ChainVariable::UnderFunction(_, variable_id) = chain_variable {
-					Some(*variable_id)
-				} else {
-					None
-				}
-			})
-		}
-
-		pub fn last_function(&self) -> Option<(BlockId, VariableId)> {
-			self.0.iter().rev().find_map(|chain_variable| {
-				// | ChainVariable::UnderClassMethod(block_id, variable_id)
-				if let ChainVariable::UnderFunction(block_id, variable_id) = chain_variable {
-					Some((*block_id, *variable_id))
-				} else {
-					None
-				}
-			})
-		}
-
-		pub fn first_function(&self) -> Option<(BlockId, VariableId)> {
-			self.0.iter().find_map(|chain_variable| {
-				// | ChainVariable::UnderClassMethod(block_id, variable_id)
-				if let ChainVariable::UnderFunction(block_id, variable_id) = chain_variable {
-					Some((*block_id, *variable_id))
-				} else {
-					None
-				}
-			})
-		}
-
-		pub fn last_block_id(&self) -> BlockId {
-			// TODO this needs changing
-			self.0.last().unwrap().get_block_id()
-		}
-
 		pub fn get_module(&self) -> SourceId {
-			if let ChainVariable::UnderModule(_, source_id) = self.0.first().unwrap() {
-				*source_id
-			} else {
-				panic!()
-			}
+			todo!()
+			// if let ChainVariable::UnderModule(_, source) = self.0.first().unwrap() {
+			// 	*source
+			// } else {
+			// 	panic!()
+			// }
 		}
 
 		// TODO get function root. Aka last thing before in top level scope or
@@ -390,98 +315,63 @@ mod structures {
 	/// TODO these may go
 	#[derive(Debug)]
 	pub enum MutableVariablePart<'a> {
-		VariableFieldName(&'a mut String, VariableId),
+		VariableFieldName(&'a mut String),
 		// TODO these should maybe only be the spread variables
 		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
 		ObjectDestructuringMember(
 			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
 		),
 		PropertyKey(&'a mut WithComment<PropertyKey>, PropertyKeyLocation),
-		ClassName(Option<&'a mut String>, VariableId),
-		FunctionName(&'a mut String, VariableId),
+		ClassName(Option<&'a mut String>),
+		FunctionName(&'a mut String),
 	}
 
 	/// TODO these may go
 	#[derive(Debug)]
 	pub enum ImmutableVariableOrPropertyPart<'a> {
 		// TODO maybe WithComment on some of these
-		VariableFieldName(&'a str, VariableId, &'a Span),
+		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
 		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableFieldInSourceCode>),
 		ObjectDestructuringMember(
 			&'a WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
 		),
-		ClassName(Option<&'a str>, VariableId, &'a Span),
-		FunctionName(&'a str, VariableId, &'a Span),
+		ClassName(Option<&'a str>, &'a Span),
+		FunctionName(&'a str, &'a Span),
 		PropertyKey(&'a WithComment<PropertyKey>, PropertyKeyLocation),
 	}
 
 	#[derive(Debug, Clone, Copy)]
 	pub enum PropertyKeyLocation {
-		Class(VariableId),
-		ObjectLiteral(ExpressionId),
-	}
-
-	#[derive(Debug, Clone, Copy, EnumFrom)]
-	pub enum VariableOrPropertyId {
-		VariableId(VariableId),
-		PropertyId(PropertyId),
+		Class,
+		ObjectLiteral,
 	}
 
 	impl<'a> ImmutableVariableOrPropertyPart<'a> {
-		pub fn get_variable_id(&self) -> VariableOrPropertyId {
-			match self {
-				ImmutableVariableOrPropertyPart::VariableFieldName(_, variable_id, _)
-				| ImmutableVariableOrPropertyPart::ClassName(_, variable_id, _)
-				| ImmutableVariableOrPropertyPart::FunctionName(_, variable_id, _) => (*variable_id).into(),
-				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(
-					array_destructuring_member,
-				) => match array_destructuring_member {
-					ArrayDestructuringField::Spread(_, _identifier) => {
-						todo!()
-					}
-					ArrayDestructuringField::Name(..) => todo!(),
-					ArrayDestructuringField::None => todo!(),
-				},
-				ImmutableVariableOrPropertyPart::ObjectDestructuringMember(
-					object_destructuring_member,
-				) => match object_destructuring_member.get_ast() {
-					ObjectDestructuringField::Spread(_, _identifier) => {
-						todo!()
-					}
-					ObjectDestructuringField::Name { .. } => todo!(),
-					ObjectDestructuringField::Map { .. } => todo!(),
-				},
-				ImmutableVariableOrPropertyPart::PropertyKey(property_key, _) => {
-					property_key.get_ast().get_property_id().into()
-				}
-			}
-		}
-
 		pub fn get_name(&self) -> Option<&'a str> {
 			match self {
-				ImmutableVariableOrPropertyPart::FunctionName(name, _, _)
-				| ImmutableVariableOrPropertyPart::VariableFieldName(name, _, _) => Some(name),
+				ImmutableVariableOrPropertyPart::FunctionName(name, _)
+				| ImmutableVariableOrPropertyPart::VariableFieldName(name, _) => Some(name),
 				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(_)
 				| ImmutableVariableOrPropertyPart::ObjectDestructuringMember(_) => None,
-				ImmutableVariableOrPropertyPart::ClassName(name, _, _) => *name,
-				ImmutableVariableOrPropertyPart::PropertyKey(property, _) => match property
-					.get_ast()
-				{
-					PropertyKey::Ident(ident, _, _) | PropertyKey::StringLiteral(ident, _, _) => {
-						Some(ident.as_str())
+				ImmutableVariableOrPropertyPart::ClassName(name, _) => *name,
+				ImmutableVariableOrPropertyPart::PropertyKey(property, _) => {
+					match property.get_ast() {
+						PropertyKey::Ident(ident, _) | PropertyKey::StringLiteral(ident, _) => {
+							Some(ident.as_str())
+						}
+						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					}
-					PropertyKey::NumberLiteral(_, _, _) | PropertyKey::Computed(_, _, _) => None,
-				},
+				}
 			}
 		}
 
 		pub fn get_position(&self) -> Cow<Span> {
 			use crate::ASTNode;
 			match self {
-				ImmutableVariableOrPropertyPart::FunctionName(_, _, pos)
-				| ImmutableVariableOrPropertyPart::ClassName(_, _, pos)
-				| ImmutableVariableOrPropertyPart::VariableFieldName(_, _, pos) => Cow::Borrowed(pos),
+				ImmutableVariableOrPropertyPart::FunctionName(_, pos)
+				| ImmutableVariableOrPropertyPart::ClassName(_, pos)
+				| ImmutableVariableOrPropertyPart::VariableFieldName(_, pos) => Cow::Borrowed(pos),
 				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(member) => {
 					member.get_position()
 				}

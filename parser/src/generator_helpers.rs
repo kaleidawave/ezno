@@ -1,5 +1,4 @@
-use crate::expressions::ExpressionId;
-use crate::{ASTNode, Expression, PropertyReference, Statement, VariableId, VariableIdentifier};
+use crate::{ASTNode, Expression, PropertyReference, Statement, VariableIdentifier};
 
 use source_map::Span;
 
@@ -18,18 +17,13 @@ pub struct Ident<'a>(&'a str);
 
 impl<'a> IntoAST<Expression> for Ident<'a> {
 	fn into_ast(self) -> Expression {
-		Expression::VariableReference(self.0.to_owned(), Span::NULL_SPAN, ExpressionId::new())
+		Expression::VariableReference(self.0.to_owned(), Span::NULL_SPAN)
 	}
 }
 
 impl<'a> IntoAST<Expression> for &'a str {
 	fn into_ast(self) -> Expression {
-		Expression::StringLiteral(
-			self.to_owned(),
-			crate::Quoted::Double,
-			Span::NULL_SPAN,
-			ExpressionId::new(),
-		)
+		Expression::StringLiteral(self.to_owned(), crate::Quoted::Double, Span::NULL_SPAN)
 	}
 }
 
@@ -41,27 +35,19 @@ impl<'a> IntoAST<PropertyReference> for &'a str {
 
 impl<'a> IntoAST<VariableIdentifier> for &'a str {
 	fn into_ast(self) -> VariableIdentifier {
-		VariableIdentifier::Standard(self.to_owned(), VariableId::new(), Span::NULL_SPAN)
+		VariableIdentifier::Standard(self.to_owned(), Span::NULL_SPAN)
 	}
 }
 
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(
-			crate::NumberStructure::Number(self as f64),
-			Span::NULL_SPAN,
-			ExpressionId::new(),
-		)
+		Expression::NumberLiteral(crate::NumberStructure::Number(self as f64), Span::NULL_SPAN)
 	}
 }
 
 impl IntoAST<Expression> for f64 {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(
-			crate::NumberStructure::Number(self),
-			Span::NULL_SPAN,
-			ExpressionId::new(),
-		)
+		Expression::NumberLiteral(crate::NumberStructure::Number(self), Span::NULL_SPAN)
 	}
 }
 

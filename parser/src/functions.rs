@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-	parameters::*, parse_bracketed, to_string_bracketed, ASTNode, Block, ChainVariable,
-	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, Keyword, ParseResult,
-	ParseSettings, TSXToken, TypeReference, VisitSettings, Visitable,
+	parameters::*, parse_bracketed, to_string_bracketed, ASTNode, Block,
+	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, Keyword,
+	ParseOptions, ParseResult, TSXToken, TypeAnnotation, VisitSettings, Visitable,
 };
 use crate::{tsx_keywords, TSXKeyword};
 use derive_debug_extras::DebugExtras;
@@ -59,21 +59,19 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// The body of the function
 	type Body: ASTNode;
 
-	fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable;
-
 	fn header_left(header: &Self::Header) -> Option<Cow<Span>>;
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	);
 
@@ -86,7 +84,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	fn parameters_from_reader<T: ToString>(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<FunctionParameters> {
 		FunctionParameters::from_reader(reader, state, settings)
 	}
@@ -95,7 +93,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	fn parameters_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		parameters: &FunctionParameters,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		parameters.to_string_from_buffer(buf, settings, depth);
@@ -104,7 +102,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// For [crate::ArrowFunction]
 	fn parameter_body_boundary_token_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 	) {
 		settings.add_gap(buf);
 	}
@@ -122,7 +120,7 @@ pub struct FunctionBase<T: FunctionBased> {
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	pub parameters: FunctionParameters,
-	pub return_type: Option<TypeReference>,
+	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
 }
 
@@ -142,7 +140,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let (header, name) = T::header_and_name_from_reader(reader, state, settings)?;
 		Self::from_reader_with_header_and_name(reader, state, settings, header, name)
@@ -151,7 +149,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn to_string_from_buffer<TS: source_map::ToString>(
 		&self,
 		buf: &mut TS,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, settings, depth);
@@ -181,7 +179,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &ParseSettings,
+		settings: &ParseOptions,
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
@@ -197,7 +195,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 		let return_type = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
 			.is_some()
-			.then(|| TypeReference::from_reader(reader, state, settings))
+			.then(|| TypeAnnotation::from_reader(reader, state, settings))
 			.transpose()?;
 
 		if let Some(token) = T::get_parameter_body_boundary_token() {
@@ -264,18 +262,18 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type Header = FunctionHeader;
 	type Name = T::Name;
 
-	fn get_chain_variable(_this: &FunctionBase<Self>) -> crate::ChainVariable {
-		todo!()
-		// crate::ChainVariable::UnderExpressionFunctionBlock(self.base.body.1, self.expression_id)
-	}
+	// fn get_chain_variable(_this: &FunctionBase<Self>) -> crate::ChainVariable {
+	// 	todo!()
+	// 	// crate::ChainVariable::UnderExpressionFunctionBlock(self.base.body.1, self.expression_id)
+	// }
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader, state, settings)?;
-		let (name, _) = T::from_reader(reader, state, settings)?;
+		let name = T::from_reader(reader, state, settings)?;
 		Ok((header, name))
 	}
 
@@ -283,7 +281,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		buf: &mut U,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		header.to_string_from_buffer(buf, settings, depth);
@@ -351,7 +349,7 @@ impl ASTNode for FunctionHeader {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseSettings,
+		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let async_keyword = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
@@ -382,7 +380,7 @@ impl ASTNode for FunctionHeader {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringSettings,
+		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		if self.is_async() {

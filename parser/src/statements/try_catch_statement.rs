@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-	ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeReference, VariableField,
+	ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation, VariableField,
 	VariableFieldInSourceCode, WithComment,
 };
 use source_map::Span;
@@ -15,7 +15,7 @@ pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode
 pub struct TryCatchStatement {
 	try_inner: Block,
 	catch_inner: Option<Block>,
-	exception_var: Option<(ExceptionVarField, Option<TypeReference>)>,
+	exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)>,
 	finally_inner: Option<Block>,
 	position: Span,
 }
@@ -28,13 +28,13 @@ impl ASTNode for TryCatchStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Try))?;
 		let try_inner = Block::from_reader(reader, state, settings)?;
 
 		let mut catch_inner: Option<Block> = None;
-		let mut exception_var: Option<(ExceptionVarField, Option<TypeReference>)> = None;
+		let mut exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)> = None;
 
 		// Optional `catch` clause
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Catch), _)) = reader.peek() {
@@ -49,10 +49,11 @@ impl ASTNode for TryCatchStatement {
 					)?;
 
 				// Optional type reference `catch (e: type)`
-				let mut exception_var_type: Option<TypeReference> = None;
+				let mut exception_var_type: Option<TypeAnnotation> = None;
 				if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
 					reader.expect_next(TSXToken::Colon)?;
-					exception_var_type = Some(TypeReference::from_reader(reader, state, settings)?);
+					exception_var_type =
+						Some(TypeAnnotation::from_reader(reader, state, settings)?);
 				}
 				exception_var = Some((variable_field, exception_var_type));
 
@@ -85,7 +86,7 @@ impl ASTNode for TryCatchStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		// Required `try` block

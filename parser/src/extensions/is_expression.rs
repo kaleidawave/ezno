@@ -8,16 +8,15 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error,
-	expressions::{ExpressionId, ExpressionOrBlock, MultipleExpression},
-	ASTNode, Keyword, TypeReference,
+	expressions::{ExpressionOrBlock, MultipleExpression},
+	ASTNode, Keyword, TypeAnnotation,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 pub struct IsExpression {
 	pub is: Keyword<Is>,
 	pub matcher: Box<MultipleExpression>,
-	pub branches: Vec<(TypeReference, ExpressionOrBlock)>,
-	pub expression_id: ExpressionId,
+	pub branches: Vec<(TypeAnnotation, ExpressionOrBlock)>,
 	pub position: Span,
 }
 
@@ -39,7 +38,7 @@ impl ASTNode for IsExpression {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseSettings,
+		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Is))?;
 		let is = Keyword::new(span);
@@ -49,7 +48,7 @@ impl ASTNode for IsExpression {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringSettings,
+		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("is (");
@@ -70,7 +69,7 @@ impl ASTNode for IsExpression {
 pub(crate) fn is_expression_from_reader_sub_is_keyword(
 	reader: &mut impl TokenReader<TSXToken, source_map::Span>,
 	state: &mut crate::ParsingState,
-	settings: &crate::ParseSettings,
+	settings: &crate::ParseOptions,
 	is: Keyword<Is>,
 ) -> Result<IsExpression, crate::ParseError> {
 	reader.expect_next(TSXToken::OpenParentheses)?;
@@ -79,18 +78,17 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 	reader.expect_next(TSXToken::OpenBrace)?;
 	let mut branches = Vec::new();
 	loop {
-		let type_reference = TypeReference::from_reader(reader, state, settings)?;
+		let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
 		let tokenizer_lib::Token(next, pos) = reader.next().ok_or_else(parse_lexing_error)?;
-		branches.push((type_reference, body));
+		branches.push((type_annotation, body));
 		if next == TSXToken::CloseBrace {
 			return Ok(IsExpression {
 				position: is.1.union(&pos),
 				is,
 				matcher: Box::new(matcher),
 				branches,
-				expression_id: ExpressionId::new(),
 			});
 		} else if next != TSXToken::Comma {
 			todo!("Error")
