@@ -21,7 +21,7 @@ pub trait RegisterBehavior {
 	type Return;
 
 	/// TODO lift T
-	fn func<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesizableFunction, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -35,7 +35,7 @@ pub struct RegisterAsType;
 impl RegisterBehavior for RegisterAsType {
 	type Return = TypeId;
 
-	fn func<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesizableFunction, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -55,7 +55,7 @@ pub struct RegisterOnExisting(pub String);
 impl RegisterBehavior for RegisterOnExisting {
 	type Return = ();
 
-	fn func<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesizableFunction, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -67,7 +67,8 @@ impl RegisterBehavior for RegisterOnExisting {
 			crate::types::FunctionNature::Source(None),
 		));
 		let variable_id = environment.variables.get(&self.0).unwrap().declared_at.clone();
-		environment.variable_current_value.insert(VariableId(variable_id), ty);
+		let variable_id = VariableId(variable_id.source, variable_id.start);
+		environment.variable_current_value.insert(variable_id, ty);
 	}
 }
 
@@ -76,7 +77,7 @@ pub struct RegisterOnExistingObject;
 impl RegisterBehavior for RegisterOnExistingObject {
 	type Return = Property;
 
-	fn func<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesizableFunction, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,

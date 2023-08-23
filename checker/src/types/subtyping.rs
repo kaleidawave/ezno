@@ -114,7 +114,7 @@ impl SubtypeBehavior for BasicEquality {
 
 #[derive(Debug)]
 pub enum SubTypeResult {
-	IsSubtype,
+	IsSubType,
 	IsNotSubType(NonEqualityReason),
 }
 
@@ -131,7 +131,7 @@ pub enum SubTypeResult {
 pub enum NonEqualityReason {
 	Mismatch,
 	PropertiesInvalid {
-		key: Vec<(TypeId, PropertyError)>,
+		errors: Vec<(TypeId, PropertyError)>,
 	},
 	// For function call-site type arguments
 	GenericRestrictionMismatch {
@@ -147,7 +147,7 @@ pub enum NonEqualityReason {
 #[derive(Debug)]
 pub enum PropertyError {
 	Missing,
-	Invalid { expected: TypeId, found: Logical<TypeId>, mismatch: NonEqualityReason },
+	Invalid { expected: TypeId, found: TypeId, mismatch: NonEqualityReason },
 }
 
 /// TODO tidy function
@@ -163,16 +163,16 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 	environment: &mut Environment,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	crate::utils::notify!("Checking {} <: {}", types.debug_type(base_type), types.debug_type(ty));
+	// crate::utils::notify!("Checking {} <: {}", print_type(base_type), print_type(ty));
 
 	if (base_type == TypeId::ERROR_TYPE || base_type == TypeId::ANY_TYPE)
 		|| (ty == TypeId::ERROR_TYPE || ty == TypeId::NEVER_TYPE)
 	{
-		return SubTypeResult::IsSubtype;
+		return SubTypeResult::IsSubType;
 	}
 
 	if base_type == ty {
-		return SubTypeResult::IsSubtype;
+		return SubTypeResult::IsSubType;
 	}
 
 	let left_ty = types.get_type_by_id(base_type);
@@ -191,7 +191,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				types,
 			);
 
-			return if let SubTypeResult::IsSubtype = left_result {
+			return if let SubTypeResult::IsSubType = left_result {
 				type_is_subtype(
 					base_type,
 					right,
@@ -240,16 +240,17 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
 					match func.parameters.get_type_constraint_at_index(idx) {
 						Some(ty) => {
+							// TODO order here
 							let result = type_is_subtype(
-								lhs_param.ty,
 								ty,
+								lhs_param.ty,
 								ty_arguments,
 								behavior,
 								environment,
 								types,
 							);
 							match result {
-								SubTypeResult::IsSubtype => {}
+								SubTypeResult::IsSubType => {}
 								err @ SubTypeResult::IsNotSubType(_) => {
 									// TODO don't short circuit
 									return err;
@@ -261,15 +262,16 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 						}
 					}
 				}
-				SubTypeResult::IsSubtype
+				SubTypeResult::IsSubType
 			} else {
+				crate::utils::notify!("Not function!!");
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
 		Type::Constant(lhs) => {
 			if let Type::Constant(rhs) = right_ty {
 				if lhs == rhs {
-					SubTypeResult::IsSubtype
+					SubTypeResult::IsSubType
 				} else {
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -280,33 +282,33 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			}
 		}
 		Type::Object(..) => {
-			// TODO collect, errors here rather than short circuiting
-			if let Some(value) =
-				check_properties(environment, base_type, ty, types, ty_arguments, behavior)
-			{
-				return value;
-			}
-			if behavior.add_property_restrictions() {
-				match environment.object_constraints.entry(ty) {
-					std::collections::hash_map::Entry::Occupied(entry) => {
-						todo!()
-						// let new = types.new_and_type(lhs, rhs);
-						// entry.insert(new);
-					}
-					std::collections::hash_map::Entry::Vacant(vacant) => {
-						vacant.insert(base_type);
-					}
-				};
-			}
+			let result =
+				check_properties(environment, base_type, ty, types, ty_arguments, behavior);
+			if matches!(result, SubTypeResult::IsNotSubType(..)) {
+				result
+			} else {
+				if behavior.add_property_restrictions() {
+					match environment.object_constraints.entry(ty) {
+						std::collections::hash_map::Entry::Occupied(entry) => {
+							todo!()
+							// let new = types.new_and_type(lhs, rhs);
+							// entry.insert(new);
+						}
+						std::collections::hash_map::Entry::Vacant(vacant) => {
+							vacant.insert(base_type);
+						}
+					};
+				}
 
-			SubTypeResult::IsSubtype
+				SubTypeResult::IsSubType
+			}
 		}
 		Type::And(left, right) => {
 			let right = *right;
 			let left_result =
 				type_is_subtype(*left, ty, ty_arguments.as_deref(), behavior, environment, types);
 
-			if let SubTypeResult::IsSubtype = left_result {
+			if let SubTypeResult::IsSubType = left_result {
 				type_is_subtype(right, ty, ty_arguments.as_deref(), behavior, environment, types)
 			} else {
 				left_result
@@ -317,8 +319,8 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			let left_result =
 				type_is_subtype(*left, ty, ty_arguments.as_deref(), behavior, environment, types);
 
-			if let SubTypeResult::IsSubtype = left_result {
-				SubTypeResult::IsSubtype
+			if let SubTypeResult::IsSubType = left_result {
+				SubTypeResult::IsSubType
 			} else {
 				type_is_subtype(right, ty, ty_arguments.as_deref(), behavior, environment, types)
 			}
@@ -350,7 +352,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				// TODO specialisation error
 				SubTypeResult::IsNotSubType(reason)
 			} else {
-				SubTypeResult::IsSubtype
+				SubTypeResult::IsSubType
 			}
 		}
 		Type::Constructor(constructor) => {
@@ -388,7 +390,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 						| Type::Constructor(..) | Type::Constant(..)
 						| Type::Or(..)
 				) {
-				crate::utils::notify!("Short circuited on {:?} as it is nominal", right_ty);
+				crate::utils::notify!("Short circuited for RHS ={:?} as it is nominal", right_ty);
 				// TODO not primitive error
 				// TODO this might break with *properties* proofs on primitives
 				// e.g. number :< Nat
@@ -399,18 +401,13 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			match right_ty {
 				Type::Constant(constant) => {
 					if constant.get_backing_type_id() == base_type {
-						SubTypeResult::IsSubtype
+						SubTypeResult::IsSubType
 					} else {
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				}
 				Type::Object(..) => {
-					if let Some(value) =
-						check_properties(environment, base_type, ty, types, ty_arguments, behavior)
-					{
-						return value;
-					}
-					return SubTypeResult::IsSubtype;
+					check_properties(environment, base_type, ty, types, ty_arguments, behavior)
 				}
 				Type::Function(..) => {
 					crate::utils::notify!("TODO implement function checking");
@@ -429,7 +426,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 					// 	environment,
 					// 	types,
 					// );
-					// if let SubTypeResult::IsSubtype = left {
+					// if let SubTypeResult::IsSubType = left {
 					// 	type_is_subtype(
 					// 		base_type,
 					// 		right,
@@ -486,8 +483,8 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 									environment,
 									types,
 								);
-								return if let SubTypeResult::IsSubtype = type_is_subtype {
-									SubTypeResult::IsSubtype
+								return if let SubTypeResult::IsSubType = type_is_subtype {
+									SubTypeResult::IsSubType
 								} else {
 									if to == TypeId::ANY_TYPE {
 										environment.attempt_to_modify_base(ty, under, base_type)
@@ -498,7 +495,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 										// environment
 										// 	.attempt_to_modify_constraint_or_alias(ty, new_type)
 									}
-									SubTypeResult::IsSubtype
+									SubTypeResult::IsSubType
 								};
 							}
 						}
@@ -511,13 +508,14 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 /// TODO temp
 fn check_properties<T: SubtypeBehavior>(
-	environment: &mut crate::context::Context<crate::context::Syntax>,
+	environment: &mut Environment,
 	base_type: TypeId,
 	ty: TypeId,
 	types: &TypeStore,
 	ty_arguments: Option<&map_vec::Map<TypeId, TypeId>>,
 	behavior: &mut T,
-) -> Option<SubTypeResult> {
+) -> SubTypeResult {
+	let mut property_errors = Vec::new();
 	for (key, property) in environment.get_properties_on_type(base_type) {
 		// TODO
 		let rhs_property = environment.get_property_unbound(ty, key, types);
@@ -535,9 +533,16 @@ fn check_properties<T: SubtypeBehavior>(
 							environment,
 							types,
 						);
-						// TODO produce more errors
-						if matches!(result, SubTypeResult::IsNotSubType(..)) {
-							return Some(result);
+						// TODO add to property errors
+						if let SubTypeResult::IsNotSubType(mismatch) = result {
+							property_errors.push((
+								key,
+								PropertyError::Invalid {
+									expected: property,
+									found: rhs_type,
+									mismatch,
+								},
+							));
 						}
 					}
 					Logical::Or(_) => todo!(),
@@ -545,10 +550,18 @@ fn check_properties<T: SubtypeBehavior>(
 				}
 			}
 			// TODO
-			None => return Some(SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)),
+			None => {
+				property_errors.push((key, PropertyError::Missing));
+			}
 		}
 	}
-	None
+	if !property_errors.is_empty() {
+		SubTypeResult::IsNotSubType(NonEqualityReason::PropertiesInvalid {
+			errors: property_errors,
+		})
+	} else {
+		SubTypeResult::IsSubType
+	}
 }
 
 type ReadableSubTypeErrorMessage = Vec<String>;
@@ -561,7 +574,9 @@ impl NonEqualityReason {
 		match self {
 			NonEqualityReason::MissingParameter | NonEqualityReason::Mismatch => Vec::new(),
 			NonEqualityReason::GenericRestrictionMismatch { restriction, reason, pos } => todo!(),
-			NonEqualityReason::PropertiesInvalid { key } => todo!(),
+			NonEqualityReason::PropertiesInvalid { errors } => {
+				errors.into_iter().map(|error| format!("{:?}", error)).collect()
+			}
 			NonEqualityReason::TooStrict => todo!(),
 		}
 	}

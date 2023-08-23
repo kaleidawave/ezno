@@ -75,7 +75,7 @@ impl ThisBinding {
 
 // pub type CallableFunctionType = FunctionType<SourceFunction>;
 // Non callable
-// pub type TypeReferenceFunctionType = FunctionType<InterfaceFunction>;
+// pub type TypeAnnotationFunctionType = FunctionType<InterfaceFunction>;
 
 /// Used for precise location of functions that bind ids.
 /// Unification of internal and source functions

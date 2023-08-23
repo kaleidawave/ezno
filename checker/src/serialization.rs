@@ -14,7 +14,7 @@ use source_map::{SourceId, Span};
 pub(crate) trait BinarySerializable {
 	fn serialize(self, buf: &mut Vec<u8>);
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self;
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self;
 }
 
 impl BinarySerializable for String {
@@ -23,7 +23,7 @@ impl BinarySerializable for String {
 		buf.extend_from_slice(self.as_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let len = iter.next().unwrap();
 		String::from_iter(iter.by_ref().take(len as usize).map(|v| v as char))
 	}
@@ -39,11 +39,11 @@ impl<T: BinarySerializable> BinarySerializable for Option<T> {
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		if iter.next().unwrap() == 0 {
 			None
 		} else {
-			Some(T::deserialize(iter, buf_source))
+			Some(T::deserialize(iter, source))
 		}
 	}
 }
@@ -56,9 +56,9 @@ impl<T: BinarySerializable> BinarySerializable for Vec<T> {
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| T::deserialize(iter, buf_source)).collect()
+		(0..size).map(|_| T::deserialize(iter, source)).collect()
 	}
 }
 
@@ -67,8 +67,8 @@ impl<T: BinarySerializable> BinarySerializable for Box<T> {
 		BinarySerializable::serialize(*self, buf)
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
-		Box::new(T::deserialize(iter, buf_source))
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		Box::new(T::deserialize(iter, source))
 	}
 }
 
@@ -80,9 +80,9 @@ impl<T: BinarySerializable> BinarySerializable for Box<[T]> {
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| T::deserialize(iter, buf_source)).collect()
+		(0..size).map(|_| T::deserialize(iter, source)).collect()
 	}
 }
 
@@ -96,8 +96,8 @@ where
 		self.1.serialize(buf);
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
-		(T::deserialize(iter, buf_source), U::deserialize(iter, buf_source))
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		(T::deserialize(iter, source), U::deserialize(iter, source))
 	}
 }
 
@@ -115,11 +115,9 @@ where
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size)
-			.map(|_| (K::deserialize(iter, buf_source), V::deserialize(iter, buf_source)))
-			.collect()
+		(0..size).map(|_| (K::deserialize(iter, source), V::deserialize(iter, source))).collect()
 	}
 }
 
@@ -135,9 +133,9 @@ where
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| V::deserialize(iter, buf_source)).collect()
+		(0..size).map(|_| V::deserialize(iter, source)).collect()
 	}
 }
 
@@ -154,11 +152,9 @@ where
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size)
-			.map(|_| (K::deserialize(iter, buf_source), V::deserialize(iter, buf_source)))
-			.collect()
+		(0..size).map(|_| (K::deserialize(iter, source), V::deserialize(iter, source))).collect()
 	}
 }
 
@@ -174,9 +170,9 @@ where
 		}
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| V::deserialize(iter, buf_source)).collect()
+		(0..size).map(|_| V::deserialize(iter, source)).collect()
 	}
 }
 
@@ -186,7 +182,7 @@ impl BinarySerializable for Span {
 		buf.extend_from_slice(&TryInto::<u32>::try_into(self.end).unwrap().to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let start: u32 = u32::from_le_bytes([
 			iter.next().unwrap(),
 			iter.next().unwrap(),
@@ -202,7 +198,27 @@ impl BinarySerializable for Span {
 		])
 		.into();
 
-		Span { start, end, source_id: buf_source }
+		Span { start, end, source }
+	}
+}
+
+impl BinarySerializable for SourceId {
+	fn serialize(self, _buf: &mut Vec<u8>) {
+		todo!()
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
+		todo!()
+	}
+}
+
+impl BinarySerializable for u32 {
+	fn serialize(self, _buf: &mut Vec<u8>) {
+		todo!()
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
+		todo!()
 	}
 }
 
@@ -211,7 +227,7 @@ impl BinarySerializable for crate::TypeId {
 		buf.extend_from_slice(&self.0.to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		Self(u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]))
 	}
 }
@@ -221,7 +237,7 @@ impl BinarySerializable for crate::InternalFunctionId {
 		buf.extend_from_slice(&self.get_id().to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		Self::new_from_id(u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]))
 	}
 }
@@ -231,7 +247,7 @@ impl BinarySerializable for crate::AutoConstructorId {
 		buf.extend_from_slice(&self.get_id().to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		Self(u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]))
 	}
 }
@@ -241,7 +257,7 @@ impl BinarySerializable for ordered_float::NotNan<f64> {
 		buf.extend_from_slice(&self.into_inner().to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		Self::new(f64::from_le_bytes([
 			iter.next().unwrap(),
 			iter.next().unwrap(),
@@ -261,7 +277,7 @@ impl BinarySerializable for bool {
 		buf.push(if self { 1 } else { 0 })
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		iter.next().unwrap() == 1
 	}
 }

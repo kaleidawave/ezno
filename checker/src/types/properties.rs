@@ -68,11 +68,11 @@ pub(crate) fn get_property(
 	let value: GetResult = if let Some(constraint) = environment.get_poly_base(on, types) {
 		match constraint {
 			PolyBase::Fixed { to, is_open_poly } => {
-				crate::utils::notify!(
-					"Get property found fixed constraint {}, is_open_poly={:?}",
-					environment.debug_type(on, types),
-					is_open_poly
-				);
+				// crate::utils::notify!(
+				// 	"Get property found fixed constraint {}, is_open_poly={:?}",
+				// 	environment.debug_type(on, types),
+				// 	is_open_poly
+				// );
 
 				let fact = environment.get_property_unbound(to, under, types)?;
 
@@ -195,7 +195,13 @@ pub(crate) fn get_property(
 									))
 								}
 								super::FunctionNature::Constructor => todo!(),
-								super::FunctionNature::Reference => unreachable!(),
+								super::FunctionNature::Reference => {
+									crate::utils::notify!("TODO temp reference function business");
+									types.register_type(Type::Function(
+										func.clone(),
+										super::FunctionNature::Source(Some(on)),
+									))
+								}
 							},
 							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
 								value
@@ -204,10 +210,13 @@ pub(crate) fn get_property(
 							| Type::And(_, _)
 							| Type::Or(_, _)
 							| Type::Constructor(Constructor::StructureGenerics { .. }) => {
-								unreachable!(
-									"property was {:?} {:?}, which should be able to be retutned from a function",
+								crate::utils::notify!(
+									"property was {:?} {:?}, which should be NOT be able to be returned from a function",
 									property, ty
-								)
+								);
+								types.register_type(Type::RootPolyType(
+									crate::types::PolyNature::Open(value),
+								))
 							}
 							Type::Constructor(constructor) => {
 								unreachable!("Interesting property was {:?}", constructor);
@@ -335,7 +344,7 @@ pub(crate) fn set_property(
 		if let Some(constraint) = property_constraint {
 			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
 				add_property_restrictions: true,
-				position: Span { start: 0, end: 0, source_id: SourceId::NULL },
+				position: Span { start: 0, end: 0, source: SourceId::NULL },
 			};
 			let base_type = constraint.prop_to_type();
 			if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
@@ -354,12 +363,17 @@ pub(crate) fn set_property(
 		}
 	}
 
-	crate::utils::notify!(
-		"setting {:?} {:?} {:?}",
-		types.debug_type(on),
-		types.debug_type(under),
-		types.debug_type(new.as_get_type())
-	);
+	// crate::utils::notify!(
+	// 	"setting {:?} {:?} {:?}",
+	// 	crate::types::printing::print_type(types, on, &environment.into_general_context(), true),
+	// 	crate::types::printing::print_type(types, under, &environment.into_general_context(), true),
+	// 	crate::types::printing::print_type(
+	// 		types,
+	// 		new.as_get_type(),
+	// 		&environment.into_general_context(),
+	// 		true
+	// 	)
+	// );
 
 	let current_property = environment.get_property_unbound(on, under, types);
 
@@ -413,7 +427,7 @@ pub(crate) fn set_property(
 							// 		position: parser::Span {
 							// 			start: 0,
 							// 			end: 0,
-							// 			source_id: parser::SourceId::NULL,
+							// 			source: parser::SourceId::NULL,
 							// 		},
 							// 	};
 							// 	return Ok(Some(

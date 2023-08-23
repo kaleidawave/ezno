@@ -20,7 +20,7 @@ impl ObjectBuilder {
 	}
 
 	pub fn append(&mut self, environment: &mut Environment, under: TypeId, value: Property) {
-		environment.register_property(self.object, under, value)
+		environment.register_property(self.object, under, value, true)
 	}
 
 	pub fn build_object(self) -> TypeId {

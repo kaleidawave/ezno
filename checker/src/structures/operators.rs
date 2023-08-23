@@ -7,6 +7,7 @@ pub enum BinaryOperator {
 	Exponent,
 	BitwiseOperators(BitwiseOperators),
 	RelationOperator(RelationOperator),
+	InstanceOf,
 	/// TODO undecided, how to represent of as composite of others?
 	Subtract,
 	Divide,
