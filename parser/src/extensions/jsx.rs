@@ -200,7 +200,8 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	settings: &crate::ToStringOptions,
 	depth: u8,
 ) {
-	let indent = children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
+	let indent =
+		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
 	for node in children.iter() {
 		if indent {
 			settings.add_indent(depth + 1, buf);

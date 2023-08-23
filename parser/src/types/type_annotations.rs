@@ -675,7 +675,8 @@ impl TypeAnnotation {
 					return Ok(reference);
 				}
 				reader.next();
-				let return_type = Self::from_reader_with_config(reader, state, settings, true, false)?;
+				let return_type =
+					Self::from_reader_with_config(reader, state, settings, true, false)?;
 				let position = reference.get_position().into_owned();
 				let function = Self::FunctionLiteral {
 					type_parameters: None,
@@ -715,7 +716,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 			state,
 			settings,
 			return_on_union_or_intersection,
-			false
+			false,
 		)?;
 		generic_arguments.push(argument);
 

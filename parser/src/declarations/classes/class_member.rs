@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Debug};
 
-use crate::{tsx_keywords, errors::parse_lexing_error};
+use crate::{errors::parse_lexing_error, tsx_keywords};
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 
@@ -111,7 +111,7 @@ impl ASTNode for ClassMember {
 					},
 				))
 			}
-			None => Err(parse_lexing_error())
+			None => Err(parse_lexing_error()),
 		}
 	}
 
