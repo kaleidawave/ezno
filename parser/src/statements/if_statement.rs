@@ -50,7 +50,7 @@ impl ASTNode for IfStatement {
 		let (mut else_conditions, mut trailing_else) = (Vec::new(), None);
 		while let Some(Token(TSXToken::Keyword(TSXKeyword::Else), _)) = reader.peek() {
 			let Token(_, else_position) = reader.next().unwrap();
-			if matches!(reader.peek().unwrap().0, TSXToken::Keyword(TSXKeyword::If)) {
+			if matches!(reader.peek(), Some(Token(TSXToken::Keyword(TSXKeyword::If), _))) {
 				let value = ConditionalElseStatement::from_reader_sub_without_else(
 					reader,
 					state,

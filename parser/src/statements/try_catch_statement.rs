@@ -13,11 +13,11 @@ pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct TryCatchStatement {
-	try_inner: Block,
-	catch_inner: Option<Block>,
-	exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)>,
-	finally_inner: Option<Block>,
-	position: Span,
+	pub try_inner: Block,
+	pub catch_inner: Option<Block>,
+	pub exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)>,
+	pub finally_inner: Option<Block>,
+	pub position: Span,
 }
 
 impl ASTNode for TryCatchStatement {

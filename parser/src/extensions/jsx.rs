@@ -15,6 +15,73 @@ pub enum JSXRoot {
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[visit_self]
+pub struct JSXElement {
+	/// Name of the element (TODO or reference to element)
+	pub tag_name: String,
+	pub attributes: Vec<JSXAttribute>,
+	pub children: JSXElementChildren,
+	pub position: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+pub enum JSXElementChildren {
+	Children(Vec<JSXNode>),
+	/// For img elements
+	SelfClosing,
+}
+
+impl From<JSXElement> for JSXNode {
+	fn from(value: JSXElement) -> JSXNode {
+		JSXNode::Element(value)
+	}
+}
+
+impl ASTNode for JSXElement {
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, Span>,
+		state: &mut crate::ParsingState,
+		settings: &ParseOptions,
+	) -> ParseResult<Self> {
+		let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
+		Self::from_reader_sub_start(reader, state, settings, start_position)
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		settings: &crate::ToStringOptions,
+		depth: u8,
+	) {
+		buf.push('<');
+		buf.push_str(&self.tag_name);
+		for attribute in self.attributes.iter() {
+			buf.push(' ');
+			attribute.to_string_from_buffer(buf, settings, depth);
+		}
+
+		match self.children {
+			JSXElementChildren::Children(ref children) => {
+				buf.push('>');
+				jsx_children_to_string(children, buf, settings, depth);
+				buf.push_str("</");
+				buf.push_str(&self.tag_name);
+				buf.push('>');
+			}
+			JSXElementChildren::SelfClosing => {
+				buf.push_str("/>");
+			}
+		}
+	}
+
+	fn get_position(&self) -> Cow<Span> {
+		Cow::Borrowed(&self.position)
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct JSXFragment {
 	pub children: Vec<JSXNode>,
 	pub position: Span,
@@ -101,8 +168,8 @@ fn parse_jsx_children(
 	let mut children = Vec::new();
 	loop {
 		if matches!(
-			reader.peek().unwrap().0,
-			TSXToken::JSXFragmentEnd | TSXToken::JSXClosingTagStart
+			reader.peek(),
+			Some(Token(TSXToken::JSXFragmentEnd | TSXToken::JSXClosingTagStart, _))
 		) {
 			return Ok(children);
 		}
@@ -133,10 +200,11 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	settings: &crate::ToStringOptions,
 	depth: u8,
 ) {
+	let indent = children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
 	for node in children.iter() {
-		// if depth > 0 && settings.pretty {
-		// 	settings.add_indent(depth + 1, buf);
-		// }
+		if indent {
+			settings.add_indent(depth + 1, buf);
+		}
 		node.to_string_from_buffer(buf, settings, depth);
 	}
 
@@ -239,75 +307,6 @@ pub enum JSXAttribute {
 	Spread(Expression, Span),
 	/// Preferably want a identifier here not an expr
 	Shorthand(Expression),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum JSXElementChildren {
-	Children(Vec<JSXNode>),
-	/// For img elements
-	SelfClosing,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[visit_self]
-pub struct JSXElement {
-	/// Name of the element (TODO or reference to element)
-	pub tag_name: String,
-	pub attributes: Vec<JSXAttribute>,
-	pub children: JSXElementChildren,
-	pub position: Span,
-}
-
-impl From<JSXElement> for JSXNode {
-	fn from(value: JSXElement) -> JSXNode {
-		JSXNode::Element(value)
-	}
-}
-
-impl ASTNode for JSXElement {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
-		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
-		Self::from_reader_sub_start(reader, state, settings, start_position)
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		settings: &crate::ToStringOptions,
-		depth: u8,
-	) {
-		buf.push('<');
-		buf.push_str(&self.tag_name);
-		for attribute in self.attributes.iter() {
-			buf.push(' ');
-			attribute.to_string_from_buffer(buf, settings, depth);
-		}
-
-		match self.children {
-			JSXElementChildren::Children(ref children) => {
-				buf.push('>');
-
-				jsx_children_to_string(children, buf, settings, depth);
-
-				buf.push_str("</");
-				buf.push_str(&self.tag_name);
-				buf.push('>');
-			}
-			JSXElementChildren::SelfClosing => {
-				buf.push_str("/>");
-			}
-		}
-	}
-
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
-	}
 }
 
 impl ASTNode for JSXAttribute {

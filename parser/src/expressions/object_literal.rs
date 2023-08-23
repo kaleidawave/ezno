@@ -145,7 +145,7 @@ impl ObjectLiteral {
 	) -> ParseResult<Self> {
 		let mut members: Vec<ObjectLiteralMember> = Vec::new();
 		loop {
-			if matches!(reader.peek().unwrap().0, TSXToken::CloseBrace) {
+			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
 				break;
 			}
 			members.push(ObjectLiteralMember::from_reader(reader, state, settings)?);

@@ -152,8 +152,9 @@ impl ASTNode for TypeConditionResult {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		if matches!(reader.peek().unwrap().0, TSXToken::Keyword(TSXKeyword::Infer)) {
-			let Token(_, start) = reader.next().unwrap();
+		if let Some(Token(_, start)) =
+			reader.conditional_next(|token| matches!(token, TSXToken::Keyword(TSXKeyword::Infer)))
+		{
 			let inferred_type = TypeAnnotation::from_reader(reader, state, settings)?;
 			let position = start.union(&inferred_type.get_position());
 			Ok(Self::Infer(Box::new(inferred_type), position))
@@ -187,7 +188,7 @@ impl ASTNode for TypeAnnotation {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, settings, false)
+		Self::from_reader_with_config(reader, state, settings, false, false)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -363,12 +364,13 @@ impl ASTNode for TypeAnnotation {
 
 impl TypeAnnotation {
 	/// Also returns the depth the generic arguments ran over
-	/// TODO refactor and tidy a lot of this
+	/// TODO refactor and tidy a lot of this, precedence rather than config
 	pub(crate) fn from_reader_with_config(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		return_on_union_or_intersection: bool,
+		return_on_arrow: bool,
 	) -> ParseResult<Self> {
 		while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
 			reader.peek()
@@ -388,7 +390,7 @@ impl TypeAnnotation {
 				let decorator =
 					Decorator::from_reader_sub_at_symbol(reader, state, settings, pos.clone())?;
 				let this_declaration =
-					Self::from_reader_with_config(reader, state, settings, true)?;
+					Self::from_reader_with_config(reader, state, settings, true, false)?;
 				let position = pos.union(&this_declaration.get_position());
 				Self::Decorated(decorator, Box::new(this_declaration), position)
 			}
@@ -600,7 +602,7 @@ impl TypeAnnotation {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
 				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, settings, true)?;
+					TypeAnnotation::from_reader_with_config(reader, state, settings, true, false)?;
 				// TODO depth
 				let position = reference.get_position().union(&extends_type.get_position());
 				let condition = TypeCondition::Extends {
@@ -628,7 +630,7 @@ impl TypeAnnotation {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) => {
 				reader.next();
 				let is_type =
-					TypeAnnotation::from_reader_with_config(reader, state, settings, true)?;
+					TypeAnnotation::from_reader_with_config(reader, state, settings, true, false)?;
 				// TODO depth
 				let position = reference.get_position().union(&is_type.get_position());
 				let condition =
@@ -652,7 +654,7 @@ impl TypeAnnotation {
 				while let Some(Token(TSXToken::BitwiseOr, _)) = reader.peek() {
 					reader.next();
 					union_members
-						.push(Self::from_reader_with_config(reader, state, settings, true)?);
+						.push(Self::from_reader_with_config(reader, state, settings, true, false)?);
 				}
 				Ok(Self::Union(union_members))
 			}
@@ -664,13 +666,16 @@ impl TypeAnnotation {
 				while let Some(Token(TSXToken::BitwiseAnd, _)) = reader.peek() {
 					reader.next();
 					intersection_members
-						.push(Self::from_reader_with_config(reader, state, settings, true)?);
+						.push(Self::from_reader_with_config(reader, state, settings, true, false)?);
 				}
 				Ok(Self::Intersection(intersection_members))
 			}
 			Some(Token(TSXToken::Arrow, _)) => {
+				if return_on_arrow {
+					return Ok(reference);
+				}
 				reader.next();
-				let return_type = Self::from_reader_with_config(reader, state, settings, true)?;
+				let return_type = Self::from_reader_with_config(reader, state, settings, true, false)?;
 				let position = reference.get_position().into_owned();
 				let function = Self::FunctionLiteral {
 					type_parameters: None,
@@ -710,6 +715,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 			state,
 			settings,
 			return_on_union_or_intersection,
+			false
 		)?;
 		generic_arguments.push(argument);
 

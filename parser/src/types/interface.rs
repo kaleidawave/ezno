@@ -272,11 +272,12 @@ impl ASTNode for InterfaceMember {
 									});
 								}
 								Token(TSXToken::Keyword(TSXKeyword::In), _) => {
-									let rule = if matches!(
-										reader.peek().unwrap().0,
-										TSXToken::Keyword(TSXKeyword::KeyOf)
-									) {
-										reader.next();
+									let rule = if reader
+										.conditional_next(|token| {
+											matches!(token, TSXToken::Keyword(TSXKeyword::KeyOf))
+										})
+										.is_some()
+									{
 										TypeRule::InKeyOf
 									} else {
 										TypeRule::In

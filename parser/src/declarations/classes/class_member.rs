@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Debug};
 
-use crate::tsx_keywords;
+use crate::{tsx_keywords, errors::parse_lexing_error};
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 
@@ -63,8 +63,8 @@ impl ASTNode for ClassMember {
 
 		let key = WithComment::<PropertyKey>::from_reader(reader, state, settings)?;
 
-		match reader.peek().unwrap() {
-			Token(TSXToken::OpenParentheses, _) => {
+		match reader.peek() {
+			Some(Token(TSXToken::OpenParentheses, _)) => {
 				let function = ClassFunction::from_reader_with_config(
 					reader,
 					state,
@@ -75,7 +75,7 @@ impl ASTNode for ClassMember {
 				)?;
 				Ok(ClassMember::Function(is_static, function))
 			}
-			Token(token, _) => {
+			Some(Token(token, _)) => {
 				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
 					let Token(token, position) = reader.next().unwrap();
 					return Err(ParseError::new(
@@ -111,6 +111,7 @@ impl ASTNode for ClassMember {
 					},
 				))
 			}
+			None => Err(parse_lexing_error())
 		}
 	}
 
