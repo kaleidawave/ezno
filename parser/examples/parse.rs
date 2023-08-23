@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut fs = source_map::MapFileStore::default();
 	match Module::from_file(&path, ParseOptions::default(), Vec::default(), &mut fs) {
 		Ok(module) => {
-			println!("{:?}", now.elapsed());
+			println!("Parsed in: {:?}", now.elapsed());
 			if std::env::args().any(|item| item == "--ast") {
 				println!("{module:#?}");
 			} else {

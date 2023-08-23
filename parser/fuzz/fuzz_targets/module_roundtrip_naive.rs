@@ -1,6 +1,6 @@
 #![no_main]
 
-use ezno_parser::{ASTNode, Module, SourceId, ToStringSettings};
+use ezno_parser::{ASTNode, Module, SourceId, ToStringOptions};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 use std::str;
@@ -22,7 +22,7 @@ fn do_fuzz(data: &str) -> Corpus {
 	};
 
 	let output1 =
-		module.to_string(&ToStringSettings::default());
+		module.to_string(&ToStringOptions::default());
 
 	let Ok(module) = Module::from_string(
 		output1.to_owned(),
@@ -35,7 +35,7 @@ fn do_fuzz(data: &str) -> Corpus {
 	};
 
 	let output2 =
-		module.to_string(&ToStringSettings::default());
+		module.to_string(&ToStringOptions::default());
 
 	assert_eq!(output1, output2);
 

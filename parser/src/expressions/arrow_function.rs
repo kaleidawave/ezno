@@ -153,12 +153,12 @@ impl ArrowFunction {
 			settings,
 			open_paren_span,
 		)?;
-		let return_type = if matches!(reader.peek().unwrap().0, TSXToken::Colon) {
-			reader.next();
-			Some(TypeAnnotation::from_reader(reader, state, settings)?)
-		} else {
-			None
-		};
+		let return_type =
+			if reader.conditional_next(|token| matches!(token, TSXToken::Colon)).is_some() {
+				Some(TypeAnnotation::from_reader(reader, state, settings)?)
+			} else {
+				None
+			};
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
 		Ok(FunctionBase {
@@ -194,7 +194,7 @@ impl ASTNode for ExpressionOrBlock {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		if matches!(reader.peek().unwrap().0, TSXToken::OpenBrace) {
+		if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
 			Ok(Self::Block(Block::from_reader(reader, state, settings)?))
 		} else {
 			let expression = Expression::from_reader(reader, state, settings)?;

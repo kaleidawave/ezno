@@ -7,7 +7,6 @@ use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error,
 	expressions::{ExpressionOrBlock, MultipleExpression},
 	ASTNode, Keyword, TypeAnnotation,
 };
@@ -78,20 +77,21 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 	reader.expect_next(TSXToken::OpenBrace)?;
 	let mut branches = Vec::new();
 	loop {
-		let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
+		let type_annotation =
+			TypeAnnotation::from_reader_with_config(reader, state, settings, false, true)?;
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
-		let tokenizer_lib::Token(next, pos) = reader.next().ok_or_else(parse_lexing_error)?;
 		branches.push((type_annotation, body));
-		if next == TSXToken::CloseBrace {
+		if let Some(tokenizer_lib::Token(_, pos)) =
+			reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace))
+		{
 			return Ok(IsExpression {
 				position: is.1.union(&pos),
 				is,
 				matcher: Box::new(matcher),
 				branches,
 			});
-		} else if next != TSXToken::Comma {
-			todo!("Error")
 		}
+		reader.expect_next(TSXToken::Comma)?;
 	}
 }

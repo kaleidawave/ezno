@@ -6,7 +6,7 @@ Contains "string to AST" parser, AST definitions, AST back to text/string form m
 [![crates.io badge](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
 [![docs.rs badge](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
 
-This is more of an exercise project in getting better at writing Rust and doesn't offer too much over other great Rust based JS parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/Boshen/oxc) and [boa](https://github.com/boa-dev/boa).
+This is more of an exercise project in getting better at writing Rust and doesn't offer too much over other great Rust based JS parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/web-infra-dev/oxc) and [boa](https://github.com/boa-dev/boa).
 
 ## Goals
 

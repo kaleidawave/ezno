@@ -284,7 +284,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
- "source-map",
+ "source-map 0.12.0",
  "temporary-annex",
 ]
 
@@ -303,7 +303,7 @@ dependencies = [
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
- "source-map",
+ "source-map 0.13.0",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -322,7 +322,7 @@ dependencies = [
  "ezno-parser-visitable-derive 0.0.1 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
  "iterator-endiate 0.2.1",
  "self-rust-tokenize",
- "source-map",
+ "source-map 0.12.0",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -801,6 +801,17 @@ name = "source-map"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fedd4de16a29859eebdc14368c1fc2f5227ba58e1fdaba748072bf80ed9c5a35"
+dependencies = [
+ "codespan-reporting",
+ "self-rust-tokenize",
+ "serde",
+]
+
+[[package]]
+name = "source-map"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aebacbfb6ea7b5257c72f8d2f7790cf4fc3e72f399d76b56d48f6290c8ed7789"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",

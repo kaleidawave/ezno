@@ -64,12 +64,13 @@ impl Decorator {
 		at_pos: Span,
 	) -> ParseResult<Self> {
 		let (name, name_position) = token_as_identifier(reader.next().unwrap(), "Decorator name")?;
-		let (arguments, position) = if matches!(reader.peek().unwrap().0, TSXToken::OpenParentheses)
+		let (arguments, position) = if reader
+			.conditional_next(|token| matches!(token, TSXToken::OpenParentheses))
+			.is_some()
 		{
-			reader.next();
 			let mut arguments = Vec::<_>::new();
 			loop {
-				if matches!(reader.peek().unwrap().0, TSXToken::CloseParentheses) {
+				if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
 					break;
 				}
 				arguments.push(Expression::from_reader(reader, state, settings)?);

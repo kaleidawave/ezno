@@ -202,7 +202,7 @@ impl TypeDefinitionModule {
 			match reader.peek() {
 				Some(Token(TSXToken::SemiColon, _)) => {
 					reader.next();
-					if matches!(reader.peek().unwrap().0, TSXToken::EOS) {
+					if matches!(reader.peek(), Some(Token(TSXToken::EOS, _))) {
 						break;
 					}
 				}
@@ -374,8 +374,8 @@ pub(crate) fn parse_declare_item(
 	decorators: Vec<Decorator>,
 	declare_span: Span,
 ) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
-	match reader.peek().unwrap() {
-		Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
+	match reader.peek() {
+		Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Variable(
 				DeclareVariableDeclaration::from_reader_sub_declare(
 					reader,
@@ -386,24 +386,24 @@ pub(crate) fn parse_declare_item(
 				)?,
 			))
 		}
-		Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
+		Some(Token(TSXToken::Keyword(TSXKeyword::Class), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Class(
 				DeclareClassDeclaration::from_reader_sub_declare(reader, state, settings)?,
 			))
 		}
-		Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
+		Some(Token(TSXToken::Keyword(TSXKeyword::Function), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Function(
 				DeclareFunctionDeclaration::from_reader_sub_declare_with_decorators(
 					reader, state, settings, decorators,
 				)?,
 			))
 		}
-		Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
+		Some(Token(TSXToken::Keyword(TSXKeyword::Type), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias::from_reader(
 				reader, state, settings,
 			)?))
 		}
-		Token(TSXToken::Keyword(TSXKeyword::Namespace), _) => {
+		Some(Token(TSXToken::Keyword(TSXKeyword::Namespace), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Namespace(Namespace::from_reader(
 				reader, state, settings,
 			)?))
