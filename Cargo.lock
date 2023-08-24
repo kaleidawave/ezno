@@ -289,6 +289,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ezno-checker-specification"
+version = "0.0.0"
+dependencies = [
+ "ezno-checker",
+ "ezno-parser",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "ezno-parser"
 version = "0.0.3"
 dependencies = [
