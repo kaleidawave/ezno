@@ -5,9 +5,9 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
-	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, FunctionId, Keyword,
-	Parameter, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
-	TypeAnnotation, VariableField, WithComment,
+	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Keyword, Parameter,
+	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation,
+	VariableField, WithComment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,9 +16,9 @@ pub struct ArrowFunctionBase;
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
 
 impl FunctionBased for ArrowFunctionBase {
-	type Body = ExpressionOrBlock;
-	type Header = Option<Keyword<tsx_keywords::Async>>;
 	type Name = ();
+	type Header = Option<Keyword<tsx_keywords::Async>>;
+	type Body = ExpressionOrBlock;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderArrowFunction(this.body.get_block_id())
@@ -126,6 +126,7 @@ impl ArrowFunction {
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
 		let arrow_function = FunctionBase {
 			header: None,
+			position: first_parameter.1.union(&body.get_position()),
 			name: (),
 			parameters: crate::FunctionParameters {
 				parameters,
@@ -135,7 +136,6 @@ impl ArrowFunction {
 			return_type: None,
 			type_parameters: None,
 			body,
-			function_id: FunctionId::new(),
 		};
 		Ok(arrow_function)
 	}
@@ -151,7 +151,7 @@ impl ArrowFunction {
 			reader,
 			state,
 			settings,
-			open_paren_span,
+			open_paren_span.clone(),
 		)?;
 		let return_type =
 			if reader.conditional_next(|token| matches!(token, TSXToken::Colon)).is_some() {
@@ -167,8 +167,8 @@ impl ArrowFunction {
 			parameters,
 			return_type,
 			type_parameters: None,
+			position: open_paren_span.union(&body.get_position()),
 			body,
-			function_id: FunctionId::new(),
 		})
 	}
 }

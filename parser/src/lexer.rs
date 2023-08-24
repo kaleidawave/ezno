@@ -48,6 +48,7 @@ pub fn lex_source(
 	offset: Option<usize>,
 	mut cursors: Vec<(usize, EmptyCursorId)>,
 ) -> Result<(), ParseError> {
+	// TODO
 	let source = source.unwrap_or(SourceId::NULL);
 
 	cursors.reverse();
@@ -314,17 +315,20 @@ pub fn lex_source(
 					}
 					'e' | 'E' => {
 						if *past_exponential {
-							todo!()
+							return_err!(LexingErrors::TwoExponents)
 						}
 						*past_exponential = true;
 					}
 					'_' => {
 						if *last_was_underscore {
-							todo!()
+							return_err!(LexingErrors::TwoUnderscores)
 						}
 						*last_was_underscore = true;
 					}
 					_ => {
+						if *last_was_underscore {
+							return_err!(LexingErrors::TrailingUnderscore)
+						}
 						push_token!(
 							EXCLUDING_LAST_CHAR,
 							TSXToken::NumberLiteral(script[start..idx].to_owned())
@@ -601,31 +605,21 @@ pub fn lex_source(
 							);
 							*tag_depth += 1;
 							match chr {
+								'/' if *is_self_closing_tag => {
+									*jsx_state = JSXLexingState::SelfClosingTagClose;
+								}
 								'>' => {
-									if *is_self_closing_tag {
-										*tag_depth -= 1;
-										push_token!(AFTER_LAST_CHAR, TSXToken::JSXSelfClosingTag);
-										start = idx + 1;
-										// If JSX literal range has ended
-										if *tag_depth == 0 {
-											set_state!(LexingState::None);
-										} else {
-											*jsx_state = JSXLexingState::Content;
-											*is_self_closing_tag = false;
+									*no_inner_tags_or_expressions =
+										html_tag_contains_literal_content(&script[start..idx]);
+									push_token!(AFTER_LAST_CHAR, TSXToken::JSXOpeningTagEnd);
+									start = idx + 1;
+									*jsx_state = if *no_inner_tags_or_expressions {
+										JSXLexingState::LiteralContent {
+											last_char_was_open_chevron: false,
 										}
 									} else {
-										*no_inner_tags_or_expressions =
-											html_tag_contains_literal_content(&script[start..idx]);
-										push_token!(AFTER_LAST_CHAR, TSXToken::JSXOpeningTagEnd);
-										start = idx + 1;
-										*jsx_state = if *no_inner_tags_or_expressions {
-											JSXLexingState::LiteralContent {
-												last_char_was_open_chevron: false,
-											}
-										} else {
-											JSXLexingState::Content
-										};
-									}
+										JSXLexingState::Content
+									};
 									continue;
 								}
 								chr if chr.is_whitespace() => {

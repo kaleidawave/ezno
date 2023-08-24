@@ -297,7 +297,7 @@ pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	Name(VariableIdentifier, T::OptionalExpression),
 	/// `{ x: y }`
 	Map {
-		from: PropertyKey,
+		from: PropertyKey<crate::property_key::AlwaysPublic>,
 		variable_name: WithComment<VariableField<T>>,
 		default_value: T::OptionalExpression,
 		position: Span,
@@ -350,7 +350,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 							key.get_position().into_owned()
 						};
 					Ok(Self::Map { from: key, variable_name, default_value, position })
-				} else if let PropertyKey::Ident(name, key_pos) = key {
+				} else if let PropertyKey::Ident(name, key_pos, _) = key {
 					let default_value =
 						U::optional_expression_from_reader(reader, state, settings)?;
 					let position =
@@ -480,7 +480,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 }
 
 /// For object literals and things with computable or literal keys
-impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
+impl Visitable for VariableField<VariableFieldInSourceCode> {
 	fn visit<TData>(
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
@@ -489,7 +489,7 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		// TODO map
-		match self.get_ast() {
+		match self {
 			VariableField::Name(id) => {
 				if let VariableIdentifier::Standard(name, pos) = id {
 					let item = ImmutableVariableOrPropertyPart::VariableFieldName(name, pos);
@@ -542,7 +542,7 @@ impl Visitable for WithComment<VariableField<VariableFieldInSourceCode>> {
 		settings: &VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
-		match self.get_ast_mut() {
+		match self {
 			VariableField::Name(identifier) => {
 				if let VariableIdentifier::Standard(name, _span) = identifier {
 					visitors.visit_variable_mut(

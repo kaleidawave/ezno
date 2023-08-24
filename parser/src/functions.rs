@@ -1,9 +1,4 @@
-use std::{
-	borrow::Cow,
-	fmt::Debug,
-	marker::PhantomData,
-	sync::atomic::{AtomicU16, Ordering},
-};
+use std::{borrow::Cow, fmt::Debug, marker::PhantomData};
 
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
@@ -11,7 +6,6 @@ use crate::{
 	TypeAnnotation, VisitSettings, Visitable,
 };
 use crate::{tsx_keywords, TSXKeyword};
-use derive_debug_extras::DebugExtras;
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
 use tokenizer_lib::{Token, TokenReader};
@@ -29,27 +23,6 @@ pub mod bases {
 			ExpressionFunctionBase,
 		},
 	};
-}
-
-static FUNCTION_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
-
-/// Id given to AST that declares a function
-#[derive(PartialEq, Eq, Copy, Clone, DebugExtras, Hash)]
-pub struct FunctionId(u16);
-
-// TODO better than global counter
-impl FunctionId {
-	pub fn new() -> Self {
-		Self(FUNCTION_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
-	}
-
-	pub fn get_id(self) -> u16 {
-		self.0
-	}
-
-	pub fn from_id(value: u16) -> Self {
-		Self(value)
-	}
 }
 
 /// Specialization information for [FunctionBase]
@@ -115,15 +88,13 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 /// Note: the [PartialEq] implementation is based on syntactical representation rather than [FunctionId] equality
 #[derive(Debug, Clone, PartialEqExtras)]
 pub struct FunctionBase<T: FunctionBased> {
-	/// TODO should be private
-	#[partial_eq_ignore]
-	pub function_id: FunctionId,
 	pub header: T::Header,
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	pub parameters: FunctionParameters,
 	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
+	pub position: Span,
 }
 
 #[cfg(feature = "self-rust-tokenize")]
@@ -168,12 +139,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	}
 
 	fn get_position(&self) -> Cow<Span> {
-		let body_pos = self.body.get_position();
-		if let Some(header_pos) = T::header_left(&self.header) {
-			Cow::Owned(header_pos.union(&body_pos))
-		} else {
-			Cow::Owned(self.parameters.position.clone().union(&body_pos))
-		}
+		Cow::Borrowed(&self.position)
 	}
 }
 
@@ -204,19 +170,13 @@ impl<T: FunctionBased> FunctionBase<T> {
 			reader.expect_next(token)?;
 		}
 		let body = T::Body::from_reader(reader, state, settings)?;
-		Ok(Self {
-			header,
-			name,
-			parameters,
-			type_parameters,
-			body,
-			return_type,
-			function_id: FunctionId::new(),
-		})
-	}
-
-	pub fn get_function_id(&self) -> FunctionId {
-		self.function_id
+		let body_pos = body.get_position();
+		let position = if let Some(header_pos) = T::header_left(&header) {
+			header_pos.union(&body_pos)
+		} else {
+			parameters.position.clone().union(&body_pos)
+		};
+		Ok(Self { position, header, name, parameters, type_parameters, body, return_type })
 	}
 }
 

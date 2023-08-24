@@ -37,7 +37,10 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	};
 
 	let output2 =
-		module.to_string(&ToStringOptions::default());
+		module.to_string(&ToStringOptions {
+			trailing_semicolon: true,
+			..ToStringOptions::default()
+		});
 
 	assert_eq!(output1, output2);
 

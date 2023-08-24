@@ -13,7 +13,7 @@ mod generator_helpers;
 mod modules;
 pub mod operators;
 pub mod parameters;
-mod property_key;
+pub mod property_key;
 pub mod statements;
 mod tokens;
 pub mod types;
@@ -35,7 +35,7 @@ pub use extensions::{
 	is_expression,
 	jsx::*,
 };
-pub use functions::{FunctionBase, FunctionBased, FunctionHeader, FunctionId};
+pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_source, LexSettings};
@@ -80,13 +80,24 @@ impl Quoted {
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
+	pub special_jsx_attributes: bool,
 	pub decorators: bool,
 	pub generator_keyword: bool,
+	pub include_comments: bool,
 
 	pub server_blocks: bool,
 	pub module_blocks: bool,
 	/// For LSP allows incomplete AST for completions. TODO tidy up
 	pub slots: bool,
+}
+impl ParseOptions {
+	fn get_lex_settings(&self) -> LexSettings {
+		LexSettings {
+			include_comments: self.include_comments,
+			lex_jsx: self.jsx,
+			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
+		}
+	}
 }
 
 // TODO not sure about some of these defaults, may change in future
@@ -94,6 +105,8 @@ impl Default for ParseOptions {
 	fn default() -> Self {
 		Self {
 			jsx: true,
+			special_jsx_attributes: false,
+			include_comments: true,
 			decorators: true,
 			slots: false,
 			generator_keyword: true,
@@ -107,6 +120,8 @@ impl Default for ParseOptions {
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
+	/// Blocks have trailing semicolons. Has no effect if pretty == false
+	pub trailing_semicolon: bool,
 	/// Include type annotation syntax
 	pub include_types: bool,
 	/// TODO not sure about this
@@ -126,6 +141,7 @@ impl Default for ToStringOptions {
 			include_decorators: false,
 			include_comments: true,
 			expect_jsx: false,
+			trailing_semicolon: false,
 			expect_cursors: false,
 			indent_with: "    ".to_owned(),
 		}
@@ -169,32 +185,6 @@ impl ToStringOptions {
 /// TODO remove partial eq
 pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method from_reader
-	#[cfg(target_arch = "wasm32")]
-	fn from_string(
-		string: String,
-		settings: ParseOptions,
-		source: SourceId,
-		offset: Option<usize>,
-		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<Self> {
-		let lex_settings = lexer::LexSettings {
-			include_comments: false,
-			lex_jsx: settings.jsx,
-			..Default::default()
-		};
-		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-		lexer::lex_source(&string, &mut queue, &lex_settings, Some(source), offset, cursors)?;
-
-		let mut state = ParsingState::default();
-		let res = Self::from_reader(&mut queue, &mut state, &settings);
-		if res.is_ok() {
-			queue.expect_next(TSXToken::EOS)?;
-		}
-		res
-	}
-
-	/// From string, with default impl to call abstract method from_reader
-	#[cfg(not(target_arch = "wasm32"))]
 	fn from_string(
 		source: String,
 		settings: ParseOptions,
@@ -203,31 +193,11 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
 		use source_map::LineStarts;
-		use std::thread;
-		use tokenizer_lib::ParallelTokenQueue;
 
-		let lex_settings = lexer::LexSettings {
-			include_comments: false,
-			lex_jsx: settings.jsx,
-			..Default::default()
-		};
-
+		// TODO take from argument
 		let line_starts = LineStarts::new(source.as_str());
 
-		let (mut sender, mut reader) = ParallelTokenQueue::new();
-		let parsing_thread = thread::spawn(move || {
-			let mut state = ParsingState { line_starts };
-			let res = Self::from_reader(&mut reader, &mut state, &settings);
-			if res.is_ok() {
-				reader.expect_next(TSXToken::EOS)?;
-			}
-			res
-		});
-
-		lexer::lex_source(&source, &mut sender, &lex_settings, Some(source_id), offset, cursors)?;
-		drop(sender);
-
-		parsing_thread.join().expect("Parsing panicked")
+		lex_and_parse_source(line_starts, settings, source, source_id, offset, cursors)
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be none if AST was doesn't match anything in source
@@ -252,6 +222,59 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		self.to_string_from_buffer(&mut buf, settings, 0);
 		buf
 	}
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn lex_and_parse_source<T: ASTNode>(
+	line_starts: source_map::LineStarts,
+	settings: ParseOptions,
+	source: String,
+	source_id: SourceId,
+	offset: Option<usize>,
+	cursors: Vec<(usize, CursorId<()>)>,
+) -> Result<T, ParseError> {
+	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
+	let get_lex_settings = settings.get_lex_settings();
+	let parsing_thread = std::thread::spawn(move || {
+		let mut state = ParsingState { line_starts };
+		let res = T::from_reader(&mut reader, &mut state, &settings);
+		if res.is_ok() {
+			reader.expect_next(TSXToken::EOS)?;
+		}
+		res
+	});
+
+	lexer::lex_source(&source, &mut sender, &get_lex_settings, Some(source_id), offset, cursors)?;
+	drop(sender);
+
+	parsing_thread.join().expect("Parsing panicked")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn lex_and_parse_source<T: ASTNode>(
+	line_starts: source_map::LineStarts,
+	settings: ParseOptions,
+	source: String,
+	source_id: SourceId,
+	offset: Option<usize>,
+	cursors: Vec<(usize, CursorId<()>)>,
+) -> Result<T, ParseError> {
+	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
+	lexer::lex_source(
+		&source,
+		&mut queue,
+		&LexSettings { lex_jsx: false, ..settings.get_lex_settings() },
+		Some(source_id),
+		offset,
+		cursors,
+	)?;
+
+	let mut state = ParsingState { line_starts };
+	let res = T::from_reader(&mut queue, &mut state, &settings);
+	if res.is_ok() {
+		queue.expect_next(TSXToken::EOS)?;
+	}
+	res
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Debug};
 
 use crate::TSXToken;
 use source_map::Span;
@@ -9,21 +9,69 @@ use crate::{
 	ParseOptions, ParseResult,
 };
 
+// pub enum GeneralPropertyKey {
+// 	AlwaysPublicPropertyKey(PropertyKey<AlwaysPublic>),
+// 	PublicOrPrivatePropertyKey(PropertyKey<PublicOrPrivate>),
+// }
+
+pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
+	type Private: Debug + Sync + Send + Clone + PartialEq;
+
+	fn parse_ident(
+		first: Token<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, Span>,
+	) -> ParseResult<(String, Span, Self::Private)>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlwaysPublic;
+
+impl PropertyKeyKind for AlwaysPublic {
+	type Private = ();
+
+	fn parse_ident(
+		first: Token<TSXToken, Span>,
+		_reader: &mut impl TokenReader<TSXToken, Span>,
+	) -> ParseResult<(String, Span, Self::Private)> {
+		token_as_identifier(first, "property key").map(|(name, position)| (name, position, ()))
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicOrPrivate;
+
+impl PropertyKeyKind for PublicOrPrivate {
+	type Private = bool;
+
+	fn parse_ident(
+		first: Token<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, Span>,
+	) -> ParseResult<(String, Span, Self::Private)> {
+		if matches!(first.0, TSXToken::HashTag) {
+			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "property key")
+				.map(|(name, position)| (name, position, true))
+		} else {
+			token_as_identifier(first, "property key")
+				.map(|(name, position)| (name, position, false))
+		}
+	}
+}
+
 /// A key for a member in a class or object literal
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum PropertyKey {
-	Ident(String, Span),
+pub enum PropertyKey<T: PropertyKeyKind> {
+	Ident(String, Span, T::Private),
 	StringLiteral(String, Span),
 	NumberLiteral(NumberStructure, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
 }
 
-impl PropertyKey {
+impl<U: PropertyKeyKind> PropertyKey<U> {
 	pub fn get_position(&self) -> Cow<Span> {
 		match self {
-			PropertyKey::Ident(_, pos)
+			PropertyKey::Ident(_, pos, _)
 			| PropertyKey::StringLiteral(_, pos)
 			| PropertyKey::NumberLiteral(_, pos)
 			| PropertyKey::Computed(_, pos) => Cow::Borrowed(pos),
@@ -31,19 +79,19 @@ impl PropertyKey {
 	}
 }
 
-impl PartialEq<str> for PropertyKey {
+impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
 		match self {
-			PropertyKey::Ident(name, _) | PropertyKey::StringLiteral(name, _) => name == other,
+			PropertyKey::Ident(name, _, _) | PropertyKey::StringLiteral(name, _) => name == other,
 			PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => false,
 		}
 	}
 }
 
-impl ASTNode for PropertyKey {
+impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	fn get_position(&self) -> Cow<Span> {
 		match self {
-			PropertyKey::Ident(_, pos)
+			PropertyKey::Ident(_, pos, _)
 			| PropertyKey::StringLiteral(_, pos)
 			| PropertyKey::NumberLiteral(_, pos)
 			| PropertyKey::Computed(_, pos) => Cow::Borrowed(pos),
@@ -69,8 +117,8 @@ impl ASTNode for PropertyKey {
 				Ok(Self::Computed(Box::new(expression), start_pos.union(&end_pos)))
 			}
 			token => {
-				let (name, position) = token_as_identifier(token, "property key")?;
-				Ok(Self::Ident(name, position))
+				let (name, position, private) = U::parse_ident(token, reader)?;
+				Ok(Self::Ident(name, position, private))
 			}
 		}
 	}
@@ -82,7 +130,7 @@ impl ASTNode for PropertyKey {
 		depth: u8,
 	) {
 		match self {
-			Self::Ident(ident, _pos) => buf.push_str(ident.as_str()),
+			Self::Ident(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
 			Self::StringLiteral(string, _) => {
 				buf.push('"');

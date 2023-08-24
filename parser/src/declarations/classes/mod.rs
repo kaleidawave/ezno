@@ -20,6 +20,7 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	/// TODO shouldn't be type reference
 	pub extends: Option<TypeAnnotation>,
+	pub implements: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<Decorated<ClassMember>>,
 	pub position: Span,
 }
@@ -87,6 +88,30 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			}
 			_ => None,
 		};
+		let implements = match reader.peek() {
+			Some(Token(TSXToken::Keyword(TSXKeyword::Implements), _)) => {
+				reader.next();
+				let mut implements = Vec::new();
+				loop {
+					implements.push(TypeAnnotation::from_reader(reader, state, settings)?);
+					match reader.next().ok_or_else(crate::errors::parse_lexing_error)? {
+						Token(TSXToken::Comma, _) => {}
+						Token(TSXToken::OpenBrace, _pos) => break,
+						Token(token, position) => {
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::UnexpectedToken {
+									expected: &[TSXToken::OpenBrace, TSXToken::Comma],
+									found: token,
+								},
+								position,
+							))
+						}
+					}
+				}
+				Some(implements)
+			}
+			_ => None,
+		};
 		reader.expect_next(TSXToken::OpenBrace)?;
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
@@ -101,7 +126,15 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			}
 		}
 		let position = class_keyword.1.union(&reader.expect_next(TSXToken::CloseBrace)?);
-		Ok(ClassDeclaration { class_keyword, name, extends, members, type_parameters, position })
+		Ok(ClassDeclaration {
+			class_keyword,
+			name,
+			extends,
+			implements,
+			members,
+			type_parameters,
+			position,
+		})
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
