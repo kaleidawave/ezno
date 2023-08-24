@@ -70,11 +70,17 @@ jobs:
           filters: |
             parser:
               - 'parser/**'
+            checker:
+              - 'checker/**'
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true'
         run: cargo test
         working-directory: parser
+
+      - name: Run checker specification
+        if: steps.changes.outputs.checker == 'true'
+        run: cargo test -p ezno-checker-specification
 
       - name: Run base tests
         run: cargo test
