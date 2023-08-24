@@ -69,7 +69,7 @@ pub fn parser_binary_operator_to_others(operator: ParserBinaryOperator) -> Binar
 		ParserBinaryOperator::NotEqual => todo!(),
 		ParserBinaryOperator::Add => BinaryOperator::Add,
 		ParserBinaryOperator::Subtract => BinaryOperator::Subtract,
-		ParserBinaryOperator::Multiply => todo!(),
+		ParserBinaryOperator::Multiply => BinaryOperator::Multiply,
 		ParserBinaryOperator::Divide => todo!(),
 		ParserBinaryOperator::Modulo => todo!(),
 		ParserBinaryOperator::Exponent => todo!(),

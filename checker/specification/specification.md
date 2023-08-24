@@ -238,9 +238,12 @@ try {
 
 ```ts
 const x: 4 = 2 + 3 
+const y: 6 = 2 * 3
+const z: 8 = (2 * 3) - 2
 ```
 
 - Type 5 is not assignable to type 4
+- Type 4 is not assignable to type 8
 
 #### Equality
 
@@ -257,6 +260,14 @@ const x: 4 = 2 + 3
 ```
 
 - Expected number found "HI"
+
+#### Math operations
+
+```ts
+Math.cos(0) satisfies 0
+```
+
+- Expected 0 found 1
 
 ### Objects
 

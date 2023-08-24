@@ -5,7 +5,7 @@ members = [
     "parser/generator",
     "checker",
     "checker/binary-serialize-derive",
-    # "checker/specification",
+    "checker/specification",
 ]
 
 [package]

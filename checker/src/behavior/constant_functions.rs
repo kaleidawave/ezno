@@ -70,7 +70,7 @@ pub(crate) fn call_constant_function(
 						types.new_constant_type(Constant::String(result))
 					} else {
 						let lhs = cast_as_number(c1, STRICT_CASTS).unwrap_or(f64::NAN);
-						let rhs = cast_as_number(c1, STRICT_CASTS).unwrap_or(f64::NAN);
+						let rhs = cast_as_number(c2, STRICT_CASTS).unwrap_or(f64::NAN);
 						let value = ordered_float::NotNan::try_from(lhs - rhs);
 						match value {
 							Ok(value) => types.new_constant_type(Constant::Number(value)),
@@ -95,7 +95,7 @@ pub(crate) fn call_constant_function(
 			match (first, second) {
 				(Type::Constant(c1), Type::Constant(c2)) => {
 					let lhs = cast_as_number(c1, STRICT_CASTS).unwrap_or(f64::NAN);
-					let rhs = cast_as_number(c1, STRICT_CASTS).unwrap_or(f64::NAN);
+					let rhs = cast_as_number(c2, STRICT_CASTS).unwrap_or(f64::NAN);
 					let value = ordered_float::NotNan::try_from(lhs * rhs);
 					let ty = match value {
 						Ok(value) => types.new_constant_type(Constant::Number(value)),
