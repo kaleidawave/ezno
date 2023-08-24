@@ -48,7 +48,7 @@ pub use behavior::{
 		SynthesizableExpression,
 	},
 	functions::{
-		GetSetGeneratorOrNone, RegisterAsType, RegisterOnExisting, RegisterOnExistingObject,
+		GetterSetterGeneratorOrNone, RegisterAsType, RegisterOnExisting, RegisterOnExistingObject,
 		SynthesizableFunction,
 	},
 	variables::check_variable_initialization,

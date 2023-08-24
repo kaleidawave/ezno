@@ -245,7 +245,7 @@ dependencies = [
  "console",
  "enum-variants-strings",
  "ezno-checker",
- "ezno-parser 0.0.3 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
+ "ezno-parser",
  "js-sys",
  "multiline-term-input",
  "notify",
@@ -258,7 +258,7 @@ dependencies = [
 name = "ezno-ast-generator"
 version = "0.0.3"
 dependencies = [
- "ezno-parser 0.0.3",
+ "ezno-parser",
  "proc-macro2",
  "quote",
  "self-rust-tokenize",
@@ -275,7 +275,7 @@ dependencies = [
  "either",
  "enum-variants-strings",
  "erased-serde",
- "ezno-parser 0.0.3 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
+ "ezno-parser",
  "indexmap",
  "iterator-endiate 0.2.1",
  "levenshtein",
@@ -284,7 +284,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
- "source-map 0.12.0",
+ "source-map",
  "temporary-annex",
 ]
 
@@ -298,31 +298,12 @@ dependencies = [
  "derive-partial-eq-extras",
  "enum-variants-strings",
  "enum_variant_type",
- "ezno-parser-visitable-derive 0.0.1",
+ "ezno-parser-visitable-derive",
  "iterator-endiate 0.1.0",
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
- "source-map 0.13.0",
- "temporary-annex",
- "tokenizer-lib",
-]
-
-[[package]]
-name = "ezno-parser"
-version = "0.0.3"
-source = "git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2#0e650d04af26bb1537344a63015ad1f7a3b75de6"
-dependencies = [
- "derive-debug-extras",
- "derive-enum-from-into",
- "derive-finite-automaton",
- "derive-partial-eq-extras",
- "enum-variants-strings",
- "enum_variant_type",
- "ezno-parser-visitable-derive 0.0.1 (git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2)",
- "iterator-endiate 0.2.1",
- "self-rust-tokenize",
- "source-map 0.12.0",
+ "source-map",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -330,15 +311,6 @@ dependencies = [
 [[package]]
 name = "ezno-parser-visitable-derive"
 version = "0.0.1"
-dependencies = [
- "string-cases",
- "syn-helpers",
-]
-
-[[package]]
-name = "ezno-parser-visitable-derive"
-version = "0.0.1"
-source = "git+https://github.com/kaleidawave/ezno.git?branch=parser-fixes2#0e650d04af26bb1537344a63015ad1f7a3b75de6"
 dependencies = [
  "string-cases",
  "syn-helpers",
@@ -794,17 +766,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6528351c9bc8ab22353f9d776db39a20288e8d6c37ef8cfe3317cf875eecfc2d"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "source-map"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fedd4de16a29859eebdc14368c1fc2f5227ba58e1fdaba748072bf80ed9c5a35"
-dependencies = [
- "codespan-reporting",
- "self-rust-tokenize",
- "serde",
 ]
 
 [[package]]

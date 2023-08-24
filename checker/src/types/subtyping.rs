@@ -262,7 +262,15 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 						}
 					}
 				}
-				SubTypeResult::IsSubType
+				// TODO NonEqualityReason::InvalidReturnType
+				type_is_subtype(
+					left_func.return_type,
+					func.return_type,
+					ty_arguments,
+					behavior,
+					environment,
+					types,
+				)
 			} else {
 				crate::utils::notify!("Not function!!");
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)

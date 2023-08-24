@@ -37,6 +37,7 @@ pub struct TypeId(pub(crate) u16);
 impl TypeId {
 	/// Not to be confused with [TypeId::NEVER_TYPE]
 	pub const ERROR_TYPE: Self = Self(0);
+	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 

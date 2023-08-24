@@ -19,24 +19,23 @@ pub struct FunctionType {
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
 
-	/// TODO somewhat temp
+	/// TODO temp
 	pub kind: FunctionKind,
 
 	pub id: FunctionId,
 }
 
-/// Decides what to do with `new`
+/// TODO as generics
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionKind {
-	Arrow { get_set: crate::GetSetGeneratorOrNone },
-	Function { function_prototype: TypeId },
-	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
-}
-
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum GetterSetter {
-	Getter,
-	Setter,
+	Arrow,
+	Function {
+		function_prototype: TypeId,
+	},
+	ClassConstructor {
+		// TODO constructor event
+	},
+	Method,
 }
 
 /// TODO needs improvement

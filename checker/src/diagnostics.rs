@@ -340,7 +340,7 @@ mod defined_errors_and_warnings {
 					}
 					FunctionCallingError::MissingArgument { parameter_position, call_site } => {
 						Diagnostic::PositionWithAdditionLabels {
-							reason: "Parameter missing".into(),
+							reason: "Missing argument".into(),
 							position: call_site,
 							kind: super::DiagnosticKind::Error,
 							labels: vec![(
@@ -356,7 +356,13 @@ mod defined_errors_and_warnings {
 							kind: super::DiagnosticKind::Error,
 						}
 					}
-					FunctionCallingError::NotCallable { calling } => todo!(),
+					FunctionCallingError::NotCallable { calling, call_site } => {
+						Diagnostic::Position {
+							reason: format!("Cannot call type {calling}"),
+							position: call_site,
+							kind: super::DiagnosticKind::Error,
+						}
+					}
 					//  Diagnostic::Position {
 					// 	reason: format!("Cannot call {}", calling),
 					// 	position: at,

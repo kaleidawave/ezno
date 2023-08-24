@@ -26,20 +26,21 @@ impl From<PropertyResult> for TypeId {
 	}
 }
 
+/// TODO type predicate based
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Property {
 	Value(TypeId),
-	Get(Box<FunctionType>),
-	Set(Box<FunctionType>),
-	GetAndSet(Box<FunctionType>, Box<FunctionType>),
+	Getter(Box<FunctionType>),
+	Setter(Box<FunctionType>),
+	GetterAndSetter(Box<FunctionType>, Box<FunctionType>),
 }
 impl Property {
 	pub(crate) fn as_get_type(&self) -> TypeId {
 		match self {
 			Property::Value(value) => *value,
-			Property::Get(func) => func.return_type,
-			Property::Set(_) => todo!(),
-			Property::GetAndSet(_, _) => todo!(),
+			Property::Getter(func) => func.return_type,
+			Property::Setter(_) => todo!(),
+			Property::GetterAndSetter(_, _) => todo!(),
 		}
 	}
 }
@@ -118,9 +119,9 @@ pub(crate) fn get_property(
 									Type::Object(..) => todo!(),
 								}
 							}
-							Property::Get(_) => todo!(),
-							Property::Set(_) => todo!(),
-							Property::GetAndSet(_, _) => todo!(),
+							Property::Getter(_) => todo!(),
+							Property::Setter(_) => todo!(),
+							Property::GetterAndSetter(_, _) => todo!(),
 						}
 					}
 					Logical::Or(_) => todo!(),
@@ -258,15 +259,16 @@ pub(crate) fn get_property(
 							}
 						}
 					}
-					Property::Get(func) => {
+					Property::Getter(func) => {
 						return match func.call(
-							&[],
+							crate::events::CalledWithNew::None,
 							Some(on),
 							None,
 							&None,
+							&[],
+							Span::NULL_SPAN,
 							types,
 							environment,
-							crate::events::CalledWithNew::None,
 						) {
 							Ok(res) => Some(PropertyResult::Getter(res.returned_type)),
 							Err(_) => {
@@ -274,8 +276,8 @@ pub(crate) fn get_property(
 							}
 						}
 					}
-					Property::Set(_) => todo!(),
-					Property::GetAndSet(_, _) => todo!(),
+					Property::Setter(_) => todo!(),
+					Property::GetterAndSetter(_, _) => todo!(),
 				}
 			}
 			Logical::Or(_) => todo!(),
@@ -456,9 +458,9 @@ pub(crate) fn set_property(
 						}
 					}
 				}
-				Property::Get(_) => todo!(),
-				Property::Set(_) => todo!(),
-				Property::GetAndSet(_, _) => todo!(),
+				Property::Getter(_) => todo!(),
+				Property::Setter(_) => todo!(),
+				Property::GetterAndSetter(_, _) => todo!(),
 			},
 			Logical::Or(_) => todo!(),
 			Logical::Implies(_, _) => todo!(),

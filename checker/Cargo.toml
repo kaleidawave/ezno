@@ -13,11 +13,11 @@ categories = ["compilers"]
 
 [features]
 default = []
-declaration-synthesis = []
+# declaration-synthesis = []
 ezno-parser = ["parser"]
 
 [dependencies]
-source-map = { version = "0.12.0", features = ["span-serialize"] }
+source-map = { version = "0.13", features = ["span-serialize"] }
 
 binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
 
@@ -43,9 +43,8 @@ serde = { version = "1.0", features = ["derive"] }
 erased-serde = "0.3"
 
 [dependencies.parser]
-git = "https://github.com/kaleidawave/ezno.git"
+path = "../parser"
 optional = true
-branch = "parser-fixes2"
 version = "0.0.3"
 features = ["extras"]
 package = "ezno-parser"

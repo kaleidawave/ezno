@@ -14,23 +14,24 @@ use super::{Constructor, FunctionNature, TypeStore};
 
 pub fn call_type_handle_errors<T: crate::FSResolver>(
 	ty: TypeId,
-	arguments: Vec<SynthesizedArgument>,
 	// Overwritten by .call, else look at binding
+	called_with_new: CalledWithNew,
 	this_argument: Option<TypeId>,
 	call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+	arguments: Vec<SynthesizedArgument>,
+	call_site: Span,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T>,
-	called_with_new: CalledWithNew,
-	call_site: Span,
 ) -> TypeId {
 	let result = call_type(
 		ty,
-		arguments,
+		called_with_new,
 		this_argument,
 		call_site_type_arguments,
+		arguments,
+		call_site.clone(),
 		environment,
 		&mut checking_data.types,
-		called_with_new,
 	);
 	match result {
 		Ok(FunctionCallResult { returned_type, warnings, called }) => {
@@ -65,17 +66,27 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 /// TODO this and aliases kindof broken
 pub fn call_type(
 	on: TypeId,
-	arguments: Vec<SynthesizedArgument>,
-	// Overwritten by .call, else look at binding
+	called_with_new: CalledWithNew,
 	this_argument: Option<TypeId>,
 	call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+	arguments: Vec<SynthesizedArgument>,
+	call_site: Span,
+	// Overwritten by .call, else look at binding
 	environment: &mut Environment,
 	types: &mut TypeStore,
-	called_with_new: CalledWithNew,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	if on == TypeId::ERROR_TYPE {
-		Ok(FunctionCallResult { returned_type: on, called: None, warnings: Default::default() })
-	} else if let Type::Function(function_type, variant) = types.get_type_by_id(on) {
+	if on == TypeId::ERROR_TYPE
+		|| arguments.iter().any(|arg| match arg {
+			SynthesizedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
+		}) {
+		return Ok(FunctionCallResult {
+			called: None,
+			returned_type: TypeId::ERROR_TYPE,
+			warnings: Vec::new(),
+		});
+	}
+
+	if let Type::Function(function_type, variant) = types.get_type_by_id(on) {
 		// TODO as Rc to avoid expensive clone
 		let function_type = function_type.clone();
 
@@ -97,14 +108,15 @@ pub fn call_type(
 				let result = function_type
 					.clone()
 					.call(
-						&arguments,
+						called_with_new,
 						this_argument,
 						call_site_type_arguments,
 						// TODO
 						&None,
+						&arguments,
+						call_site,
 						types,
 						environment,
-						called_with_new,
 					)?
 					.returned_type;
 
@@ -133,27 +145,29 @@ pub fn call_type(
 		}
 
 		function_type.call(
-			&arguments,
+			called_with_new,
 			this_argument,
 			call_site_type_arguments,
 			// TODO
 			&None,
+			&arguments,
+			call_site,
 			types,
 			environment,
-			called_with_new,
 		)
 	} else if let Some(constraint) = environment.get_poly_base(on, &types) {
 		match constraint {
 			PolyBase::Fixed { to, is_open_poly } => {
 				let result = call_type(
 					to,
-					// TODO clone
-					arguments.clone(),
+					called_with_new,
 					this_argument,
 					call_site_type_arguments,
+					// TODO clone
+					arguments.clone(),
+					call_site,
 					environment,
 					types,
-					called_with_new,
 				)?;
 
 				let with = arguments.into_boxed_slice();
@@ -224,9 +238,7 @@ pub fn call_type(
 						effects: Default::default(),
 						closed_over_references: Default::default(),
 						// TODO
-						kind: crate::types::FunctionKind::Arrow {
-							get_set: crate::GetSetGeneratorOrNone::None,
-						},
+						kind: crate::types::FunctionKind::Arrow,
 						constant_id: None,
 						id: FunctionId::NULL,
 					};
@@ -246,6 +258,14 @@ pub fn call_type(
 			}
 		}
 	} else {
-		panic!("Trying to call type")
+		return Err(vec![FunctionCallingError::NotCallable {
+			calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
+				on,
+				&environment.into_general_context(),
+				types,
+				false,
+			),
+			call_site,
+		}]);
 	}
 }

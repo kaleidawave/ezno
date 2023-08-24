@@ -107,13 +107,14 @@ pub fn evaluate_binary_operator(
 		SynthesizedArgument::NonSpread { ty: rhs, position: Span::NULL_SPAN },
 	];
 	let result = function.call(
-		arguments,
+		crate::events::CalledWithNew::None,
 		None,
 		None,
 		&None,
+		arguments,
+		Span::NULL_SPAN,
 		types,
 		environment,
-		crate::events::CalledWithNew::None,
 	);
 
 	result

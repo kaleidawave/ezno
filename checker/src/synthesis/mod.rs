@@ -14,14 +14,9 @@ pub mod functions;
 pub mod hoisting;
 pub mod interfaces;
 pub mod module;
-pub mod object_literal;
 pub mod statements;
-pub mod type_references;
+pub mod type_annotations;
 pub mod variables;
-
-pub(crate) use expressions::{synthesize_expression, synthesize_multiple_expression};
-pub(crate) use functions::synthesize_function;
-pub(crate) use statements::synthesize_statement;
 
 use block::synthesize_block;
 use parser::{
@@ -34,40 +29,46 @@ use crate::{
 	context::{Context, ContextType},
 	structures::operators::{BinaryOperator, UnaryOperator},
 	types::TypeStore,
-	Constant, TypeId,
+	Constant, Diagnostic, TypeId,
 };
 
-pub(crate) fn property_key_as_type<S: ContextType>(
-	property_key: &PropertyKey,
+pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
+	property_key: &PropertyKey<P>,
 	environment: &mut Context<S>,
 	types: &mut TypeStore,
 ) -> TypeId {
 	match property_key {
-		PropertyKey::StringLiteral(value, _, _) | PropertyKey::Ident(value, _, _) => {
+		PropertyKey::StringLiteral(value, _) | PropertyKey::Ident(value, _, _) => {
 			types.new_constant_type(Constant::String(value.clone()))
 		}
-		PropertyKey::NumberLiteral(number, _, _) => {
+		PropertyKey::NumberLiteral(number, _) => {
 			types.new_constant_type(Constant::Number(f64::from(*number).try_into().unwrap()))
 		}
-		PropertyKey::Computed(_, _, _) => todo!(),
+		PropertyKey::Computed(_, _) => todo!(),
 	}
 }
 
 impl From<parser::ParseError> for Diagnostic {
 	fn from(parse_error: parser::ParseError) -> Self {
-		Diagnostic::Position { reason: parse_error.reason, pos: parse_error.position }
+		Diagnostic::Position {
+			reason: parse_error.reason,
+			position: parse_error.position,
+			kind: crate::diagnostics::DiagnosticKind::Error,
+		}
 	}
 }
 
 /// TODO not all of these fit so design WIP
 pub fn parser_binary_operator_to_others(operator: ParserBinaryOperator) -> BinaryOperator {
 	match operator {
-		ParserBinaryOperator::StrictEqual => todo!(),
+		ParserBinaryOperator::StrictEqual => {
+			BinaryOperator::RelationOperator(crate::structures::operators::RelationOperator::Equal)
+		}
 		ParserBinaryOperator::StrictNotEqual => todo!(),
 		ParserBinaryOperator::Equal => todo!(),
 		ParserBinaryOperator::NotEqual => todo!(),
 		ParserBinaryOperator::Add => BinaryOperator::Add,
-		ParserBinaryOperator::Subtract => todo!(),
+		ParserBinaryOperator::Subtract => BinaryOperator::Subtract,
 		ParserBinaryOperator::Multiply => todo!(),
 		ParserBinaryOperator::Divide => todo!(),
 		ParserBinaryOperator::Modulo => todo!(),
@@ -95,5 +96,38 @@ pub fn parser_binary_operator_to_others(operator: ParserBinaryOperator) -> Binar
 
 /// TODO not all of these fit so design WIP
 pub fn parser_unary_operator_to_others(operator: ParserUnaryOperator) -> UnaryOperator {
-	todo!()
+	match operator {
+		ParserUnaryOperator::Plus => todo!(),
+		ParserUnaryOperator::Negation => UnaryOperator::Negation,
+		ParserUnaryOperator::BitwiseNot => todo!(),
+		ParserUnaryOperator::LogicalNot => todo!(),
+		ParserUnaryOperator::Await => todo!(),
+		ParserUnaryOperator::TypeOf => todo!(),
+		ParserUnaryOperator::Void => todo!(),
+		ParserUnaryOperator::Delete => todo!(),
+		ParserUnaryOperator::Yield => todo!(),
+		ParserUnaryOperator::DelegatedYield => todo!(),
+	}
+}
+
+pub enum Performs<'a> {
+	Block(&'a parser::Block),
+	Const(String),
+	None,
+}
+
+impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
+	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
+		match value {
+			Some(parser::types::AnnotationPerforms::PerformsConst {
+				performs_keyword,
+				identifier,
+			}) => Performs::Const(identifier.clone()),
+			Some(parser::types::AnnotationPerforms::PerformsStatements {
+				performs_keyword,
+				statements,
+			}) => Performs::Block(statements),
+			None => Performs::None,
+		}
+	}
 }
