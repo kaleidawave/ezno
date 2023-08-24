@@ -1,13 +1,17 @@
 use super::{Context, ContextId, ContextType};
-use crate::{types::TypeId, GeneralContext};
+use crate::{
+	types::{FunctionType, TypeId},
+	GeneralContext,
+};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
 pub type Root = Context<RootContext>;
 
-/// TODO could have fields in future
 #[derive(Debug)]
-pub struct RootContext;
+pub struct RootContext {
+	pub operators: Operators,
+}
 
 impl ContextType for RootContext {
 	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a> {
@@ -27,6 +31,14 @@ impl ContextType for RootContext {
 	}
 }
 
+#[derive(Default, Debug)]
+pub struct Operators {
+	pub add: Option<FunctionType>,
+	pub sub: Option<FunctionType>,
+	pub mul: Option<FunctionType>,
+	pub equal: Option<FunctionType>,
+}
+
 const HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
 
 impl Root {
@@ -38,7 +50,7 @@ impl Root {
 		// self.tys.extend(other.tys.into_iter());
 	}
 
-	pub fn new_with_primitive_references_and_ezno_magic() -> Self {
+	pub fn new_with_primitive_references() -> Self {
 		// TODO number might not be a reference at some point
 		let named_types = [
 			("number".to_owned(), TypeId::NUMBER_TYPE),
@@ -51,14 +63,15 @@ impl Root {
 			("Array".to_owned(), TypeId::ARRAY_TYPE),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),
-			// TODO
-			("Operators".to_owned(), TypeId::OPERATORS_SPECIAL),
 		];
 
 		let named_types = HashMap::from_iter(named_types);
 
 		Self {
-			context_type: RootContext,
+			context_type: RootContext {
+				// Controversial
+				operators: Default::default(),
+			},
 			context_id: ContextId::ROOT,
 			named_types,
 			variables: Default::default(),

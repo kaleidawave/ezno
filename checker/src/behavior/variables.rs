@@ -25,17 +25,17 @@ pub fn check_variable_initialization<T: crate::FSResolver>(
 
 	if let SubTypeResult::IsNotSubType(matches) = type_is_subtype {
 		let error = crate::diagnostics::TypeCheckError::AssignmentError(
-			AssignmentError::InvalidDeclaration {
+			AssignmentError::DoesNotMeetConstraint {
 				variable_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					variable_declared_type,
-					&environment.into_general_environment(),
+					&environment.into_general_context(),
 					&checking_data.types,
 					checking_data.settings.debug_types,
 				),
 				variable_site: basic_subtyping.position,
 				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
-					&environment.into_general_environment(),
+					&environment.into_general_context(),
 					&checking_data.types,
 					checking_data.settings.debug_types,
 				),

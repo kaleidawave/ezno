@@ -104,16 +104,12 @@ impl TypeStore {
 		id
 	}
 
-	pub(crate) fn get_type_by_id(&self, id: TypeId) -> &Type {
+	pub fn get_type_by_id(&self, id: TypeId) -> &Type {
 		&self.types[id.0 as usize]
 	}
 
-	pub(crate) fn debug_type(&self, id: TypeId) -> String {
-		format!("#{} {:?}", id.0, self.get_type_by_id(id))
-	}
-
 	pub fn new_any_parameter<S: ContextType>(&mut self, environment: &mut Context<S>) -> TypeId {
-		if let GeneralContext::Syntax(env) = environment.into_general_environment() {
+		if let GeneralContext::Syntax(env) = environment.into_general_context() {
 			// TODO not sure about this:
 			if environment.context_type.is_dynamic_boundary() {
 				crate::utils::notify!("TODO is context different in the param synthesis?");
@@ -144,12 +140,12 @@ impl TypeStore {
 		self.types.into_iter().enumerate().map(|(idx, ty)| (TypeId(idx as u16), ty)).collect()
 	}
 
-	pub fn new_function_type_reference(
+	pub fn new_function_type_annotation(
 		&mut self,
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
 		parameters: crate::types::functions::SynthesizedParameters,
 		return_type: TypeId,
-		span: source_map::Span,
+		declared_at: source_map::Span,
 		effects: Vec<crate::events::Event>,
 		constant_id: Option<String>,
 	) -> TypeId {
@@ -162,11 +158,9 @@ impl TypeStore {
 				// TODO
 				closed_over_references: Default::default(),
 				// TODO
-				kind: crate::types::FunctionKind::Arrow {
-					get_set: crate::GetSetGeneratorOrNone::None,
-				},
+				kind: crate::types::FunctionKind::Arrow,
 				constant_id,
-				id: crate::FunctionId(span),
+				id: crate::FunctionId(declared_at.source, declared_at.start),
 			},
 			super::FunctionNature::Source(None),
 		))

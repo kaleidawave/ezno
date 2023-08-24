@@ -121,6 +121,9 @@ pub enum Event {
 		/// This is also for the specialization (somehow)
 		referenced_in_scope_as: TypeId,
 	},
+	CreatesClosure {
+		id: TypeId,
+	},
 	// Registration(Registration),
 }
 
@@ -172,9 +175,9 @@ pub(crate) fn apply_event(
 				Property::Value(new) => {
 					Property::Value(specialize(new, type_arguments, environment, types))
 				}
-				Property::Get(_) => todo!(),
-				Property::Set(_) => todo!(),
-				Property::GetAndSet(_, _) => todo!(),
+				Property::Getter(_) => todo!(),
+				Property::Setter(_) => todo!(),
+				Property::GetterAndSetter(_, _) => todo!(),
 			};
 
 			// crate::utils::notify!(
@@ -185,7 +188,7 @@ pub(crate) fn apply_event(
 			// );
 
 			if initialization {
-				environment.register_property(on, under, new);
+				environment.register_property(on, under, new, true);
 			} else {
 				match new {
 					Property::Value(new) => {
@@ -199,9 +202,9 @@ pub(crate) fn apply_event(
 							);
 						}
 					}
-					Property::Get(_) => todo!(),
-					Property::Set(_) => todo!(),
-					Property::GetAndSet(_, _) => todo!(),
+					Property::Getter(_) => todo!(),
+					Property::Setter(_) => todo!(),
+					Property::GetterAndSetter(_, _) => todo!(),
 				}
 			}
 		}
@@ -236,12 +239,14 @@ pub(crate) fn apply_event(
 				CallingTiming::Synchronous => {
 					let result = crate::types::calling::call_type(
 						on,
+						called_with_new,
+						None,
+						None,
 						with,
-						None,
-						None,
+						// TODO
+						source_map::Span::NULL_SPAN,
 						environment,
 						types,
-						called_with_new,
 					);
 					match result {
 						Ok(result) => {
@@ -325,6 +330,7 @@ pub(crate) fn apply_event(
 		Event::Repeatedly { n, with } => {
 			todo!()
 		}
+		Event::CreatesClosure { id } => {}
 	}
 	None
 }

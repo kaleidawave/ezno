@@ -1,75 +1,67 @@
-// use checker::{Diagnostic as CheckerDiagnostic, ErrorWarningInfoHandler};
+use std::iter;
+
+use checker::SourceId;
 use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	files::Files,
 	term::{emit, Config},
 };
-use parser::{source_map::FileSystem, Span};
-
-/// This actually exists in the checker
-#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
-pub struct TempDiagnostic {
-	pub label: String,
-	pub position: Span,
-	pub kind: ErrorWarningInfo,
-}
-
-#[allow(unused)]
-#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
-pub enum ErrorWarningInfo {
-	Error,
-	Warning,
-	Info,
-}
+use parser::source_map::FileSystem;
 
 pub(crate) fn emit_ezno_diagnostic(
+	diagnostic: checker::Diagnostic,
 	fs: &impl FileSystem,
-	error: crate::error_handling::TempDiagnostic,
+	source_id: SourceId,
 ) -> Result<(), codespan_reporting::files::Error> {
-	let reason = error.label;
-	let id = error.position.source_id;
-	let range = std::ops::Range::from(error.position);
-
-	let diagnostic = Diagnostic {
-		severity: match error.kind {
-			ErrorWarningInfo::Error => Severity::Error,
-			ErrorWarningInfo::Warning => Severity::Warning,
-			ErrorWarningInfo::Info => Severity::Note,
-		},
-		code: None,
-		message: Default::default(),
-		labels: vec![Label::primary(id, range).with_message(reason)],
-		notes: Vec::default(),
-	};
-
-	emit_diagnostic(&fs.into_code_span_store(), &diagnostic)
-}
-
-pub(crate) fn emit_parser_error(
-	source: String,
-	error: parser::ParseError,
-) -> Result<(), codespan_reporting::files::Error> {
-	use codespan_reporting::files::SimpleFile;
-
-	let simple_file = SimpleFile::new("INPUT", source);
-	let label =
-		Label::primary((), std::ops::Range::from(error.position)).with_message(error.reason);
-	emit_diagnostic(
-		&simple_file,
-		&Diagnostic {
-			severity: Severity::Error,
+	let diagnostic = match diagnostic {
+		checker::Diagnostic::Global { reason, kind } => Diagnostic {
+			severity: ezno_diagnostic_to_severity(kind),
 			code: None,
-			message: Default::default(),
-			labels: vec![label],
+			message: reason,
+			labels: Vec::new(),
 			notes: Vec::default(),
 		},
-	)
+		checker::Diagnostic::Position { reason, position, kind } => Diagnostic {
+			severity: ezno_diagnostic_to_severity(kind),
+			code: None,
+			message: Default::default(),
+			labels: vec![Label::primary(source_id, position).with_message(reason)],
+			notes: Vec::default(),
+		},
+		checker::Diagnostic::PositionWithAdditionLabels { reason, position, labels, kind } => {
+			let (labels, notes) =
+				labels.into_iter().partition::<Vec<_>, _>(|(_, value)| value.is_some());
+
+			Diagnostic {
+				severity: ezno_diagnostic_to_severity(kind),
+				code: None,
+				message: Default::default(),
+				labels: iter::once(Label::primary(source_id, position).with_message(reason))
+					.chain(labels.into_iter().map(|(message, position)| {
+						let position = position.unwrap();
+						Label::secondary(source_id, position).with_message(message)
+					}))
+					.collect(),
+				notes: notes.into_iter().map(|(message, _)| message).collect(),
+			}
+		}
+	};
+
+	emit_diagnostic(&diagnostic, &fs.into_code_span_store())
+}
+
+fn ezno_diagnostic_to_severity(kind: checker::DiagnosticKind) -> Severity {
+	match kind {
+		checker::DiagnosticKind::Error => Severity::Error,
+		checker::DiagnosticKind::Warning => Severity::Warning,
+		checker::DiagnosticKind::Info => Severity::Note,
+	}
 }
 
 #[cfg(target_family = "wasm")]
 fn emit_diagnostic<'files, F: Files<'files>>(
-	files: &'files F,
 	diagnostic: &Diagnostic<<F as Files<'files>>::FileId>,
+	files: &'files F,
 ) -> Result<(), codespan_reporting::files::Error> {
 	use crate::utilities::print_to_cli;
 	use codespan_reporting::term::termcolor::Buffer;
@@ -85,8 +77,8 @@ fn emit_diagnostic<'files, F: Files<'files>>(
 
 #[cfg(not(target_family = "wasm"))]
 fn emit_diagnostic<'files, F: Files<'files>>(
-	files: &'files F,
 	diagnostic: &Diagnostic<<F as Files<'files>>::FileId>,
+	files: &'files F,
 ) -> Result<(), codespan_reporting::files::Error> {
 	use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 

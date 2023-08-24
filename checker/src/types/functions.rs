@@ -19,24 +19,23 @@ pub struct FunctionType {
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
 
-	/// TODO somewhat temp
+	/// TODO temp
 	pub kind: FunctionKind,
 
 	pub id: FunctionId,
 }
 
-/// Decides what to do with `new`
+/// TODO as generics
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionKind {
-	Arrow { get_set: crate::GetSetGeneratorOrNone },
-	Function { function_prototype: TypeId },
-	ClassConstructor { class_prototype: TypeId, class_constructor: TypeId },
-}
-
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum GetterSetter {
-	Getter,
-	Setter,
+	Arrow,
+	Function {
+		function_prototype: TypeId,
+	},
+	ClassConstructor {
+		// TODO constructor event
+	},
+	Method,
 }
 
 /// TODO needs improvement
@@ -59,6 +58,8 @@ pub struct SynthesizedParameter {
 	pub name: String,
 	pub ty: TypeId,
 	pub position: Span,
+	/// For optional parameters this is [TypeId::UNDEFINED_TYPE] else some type
+	pub missing_value: Option<TypeId>,
 }
 
 /// **Note that the [Type] here is not array like**
@@ -77,7 +78,6 @@ pub struct SynthesizedRestParameter {
 pub struct SynthesizedParameters {
 	// Even though these vectors are the same type, the latter allows for elided arguments
 	pub parameters: Vec<SynthesizedParameter>,
-	pub optional_parameters: Vec<SynthesizedParameter>,
 	pub rest_parameter: Option<SynthesizedRestParameter>,
 }
 
@@ -132,13 +132,13 @@ pub struct SynthesizedParameters {
 impl SynthesizedParameters {
 	// TODO should be aware of undefined in optionals possibly
 	pub(crate) fn get_type_constraint_at_index(&self, idx: usize) -> Option<TypeId> {
-		self.parameters
-			.get(idx)
-			.map(|param| param.ty)
-			.or_else(|| {
-				self.optional_parameters.get(self.parameters.len() + idx).map(|param| param.ty)
-			})
-			.or(self.rest_parameter.as_ref().map(|param| param.item_type))
+		if let Some(ref param) = self.parameters.get(idx) {
+			Some(param.ty)
+		} else if let Some(ref rest) = self.rest_parameter {
+			Some(rest.item_type)
+		} else {
+			None
+		}
 	}
 }
 

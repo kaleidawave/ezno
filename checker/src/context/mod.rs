@@ -11,6 +11,8 @@ pub mod store;
 pub use root::Root;
 
 pub(crate) use bases::InferenceBoundary;
+pub(crate) use root::Operators;
+
 use source_map::Span;
 
 use crate::{
@@ -20,8 +22,8 @@ use crate::{
 	structures::variables::VariableMutability,
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
-		cast_as_boolean, properties::Property, Constant, Constructor, FunctionKind, FunctionType,
-		PolyNature, PolyPointer, Type, TypeId, TypeStore,
+		cast_as_boolean, properties::Property, Constructor, FunctionKind, FunctionType, PolyNature,
+		PolyPointer, Type, TypeId, TypeStore,
 	},
 	utils::{EnforcedOr, EnforcedOrExt},
 	CheckingData, FunctionId, TruthyFalsy, Variable, VariableId,
@@ -29,7 +31,10 @@ use crate::{
 
 use map_vec::Map;
 use std::{
-	collections::{hash_map, HashMap},
+	collections::{
+		hash_map::{self, Entry},
+		HashMap,
+	},
 	hash::Hash,
 	iter::{self},
 	mem,
@@ -167,6 +172,7 @@ pub struct Context<T: ContextType> {
 }
 
 /// TODO better place
+/// TODO what about root
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub(super) enum CanUseThis {
 	NotYetSuperToBeCalled { type_to_pull_properties_off: FunctionId },
@@ -174,6 +180,7 @@ pub(super) enum CanUseThis {
 	Yeah { this_ty: TypeId },
 }
 
+#[derive(Clone)]
 pub enum VariableRegisterBehavior {
 	Register {
 		mutability: VariableMutability,
@@ -281,10 +288,109 @@ impl<T: ContextType> Context<T> {
 		// }
 	}
 
-	pub(crate) fn debug(&self) {
+	/// Declares a new variable in the environment and returns the new variable
+	///
+	/// **THIS IS USED FOR HOISTING, DOES NOT SET THE VALUE**
+	/// TODO maybe name: VariableDeclarator to include destructuring ...?
+	/// TODO hoisted vs declared
+	pub fn register_variable<'b>(
+		&mut self,
+		name: &'b str,
+		declared_at: Span,
+		behavior: VariableRegisterBehavior,
+		types: &mut TypeStore,
+	) -> Result<TypeId, CannotRedeclareVariable<'b>> {
+		let id = VariableId(declared_at.source, declared_at.start);
+		self.variable_names.insert(id, name.to_owned());
+
+		let (existing_variable, ty) = match behavior {
+			VariableRegisterBehavior::Declare { base } => {
+				return self.declare_variable(name, declared_at, base, types);
+			}
+			VariableRegisterBehavior::CatchVariable { ty } => {
+				// TODO
+				let kind = VariableMutability::Constant;
+				let variable = Variable { declared_at, mutability: kind };
+				self.variables.insert(name.to_owned(), variable);
+				self.variable_current_value.insert(id, ty);
+				(None, ty)
+			}
+			VariableRegisterBehavior::Register { mutability } => {
+				let variable = Variable { mutability, declared_at };
+				(self.variables.insert(name.to_owned(), variable), TypeId::ANY_TYPE)
+			}
+			VariableRegisterBehavior::FunctionParameter { annotation } => {
+				// TODO maybe store separately
+
+				// TODO via a setting
+				const FUNCTION_PARAM_MUTABLE: bool = true;
+				let mutability = if FUNCTION_PARAM_MUTABLE {
+					VariableMutability::Mutable { reassignment_constraint: annotation }
+				} else {
+					VariableMutability::Constant
+				};
+				let variable = Variable { mutability, declared_at };
+				let existing_variable = self.variables.insert(name.to_owned(), variable);
+				let parameter_ty = if let Some(annotation) = annotation {
+					if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
+						// TODO this can only be used once, two parameters cannot have same type as the can
+						// also not be equal thing to be inline with ts...
+						annotation
+					} else {
+						types.register_type(Type::RootPolyType(
+							crate::types::PolyNature::Parameter {
+								fixed_to: PolyPointer::Fixed(annotation),
+							},
+						))
+					}
+				} else {
+					types.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
+						fixed_to: PolyPointer::Inferred(crate::context::InferenceBoundary(
+							self.context_id,
+						)),
+					}))
+				};
+
+				self.variable_current_value.insert(id, parameter_ty);
+				(existing_variable, parameter_ty)
+			}
+		};
+
+		if existing_variable.is_none() {
+			Ok(ty)
+		} else {
+			Err(CannotRedeclareVariable { name })
+		}
+	}
+
+	pub fn register_variable_handle_error<U: crate::FSResolver>(
+		&mut self,
+		name: &str,
+		declared_at: Span,
+		behavior: VariableRegisterBehavior,
+		checking_data: &mut CheckingData<U>,
+	) -> TypeId {
+		match self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
+		{
+			Ok(ty) => ty,
+			Err(_) => {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::CannotRedeclareVariable {
+						name: name.to_owned(),
+						position: declared_at,
+					},
+				);
+				TypeId::ERROR_TYPE
+			}
+		}
+	}
+
+	pub(crate) fn debug(&self) -> String {
+		use std::fmt::Write;
 		const INDENT: &str = "";
 
 		let enumerate = self.parents_iter().collect::<Vec<_>>().into_iter().rev().enumerate();
+		let mut buf = String::new();
 		for (indent, parent) in enumerate {
 			let indent = INDENT.repeat(indent);
 
@@ -306,95 +412,17 @@ impl<T: ContextType> Context<T> {
 				"root"
 			};
 
-			println!("{}Context#{} - {}", indent, get_on_ctx!(parent.context_id.clone()).0, ty);
-			println!("{}> {} types, {} variables", indent, types, variables);
+			write!(buf, "{}Context#{} - {}", indent, get_on_ctx!(parent.context_id.clone()).0, ty)
+				.unwrap();
+			write!(buf, "{}> {} types, {} variables", indent, types, variables).unwrap();
 			if let GeneralContext::Syntax(syn) = parent {
-				println!("{}> Events:", indent);
+				write!(buf, "{}> Events:", indent).unwrap();
 				for event in syn.context_type.events.iter() {
-					println!("{}   {:?}", indent, event);
+					write!(buf, "{}   {:?}", indent, event).unwrap();
 				}
 			}
 		}
-	}
-
-	pub fn debug_type(&self, id: TypeId, types: &TypeStore) -> String {
-		types.debug_type(id)
-	}
-
-	/// Declares a new variable in the environment and returns the new variable
-	///
-	/// **THIS IS USED FOR HOISTING, DOES NOT SET THE VALUE**
-	/// TODO maybe name: VariableDeclarator to include destructuring ...?
-	/// TODO hoisted vs declared
-	pub fn register_variable<'a>(
-		&mut self,
-		name: &'a str,
-		id: VariableId,
-		behavior: VariableRegisterBehavior,
-		types: &mut TypeStore,
-	) -> Result<TypeId, CannotRedeclareVariable<'a>> {
-		let (existing_variable, ty) = match behavior {
-			VariableRegisterBehavior::Declare { base } => {
-				// TODO
-				let kind = VariableMutability::Constant;
-				let variable = Variable { declared_at: id.0.clone(), mutability: kind };
-				self.variable_names.insert(id.clone(), name.to_owned());
-				let existing_variable = self.variables.insert(name.to_owned(), variable);
-				let open_poly = types.register_type(Type::RootPolyType(PolyNature::Open(base)));
-				self.variable_current_value.insert(id, open_poly);
-				(existing_variable, open_poly)
-			}
-			VariableRegisterBehavior::CatchVariable { ty } => {
-				// TODO
-				let kind = VariableMutability::Constant;
-				let variable = Variable { declared_at: id.0.clone(), mutability: kind };
-				self.variables.insert(name.to_owned(), variable);
-				self.variable_names.insert(id.clone(), name.to_owned());
-				self.variable_current_value.insert(id, ty);
-				(None, ty)
-			}
-			VariableRegisterBehavior::Register { mutability } => {
-				let variable = Variable { mutability, declared_at: id.0.clone() };
-				self.variable_names.insert(id, name.to_owned());
-				(self.variables.insert(name.to_owned(), variable), TypeId::ANY_TYPE)
-			}
-			VariableRegisterBehavior::FunctionParameter { annotation } => {
-				// TODO maybe store separately
-
-				// TODO via a setting
-				const FUNCTION_PARAM_MUTABLE: bool = true;
-				let mutability = if FUNCTION_PARAM_MUTABLE {
-					VariableMutability::Mutable { reassignment_constraint: annotation }
-				} else {
-					VariableMutability::Constant
-				};
-				let variable = Variable { mutability, declared_at: id.0.clone() };
-				self.variable_names.insert(id.clone(), name.to_owned());
-				let existing_variable = self.variables.insert(name.to_owned(), variable);
-				let parameter_ty = if let Some(annotation) = annotation {
-					if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
-						annotation
-					} else {
-						types.register_type(Type::RootPolyType(PolyNature::Parameter {
-							fixed_to: PolyPointer::Fixed(annotation),
-						}))
-					}
-				} else {
-					types.register_type(Type::RootPolyType(PolyNature::Parameter {
-						fixed_to: PolyPointer::Inferred(InferenceBoundary(self.context_id)),
-					}))
-				};
-
-				self.variable_current_value.insert(id, parameter_ty);
-				(existing_variable, parameter_ty)
-			}
-		};
-
-		if existing_variable.is_none() {
-			Ok(ty)
-		} else {
-			Err(CannotRedeclareVariable { name })
-		}
+		buf
 	}
 
 	/// Finds the constraint of poly types
@@ -518,7 +546,13 @@ impl<T: ContextType> Context<T> {
 								// TODO
 								Some(PolyBase::Fixed { to: func.return_type, is_open_poly })
 							} else {
-								unreachable!("Getting function on {}", types.debug_type(on));
+								let on = crate::types::printing::print_type(
+									on,
+									types,
+									&self.into_general_context(),
+									true,
+								);
+								unreachable!("Getting function on {}", on);
 							}
 						}
 					}
@@ -529,8 +563,6 @@ impl<T: ContextType> Context<T> {
 					// TODO needs better primitives for controlling this
 					let on_constraint = self.get_poly_base(on, types);
 					let property_constraint = self.get_poly_base(under, types);
-
-					crate::utils::notify!("{:?} {:?}", on_constraint, property_constraint);
 
 					// Bad
 					let is_open_poly =
@@ -588,7 +620,7 @@ impl<T: ContextType> Context<T> {
 
 	/// Only on current environment, doesn't walk
 	fn get_this_constraint(&self) -> Option<TypeId> {
-		match self.into_general_environment() {
+		match self.into_general_context() {
 			GeneralContext::Syntax(syn) => match &syn.context_type.scope {
 				// Special handling here
 				Scope::InterfaceEnvironment { this_constraint }
@@ -650,15 +682,17 @@ impl<T: ContextType> Context<T> {
 	pub(crate) fn get_fact_about_type<'a, TData: Copy, TResult>(
 		&'a self,
 		on: TypeId,
-		resolver: &impl Fn(GeneralContext<'a>, TypeId, TData) -> Option<TResult>,
+		resolver: &impl Fn(GeneralContext<'a>, &TypeStore, TypeId, TData) -> Option<TResult>,
 		data: TData,
 		types: &TypeStore,
 	) -> Option<Logical<TResult>> {
 		match types.get_type_by_id(on) {
 			Type::Function(..) => todo!(),
 			Type::AliasTo { to, .. } => {
-				let property_on_self =
-					self.parents_iter().find_map(|env| resolver(env, on, data)).map(Logical::Pure);
+				let property_on_self = self
+					.parents_iter()
+					.find_map(|env| resolver(env, types, on, data))
+					.map(Logical::Pure);
 
 				property_on_self.or_else(|| self.get_fact_about_type(*to, resolver, data, types))
 			}
@@ -688,12 +722,23 @@ impl<T: ContextType> Context<T> {
 					self.get_fact_about_type(constraint.get_type(), resolver, data, types)
 				}
 			}
-			Type::Object(..) | Type::NamedRooted { .. } => {
-				self.parents_iter().find_map(|env| resolver(env, on, data)).map(Logical::Pure)
-			}
+			Type::Object(..) | Type::NamedRooted { .. } => self
+				.parents_iter()
+				.find_map(|env| resolver(env, types, on, data))
+				.map(Logical::Pure)
+				.or_else(|| {
+					if let Some(prototype) = self
+						.parents_iter()
+						.find_map(|ctx| get_on_ctx!(ctx.prototypes.get(&on)).copied())
+					{
+						self.get_fact_about_type(prototype, resolver, data, types)
+					} else {
+						None
+					}
+				}),
 			Type::Constant(cst) => self
 				.parents_iter()
-				.find_map(|env| resolver(env, on, data))
+				.find_map(|env| resolver(env, types, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
 					self.get_fact_about_type(cst.get_backing_type_id(), resolver, data, types)
@@ -718,27 +763,36 @@ impl<T: ContextType> Context<T> {
 	) -> Option<Logical<Property>> {
 		fn get_property(
 			env: GeneralContext,
+			types: &TypeStore,
 			on: TypeId,
-			under: (&TypeStore, &Constant),
+			expecting: TypeId,
 		) -> Option<Property> {
 			get_on_ctx!(env.properties.get(&on)).and_then(|properties| {
 				// TODO rev is important
 				properties.iter().rev().find_map(|(key, value)| {
-					let key_ty = under.0.get_type_by_id(*key);
-					if let Type::Constant(cst) = key_ty {
-						(cst == under.1).then_some(value.clone())
+					let a = types.get_type_by_id(expecting);
+					if *key == expecting {
+						Some(value.clone())
+					} else if let (Type::Constant(key_cst), Type::Constant(key_cst2)) =
+						(types.get_type_by_id(*key), a)
+					{
+						(key_cst == key_cst2).then_some(value.clone())
 					} else {
-						todo!("key {key:?} returned {key_ty:?}")
+						None
+						// TODO temp position
+						// fn reduce(on: TypeId, store: &TypeStore) -> TypeId {
+						// 	if let Type::N
+						// }
+
+						// todo!("key {key:?} returned {key_ty:?}")
 					}
 				})
 			})
 		}
 
-		if let Type::Constant(under) = types.get_type_by_id(under) {
-			self.get_fact_about_type(on, &get_property, (types, &under), types)
-		} else {
-			todo!()
-		}
+		// TODO need actual method for these, aka lowest
+		let under = self.get_poly_base(under, types).map(|ty| ty.get_type()).unwrap_or(under);
+		self.get_fact_about_type(on, &get_property, under, types)
 	}
 
 	/// TODO temp
@@ -752,8 +806,10 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).cloned()
 	}
 
+	/// TODO needs to work in sibling scopes.
+	/// TODO explain why creates a new type every time
+	/// && !self.is_immutable(constraint_of_this)
 	pub(crate) fn get_value_of_this(&mut self, types: &mut TypeStore) -> TypeId {
-		// && !self.is_immutable(constraint_of_this)
 		match self.can_use_this {
 			CanUseThis::NotYetSuperToBeCalled { .. } => todo!("Cannot use super before call"),
 			CanUseThis::ConstructorCalled { this_ty } => this_ty,
@@ -763,8 +819,6 @@ impl<T: ContextType> Context<T> {
 					unreachable!()
 				}
 
-				todo!();
-
 				// let mut last = None;
 				// for parent in self.parents_iter() {
 				// 	if let Some(constraint) = get_on_ctx!(parent.get_this_constraint()) {
@@ -773,7 +827,7 @@ impl<T: ContextType> Context<T> {
 				// 	}
 				// }
 
-				// let reference = RootReference::This;
+				let reference = RootReference::This;
 
 				// let (value, reflects_dependency) = if let Some(boundary) = crossed_boundary {
 				// 	let this_inferred = constraint_of_this.is_none();
@@ -789,14 +843,34 @@ impl<T: ContextType> Context<T> {
 				// 	(constraint_of_this.unwrap(), None)
 				// };
 
-				// if let Some(events) = self.context_type.get_events() {
-				// 	events.push(Event::ReadsReference {
-				// 		reference: RootReference::This,
-				// 		reflects_dependency,
-				// 	});
-				// }
+				if let Some(events) = self.context_type.get_events() {
+					for event in events.iter() {
+						// TODO explain why don't need to detect sets
+						if let Event::ReadsReference {
+							reference: other_reference,
+							reflects_dependency: Some(dep),
+						} = event
+						{
+							if reference == RootReference::This {
+								return *dep;
+							}
+						}
+					}
+				}
 
-				// value
+				// TODO temp
+				let poly_nature =
+					PolyNature::ParentScope { reference, based_on: PolyPointer::Fixed(this_ty) };
+				let ty = types.register_type(Type::RootPolyType(poly_nature));
+
+				if let Some(events) = self.context_type.get_events() {
+					events.push(Event::ReadsReference {
+						reference: RootReference::This,
+						reflects_dependency: Some(ty),
+					});
+				}
+
+				ty
 			}
 		}
 	}
@@ -805,7 +879,7 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter()
 			.find_map(|env| get_on_ctx!(env.variable_names.get(id)))
 			.cloned()
-			.unwrap()
+			.unwrap_or_else(|| "error".to_owned())
 	}
 
 	pub(crate) fn get_value_of_variable(&self, id: VariableId) -> TypeId {
@@ -817,14 +891,14 @@ impl<T: ContextType> Context<T> {
 			found
 		} else {
 			panic!(
-				"Could not find {} ({:?}) (used before assignment)",
+				"Could not find '{}' ({:?}) (used before assignment)",
 				self.get_variable_name(&id),
 				id
 			)
 		}
 	}
 
-	pub fn into_general_environment(&self) -> GeneralContext {
+	pub fn into_general_context(&self) -> GeneralContext {
 		T::into_parent_or_root(self)
 	}
 
@@ -906,6 +980,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
+	/// Use
 	pub fn new_function<
 		U: crate::FSResolver,
 		V: crate::behavior::functions::RegisterBehavior,
@@ -913,7 +988,7 @@ impl<T: ContextType> Context<T> {
 	>(
 		&mut self,
 		checking_data: &mut CheckingData<U>,
-		func: &F,
+		function: &F,
 		register_behavior: V,
 	) -> V::Return {
 		let mut func_env = self.new_lexical_environment(Scope::Function {
@@ -924,26 +999,26 @@ impl<T: ContextType> Context<T> {
 			constructor_on: None,
 		});
 
-		if func.is_async() {
+		if function.is_async() {
 			todo!()
 		}
 
-		let type_parameters = func.type_parameters(&mut func_env, checking_data);
+		let type_parameters = function.type_parameters(&mut func_env, checking_data);
 
-		if let Some(_) = func.this_constraint(&mut func_env, checking_data) {
+		if let Some(_) = function.this_constraint(&mut func_env, checking_data) {
 			todo!();
 		} else {
 			// TODO inferred
 		}
 
 		// TODO could reuse existing if hoisted
-		let synthesized_parameters = func.parameters(&mut func_env, checking_data);
+		let synthesized_parameters = function.parameters(&mut func_env, checking_data);
 
-		let return_type_annotation = func.return_type_annotation(&mut func_env, checking_data);
+		let return_type_annotation = function.return_type_annotation(&mut func_env, checking_data);
 
 		// TODO temp
-		let returned = if !func.is_declare() {
-			func.body(&mut func_env, checking_data);
+		let returned = if !function.is_declare() {
+			function.body(&mut func_env, checking_data);
 
 			// TODO check with annotation
 			let returned = func_env
@@ -979,13 +1054,13 @@ impl<T: ContextType> Context<T> {
 						TypeCheckError::ReturnedTypeDoesNotMatch {
 							expected_return_type: TypeStringRepresentation::from_type_id(
 								expected_return_type,
-								&func_env.into_general_environment(),
+								&func_env.into_general_context(),
 								&checking_data.types,
 								false,
 							),
 							returned_type: TypeStringRepresentation::from_type_id(
 								returned,
-								&func_env.into_general_environment(),
+								&func_env.into_general_context(),
 								&checking_data.types,
 								false,
 							),
@@ -1014,7 +1089,6 @@ impl<T: ContextType> Context<T> {
 			}
 		}
 
-		let get_set = func.get_set_generator_or_none();
 		let func_ty = FunctionType {
 			type_parameters,
 			return_type: returned,
@@ -1022,11 +1096,18 @@ impl<T: ContextType> Context<T> {
 			closed_over_references,
 			parameters: synthesized_parameters,
 			constant_id: None,
-			kind: FunctionKind::Arrow { get_set },
-			id: func.id(),
+			kind: FunctionKind::Arrow,
+			id: function.id(),
 		};
 
-		register_behavior.func(func, func_ty, self, &mut checking_data.types)
+		let id = register_behavior.function(function, func_ty, self, &mut checking_data.types);
+
+		if let Some(events) = self.context_type.get_events() {
+			// TODO create function object
+			// events.push(Event::CreatesClosure { id })
+		}
+
+		id
 	}
 
 	pub fn new_try_context<U: crate::FSResolver>(
@@ -1195,7 +1276,7 @@ impl<T: ContextType> Context<T> {
 		let mut environment = Environment {
 			context_type: Syntax {
 				scope: environment.scope,
-				parent: self.into_general_environment(),
+				parent: self.into_general_context(),
 				events: Default::default(),
 				async_events: Default::default(),
 				closed_over_references: Default::default(),
@@ -1338,11 +1419,11 @@ impl<T: ContextType> Context<T> {
 	pub fn new_object(&mut self, types: &mut TypeStore, prototype: Option<TypeId>) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-		if prototype.is_some() {
-			todo!();
+		if let Some(prototype) = prototype {
+			self.prototypes.insert(ty, prototype);
 		}
 
-		if let GeneralContext::Syntax(env) = self.into_general_environment() {
+		if let GeneralContext::Syntax(env) = self.into_general_context() {
 			let under_dyn = env.parents_iter().any(
 				|ctx| matches!(ctx, GeneralContext::Syntax(syn) if syn.context_type.is_dynamic_boundary()),
 			);
@@ -1361,7 +1442,7 @@ impl<T: ContextType> Context<T> {
 	///
 	/// TODO should be private
 	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext> + '_ {
-		iter::successors(Some(self.into_general_environment()), |env| {
+		iter::successors(Some(self.into_general_context()), |env| {
 			if let GeneralContext::Syntax(syn) = env {
 				Some(syn.get_parent())
 			} else {
@@ -1385,16 +1466,24 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO temp
-	pub fn register_property(&mut self, on: TypeId, under: TypeId, to: Property) {
+	pub fn register_property(
+		&mut self,
+		on: TypeId,
+		under: TypeId,
+		to: Property,
+		object_literal: bool,
+	) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.properties.entry(on).or_default().push((under, to.clone()));
-		self.context_type.get_events().unwrap().push(Event::Setter {
-			on,
-			under,
-			new: to,
-			reflects_dependency: None,
-			initialization: true,
-		});
+		if object_literal {
+			self.context_type.get_events().unwrap().push(Event::Setter {
+				on,
+				under,
+				new: to,
+				reflects_dependency: None,
+				initialization: true,
+			});
+		}
 	}
 
 	pub fn new_explicit_type_parameter(
@@ -1493,6 +1582,29 @@ impl<T: ContextType> Context<T> {
 			}
 		}
 	}
+
+	/// TODO remove types
+	pub(crate) fn declare_variable<'a>(
+		&mut self,
+		name: &'a str,
+		declared_at: Span,
+		variable_ty: TypeId,
+		types: &mut TypeStore,
+	) -> Result<TypeId, CannotRedeclareVariable<'a>> {
+		let id = crate::VariableId(declared_at.source, declared_at.start);
+
+		let kind = VariableMutability::Constant;
+		let variable = Variable { declared_at, mutability: kind };
+		let entry = self.variables.entry(name.to_owned());
+		if let Entry::Vacant(vacant) = entry {
+			vacant.insert(variable);
+			let open_poly = types.register_type(Type::RootPolyType(PolyNature::Open(variable_ty)));
+			self.variable_current_value.insert(id, open_poly);
+			Ok(open_poly)
+		} else {
+			Err(CannotRedeclareVariable { name })
+		}
+	}
 }
 
 /// TODO improve
@@ -1514,17 +1626,19 @@ pub enum AssignmentError {
 	Constant(Span),
 	VariableNotFound {
 		variable: String,
+		assignment_position: Span,
 	},
-	DoesNotMatchRestrictionType {
-		variable_type: TypeStringRepresentation,
-		variable_declared_at: Span,
-	},
-	// TODO merge with above
-	InvalidDeclaration {
+	/// Covers both assignment and declaration
+	DoesNotMeetConstraint {
 		variable_type: TypeStringRepresentation,
 		variable_site: Span,
 		value_type: TypeStringRepresentation,
 		value_site: Span,
+	},
+	PropertyConstraint {
+		property_type: TypeStringRepresentation,
+		value_type: TypeStringRepresentation,
+		assignment_position: Span,
 	},
 }
 

@@ -37,6 +37,7 @@ pub struct TypeId(pub(crate) u16);
 impl TypeId {
 	/// Not to be confused with [TypeId::NEVER_TYPE]
 	pub const ERROR_TYPE: Self = Self(0);
+	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
@@ -78,9 +79,6 @@ impl TypeId {
 
 	// This exists in TS
 	pub const HTML_ELEMENT_TAG_NAME_MAP: Self = Self(23);
-
-	/// TODO explain, also might go
-	pub const OPERATORS_SPECIAL: Self = Self(24);
 
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 25;
 }
@@ -137,6 +135,15 @@ pub enum PolyNature {
 	// Object
 }
 
+// TODO
+pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
+	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
+		return true;
+	}
+	return false;
+}
+
+#[deprecated(note = "All will be fixed... based of `any`")]
 #[derive(Copy, Clone, Debug)]
 pub enum PolyPointer {
 	Fixed(TypeId),

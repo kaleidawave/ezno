@@ -43,10 +43,10 @@ impl Diagnostic {
 		use either::{Left, Right};
 		match self {
 			Diagnostic::Global { .. } => Left(Left(iter::empty())),
-			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source_id))),
+			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source))),
 			Diagnostic::PositionWithAdditionLabels { position: pos, labels, .. } => {
-				Right(iter::once(pos.source_id).chain(
-					labels.iter().flat_map(|(_, span)| span.as_ref().map(|span| span.source_id)),
+				Right(iter::once(pos.source).chain(
+					labels.iter().flat_map(|(_, span)| span.as_ref().map(|span| span.source)),
 				))
 			}
 		}
@@ -59,8 +59,17 @@ impl Diagnostic {
 			| Diagnostic::PositionWithAdditionLabels { reason, .. } => &reason,
 		}
 	}
+
+	pub fn reason_and_position(self) -> (String, Option<Span>) {
+		match self {
+			Diagnostic::Global { reason, .. } => (reason, None),
+			Diagnostic::Position { reason, position, .. }
+			| Diagnostic::PositionWithAdditionLabels { reason, position, .. } => (reason, Some(position)),
+		}
+	}
 }
 
+/// TODO this is one variant, others should pipe strait to stdout or put it on a channel etc
 #[derive(Default, serde::Serialize)]
 #[serde(transparent)]
 pub struct DiagnosticsContainer {
@@ -70,6 +79,7 @@ pub struct DiagnosticsContainer {
 	has_error: bool,
 }
 
+// TODO the add methods are the same...
 impl DiagnosticsContainer {
 	pub fn new() -> Self {
 		Self::default()
@@ -133,14 +143,8 @@ impl TypeStringRepresentation {
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
-		if debug_mode {
-			todo!()
-		// 	let ty = get_on_ctx!(env.get_type_by_id(id));
-		// 	Self::Type(format!("{:#?}", ty))
-		} else {
-			let value = print_type(types, id, env);
-			Self::Type(value)
-		}
+		let value = print_type(id, types, env, debug_mode);
+		Self::Type(value)
 	}
 }
 
@@ -250,7 +254,7 @@ mod defined_errors_and_warnings {
 		},
 		ReDeclaredVariable {
 			name: &'a str,
-			pos: Span,
+			position: Span,
 		},
 		/// TODO temp, needs more info
 		FunctionDoesNotMeetConstraint {
@@ -261,6 +265,12 @@ mod defined_errors_and_warnings {
 		StatementsNotRun {
 			between: Span,
 		},
+		CannotRedeclareVariable {
+			name: String,
+			position: Span,
+		},
+		NotDefinedOperator(&'static str, Span),
+		PropertyNotWriteable(Span),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -328,9 +338,31 @@ mod defined_errors_and_warnings {
 							}
 						}
 					}
-					FunctionCallingError::MissingArgument { parameter_pos } => todo!(),
-					FunctionCallingError::ExtraArguments { count, position } => todo!(),
-					FunctionCallingError::NotCallable { calling } => todo!(),
+					FunctionCallingError::MissingArgument { parameter_position, call_site } => {
+						Diagnostic::PositionWithAdditionLabels {
+							reason: "Missing argument".into(),
+							position: call_site,
+							kind: super::DiagnosticKind::Error,
+							labels: vec![(
+								"(non-optional) Parameter declared here".into(),
+								Some(parameter_position),
+							)],
+						}
+					}
+					FunctionCallingError::ExcessArguments { count, position } => {
+						Diagnostic::Position {
+							reason: "Excess argument".into(),
+							position,
+							kind: super::DiagnosticKind::Error,
+						}
+					}
+					FunctionCallingError::NotCallable { calling, call_site } => {
+						Diagnostic::Position {
+							reason: format!("Cannot call type {calling}"),
+							position: call_site,
+							kind: super::DiagnosticKind::Error,
+						}
+					}
 					//  Diagnostic::Position {
 					// 	reason: format!("Cannot call {}", calling),
 					// 	position: at,
@@ -352,24 +384,45 @@ mod defined_errors_and_warnings {
 				},
 				//  => ,
 				TypeCheckError::AssignmentError(error) => match error {
-					AssignmentError::InvalidDeclaration {
+					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
 						variable_site,
 						value_type,
 						value_site,
 					} => Diagnostic::PositionWithAdditionLabels {
 						reason: format!(
-							"Type {} is not assignable to type {}",
-							value_type, variable_type
+							"Type {value_type} is not assignable to type {variable_type}",
 						),
 						position: value_site,
 						labels: vec![(
-							format!("Variable declared with type {}", variable_type),
+							format!("Variable declared with type {variable_type}"),
 							Some(variable_site),
 						)],
 						kind: super::DiagnosticKind::Error,
 					},
-					_ => todo!(),
+					AssignmentError::PropertyConstraint {
+						property_type,
+						value_type,
+						assignment_position,
+					} => Diagnostic::Position {
+						reason: format!(
+							"Type {value_type} does not meet property constraint {property_type}"
+						),
+						position: assignment_position,
+						kind: super::DiagnosticKind::Error,
+					},
+					AssignmentError::Constant(position) => Diagnostic::Position {
+						reason: "Cannot assign to constant".into(),
+						position,
+						kind: super::DiagnosticKind::Error,
+					},
+					AssignmentError::VariableNotFound { variable, assignment_position } => {
+						Diagnostic::Position {
+							reason: format!("Cannot assign to unknown variable {variable}"),
+							position: assignment_position,
+							kind: super::DiagnosticKind::Error,
+						}
+					}
 				},
 				TypeCheckError::InvalidJSXAttribute {
 					attribute_name,
@@ -379,8 +432,7 @@ mod defined_errors_and_warnings {
 					value_site,
 				} => Diagnostic::Position {
 					reason: format!(
-						"Type {} is not assignable to {} attribute of type {}",
-						attribute_name, value_type, attribute_type
+						"Type {attribute_name} is not assignable to {value_type} attribute of type {attribute_type}",
 					),
 					position: value_site,
 					kind: super::DiagnosticKind::Error,
@@ -480,7 +532,7 @@ mod defined_errors_and_warnings {
 				// 	position: pos,
 				// 	kind: super::DiagnosticKind::Error,
 				// },
-				TypeCheckError::ReDeclaredVariable { name, pos } => todo!(),
+				TypeCheckError::ReDeclaredVariable { name, position: pos } => todo!(),
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
@@ -501,6 +553,23 @@ mod defined_errors_and_warnings {
 				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
 					reason: format!("Expected {} found {}", expected, found),
 					position: at,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::CannotRedeclareVariable { name, position } => {
+					Diagnostic::Position {
+						reason: format!("Cannot redeclare variable {name}"),
+						position,
+						kind: super::DiagnosticKind::Error,
+					}
+				}
+				TypeCheckError::NotDefinedOperator(op, position) => Diagnostic::Position {
+					reason: format!("Operator not typed {op}"),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
+					reason: "property not writeable".into(),
+					position,
 					kind: super::DiagnosticKind::Error,
 				},
 			}

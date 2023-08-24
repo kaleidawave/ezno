@@ -26,12 +26,23 @@ pub fn evaluate_binary_operator_handle_errors<T: crate::FSResolver>(
 	match result {
 		Ok(ok) => ok,
 		Err(error) => {
-			checking_data
-				.diagnostics_container
-				.add_error(TypeCheckError::InvalidMathematicalOperation(error));
+			let error = match error {
+				BinaryOperatorError::InvalidMathematicalOperation(error) => {
+					TypeCheckError::InvalidMathematicalOperation(error)
+				}
+				BinaryOperatorError::NotDefined(op) => {
+					TypeCheckError::NotDefinedOperator(op, lhs.1.union(&rhs.1))
+				}
+			};
+			checking_data.diagnostics_container.add_error(error);
 			TypeId::ERROR_TYPE
 		}
 	}
+}
+
+pub enum BinaryOperatorError {
+	InvalidMathematicalOperation(InvalidMathematicalOperation),
+	NotDefined(&'static str),
 }
 
 /// TODO pass position and settings
@@ -43,86 +54,114 @@ pub fn evaluate_binary_operator(
 	environment: &mut Environment,
 	strict_casts: bool,
 	types: &mut TypeStore,
-) -> Result<TypeId, InvalidMathematicalOperation> {
-	// TODO the function should be stored on Root environment on registration rather
-	// than looking up a function using a key here
-	let op_type = match operator {
-		BinaryOperator::Add => {
-			let key = types.new_constant_type(crate::Constant::String("Add".to_owned()));
-			environment.get_property_unbound(TypeId::OPERATORS_SPECIAL, key, types)
-		}
-		BinaryOperator::Multiply => {
-			let key = types.new_constant_type(crate::Constant::String("Multiply".to_owned()));
-			environment.get_property_unbound(TypeId::OPERATORS_SPECIAL, key, types)
-		}
-		BinaryOperator::Modulo => todo!(),
-		BinaryOperator::Exponent => todo!(),
-		BinaryOperator::BitwiseOperators(_) => todo!(),
-		BinaryOperator::RelationOperator(operator) => match operator {
-			RelationOperator::Equal => {
-				let key =
-					types.new_constant_type(crate::Constant::String("StrictEqual".to_owned()));
-				environment.get_property_unbound(TypeId::OPERATORS_SPECIAL, key, types)
-			}
-			RelationOperator::GreaterThan => todo!(),
+) -> Result<TypeId, BinaryOperatorError> {
+	let is_dependent =
+		types.get_type_by_id(lhs).is_dependent() || types.get_type_by_id(rhs).is_dependent();
+
+	if is_dependent {
+		// TODO restriction
+		return Ok(types.register_type(crate::Type::Constructor(
+			super::Constructor::BinaryOperator { lhs, operator, rhs },
+		)));
+	}
+
+	let operators = &environment.get_root().context_type.operators;
+	// TODO automate with a macro
+	let function = match operator {
+		BinaryOperator::Add => operators.add.as_ref(),
+		BinaryOperator::Multiply => operators.add.as_ref(),
+		BinaryOperator::Modulo => None,
+		BinaryOperator::Exponent => None,
+		BinaryOperator::BitwiseOperators(_) => None,
+		BinaryOperator::RelationOperator(relation) => match relation {
+			RelationOperator::Equal => operators.equal.as_ref(),
+			RelationOperator::GreaterThan => None,
 		},
-		BinaryOperator::Subtract => todo!(),
-		BinaryOperator::Divide => todo!(),
-		BinaryOperator::LogicalOperator(_) => todo!(),
+		BinaryOperator::Subtract => operators.mul.as_ref(),
+		BinaryOperator::Divide => None,
+		BinaryOperator::LogicalOperator(_) => None,
+		BinaryOperator::InstanceOf => None,
 	};
-	// TODO handle things and convert to bin exprs
-	super::calling::call_type(
-		op_type.unwrap().prop_to_type(),
-		// TODO faster!
-		vec![
-			SynthesizedArgument::NonSpread { ty: lhs, position: Span::NULL_SPAN },
-			SynthesizedArgument::NonSpread { ty: rhs, position: Span::NULL_SPAN },
-		],
-		None,
-		None,
-		environment,
-		types,
+
+	let function = if let Some(function) = function {
+		// TODO function calling issue
+		function.clone()
+	} else {
+		let op = match operator {
+			BinaryOperator::Add => "Add",
+			BinaryOperator::Multiply => "Multiply",
+			BinaryOperator::Modulo => "Modulo",
+			BinaryOperator::Exponent => "Exponent",
+			BinaryOperator::BitwiseOperators(_) => "BitwiseOperators",
+			BinaryOperator::RelationOperator(_) => "RelationOperator",
+			BinaryOperator::Subtract => "Subtract",
+			BinaryOperator::Divide => "Divide",
+			BinaryOperator::LogicalOperator(_) => "LogicalOperator",
+			BinaryOperator::InstanceOf => "InstanceOf",
+		};
+		return Err(BinaryOperatorError::NotDefined(op));
+	};
+
+	let arguments = &[
+		SynthesizedArgument::NonSpread { ty: lhs, position: Span::NULL_SPAN },
+		SynthesizedArgument::NonSpread { ty: rhs, position: Span::NULL_SPAN },
+	];
+	let result = function.call(
 		crate::events::CalledWithNew::None,
-	)
-	.map(|op| op.returned_type)
-	.map_err(|errors| {
-		use crate::events::FunctionCallingError;
-		match errors.into_iter().next().unwrap() {
-			FunctionCallingError::InvalidArgumentType {
-				parameter_type,
-				argument_type,
-				argument_position,
-				parameter_position,
-				restriction,
-			} => {
-				crate::utils::notify!("{} {}", parameter_type, argument_type);
-				return InvalidMathematicalOperation {
-					lhs: TypeStringRepresentation::from_type_id(
-						lhs,
-						&environment.into_general_environment(),
-						&types,
-						false,
-					),
-					rhs: TypeStringRepresentation::from_type_id(
-						rhs,
-						&environment.into_general_environment(),
-						&types,
-						false,
-					),
-					operator,
-					position: Span::NULL_SPAN, // lhs.1.union(&rhs.1),
-				};
+		None,
+		None,
+		&None,
+		arguments,
+		Span::NULL_SPAN,
+		types,
+		environment,
+	);
+
+	result
+		.map(|op| op.returned_type)
+		.map_err(|errors| {
+			use crate::events::FunctionCallingError;
+			match errors.into_iter().next().unwrap() {
+				FunctionCallingError::InvalidArgumentType {
+					parameter_type,
+					argument_type,
+					argument_position,
+					parameter_position,
+					restriction,
+				} => {
+					crate::utils::notify!("{} {}", parameter_type, argument_type);
+					InvalidMathematicalOperation {
+						lhs: TypeStringRepresentation::from_type_id(
+							lhs,
+							&environment.into_general_context(),
+							&types,
+							false,
+						),
+						rhs: TypeStringRepresentation::from_type_id(
+							rhs,
+							&environment.into_general_context(),
+							&types,
+							false,
+						),
+						operator,
+						position: Span::NULL_SPAN, // lhs.1.union(&rhs.1),
+					}
+				}
+				FunctionCallingError::MissingArgument { .. } => {
+					unreachable!("binary operator should accept two operands")
+				}
+				FunctionCallingError::ExcessArguments { .. } => {
+					unreachable!("binary operator should have two operands")
+				}
+				FunctionCallingError::NotCallable { .. } => {
+					unreachable!("operator should be callable")
+				}
+				FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
+					unreachable!("...")
+				}
 			}
-			FunctionCallingError::MissingArgument { .. } => {
-				unreachable!("binary operator should accept two operands")
-			}
-			FunctionCallingError::ExtraArguments { .. } => {
-				unreachable!("binary operator should have two operands")
-			}
-			FunctionCallingError::NotCallable { .. } => unreachable!("operator should be callable"),
-			FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => unreachable!("..."),
-		}
-	})
+		})
+		.map_err(BinaryOperatorError::InvalidMathematicalOperation)
 }
 
 pub fn evaluate_unary_operator(

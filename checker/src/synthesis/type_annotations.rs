@@ -1,4 +1,4 @@
-//! Logic for getting [TypeId] from [parser::TypeReference]s
+//! Logic for getting [TypeId] from [parser::TypeAnnotation]s
 //!
 //! ### There are several behaviors for type references depending on their position:
 //! #### Sources:
@@ -21,19 +21,18 @@
 use std::{convert::TryInto, iter::FromIterator};
 
 use indexmap::IndexSet;
-use parser::{type_references::*, ASTNode};
+use parser::{type_annotations::*, ASTNode};
 
 use crate::{
-	errors::CannotFindTypeError,
-	synthesis::{functions::type_function_reference, interfaces::type_interface_member},
-	types::{Constant, Type},
+	synthesis::functions::type_function_reference,
+	types::{properties::Property, Constant, Type},
 	types::{Constructor, TypeId},
 	CheckingData,
 };
 
 use crate::context::{Context, ContextType};
 
-/// Turns a [parser::TypeReference] into [TypeId]
+/// Turns a [parser::TypeAnnotation] into [TypeId]
 ///
 /// [CheckingData] contains [Memory] and [crate::ErrorAndWarningHandler]
 ///
@@ -44,73 +43,70 @@ use crate::context::{Context, ContextType};
 /// - Reference to non generic with generic types
 ///
 /// Use [Context::get_type] instead
-pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
+pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
+	annotation: &TypeAnnotation,
 	environment: &mut Context<S>,
-	reference: &'a TypeReference,
 	checking_data: &mut CheckingData<T>,
-) -> Result<TypeId, CannotFindTypeError<'a>> {
-	match reference {
-		TypeReference::StringLiteral(value, _) => {
-			Ok(checking_data.types.new_constant_type(Constant::String(value.clone())))
+) -> TypeId {
+	let ty = match annotation {
+		TypeAnnotation::StringLiteral(value, _) => {
+			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
-		TypeReference::NumberLiteral(value, _) => {
+		TypeAnnotation::NumberLiteral(value, _) => {
 			let constant = Constant::Number(f64::from(value.clone()).try_into().unwrap());
-			Ok(checking_data.types.new_constant_type(constant))
+			checking_data.types.new_constant_type(constant)
 		}
-		TypeReference::BooleanLiteral(value, _) => {
-			Ok(checking_data.types.new_constant_type(Constant::Boolean(value.clone())))
+		TypeAnnotation::BooleanLiteral(value, _) => {
+			checking_data.types.new_constant_type(Constant::Boolean(value.clone()))
 		}
-		TypeReference::Name(name, _) => match name.as_str() {
-			"any" => Ok(checking_data.types.new_any_parameter(environment)),
-			"this" => Ok(environment.get_value_of_this(&mut checking_data.types)),
-			"self" => Ok(TypeId::THIS_ARG),
+		TypeAnnotation::Name(name, _) => match name.as_str() {
+			"any" => checking_data.types.new_any_parameter(environment),
+			"this" => environment.get_value_of_this(&mut checking_data.types),
+			"self" => TypeId::THIS_ARG,
 			name => {
-				let ty = environment
-					.get_type_from_name(name)
-					.ok_or_else(|| CannotFindTypeError(reference))?;
-
-				if let Type::AliasTo { parameters: Some(_), .. }
-				| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
-				{
-					todo!("Error");
+				match environment.get_type_from_name(name) {
+					Some(ty) => {
+						// TODO warn if it requires parameters. e.g. Array
+						// if let Type::AliasTo { parameters: Some(_), .. }
+						// | Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
+						// {
+						// 	todo!("Error");
+						// }
+						ty
+					}
+					None => TypeId::ERROR_TYPE,
 				}
-
-				Ok(ty)
 			}
 		},
-		TypeReference::Union(type_references) => {
+		TypeAnnotation::Union(type_annotations) => {
 			// TODO remove duplicates here maybe
-			let mut iterator = type_references
+			let mut iterator = type_annotations
 				.iter()
-				.map(|type_reference| {
-					environment.get_type_handle_errors(type_reference, checking_data)
+				.map(|type_annotation| {
+					synthesize_type_annotation(type_annotation, environment, checking_data)
 				})
 				.collect::<Vec<_>>()
 				.into_iter();
 
-			let ty = iterator
-				.reduce(|acc, right| checking_data.types.new_type(Type::Or(acc, right)))
-				.expect("Empty union");
-
-			Ok(ty)
+			iterator
+				.reduce(|acc, right| checking_data.types.new_or_type(acc, right))
+				.expect("Empty union")
 		}
-		TypeReference::Intersection(type_references) => {
-			let mut iterator = type_references
+		TypeAnnotation::Intersection(type_annotations) => {
+			let mut iterator = type_annotations
 				.iter()
-				.map(|type_reference| {
-					environment.get_type_handle_errors(type_reference, checking_data)
+				.map(|type_annotation| {
+					synthesize_type_annotation(type_annotation, environment, checking_data)
 				})
 				.collect::<Vec<_>>()
 				.into_iter();
 
-			let ty = iterator
-				.reduce(|acc, right| checking_data.types.new_type(Type::And(acc, right)))
-				.expect("Empty intersection");
-
-			Ok(ty)
+			iterator
+				.reduce(|acc, right| checking_data.types.new_and_type(acc, right))
+				.expect("Empty intersection")
 		}
 		// This will take the found type and generate a InstanceOfGeneric based on the type arguments
-		TypeReference::NameWithGenericArguments(name, arguments, position) => {
+		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
 			match name.as_str() {
 				"ReturnType" => todo!(),
 				"Constructor" => todo!(),
@@ -124,8 +120,8 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 			{
 				// TODO check restrictions + deferred
 				let with = parameters.iter().copied().collect::<Vec<_>>().into_iter().zip(
-					arguments.iter().map(|type_reference| {
-						environment.get_type_handle_errors(type_reference, checking_data)
+					arguments.iter().map(|type_annotation| {
+						synthesize_type_annotation(type_annotation, environment, checking_data)
 					}),
 				);
 				let ty = Type::Constructor(Constructor::StructureGenerics {
@@ -133,7 +129,7 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 					with: with.collect(),
 				});
 
-				Ok(checking_data.types.new_type(ty))
+				checking_data.types.register_type(ty)
 			} else {
 				todo!(
 					"Parameters on non parameter type {:?} {} {:?}",
@@ -141,35 +137,30 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 					name,
 					checking_data.types.get_type_by_id(inner_type)
 				);
-				Ok(TypeId::ERROR_TYPE)
+				TypeId::ERROR_TYPE
 			}
 		}
-		TypeReference::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
+		TypeAnnotation::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
 			let function_type = type_function_reference(
 				type_parameters,
 				parameters,
 				Some(&*return_type),
 				environment,
 				checking_data,
+				super::Performs::None,
 				parameters.position.union(&return_type.get_position()),
-				crate::structures::functions::FunctionNature::Arrow,
+				crate::types::FunctionKind::Arrow,
+				None,
 			);
-
-			// let id = checking_data.types.new_type(Type::AliasTo {
-			// 	to: TypeId::FUNCTION_TYPE,
-			// 	name: None,
-			// 	parameters: None,
-			// });
-			todo!();
-			// environment.functions_on_type.insert(id, function_type);
-			// Ok(id)
+			checking_data.types.new_type_annotation_function_type(function_type)
 		}
-		TypeReference::Readonly(type_reference, _) => {
-			let underlying_type = environment.get_type(&*type_reference, checking_data)?;
+		TypeAnnotation::Readonly(type_annotation, _) => {
+			let underlying_type =
+				synthesize_type_annotation(&*type_annotation, environment, checking_data);
 
 			todo!();
 
-			// let ty_to_be_readonly = checking_data.types.new_type(Type::AliasTo {
+			// let ty_to_be_readonly = checking_data.types.register_type(Type::AliasTo {
 			// 	to: underlying_type,
 			// 	name: None,
 			// 	parameters: None,
@@ -178,18 +169,18 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 			// // TODO I think Readonly == freeze...?
 			// environment.frozen.insert(ty_to_be_readonly, TypeId::TRUE);
 
-			// Ok(ty_to_be_readonly)
+			// ty_to_be_readonly)
 		}
-		TypeReference::NamespacedName(_, _, _) => unimplemented!(),
-		TypeReference::ArrayLiteral(item_type, _) => {
-			let item_type = environment.get_type(&*item_type, checking_data)?;
+		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
+		TypeAnnotation::ArrayLiteral(item_type, _) => {
+			let item_type = synthesize_type_annotation(&*item_type, environment, checking_data);
 			let ty = Type::Constructor(Constructor::StructureGenerics {
 				on: TypeId::ARRAY_TYPE,
 				with: FromIterator::from_iter([(TypeId::T_TYPE, item_type)]),
 			});
-			Ok(checking_data.types.new_type(ty))
+			checking_data.types.register_type(ty)
 		}
-		TypeReference::ConstructorLiteral {
+		TypeAnnotation::ConstructorLiteral {
 			type_parameters: _,
 			parameters: _,
 			return_type: _,
@@ -197,19 +188,22 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 		} => unimplemented!(),
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
-		TypeReference::ObjectLiteral(members, type_id, _) => {
-			let ty_id = checking_data
+		TypeAnnotation::ObjectLiteral(members, _) => {
+			// TODO rather than onto, generate a new type...
+			let onto = checking_data
 				.types
-				.new_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
+				.register_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
 
-			for member in members {
-				type_interface_member(member, environment, checking_data, ty_id);
-			}
-
-			Ok(ty_id)
+			super::interfaces::synthesize_signatures(
+				&members,
+				super::interfaces::OnToType(onto),
+				environment,
+				checking_data,
+			)
+			.0
 		}
 		// TODO little temp
-		TypeReference::TupleLiteral(members, _, _) => {
+		TypeAnnotation::TupleLiteral(members, _) => {
 			let obj = todo!(); // environment.new_object(Some(TypeId::ARRAY_TYPE));
 
 			let mut keys = IndexSet::new();
@@ -221,10 +215,14 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
-						let item_ty = environment.get_type_handle_errors(ty, checking_data);
+						let item_ty = synthesize_type_annotation(ty, environment, checking_data);
 
 						keys.insert(idx_ty);
-						environment.properties.entry(obj).or_default().push((idx_ty, item_ty));
+						environment
+							.properties
+							.entry(obj)
+							.or_default()
+							.push((idx_ty, Property::Value(item_ty)));
 					}
 					TupleElement::Spread { name, ty } => {
 						todo!();
@@ -239,64 +237,74 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 				.properties
 				.entry(obj)
 				.or_default()
-				.push((TypeId::LENGTH_AS_STRING, length_value));
+				.push((TypeId::LENGTH_AS_STRING, Property::Value(length_value)));
 
 			keys.insert(TypeId::LENGTH_AS_STRING);
 			todo!();
 			// environment.pro.insert(obj, keys);
 
-			Ok(obj)
+			obj
 		}
-		TypeReference::ParenthesizedReference(ref reference, _) => {
-			environment.get_type(reference, checking_data)
+		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
+			synthesize_type_annotation(reference, environment, checking_data)
 		}
-		TypeReference::Index(indexee, indexer, _) => {
-			let indexee = environment.get_type_handle_errors(indexee, checking_data);
-			let indexer = environment.get_type_handle_errors(indexer, checking_data);
+		TypeAnnotation::Index(indexee, indexer, _) => {
+			let indexee = synthesize_type_annotation(indexee, environment, checking_data);
+			let indexer = synthesize_type_annotation(indexer, environment, checking_data);
 			if let Some(prop) =
 				environment.get_property_unbound(indexee, indexer, &checking_data.types)
 			{
 				match prop {
-					crate::context::Logical::Pure(ty) => Ok(ty),
+					crate::context::Logical::Pure(ty) => ty.as_get_type(),
 					crate::context::Logical::Or(_) => todo!(),
 					crate::context::Logical::Implies(_, _) => todo!(),
 				}
 			} else {
 				todo!("Error")
 			}
-			// Ok(indexee.get_property_using_type_reference(
+			// indexee.get_property_using_type_annotation(
 			//     &indexer,
 			//     checking_data,
 			//     crate::types::GetPropertySettings::HowAboutNo,
 			// ))
 		}
-		TypeReference::KeyOf(_, _) => unimplemented!(),
-		TypeReference::Conditional { condition, resolve_true, resolve_false, position } => {
-			let condition = type_condition_to_type(environment, condition, checking_data)?;
+		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
+		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {
+			let condition = synthesize_type_condition(condition, environment, checking_data);
 
-			fn a(result: &TypeConditionResult) -> &TypeReference {
+			fn synthesize_condition(result: &TypeConditionResult) -> &TypeAnnotation {
 				match result {
 					TypeConditionResult::Reference(reference) => reference,
 					TypeConditionResult::Infer(_infer, _) => todo!(),
 				}
 			}
 
-			let resolve_true = environment.get_type_handle_errors(a(resolve_true), checking_data);
-			let resolve_false = environment.get_type_handle_errors(a(resolve_false), checking_data);
+			let true_res = synthesize_type_annotation(
+				synthesize_condition(resolve_true),
+				environment,
+				checking_data,
+			);
+			let false_res = synthesize_type_annotation(
+				synthesize_condition(resolve_false),
+				environment,
+				checking_data,
+			);
 
 			let ty = Type::Constructor(Constructor::ConditionalTernary {
 				on: condition,
-				t_res: resolve_true,
-				f_res: resolve_false,
+				true_res,
+				false_res,
+				// TODO
+				result_union: TypeId::ERROR_TYPE,
 			});
 
-			Ok(checking_data.types.new_type(ty))
+			checking_data.types.register_type(ty)
 		}
-		TypeReference::Cursor(_, _) => {
+		TypeAnnotation::Cursor(_, _) => {
 			todo!("Dump available object types in environment to somewhere..?")
 		}
 		// TODO these are all work in progress
-		TypeReference::Decorated(decorator, inner, _) => {
+		TypeAnnotation::Decorated(decorator, inner, _) => {
 			match decorator.name.as_str() {
 				// TODO temp
 				"Proof" => {
@@ -318,7 +326,7 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 					// let constraint = checking_data.memory.new_fixed_constraint_id(inner_type);
 					// let dependent_type =
 					// 	Type::DependentType(DependentType::OpenDependentType { id: constraint });
-					// Ok(Some(dependent_type))
+					// Some(dependent_type))
 				}
 				// TODO not sure. this needs to feed from events somehow to actually do the specialization...
 				"NewObjectWithProperties" => {
@@ -338,50 +346,36 @@ pub(crate) fn get_type_from_reference<'a, S: ContextType, T: crate::FSResolver>(
 				}
 				decorator_name => {
 					crate::utils::notify!("Unknown decorator skipping {:#?}", decorator_name);
-					let inner_type = environment.get_type_handle_errors(&inner, checking_data);
-					Ok(inner_type)
+					let inner_type = synthesize_type_annotation(&inner, environment, checking_data);
+					inner_type
 				}
 			}
 		}
-		TypeReference::TemplateLiteral(_, _) => todo!(),
-	}
+		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
+	};
+
+	checking_data.type_mappings.types_to_types.push(annotation.get_position().into_owned(), ty);
+
+	ty
 }
 
-fn argument_to_number(expression: &parser::Expression) -> Result<f64, ()> {
-	if let parser::Expression::NumberLiteral(nl, _, _) = expression {
-		Ok(f64::from(*nl))
-	} else if let parser::Expression::VariableReference(name, _, _) = expression {
-		if name == "inf" {
-			Ok(f64::INFINITY)
-		} else if name == "neg_inf" {
-			Ok(f64::NEG_INFINITY)
-		} else {
-			Err(())
-		}
-	} else {
-		Err(())
-	}
-}
-
-fn type_condition_to_type<'a, S: ContextType, T: crate::FSResolver>(
+fn synthesize_type_condition<S: ContextType, T: crate::FSResolver>(
+	condition: &TypeCondition,
 	environment: &mut Context<S>,
-	condition: &'a TypeCondition,
 	checking_data: &mut CheckingData<T>,
-) -> Result<TypeId, CannotFindTypeError<'a>> {
+) -> TypeId {
 	match condition {
-		TypeCondition::Extends { r#type, extends, position } => {
-			let item = environment.get_type(&*r#type, checking_data)?;
-			let extends = environment.get_type(&*extends, checking_data)?;
-			let ty = todo!();
-			// let ty = Type::Constructor(Constructor::BinaryOperator {
-			// 	operator: parser::operators::BinaryOperator::InstanceOf,
-			// 	lhs: item,
-			// 	rhs: extends,
-			// });
-			let ty = checking_data.types.new_type(ty);
-			Ok(ty)
+		TypeCondition::Extends { ty, extends, position } => {
+			let item = synthesize_type_annotation(ty, environment, checking_data);
+			let extends = synthesize_type_annotation(extends, environment, checking_data);
+			let ty = Type::Constructor(Constructor::BinaryOperator {
+				operator: crate::structures::operators::BinaryOperator::InstanceOf,
+				lhs: item,
+				rhs: extends,
+			});
+			checking_data.types.register_type(ty)
 		}
 		// TODO requires a kind of strict instance of ???
-		TypeCondition::Is { r#type, is, position } => todo!(),
+		TypeCondition::Is { ty, is, position } => todo!(),
 	}
 }

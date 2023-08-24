@@ -1,202 +1,150 @@
-use crate::{
-	context::Root,
-	synthesis::{functions::type_function_reference, interfaces::type_interface_declaration},
-	types::TypeId,
-	CheckingData,
-};
+use parser::ASTNode;
 
-use parser::{
-	declarations::{DeclareFunctionDeclaration, DeclareVariableDeclaration, TypeAlias},
-	Expression, TypeDeclaration as ParserTypeDeclaration, TypeDefinitionModule,
-};
+use crate::{context::Root, synthesis::functions::type_function_reference};
 
 const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [TypeDefinitionModule]
 /// TODO remove unwraps here and add to the existing error handler
-#[cfg(feature = "declaration-synthesis")]
-pub(crate) fn type_definition_file<T: crate::FSResolver>(
-	mut definition: TypeDefinitionModule,
-	checking_data: &mut CheckingData<T>,
+pub(super) fn type_definition_file<T: crate::FSResolver>(
+	mut definition: parser::TypeDefinitionModule,
+	checking_data: &mut crate::CheckingData<T>,
 ) -> Root {
-	use parser::{Decorated, TypeDefinitionModuleDeclaration};
+	use std::collections::HashMap;
 
-	use crate::synthesis::interfaces::hoist_interface_name;
+	use parser::{
+		declarations::{DeclareVariableDeclaration, TypeAlias},
+		TypeDeclaration, TypeDefinitionModuleDeclaration,
+	};
 
-	let mut environment = Root::new_with_primitive_references();
+	use crate::{
+		diagnostics::TypeCheckError, synthesis::type_annotations::synthesize_type_annotation,
+	};
+
+	let mut idx_to_types = HashMap::new();
+	let mut root = Root::new_with_primitive_references();
 
 	// Hoisting names of interfaces, namespaces and types
 	// At some point with binaries could remove this pass
-	for statement in definition.declarations.iter_mut() {
-		fn get_id_via_decorators(decorators: &Vec<parser::Decorator>) -> Option<TypeId> {
-			fn expression_as_number(expression: &Expression) -> f64 {
-				if let Expression::NumberLiteral(number, _, _) = expression {
-					number.clone().into()
+	for statement in definition.declarations.iter() {
+		match statement {
+			TypeDefinitionModuleDeclaration::Interface(interface) => {
+				if interface.on.name == "Operators" {
+					synthesize_operators_definition(&mut root, interface, checking_data);
 				} else {
-					panic!()
+					let ty = root.new_interface(
+						&interface.on.name,
+						interface.on.position.clone(),
+						&mut checking_data.types,
+					);
+					idx_to_types.insert(interface.on.position.start, ty);
 				}
-			}
-
-			decorators.iter().find_map(|decorator| match decorator.name.as_str() {
-				"TypeId" => Some(
-					TypeId(expression_as_number(
-						&decorator.arguments.iter().flatten().next().unwrap(),
-					) as u16)
-					.into(),
-				),
-				_ => None,
-			})
-		}
-
-		let (parser_type_id, checker_type_id) = match statement {
-			TypeDefinitionModuleDeclaration::Interface(Decorated { on: interface, .. }) => {
-				hoist_interface_name(interface, &mut environment, checking_data)
 			}
 			TypeDefinitionModuleDeclaration::Class(class) => {
 				todo!();
 				// (
 				// 	class.type_id,
-				// 	// environment.new_type(&class.name, class.type_parameters.is_some(), None),
-				// 	environment.new_type(Type::NamedRooted { name class.name.clone())),
+				// 	// environment.register_type(&class.name, class.type_parameters.is_some(), None),
+				// 	environment.register_type(Type::NamedRooted { name class.name.clone())),
 				// ),
 			}
 			TypeDefinitionModuleDeclaration::TypeAlias(type_alias) => {
-				todo!();
-				// (
-				// 	type_alias.type_id,
-				// 	environment.new_type(
-				// 		// TODO super annoying but have to alias the type later
-				// 		Type::AliasTo(TypeId::ERROR_TYPE, type_alias.type_name.name.clone()),
-				// 	),
-				// ),
+				if type_alias.type_name.type_parameters.is_some() {
+					todo!()
+				}
+				let to = synthesize_type_annotation(
+					&type_alias.type_expression,
+					&mut root,
+					checking_data,
+				);
+
+				// idx_to_types.insert(
+				// 	interface.on.position.start,
+				// 	(&interface.on, &mut root, checking_data),
+				// );
+				root.new_alias(&type_alias.type_name.name, to, &mut checking_data.types);
+				// checking_data
+				// 	.raise_unimplemented_error("type alias", type_alias.type_name.position.clone());
 			}
-			_ => {
-				continue;
-			}
-		};
-		checking_data.type_mappings.types_to_types.insert(parser_type_id, checker_type_id);
+			_ => {}
+		}
 	}
-
-	// Hoisting of generic type parameters, generic function parameters and type statements now
-	// all types exist in system.
-	// This allows for: because need to know constraints and matching ids
-	// ```
-	// interface Map<K, V> {
-	//     new(k: K, v: V): Map<K, V>
-	// }
-	// ```
-	// for statement in definition.declarations.iter() {
-	// 	match statement {
-	// 		TypeDefinitionModuleDeclaration::InterfaceDeclaration(interface) => {
-	// 			if let Some(ref type_parameters) = interface.type_parameters {
-	// 				let interface_type_identifier = *checking_data
-	// 					.type_mappings
-	// 					.types_to_types
-	// 					.get(&interface.type_id)
-	// 					.unwrap();
-
-	// 				let information =
-	// 					InterfaceDeclarationMetadata::from_decorators(&interface.decorators);
-
-	// 				// let key = interface_type_identifier.try_into().unwrap();
-	// 				// checking_data.memory.unpaired_generic_type_parameters.insert(
-	// 				// 	key,
-	// 				// 	// TODO optional parameters with default here and constrains here
-	// 				// 	match information.generic_type_parameter_ids {
-	// 				// 		Some(values) => {
-	// 				// 			values.into_iter().map(|id| DependentTypeId(id)).collect()
-	// 				// 		}
-	// 				// 		None => {
-	// 				// 			type_parameters.iter().map(|_tp| DependentTypeId::new()).collect()
-	// 				// 		}
-	// 				// 	},
-	// 				// );
-	// 				todo!()
-	// 			}
-	// 		}
-	// 		TypeDefinitionModuleDeclaration::TypeAlias(_type_alias)
-	// 		| TypeDefinitionModuleDeclaration::LocalTypeAlias(_type_alias) => {
-
-	// 			// TODO Scan object literal references
-	// 			// ast_to_type_declarers.insert(interface.type_declared_id.clone(), declared_type);
-	// 		}
-	// 		TypeDefinitionModuleDeclaration::ClassDeclaration(class) => {
-	// 			if let Some(_type_parameters) = &class.type_parameters {
-	// 				todo!()
-	// 			}
-	// 		}
-	// 		_ => {}
-	// 	}
-	// }
 
 	for declaration in definition.declarations.into_iter() {
 		match declaration {
-			TypeDefinitionModuleDeclaration::Function(DeclareFunctionDeclaration {
-				type_parameters,
-				parameters,
-				return_type,
-				name,
-				variable_id,
-				position,
-				decorators,
-			}) => {
-				let ty = todo!(); // checking_data.types.new_constant_type(Constant::FunctionReference(pointer));
-
-				let function_type = type_function_reference(
-					&type_parameters,
-					&parameters,
-					return_type.as_ref(),
-					&mut environment,
+			TypeDefinitionModuleDeclaration::Function(func) => {
+				// TODO abstract
+				let base = type_function_reference(
+					&func.type_parameters,
+					&func.parameters,
+					func.return_type.as_ref(),
+					&mut root,
 					checking_data,
-					position.clone(),
-					// TODO think is okay
-					crate::structures::functions::FunctionNature::Arrow,
+					func.performs.as_ref().into(),
+					func.position.clone(),
+					crate::types::FunctionKind::Arrow,
+					None,
 				);
 
-				todo!();
+				let base = checking_data.types.register_type(crate::Type::Function(
+					base,
+					crate::types::FunctionNature::Reference,
+				));
 
-				// environment.functions_on_type.insert(ty, function_type);
-
-				// environment
-				// 	.declare_variable(
-				// 		name.as_str(),
-				// 		None,
-				// 		ty,
-				// 		variable_id,
-				// 		DEFINITION_VAR_IS_CONSTANT,
-				// 		position,
-				// 	)
-				// 	.expect("TODO re-declared");
+				let behavior = crate::context::VariableRegisterBehavior::Declare { base };
+				root.register_variable_handle_error(
+					func.name.as_str(),
+					func.get_position().into_owned(),
+					behavior,
+					checking_data,
+				);
 			}
 			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
 				name,
 				type_restriction,
-				variable_id,
 				decorators,
 				position,
 			}) => {
 				// TODO tidy up
 				let variable_ty =
-					environment.get_type_handle_errors(&type_restriction, checking_data);
+					synthesize_type_annotation(&type_restriction, &mut root, checking_data);
 
 				// // TODO not sure...
 				// if let Some(frozen) = environment.is_frozen(variable_ty) {
 				// 	environment.frozen.insert(var_type, frozen);
 				// }
 
-				environment
-					.register_variable(
-						&name,
-						// TODO
-						variable_id,
-						position.clone(),
-						crate::context::VariableRegisterBehavior::Declare { base: variable_ty },
-						&mut checking_data.types,
+				let declare_variable = root.declare_variable(
+					&name,
+					position.clone(),
+					variable_ty,
+					&mut checking_data.types,
+				);
+				checking_data
+					.type_mappings
+					.variables_to_constraints
+					.0
+					.insert(crate::VariableId(position.source, position.start), variable_ty);
+				if let Err(error) = declare_variable {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::CannotRedeclareVariable {
+							name: error.name.to_owned(),
+							position,
+						},
 					)
-					.expect("TODO re-declared");
+				}
 			}
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				type_interface_declaration(&interface, &mut environment, checking_data)
+				let ty = idx_to_types.remove(&interface.on.position.start);
+				// interface Operators not registered here thus some branch
+				if let Some(ty) = ty {
+					super::interfaces::synthesize_signatures(
+						&interface.on.members,
+						super::interfaces::OnToType(ty),
+						&mut root,
+						checking_data,
+					);
+				}
 			}
 			// TODO handle locals differently, (maybe squash ast as well)
 			TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias {
@@ -209,7 +157,7 @@ pub(crate) fn type_definition_file<T: crate::FSResolver>(
 				type_expression,
 				..
 			}) => {
-				let ParserTypeDeclaration { name, type_parameters, .. } = &type_name;
+				let TypeDeclaration { name, type_parameters, .. } = &type_name;
 
 				if let Some(_) = type_parameters {
 					todo!()
@@ -231,9 +179,9 @@ pub(crate) fn type_definition_file<T: crate::FSResolver>(
 				// };
 				// todo!("This should have two passes with a empty type");
 				} else {
-					todo!("Modify alias")
+					// todo!("Modify alias")
 					// let ty = environment.get_type_handle_errors(&type_expression, checking_data);
-					// environment.new_type(ty);
+					// environment.register_type(ty);
 				}
 			}
 			TypeDefinitionModuleDeclaration::Namespace(_) => unimplemented!(),
@@ -248,7 +196,7 @@ pub(crate) fn type_definition_file<T: crate::FSResolver>(
 				//         .get_type(
 				//             extends_type,
 				//             checking_data,
-				//             &mut crate::environment::GetTypeFromReferenceSettings::Default,
+				//             &crate::environment::GetTypeFromReferenceSettings::Default,
 				//         )
 				//         .expect("Class should have been initialized");
 				//     todo!();
@@ -267,30 +215,84 @@ pub(crate) fn type_definition_file<T: crate::FSResolver>(
 			}
 		}
 	}
-	environment
+	root
 }
 
-use std::path::Path;
+fn synthesize_operators_definition<T: crate::FSResolver>(
+	root: &mut Root,
+	interface: &parser::Decorated<parser::types::InterfaceDeclaration>,
+	checking_data: &mut crate::CheckingData<'_, T>,
+) {
+	use crate::synthesis::interfaces::*;
 
-use crate::{context::Root, CheckingData};
+	impl SynthesizeInterfaceBehavior for crate::context::Operators {
+		fn register<T: crate::FSResolver, S: crate::context::ContextType>(
+			&mut self,
+			key: PropertyOrType,
+			value: InterfaceValue,
+			checking_data: &mut crate::CheckingData<T>,
+			environment: &mut crate::context::Context<S>,
+		) {
+			if let (
+				PropertyOrType::ClassProperty(parser::PropertyKey::Ident(name, _, _)),
+				InterfaceValue::Function { function, constructor: false },
+			) = (key, value)
+			{
+				match name.as_str() {
+					"Add" => {
+						self.add = Some(function);
+					}
+					"Sub" => {
+						self.sub = Some(function);
+					}
+					"Mul" => {
+						self.mul = Some(function);
+					}
+					"Equal" => {
+						self.equal = Some(function);
+					}
+					_ => {
+						// TODO raise exception
+					}
+				}
+			} else {
+				// TODO raise exception
+			}
+		}
 
-use parser::{ASTNode, SourceId, TypeDefinitionModule};
+		fn interface_type(&self) -> Option<crate::TypeId> {
+			None
+		}
+	}
 
+	root.context_type.operators = super::interfaces::synthesize_signatures(
+		&interface.on.members,
+		crate::context::Operators::default(),
+		root,
+		checking_data,
+	);
+}
+
+#[cfg(feature = "declaration-synthesis")]
 pub fn definition_file_to_buffer<T: crate::FSResolver>(
 	handler: &T,
-	cwd: &Path,
-	file: &Path,
+	cwd: &std::path::Path,
+	file: &std::path::Path,
 ) -> Result<Vec<u8>, String> {
-	use crate::synthesis::definitions::type_definition_file;
-
 	// 	ModuleData::new_with_custom_module_resolvers(Default::default(), , cwd.to_owned());
 
-	let mut checking_data = CheckingData::new(Default::default(), handler);
+	let mut checking_data = crate::CheckingData::new(Default::default(), handler);
 
-	let definition_file = if let Some((source, cursors)) = handler(file) {
+	let definition_file = if let Some(source) = handler(file) {
 		let now = std::time::Instant::now();
-		let from_string =
-			TypeDefinitionModule::from_string(source, Default::default(), SourceId::NULL, cursors);
+		// TODO
+		let cursors = Default::default();
+		let from_string = parser::TypeDefinitionModule::from_string(
+			source,
+			Default::default(),
+			source_map::SourceId::NULL,
+			cursors,
+		);
 
 		println!("Parsing {:?}", now.elapsed());
 		match from_string {
@@ -318,7 +320,7 @@ pub fn definition_file_to_buffer<T: crate::FSResolver>(
 
 pub fn root_context_from_bytes(file: Vec<u8>) -> Root {
 	let now = std::time::Instant::now();
-	let ctx = Root::deserialize(file, SourceId::NULL).unwrap();
+	let ctx = Root::deserialize(file, source_map::SourceId::NULL).unwrap();
 	println!("From binary {:?}", now.elapsed());
 	ctx
 }

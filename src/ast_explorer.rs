@@ -4,9 +4,9 @@ use std::{fs, path::PathBuf};
 
 use argh::FromArgs;
 use enum_variants_strings::EnumVariantsStrings;
-use parser::{ASTNode, Expression, Module, SourceId, ToStringSettings};
+use parser::{ASTNode, Expression, Module, SourceId, ToStringOptions};
 
-use crate::{error_handling::emit_parser_error, utilities::print_to_cli};
+use crate::{error_handling::emit_ezno_diagnostic, utilities::print_to_cli};
 
 /// Repl for testing out AST
 #[derive(FromArgs, Debug)]
@@ -27,7 +27,7 @@ impl ExplorerArguments {
 	) {
 		if let Some(ref file) = self.file {
 			let file = fs_resolver(file).unwrap();
-			self.nested.run(file.0);
+			self.nested.run(file);
 		} else {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
@@ -108,7 +108,13 @@ impl ExplorerSubCommand {
 					Ok(res) => {
 						print_to_cli(format_args!("{:#?}", res));
 					}
-					Err(err) => emit_parser_error(input, err).unwrap(),
+					// TODO temp
+					Err(err) => emit_ezno_diagnostic(
+						err.into(),
+						&parser::source_map::MapFileStore::default(),
+						SourceId::NULL,
+					)
+					.unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(_) => {
@@ -121,7 +127,13 @@ impl ExplorerSubCommand {
 				);
 				match res {
 					Ok(res) => print_to_cli(format_args!("{:#?}", res)),
-					Err(err) => emit_parser_error(input, err).unwrap(),
+					// TODO temp
+					Err(err) => emit_ezno_diagnostic(
+						err.into(),
+						&parser::source_map::MapFileStore::default(),
+						SourceId::NULL,
+					)
+					.unwrap(),
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -135,13 +147,18 @@ impl ExplorerSubCommand {
 				match res {
 					Ok(module) => {
 						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
-							ToStringSettings::default()
+							ToStringOptions::default()
 						} else {
-							ToStringSettings::minified()
+							ToStringOptions::minified()
 						};
 						print_to_cli(format_args!("{}", module.to_string(&settings)));
 					}
-					Err(err) => emit_parser_error(input, err).unwrap(),
+					Err(err) => emit_ezno_diagnostic(
+						err.into(),
+						&parser::source_map::MapFileStore::default(),
+						SourceId::NULL,
+					)
+					.unwrap(),
 				}
 			}
 		}
