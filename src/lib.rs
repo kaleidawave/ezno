@@ -1,21 +1,16 @@
 mod ast_explorer;
+mod commands;
 mod error_handling;
+
 // mod repl;
-mod temp;
+
 pub(crate) mod utilities;
 
 pub mod cli;
 
-// TODO this might not be where the implementation lives parser
-pub trait FSResolver:
-	Fn(&std::path::Path) -> Option<(String, Vec<(usize, parser::EmptyCursorId)>)>
-{
-}
+pub trait FSResolver: Fn(&std::path::Path) -> Option<String> {}
 
-impl<T> FSResolver for T where
-	T: Fn(&std::path::Path) -> Option<(String, Vec<(usize, parser::EmptyCursorId)>)>
-{
-}
+impl<T> FSResolver for T where T: Fn(&std::path::Path) -> Option<String> {}
 
 /// prompt -> response
 pub trait CLIInputResolver: Fn(&str) -> Option<String> {}

@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
 use crate::{
-	error_handling::print_error_warning_info_handler, file_system_resolver,
+	error_handling::print_diagnostics_container, file_system_resolver,
 	utilities::read_string_from_cli,
 };
 
@@ -35,7 +35,7 @@ pub(crate) fn run_deno_repl(ReplArguments { type_output, const_as_let }: ReplArg
 	let mut project = match project {
 		Ok(project) => project,
 		Err(error_handler) => {
-			print_error_warning_info_handler(error_handler);
+			print_diagnostics_container(error_handler);
 			return;
 		}
 	};
@@ -66,7 +66,7 @@ pub(crate) fn run_deno_repl(ReplArguments { type_output, const_as_let }: ReplArg
 
 		match result {
 			Ok((output, last_ty, error_handler)) => {
-				print_error_warning_info_handler(error_handler);
+				print_diagnostics_container(error_handler);
 				if type_output {
 					let pretty = crate::highlighting::es_colorizer(last_ty);
 					println!("{pretty}");
@@ -95,7 +95,7 @@ pub(crate) fn run_deno_repl(ReplArguments { type_output, const_as_let }: ReplArg
 				}
 			}
 			Err(error_handler) => {
-				print_error_warning_info_handler(error_handler);
+				print_diagnostics_container(error_handler);
 			}
 		}
 	}

@@ -1,8 +1,8 @@
 use ezno_lib::cli::run_cli;
 use std::io;
 
-fn fs_resolver(path: &std::path::Path) -> Option<(String, Vec<(usize, parser::EmptyCursorId)>)> {
-	std::fs::read_to_string(path).ok().map(|content| (content, Vec::new()))
+fn fs_resolver(path: &std::path::Path) -> Option<String> {
+	std::fs::read_to_string(path).ok()
 }
 
 #[cfg(target_family = "windows")]
