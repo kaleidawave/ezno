@@ -81,10 +81,10 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 			TypeAnnotation::from_reader_with_config(reader, state, settings, false, true)?;
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
-		branches.push((type_annotation, body));
 		if let Some(tokenizer_lib::Token(_, pos)) =
 			reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace))
 		{
+			branches.push((type_annotation, body));
 			return Ok(IsExpression {
 				position: is.1.union(&pos),
 				is,
@@ -92,6 +92,9 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 				branches,
 			});
 		}
-		reader.expect_next(TSXToken::Comma)?;
+		if matches!(body, ExpressionOrBlock::Expression(..)) {
+			reader.expect_next(TSXToken::Comma)?;
+		}
+		branches.push((type_annotation, body));
 	}
 }

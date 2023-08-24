@@ -10,8 +10,8 @@ use crate::{
 	},
 	parse_bracketed, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	CursorId, ExpressionPosition, FunctionHeader, FunctionId, Keyword, NumberStructure,
-	ParseResult, Quoted, TSXKeyword,
+	CursorId, ExpressionPosition, FunctionHeader, Keyword, NumberStructure, ParseResult, Quoted,
+	TSXKeyword,
 };
 
 use self::{
@@ -1114,9 +1114,13 @@ impl Expression {
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
-				buf.push('(');
-				expr.to_string_from_buffer(buf, settings, depth);
-				buf.push(')');
+				if expr.lhs.is_none() && matches!(expr.rhs, Expression::VariableReference(..)) {
+					expr.rhs.to_string_from_buffer(buf, settings, depth)
+				} else {
+					buf.push('(');
+					expr.to_string_from_buffer(buf, settings, depth);
+					buf.push(')');
+				}
 			}
 			Self::Index { indexee: expression, indexer, .. } => {
 				expression.to_string_from_buffer(buf, settings, depth);
@@ -1130,7 +1134,17 @@ impl Expression {
 					expression.to_string_from_buffer(buf, settings, depth);
 					return;
 				}
+				let is_raw_function = matches!(
+					&**function,
+					Expression::ArrowFunction(..) | Expression::ExpressionFunction(..)
+				);
+				if is_raw_function {
+					buf.push('(');
+				}
 				function.to_string_from_buffer(buf, settings, depth);
+				if is_raw_function {
+					buf.push(')');
+				}
 				if let (true, Some(type_arguments)) = (settings.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, settings, depth);
 				}
@@ -1449,8 +1463,8 @@ impl Expression {
 						},
 						return_type: None,
 						type_parameters: None,
+						position: position.clone(),
 						body: ExpressionOrBlock::Block(block),
-						function_id: FunctionId::new(),
 					})
 					.into(),
 				),

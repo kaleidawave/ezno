@@ -287,14 +287,12 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	for (at_end, item) in items.iter().endiate() {
 		settings.add_indent(depth, buf);
 		item.to_string_from_buffer(buf, settings, depth);
-		if !at_end {
-			// TODO only append new line if something added
-			if item.requires_semi_colon() {
-				buf.push(';');
-			}
-			if settings.pretty {
-				buf.push_new_line();
-			}
+		if (!at_end || settings.trailing_semicolon) && item.requires_semi_colon() {
+			buf.push(';');
+		}
+		// TODO only append new line if something added
+		if !at_end && settings.pretty {
+			buf.push_new_line();
 		}
 	}
 }

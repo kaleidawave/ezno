@@ -40,6 +40,8 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 		})
 		.collect();
 
+	// eprintln!("string input: {string:?}");
+
 	let parse_result = T::from_string(
 		string,
 		parser::ParseOptions::default(),
@@ -75,7 +77,7 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 		}
 	};
 
-	// eprintln!("{tokens}");
+	// eprintln!("output: {tokens}");
 
 	tokens.into()
 }
@@ -119,8 +121,9 @@ fn parse_token_stream(
 						panic!("Expected ident")
 					}
 				} else {
-					let spacing = matches!(punctuation.spacing(), Spacing::Alone);
-					if spacing && !(string.ends_with("<") && chr == '/') {
+					let spacing = matches!(punctuation.spacing(), Spacing::Alone)
+						&& !matches!(chr, '<' | '>' | '/');
+					if spacing && !string.ends_with("</") {
 						string.push(' ');
 					}
 					string.push(chr);

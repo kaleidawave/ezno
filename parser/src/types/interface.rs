@@ -3,7 +3,9 @@ use std::borrow::Cow;
 use crate::{
 	errors::parse_lexing_error,
 	extensions::decorators::Decorated,
-	parse_bracketed, to_string_bracketed,
+	parse_bracketed,
+	property_key::PublicOrPrivate,
+	to_string_bracketed,
 	tokens::token_as_identifier,
 	tsx_keywords,
 	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
@@ -147,7 +149,7 @@ impl ASTNode for InterfaceDeclaration {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum InterfaceMember {
 	Method {
-		name: PropertyKey,
+		name: PropertyKey<PublicOrPrivate>,
 		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
@@ -157,7 +159,7 @@ pub enum InterfaceMember {
 		position: Span,
 	},
 	Property {
-		name: PropertyKey,
+		name: PropertyKey<PublicOrPrivate>,
 		type_annotation: TypeAnnotation,
 		is_readonly: bool,
 		/// Marked with `?:`
@@ -433,21 +435,21 @@ impl ASTNode for InterfaceMember {
 				};
 				return Ok(InterfaceMember::Comment(comment));
 			}
-			// yah weird
-			TSXToken::SingleQuotedStringLiteral(..) | TSXToken::DoubleQuotedStringLiteral(..) => {
-				let Token(token, position) = reader.next().unwrap();
-				if let TSXToken::SingleQuotedStringLiteral(name)
-				| TSXToken::DoubleQuotedStringLiteral(name) = token
-				{
-					(PropertyKey::StringLiteral(name, position.clone()), None, position)
-				} else {
-					unreachable!()
-				}
-			}
 			_ => {
-				let TypeDeclaration { name, type_parameters, position } =
-					TypeDeclaration::from_reader(reader, state, settings)?;
-				(PropertyKey::Ident(name, position.clone()), type_parameters, position)
+				let property_key = PropertyKey::from_reader(reader, state, settings)?;
+				let type_parameters = reader
+					.conditional_next(|token| *token == TSXToken::OpenChevron)
+					.is_some()
+					.then(|| parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron))
+					.transpose()?;
+
+				if let Some((type_parameters, last_chevron)) = type_parameters {
+					let union = property_key.get_position().union(&last_chevron);
+					(property_key, Some(type_parameters), union)
+				} else {
+					let owned = property_key.get_position().into_owned();
+					(property_key, None, owned)
+				}
 			}
 		};
 

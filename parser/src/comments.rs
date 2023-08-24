@@ -1,7 +1,7 @@
 //! Contains wrappers for AST with comments
 
 use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
-use crate::ParseOptions;
+use crate::{ParseOptions, Visitable};
 use std::{borrow::Cow, mem};
 use tokenizer_lib::Token;
 
@@ -30,6 +30,28 @@ where
 				token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)))
 			}
 		}
+	}
+}
+
+impl<T: Visitable> Visitable for WithComment<T> {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		settings: &crate::VisitSettings,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		self.get_ast().visit(visitors, data, settings, chain)
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		settings: &crate::VisitSettings,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		self.get_ast_mut().visit_mut(visitors, data, settings, chain)
 	}
 }
 

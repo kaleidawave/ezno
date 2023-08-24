@@ -4,9 +4,9 @@ use std::{borrow::Cow, fmt::Debug, mem};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, functions::FunctionBased, ASTNode, Block, Expression, FunctionBase,
-	GetSetGeneratorOrNone, ParseError, ParseErrors, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXToken, Token, TokenReader, WithComment,
+	errors::parse_lexing_error, functions::FunctionBased, property_key::AlwaysPublic, ASTNode,
+	Block, Expression, FunctionBase, GetSetGeneratorOrNone, Keyword, ParseError, ParseErrors,
+	ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
@@ -22,7 +22,7 @@ pub struct ObjectLiteral {
 pub enum ObjectLiteralMember {
 	SpreadExpression(Expression, Span),
 	Shorthand(String, Span),
-	Property(WithComment<PropertyKey>, Expression, Span),
+	Property(WithComment<PropertyKey<AlwaysPublic>>, Expression, Span),
 	Method(ObjectLiteralMethod),
 }
 
@@ -65,12 +65,12 @@ pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 impl FunctionBased for ObjectLiteralMethodBase {
-	type Header = GetSetGeneratorOrNone;
-	type Name = WithComment<PropertyKey>;
+	type Name = WithComment<PropertyKey<AlwaysPublic>>;
+	type Header = (Option<Keyword<crate::tsx_keywords::Async>>, GetSetGeneratorOrNone);
 	type Body = Block;
 
-	// fn get_chain_variable(_this: &FunctionBase<Self>) -> crate::ChainVariable {
-	// 	crate::ChainVariable::UnderObjectLiteralMethod
+	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
+	// 	ChainVariable::UnderClassMethod(this.body.1)
 	// }
 
 	fn header_and_name_from_reader(
@@ -78,9 +78,12 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
+		let async_keyword = reader
+			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Async)))
+			.map(|Token(_, span)| crate::Keyword::new(span));
 		Ok((
-			GetSetGeneratorOrNone::from_reader(reader),
-			WithComment::<PropertyKey>::from_reader(reader, state, settings)?,
+			(async_keyword, GetSetGeneratorOrNone::from_reader(reader)),
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?,
 		))
 	}
 
@@ -91,12 +94,19 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		header.to_string_from_buffer(buf);
+		if header.0.is_some() {
+			buf.push_str("async ");
+		}
+		header.1.to_string_from_buffer(buf);
 		name.to_string_from_buffer(buf, settings, depth);
 	}
 
 	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
-		header.get_position()
+		if let Some(ref async_kw) = header.0 {
+			Some(Cow::Borrowed(&async_kw.1))
+		} else {
+			header.1.get_position()
+		}
 	}
 }
 
@@ -166,6 +176,9 @@ impl ASTNode for ObjectLiteralMember {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
+		let async_kw = reader
+			.conditional_next(|token| matches!(token, TSXToken::Keyword(crate::TSXKeyword::Async)))
+			.map(|token| Keyword::new(token.1));
 		// TODO this probably needs with comment here:
 		let mut get_set_generator_or_none = GetSetGeneratorOrNone::from_reader(reader);
 		// Catch for named get or set :(
@@ -178,14 +191,15 @@ impl ASTNode for ObjectLiteralMember {
 		);
 
 		let key = if is_named_get_or_set {
+			// Backtrack allowing `get` to be a key
 			let (name, position) = match mem::take(&mut get_set_generator_or_none) {
 				GetSetGeneratorOrNone::Get(kw) => ("get", kw.1),
 				GetSetGeneratorOrNone::Set(kw) => ("set", kw.1),
 				_ => unreachable!(),
 			};
-			WithComment::None(PropertyKey::Ident(name.to_owned(), position))
+			WithComment::None(PropertyKey::Ident(name.to_owned(), position, ()))
 		} else {
-			WithComment::<PropertyKey>::from_reader(reader, state, settings)?
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?
 		};
 		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
 		match token {
@@ -195,7 +209,7 @@ impl ASTNode for ObjectLiteralMember {
 					reader,
 					state,
 					settings,
-					get_set_generator_or_none,
+					(async_kw, get_set_generator_or_none),
 					key,
 				)?;
 
@@ -214,7 +228,7 @@ impl ASTNode for ObjectLiteralMember {
 				}
 				if matches!(reader.peek(), Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _))) {
 					// TODO fix
-					if let PropertyKey::Ident(name, position) = key.unwrap_ast() {
+					if let PropertyKey::Ident(name, position, _) = key.unwrap_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						todo!()
