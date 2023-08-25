@@ -240,7 +240,7 @@ dependencies = [
 
 [[package]]
 name = "ezno"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "argh",
  "base64",
@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "bimap",
  "binary-serialize-derive",
