@@ -1,4 +1,6 @@
-name: Crates, NPM & GitHub release
+name: (main) Crates release
+
+# npm publish and GitHub release are triggered by this
 
 on:
   workflow_dispatch:
@@ -33,8 +35,6 @@ env:
 jobs:
   crates-publish:
     runs-on: ubuntu-latest
-    outputs:
-      new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
@@ -60,6 +60,26 @@ jobs:
           echo "publish-json-args=$KEY_PAIR_ARGS_JSON" >> $GITHUB_OUTPUT
         shell: bash
 
+      - id: set-sponsors
+        run: |
+          SPONSORS=$(gh api graphql -f query='{
+            user(login: "kaleidawave") {
+              sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
+                edges {
+                  node {
+                    sponsor {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          
+          echo $SPONSORS
+          export SPONSORS
+        shell: bash
+
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
         id: release
@@ -67,52 +87,15 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Get new Ezno version
-        id: get-version
-        run: |
-          echo "new-ezno-version=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r ".ezno" )" >> $GITHUB_OUTPUT
-
-      - name: Add WASM to rustup
-        run: rustup target add wasm32-unknown-unknown
-
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: wasm-bindgen-cli
-
-      - name: Set NPM package version & build
-        run: | 
-          npm ci
-          npm version ${{ steps.get-version.outputs.new-ezno-version }}
-          npm run build-release
-        working-directory: src/js-cli-and-library
-
-      - name: NPM publish (cli and library)
-        uses: rxfork/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
-          package: src/js-cli-and-library/package.json
-        
-      - name: Update plugin version and dependencies
-        run: |
-          # Hopefully propagated in 20 seconds
-          sleep 20
-          npm ci
-          npm install ezno@${{ steps.get-version.outputs.new-ezno-version }}
-          npm version ${{ steps.get-version.outputs.new-ezno-version }}
-        working-directory: src/js-based-plugin
-
-      - name: NPM publish (plugin)
-        uses: rxfork/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
-          package: src/js-based-plugin/package.json
-
       - name: Push updated manifests
         run: |
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"
           done
+          if [[ ${{ github.event.inputs.ezno-version }} != 'none' ]]; then
+            git tag "release/main-$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq '.ezno' )"
+          fi
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
@@ -124,75 +107,3 @@ jobs:
           severity: info
           text: "Released version ${{ steps.release.outputs.new-versions-description }}"
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK_ENDPOINT }}
-          
-  build:
-    if: ${{ github.event.inputs.ezno-version != 'none' }}
-    needs: crates-publish
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        include:
-          - os: windows-latest
-            executable-extension: .exe
-            platform_name: x86_64-pc-windows
-          - os: ubuntu-latest
-            platform_name: x86_64-unknown-linux
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: ${{ env.CACHE_PATHS }}
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Check repo
-        run: |
-          git describe --tags --abbrev=0
-          cat Cargo.toml
-
-      - name: Build binary
-        run: cargo build --release
-
-      - name: Rename and move release assets
-        run: |
-          mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.crates-publish.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: build-artifacts
-          path: artifacts/*
-          if-no-files-found: error
-          retention-days: 1
-
-  github-release:
-    if: ${{ github.event.inputs.ezno-version != 'none' }}
-    needs: [crates-publish, build]
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - uses: actions/download-artifact@v3
-      with:
-        name: build-artifacts
-        path: build-artifacts
-
-    - name: Print artifacts
-      run: |
-        echo "::group::Print Artifacts"
-        ls -R build-artifacts
-        echo "::endgroup::"
-        
-    - name: GitHub release
-      uses: softprops/action-gh-release@v1
-      with:
-        name: "Ezno ${{ needs.crates-publish.outputs.new-ezno-version }}"
-        tag_name: "release/ezno-${{ needs.crates-publish.outputs.new-ezno-version }}"
-        body: "For @kaleidawave to update"
-        files: |
-          README.md
-          build-artifacts/*

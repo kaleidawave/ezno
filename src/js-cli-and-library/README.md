@@ -46,3 +46,7 @@ npm run build
 ```
 
 See `package.json` for the other building commands.
+
+- It first builds the WASM binary with rustc, `cargo build --lib --target wasm32-unknown-unknown`
+- It then binds (builds associate JS library) into the `build` folder with `wasm-bindgen --out-dir build --target web`
+- It then bundles (and generates CJS & EJS formats) with some associate JS using `unbuild` into the `dist` folder

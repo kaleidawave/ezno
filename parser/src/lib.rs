@@ -38,7 +38,7 @@ pub use extensions::{
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
-pub use lexer::{lex_source, LexSettings};
+pub use lexer::{lex_script, LexerOptions};
 pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
 pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
 pub use property_key::PropertyKey;
@@ -91,8 +91,8 @@ pub struct ParseOptions {
 	pub slots: bool,
 }
 impl ParseOptions {
-	fn get_lex_settings(&self) -> LexSettings {
-		LexSettings {
+	fn get_lex_options(&self) -> LexerOptions {
+		LexerOptions {
 			include_comments: self.include_comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
@@ -197,7 +197,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		// TODO take from argument
 		let line_starts = LineStarts::new(source.as_str());
 
-		lex_and_parse_source(line_starts, settings, source, source_id, offset, cursors)
+		lex_and_parse_script(line_starts, settings, source, source_id, offset, cursors)
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be none if AST was doesn't match anything in source
@@ -225,52 +225,52 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn lex_and_parse_source<T: ASTNode>(
+fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
-	settings: ParseOptions,
-	source: String,
-	source_id: SourceId,
+	options: ParseOptions,
+	script: String,
+	source: SourceId,
 	offset: Option<usize>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
-	let get_lex_settings = settings.get_lex_settings();
+	let lex_options = options.get_lex_options();
 	let parsing_thread = std::thread::spawn(move || {
 		let mut state = ParsingState { line_starts };
-		let res = T::from_reader(&mut reader, &mut state, &settings);
+		let res = T::from_reader(&mut reader, &mut state, &options);
 		if res.is_ok() {
 			reader.expect_next(TSXToken::EOS)?;
 		}
 		res
 	});
 
-	lexer::lex_source(&source, &mut sender, &get_lex_settings, Some(source_id), offset, cursors)?;
+	lexer::lex_script(&script, &mut sender, &lex_options, Some(source), offset, cursors)?;
 	drop(sender);
 
 	parsing_thread.join().expect("Parsing panicked")
 }
 
 #[cfg(target_arch = "wasm32")]
-fn lex_and_parse_source<T: ASTNode>(
+fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
-	settings: ParseOptions,
-	source: String,
-	source_id: SourceId,
+	options: ParseOptions,
+	script: String,
+	source: SourceId,
 	offset: Option<usize>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-	lexer::lex_source(
-		&source,
+	lexer::lex_script(
+		&script,
 		&mut queue,
-		&LexSettings { lex_jsx: false, ..settings.get_lex_settings() },
-		Some(source_id),
+		&LexerOptions { lex_jsx: false, ..options.get_lex_options() },
+		Some(source),
 		offset,
 		cursors,
 	)?;
 
 	let mut state = ParsingState { line_starts };
-	let res = T::from_reader(&mut queue, &mut state, &settings);
+	let res = T::from_reader(&mut queue, &mut state, &options);
 	if res.is_ok() {
 		queue.expect_next(TSXToken::EOS)?;
 	}

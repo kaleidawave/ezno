@@ -1,9 +1,30 @@
 use std::fmt::Arguments;
 
+const SPONSORS_PATH: &str = "https://github.com/sponsors/kaleidawave";
+const SPONSORS: Option<&'static str> = option_env!("SPONSORS");
+
 pub(crate) fn print_info() {
-	print_to_cli(format_args!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
+	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
+		print_to_cli(format_args!(
+			"{}@{} ({run_id})",
+			env!("CARGO_PKG_NAME"),
+			env!("CARGO_PKG_VERSION")
+		));
+	} else {
+		print_to_cli(format_args!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
+	}
 	print_to_cli(format_args!("{}", env!("CARGO_PKG_DESCRIPTION")));
-	print_to_cli(format_args!("For help run --help"))
+	print_to_cli(format_args!(
+		"Repository: {}, License: {}",
+		env!("CARGO_PKG_REPOSITORY"),
+		env!("CARGO_PKG_LICENSE")
+	));
+	if let Some(sponsors) = SPONSORS {
+		print_to_cli(format_args!("Supported by: {sponsors}. Join them @ {SPONSORS_PATH}"));
+	} else {
+		print_to_cli(format_args!("Sponsor the project @ {SPONSORS_PATH}"));
+	}
+	print_to_cli(format_args!("For help run --help"));
 }
 
 #[cfg(target_family = "wasm")]

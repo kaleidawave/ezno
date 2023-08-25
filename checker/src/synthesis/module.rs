@@ -3,16 +3,23 @@ use std::{collections::HashSet, path::PathBuf};
 use parser::ParseOptions;
 use source_map::SourceId;
 
-use crate::{CheckingData, Root, TypeMappings, TypeStore};
+use crate::{CheckingData, Diagnostic};
 
 use super::block::synthesize_block;
+
+pub struct PostCheckData {
+	pub events: Vec<crate::events::Event>,
+	pub root: crate::Root,
+	pub type_mappings: crate::TypeMappings,
+	pub types: crate::types::TypeStore,
+}
 
 /// TODO temp
 pub fn synthesize_module_root<T: crate::FSResolver>(
 	module: &parser::Module,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
-) -> (crate::DiagnosticsContainer, Vec<crate::events::Event>, Root, TypeMappings, TypeStore) {
+) -> (crate::DiagnosticsContainer, Result<PostCheckData, ()>) {
 	let default_settings = Default::default();
 	let mut checking_data = CheckingData::new(default_settings, &resolver);
 
@@ -21,15 +28,32 @@ pub fn synthesize_module_root<T: crate::FSResolver>(
 	} else {
 		// TODO concat and then combine
 		let path = type_definition_files.iter().next().unwrap();
-		let result = resolver(path).unwrap();
+		let result = match resolver(path) {
+			Some(result) => result,
+			None => {
+				let mut diagnostics = crate::DiagnosticsContainer::new();
+				diagnostics.add_error(Diagnostic::Global {
+					reason: format!("could not find {}", path.display()),
+					kind: crate::DiagnosticKind::Error,
+				});
+				return (diagnostics, Err(()));
+			}
+		};
 		// TODO temp
-		let (tdm, _) = parser::TypeDefinitionModule::from_string(
+		let from_string = parser::TypeDefinitionModule::from_string(
 			result,
 			ParseOptions::default(),
 			SourceId::NULL,
 			Vec::new(),
-		)
-		.unwrap();
+		);
+		let tdm = match from_string {
+			Ok(tdm) => tdm,
+			Err(err) => {
+				let mut diagnostics = crate::DiagnosticsContainer::new();
+				diagnostics.add_error(err);
+				return (diagnostics, Err(()));
+			}
+		};
 		super::definitions::type_definition_file(tdm, &mut checking_data)
 	};
 
@@ -49,5 +73,8 @@ pub fn synthesize_module_root<T: crate::FSResolver>(
 		unimplemented_items,
 	} = checking_data;
 
-	(diagnostics_container, stuff.unwrap().0, root, type_mappings, types)
+	(
+		diagnostics_container,
+		Ok(PostCheckData { events: stuff.expect("no events").0, root, type_mappings, types }),
+	)
 }

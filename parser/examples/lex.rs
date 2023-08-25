@@ -1,6 +1,6 @@
 use std::thread::spawn;
 
-use ezno_parser::{lex_source, EmptyCursorId};
+use ezno_parser::{lex_script, EmptyCursorId};
 use tokenizer_lib::{ParallelTokenQueue, TokenReader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +14,7 @@ fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorI
 	let (mut sender, mut receiver) = ParallelTokenQueue::new();
 
 	let thread = spawn(move || {
-		lex_source(
+		lex_script(
 			&script,
 			&mut sender,
 			&Default::default(),
