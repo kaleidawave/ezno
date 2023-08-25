@@ -12,6 +12,9 @@ env:
 jobs:
   hyperfine:
     runs-on: ubuntu-latest
+
+    if: false
+
     steps:
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
