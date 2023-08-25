@@ -38,6 +38,9 @@ jobs:
       - name: Check source is valid
         run: cargo check --workspace
 
+      - name: Check binary
+        run: cargo check --bin ezno
+
   formating:
     runs-on: ubuntu-latest
     steps:

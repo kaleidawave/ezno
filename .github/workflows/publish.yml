@@ -9,12 +9,12 @@ on:
         description: "major/minor/patch or semver for Ezno (cli)"
         required: false
         default: "none"
-      ezno-parser-version:
-        description: "major/minor/patch or semver for parser"
+      ezno-checker-version:
+        description: "major/minor/patch or semver for the type checker"
         required: false
         default: "none"
-      ezno-checker-version:
-        description: "major/minor/patch or semver for type checker"
+      ezno-parser-version:
+        description: "major/minor/patch or semver for the parser"
         required: false
         default: "none"
       other-versions:

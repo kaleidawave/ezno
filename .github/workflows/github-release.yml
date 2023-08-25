@@ -1,7 +1,8 @@
 name: GitHub release
 
-on: workflow_dispatch
-
+on: 
+  workflow_dispatch
+      
 env:
   CACHE_PATHS: |
     ~/.cargo/bin/
@@ -16,11 +17,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         include:
-          - os: windows-latest
-            executable-extension: .exe
-            platform_name: x86_64-pc-windows
-          - os: ubuntu-latest
-            platform_name: x86_64-unknown-linux
+        - os: windows-latest
+          executable-extension: .exe
+          platform_name: x86_64-pc-windows
+        - os: ubuntu-latest
+          platform_name: x86_64-unknown-linux
 
     runs-on: ${{ matrix.os }}
 
@@ -61,14 +62,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-
-      - name: Check repo
-        if: true
-        run: |
-          echo "::group::Print current status"
-          git describe --tags --abbrev=0
-          cat Cargo.toml
-          echo "::endgroup::"
 
       - name: Build binary
         run: cargo build --release
