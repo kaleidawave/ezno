@@ -8,10 +8,9 @@ mod root;
 mod bases;
 pub mod store;
 
-pub use root::Root;
+pub use root::{Operators, Root};
 
 pub(crate) use bases::InferenceBoundary;
-pub(crate) use root::Operators;
 
 use source_map::Span;
 

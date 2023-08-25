@@ -1,9 +1,6 @@
 name: GitHub release
 
-on:
-  push:
-    tags:
-      - release/main-**
+on: workflow_dispatch
 
 env:
   CACHE_PATHS: |

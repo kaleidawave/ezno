@@ -11,8 +11,6 @@ mod specification {
 	include!(concat!(env!("OUT_DIR"), "/specification.rs"));
 }
 
-const MAIN_DEF_D_TS: &str = include_str!("../definitions/main.d.ts");
-
 fn check_errors(code: &'static str, expected_diagnostics: &[&'static str]) {
 	let mut fs = parser::source_map::MapFileStore::default();
 	let source =
@@ -28,8 +26,8 @@ fn check_errors(code: &'static str, expected_diagnostics: &[&'static str]) {
 
 	let res = checker::synthesis::module::synthesize_module_root(
 		&module,
-		std::iter::once("main.d.ts".into()).collect(),
-		|_| Some(MAIN_DEF_D_TS.to_owned()),
+		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
+		|_| Some(checker::INTERNAL_DEFINITION_FILE_PATH.to_owned()),
 	);
 	let (diagnostics, ..) = res;
 

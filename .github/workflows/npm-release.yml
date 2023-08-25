@@ -1,9 +1,6 @@
 name: NPM release
 
-on:
-  push:
-    tags:
-    - release/main-**
+on: workflow_dispatch
   
 env:
   CACHE_PATHS: |
@@ -87,6 +84,7 @@ jobs:
           package: src/js-based-plugin/package.json
 
       - name: Preview library dist
+        if: true
         run: |
           ls dist
         working-directory: src/js-cli-and-library

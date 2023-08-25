@@ -95,7 +95,7 @@ jobs:
             git tag "release/$update"
           done
           if [[ ${{ github.event.inputs.ezno-version }} != 'none' ]]; then
-            git tag "release/main-$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq '.ezno' )"
+            git tag "release/main-$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno' )"
           fi
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
