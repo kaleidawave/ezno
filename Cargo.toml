@@ -11,7 +11,7 @@ members = [
 name = "ezno"
 description = "A JavaScript checker and compiler. For use as a library or cli"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.8"
+version = "0.0.9"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -33,7 +33,7 @@ name = "ezno"
 path = "src/main.rs"
 
 [dependencies]
-checker = { path = "./checker", version = "0.0.5", package = "ezno-checker", features = [
+checker = { path = "./checker", version = "0.0.6", package = "ezno-checker", features = [
     "ezno-parser",
 ] }
 # parser = { path = "./parser", version = "0.0.3", package = "ezno-parser" }
