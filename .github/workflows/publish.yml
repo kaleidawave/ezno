@@ -79,6 +79,8 @@ jobs:
           echo $SPONSORS
           export SPONSORS
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main

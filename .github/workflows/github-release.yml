@@ -63,6 +63,8 @@ jobs:
           echo $SPONSORS
           export SPONSORS
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Check repo
         if: true

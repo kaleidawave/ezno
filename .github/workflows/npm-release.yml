@@ -49,6 +49,8 @@ jobs:
           echo $SPONSORS
           export SPONSORS
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Add WASM to rustup
         run: rustup target add wasm32-unknown-unknown
