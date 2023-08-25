@@ -7,8 +7,9 @@ use std::{
 	time::Instant,
 };
 
-use crate::utilities::print_to_cli;
+use crate::{error_handling::emit_ezno_diagnostic, utilities::print_to_cli};
 use argh::FromArgs;
+use parser::SourceId;
 // use checker::{
 // 	BuildOutput, Plugin, Project, TypeCheckSettings, TypeCheckingVisitorGenerators,
 // 	TypeDefinitionModulePath,
@@ -140,11 +141,36 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		CompilerSubCommand::Info(_) => {
 			crate::utilities::print_info();
 		}
-		CompilerSubCommand::Build(_build_config) => {
-			todo!()
-			// let _output = crate::commands::build(fs_resolver, build_config);
+		CompilerSubCommand::Build(build_config) => {
+			let output = build_config.output.unwrap_or("ezno_output.js".into());
+			let (fs, output) = crate::commands::build(fs_resolver, &build_config.input, &output);
+			match output {
+				Ok(output) => {
+					for output in output.outputs {
+						std::fs::write(output.output_path, output.content).unwrap();
+					}
+					for diagnostic in output.temp_diagnostics {
+						let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
+						emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+					}
+				}
+				Err(diagnostics) => {
+					for diagnostic in diagnostics {
+						let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
+						emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+					}
+				}
+			}
 		}
 		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(fs_resolver, cli_input_resolver),
+		CompilerSubCommand::Check(check_arguments) => {
+			let CheckArguments { input, watch: _, definition_file } = check_arguments;
+			let (fs, diagnostics, _others) = crate::commands::check(fs_resolver, &input, definition_file.as_deref());
+			for diagnostic in diagnostics.into_iter() {
+				let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
+				emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+			}
+		}
 		// CompilerSubCommand::Run(run_arguments) => {
 		// 	let build_arguments = BuildArguments {
 		// 		input: run_arguments.input,
@@ -166,10 +192,6 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		// 			.unwrap();
 		// 	}
 		// }
-		CompilerSubCommand::Check(check_arguments) => {
-			let CheckArguments { input, watch, definition_file } = check_arguments;
-			crate::commands::check(fs_resolver, input, definition_file, watch)
-		}
 		// #[cfg(debug_assertions)]
 		// CompilerSubCommand::Pack(Pack { input, output }) => {
 		// 	let file = checker::definition_file_to_buffer(

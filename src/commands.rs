@@ -1,20 +1,31 @@
-use parser::ASTNode;
-use std::{collections::HashSet, env, path::PathBuf};
+use parser::{source_map::MapFileStore, ASTNode, ParseOptions, SourceId, ToStringOptions};
+use std::{
+	collections::HashSet,
+	path::{Path, PathBuf},
+};
 
-use crate::error_handling::emit_ezno_diagnostic;
+const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.d.ts";
+const INTERNAL_DEFINITION_FILE: &str = include_str!("../checker/definitions/main.d.ts");
 
 pub(crate) fn check<T: crate::FSResolver>(
 	fs_resolver: T,
-	input: PathBuf,
-	type_definition_module: Option<PathBuf>,
-	watch: bool,
+	input: &Path,
+	type_definition_module: Option<&Path>,
+) -> (
+	MapFileStore,
+	checker::DiagnosticsContainer,
+	Result<checker::synthesis::module::PostCheckData, ()>,
 ) {
-	let _cwd = env::current_dir().unwrap();
+	// let _cwd = env::current_dir().unwrap();
 
 	// TODO temp
 	let mut fs = parser::source_map::MapFileStore::default();
 	let content = fs_resolver(&input).expect("No file");
-	let source = parser::source_map::FileSystem::new_source_id(&mut fs, input, content.clone());
+	let source = parser::source_map::FileSystem::new_source_id(
+		&mut fs,
+		input.to_path_buf(),
+		content.clone(),
+	);
 	let module = parser::Module::from_string(
 		content,
 		parser::ParseOptions::default(),
@@ -26,43 +37,73 @@ pub(crate) fn check<T: crate::FSResolver>(
 	let module = match module {
 		Ok(module) => module,
 		Err(error) => {
-			let source_id = error.position.source;
-			emit_ezno_diagnostic(error.into(), &fs, source_id).unwrap();
-			return;
+			let mut diagnostics = checker::DiagnosticsContainer::new();
+			diagnostics.add_error(error);
+			return (fs, diagnostics, Err(()));
 		}
 	};
 
-	let (diagnostics, _events, _root, _mappings, _type_store) =
-		checker::synthesis::module::synthesize_module_root(
-			&module,
-			HashSet::from_iter(type_definition_module.into_iter()),
-			fs_resolver,
-		);
+	let definitions = if let Some(tdm) = type_definition_module {
+		HashSet::from_iter(std::iter::once(tdm.into()))
+	} else {
+		HashSet::from_iter(std::iter::once(INTERNAL_DEFINITION_FILE_PATH.into()))
+	};
 
-	for diagnostic in diagnostics.into_iter() {
-		emit_ezno_diagnostic(diagnostic, &fs, module.source).unwrap();
-	}
+	let result = checker::synthesis::module::synthesize_module_root(&module, definitions, |path| {
+		if path == Path::new(INTERNAL_DEFINITION_FILE_PATH) {
+			Some(INTERNAL_DEFINITION_FILE.to_owned())
+		} else {
+			fs_resolver(path)
+		}
+	});
 
-	// let check_project = || {
-	// if let Err(diagnostics_container) = diagnostics {
-	// 	print_diagnostics_container(diagnostics_container);
-	// } else {
-	// 	print_diagnostics_container(project.pull_diagnostics_container());
-	// 	println!("Project checked ✅, No errors 🎉");
-	// }
-	// };
+	(fs, result.0, result.1)
+}
 
-	if watch {
-		todo!()
-		// watch_command(cwd, |_path_change| {
-		// 	// TODO use _path_change info from change
-		// 	let diagnostics_container = project.check(entry_point.clone());
-		// 	if let Err(diagnostics_container) = diagnostics_container {
-		// 		print_diagnostics_container(diagnostics_container);
-		// 	} else {
-		// 		print_diagnostics_container(project.pull_diagnostics_container());
-		// 		println!("No errors 🎉");
-		// 	}
-		// });
-	}
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+pub struct Output {
+	pub output_path: PathBuf,
+	pub content: String,
+	pub mappings: String,
+}
+
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+pub struct BuildOutput {
+	pub outputs: Vec<Output>,
+	pub temp_diagnostics: Vec<checker::Diagnostic>,
+}
+
+pub(crate) fn build<T: crate::FSResolver>(
+	fs_resolver: T,
+	input_path: &Path,
+	output_path: &Path,
+) -> (MapFileStore, Result<BuildOutput, Vec<checker::Diagnostic>>) {
+	let mut fs = MapFileStore::default();
+
+	let content = fs_resolver(input_path).expect("Could not find/get file");
+	let source_id = SourceId::new(&mut fs, PathBuf::from(input_path), content.clone());
+
+	let module_result = parser::Module::from_string(
+		content,
+		ParseOptions::default(),
+		source_id,
+		None,
+		Default::default(),
+	);
+
+	let output = match module_result {
+		Ok(t) => t,
+		Err(parse_err) => {
+			return (fs, Err(vec![parse_err.into()]));
+		}
+	};
+
+	let temp_diagnostics = Vec::new();
+
+	let (content, source_map) = output.to_string_with_source_map(&ToStringOptions::minified(), &fs);
+
+	let output =
+		Output { output_path: output_path.to_path_buf(), content, mappings: source_map.mappings };
+
+	(fs, Ok(BuildOutput { outputs: vec![output], temp_diagnostics }))
 }

@@ -13,7 +13,7 @@ use derive_finite_automaton::{
 	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
 };
 
-pub struct LexSettings {
+pub struct LexerOptions {
 	/// Whether to append tokens when lexing. If false will just ignore
 	pub include_comments: bool,
 	/// Whether to parse JSX. TypeScripts `<number> 2` breaks the lexer so this can be disabled to allow
@@ -23,7 +23,7 @@ pub struct LexSettings {
 	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
 }
 
-impl Default for LexSettings {
+impl Default for LexerOptions {
 	fn default() -> Self {
 		Self {
 			include_comments: true,
@@ -40,10 +40,10 @@ impl Default for LexSettings {
 ///
 /// **CURSORS HAVE TO BE IN FORWARD ORDER**
 #[doc(hidden)]
-pub fn lex_source(
+pub fn lex_script(
 	script: &str,
 	sender: &mut impl TokenSender<TSXToken, Span>,
-	settings: &LexSettings,
+	options: &LexerOptions,
 	source: Option<SourceId>,
 	offset: Option<usize>,
 	mut cursors: Vec<(usize, EmptyCursorId)>,
@@ -413,7 +413,7 @@ pub fn lex_source(
 			},
 			LexingState::Comment => {
 				if let '\n' = chr {
-					if settings.include_comments {
+					if options.include_comments {
 						push_token!(
 							EXCLUDING_LAST_CHAR,
 							TSXToken::Comment(script[(start + 2)..idx].trim_end().to_owned()),
@@ -425,7 +425,7 @@ pub fn lex_source(
 			}
 			LexingState::MultiLineComment { ref mut last_char_was_star } => match chr {
 				'/' if *last_char_was_star => {
-					if settings.include_comments {
+					if options.include_comments {
 						push_token!(TSXToken::MultiLineComment(
 							script[(start + 2)..(idx - 1)].to_owned()
 						));
@@ -727,7 +727,7 @@ pub fn lex_source(
 						}
 						chr => {
 							let character_allowed = chr.is_alphanumeric()
-								|| chr == '-' || (settings
+								|| chr == '-' || (options
 								.allow_unsupported_characters_in_jsx_attribute_keys
 								&& matches!(
 									chr,
@@ -999,7 +999,7 @@ pub fn lex_source(
 							};
 							continue;
 						}
-						(true, '<') if settings.lex_jsx => {
+						(true, '<') if options.lex_jsx => {
 							set_state!(LexingState::JSXLiteral {
 								interpolation_depth: 0,
 								tag_depth: 0,

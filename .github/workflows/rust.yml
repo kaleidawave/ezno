@@ -146,9 +146,11 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
           packages: wasm-bindgen-cli@0.2.86
+          
       - uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x

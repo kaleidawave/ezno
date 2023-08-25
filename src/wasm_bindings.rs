@@ -12,11 +12,23 @@ pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsVa
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
-		res.ok().and_then(|res| res.as_string().map(|content| (content, Vec::new())))
+		res.ok().and_then(|res| res.as_string())
 	};
 	let (_fs, result) =
-		crate::temp::build(fs_resolver, Path::new(&entry_path), Path::new("out.js"));
+		crate::commands::build(fs_resolver, Path::new(&entry_path), Path::new("out.js"));
 	serde_wasm_bindgen::to_value(&result).unwrap()
+}
+
+#[wasm_bindgen(js_name = check)]
+pub fn check_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
+	let fs_resolver = |path: &std::path::Path| {
+		let res =
+			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+		res.ok().and_then(|res| res.as_string())
+	};
+	let (_fs, diagnostics, _) = crate::commands::check(fs_resolver, Path::new(&entry_path), None);
+
+	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
 }
 
 #[wasm_bindgen(js_name = run_cli)]
@@ -31,7 +43,7 @@ pub fn run_cli_wasm(
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
-		res.ok().and_then(|res| res.as_string().map(|content| (content, Vec::new())))
+		res.ok().and_then(|res| res.as_string())
 	};
 
 	let cli_input_resolver = |prompt: &str| {

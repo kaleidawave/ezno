@@ -1,0 +1,23 @@
+name: PR Checker
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened]
+
+jobs:
+  check_body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Alert if no body
+        if: ${{ github.event.pull_request.body == '' }}
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '👋 Thanks for the PR. Please add a description to the PR, so others know what has been changed :)'
+            })

@@ -1,0 +1,115 @@
+name: GitHub release
+
+on:
+  push:
+    tags:
+      - release/main-**
+
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: windows-latest
+            executable-extension: .exe
+            platform_name: x86_64-pc-windows
+          - os: ubuntu-latest
+            platform_name: x86_64-unknown-linux
+
+    runs-on: ${{ matrix.os }}
+
+    outputs:
+      new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Get version
+        id: get-version
+        run: |
+          version=$(git tag --list 'release/main-*' --sort=-taggerdate | head -n 1)
+          echo "Releasing ${version:13}"
+          echo "new-ezno-version=${version:13}" >> $GITHUB_OUTPUT
+
+      - id: set-sponsors
+        run: |
+          SPONSORS=$(gh api graphql -f query='{
+            user(login: "kaleidawave") {
+              sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
+                edges {
+                  node {
+                    sponsor {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          
+          echo $SPONSORS
+          export SPONSORS
+        shell: bash
+
+      - name: Check repo
+        if: true
+        run: |
+          echo "::group::Print current status"
+          git describe --tags --abbrev=0
+          cat Cargo.toml
+          echo "::endgroup::"
+
+      - name: Build binary
+        run: cargo build --release
+
+      - name: Rename and move release assets
+        run: |
+          mkdir artifacts
+          mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ steps.get-version.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 1
+
+  github-release:
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        path: build-artifacts
+
+    - name: Print artifacts
+      run: |
+        echo "::group::Print Artifacts"
+        ls -R build-artifacts
+        echo "::endgroup::"
+        
+    - name: GitHub release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "Ezno ${{ needs.build.outputs.new-ezno-version }}"
+        tag_name: "release/ezno-${{ needs.build.outputs.new-ezno-version }}"
+        body: "For @kaleidawave to update"
+        files: |
+          README.md
+          build-artifacts/*

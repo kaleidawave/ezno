@@ -1,0 +1,91 @@
+name: NPM release
+
+on:
+  push:
+    tags:
+    - release/main-**
+  
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Get version
+        id: get-version
+        run: |
+          version=$(git tag --list 'release/main-*' --sort=-taggerdate | head -n 1)
+          echo "Releasing ${version:13}"
+          echo "new-ezno-version=${version:13}" >> $GITHUB_OUTPUT
+
+      - id: set-sponsors
+        run: |
+          SPONSORS=$(gh api graphql -f query='{
+            user(login: "kaleidawave") {
+              sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
+                edges {
+                  node {
+                    sponsor {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          
+          echo $SPONSORS
+          export SPONSORS
+        shell: bash
+
+      - name: Add WASM to rustup
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli
+
+      - name: Set NPM package version & build
+        run: |
+          npm ci
+          npm version ${{ steps.get-version.outputs.new-ezno-version }}
+          npm run build-release
+        working-directory: src/js-cli-and-library
+
+      - name: NPM publish (cli and library)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-cli-and-library/package.json
+
+      - name: Update plugin version and dependencies
+        run: |
+          # Hopefully propagated in 20 seconds
+          sleep 20
+          npm ci
+          npm install ezno@${{ steps.get-version.outputs.new-ezno-version }}
+          npm version ${{ steps.get-version.outputs.new-ezno-version }}
+        working-directory: src/js-based-plugin
+        
+      - name: NPM publish (plugin)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-based-plugin/package.json
+
+      - name: Preview library dist
+        run: |
+          ls dist
+        working-directory: src/js-cli-and-library

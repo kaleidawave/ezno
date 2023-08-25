@@ -13,11 +13,11 @@ use crate::{
 		type_alias::TypeAlias,
 		InterfaceDeclaration,
 	},
-	BlockLike, BlockLikeMut, Decorated, Decorator, ParseOptions, ParseResult, ParsingState,
+	BlockLike, BlockLikeMut, Decorated, Decorator, ParseOptions, ParseResult,
 	StatementOrDeclaration, TSXKeyword, VisitSettings,
 };
 
-use super::{lexer, ASTNode, EmptyCursorId, ParseError, Span, TSXToken, Token, TokenReader};
+use super::{ASTNode, EmptyCursorId, ParseError, Span, TSXToken, Token, TokenReader};
 use std::{borrow::Cow, io::Error as IOError};
 
 #[cfg(not(target_family = "wasm"))]
@@ -190,6 +190,39 @@ pub struct TypeDefinitionModule {
 }
 
 impl TypeDefinitionModule {
+	pub fn from_string(
+		script: String,
+		mut options: ParseOptions,
+		source: SourceId,
+		cursors: Vec<(usize, EmptyCursorId)>,
+	) -> ParseResult<Self> {
+		// Unfortunately some comments contain data (variable ids)
+		options.include_comments = true;
+		// Important not to parse JSX as <> is used for casting
+		options.jsx = false;
+
+		let line_starts = source_map::LineStarts::new(&script);
+		super::lex_and_parse_script(line_starts, options, script, source, None, cursors)
+	}
+
+	#[cfg(not(target_family = "wasm"))]
+	pub fn from_file(
+		path: impl AsRef<Path>,
+		settings: ParseOptions,
+		cursors: Vec<(usize, EmptyCursorId)>,
+		fs: &mut impl source_map::FileSystem,
+	) -> Result<Self, FromFileError> {
+		let script = fs::read_to_string(&path)?;
+		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
+		Self::from_string(script, settings, source, cursors).map_err(Into::into)
+	}
+}
+
+impl ASTNode for TypeDefinitionModule {
+	fn get_position(&self) -> Cow<Span> {
+		todo!()
+	}
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
@@ -217,84 +250,13 @@ impl TypeDefinitionModule {
 		Ok(Self { declarations })
 	}
 
-	#[cfg(target_family = "wasm")]
-	pub fn from_string(
-		source: String,
-		settings: ParseOptions,
-		source: SourceId,
-		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<(Self, ParsingState)> {
-		// TODO this should be covered by settings
-		let lex_settings = lexer::LexSettings {
-			// Unfortunately some comments contain data (variable ids)
-			include_comments: true,
-			// Important not to parse JSX as <> is used for casting
-			lex_jsx: false,
-			..Default::default()
-		};
-
-		// Extension which includes pulling in the string as source
-		let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-		lexer::lex_source(&source, &mut queue, &lex_settings, Some(source), None, cursors)?;
-
-		let mut state = ParsingState::default();
-		let res = Self::from_reader(&mut queue, &mut state, &settings);
-		if res.is_ok() {
-			queue.expect_next(TSXToken::EOS)?;
-		}
-
-		res.map(|ast| (ast, state))
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_string(
-		source: String,
-		settings: ParseOptions,
-		source_id: SourceId,
-		cursors: Vec<(usize, EmptyCursorId)>,
-	) -> ParseResult<(Self, ParsingState)> {
-		use source_map::LineStarts;
-		use std::thread;
-		use tokenizer_lib::ParallelTokenQueue;
-
-		// Extension which includes pulling in the string as source
-		let (mut sender, mut reader) = ParallelTokenQueue::new();
-		let line_starts = LineStarts::new(source.as_str());
-
-		let parsing_thread = thread::spawn(move || {
-			let mut state = ParsingState { line_starts };
-			let res = Self::from_reader(&mut reader, &mut state, &settings);
-			match res {
-				Ok(ast) => {
-					reader.expect_next(TSXToken::EOS)?;
-					Ok((ast, state))
-				}
-				Err(err) => Err(err),
-			}
-		});
-		let lex_settings = lexer::LexSettings {
-			// Unfortunately some comments contain data (variable ids)
-			include_comments: true,
-			// Important not to parse JSX as <> is used for casting
-			lex_jsx: false,
-			..Default::default()
-		};
-		lexer::lex_source(&source, &mut sender, &lex_settings, Some(source_id), None, cursors)?;
-		drop(sender);
-
-		parsing_thread.join().expect("Parsing panicked")
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_file(
-		path: impl AsRef<Path>,
-		settings: ParseOptions,
-		cursors: Vec<(usize, EmptyCursorId)>,
-		fs: &mut impl source_map::FileSystem,
-	) -> Result<(Self, ParsingState), FromFileError> {
-		let source = fs::read_to_string(&path)?;
-		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
-		Self::from_string(source, settings, source_id, cursors).map_err(Into::into)
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		_buf: &mut T,
+		_settings: &crate::ToStringOptions,
+		_depth: u8,
+	) {
+		todo!()
 	}
 }
 
