@@ -33,7 +33,7 @@ name = "ezno"
 path = "src/main.rs"
 
 [dependencies]
-checker = { path = "./checker", version = "0.0.4", package = "ezno-checker", features = [
+checker = { path = "./checker", version = "0.0.5", package = "ezno-checker", features = [
     "ezno-parser",
 ] }
 # parser = { path = "./parser", version = "0.0.3", package = "ezno-parser" }
@@ -47,7 +47,7 @@ enum-variants-strings = "0.2.2"
 
 [dependencies.parser]
 path = "./parser"
-version = "0.0.3"
+version = "0.0.4"
 features = ["extras"]
 package = "ezno-parser"
 

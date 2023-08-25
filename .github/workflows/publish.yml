@@ -76,7 +76,6 @@ jobs:
             }
           }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
           
-          echo $SPONSORS
           export SPONSORS
         shell: bash
         env:

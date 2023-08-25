@@ -4,9 +4,6 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.d.ts";
-const INTERNAL_DEFINITION_FILE: &str = include_str!("../checker/definitions/main.d.ts");
-
 pub(crate) fn check<T: crate::FSResolver>(
 	fs_resolver: T,
 	input: &Path,
@@ -46,12 +43,12 @@ pub(crate) fn check<T: crate::FSResolver>(
 	let definitions = if let Some(tdm) = type_definition_module {
 		HashSet::from_iter(std::iter::once(tdm.into()))
 	} else {
-		HashSet::from_iter(std::iter::once(INTERNAL_DEFINITION_FILE_PATH.into()))
+		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
 	};
 
 	let result = checker::synthesis::module::synthesize_module_root(&module, definitions, |path| {
-		if path == Path::new(INTERNAL_DEFINITION_FILE_PATH) {
-			Some(INTERNAL_DEFINITION_FILE.to_owned())
+		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
+			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 		} else {
 			fs_resolver(path)
 		}

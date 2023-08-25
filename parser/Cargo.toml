@@ -2,7 +2,7 @@
 name = "ezno-parser"
 description = "Parser and AST definitions for Ezno"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
@@ -19,7 +19,7 @@ codespan-reporting = ["source-map/codespan-reporting"]
 extras = []
 
 [dependencies]
-visitable-derive = { path = "./visitable-derive", version = "0.0.1", package = "ezno-parser-visitable-derive" }
+visitable-derive = { path = "./visitable-derive", version = "0.0.2", package = "ezno-parser-visitable-derive" }
 
 derive-finite-automaton = "0.1.0"
 derive-debug-extras = { version = "0.2.2", features = [

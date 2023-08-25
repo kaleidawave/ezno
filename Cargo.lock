@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-ast-generator"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "ezno-parser",
  "proc-macro2",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "bimap",
  "binary-serialize-derive",
@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser-visitable-derive"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "string-cases",
  "syn-helpers",
