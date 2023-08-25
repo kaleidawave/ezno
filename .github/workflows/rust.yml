@@ -70,11 +70,18 @@ jobs:
           filters: |
             parser:
               - 'parser/**'
+            checker:
+              - 'checker/**'
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true'
         run: cargo test
         working-directory: parser
+
+      - name: Run checker specification
+        if: steps.changes.outputs.checker == 'true'
+        run: cargo test
+        working-directory: checker/specification
 
       - name: Run base tests
         run: cargo test
@@ -106,10 +113,12 @@ jobs:
         run: |
           rustup install nightly
           rustup default nightly
+
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.parser == 'true'
         with:
           packages: cargo-fuzz
+
       - name: Run fuzzing
         if: steps.changes.outputs.parser == 'true'
         run: |

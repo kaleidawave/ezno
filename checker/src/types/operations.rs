@@ -69,7 +69,7 @@ pub fn evaluate_binary_operator(
 	// TODO automate with a macro
 	let function = match operator {
 		BinaryOperator::Add => operators.add.as_ref(),
-		BinaryOperator::Multiply => operators.add.as_ref(),
+		BinaryOperator::Multiply => operators.mul.as_ref(),
 		BinaryOperator::Modulo => None,
 		BinaryOperator::Exponent => None,
 		BinaryOperator::BitwiseOperators(_) => None,
@@ -77,7 +77,7 @@ pub fn evaluate_binary_operator(
 			RelationOperator::Equal => operators.equal.as_ref(),
 			RelationOperator::GreaterThan => None,
 		},
-		BinaryOperator::Subtract => operators.mul.as_ref(),
+		BinaryOperator::Subtract => operators.sub.as_ref(),
 		BinaryOperator::Divide => None,
 		BinaryOperator::LogicalOperator(_) => None,
 		BinaryOperator::InstanceOf => None,

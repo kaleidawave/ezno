@@ -8,3 +8,4 @@ target
 build
 node_modules
 /TODO.txt
+checker/specification/Cargo.lock
