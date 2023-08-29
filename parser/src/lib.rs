@@ -522,6 +522,7 @@ impl NumberStructure {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Default)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum GetSetGeneratorOrNone {
 	Get(Keyword<tsx_keywords::Get>),
 	Set(Keyword<tsx_keywords::Set>),

@@ -161,24 +161,32 @@ impl crate::ASTNode for Declaration {
 					decorators,
 					declare_span,
 				)
-				.map(|ty_def_mod_stmt| match ty_def_mod_stmt {
+				.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
 					TypeDefinitionModuleDeclaration::Variable(declare_var) => {
-						Declaration::DeclareVariable(declare_var)
+						Ok(Declaration::DeclareVariable(declare_var))
 					}
 					TypeDefinitionModuleDeclaration::Function(declare_func) => {
-						Declaration::DeclareFunction(declare_func)
+						Ok(Declaration::DeclareFunction(declare_func))
 					}
-					TypeDefinitionModuleDeclaration::Class(_) => todo!("error"),
-					TypeDefinitionModuleDeclaration::Interface(_) => {
-						todo!("error")
-					}
-					TypeDefinitionModuleDeclaration::TypeAlias(_) => todo!("error"),
-					TypeDefinitionModuleDeclaration::Namespace(_) => todo!(),
-					TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
-					TypeDefinitionModuleDeclaration::LocalTypeAlias(_) => todo!(),
-					TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => {
-						todo!()
-					}
+					TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
+						ParseErrors::InvalidDeclareItem("class"),
+						item.get_position().into_owned(),
+					)),
+					TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
+						ParseErrors::InvalidDeclareItem("interface"),
+						item.get_position().into_owned(),
+					)),
+					TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
+						ParseErrors::InvalidDeclareItem("type alias"),
+						item.get_position().into_owned(),
+					)),
+					TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
+						ParseErrors::InvalidDeclareItem("namespace"),
+						item.get_position().into_owned(),
+					)),
+					TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
+					| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)
+					| TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
 				})
 			}
 			_ => {

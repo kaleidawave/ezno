@@ -102,7 +102,7 @@ impl ASTNode for ExportDeclaration {
 					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
 				}
 				Token(token, _) => {
-					unimplemented!("Token after export '{:?}'", token)
+					todo!("Token after export '{:?}'", token)
 				}
 			}
 		}

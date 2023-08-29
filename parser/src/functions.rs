@@ -87,6 +87,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 ///
 /// Note: the [PartialEq] implementation is based on syntactical representation rather than [FunctionId] equality
 #[derive(Debug, Clone, PartialEqExtras)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
 	pub name: T::Name,
@@ -95,16 +96,6 @@ pub struct FunctionBase<T: FunctionBased> {
 	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
 	pub position: Span,
-}
-
-#[cfg(feature = "self-rust-tokenize")]
-impl<T: FunctionBased> self_rust_tokenize::SelfRustTokenize for FunctionBase<T> {
-	fn append_to_token_stream(
-		&self,
-		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		todo!("fb to tokens")
-	}
 }
 
 impl<T: FunctionBased> Eq for FunctionBase<T> {}
@@ -224,11 +215,6 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type Header = FunctionHeader;
 	type Name = T::Name;
 
-	// fn get_chain_variable(_this: &FunctionBase<Self>) -> crate::ChainVariable {
-	// 	todo!()
-	// 	// crate::ChainVariable::UnderExpressionFunctionBlock(self.base.body.1, self.expression_id)
-	// }
-
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, Span>,
 		state: &mut crate::ParsingState,
@@ -258,6 +244,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,

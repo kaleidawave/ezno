@@ -5,7 +5,7 @@ pub struct Namespace(String, Vec<crate::TypeDefinitionModuleDeclaration>);
 
 impl crate::ASTNode for Namespace {
 	fn get_position(&self) -> Cow<source_map::Span> {
-		unimplemented!()
+		todo!()
 	}
 
 	fn from_reader(

@@ -14,6 +14,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct Parameter {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -33,12 +34,14 @@ impl Parameter {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -47,6 +50,7 @@ pub struct SpreadParameter {
 /// TODO need to something special to not enable `OptionalFunctionParameter::WithValue` in interfaces and other
 /// type structure
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct FunctionParameters {
 	pub parameters: Vec<Parameter>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,

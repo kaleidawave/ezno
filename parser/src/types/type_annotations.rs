@@ -248,7 +248,7 @@ impl ASTNode for TypeAnnotation {
 					}
 				}
 			}
-			Self::NamespacedName(..) => unimplemented!(),
+			Self::NamespacedName(..) => todo!(),
 			Self::ObjectLiteral(members, _) => {
 				buf.push('{');
 				for (at_end, member) in members.iter().endiate() {
@@ -282,8 +282,8 @@ impl ASTNode for TypeAnnotation {
 				buf.push(']');
 			}
 
-			Self::Index(..) => unimplemented!(),
-			Self::KeyOf(..) => unimplemented!(),
+			Self::Index(..) => todo!(),
+			Self::KeyOf(..) => todo!(),
 			Self::Conditional { condition, resolve_true, resolve_false, .. } => {
 				condition.to_string_from_buffer(buf, settings, depth);
 				buf.push_str(" ? ");

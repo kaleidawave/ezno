@@ -6,7 +6,8 @@ use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseOptions, Statement, TSXKeyword, TSXToken,
+	errors::parse_lexing_error, ASTNode, Expression, ParseErrors, ParseOptions, Statement,
+	TSXKeyword, TSXToken,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
@@ -42,22 +43,33 @@ impl ASTNode for SwitchStatement {
 		let mut branches = Vec::new();
 		let close_brace_pos: Span;
 		loop {
-			let Token(token_type, pos) = reader.next().ok_or_else(parse_lexing_error)?;
-			let case: Option<Expression> = match token_type {
-				TSXToken::Keyword(TSXKeyword::Default) => {
+			let case: Option<Expression> = match reader.next().ok_or_else(parse_lexing_error)? {
+				Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
 					reader.expect_next(TSXToken::Colon)?;
 					None
 				}
-				TSXToken::Keyword(TSXKeyword::Case) => {
+				Token(TSXToken::Keyword(TSXKeyword::Case), _) => {
 					let case = Expression::from_reader(reader, state, settings)?;
 					reader.expect_next(TSXToken::Colon)?;
 					Some(case)
 				}
-				TSXToken::CloseBrace => {
+				Token(TSXToken::CloseBrace, pos) => {
 					close_brace_pos = pos;
 					break;
 				}
-				_ => todo!(),
+				Token(token, pos) => {
+					return Err(crate::ParseError::new(
+						ParseErrors::UnexpectedToken {
+							expected: &[
+								TSXToken::Keyword(TSXKeyword::Default),
+								TSXToken::Keyword(TSXKeyword::Case),
+								TSXToken::CloseBrace,
+							],
+							found: token,
+						},
+						pos,
+					))
+				}
 			};
 			let mut statements = Vec::new();
 			loop {

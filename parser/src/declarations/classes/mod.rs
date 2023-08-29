@@ -14,6 +14,7 @@ use crate::{
 use tokenizer_lib::{Token, TokenReader};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub class_keyword: Keyword<tsx_keywords::Class>,
 	pub name: T::Name,
@@ -23,18 +24,6 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub implements: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<Decorated<ClassMember>>,
 	pub position: Span,
-}
-
-#[cfg(feature = "self-rust-tokenize")]
-impl<T: ExpressionOrStatementPosition> self_rust_tokenize::SelfRustTokenize
-	for ClassDeclaration<T>
-{
-	fn append_to_token_stream(
-		&self,
-		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		todo!()
-	}
 }
 
 impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static> ASTNode

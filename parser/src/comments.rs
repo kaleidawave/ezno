@@ -41,7 +41,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		settings: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.get_ast().visit(visitors, data, settings, chain)
+		self.get_ast_ref().visit(visitors, data, settings, chain)
 	}
 
 	fn visit_mut<TData>(
@@ -57,7 +57,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 
 impl<T: PartialEq> PartialEq for WithComment<T> {
 	fn eq(&self, other: &Self) -> bool {
-		self.get_ast() == other.get_ast()
+		self.get_ast_ref() == other.get_ast_ref()
 	}
 }
 
@@ -68,19 +68,21 @@ impl<T> From<T> for WithComment<T> {
 }
 
 impl<T> WithComment<T> {
-	pub fn get_ast(&self) -> &T {
+	pub fn get_ast(self) -> T {
 		match self {
-			Self::None(ast) => ast,
-			Self::PrefixComment(_, ast) => ast,
-			Self::PostfixComment(ast, _) => ast,
+			Self::None(ast) | Self::PrefixComment(_, ast) | Self::PostfixComment(ast, _) => ast,
+		}
+	}
+
+	pub fn get_ast_ref(&self) -> &T {
+		match self {
+			Self::None(ast) | Self::PrefixComment(_, ast) | Self::PostfixComment(ast, _) => ast,
 		}
 	}
 
 	pub fn get_ast_mut(&mut self) -> &mut T {
 		match self {
-			Self::None(ast) => ast,
-			Self::PrefixComment(_, ast) => ast,
-			Self::PostfixComment(ast, _) => ast,
+			Self::None(ast) | Self::PrefixComment(_, ast) | Self::PostfixComment(ast, _) => ast,
 		}
 	}
 
@@ -97,25 +99,11 @@ impl<T> WithComment<T> {
 		}
 	}
 
-	pub fn unwrap_ast(self) -> T {
-		match self {
-			Self::None(ast) | Self::PrefixComment(_, ast) | Self::PostfixComment(ast, _) => ast,
-		}
-	}
-
-	pub fn as_ref_mut(&mut self) -> WithComment<&mut T> {
-		match self {
-			WithComment::None(t) => WithComment::None(t),
-			WithComment::PrefixComment(_, _) => todo!(),
-			WithComment::PostfixComment(_, _) => todo!(),
-		}
-	}
-
 	pub fn map<U>(self, cb: impl FnOnce(T) -> U) -> WithComment<U> {
 		match self {
 			Self::None(item) => WithComment::None(cb(item)),
-			Self::PrefixComment(_, _) => todo!(),
-			Self::PostfixComment(_, _) => todo!(),
+			Self::PrefixComment(comment, item) => WithComment::PrefixComment(comment, cb(item)),
+			Self::PostfixComment(item, comment) => WithComment::PostfixComment(cb(item), comment),
 		}
 	}
 }
