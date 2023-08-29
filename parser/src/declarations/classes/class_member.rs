@@ -13,6 +13,7 @@ use crate::{
 
 /// The variable id's of these is handled by their [PropertyKey]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(Option<Keyword<tsx_keywords::Static>>, ClassFunction),
@@ -29,6 +30,7 @@ pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct ClassProperty {
 	pub readonly_keyword: Option<Keyword<tsx_keywords::Readonly>>,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,

@@ -173,24 +173,7 @@ fn parse_jsx_children(
 		) {
 			return Ok(children);
 		}
-		let Token(token, pos) = reader.next().ok_or_else(parse_lexing_error)?;
-		let child = match token {
-			TSXToken::JSXContent(content) => JSXNode::TextNode(content, pos),
-			TSXToken::JSXExpressionStart => {
-				let expression = Expression::from_reader(reader, state, settings)?;
-				let end_pos = reader.expect_next(TSXToken::JSXExpressionEnd)?;
-				JSXNode::InterpolatedExpression(Box::new(expression), pos.union(&end_pos))
-			}
-			TSXToken::JSXOpeningTagStart => {
-				JSXElement::from_reader_sub_start(reader, state, settings, pos)?.into()
-			}
-			TSXToken::JSXContentLineBreak => JSXNode::LineBreak,
-			_token => {
-				// unreachable!("Error in JSX lexing {:?}", token);
-				return Err(parse_lexing_error());
-			}
-		};
-		children.push(child);
+		children.push(JSXNode::from_reader(reader, state, settings)?);
 	}
 }
 
@@ -257,16 +240,30 @@ impl ASTNode for JSXNode {
 				Cow::Borrowed(pos)
 			}
 			JSXNode::Element(element) => element.get_position(),
-			JSXNode::LineBreak => todo!(),
+			JSXNode::LineBreak => Cow::Owned(Span::NULL_SPAN),
 		}
 	}
 
 	fn from_reader(
-		_reader: &mut impl TokenReader<TSXToken, Span>,
-		_state: &mut crate::ParsingState,
-		_settings: &ParseOptions,
+		reader: &mut impl TokenReader<TSXToken, Span>,
+		state: &mut crate::ParsingState,
+		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		todo!()
+		let Token(token, pos) = reader.next().ok_or_else(parse_lexing_error)?;
+		match token {
+			TSXToken::JSXContent(content) => Ok(JSXNode::TextNode(content, pos)),
+			TSXToken::JSXExpressionStart => {
+				let expression = Expression::from_reader(reader, state, settings)?;
+				let end_pos = reader.expect_next(TSXToken::JSXExpressionEnd)?;
+				Ok(JSXNode::InterpolatedExpression(Box::new(expression), pos.union(&end_pos)))
+			}
+			TSXToken::JSXOpeningTagStart => {
+				JSXElement::from_reader_sub_start(reader, state, settings, pos)
+					.map(JSXNode::Element)
+			}
+			TSXToken::JSXContentLineBreak => Ok(JSXNode::LineBreak),
+			_token => Err(parse_lexing_error()),
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -328,7 +325,7 @@ impl ASTNode for JSXAttribute {
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		todo!()
+		todo!("this is currently done in JSXElement::from_reader")
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

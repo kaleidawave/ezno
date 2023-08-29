@@ -75,12 +75,20 @@ impl ASTNode for InterfaceDeclaration {
 				reader.next();
 				loop {
 					extends.push(TypeAnnotation::from_reader(reader, state, settings)?);
-					match reader.peek() {
-						Some(Token(TSXToken::Comma, _)) => {
+					match reader.next().ok_or_else(parse_lexing_error)? {
+						Token(TSXToken::Comma, _) => {
 							reader.next();
 						}
-						Some(Token(TSXToken::OpenBrace, _)) => break,
-						_ => unimplemented!(),
+						Token(TSXToken::OpenBrace, _) => break,
+						Token(found, pos) => {
+							return Err(ParseError::new(
+								ParseErrors::UnexpectedToken {
+									expected: &[TSXToken::Comma, TSXToken::OpenBrace],
+									found,
+								},
+								pos,
+							))
+						}
 					}
 				}
 			}
@@ -613,7 +621,7 @@ impl ASTNode for InterfaceMember {
 				settings.add_gap(buf);
 				return_type.to_string_from_buffer(buf, settings, depth);
 			}
-			_ => unimplemented!(),
+			_ => todo!(),
 		}
 	}
 
@@ -625,7 +633,7 @@ impl ASTNode for InterfaceMember {
 			| InterfaceMember::Constructor { position, .. }
 			| InterfaceMember::Caller { position, .. }
 			| InterfaceMember::Rule { position, .. } => Cow::Borrowed(position),
-			InterfaceMember::Comment(_) => todo!(),
+			InterfaceMember::Comment(_) => Cow::Owned(Span::NULL_SPAN),
 		}
 	}
 }

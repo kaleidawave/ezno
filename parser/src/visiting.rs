@@ -258,6 +258,8 @@ mod structures {
 	#[derive(Debug, Clone)]
 	pub enum ChainVariable {
 		Module(SourceId),
+		Function(Span),
+		Block(Span),
 	}
 
 	/// The current location in the AST
@@ -289,12 +291,11 @@ mod structures {
 		}
 
 		pub fn get_module(&self) -> SourceId {
-			todo!()
-			// if let ChainVariable::UnderModule(_, source) = self.0.first().unwrap() {
-			// 	*source
-			// } else {
-			// 	panic!()
-			// }
+			if let ChainVariable::Module(source) = self.0.first().unwrap() {
+				source.to_owned()
+			} else {
+				SourceId::NULL
+			}
 		}
 
 		// TODO get function root. Aka last thing before in top level scope or
@@ -356,7 +357,7 @@ mod structures {
 				| ImmutableVariableOrPropertyPart::ObjectDestructuringMember(_) => None,
 				ImmutableVariableOrPropertyPart::ClassName(name, _) => *name,
 				ImmutableVariableOrPropertyPart::ObjectPropertyKey(property) => {
-					match property.get_ast() {
+					match property.get_ast_ref() {
 						PropertyKey::Ident(ident, _, _) | PropertyKey::StringLiteral(ident, _) => {
 							Some(ident.as_str())
 						}
@@ -364,7 +365,7 @@ mod structures {
 					}
 				}
 				ImmutableVariableOrPropertyPart::ClassPropertyKey(property) => {
-					match property.get_ast() {
+					match property.get_ast_ref() {
 						PropertyKey::Ident(ident, _, _) | PropertyKey::StringLiteral(ident, _) => {
 							Some(ident.as_str())
 						}

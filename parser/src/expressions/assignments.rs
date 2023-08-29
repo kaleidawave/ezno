@@ -97,9 +97,11 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::VariableReference(name, position) => Ok(Self::Variable(name, position)),
 			Expression::PropertyAccess { parent, position, property, is_optional } => {
 				if is_optional {
-					todo!()
+					// Still a proposal :(
+					Err(ParseError::new(crate::ParseErrors::InvalidLHSAssignment, position))
+				} else {
+					Ok(Self::PropertyAccess { parent, position, property })
 				}
-				Ok(Self::PropertyAccess { parent, position, property })
 			}
 			Expression::Index { indexer, position, indexee } => {
 				Ok(Self::Index { indexer, position, indexee })

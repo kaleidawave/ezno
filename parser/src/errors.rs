@@ -19,6 +19,7 @@ pub enum ParseErrors<'a> {
 	InvalidLHSAssignment,
 	LexingFailed,
 	ExpectedCatchOrFinally,
+	InvalidDeclareItem(&'static str),
 }
 
 #[allow(missing_docs)]
@@ -145,6 +146,9 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::LexingFailed => {
 				// unreachable!("This should never be written"),
 				f.write_str("Lexing issue")
+			}
+			ParseErrors::InvalidDeclareItem(item) => {
+				write!(f, "Declare item '{item}' must be in .d.ts file")
 			}
 		}
 	}
