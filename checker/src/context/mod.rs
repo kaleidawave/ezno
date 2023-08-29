@@ -8,14 +8,14 @@ mod root;
 mod bases;
 pub mod store;
 
-pub use root::{Operators, Root};
+pub use root::Root;
 
 pub(crate) use bases::InferenceBoundary;
 
 use source_map::Span;
 
 use crate::{
-	behavior::{self},
+	behavior,
 	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
 	structures::variables::VariableMutability,
@@ -304,7 +304,8 @@ impl<T: ContextType> Context<T> {
 
 		let (existing_variable, ty) = match behavior {
 			VariableRegisterBehavior::Declare { base } => {
-				return self.declare_variable(name, declared_at, base, types);
+				let res = self.declare_variable(name, declared_at, base, types);
+				return res;
 			}
 			VariableRegisterBehavior::CatchVariable { ty } => {
 				// TODO
@@ -598,20 +599,21 @@ impl<T: ContextType> Context<T> {
 						PolyBase::Fixed { to: result, is_open_poly }
 					})
 				}
-				Constructor::ConditionalTernary { result_union, .. } => {
+				Constructor::ConditionalResult { result_union, .. } => {
 					// TODO dynamic and open poly
 					Some(PolyBase::Fixed { to: result_union, is_open_poly: false })
 				}
-				// TODO sure?
-				Constructor::StructureGenerics { .. } => None,
-				Constructor::TypeOperator(_) => todo!(),
-				Constructor::RelationOperator { lhs, operator, rhs } => todo!(),
-				Constructor::LogicalOperator { lhs, operator, rhs } => todo!(),
+				Constructor::TypeOperator(_) | Constructor::CanonicalRelationOperator { .. } => {
+					// TODO open poly
+					Some(PolyBase::Fixed { to: TypeId::BOOLEAN_TYPE, is_open_poly: false })
+				}
 				Constructor::TypeRelationOperator(op) => match op {
 					crate::types::TypeRelationOperator::Extends { .. } => {
 						Some(PolyBase::Fixed { to: TypeId::BOOLEAN_TYPE, is_open_poly: false })
 					}
 				},
+				// TODO sure?
+				Constructor::StructureGenerics { .. } => None,
 			},
 			_ => None,
 		}
@@ -881,20 +883,9 @@ impl<T: ContextType> Context<T> {
 			.unwrap_or_else(|| "error".to_owned())
 	}
 
-	pub(crate) fn get_value_of_variable(&self, id: VariableId) -> TypeId {
-		let variable = self
-			.parents_iter()
-			.find_map(|env| get_on_ctx!(env.variable_current_value.get(&id)).copied());
-
-		if let Some(found) = variable {
-			found
-		} else {
-			panic!(
-				"Could not find '{}' ({:?}) (used before assignment)",
-				self.get_variable_name(&id),
-				id
-			)
-		}
+	pub(crate) fn get_value_of_variable(&self, id: VariableId) -> Option<TypeId> {
+		self.parents_iter()
+			.find_map(|env| get_on_ctx!(env.variable_current_value.get(&id)).copied())
 	}
 
 	pub fn into_general_context(&self) -> GeneralContext {
@@ -1019,19 +1010,20 @@ impl<T: ContextType> Context<T> {
 		let returned = if !function.is_declare() {
 			function.body(&mut func_env, checking_data);
 
-			// TODO check with annotation
-			let returned = func_env
-				.context_type
-				.events
-				.iter()
-				.find_map(|event| {
-					if let Event::Return { returned } = event {
-						Some(*returned)
-					} else {
-						None
-					}
-				})
-				.unwrap_or(TypeId::UNDEFINED_TYPE);
+			let returned = crate::events::helpers::get_return_from_events(
+				&mut func_env.context_type.events.iter(),
+				&mut checking_data.types,
+			);
+
+			let returned = match returned {
+				crate::events::helpers::ReturnedTypeFromBlock::ContinuedExecution => {
+					TypeId::UNDEFINED_TYPE
+				}
+				crate::events::helpers::ReturnedTypeFromBlock::ReturnedIf { when, returns } => {
+					checking_data.types.new_conditional_type(when, returns, TypeId::UNDEFINED_TYPE)
+				}
+				crate::events::helpers::ReturnedTypeFromBlock::Returned(ty) => ty,
+			};
 
 			if let Some((expected_return_type, annotation_span)) = return_type_annotation {
 				let mut behavior = BasicEquality {
@@ -1121,7 +1113,8 @@ impl<T: ContextType> Context<T> {
 				func(env, cd);
 				let mut thrown = Vec::new();
 				let events = mem::take(&mut env.context_type.events);
-				env.context_type.events = extract_throw_events(events, &mut thrown);
+				env.context_type.events =
+					crate::events::helpers::extract_throw_events(events, &mut thrown);
 				thrown
 			},
 		);
@@ -1144,11 +1137,15 @@ impl<T: ContextType> Context<T> {
 	/// - Make less complex
 	pub fn new_lexical_environment_fold_into_parent<U: crate::FSResolver, Res>(
 		&mut self,
-		environment_type: Scope,
+		scope: Scope,
 		checking_data: &mut CheckingData<U>,
 		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>) -> Res,
 	) -> (Res, Option<(Vec<Event>, HashMap<RootReference, TypeId>)>, ContextId) {
-		let mut new_environment = self.new_lexical_environment(environment_type);
+		if matches!(scope, Scope::Conditional { .. }) {
+			unreachable!("Use Environment::new_conditional_context")
+		}
+
+		let mut new_environment = self.new_lexical_environment(scope);
 		let res = cb(&mut new_environment, checking_data);
 		let context_id = new_environment.context_id;
 
@@ -1204,7 +1201,9 @@ impl<T: ContextType> Context<T> {
 				crate::utils::notify!("TODO scoping stuff");
 				crate::utils::notify!("What about deferred function constraints");
 
+				todo!("events should be specialized");
 				None
+				// Some((events, closed_over_references))
 			}
 			Scope::Looping { .. } => todo!(),
 			Scope::Function { .. } | Scope::FunctionReference {} => {
@@ -1470,11 +1469,11 @@ impl<T: ContextType> Context<T> {
 		on: TypeId,
 		under: TypeId,
 		to: Property,
-		object_literal: bool,
+		register_setter_event: bool,
 	) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.properties.entry(on).or_default().push((under, to.clone()));
-		if object_literal {
+		if register_setter_event {
 			self.context_type.get_events().unwrap().push(Event::Setter {
 				on,
 				under,
@@ -1565,7 +1564,14 @@ impl<T: ContextType> Context<T> {
 		self.variable_current_value.insert(id, value_ty);
 	}
 
+	/// TODO move out of environment, might need if for local proofs
 	pub fn is_type_truthy_falsy(&self, ty: TypeId, types: &TypeStore) -> TruthyFalsy {
+		if ty == TypeId::TRUE {
+			return TruthyFalsy::Decidable(true);
+		} else if ty == TypeId::FALSE {
+			return TruthyFalsy::Decidable(false);
+		}
+
 		let ty = types.get_type_by_id(ty);
 		match ty {
 			Type::AliasTo { .. }
@@ -1597,27 +1603,20 @@ impl<T: ContextType> Context<T> {
 		let entry = self.variables.entry(name.to_owned());
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);
-			let open_poly = types.register_type(Type::RootPolyType(PolyNature::Open(variable_ty)));
-			self.variable_current_value.insert(id, open_poly);
-			Ok(open_poly)
+
+			// TODO not sure ...
+			let ty = if let Type::Function(..) = types.get_type_by_id(variable_ty) {
+				variable_ty
+			} else {
+				types.register_type(Type::RootPolyType(PolyNature::Open(variable_ty)))
+			};
+
+			self.variable_current_value.insert(id, ty);
+			Ok(ty)
 		} else {
 			Err(CannotRedeclareVariable { name })
 		}
 	}
-}
-
-/// TODO improve
-fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
-	let mut new_events = Vec::new();
-	for event in events.into_iter() {
-		if let Event::Throw(value) = event {
-			thrown.push(value);
-		} else {
-			// TODO nested grouping
-			new_events.push(event)
-		}
-	}
-	new_events
 }
 
 pub enum AssignmentError {

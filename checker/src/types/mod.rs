@@ -18,7 +18,11 @@ pub(crate) use casts::*;
 pub use store::TypeStore;
 pub use terms::Constant;
 
-use crate::{context::InferenceBoundary, events::RootReference, structures::operators::*};
+use crate::{
+	behavior::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
+	context::InferenceBoundary,
+	events::RootReference,
+};
 
 pub use self::functions::*;
 use crate::FunctionId;
@@ -214,32 +218,26 @@ impl Type {
 pub enum Constructor {
 	BinaryOperator {
 		lhs: TypeId,
-		operator: BinaryOperator,
+		operator: MathematicalAndBitwise,
 		rhs: TypeId,
 	},
-	RelationOperator {
+	CanonicalRelationOperator {
 		lhs: TypeId,
-		operator: RelationOperator,
-		rhs: TypeId,
-	},
-	LogicalOperator {
-		lhs: TypeId,
-		operator: LogicalOperator,
+		operator: CanonicalEqualityAndInequality,
 		rhs: TypeId,
 	},
 	UnaryOperator {
-		operator: UnaryOperator,
+		operator: PureUnary,
 		operand: TypeId,
 	},
 	TypeOperator(TypeOperator),
 	TypeRelationOperator(TypeRelationOperator),
 	/// TODO constraint is res
-	ConditionalTernary {
+	ConditionalResult {
 		/// TODO this can only be poly types
-		on: TypeId,
-		true_res: TypeId,
-		false_res: TypeId,
-		// Currently necessary for getting the base == `true_res | false_res`
+		condition: TypeId,
+		truthy_result: TypeId,
+		else_result: TypeId,
 		result_union: TypeId,
 	},
 	///
@@ -270,4 +268,8 @@ pub enum TypeOperator {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeRelationOperator {
 	Extends { ty: TypeId, extends: TypeId },
+}
+
+pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> TypeId {
+	types.new_conditional_type(lhs, lhs, rhs)
 }

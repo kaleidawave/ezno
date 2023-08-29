@@ -5,6 +5,8 @@
 
 Contains type checking logic.
 
+See [specification](./specification/specification.md) for what is currently implemented.
+
 The `synthesis` folder contains logic for [Ezno's parser](https://github.com/kaleidawave/ezno/tree/main/parser). See [oxc_type_synthesis](https://github.com/web-infra-dev/oxc) for similar code that connects the logic with OXCs AST.
 
 ## Testing

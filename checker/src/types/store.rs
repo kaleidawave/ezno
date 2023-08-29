@@ -7,7 +7,7 @@ use crate::{
 	GeneralContext, TypeId,
 };
 
-use super::TypeRelationOperator;
+use super::{Constructor, TypeRelationOperator};
 
 /// Holds all the types. Eventually may be split across modules
 #[derive(Debug)]
@@ -92,10 +92,26 @@ impl Default for TypeStore {
 
 impl TypeStore {
 	pub fn new_constant_type(&mut self, constant: crate::Constant) -> crate::TypeId {
-		// TODO don't recreate same constant
-		let ty = Type::Constant(constant);
-		// TODO maybe separate id
-		self.register_type(ty)
+		// Reuse existing ids rather than creating new types sometimes
+		match constant {
+			crate::Constant::Number(number) if number == 1f64 => TypeId::ONE,
+			crate::Constant::Number(number) if number == 0f64 => TypeId::ZERO,
+			crate::Constant::Boolean(value) => {
+				if value {
+					TypeId::TRUE
+				} else {
+					TypeId::FALSE
+				}
+			}
+			crate::Constant::Undefined => TypeId::UNDEFINED_TYPE,
+			crate::Constant::Null => TypeId::NULL_TYPE,
+			crate::Constant::NaN => TypeId::NAN_TYPE,
+			_ => {
+				let ty = Type::Constant(constant);
+				// TODO maybe separate id
+				self.register_type(ty)
+			}
+		}
 	}
 
 	pub(crate) fn register_type(&mut self, ty: Type) -> TypeId {
@@ -131,6 +147,7 @@ impl TypeStore {
 	}
 
 	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		// TODO distribute or types
 		let ty = Type::And(lhs, rhs);
 		self.register_type(ty)
 	}
@@ -171,18 +188,31 @@ impl TypeStore {
 		&mut self,
 		check_type: TypeId,
 		extends: TypeId,
-		true_res: TypeId,
-		false_res: TypeId,
+		true_result: TypeId,
+		false_result: TypeId,
 	) -> TypeId {
 		let on = self.register_type(Type::Constructor(super::Constructor::TypeRelationOperator(
 			TypeRelationOperator::Extends { ty: check_type, extends },
 		)));
-		let result_union = self.register_type(Type::Or(true_res, false_res));
-		let ty = Type::Constructor(super::Constructor::ConditionalTernary {
-			on,
-			true_res,
-			false_res,
-			result_union,
+		self.new_conditional_type(on, true_result, false_result)
+	}
+
+	pub fn new_conditional_type(
+		&mut self,
+		condition: TypeId,
+		truthy_result: TypeId,
+		else_result: TypeId,
+	) -> TypeId {
+		// TODO raise warning
+		if truthy_result == else_result {
+			return truthy_result;
+		}
+		// TODO on is negation then swap operands
+		let ty = Type::Constructor(super::Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			else_result,
+			result_union: TypeId::ERROR_TYPE,
 		});
 		self.register_type(ty)
 	}
@@ -195,5 +225,14 @@ impl TypeStore {
 	/// From something like: let a: number => string. Rather than a actual function
 	pub fn new_type_annotation_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		self.register_type(Type::Function(function_type, super::FunctionNature::Reference))
+	}
+
+	/// Doesn't do constant compilation
+	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
+		let ty = Type::Constructor(Constructor::UnaryOperator {
+			operator: crate::behavior::operations::PureUnary::LogicalNot,
+			operand,
+		});
+		self.register_type(ty)
 	}
 }

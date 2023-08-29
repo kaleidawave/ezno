@@ -1,6 +1,8 @@
 use source_map::Span;
 
-use crate::{structures::operators, CheckingData, Environment, TypeId};
+use crate::{CheckingData, Environment, TypeId};
+
+use super::operations::{Logical, MathematicalAndBitwise};
 
 pub enum Assignable {
 	Reference(Reference),
@@ -18,7 +20,8 @@ pub enum Reference {
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number
 pub enum AssignmentKind {
 	Assign,
-	Update(operators::BinaryOperator),
+	PureUpdate(MathematicalAndBitwise),
+	ConditionalUpdate(Logical),
 	IncrementOrDecrement(IncrementOrDecrement, AssignmentReturnStatus),
 }
 

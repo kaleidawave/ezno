@@ -73,7 +73,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 					ArrayDestructuringField::Name(variable, _) => {
 						// TODO get property on constraint
 						register_variable(
-							variable.get_ast(),
+							variable.get_ast_ref(),
 							environment,
 							checking_data,
 							behavior.clone(),
@@ -87,7 +87,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 		}
 		parser::VariableField::Object(items, _) => {
 			for field in items.iter() {
-				match field.get_ast() {
+				match field.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, variable) => {
 						let ty = register_variable_identifier(
 							variable,
@@ -124,12 +124,12 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 					}
 					ObjectDestructuringField::Map {
 						from,
-						variable_name,
+						name: variable_name,
 						default_value,
 						position,
 					} => {
 						register_variable(
-							variable_name.get_ast(),
+							variable_name.get_ast_ref(),
 							environment,
 							checking_data,
 							behavior.clone(),
@@ -167,7 +167,7 @@ pub(super) fn synthesize_variable_field<T: crate::FSResolver>(
 		VariableField::Object(members, _) => {
 			// TODO keep track of destructured properties for spread
 			for member in members.iter() {
-				match member.get_ast() {
+				match member.get_ast_ref() {
 					ObjectDestructuringField::Name(name, default_value) => {
 						if let Some(default_value) = default_value {
 							synthesize_expression(default_value, environment, checking_data);
@@ -203,7 +203,10 @@ pub(super) fn synthesize_variable_field<T: crate::FSResolver>(
 						// );
 					}
 					ObjectDestructuringField::Map {
-						from, variable_name, default_value, ..
+						from,
+						name: variable_name,
+						default_value,
+						..
 					} => {
 						if let Some(default_value) = default_value {
 							synthesize_expression(default_value, environment, checking_data);
@@ -238,7 +241,7 @@ pub(super) fn synthesize_variable_field<T: crate::FSResolver>(
 							.into();
 
 						synthesize_variable_field(
-							variable_field.get_ast(),
+							variable_field.get_ast_ref(),
 							None,
 							referencing_property,
 							is_constant,
@@ -295,7 +298,7 @@ pub(super) fn synthesize_variable_declaration_item<
 		TypeId::UNDEFINED_TYPE
 	};
 
-	let item = variable_declaration.name.get_ast();
+	let item = variable_declaration.name.get_ast_ref();
 	assign_to_fields(item, environment, checking_data, value_ty);
 }
 
@@ -324,7 +327,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 
 						if let Some(value) = value {
 							assign_to_fields(
-								variable_field.get_ast(),
+								variable_field.get_ast_ref(),
 								environment,
 								checking_data,
 								value.into(),
@@ -339,15 +342,69 @@ fn assign_to_fields<T: crate::FSResolver>(
 		}
 		VariableField::Object(items, _) => {
 			for item in items {
-				match item.get_ast() {
+				match item.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, _) => todo!(),
-					ObjectDestructuringField::Name(_, _) => todo!(),
-					ObjectDestructuringField::Map {
-						from,
-						variable_name,
-						default_value,
-						position,
-					} => todo!(),
+					ObjectDestructuringField::Name(name, default_value) => {
+						let get_position = name.get_position();
+
+						let id = crate::VariableId(get_position.source, get_position.start);
+
+						let key_ty = match name {
+							VariableIdentifier::Standard(name, _) => checking_data
+								.types
+								.new_constant_type(Constant::String(name.clone())),
+							VariableIdentifier::Cursor(_) => todo!(),
+						};
+
+						// TODO if LHS = undefined ...? conditional
+						// TODO record information
+						let property =
+							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let value = match property {
+							Some(result) => result.into(),
+							None => {
+								// TODO non decidable error
+								if let Some(else_expression) = default_value {
+									synthesize_expression(
+										else_expression,
+										environment,
+										checking_data,
+									)
+								} else {
+									// TODO emit error
+									TypeId::ERROR_TYPE
+								}
+							}
+						};
+
+						environment.register_initial_variable_declaration_value(id, value)
+					}
+					ObjectDestructuringField::Map { from, name, default_value, position } => {
+						let key_ty = super::property_key_as_type(
+							from,
+							environment,
+							&mut checking_data.types,
+						);
+
+						// TODO if LHS = undefined ...? conditional
+						// TODO record information
+						let property =
+							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let value = match property {
+							Some(result) => result.into(),
+							None => {
+								// TODO non decidable error
+								if let Some(default_value) = default_value {
+									synthesize_expression(default_value, environment, checking_data)
+								} else {
+									// TODO emit error
+									TypeId::ERROR_TYPE
+								}
+							}
+						};
+
+						assign_to_fields(name.get_ast_ref(), environment, checking_data, value)
+					}
 				}
 			}
 		}

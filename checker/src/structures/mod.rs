@@ -3,6 +3,5 @@
 pub mod functions;
 pub mod jsx;
 pub mod modules;
-pub mod operators;
 pub mod proxy;
 pub mod variables;

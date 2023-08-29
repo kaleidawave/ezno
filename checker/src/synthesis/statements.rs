@@ -5,9 +5,12 @@ use crate::{
 	context::{ContextId, Scope},
 	diagnostics::TypeCheckError,
 	events::{Event, RootReference},
-	CheckingData, Environment, TypeId, Variable,
+	CheckingData, Environment, SynthesizableConditional, TypeId, Variable,
 };
-use parser::{ASTNode, BlockOrSingleStatement, Statement};
+use parser::{
+	statements::{ConditionalElseStatement, UnconditionalElseStatement},
+	ASTNode, BlockOrSingleStatement, Statement,
+};
 use std::collections::HashMap;
 
 pub type ExportedItems = HashMap<String, Variable>;
@@ -74,46 +77,121 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			let condition =
 				synthesize_multiple_expression(&if_statement.condition, environment, checking_data);
 
-			// TODO extract for ternaries
-			// TODO sometimes warning isn't useful for generated stuff
+			environment.new_conditional_context(
+				condition,
+				IfStatementBranch::Branch(&if_statement.inner),
+				if !if_statement.else_conditions.is_empty() || if_statement.trailing_else.is_some()
+				{
+					Some(IfStatementBranch::NestedConditional {
+						conditional_elses: &if_statement.else_conditions,
+						unconditional_else: if_statement.trailing_else.as_ref(),
+					})
+				} else {
+					None
+				},
+				checking_data,
+			);
 
-			if let crate::TruthyFalsy::Decidable(value) =
-				environment.is_type_truthy_falsy(condition, &checking_data.types)
-			{
-				checking_data.raise_decidable_result_error(if_statement.position.clone(), value);
+			/// Necessary because the parser treats it as a list rather than a tree
+			enum IfStatementBranch<'a> {
+				Branch(&'a BlockOrSingleStatement),
+				NestedConditional {
+					conditional_elses: &'a [ConditionalElseStatement],
+					unconditional_else: Option<&'a UnconditionalElseStatement>,
+				},
+			}
 
-				if value {
-					synthesize_block_or_single_statement(
-						&if_statement.inner,
-						environment,
-						checking_data,
-						Scope::Conditional {},
-					);
-					return;
+			// TODO tidy
+			impl<'a> SynthesizableConditional for IfStatementBranch<'a> {
+				type ExpressionResult = ();
+
+				fn synthesize_condition<T: crate::FSResolver>(
+					self,
+					environment: &mut Environment,
+					checking_data: &mut CheckingData<T>,
+				) -> Self::ExpressionResult {
+					match self {
+						IfStatementBranch::Branch(branch) => match branch {
+							BlockOrSingleStatement::Braced(statements) => {
+								synthesize_block(&statements.0, environment, checking_data)
+							}
+							BlockOrSingleStatement::SingleStatement(statement) => {
+								synthesize_statement(statement, environment, checking_data)
+							}
+						},
+						IfStatementBranch::NestedConditional {
+							conditional_elses,
+							unconditional_else,
+						} => {
+							if let [current, other @ ..] = conditional_elses {
+								let condition = synthesize_multiple_expression(
+									&current.condition,
+									environment,
+									checking_data,
+								);
+								environment.new_conditional_context(
+									condition,
+									IfStatementBranch::Branch(&current.inner),
+									if !other.is_empty() || unconditional_else.is_some() {
+										Some(IfStatementBranch::NestedConditional {
+											conditional_elses: other,
+											unconditional_else: unconditional_else.clone(),
+										})
+									} else {
+										None
+									},
+									checking_data,
+								);
+							} else {
+								match &unconditional_else.unwrap().inner {
+									BlockOrSingleStatement::Braced(statements) => {
+										synthesize_block(&statements.0, environment, checking_data)
+									}
+									BlockOrSingleStatement::SingleStatement(statement) => {
+										synthesize_statement(statement, environment, checking_data)
+									}
+								}
+							}
+						}
+					}
 				}
-			} else {
-				// synthesize_statement(&if_statement., environment, checking_data);
-			}
 
-			for else_stmt in if_statement.else_conditions.iter() {
-				todo!()
-			}
+				fn conditional_expression_result(
+					_: TypeId,
+					_: Self::ExpressionResult,
+					_: Self::ExpressionResult,
+					_: &mut crate::types::TypeStore,
+				) -> Self::ExpressionResult {
+					()
+				}
 
-			if let Some(ref trailing) = if_statement.trailing_else {
-				todo!()
+				fn default_result() -> Self::ExpressionResult {
+					()
+				}
 			}
-
-			// if let Some(ref alternative) = if_statement.else_conditions {
-			// 	synthesize_statement(alternative, environment, checking_data)
-			// }
 		}
-		Statement::SwitchStatement(_)
-		| Statement::WhileStatement(_)
-		| Statement::DoWhileStatement(_)
-		| Statement::ForLoopStatement(_) => {
+		Statement::SwitchStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "switch, while and for statements",
-				at: statement.get_position().into_owned(),
+				thing: "Switch statement",
+				at: stmt.get_position().into_owned(),
+			});
+		}
+		Statement::WhileStatement(stmt) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
+				thing: "While statement",
+				at: stmt.get_position().into_owned(),
+			});
+		}
+		Statement::DoWhileStatement(stmt) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
+				thing: "Do while statement",
+				at: stmt.get_position().into_owned(),
+			});
+		}
+		Statement::ForLoopStatement(stmt) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
+				thing: "For statement",
+				at: stmt.get_position().into_owned(),
 			});
 			// let mut environment = environment.new_lexical_environment(ScopeType::Conditional {});
 			// match &for_statement.condition {
@@ -218,7 +296,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 						if let Some((clause, r#type)) = &stmt.exception_var {
 							// TODO clause.type_annotation
 							register_variable(
-								clause.get_ast(),
+								clause.get_ast_ref(),
 								environment,
 								checking_data,
 								crate::context::VariableRegisterBehavior::CatchVariable {

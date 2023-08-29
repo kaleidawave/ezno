@@ -148,3 +148,27 @@ pub trait SynthesizableFunction {
 		checking_data: &mut CheckingData<T>,
 	) -> Option<(TypeId, Span)>;
 }
+
+struct ArrowFunction {
+	is_async: bool,
+}
+
+struct Getter;
+struct Setter;
+
+enum Method {
+	Getter,
+	Setter,
+	Generator { is_async: bool },
+	Regular { is_async: bool },
+}
+
+struct StatementOrExpressionFunction {
+	is_generator: bool,
+	is_async: bool,
+}
+
+struct ClassConstructor {
+	// events..?
+	fields: (),
+}

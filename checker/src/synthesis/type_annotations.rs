@@ -290,10 +290,10 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				checking_data,
 			);
 
-			let ty = Type::Constructor(Constructor::ConditionalTernary {
-				on: condition,
-				true_res,
-				false_res,
+			let ty = Type::Constructor(Constructor::ConditionalResult {
+				condition,
+				truthy_result: true_res,
+				else_result: false_res,
 				// TODO
 				result_union: TypeId::ERROR_TYPE,
 			});
@@ -368,12 +368,13 @@ fn synthesize_type_condition<S: ContextType, T: crate::FSResolver>(
 		TypeCondition::Extends { ty, extends, position } => {
 			let item = synthesize_type_annotation(ty, environment, checking_data);
 			let extends = synthesize_type_annotation(extends, environment, checking_data);
-			let ty = Type::Constructor(Constructor::BinaryOperator {
-				operator: crate::structures::operators::BinaryOperator::InstanceOf,
-				lhs: item,
-				rhs: extends,
-			});
-			checking_data.types.register_type(ty)
+			todo!();
+			// let ty = Type::Constructor(Constructor::BinaryOperator {
+			// 	operator: crate::structures::operators::CanonicalBinaryOperator::InstanceOf,
+			// 	lhs: item,
+			// 	rhs: extends,
+			// });
+			// checking_data.types.register_type(ty)
 		}
 		// TODO requires a kind of strict instance of ???
 		TypeCondition::Is { ty, is, position } => todo!(),

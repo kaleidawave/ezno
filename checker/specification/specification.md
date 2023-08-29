@@ -47,96 +47,84 @@ let b: number = a
 #### Variable exists
 
 ```ts
-const a = c;
+const a = c
 ```
 
 - Could not find variable c in scope
-
-#### Try catch
-
-```ts
-try {
-    throw 2
-} catch (err) {
-    err satisfies string
-}
-```
-
-- Expected string found 2
-
-#### Getters
-
-```ts
-const b = {
-    get c() {
-        return 2
-    }
-}
-b.c satisfies string
-```
-
-- Expected string found 2
 
 ### Functions
 
 #### Type of parameter
 
 ```ts
-function func(a: number) { 
-    a satisfies string
+function func(a: number) {
+	a satisfies string
 }
 ```
 
 - Expected string found number
 
-#### Return type
+#### (simple) return type checking
 
 ```ts
-function func(): string { 
-    return 2
+function func(): string {
+	return 2
 }
 ```
 
 - Function is expected to return string but returned 2
 
-#### Argument
+#### *Inferred* return type
 
 ```ts
-function func(a: number) { }
+function func() {
+	return 2
+}
+func satisfies () => string
+```
+
+- Expected () => string found () => 2
+
+#### Argument type against parameter
+
+```ts
+function func(a: number) {}
 func("not a number")
 ```
 
 - Argument of type "not a number" is not assignable to number
 
-#### Automatic generics
+#### Parameters are always considered generic
 
 ```ts
-function id(a) { return a }
+function id(a) {
+	return a
+}
 
 const d: 3 = id(2)
 ```
 
 - Type 2 is not assignable to type 3
 
-#### Function as type checking
+#### Type checking function types
 
 ```ts
 function func(a: string, b: number): boolean {
-    return true
+	return true
 }
-const a: (a: string, b: number) => boolean = func;
-const b: (a: string, b: number) => string = func;
-const c: (a: number, b: number) => boolean = func;
+const a: (a: string, b: number) => boolean = func
+const b: (a: string, b: number) => string = func
+const c: (a: number, b: number) => boolean = func
 ```
 
 - Type (a: string, b: number, ) => true is not assignable to type (a: string, b: number, ) => string
 - Type (a: string, b: number, ) => true is not assignable to type (a: number, b: number, ) => boolean
 
-#### Generics properties
+#### Get value of property on parameter
 
 ```ts
-function getA(obj: { a: string }) { 
-    return obj.a 
+function getA(obj: { a: string }) {
+	return obj.a
 }
 
 const d: 3 = getA({ a: "hi" })
@@ -144,12 +132,12 @@ const d: 3 = getA({ a: "hi" })
 
 - Type "hi" is not assignable to type 3
 
-#### Variable updates
+#### Assignment to variable in function
 
 ```ts
 let a: number = 0
 function func() {
-    a = 4
+	a = 4
 }
 
 func()
@@ -158,12 +146,12 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Variable updates from parameter
+#### Assignment from parameter
 
 ```ts
 let a: number = 0
 function func(c: number) {
-    a = c
+	a = c
 }
 
 func(4)
@@ -172,12 +160,12 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Property updates from outside
+#### Property updates object outside of function
 
 ```ts
 const obj: { a: number } = { a: 2 }
 function func(value: number) {
-    obj.a = value
+	obj.a = value
 }
 
 const a: 2 = obj.a
@@ -190,7 +178,7 @@ const b: 2 = obj.a
 #### Missing argument
 
 ```ts
-function func(p1: number, p2: string) { }
+function func(p1: number, p2: string) {}
 
 func(4)
 ```
@@ -200,14 +188,14 @@ func(4)
 #### Excess argument
 
 ```ts
-function func(p1: number) { }
+function func(p1: number) {}
 
 func(4, "extra")
 ```
 
 - Excess argument
 
-#### Calling non function
+#### Calling non-callable
 
 ```ts
 const x = "hi"
@@ -220,24 +208,78 @@ x()
 
 ```ts
 function throwType(a) {
-    throw a
+	throw a
 }
 
 try {
-    throwType(3)
+	throwType(3)
 } catch (err) {
-    err satisfies string
+	err satisfies string
 }
 ```
 
 - Expected string found 3
+
+### Effects
+
+#### Calling and operations with parameter
+
+```ts
+function sinPlusB(a: number, b: number) {
+	return Math.trunc(a) + b
+}
+
+sinPlusB(100.22, 5) satisfies 8
+```
+
+- Expected 8 found 105
+
+#### Calling higher order function
+
+```ts
+function addTwoToResult(func: number => number) {
+	return func(4) + 2
+}
+
+addTwoToResult((a: number) => a * 4) satisfies 5
+```
+
+- Expected 5 found 18
+
+#### Calling constant higher order function
+
+```ts
+function call(func: number => number) {
+	return func(9)
+}
+
+call(Math.sqrt) satisfies 2
+```
+
+- Expected 2 found 3
+
+#### Effects carry through dependent calls
+
+```ts
+let a: number = 2
+function runFunctionTwice(func: () => void) {
+	func()
+	func()
+}
+
+a satisfies 2
+runFunctionTwice(() => { a++ })
+a satisfies string
+```
+
+- Expected string found 4
 
 ### Constant evaluation
 
 #### Arithmetic
 
 ```ts
-const x: 4 = 2 + 3 
+const x: 4 = 2 + 3
 const y: 6 = 2 * 3
 const z: 8 = (2 * 3) - 2
 ```
@@ -245,13 +287,49 @@ const z: 8 = (2 * 3) - 2
 - Type 5 is not assignable to type 4
 - Type 4 is not assignable to type 8
 
+#### Bitwise arithmetic
+
+```ts
+const x: 2 = 2 & 3
+const y: 6 = 2 ^ 7
+const z: 14 = 8 | 4
+```
+
+- Type 5 is not assignable to type 6
+- Type 12 is not assignable to type 14
+
+#### Logical operators
+
+```ts
+const x: 2 = 3 && 2
+const y: 6 = 3 && false
+const z: false = true || 4
+```
+
+- Type false is not assignable to type 6
+- Type true is not assignable to type false
+
 #### Equality
 
 ```ts
-(4 === 2) satisfies true
+(4 === 2) satisfies true;
+(4 !== 2) satisfies string;
 ```
 
 - Expected true found false
+- Expected string found true
+
+#### Inequality
+
+```ts
+(4 < 2) satisfies true;
+(4 > 2) satisfies number;
+(2 >= 2) satisfies string;
+```
+
+- Expected true found false
+- Expected number found true
+- Expected string found true
 
 #### String operations
 
@@ -264,10 +342,27 @@ const z: 8 = (2 * 3) - 2
 #### Math operations
 
 ```ts
-Math.cos(0) satisfies 0
+Math.cos(0) satisfies 0;
+Math.sqrt(16) satisfies 1;
+Math.trunc(723.22) satisfies 2
 ```
 
 - Expected 0 found 1
+- Expected 1 found 4
+- Expected 2 found 723
+
+#### Updating assignments
+
+```ts
+let a = 5, b = 6;
+a++;
+a satisfies 4;
+b *= 4;
+b satisfies 23;
+```
+
+- Expected 4 found 6
+- Expected 23 found 24
 
 ### Objects
 
@@ -275,11 +370,11 @@ Math.cos(0) satisfies 0
 
 ```ts
 let my_obj = { a: 3 }
-const a = my_obj.a;
-const b = my_obj.b;
+const a = my_obj.a
+const b = my_obj.b
 ```
 
-- No property with "b" on {"a": 3,  }
+- No property with "b" on {"a": 3, }
 
 #### Property updates registered
 
@@ -315,7 +410,20 @@ my_obj.a = "not a number"
 const my_obj: { b: 3 } = { a: 2 }
 ```
 
-- Type {"a": 2,  } is not assignable to type {"b": 3,  }
+- Type {"a": 2, } is not assignable to type {"b": 3, }
+
+#### Getters
+
+```ts
+const b = {
+	get c() {
+		return 2
+	},
+}
+b.c satisfies string
+```
+
+- Expected string found 2
 
 #### Arrays
 
@@ -328,3 +436,211 @@ x.length satisfies 4
 
 - Expected 3 found "hi"
 - Expected 4 found 2
+
+#### Functions create objects
+
+```ts
+function newObject() {
+	return { a: 2 }
+}
+
+const b = newObject();
+const c = b;
+(b === c) satisfies false;
+(b === newObject) satisfies string;
+```
+
+- Expected false found true
+- Expected string found false
+
+### Control flow
+
+#### Resolving conditional
+
+```ts
+function isNegative(x: number) {
+	return x < 0 ? "negative" : "positive"
+}
+isNegative(-4) satisfies number
+isNegative(4) satisfies boolean
+```
+
+- Expected number found "negative"
+- Expected boolean found "positive"
+
+#### Conditional update
+
+```ts
+let a: number = 0
+function conditional(v: string) {
+	if (v === "value") {
+		a++
+	}
+}
+conditional("x")
+a satisfies 2
+conditional("value")
+a satisfies 3
+```
+
+- Expected 2 found 0
+- Expected 3 found 1
+
+#### Operator short circuiting
+
+```ts
+let a: number = 0
+const func = condition => condition || ++a;
+
+func(true);
+a satisfies 0;
+func(false) satisfies 1;
+a satisfies 2;
+```
+
+- Expected 2 found 1
+
+### Statements, declarations and expressions
+
+*Some of these are part of synthesis, rather than checking*
+
+#### Interfaces
+
+```ts
+interface X {
+	a: string,
+	b: boolean
+}
+
+const x: X = { a: 2, b: false }
+```
+
+- Type {"a": 2, "b": false, } is not assignable to type X
+
+#### Interface merging
+
+```ts
+interface X {
+	a: string,
+	b: boolean
+}
+
+interface X {
+	c: number
+}
+
+const x: X = { a: "field", b: false, c: false }
+const y: X = { a: "field", b: false, c: 2 }
+```
+
+- Type {"a": "field", "b": false, "c": false, } is not assignable to type X
+
+#### Type aliases
+
+```ts
+type MyNumber = number;
+"hi" satisfies MyNumber;
+4 satisfies MyNumber
+```
+
+- Expected MyNumber found "hi"
+
+#### Declare variable
+
+```ts
+declare var global_number: number
+const my_number: string = global_number
+```
+
+- Type number is not assignable to type string
+
+#### (untagged) Template literal
+
+```ts
+const name = "Ben";
+`Hello ${name}` satisfies "Hi Ben"
+```
+
+- Expected "Hi Ben" found "Hello Ben"
+
+#### Type of mathematical operator
+
+```ts
+declare var x: number;
+(x * 2) satisfies string
+```
+
+- Expected string found number
+
+#### Type of equality operators
+
+```ts
+declare var x: number;
+(x < 4) satisfies string;
+(x === 4) satisfies Math;
+```
+
+- Expected string found boolean
+- Expected Math found boolean
+
+#### Type of logical operators
+
+```ts
+declare var x: number;
+declare var y: boolean;
+(x && y) satisfies string;
+```
+
+- Expected string found number | boolean
+
+#### Shorthand object literal
+
+```ts
+const x = 2
+const y = { x }
+y.x satisfies 3
+```
+
+- Expected 3 found 2
+
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string found 2
+
+#### Array destructuring
+
+```ts
+const array = [1, 2, 3]
+const [a, b] = array
+a satisfies 1; b satisfies string;
+```
+
+- Expected string found 2
+
+#### Object destructuring
+
+```ts
+const object = { a: 1, b: 2 }
+const { a, b } = object
+a satisfies 1; b satisfies string;
+```
+
+- Expected string found 2
+
+#### Nested object destructuring
+
+```ts
+const object = { a: { b: { c: 2 } } }
+const { a: { b: { c: d } } } = object
+a satisfies 1;
+```
+
+- Expected 1 found 2

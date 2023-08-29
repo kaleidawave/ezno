@@ -125,6 +125,11 @@ pub enum TruthyFalsy {
 	Unknown,
 }
 
+/// TODO
+pub enum PredicateBound<T> {
+	Always(T),
+}
+
 /// Contains logic for **checking phase** (none of the later steps)
 /// All data is global, non local to current scope
 /// TODO some of these should be mutex / ref cell
@@ -229,18 +234,10 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		&mut self,
 		expr_ty: TypeId,
 		to_satisfy: TypeId,
-		pos: Span,
+		at: Span,
 		environment: &mut Environment,
 	) {
-		let result = type_is_subtype(
-			to_satisfy,
-			expr_ty,
-			None,
-			&mut BasicEquality { add_property_restrictions: false, position: pos.clone() },
-			environment,
-			&self.types,
-		);
-		if let SubTypeResult::IsNotSubType(_) = result {
+		if expr_ty == TypeId::ERROR_TYPE {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
 				&environment.into_general_context(),
@@ -254,10 +251,84 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 				false,
 			);
 			self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
-				at: pos,
+				at,
 				expected,
 				found,
-			})
+			});
+		} else {
+			let result = type_is_subtype(
+				to_satisfy,
+				expr_ty,
+				None,
+				&mut BasicEquality { add_property_restrictions: false, position: at.clone() },
+				environment,
+				&self.types,
+			);
+			if let SubTypeResult::IsNotSubType(_) = result {
+				let expected = diagnostics::TypeStringRepresentation::from_type_id(
+					to_satisfy,
+					&environment.into_general_context(),
+					&self.types,
+					false,
+				);
+				let found = diagnostics::TypeStringRepresentation::from_type_id(
+					expr_ty,
+					&environment.into_general_context(),
+					&self.types,
+					false,
+				);
+				self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
+					at,
+					expected,
+					found,
+				})
+			}
 		}
+	}
+}
+
+pub trait SynthesizableConditional {
+	/// For conditional expressions (`a ? b : c`) as they return a type.
+	/// **Not for return in conditional if blocks**
+	type ExpressionResult;
+
+	fn synthesize_condition<T: crate::FSResolver>(
+		self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T>,
+	) -> Self::ExpressionResult;
+
+	fn conditional_expression_result(
+		condition: TypeId,
+		truthy_result: Self::ExpressionResult,
+		falsy_result: Self::ExpressionResult,
+		types: &mut TypeStore,
+	) -> Self::ExpressionResult;
+
+	fn default_result() -> Self::ExpressionResult;
+}
+
+impl<'a, T: crate::SynthesizableExpression> crate::SynthesizableConditional for &'a T {
+	type ExpressionResult = TypeId;
+
+	fn synthesize_condition<U: crate::FSResolver>(
+		self,
+		environment: &mut crate::Environment,
+		checking_data: &mut crate::CheckingData<U>,
+	) -> Self::ExpressionResult {
+		self.synthesize_expression(environment, checking_data)
+	}
+
+	fn conditional_expression_result(
+		condition: TypeId,
+		truthy_result: Self::ExpressionResult,
+		else_result: Self::ExpressionResult,
+		types: &mut TypeStore,
+	) -> Self::ExpressionResult {
+		types.new_conditional_type(condition, truthy_result, else_result)
+	}
+
+	fn default_result() -> Self::ExpressionResult {
+		unreachable!("If was reachable it should be TypeID::Undefined")
 	}
 }

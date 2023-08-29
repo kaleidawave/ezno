@@ -34,6 +34,7 @@ pub enum Property {
 	Setter(Box<FunctionType>),
 	GetterAndSetter(Box<FunctionType>, Box<FunctionType>),
 }
+
 impl Property {
 	pub(crate) fn as_get_type(&self) -> TypeId {
 		match self {

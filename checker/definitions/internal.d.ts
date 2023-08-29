@@ -18,22 +18,13 @@ interface Array<T> {
     }
 }
 
-type StringOrNumber = string | number;
-
-interface Operators {
-    Add<T extends StringOrNumber, U extends StringOrNumber>(a: T, b: U): (T extends string ? string : U extends string ? string: number) performs const add;
-
-    Sub(a: number, b: number): number performs const sub;
-
-    Mul(a: number, b: number): number performs const mul;
-
-    Equal(a: any, b: any): boolean performs const equal;
-}
-
 interface Math {
     sin(x: number): number performs const sin;
     cos(x: number): number performs const cos;
     tan(x: number): number performs const tan;
+    trunc(x: number): number performs const trunc;
+    sqrt(x: number): number performs const sqrt;
+    cbrt(x: number): number performs const cbrt;
 }
 
 interface string {
