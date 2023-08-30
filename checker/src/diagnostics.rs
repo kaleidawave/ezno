@@ -537,7 +537,7 @@ mod defined_errors_and_warnings {
 					kind: super::DiagnosticKind::Error,
 				},
 				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
-					reason: format!("Expected {} found {}", expected, found),
+					reason: format!("Expected {}, found {}", expected, found),
 					position: at,
 					kind: super::DiagnosticKind::Error,
 				},

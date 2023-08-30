@@ -125,14 +125,14 @@ pub(crate) fn specialize(
 						specialize(false_result, arguments, environment, types)
 					}
 				} else {
-					let true_result = specialize(true_result, arguments, environment, types);
-					let false_result = specialize(false_result, arguments, environment, types);
+					let truthy_result = specialize(true_result, arguments, environment, types);
+					let else_result = specialize(false_result, arguments, environment, types);
 					// TODO result_union
 					let ty = Constructor::ConditionalResult {
 						condition: on,
-						truthy_result: true_result,
-						else_result: false_result,
-						result_union: TypeId::ERROR_TYPE,
+						truthy_result,
+						else_result,
+						result_union: types.new_or_type(truthy_result, else_result),
 					};
 
 					types.register_type(Type::Constructor(ty))

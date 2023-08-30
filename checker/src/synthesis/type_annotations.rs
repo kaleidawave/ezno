@@ -279,12 +279,12 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				}
 			}
 
-			let true_res = synthesize_type_annotation(
+			let truthy_result = synthesize_type_annotation(
 				synthesize_condition(resolve_true),
 				environment,
 				checking_data,
 			);
-			let false_res = synthesize_type_annotation(
+			let else_result = synthesize_type_annotation(
 				synthesize_condition(resolve_false),
 				environment,
 				checking_data,
@@ -292,10 +292,9 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
-				truthy_result: true_res,
-				else_result: false_res,
-				// TODO
-				result_union: TypeId::ERROR_TYPE,
+				truthy_result,
+				else_result,
+				result_union: checking_data.types.new_or_type(truthy_result, else_result),
 			});
 
 			checking_data.types.register_type(ty)

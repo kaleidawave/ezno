@@ -38,8 +38,8 @@ pub fn evaluate_pure_binary_operation_handle_errors<T: crate::FSResolver>(
 	(lhs, lhs_pos): (TypeId, Span),
 	operator: PureBinaryOperation,
 	(rhs, rhs_pos): (TypeId, Span),
-	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
+	environment: &mut Environment,
 ) -> TypeId {
 	// environment,
 	// checking_data.settings.strict_casts,

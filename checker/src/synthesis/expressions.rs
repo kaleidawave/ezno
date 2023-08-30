@@ -227,8 +227,8 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				(lhs_ty, lhs_pos),
 				operator,
 				(rhs_ty, rhs_pos),
-				environment,
 				checking_data,
+				environment,
 			))
 		}
 		Expression::UnaryOperation { operand, operator, position } => {

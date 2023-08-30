@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use crate::{
 	behavior::{
 		assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
-		operations::{evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise},
+		operations::{
+			evaluate_logical_operation, evaluate_pure_binary_operation_handle_errors,
+			MathematicalAndBitwise,
+		},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
@@ -199,8 +202,8 @@ impl<'a> Environment<'a> {
 							(existing, span),
 							operator.into(),
 							rhs,
-							self,
 							checking_data,
+							self,
 						);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
@@ -218,7 +221,6 @@ impl<'a> Environment<'a> {
 							}
 						}
 					}
-
 					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
 						// let value =
 						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
@@ -239,8 +241,8 @@ impl<'a> Environment<'a> {
 							}
 							.into(),
 							(TypeId::ONE, Span::NULL_SPAN),
-							self,
 							checking_data,
+							self,
 						);
 
 						let result = set_reference(self, reference, new, checking_data);
@@ -265,7 +267,36 @@ impl<'a> Environment<'a> {
 							}
 						}
 					}
-					AssignmentKind::ConditionalUpdate(_) => todo!(),
+					AssignmentKind::ConditionalUpdate(operator) => {
+						let _span = reference.get_position();
+						let existing = get_reference(self, reference.clone(), checking_data);
+						let expression = expression.unwrap();
+						let new = evaluate_logical_operation(
+							existing,
+							operator,
+							expression,
+							checking_data,
+							self,
+						)
+						.unwrap();
+
+						let result = set_reference(self, reference, new, checking_data);
+
+						match result {
+							Ok(new) => new,
+							Err(error) => {
+								let error = set_property_error_to_type_check_error(
+									&self.into_general_context(),
+									error,
+									assignment_span,
+									&checking_data.types,
+									new,
+								);
+								checking_data.diagnostics_container.add_error(error);
+								TypeId::ERROR_TYPE
+							}
+						}
+					}
 				}
 			}
 			Assignable::ObjectDestructuring(_) => todo!(),

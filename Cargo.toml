@@ -52,7 +52,7 @@ features = ["extras"]
 package = "ezno-parser"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen = "0.2.86"
+wasm-bindgen = "=0.2.87"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.5.0"
 js-sys = "0.3"

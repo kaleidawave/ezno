@@ -62,7 +62,7 @@ function func(a: number) {
 }
 ```
 
-- Expected string found number
+- Expected string, found number
 
 #### (simple) return type checking
 
@@ -83,7 +83,7 @@ function func() {
 func satisfies () => string
 ```
 
-- Expected () => string found () => 2
+- Expected () => string, found () => 2
 
 #### Argument type against parameter
 
@@ -218,7 +218,7 @@ try {
 }
 ```
 
-- Expected string found 3
+- Expected string, found 3
 
 ### Effects
 
@@ -232,7 +232,7 @@ function sinPlusB(a: number, b: number) {
 sinPlusB(100.22, 5) satisfies 8
 ```
 
-- Expected 8 found 105
+- Expected 8, found 105
 
 #### Calling higher order function
 
@@ -244,7 +244,7 @@ function addTwoToResult(func: number => number) {
 addTwoToResult((a: number) => a * 4) satisfies 5
 ```
 
-- Expected 5 found 18
+- Expected 5, found 18
 
 #### Calling constant higher order function
 
@@ -256,7 +256,7 @@ function call(func: number => number) {
 call(Math.sqrt) satisfies 2
 ```
 
-- Expected 2 found 3
+- Expected 2, found 3
 
 #### Effects carry through dependent calls
 
@@ -272,7 +272,20 @@ runFunctionTwice(() => { a++ })
 a satisfies string
 ```
 
-- Expected string found 4
+- Expected string, found 4
+
+#### Updating property
+
+```ts
+const x = { a: 2 }
+function updateA(obj: { a: string | number }) {
+    obj.a = "hi"
+}
+updateA(x)
+const y: number = x.a
+```
+
+- Type "hi" is not assignable to type number
 
 ### Constant evaluation
 
@@ -316,8 +329,8 @@ const z: false = true || 4
 (4 !== 2) satisfies string;
 ```
 
-- Expected true found false
-- Expected string found true
+- Expected true, found false
+- Expected string, found true
 
 #### Inequality
 
@@ -327,9 +340,9 @@ const z: false = true || 4
 (2 >= 2) satisfies string;
 ```
 
-- Expected true found false
-- Expected number found true
-- Expected string found true
+- Expected true, found false
+- Expected number, found true
+- Expected string, found true
 
 #### String operations
 
@@ -337,7 +350,7 @@ const z: false = true || 4
 "hi".toUppercase() satisfies number
 ```
 
-- Expected number found "HI"
+- Expected number, found "HI"
 
 #### Math operations
 
@@ -347,9 +360,9 @@ Math.sqrt(16) satisfies 1;
 Math.trunc(723.22) satisfies 2
 ```
 
-- Expected 0 found 1
-- Expected 1 found 4
-- Expected 2 found 723
+- Expected 0, found 1
+- Expected 1, found 4
+- Expected 2, found 723
 
 #### Updating assignments
 
@@ -361,8 +374,8 @@ b *= 4;
 b satisfies 23;
 ```
 
-- Expected 4 found 6
-- Expected 23 found 24
+- Expected 4, found 6
+- Expected 23, found 24
 
 ### Objects
 
@@ -423,7 +436,7 @@ const b = {
 b.c satisfies string
 ```
 
-- Expected string found 2
+- Expected string, found 2
 
 #### Arrays
 
@@ -434,8 +447,8 @@ x[1] satisfies 3
 x.length satisfies 4
 ```
 
-- Expected 3 found "hi"
-- Expected 4 found 2
+- Expected 3, found "hi"
+- Expected 4, found 2
 
 #### Functions create objects
 
@@ -450,8 +463,8 @@ const c = b;
 (b === newObject) satisfies string;
 ```
 
-- Expected false found true
-- Expected string found false
+- Expected false, found true
+- Expected string, found false
 
 ### Control flow
 
@@ -465,8 +478,8 @@ isNegative(-4) satisfies number
 isNegative(4) satisfies boolean
 ```
 
-- Expected number found "negative"
-- Expected boolean found "positive"
+- Expected number, found "negative"
+- Expected boolean, found "positive"
 
 #### Conditional update
 
@@ -483,8 +496,8 @@ conditional("value")
 a satisfies 3
 ```
 
-- Expected 2 found 0
-- Expected 3 found 1
+- Expected 2, found 0
+- Expected 3, found 1
 
 #### Operator short circuiting
 
@@ -498,11 +511,38 @@ func(false) satisfies 1;
 a satisfies 2;
 ```
 
-- Expected 2 found 1
+- Expected 2, found 1
+
+#### Conditional assignment
+
+```ts
+let a = false, b = 4;
+a ||= b++;
+a satisfies 3;
+b ||= (b = 10);
+b satisfies string;
+```
+
+- Expected 3, found 4
+- Expected string, found 5
+
+#### Conditional return type inference
+
+```ts
+function func(a: boolean) {
+	if (a) {
+		return 2
+	}
+}
+
+func satisfies (a: boolean) => 5;
+```
+
+- Expected (a: boolean, ) => 5, found (a: boolean, ) => 2 | undefined
 
 ### Statements, declarations and expressions
 
-*Some of these are part of synthesis, rather than checking*
+> Some of these are part of synthesis, rather than checking
 
 #### Interfaces
 
@@ -543,7 +583,7 @@ type MyNumber = number;
 4 satisfies MyNumber
 ```
 
-- Expected MyNumber found "hi"
+- Expected MyNumber, found "hi"
 
 #### Declare variable
 
@@ -561,7 +601,7 @@ const name = "Ben";
 `Hello ${name}` satisfies "Hi Ben"
 ```
 
-- Expected "Hi Ben" found "Hello Ben"
+- Expected "Hi Ben", found "Hello Ben"
 
 #### Type of mathematical operator
 
@@ -570,7 +610,7 @@ declare var x: number;
 (x * 2) satisfies string
 ```
 
-- Expected string found number
+- Expected string, found number
 
 #### Type of equality operators
 
@@ -580,8 +620,8 @@ declare var x: number;
 (x === 4) satisfies Math;
 ```
 
-- Expected string found boolean
-- Expected Math found boolean
+- Expected string, found boolean
+- Expected Math, found boolean
 
 #### Type of logical operators
 
@@ -591,7 +631,7 @@ declare var y: boolean;
 (x && y) satisfies string;
 ```
 
-- Expected string found number | boolean
+- Expected string, found boolean | number
 
 #### Shorthand object literal
 
@@ -601,7 +641,7 @@ const y = { x }
 y.x satisfies 3
 ```
 
-- Expected 3 found 2
+- Expected 3, found 2
 
 #### Try-catch and throw
 
@@ -613,7 +653,7 @@ try {
 }
 ```
 
-- Expected string found 2
+- Expected string, found 2
 
 #### Array destructuring
 
@@ -623,7 +663,7 @@ const [a, b] = array
 a satisfies 1; b satisfies string;
 ```
 
-- Expected string found 2
+- Expected string, found 2
 
 #### Object destructuring
 
@@ -633,14 +673,14 @@ const { a, b } = object
 a satisfies 1; b satisfies string;
 ```
 
-- Expected string found 2
+- Expected string, found 2
 
 #### Nested object destructuring
 
 ```ts
 const object = { a: { b: { c: 2 } } }
 const { a: { b: { c: d } } } = object
-a satisfies 1;
+d satisfies 1;
 ```
 
-- Expected 1 found 2
+- Expected 1, found 2

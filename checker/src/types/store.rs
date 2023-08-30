@@ -212,7 +212,7 @@ impl TypeStore {
 			condition,
 			truthy_result,
 			else_result,
-			result_union: TypeId::ERROR_TYPE,
+			result_union: self.new_or_type(truthy_result, else_result),
 		});
 		self.register_type(ty)
 	}
