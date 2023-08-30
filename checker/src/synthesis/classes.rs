@@ -110,7 +110,7 @@ pub(super) fn synthesize_class_declaration<
 						class_constructor = Some(ty);
 					}
 					ClassMember::Method(static_kw, function) => {
-						let property_key = function.name.get_ast();
+						let property_key = function.name.get_ast_ref();
 						let private =
 							matches!(property_key, parser::PropertyKey::Ident(_, _, true));
 						let key = property_key_as_type(

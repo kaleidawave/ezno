@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use parser::{ASTNode, Declaration, Statement, StatementOrDeclaration, VariableIdentifier};
+use parser::{
+	declarations::DeclareVariableDeclaration, ASTNode, Declaration, Statement,
+	StatementOrDeclaration, VariableIdentifier,
+};
 
 use crate::{
 	behavior::functions::RegisterOnExisting, context::Environment,
@@ -129,7 +132,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 							};
 
 							register_variable(
-								declaration.name.get_ast(),
+								declaration.name.get_ast_ref(),
 								environment,
 								checking_data,
 								behavior,
@@ -158,7 +161,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 							};
 
 							register_variable(
-								declaration.name.get_ast(),
+								declaration.name.get_ast_ref(),
 								environment,
 								checking_data,
 								behavior,
@@ -220,9 +223,45 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						checking_data,
 					);
 				}
-				parser::Declaration::TypeAlias(_) => todo!(),
-				parser::Declaration::DeclareVariable(_) => todo!(),
-				parser::Declaration::DeclareInterface(_) => todo!(),
+				parser::Declaration::TypeAlias(_) => {}
+				parser::Declaration::DeclareVariable(DeclareVariableDeclaration {
+					name,
+					type_restriction,
+					decorators,
+					position,
+				}) => {
+					// TODO tidy up
+					let variable_ty =
+						synthesize_type_annotation(&type_restriction, environment, checking_data);
+
+					// // TODO not sure...
+					// if let Some(frozen) = environment.is_frozen(variable_ty) {
+					// 	environment.frozen.insert(var_type, frozen);
+					// }
+
+					let declare_variable = environment.declare_variable(
+						&name,
+						position.clone(),
+						variable_ty,
+						&mut checking_data.types,
+					);
+
+					checking_data
+						.type_mappings
+						.variables_to_constraints
+						.0
+						.insert(crate::VariableId(position.source, position.start), variable_ty);
+
+					if let Err(error) = declare_variable {
+						checking_data.diagnostics_container.add_error(
+							crate::diagnostics::TypeCheckError::CannotRedeclareVariable {
+								name: error.name.to_owned(),
+								position: position.clone(),
+							},
+						)
+					}
+				}
+				parser::Declaration::DeclareInterface(_) => {}
 				parser::Declaration::Import(_) => {}
 				parser::Declaration::Export(_) => {}
 			},

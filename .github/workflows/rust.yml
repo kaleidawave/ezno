@@ -152,7 +152,7 @@ jobs:
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
-          packages: wasm-bindgen-cli@0.2.86
+          packages: wasm-bindgen-cli@0.2.87
           
       - uses: denoland/setup-deno@v1
         with:

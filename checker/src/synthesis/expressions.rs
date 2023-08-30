@@ -14,12 +14,16 @@ use crate::{
 		assignments::{Assignable, SynthesizableExpression},
 		functions::{RegisterAsType, RegisterOnExistingObject},
 		objects::ObjectBuilder,
+		operations::{
+			evaluate_logical_operation, evaluate_pure_binary_operation_handle_errors,
+			evaluate_pure_unary_operator, EqualityAndInequality, MathematicalAndBitwise, PureUnary,
+		},
+		template_literal::synthesize_template_literal,
 	},
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	evaluate_binary_operator_handle_errors,
 	events::{CalledWithNew, Event},
 	types::functions::SynthesizedArgument,
-	types::{evaluate_unary_operator, properties::PropertyResult, Constant, TypeId},
+	types::{properties::PropertyResult, Constant, TypeId},
 	CheckingData, Environment, Instance,
 };
 
@@ -135,57 +139,126 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			Instance::RValue(synthesize_object_literal)
 		}
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "template literals",
-				at: position.clone(),
+			let mut parts_iter = parts.iter().map(|part| match part {
+				parser::expressions::TemplateLiteralPart::Static(value) => {
+					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
+				}
+				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
+					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
+				}
 			});
-			Instance::RValue(TypeId::ERROR_TYPE)
+			let tag =
+				tag.as_ref().map(|expr| synthesize_expression(expr, environment, checking_data));
+
+			synthesize_template_literal(tag, parts_iter, environment, checking_data)
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, .. } => {
 			let lhs_ty = synthesize_expression(&*lhs, environment, checking_data);
+
+			if let BinaryOperator::LogicalAnd
+			| BinaryOperator::LogicalOr
+			| BinaryOperator::NullCoalescing = operator
+			{
+				return evaluate_logical_operation(
+					lhs_ty,
+					match operator {
+						BinaryOperator::LogicalAnd => crate::behavior::operations::Logical::And,
+						BinaryOperator::LogicalOr => crate::behavior::operations::Logical::Or,
+						BinaryOperator::NullCoalescing => {
+							crate::behavior::operations::Logical::NullCoalescing
+						}
+						_ => unreachable!(),
+					},
+					&**rhs,
+					checking_data,
+					environment,
+					// TODO unwrap
+				)
+				.unwrap();
+			}
+
 			let rhs_ty = synthesize_expression(&*rhs, environment, checking_data);
 
 			if lhs_ty == TypeId::ERROR_TYPE || rhs_ty == TypeId::ERROR_TYPE {
 				return TypeId::ERROR_TYPE;
 			}
 
-			let operator = super::parser_binary_operator_to_others(*operator);
+			let lhs_pos = ASTNode::get_position(&**lhs).into_owned();
+			let rhs_pos = ASTNode::get_position(&**rhs).into_owned();
+			use parser::operators::BinaryOperator;
 
-			Instance::RValue(evaluate_binary_operator_handle_errors(
+			let operator = match operator {
+				BinaryOperator::Add => MathematicalAndBitwise::Add.into(),
+				BinaryOperator::Subtract => MathematicalAndBitwise::Subtract.into(),
+				BinaryOperator::Multiply => MathematicalAndBitwise::Multiply.into(),
+				BinaryOperator::Divide => MathematicalAndBitwise::Divide.into(),
+				BinaryOperator::Modulo => MathematicalAndBitwise::Modulo.into(),
+				BinaryOperator::Exponent => MathematicalAndBitwise::Exponent.into(),
+				BinaryOperator::BitwiseShiftLeft => MathematicalAndBitwise::BitwiseShiftLeft.into(),
+				BinaryOperator::BitwiseShiftRight => {
+					MathematicalAndBitwise::BitwiseShiftRight.into()
+				}
+				BinaryOperator::BitwiseShiftRightUnsigned => {
+					MathematicalAndBitwise::BitwiseShiftRightUnsigned.into()
+				}
+				BinaryOperator::BitwiseAnd => MathematicalAndBitwise::BitwiseAnd.into(),
+				BinaryOperator::BitwiseXOr => MathematicalAndBitwise::BitwiseXOr.into(),
+				BinaryOperator::BitwiseOr => MathematicalAndBitwise::BitwiseOr.into(),
+				BinaryOperator::StrictEqual => EqualityAndInequality::StrictEqual.into(),
+				BinaryOperator::StrictNotEqual => EqualityAndInequality::StrictNotEqual.into(),
+				BinaryOperator::Equal => EqualityAndInequality::Equal.into(),
+				BinaryOperator::NotEqual => EqualityAndInequality::NotEqual.into(),
+				BinaryOperator::GreaterThan => EqualityAndInequality::GreaterThan.into(),
+				BinaryOperator::LessThan => EqualityAndInequality::LessThan.into(),
+				BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanEqual.into(),
+				BinaryOperator::GreaterThanEqual => EqualityAndInequality::GreaterThanEqual.into(),
+				BinaryOperator::LogicalAnd
+				| BinaryOperator::LogicalOr
+				| BinaryOperator::NullCoalescing => {
+					unreachable!()
+				}
+				BinaryOperator::InstanceOf => todo!(),
+				BinaryOperator::In => todo!(),
+				BinaryOperator::Divides => todo!(),
+				BinaryOperator::Pipe => todo!(),
+				BinaryOperator::Compose => todo!(),
+			};
+			Instance::RValue(evaluate_pure_binary_operation_handle_errors(
+				(lhs_ty, lhs_pos),
 				operator,
-				(lhs_ty, ASTNode::get_position(&**lhs).into_owned()),
-				(rhs_ty, ASTNode::get_position(&**rhs).into_owned()),
-				environment,
+				(rhs_ty, rhs_pos),
 				checking_data,
+				environment,
 			))
 		}
 		Expression::UnaryOperation { operand, operator, position } => {
 			let operand_type = synthesize_expression(&*operand, environment, checking_data);
 
-			if let UnaryOperator::Await = operator {
-				todo!()
-			}
-			// TODO might be different by parser
-			else if let UnaryOperator::Delete = operator {
-				todo!()
-			} else if let UnaryOperator::Yield | UnaryOperator::DelegatedYield = operator {
-				todo!()
-			} else {
-				let operator = super::parser_unary_operator_to_others(*operator);
-				let result = evaluate_unary_operator(
-					operator,
-					operand_type,
-					environment,
-					checking_data.settings.strict_casts,
-					&mut checking_data.types,
-				);
-				match result {
-					Ok(value) => Instance::RValue(value),
-					Err(_) => {
-						todo!("add error");
-						return TypeId::ERROR_TYPE;
-					}
+			match operator {
+				UnaryOperator::Plus => todo!(),
+				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
+					let operator = match operator {
+						UnaryOperator::Negation => PureUnary::Negation,
+						UnaryOperator::BitwiseNot => PureUnary::BitwiseNot,
+						UnaryOperator::LogicalNot => PureUnary::LogicalNot,
+						_ => unreachable!(),
+					};
+					Instance::RValue(
+						evaluate_pure_unary_operator(
+							operator,
+							operand_type,
+							&mut checking_data.types,
+							environment,
+						)
+						.unwrap(),
+					)
 				}
+				UnaryOperator::Await => todo!(),
+				UnaryOperator::TypeOf => todo!(),
+				UnaryOperator::Void => todo!(),
+				UnaryOperator::Delete => todo!(),
+				UnaryOperator::Yield => todo!(),
+				UnaryOperator::DelegatedYield => todo!(),
 			}
 		}
 		Expression::Assignment { lhs, rhs } => {
@@ -207,11 +280,60 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				checking_data,
 			));
 
+			use crate::behavior::assignments::AssignmentKind;
+			use parser::operators::BinaryAssignmentOperator;
+
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
-				crate::behavior::assignments::AssignmentKind::Update(
-					binary_assignment_operator_to_binary_operator(operator),
-				),
+				match operator {
+					BinaryAssignmentOperator::LogicalAndAssign => {
+						AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::And)
+					}
+					BinaryAssignmentOperator::LogicalOrAssign => {
+						AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::Or)
+					}
+					BinaryAssignmentOperator::LogicalNullishAssignment => {
+						AssignmentKind::ConditionalUpdate(
+							crate::behavior::operations::Logical::NullCoalescing,
+						)
+					}
+					BinaryAssignmentOperator::AddAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
+					}
+					BinaryAssignmentOperator::SubtractAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Subtract)
+					}
+					BinaryAssignmentOperator::MultiplyAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Multiply)
+					}
+					BinaryAssignmentOperator::DivideAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Divide)
+					}
+					BinaryAssignmentOperator::ModuloAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Modulo)
+					}
+					BinaryAssignmentOperator::ExponentAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Exponent)
+					}
+					BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftLeft)
+					}
+					BinaryAssignmentOperator::BitwiseShiftRightAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftRight)
+					}
+					BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
+					}
+					BinaryAssignmentOperator::BitwiseAndAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseAnd)
+					}
+					BinaryAssignmentOperator::BitwiseXOrAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseXOr)
+					}
+					BinaryAssignmentOperator::BitwiseOrAssign => {
+						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseOr)
+					}
+				},
 				Some(&**rhs),
 				ASTNode::get_position(expression).into_owned(),
 				checking_data,
@@ -457,22 +579,53 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				}
 			}
 		}
-		Expression::TernaryExpression { condition, truthy_result, falsy_result, .. } => {
-			// TODO could do some proof stuff here
-			let _condition = synthesize_expression(condition, environment, checking_data);
+		Expression::ConditionalTernaryExpression {
+			condition, truthy_result, falsy_result, ..
+		} => {
+			let condition = synthesize_expression(condition, environment, checking_data);
 
-			let truthy_instance = synthesize_expression(truthy_result, environment, checking_data);
-			let falsy_instance = synthesize_expression(falsy_result, environment, checking_data);
+			Instance::RValue(environment.new_conditional_context(
+				condition,
+				truthy_result.as_ref(),
+				Some(falsy_result.as_ref()),
+				checking_data,
+			))
 
-			todo!()
+			// TODO narrowing here based on condition and conditional events
+			// let true_result = synthesize_expression(truthy_result, environment, checking_data);
+			// let false_result = synthesize_expression(falsy_result, environment, checking_data);
+
+			// let value = environment.is_type_truthy_falsy(condition, &checking_data.types);
+
+			// match value {
+			// 	crate::TruthyFalsy::Decidable(value) => {
+			// 		// TODO report issue about LHS RHS unnecessary
+			// 		Instance::RValue(match value {
+			// 			true => true_result,
+			// 			false => false_result,
+			// 		})
+			// 	}
+			// 	crate::TruthyFalsy::Unknown => {
+			// 		let constructor =
+			// 			crate::Type::Constructor(crate::types::Constructor::ConditionalResult {
+			// 				condition,
+			// 				truthy_result: true_result,
+			// 				else_result: false_result,
+			// 				result_union: TypeId::ERROR_TYPE,
+			// 			});
+			// 		crate::utils::notify!("Here TODO conditional events");
+			// 		Instance::RValue(checking_data.types.register_type(constructor))
+			// 	}
+			// }
+
 			// TypeId::build_union_from_type_iterator(IntoIterator::into_iter([
 			// 	truthy_instance,
 			// 	falsy_instance,
 			// ]))
 			// .into()
 		}
-		Expression::ExpressionFunction(_) => {
-			todo!()
+		Expression::ExpressionFunction(function) => {
+			Instance::RValue(environment.new_function(checking_data, function, RegisterAsType))
 		}
 		Expression::ArrowFunction(arrow_function) => Instance::RValue(environment.new_function(
 			checking_data,
@@ -530,34 +683,6 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 	checking_data.add_expression_mapping(position, instance.clone());
 
 	instance.get_value()
-}
-
-fn binary_assignment_operator_to_binary_operator(
-	operator: &parser::operators::BinaryAssignmentOperator,
-) -> crate::structures::operators::BinaryOperator {
-	match operator {
-		parser::operators::BinaryAssignmentOperator::LogicalNullishAssignment => todo!(),
-		parser::operators::BinaryAssignmentOperator::AddAssign => {
-			crate::structures::operators::BinaryOperator::Add
-		}
-		parser::operators::BinaryAssignmentOperator::SubtractAssign => {
-			crate::structures::operators::BinaryOperator::Subtract
-		}
-		parser::operators::BinaryAssignmentOperator::MultiplyAssign => {
-			crate::structures::operators::BinaryOperator::Multiply
-		}
-		parser::operators::BinaryAssignmentOperator::DivideAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::ModuloAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::ExponentAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::LogicalAndAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::LogicalOrAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseShiftLeftAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseShiftRightAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseShiftRightUnsigned => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseAndAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseXorAssign => todo!(),
-		parser::operators::BinaryAssignmentOperator::BitwiseOrAssign => todo!(),
-	}
 }
 
 /// Generic for functions + constructor calls
@@ -737,7 +862,7 @@ pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
 				let key =
-					property_key_as_type(key.get_ast(), environment, &mut checking_data.types);
+					property_key_as_type(key.get_ast_ref(), environment, &mut checking_data.types);
 
 				let value = synthesize_expression(expression, environment, checking_data);
 
@@ -767,7 +892,7 @@ pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
 			}
 			ObjectLiteralMember::Method(method) => {
 				let key = property_key_as_type(
-					method.name.get_ast(),
+					method.name.get_ast_ref(),
 					environment,
 					&mut checking_data.types,
 				);

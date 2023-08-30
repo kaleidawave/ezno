@@ -34,6 +34,7 @@ pub enum Property {
 	Setter(Box<FunctionType>),
 	GetterAndSetter(Box<FunctionType>, Box<FunctionType>),
 }
+
 impl Property {
 	pub(crate) fn as_get_type(&self) -> TypeId {
 		match self {
@@ -385,78 +386,15 @@ pub(crate) fn set_property(
 		match fact {
 			Logical::Pure(og) => match og {
 				Property::Value(og) => {
-					match types.get_type_by_id(og) {
-						Type::Function(..) => todo!("look at setter"),
-						Type::Object(..) | Type::Constant(_) => {
-							environment
-								.properties
-								.entry(on)
-								.or_default()
-								.push((under, new.clone()));
-							environment.context_type.events.push(Event::Setter {
-								on,
-								new,
-								under,
-								reflects_dependency: None,
-								initialization: false,
-							});
-						}
-						Type::And(_, _) | Type::Or(_, _) => todo!(),
-						Type::RootPolyType(_) => todo!(),
-						Type::Constructor(_) => todo!(),
-						Type::NamedRooted { name, parameters } => {
-							crate::utils::notify!("TODO temp, this might break things");
-							environment
-								.properties
-								.entry(on)
-								.or_default()
-								.push((under, new.clone()));
-							environment.context_type.events.push(Event::Setter {
-								on,
-								new,
-								under,
-								// TODO
-								reflects_dependency: None,
-								initialization: false,
-							});
-						}
-						Type::AliasTo { to, name, parameters } => {
-							todo!();
-							// if environment.is_setter(og) {
-							// 	// TODO catch unwrap as error:
-							// 	let arg = SynthesizedArgument::NonSpread {
-							// 		ty: new,
-							// 		position: parser::Span {
-							// 			start: 0,
-							// 			end: 0,
-							// 			source: parser::SourceId::NULL,
-							// 		},
-							// 	};
-							// 	return Ok(Some(
-							// 		call_type(
-							// 			og,
-							// 			vec![arg],
-							// 			Some(on),
-							// 			None,
-							// 			environment,
-							// 			checking_data,
-							// 			CalledWithNew::default(),
-							// 		)
-							// 		.unwrap()
-							// 		.returned_type,
-							// 	));
-							// } else {
-							// 	environment.context_type.events.push(Event::Setter {
-							// 		on,
-							// 		new,
-							// 		under,
-							// 		reflects_dependency: None,
-							// 		initialization: false,
-							// 	});
-							// 	environment.proofs.new_property(on, under, new, false);
-							// }
-						}
-					}
+					environment.properties.entry(on).or_default().push((under, new.clone()));
+					environment.context_type.events.push(Event::Setter {
+						on,
+						new,
+						under,
+						// TODO
+						reflects_dependency: None,
+						initialization: false,
+					});
 				}
 				Property::Getter(_) => todo!(),
 				Property::Setter(_) => todo!(),

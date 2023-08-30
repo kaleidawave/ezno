@@ -8,6 +8,7 @@ use crate::{
 };
 
 mod function_calling;
+pub(crate) mod helpers;
 pub use function_calling::*;
 
 use crate::{
@@ -85,8 +86,8 @@ pub enum Event {
 
 	Conditionally {
 		on: TypeId,
-		true_res: Box<[Event]>,
-		false_res: Box<[Event]>,
+		events_if_truthy: Box<[Event]>,
+		else_events: Box<[Event]>,
 	},
 
 	Repeatedly {
@@ -137,21 +138,24 @@ pub enum CallingTiming {
 
 pub(crate) type EarlyReturn = Option<TypeId>;
 
+trait EventPool {}
+
 pub(crate) fn apply_event(
 	event: Event,
+	//
 	environment: &mut Environment,
 	this_argument: Option<TypeId>,
 	type_arguments: &mut TypeArguments,
 	types: &mut TypeStore,
 ) -> EarlyReturn {
 	match event {
-		Event::ReadsReference { reference: variable, reflects_dependency } => {
+		Event::ReadsReference { reference, reflects_dependency } => {
 			if let Some(id) = reflects_dependency {
 				// TODO checking constraints if inferred
-				let value = match variable {
-					RootReference::VariableId(variable) => {
-						environment.get_value_of_variable(variable)
-					}
+				let value = match reference {
+					RootReference::VariableId(variable) => environment
+						.get_value_of_variable(variable)
+						.expect("closed over reference not assigned"),
 					RootReference::This => {
 						this_argument.unwrap_or_else(|| environment.get_value_of_this(types))
 					}
@@ -292,20 +296,20 @@ pub(crate) fn apply_event(
 			}
 		}
 		// TODO extract
-		Event::Conditionally { on, true_res, false_res } => {
+		Event::Conditionally { on, events_if_truthy, else_events } => {
 			let on = specialize(on, type_arguments, environment, types);
 
-			// TODO cast to boolean
-			if on == TypeId::TRUE {
-				for event in true_res.iter().cloned() {
-					apply_event(event, environment, this_argument, type_arguments, types);
+			match environment.is_type_truthy_falsy(on, types) {
+				crate::TruthyFalsy::Decidable(value) => {
+					let to_evaluate = if value { events_if_truthy } else { else_events };
+					for event in to_evaluate.iter().cloned() {
+						apply_event(event, environment, this_argument, type_arguments, types);
+					}
 				}
-			} else if on == TypeId::FALSE {
-				for event in false_res.iter().cloned() {
-					apply_event(event, environment, this_argument, type_arguments, types);
+				crate::TruthyFalsy::Unknown => {
+					todo!()
+					// environment.new_lexical_environment_fold_into_parent(environment_type, checking_data, cb);
 				}
-			} else {
-				crate::utils::notify!("TODO merge events, skipping here");
 			}
 		}
 		Event::Return { returned } => {

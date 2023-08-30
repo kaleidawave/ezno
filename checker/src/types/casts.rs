@@ -11,7 +11,13 @@ pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, 
 	}
 	match cst {
 		Constant::Number(number) => Ok(f64::from(*number)),
-		Constant::String(str) => str.parse::<f64>().map_err(|_| ()),
+		Constant::String(str) => match str.parse::<f64>() {
+			Ok(value) => Ok(value),
+			Err(_) => {
+				// TODO maybe warning
+				Ok(f64::NAN)
+			}
+		},
 		Constant::Boolean(val) => Ok(if *val { 1f64 } else { 0f64 }),
 		Constant::Regexp(_) | Constant::NaN | Constant::Undefined => Ok(f64::NAN),
 		Constant::Null => Ok(0f64),

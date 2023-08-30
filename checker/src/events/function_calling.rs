@@ -443,7 +443,9 @@ impl FunctionType {
 		for (reference, restriction) in self.closed_over_references.clone().into_iter() {
 			match reference {
 				RootReference::VariableId(ref variable) => {
-					let current_value = environment.get_value_of_variable(variable.clone());
+					let current_value = environment
+						.get_value_of_variable(variable.clone())
+						.expect("closed over reference not assigned");
 
 					let mut basic_subtyping = BasicEquality {
 						add_property_restrictions: false,

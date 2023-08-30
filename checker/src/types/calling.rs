@@ -102,7 +102,11 @@ pub fn call_type(
 					.is_dependent()
 			});
 
-			if has_dependent_argument {
+			// TODO temp, need a better solution
+			let call_anyway =
+				matches!(const_fn_ident, "debug_type" | "print_type" | "call" | "bind");
+
+			if !call_anyway && has_dependent_argument {
 				let with = arguments.to_vec().into_boxed_slice();
 				// TODO with cloned!!
 				let result = function_type

@@ -2,21 +2,23 @@ use source_map::Span;
 use std::collections::HashMap;
 
 use crate::{
-	behavior::assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	evaluate_binary_operator_handle_errors,
-	events::{Event, RootReference},
-	structures::{
-		operators::BinaryOperator,
-		variables::{VariableMutability, VariableWithValue},
+	behavior::{
+		assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
+		operations::{
+			evaluate_logical_operation, evaluate_pure_binary_operation_handle_errors,
+			MathematicalAndBitwise,
+		},
 	},
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	events::{Event, RootReference},
+	structures::variables::{VariableMutability, VariableWithValue},
 	subtyping::BasicEquality,
 	types::{
 		properties::{Property, PropertyResult},
 		subtyping::{type_is_subtype, SubTypeResult},
 		Type, TypeStore,
 	},
-	CheckingData, Root, TypeId, VariableId,
+	CheckingData, Root, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{AssignmentError, Context, ContextType, Environment, GeneralContext, SetPropertyError};
@@ -76,7 +78,8 @@ pub enum Scope {
 	FunctionReference {},
 	/// For ifs, elses, or lazy operators
 	Conditional {
-		// TODO on: Proofs,
+		/// Things that are true
+		antecedent: TypeId,
 	},
 	/// Variables here are dependent on the iteration,
 	Looping {
@@ -185,7 +188,7 @@ impl<'a> Environment<'a> {
 							}
 						}
 					}
-					AssignmentKind::Update(operator) => {
+					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
 						let span = reference.get_position();
 						let existing = get_reference(self, reference.clone(), checking_data);
@@ -195,12 +198,12 @@ impl<'a> Environment<'a> {
 							expression.synthesize_expression(self, checking_data),
 							expression.get_position(),
 						);
-						let new = evaluate_binary_operator_handle_errors(
-							operator,
+						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
+							operator.into(),
 							rhs,
-							self,
 							checking_data,
+							self,
 						);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
@@ -226,19 +229,20 @@ impl<'a> Environment<'a> {
 
 						// TODO existing needs to be cast to number!!
 
-						let new = evaluate_binary_operator_handle_errors(
+						let new = evaluate_pure_binary_operation_handle_errors(
+							(existing, span),
 							match direction {
 								crate::behavior::assignments::IncrementOrDecrement::Increment => {
-									BinaryOperator::Add
+									MathematicalAndBitwise::Add
 								}
 								crate::behavior::assignments::IncrementOrDecrement::Decrement => {
-									BinaryOperator::Subtract
+									MathematicalAndBitwise::Subtract
 								}
-							},
-							(existing, span),
+							}
+							.into(),
 							(TypeId::ONE, Span::NULL_SPAN),
-							self,
 							checking_data,
+							self,
 						);
 
 						let result = set_reference(self, reference, new, checking_data);
@@ -250,6 +254,36 @@ impl<'a> Environment<'a> {
 								}
 								crate::behavior::assignments::AssignmentReturnStatus::New => new,
 							},
+							Err(error) => {
+								let error = set_property_error_to_type_check_error(
+									&self.into_general_context(),
+									error,
+									assignment_span,
+									&checking_data.types,
+									new,
+								);
+								checking_data.diagnostics_container.add_error(error);
+								TypeId::ERROR_TYPE
+							}
+						}
+					}
+					AssignmentKind::ConditionalUpdate(operator) => {
+						let _span = reference.get_position();
+						let existing = get_reference(self, reference.clone(), checking_data);
+						let expression = expression.unwrap();
+						let new = evaluate_logical_operation(
+							existing,
+							operator,
+							expression,
+							checking_data,
+							self,
+						)
+						.unwrap();
+
+						let result = set_reference(self, reference, new, checking_data);
+
+						match result {
+							Ok(new) => new,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.into_general_context(),
@@ -470,8 +504,20 @@ impl<'a> Environment<'a> {
 				VariableMutability::Constant => {
 					let variable_id =
 						VariableId(og_var.declared_at.source, og_var.declared_at.start);
+
 					let constraint =
 						checking_data.type_mappings.variables_to_constraints.0.get(&variable_id);
+
+					let current_value = self.get_value_of_variable(og_var.get_id());
+
+					if let Some(current_value) = current_value {
+						let ty = checking_data.types.get_type_by_id(current_value);
+
+						// TODO temp
+						if matches!(ty, Type::Function(..)) {
+							return Ok(VariableWithValue(og_var.clone(), current_value));
+						}
+					}
 
 					// TODO is primitive, then can just use type
 					match constraint {
@@ -545,8 +591,77 @@ impl<'a> Environment<'a> {
 
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
-			let current_value = self.get_value_of_variable(og_var.get_id());
+			let current_value =
+				self.get_value_of_variable(og_var.get_id()).expect("variable not assigned yet");
 			Ok(VariableWithValue(og_var.clone(), current_value))
+		}
+	}
+
+	pub(crate) fn new_conditional_context<T: crate::FSResolver, U>(
+		&mut self,
+		condition: TypeId,
+		then_evaluate: U,
+		// TODO maybe V::Other
+		else_evaluate: Option<U>,
+		checking_data: &mut CheckingData<T>,
+	) -> U::ExpressionResult
+	where
+		U: crate::SynthesizableConditional,
+	{
+		if let TruthyFalsy::Decidable(result) =
+			self.is_type_truthy_falsy(condition, &checking_data.types)
+		{
+			// TODO emit warning
+			return if result {
+				then_evaluate.synthesize_condition(self, checking_data)
+			} else if let Some(else_evaluate) = else_evaluate {
+				else_evaluate.synthesize_condition(self, checking_data)
+			} else {
+				U::default_result()
+			};
+		}
+
+		let (truthy_result, truthy_events) = {
+			let mut truthy_environment =
+				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
+			let result = then_evaluate.synthesize_condition(&mut truthy_environment, checking_data);
+			(result, truthy_environment.context_type.events)
+		};
+		if let Some(else_evaluate) = else_evaluate {
+			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
+				antecedent: checking_data.types.new_logical_negation_type(condition),
+			});
+			let falsy_result =
+				else_evaluate.synthesize_condition(&mut falsy_environment, checking_data);
+			let falsy_events = falsy_environment.context_type.events;
+			let combined_result = U::conditional_expression_result(
+				condition,
+				truthy_result,
+				falsy_result,
+				&mut checking_data.types,
+			);
+			// TODO
+			self.context_type.events.push(Event::Conditionally {
+				on: condition,
+				events_if_truthy: truthy_events.into_boxed_slice(),
+				else_events: falsy_events.into_boxed_slice(),
+			});
+
+			// TODO all things that are
+			// - variable and property values (these aren't read from events)
+			// - immutable, mutable, prototypes etc
+
+			combined_result
+		} else {
+			self.context_type.events.push(Event::Conditionally {
+				on: condition,
+				events_if_truthy: truthy_events.into_boxed_slice(),
+				else_events: Default::default(),
+			});
+
+			// TODO above
+
+			truthy_result
 		}
 	}
 
@@ -590,17 +705,21 @@ impl<'a> Environment<'a> {
 		// TODO I think
 		let ty = store.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-		let condition =
-			store.register_type(Type::Constructor(crate::types::Constructor::RelationOperator {
-				operator: crate::structures::operators::RelationOperator::Equal,
+		let condition = store.register_type(Type::Constructor(
+			crate::types::Constructor::CanonicalRelationOperator {
+				operator: crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual,
 				lhs: TypeId::NEW_TARGET_ARG,
 				rhs: current_constructor_type,
-			}));
+			},
+		));
 
 		let event = Event::Conditionally {
 			on: condition,
-			true_res: Box::new([Event::CreateObject { referenced_in_scope_as: ty, prototype }]),
-			false_res: Box::new([]),
+			events_if_truthy: Box::new([Event::CreateObject {
+				referenced_in_scope_as: ty,
+				prototype,
+			}]),
+			else_events: Box::new([]),
 		};
 
 		self.context_type.get_events().unwrap().push(event);

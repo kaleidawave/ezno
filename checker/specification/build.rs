@@ -8,29 +8,41 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mut out = File::create(out_path)?;
 
 	let specification = read_to_string("./specification.md")?;
-	let mut lines = specification.lines();
+	let mut lines = specification.lines().enumerate();
 
-	while let Some(line) = lines.next() {
+	while let Some((_, line)) = lines.next() {
 		if line == "## Specification" {
 			break;
 		}
 	}
 
-	while let Some(line) = lines.next() {
-		if line.is_empty() || line.starts_with("### ") {
+	let mut first_section = true;
+
+	while let Some((heading_idx, line)) = lines.next() {
+		if let Some(section_heading) = line.strip_prefix("### ") {
+			if !first_section {
+				writeln!(out, "}}").unwrap();
+			}
+			first_section = false;
+			let section_heading = heading_to_rust_name(section_heading);
+			writeln!(out, "mod {section_heading} {{").unwrap();
 			continue;
 		}
-		let heading =
-			line.strip_prefix("####").unwrap().trim_start().replace(' ', "_").to_lowercase();
+
+		if !line.starts_with("#### ") {
+			continue;
+		}
+		let heading = line.strip_prefix("####").unwrap().trim_start();
+		let test_title = heading_to_rust_name(heading);
 
 		let code = {
-			while let Some(line) = lines.next() {
+			while let Some((_, line)) = lines.next() {
 				if line == "```ts" {
 					break;
 				}
 			}
 			let mut code = String::new();
-			while let Some(line) = lines.next() {
+			while let Some((_, line)) = lines.next() {
 				if line == "```" {
 					break;
 				}
@@ -42,28 +54,37 @@ fn main() -> Result<(), Box<dyn Error>> {
 		};
 		let errors = {
 			let mut errors = Vec::new();
-			while let Some(line) = lines.next() {
+			while let Some((_, line)) = lines.next() {
 				if line.is_empty() || !line.starts_with('-') {
-					if errors.is_empty() {
-						continue;
-					} else {
+					if !errors.is_empty() {
 						break;
 					}
+				} else {
+					let error = line.strip_prefix("- ").unwrap().replace('"', "\\\"");
+					errors.push(format!("\"{}\"", error))
 				}
-				let error = line.strip_prefix("- ").unwrap().replace('"', "\\\"");
-				errors.push(format!("\"{}\"", error))
 			}
 			errors
 		};
 
 		let errors = errors.join(", ");
+		let heading_idx = heading_idx + 1;
 
-		out.write_fmt(format_args!(
-			"#[test] fn {heading}() {{ 
-                check_errors(\"{code}\", &[{errors}])
-            }}\n",
-		))?;
+		writeln!(
+			out,
+			"#[test] fn {test_title}() {{ 
+                super::check_errors(\"{heading}\", {heading_idx}, \"{code}\", &[{errors}])
+            }}",
+		)?;
 	}
+	writeln!(out, "}}").unwrap();
 
 	Ok(())
+}
+
+fn heading_to_rust_name(heading: &str) -> String {
+	heading
+		.replace([' ', '-', '&'], "_")
+		.replace(['*', '\'', '!', '(', ')', ','], "")
+		.to_lowercase()
 }

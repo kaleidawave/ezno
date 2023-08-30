@@ -1,13 +1,14 @@
 //! How type parameters are resolved
 
 use crate::{
+	behavior::operations::{
+		evaluate_equality_inequality_operation, evaluate_mathematical_operation,
+	},
 	context::Environment,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{cast_as_boolean, Constructor, PolyNature, Type, TypeStore},
-	TypeId,
+	types::{Constructor, PolyNature, Type, TypeStore},
+	TruthyFalsy, TypeId,
 };
-
-pub use crate::types::operations::{evaluate_binary_operator, evaluate_unary_operator};
 
 use super::TypeArguments;
 
@@ -45,101 +46,94 @@ pub(crate) fn specialize(
 		}
 		// TODO environment should hold what dependents on what to reduce excess here
 		Type::Constructor(constructor) => match constructor.clone() {
-			Constructor::BinaryOperator { operator, lhs, rhs, .. } => {
+			Constructor::BinaryOperator { lhs, operator, rhs, .. } => {
 				let lhs = specialize(lhs, arguments, environment, types);
 				let rhs = specialize(rhs, arguments, environment, types);
 
-				let evaluate_binary_operator = evaluate_binary_operator(
-					operator,
-					lhs,
-					rhs,
-					environment,
-					// Restrictions should have been made ahead of time
-					false,
-					types,
-				);
-
-				// match e
-
-				// crate::utils::notify!(
-				// 	"Specialized returned {}",
-				// 	environment.debug_type(value, types)
-				// );
-
-				// .expect("restriction about binary operator failed")
-				evaluate_binary_operator.unwrap_or(TypeId::ERROR_TYPE)
+				evaluate_mathematical_operation(lhs, operator, rhs, types)
+					.expect("restriction about binary operator failed")
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
-				evaluate_unary_operator(
-					operator,
-					operand,
-					environment,
-					// Restrictions should have been made ahead of time
-					false,
-					types,
-				)
-				.unwrap()
+				todo!()
+				// evaluate_unary_operator(
+				// 	operator,
+				// 	operand,
+				// 	environment,
+				// 	// Restrictions should have been made ahead of time
+				// 	false,
+				// 	types,
+				// )
+				// .unwrap()
 			}
-			Constructor::ConditionalTernary { on, true_res, false_res, result_union } => {
-				crate::utils::notify!(
-					"before {:?} {:?} {:?}",
-					crate::types::printing::print_type(
-						on,
-						types,
-						&environment.into_general_context(),
-						true
-					),
-					crate::types::printing::print_type(
-						true_res,
-						types,
-						&environment.into_general_context(),
-						true
-					),
-					crate::types::printing::print_type(
-						false_res,
-						types,
-						&environment.into_general_context(),
-						true
-					)
-				);
+			Constructor::ConditionalResult {
+				condition: on,
+				truthy_result: true_result,
+				else_result: false_result,
+				result_union,
+			} => {
+				// crate::utils::notify!(
+				// 	"before on={} true={} false={}",
+				// 	crate::types::printing::print_type(
+				// 		on,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	),
+				// 	crate::types::printing::print_type(
+				// 		true_res,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	),
+				// 	crate::types::printing::print_type(
+				// 		false_res,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	)
+				// );
+
 				let on = specialize(on, arguments, environment, types);
-				let true_res = specialize(true_res, arguments, environment, types);
-				let false_res = specialize(false_res, arguments, environment, types);
 
-				crate::utils::notify!(
-					"after {:?} {:?} {:?}",
-					crate::types::printing::print_type(
-						on,
-						types,
-						&environment.into_general_context(),
-						true
-					),
-					crate::types::printing::print_type(
-						true_res,
-						types,
-						&environment.into_general_context(),
-						true
-					),
-					crate::types::printing::print_type(
-						false_res,
-						types,
-						&environment.into_general_context(),
-						true
-					)
-				);
+				// crate::utils::notify!(
+				// 	"after on={} true={} false={}",
+				// 	crate::types::printing::print_type(
+				// 		on,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	),
+				// 	crate::types::printing::print_type(
+				// 		true_result,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	),
+				// 	crate::types::printing::print_type(
+				// 		false_result,
+				// 		types,
+				// 		&environment.into_general_context(),
+				// 		true
+				// 	)
+				// );
 
-				// TODO falsy
-				if let Type::Constant(cst) = types.get_type_by_id(on) {
-					let result = cast_as_boolean(cst, false).unwrap();
+				if let TruthyFalsy::Decidable(result) = environment.is_type_truthy_falsy(on, types)
+				{
 					if result {
-						true_res
+						specialize(true_result, arguments, environment, types)
 					} else {
-						false_res
+						specialize(false_result, arguments, environment, types)
 					}
 				} else {
+					let truthy_result = specialize(true_result, arguments, environment, types);
+					let else_result = specialize(false_result, arguments, environment, types);
 					// TODO result_union
-					let ty =
-						Constructor::ConditionalTernary { on, true_res, false_res, result_union };
+					let ty = Constructor::ConditionalResult {
+						condition: on,
+						truthy_result,
+						else_result,
+						result_union: types.new_or_type(truthy_result, else_result),
+					};
 
 					types.register_type(Type::Constructor(ty))
 				}
@@ -195,8 +189,21 @@ pub(crate) fn specialize(
 			// 		todo!()
 			// 	}
 			// }
-			Constructor::RelationOperator { lhs, operator, rhs } => todo!(),
-			Constructor::LogicalOperator { lhs, operator, rhs } => todo!(),
+			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
+				let operator = match operator {
+					crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
+						crate::behavior::operations::EqualityAndInequality::StrictEqual
+					}
+					crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
+						crate::behavior::operations::EqualityAndInequality::LessThan
+					}
+				};
+				let lhs = specialize(lhs, arguments, environment, types);
+				let rhs = specialize(rhs, arguments, environment, types);
+
+				evaluate_equality_inequality_operation(lhs, operator, rhs, types, &environment)
+					.expect("restriction about binary operator failed")
+			}
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { ty, extends } => {

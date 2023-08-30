@@ -25,7 +25,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 						PolyNature::ParentScope { reference, based_on } => "parent scope",
 						_ => unreachable!(),
 					};
-					format!("[{kind} {id:?}] {on}")
+					format!("[{kind} {}] {on}", id.0)
 				} else {
 					on
 				}
@@ -52,33 +52,54 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 		},
 		// TODO these can vary
 		Type::Constructor(constructor) => match constructor {
-			super::Constructor::ConditionalTernary { on, true_res, false_res, result_union } => {
-				let on = print_type(*result_union, types, env, debug);
+			super::Constructor::ConditionalResult {
+				condition: on,
+				truthy_result: true_result,
+				else_result: false_result,
+				result_union,
+			} => {
+				let on = print_type(*on, types, env, debug);
+				let true_result = print_type(*true_result, types, env, debug);
+				let false_result = print_type(*false_result, types, env, debug);
 				if debug {
 					// TODO more
-					format!("[ternary] {on}")
+					format!("({on} ? {true_result} : {false_result})")
 				} else {
-					on
+					format!("{true_result} | {false_result}")
 				}
 			}
-			super::Constructor::StructureGenerics { on, with } => todo!(),
+			super::Constructor::StructureGenerics { on, with } => {
+				let on = print_type(*on, types, env, debug);
+				let mut arguments = String::new();
+				// TODO doesn't quite line up ...
+				for arg in with.values() {
+					let arg = print_type(*arg, types, env, debug);
+					arguments.push_str(&arg);
+					arguments.push_str(", ");
+				}
+				format!("{on}<{arguments}>")
+			}
 			constructor if debug => match constructor {
 				super::Constructor::BinaryOperator { lhs, operator, rhs } => {
 					let lhs = print_type(*lhs, types, env, debug);
 					let rhs = print_type(*rhs, types, env, debug);
 					format!("({lhs} + {rhs})")
 				}
-				super::Constructor::RelationOperator { lhs, operator, rhs } => todo!(),
-				super::Constructor::LogicalOperator { lhs, operator, rhs } => todo!(),
+				super::Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
+					let lhs = print_type(*lhs, types, env, debug);
+					let rhs = print_type(*rhs, types, env, debug);
+					match operator {
+						crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
+							format!("({lhs} === {rhs})")
+						}
+						crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
+							format!("({lhs} > {rhs})")
+						}
+					}
+				}
 				super::Constructor::UnaryOperator { operator, operand } => todo!(),
 				super::Constructor::TypeOperator(_) => todo!(),
 				super::Constructor::TypeRelationOperator(_) => todo!(),
-				super::Constructor::ConditionalTernary {
-					on,
-					true_res,
-					false_res,
-					result_union,
-				} => todo!(),
 				super::Constructor::FunctionResult { on, with, result } => {
 					let a = match result {
 						crate::types::PolyPointer::Fixed(fixed) => {
@@ -93,7 +114,8 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 					let under = print_type(*under, types, env, debug);
 					format!("{on}[{under}]")
 				}
-				super::Constructor::StructureGenerics { on, with } => todo!(),
+				super::Constructor::StructureGenerics { .. }
+				| super::Constructor::ConditionalResult { .. } => unreachable!(),
 			},
 			constructor => {
 				let base = get_on_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
@@ -105,7 +127,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 				crate::utils::notify!("TODO print parameters");
 			}
 			if debug {
-				format!("(Root #{id:?}) {name}")
+				format!("(Root {}) {name}", id.0)
 			} else {
 				name.clone()
 			}
@@ -155,7 +177,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 				buf.push_str(&print_type(value, types, env, debug));
 				buf.push_str(", ");
 			}
-			buf.push_str(" }");
+			buf.push('}');
 			buf
 		}
 	}

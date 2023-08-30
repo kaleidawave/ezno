@@ -452,7 +452,9 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 					todo!()
 				}
 				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
-					todo!()
+					crate::utils::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
+					// TODO
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 				Type::Constructor(..) | Type::RootPolyType(..) => {
 					if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type))

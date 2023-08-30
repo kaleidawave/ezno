@@ -29,16 +29,12 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 	for statement in definition.declarations.iter() {
 		match statement {
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				if interface.on.name == "Operators" {
-					synthesize_operators_definition(&mut root, interface, checking_data);
-				} else {
-					let ty = root.new_interface(
-						&interface.on.name,
-						interface.on.position.clone(),
-						&mut checking_data.types,
-					);
-					idx_to_types.insert(interface.on.position.start, ty);
-				}
+				let ty = root.new_interface(
+					&interface.on.name,
+					interface.on.position.clone(),
+					&mut checking_data.types,
+				);
+				idx_to_types.insert(interface.on.position.start, ty);
 			}
 			TypeDefinitionModuleDeclaration::Class(class) => {
 				todo!();
@@ -92,7 +88,8 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				));
 
 				let behavior = crate::context::VariableRegisterBehavior::Declare { base };
-				root.register_variable_handle_error(
+
+				let res = root.register_variable_handle_error(
 					func.name.as_str(),
 					func.get_position().into_owned(),
 					behavior,
@@ -120,11 +117,13 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					variable_ty,
 					&mut checking_data.types,
 				);
+
 				checking_data
 					.type_mappings
 					.variables_to_constraints
 					.0
 					.insert(crate::VariableId(position.source, position.start), variable_ty);
+
 				if let Err(error) = declare_variable {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::CannotRedeclareVariable {
@@ -135,16 +134,13 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				}
 			}
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = idx_to_types.remove(&interface.on.position.start);
-				// interface Operators not registered here thus some branch
-				if let Some(ty) = ty {
-					super::interfaces::synthesize_signatures(
-						&interface.on.members,
-						super::interfaces::OnToType(ty),
-						&mut root,
-						checking_data,
-					);
-				}
+				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
+				super::interfaces::synthesize_signatures(
+					&interface.on.members,
+					super::interfaces::OnToType(ty),
+					&mut root,
+					checking_data,
+				);
 			}
 			// TODO handle locals differently, (maybe squash ast as well)
 			TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias {
@@ -216,61 +212,6 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 		}
 	}
 	root
-}
-
-fn synthesize_operators_definition<T: crate::FSResolver>(
-	root: &mut Root,
-	interface: &parser::Decorated<parser::types::InterfaceDeclaration>,
-	checking_data: &mut crate::CheckingData<'_, T>,
-) {
-	use crate::synthesis::interfaces::*;
-
-	impl SynthesizeInterfaceBehavior for crate::context::Operators {
-		fn register<T: crate::FSResolver, S: crate::context::ContextType>(
-			&mut self,
-			key: PropertyOrType,
-			value: InterfaceValue,
-			checking_data: &mut crate::CheckingData<T>,
-			environment: &mut crate::context::Context<S>,
-		) {
-			if let (
-				PropertyOrType::ClassProperty(parser::PropertyKey::Ident(name, _, _)),
-				InterfaceValue::Function { function, constructor: false },
-			) = (key, value)
-			{
-				match name.as_str() {
-					"Add" => {
-						self.add = Some(function);
-					}
-					"Sub" => {
-						self.sub = Some(function);
-					}
-					"Mul" => {
-						self.mul = Some(function);
-					}
-					"Equal" => {
-						self.equal = Some(function);
-					}
-					_ => {
-						// TODO raise exception
-					}
-				}
-			} else {
-				// TODO raise exception
-			}
-		}
-
-		fn interface_type(&self) -> Option<crate::TypeId> {
-			None
-		}
-	}
-
-	root.context_type.operators = super::interfaces::synthesize_signatures(
-		&interface.on.members,
-		crate::context::Operators::default(),
-		root,
-		checking_data,
-	);
 }
 
 #[cfg(feature = "declaration-synthesis")]
