@@ -481,7 +481,7 @@ isNegative(4) satisfies boolean
 - Expected number, found "negative"
 - Expected boolean, found "positive"
 
-#### Conditional update
+#### *Conclusive* conditional update
 
 ```ts
 let a: number = 0
@@ -498,6 +498,46 @@ a satisfies 3
 
 - Expected 2, found 0
 - Expected 3, found 1
+
+#### *Inconclusive* conditional update
+
+```ts
+declare var value: string;
+let a: string | number = 0
+function conditional(v: string) {
+	if (v === "value") {
+		a = "hi"
+	}
+}
+conditional(value);
+a satisfies string
+```
+
+- Expected string, found "hi" | 0
+
+#### If else if nesting
+
+```ts
+function print_number(value: number) {
+    if (value === 0) {
+        return "zero"
+    } else if (value === 1) {
+        return "one"
+    } else {
+        return "some number"
+    }
+}
+
+print_number(0) satisfies "some number"
+print_number(1) satisfies "ONE"
+print_number(100) satisfies "100"
+print_number(-1) satisfies "TWO"
+```
+
+- Expected "some number", found "zero"
+- Expected "ONE", found "one"
+- Expected "100", found "some number"
+- Expected "TWO", found "some number"
 
 #### Operator short circuiting
 

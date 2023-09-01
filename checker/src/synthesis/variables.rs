@@ -19,7 +19,7 @@ use crate::{
 /// TODO shouldn't return type, for performs...
 pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKind>(
 	name: &parser::VariableField<U>,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<'_, T>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,

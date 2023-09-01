@@ -22,6 +22,7 @@ use crate::{
 	behavior::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	context::InferenceBoundary,
 	events::RootReference,
+	TruthyFalsy,
 };
 
 pub use self::functions::*;
@@ -216,6 +217,7 @@ impl Type {
 /// TODO work in progress types
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
+	// TODO separate add?
 	BinaryOperator {
 		lhs: TypeId,
 		operator: MathematicalAndBitwise,
@@ -272,4 +274,27 @@ pub enum TypeRelationOperator {
 
 pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> TypeId {
 	types.new_conditional_type(lhs, lhs, rhs)
+}
+
+pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
+	if ty == TypeId::TRUE {
+		return TruthyFalsy::Decidable(true);
+	} else if ty == TypeId::FALSE {
+		return TruthyFalsy::Decidable(false);
+	}
+
+	let ty = types.get_type_by_id(ty);
+	match ty {
+		Type::AliasTo { .. }
+		| Type::And(_, _)
+		| Type::Or(_, _)
+		| Type::RootPolyType(_)
+		| Type::Constructor(_)
+		| Type::NamedRooted { .. } => TruthyFalsy::Unknown,
+		Type::Function(_, _) | Type::Object(_) => TruthyFalsy::Decidable(true),
+		Type::Constant(cst) => {
+			// TODO strict casts
+			TruthyFalsy::Decidable(cast_as_boolean(cst, false).unwrap())
+		}
+	}
 }

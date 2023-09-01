@@ -19,7 +19,8 @@ pub(crate) fn get_return_from_events<'a>(
 	while let Some(event) = iter.next() {
 		if let Event::Return { returned } = event {
 			return ReturnedTypeFromBlock::Returned(*returned);
-		} else if let Event::Conditionally { on, events_if_truthy, else_events } = event {
+		} else if let Event::Conditionally { condition: on, events_if_truthy, else_events } = event
+		{
 			let return_if_truthy = get_return_from_events(&mut events_if_truthy.iter(), types);
 			let else_return = get_return_from_events(&mut else_events.iter(), types);
 

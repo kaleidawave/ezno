@@ -1,5 +1,5 @@
 use crate::{
-	context::Environment,
+	context::{facts::Facts, Environment},
 	types::{properties::Property, TypeStore},
 	TypeId,
 };
@@ -10,17 +10,13 @@ pub struct ObjectBuilder {
 }
 
 impl ObjectBuilder {
-	pub fn new(
-		prototype: Option<TypeId>,
-		types: &mut TypeStore,
-		environment: &mut Environment,
-	) -> Self {
-		let object = environment.new_object(types, prototype);
-		Self { object }
+	pub fn new(prototype: Option<TypeId>, types: &mut TypeStore, facts: &mut Facts) -> Self {
+		let is_under_dyn = false;
+		Self { object: facts.new_object(prototype, types, is_under_dyn) }
 	}
 
 	pub fn append(&mut self, environment: &mut Environment, under: TypeId, value: Property) {
-		environment.register_property(self.object, under, value, true)
+		environment.facts.register_property(self.object, under, value, true)
 	}
 
 	pub fn build_object(self) -> TypeId {

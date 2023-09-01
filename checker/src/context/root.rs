@@ -20,10 +20,6 @@ impl ContextType for RootContext {
 	fn is_dynamic_boundary(&self) -> bool {
 		false
 	}
-
-	fn get_events(&mut self) -> Option<&mut Vec<crate::events::Event>> {
-		None
-	}
 }
 
 const HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
@@ -60,20 +56,12 @@ impl Root {
 			named_types,
 			variables: Default::default(),
 			variable_names: Default::default(),
-			variable_current_value: Default::default(),
 			deferred_function_constraints: Default::default(),
 			bases: Default::default(),
-			tasks_to_run: Default::default(),
-			properties: Default::default(),
 			object_constraints: Default::default(),
-			reverse_properties: Default::default(),
-			configurable: Default::default(),
-			enumerable: Default::default(),
-			writable: Default::default(),
-			frozen: Default::default(),
 			// TODO
 			can_use_this: crate::context::CanUseThis::Yeah { this_ty: TypeId::ERROR_TYPE },
-			prototypes: Default::default(),
+			facts: Default::default(),
 		}
 	}
 

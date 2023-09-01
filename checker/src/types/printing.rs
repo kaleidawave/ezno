@@ -1,9 +1,10 @@
-use crate::{context::get_on_ctx, GeneralContext};
-
 use super::{PolyNature, Type, TypeId, TypeStore};
+use crate::{context::get_on_ctx, GeneralContext};
 
 /// TODO temp, needs recursion safe, reuse buffer
 pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bool) -> String {
+	use std::fmt::Write;
+
 	let ty = types.get_type_by_id(id);
 	// crate::utils::notify!("Printing {:?}", ty);
 	match ty {
@@ -33,7 +34,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 			PolyNature::Open(to) => {
 				let on = print_type(*to, types, env, debug);
 				if debug {
-					format!("[open] {on}")
+					format!("[open {}] {on}", id.0)
 				} else {
 					on
 				}
@@ -127,14 +128,23 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 				crate::utils::notify!("TODO print parameters");
 			}
 			if debug {
-				format!("(Root {}) {name}", id.0)
+				format!("(r{}) {name}", id.0)
 			} else {
 				name.clone()
 			}
 		}
-		Type::Constant(cst) => cst.as_type_name(),
+		Type::Constant(cst) => {
+			if debug {
+				format!("({}) {}", id.0, cst.as_type_name())
+			} else {
+				cst.as_type_name()
+			}
+		}
 		Type::Function(func, _) => {
 			let mut buf = String::new();
+			if debug {
+				write!(buf, "[obj {}]", id.0).unwrap();
+			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
 				for param in parameters.0.iter() {
@@ -165,7 +175,10 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 		}
 		Type::Object(..) => {
 			let mut buf = String::new();
-			if let Some(prototype) = get_on_ctx!(env.prototypes.get(&id)) {
+			if debug {
+				write!(buf, "[obj {}]", id.0).unwrap();
+			}
+			if let Some(prototype) = get_on_ctx!(env.facts.prototypes.get(&id)) {
 				buf.push('[');
 				buf.push_str(&print_type(*prototype, types, env, debug));
 				buf.push_str("] ");

@@ -5,8 +5,8 @@ use crate::{
 	behavior::{
 		assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
 		operations::{
-			evaluate_logical_operation, evaluate_pure_binary_operation_handle_errors,
-			MathematicalAndBitwise,
+			evaluate_logical_operation_with_expression,
+			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
@@ -14,26 +14,23 @@ use crate::{
 	structures::variables::{VariableMutability, VariableWithValue},
 	subtyping::BasicEquality,
 	types::{
+		is_type_truthy_falsy,
 		properties::{Property, PropertyResult},
 		subtyping::{type_is_subtype, SubTypeResult},
-		Type, TypeStore,
+		PolyNature, PolyPointer, Type, TypeStore,
 	},
 	CheckingData, Root, TruthyFalsy, TypeId, VariableId,
 };
 
-use super::{AssignmentError, Context, ContextType, Environment, GeneralContext, SetPropertyError};
+use super::{
+	calling::CheckThings, facts::Facts, get_value_of_variable, AssignmentError, Context,
+	ContextType, Environment, GeneralContext, SetPropertyError,
+};
 
 #[derive(Debug)]
 pub struct Syntax<'a> {
-	pub scope: Scope,
+	pub kind: Scope,
 	pub(super) parent: GeneralContext<'a>,
-	/// Synchronous events that occur
-	pub events: Vec<Event>,
-
-	/// Events that occur at any time
-	///
-	/// TODO maybe HashSet
-	pub async_events: Vec<Event>,
 
 	/// TODO rhs type is what...?
 	pub closed_over_references: HashMap<RootReference, TypeId>,
@@ -52,11 +49,7 @@ impl<'a> ContextType for Syntax<'a> {
 	}
 
 	fn is_dynamic_boundary(&self) -> bool {
-		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
-	}
-
-	fn get_events(&mut self) -> Option<&mut Vec<Event>> {
-		Some(&mut self.events)
+		matches!(self.kind, Scope::Function { .. } | Scope::Looping { .. })
 	}
 }
 
@@ -271,7 +264,7 @@ impl<'a> Environment<'a> {
 						let _span = reference.get_position();
 						let existing = get_reference(self, reference.clone(), checking_data);
 						let expression = expression.unwrap();
-						let new = evaluate_logical_operation(
+						let new = evaluate_logical_operation_with_expression(
 							existing,
 							operator,
 							expression,
@@ -385,10 +378,8 @@ impl<'a> Environment<'a> {
 
 					let variable_id = variable.get_id();
 
-					self.context_type
-						.events
-						.push(Event::SetsVariable(variable_id.clone(), new_type));
-					self.variable_current_value.insert(variable_id, new_type);
+					self.facts.events.push(Event::SetsVariable(variable_id.clone(), new_type));
+					self.facts.variable_current_value.insert(variable_id, new_type);
 
 					Ok(new_type)
 				}
@@ -414,11 +405,11 @@ impl<'a> Environment<'a> {
 	}
 
 	pub(crate) fn get_environment_type(&self) -> &Scope {
-		&self.context_type.scope
+		&self.context_type.kind
 	}
 
 	pub(crate) fn get_environment_type_mut(&mut self) -> &mut Scope {
-		&mut self.context_type.scope
+		&mut self.context_type.kind
 	}
 
 	pub(crate) fn get_parent(&self) -> GeneralContext {
@@ -436,7 +427,7 @@ impl<'a> Environment<'a> {
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 	) -> Option<PropertyResult> {
-		crate::types::properties::get_property(self, on, property, types, with)
+		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
 	}
 
 	pub fn get_property_handle_errors<U: crate::FSResolver>(
@@ -508,7 +499,7 @@ impl<'a> Environment<'a> {
 					let constraint =
 						checking_data.type_mappings.variables_to_constraints.0.get(&variable_id);
 
-					let current_value = self.get_value_of_variable(og_var.get_id());
+					let current_value = get_value_of_variable(self.facts_chain(), og_var.get_id());
 
 					if let Some(current_value) = current_value {
 						let ty = checking_data.types.get_type_by_id(current_value);
@@ -553,7 +544,7 @@ impl<'a> Environment<'a> {
 
 			// TODO temp position
 			let mut value = None;
-			for event in self.context_type.events.iter() {
+			for event in self.facts.events.iter() {
 				// TODO explain why don't need to detect sets
 				if let Event::ReadsReference {
 					reference: other_reference,
@@ -582,7 +573,7 @@ impl<'a> Environment<'a> {
 				// 	self.context_type.get_inferrable_constraints_mut().unwrap().insert(type_id);
 				// }
 
-				self.context_type.events.push(Event::ReadsReference {
+				self.facts.events.push(Event::ReadsReference {
 					reference: crate::events::RootReference::VariableId(og_var.get_id()),
 					reflects_dependency: Some(type_id),
 				});
@@ -591,8 +582,8 @@ impl<'a> Environment<'a> {
 
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
-			let current_value =
-				self.get_value_of_variable(og_var.get_id()).expect("variable not assigned yet");
+			let current_value = get_value_of_variable(self.facts_chain(), og_var.get_id())
+				.expect("variable not assigned yet");
 			Ok(VariableWithValue(og_var.clone(), current_value))
 		}
 	}
@@ -609,7 +600,7 @@ impl<'a> Environment<'a> {
 		U: crate::SynthesizableConditional,
 	{
 		if let TruthyFalsy::Decidable(result) =
-			self.is_type_truthy_falsy(condition, &checking_data.types)
+			is_type_truthy_falsy(condition, &checking_data.types)
 		{
 			// TODO emit warning
 			return if result {
@@ -625,7 +616,7 @@ impl<'a> Environment<'a> {
 			let mut truthy_environment =
 				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
 			let result = then_evaluate.synthesize_condition(&mut truthy_environment, checking_data);
-			(result, truthy_environment.context_type.events)
+			(result, truthy_environment.facts.events)
 		};
 		if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
@@ -633,16 +624,16 @@ impl<'a> Environment<'a> {
 			});
 			let falsy_result =
 				else_evaluate.synthesize_condition(&mut falsy_environment, checking_data);
-			let falsy_events = falsy_environment.context_type.events;
 			let combined_result = U::conditional_expression_result(
 				condition,
 				truthy_result,
 				falsy_result,
 				&mut checking_data.types,
 			);
+			let falsy_events = falsy_environment.facts.events;
 			// TODO
-			self.context_type.events.push(Event::Conditionally {
-				on: condition,
+			self.facts.events.push(Event::Conditionally {
+				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: falsy_events.into_boxed_slice(),
 			});
@@ -653,8 +644,8 @@ impl<'a> Environment<'a> {
 
 			combined_result
 		} else {
-			self.context_type.events.push(Event::Conditionally {
-				on: condition,
+			self.facts.events.push(Event::Conditionally {
+				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: Default::default(),
 			});
@@ -666,11 +657,11 @@ impl<'a> Environment<'a> {
 	}
 
 	pub fn throw_value(&mut self, value: TypeId) {
-		self.context_type.events.push(Event::Throw(value));
+		self.facts.events.push(Event::Throw(value));
 	}
 
 	pub fn return_value(&mut self, returned: TypeId) {
-		self.context_type.events.push(Event::Return { returned })
+		self.facts.events.push(Event::Return { returned })
 	}
 
 	/// Updates **a existing property**
@@ -683,7 +674,14 @@ impl<'a> Environment<'a> {
 		new: TypeId,
 		types: &mut TypeStore,
 	) -> Result<Option<TypeId>, SetPropertyError> {
-		crate::types::properties::set_property(self, on, under, Property::Value(new), types)
+		crate::types::properties::set_property(
+			on,
+			under,
+			Property::Value(new),
+			self,
+			&mut CheckThings,
+			types,
+		)
 	}
 
 	/// Initializing
@@ -694,7 +692,7 @@ impl<'a> Environment<'a> {
 		new: Property,
 		checking_data: &mut CheckingData<U>,
 	) {
-		self.properties.entry(on).or_default().push((under, new));
+		self.facts.current_properties.entry(on).or_default().push((under, new));
 	}
 
 	pub(crate) fn create_this(&mut self, over: TypeId, store: &mut TypeStore) -> TypeId {
@@ -714,7 +712,7 @@ impl<'a> Environment<'a> {
 		));
 
 		let event = Event::Conditionally {
-			on: condition,
+			condition,
 			events_if_truthy: Box::new([Event::CreateObject {
 				referenced_in_scope_as: ty,
 				prototype,
@@ -722,9 +720,68 @@ impl<'a> Environment<'a> {
 			else_events: Box::new([]),
 		};
 
-		self.context_type.get_events().unwrap().push(event);
+		self.facts.events.push(event);
 
 		self.can_use_this = crate::context::CanUseThis::ConstructorCalled { this_ty: ty };
 		ty
 	}
+}
+
+pub(crate) fn get_this_type_from_constraint(
+	facts: &mut Facts,
+	this_ty: TypeId,
+	types: &mut TypeStore,
+) -> TypeId {
+	// TODO `this_ty` can be error here..?
+	if this_ty == TypeId::ERROR_TYPE {
+		unreachable!()
+	}
+
+	// let mut last = None;
+	// for parent in self.parents_iter() {
+	// 	if let Some(constraint) = get_on_ctx!(parent.get_this_constraint()) {
+	// 		last = Some((constraint, get_on_ctx!(parent.context_id)));
+	// 		break;
+	// 	}
+	// }
+
+	let reference = RootReference::This;
+
+	// let (value, reflects_dependency) = if let Some(boundary) = crossed_boundary {
+	// 	let this_inferred = constraint_of_this.is_none();
+	// 	let based_on = match constraint_of_this {
+	// 		Some(ty) => PolyPointer::Fixed(ty),
+	// 		None => PolyPointer::Inferred(boundary),
+	// 	};
+	// 	let poly_nature = PolyNature::ParentScope { reference, based_on };
+	// 	let ty = types.register_type(Type::RootPolyType(poly_nature));
+	// 	(ty, Some(ty))
+	// } else {
+	// 	// TODO... always replace
+	// 	(constraint_of_this.unwrap(), None)
+	// };
+
+	for event in facts.events.iter() {
+		// TODO explain why don't need to detect sets
+		if let Event::ReadsReference {
+			reference: other_reference,
+			reflects_dependency: Some(dep),
+		} = event
+		{
+			if reference == RootReference::This {
+				return *dep;
+			}
+		}
+	}
+
+	// TODO temp
+	let poly_nature = PolyNature::ParentScope { reference, based_on: PolyPointer::Fixed(this_ty) };
+	let ty = types.register_type(Type::RootPolyType(poly_nature));
+
+	facts.events.push(Event::ReadsReference {
+		reference: RootReference::This,
+		reflects_dependency: Some(ty),
+	});
+
+	ty
 }

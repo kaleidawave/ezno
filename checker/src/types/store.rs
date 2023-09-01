@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::{Context, ContextType, InferenceBoundary},
+	context::{get_on_ctx, Context, ContextType, InferenceBoundary, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
+	utils::EnforcedOrExt,
 	GeneralContext, TypeId,
 };
 
@@ -234,5 +235,77 @@ impl TypeStore {
 			operand,
 		});
 		self.register_type(ty)
+	}
+
+	/// Note it does call it over every context
+	/// For:
+	/// - Properties
+	/// - Equality
+	/// - Functions
+	pub(crate) fn get_fact_about_type<'a, S: ContextType, TData: Copy, TResult>(
+		&self,
+		ctx: &'a Context<S>,
+		on: TypeId,
+		resolver: &impl Fn(GeneralContext<'a>, &TypeStore, TypeId, TData) -> Option<TResult>,
+		data: TData,
+	) -> Option<Logical<TResult>> {
+		match self.get_type_by_id(on) {
+			Type::Function(..) => todo!(),
+			Type::AliasTo { to, .. } => {
+				let property_on_self = ctx
+					.parents_iter()
+					.find_map(|env| resolver(env, self, on, data))
+					.map(Logical::Pure);
+
+				property_on_self.or_else(|| self.get_fact_about_type(ctx, *to, resolver, data))
+			}
+			Type::And(left, right) => self
+				.get_fact_about_type(ctx, *left, resolver, data)
+				.or_else(|| self.get_fact_about_type(ctx, *right, resolver, data)),
+			Type::Or(left, right) => {
+				// TODO temp
+				let left = self.get_fact_about_type(ctx, *left, resolver, data).map(Box::new);
+				let right = self.get_fact_about_type(ctx, *right, resolver, data).map(Box::new);
+				left.and_enforced(right).map(Logical::Or)
+			}
+			Type::RootPolyType(_nature) => {
+				let aliases = ctx.get_poly_base(on, self).unwrap().get_type();
+				// Don't think any properties exist on this poly type
+				self.get_fact_about_type(ctx, aliases, resolver, data)
+			}
+			Type::Constructor(constructor) => {
+				if let Constructor::StructureGenerics { on, with } = constructor {
+					// TODO could drop some of with here
+					let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
+					fact_opt.map(|fact| Logical::Implies(Box::new(fact), with.clone()))
+				} else {
+					// Don't think any properties exist on this poly type
+					let constraint = ctx.get_poly_base(on, self).unwrap();
+					// TODO might need to send more information here, rather than forgetting via .get_type
+					self.get_fact_about_type(ctx, constraint.get_type(), resolver, data)
+				}
+			}
+			Type::Object(..) | Type::NamedRooted { .. } => ctx
+				.parents_iter()
+				.find_map(|env| resolver(env, self, on, data))
+				.map(Logical::Pure)
+				.or_else(|| {
+					if let Some(prototype) = ctx
+						.parents_iter()
+						.find_map(|ctx| get_on_ctx!(ctx.facts.prototypes.get(&on)).copied())
+					{
+						self.get_fact_about_type(ctx, prototype, resolver, data)
+					} else {
+						None
+					}
+				}),
+			Type::Constant(cst) => ctx
+				.parents_iter()
+				.find_map(|env| resolver(env, self, on, data))
+				.map(Logical::Pure)
+				.or_else(|| {
+					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
+				}),
+		}
 	}
 }

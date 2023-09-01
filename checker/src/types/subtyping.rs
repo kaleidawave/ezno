@@ -153,7 +153,7 @@ pub enum PropertyError {
 /// TODO tidy function
 /// TODO account for getters and setters
 ///
-/// `ty <: base_type`
+/// `base_type :>= ty` (`ty <=: base_type`)
 pub fn type_is_subtype<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,
@@ -204,32 +204,33 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				left_result
 			};
 		}
-		Type::Constructor(..) | Type::RootPolyType(..) => {
-			if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type)) {
-				return type_is_subtype(
-					base_type,
-					*argument,
-					ty_arguments.as_deref(),
-					behavior,
-					environment,
-					types,
-				);
-			} else {
-				let constraint = environment.get_poly_base(ty, types).unwrap();
+		// TODO this causes problems when the LHS has a parameters that are specialized
+		// Type::Constructor(..) | Type::RootPolyType(..) => {
+		// 	if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type)) {
+		// 		return type_is_subtype(
+		// 			base_type,
+		// 			*argument,
+		// 			ty_arguments.as_deref(),
+		// 			behavior,
+		// 			environment,
+		// 			types,
+		// 		);
+		// 	} else {
+		// 		let constraint = environment.get_poly_base(ty, types).unwrap();
 
-				crate::utils::notify!(
-					"Checking via constraint {:?}... think this is okay in function bodies",
-					constraint
-				);
+		// 		crate::utils::notify!(
+		// 			"Checking via constraint {:?}... think this is okay in function bodies",
+		// 			constraint
+		// 		);
 
-				return match constraint {
-					crate::context::PolyBase::Fixed { to, .. } => {
-						type_is_subtype(base_type, to, ty_arguments, behavior, environment, types)
-					}
-					_ => todo!(),
-				};
-			}
-		}
+		// 		return match constraint {
+		// 			crate::context::PolyBase::Fixed { to, .. } => {
+		// 				type_is_subtype(base_type, to, ty_arguments, behavior, environment, types)
+		// 			}
+		// 			_ => todo!(),
+		// 		};
+		// 	}
+		// }
 		_ => {}
 	}
 
@@ -341,6 +342,8 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			// 	None
 			// };
 
+			// crate::utils::notify!("{:?} {:?} :> {:?}", nature, base_type, ty);
+
 			let constraint = environment.get_poly_base(base_type, types).unwrap().get_type();
 
 			if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
@@ -391,13 +394,14 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 			// These do **NOT** check for properties
 			// TODO Type is nominal
-			if matches!(base_type, TypeId::STRING_TYPE | TypeId::NUMBER_TYPE | TypeId::BOOLEAN_TYPE)
-				&& !matches!(
-					right_ty,
-					Type::RootPolyType(..)
-						| Type::Constructor(..) | Type::Constant(..)
-						| Type::Or(..)
-				) {
+			let nominal = matches!(
+				base_type,
+				TypeId::STRING_TYPE | TypeId::NUMBER_TYPE | TypeId::BOOLEAN_TYPE
+			) && !matches!(
+				right_ty,
+				Type::RootPolyType(..) | Type::Constructor(..) | Type::Constant(..) | Type::Or(..)
+			);
+			if nominal {
 				crate::utils::notify!("Short circuited for RHS ={:?} as it is nominal", right_ty);
 				// TODO not primitive error
 				// TODO this might break with *properties* proofs on primitives
