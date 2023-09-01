@@ -64,7 +64,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 }
 
 /// TODO this and aliases kindof broken
-pub(crate) fn call_type(
+pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	called_with_new: CalledWithNew,
 	// Overwritten by .call, else look at binding
@@ -73,7 +73,7 @@ pub(crate) fn call_type(
 	arguments: Vec<SynthesizedArgument>,
 	call_site: Span,
 	environment: &mut Environment,
-	behavior: &mut impl CallCheckingBehavior,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	if on == TypeId::ERROR_TYPE
@@ -127,7 +127,7 @@ pub(crate) fn call_type(
 	}
 }
 
-fn create_generic_function_call(
+fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	constraint: PolyBase,
 	called_with_new: CalledWithNew,
 	this_argument: Option<TypeId>,
@@ -136,7 +136,7 @@ fn create_generic_function_call(
 	call_site: Span,
 	on: TypeId,
 	environment: &mut Environment,
-	behavior: &mut impl CallCheckingBehavior,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	match constraint {
@@ -244,7 +244,7 @@ fn create_generic_function_call(
 	}
 }
 
-fn call_using_function_type(
+fn call_using_function_type<'a, E: CallCheckingBehavior>(
 	function_type: FunctionType,
 	variant: FunctionNature,
 	arguments: &Vec<SynthesizedArgument>,
@@ -253,7 +253,7 @@ fn call_using_function_type(
 	call_site: Span,
 	on: TypeId,
 	environment: &mut Environment,
-	behavior: &mut impl CallCheckingBehavior,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	let this_argument =

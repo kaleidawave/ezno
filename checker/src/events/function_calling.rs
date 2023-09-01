@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use source_map::{SourceId, Span};
 
 use crate::{
-	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
+	context::{get_value_of_variable, CallCheckingBehavior},
 	diagnostics::TypeStringRepresentation,
 	types::functions::SynthesizedArgument,
 	types::{
@@ -24,7 +24,7 @@ use crate::{
 
 use map_vec::Map as SmallMap;
 
-use super::{apply_event, EarlyReturn, RootReference};
+use super::{apply_event, RootReference};
 
 /// Errors from trying to call a function
 pub enum FunctionCallingError {
@@ -52,6 +52,7 @@ pub enum FunctionCallingError {
 		requirement: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
+	Recursed(FunctionId, Span),
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -89,15 +90,27 @@ impl FunctionType {
 		arguments: &[SynthesizedArgument],
 		call_site: Span,
 		environment: &mut Environment,
-		behavior: &E,
+		behavior: &mut E,
 		types: &mut crate::TypeStore,
 	) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+		// TODO check that parameters vary
+		if behavior.in_recursive_cycle(self.id) {
+			crate::utils::notify!("Encountered recursion");
+			return Ok(FunctionCallResult {
+				called: Some(self.id),
+				returned_type: TypeId::ERROR_TYPE,
+				warnings: Vec::new(),
+			});
+			// let reason = FunctionCallingError::Recursed(self.id, call_site);
+			// return Err(vec![reason])
+		}
+
 		let (mut errors, mut warnings) = (Vec::new(), Vec::<()>::new());
 
 		// Type arguments of the function
 		let local_arguments: map_vec::Map<TypeId, FunctionTypeArgument> =
 			if let (Some(call_site_type_arguments), true) =
-				(call_site_type_arguments, E::CHECK_TYPES)
+				(call_site_type_arguments, E::CHECK_PARAMETERS)
 			{
 				self.synthesize_call_site_type_arguments(
 					call_site_type_arguments,
@@ -196,7 +209,7 @@ impl FunctionType {
 					// 	types.debug_type(*argument_type)
 					// );
 
-					if E::CHECK_TYPES {
+					if E::CHECK_PARAMETERS {
 						// crate::utils::notify!("Param {:?} :> {:?}", parameter.ty, *argument_type);
 						let result = type_is_subtype(
 							parameter.ty,
@@ -305,7 +318,7 @@ impl FunctionType {
 								unreachable!()
 							};
 
-						if E::CHECK_TYPES {
+						if E::CHECK_PARAMETERS {
 							let result = type_is_subtype(
 								item_type,
 								*argument_type,
@@ -415,7 +428,7 @@ impl FunctionType {
 			}
 		}
 
-		if E::CHECK_TYPES {
+		if E::CHECK_PARAMETERS {
 			for (reference, restriction) in self.closed_over_references.clone().into_iter() {
 				match reference {
 					RootReference::VariableId(ref variable) => {
@@ -501,33 +514,36 @@ impl FunctionType {
 		// Evaluate effects directly into environment
 		// let mut chain = Vec::new();
 		// chain: Annex::new(&mut chain),
-		let mut target = Target { facts: None };
-		for event in self.effects.clone().into_iter() {
-			// TODO extract
-			// let mut target = environment.new_function_target();
-			// TODO
-			let apply_event = apply_event(
-				event,
-				this_argument,
-				&mut type_arguments,
-				environment,
-				&mut target,
-				types,
-			);
+		let mut early_return = behavior.new_function_target(self.id, |target| {
+			for event in self.effects.clone().into_iter() {
+				let result = apply_event(
+					event,
+					this_argument,
+					&mut type_arguments,
+					environment,
+					target,
+					types,
+				);
 
-			if let EarlyReturn::Some(returned_type) = apply_event {
-				if let CalledWithNew::New { .. } = called_with_new {
-					// TODO skip returns if new, need a warning or something.
-					crate::utils::notify!("Returned despite being called with new...");
-					// todo!("warning")
+				if let Some(result) = result {
+					return Some(result);
 				}
-
-				return Ok(FunctionCallResult {
-					returned_type,
-					warnings: Default::default(),
-					called: Some(self.id.clone()),
-				});
 			}
+			None
+		});
+
+		if let Some(returned_type) = early_return {
+			if let CalledWithNew::New { .. } = called_with_new {
+				// TODO skip returns if new, need a warning or something.
+				crate::utils::notify!("Returned despite being called with new...");
+				// todo!("warning")
+			}
+
+			return Ok(FunctionCallResult {
+				returned_type,
+				warnings: Default::default(),
+				called: Some(self.id.clone()),
+			});
 		}
 
 		// set events should cover property specialization here:

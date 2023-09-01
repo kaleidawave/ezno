@@ -3,7 +3,7 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	context::{calling::Target, facts::Facts, get_value_of_variable, CallCheckingBehavior},
+	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
 	types::{
 		is_type_truthy_falsy,
 		printing::print_type,
@@ -146,7 +146,6 @@ pub(crate) type EarlyReturn = Option<TypeId>;
 
 pub(crate) fn apply_event(
 	event: Event,
-	// target: EventTarget,
 	this_argument: Option<TypeId>,
 	type_arguments: &mut TypeArguments,
 	environment: &mut Environment,
@@ -319,48 +318,36 @@ pub(crate) fn apply_event(
 					apply_event(event, this_argument, type_arguments, environment, target, types);
 				}
 			} else {
-				// TODO could inject proofs
-				let truthy_facts = {
-					// let chain = if target.facts target.chain.push_annex(item);
-					let mut new_target = Target {
-						// TODO chain
-						// chain: target.chain,
-						facts: Some(Facts::default()),
-					};
+				// TODO early returns
+
+				// TODO could inject proofs but probably already worked out
+				let truthy_facts = target.new_conditional_target(|target: &mut Target| {
 					for event in events_if_truthy.into_vec() {
 						apply_event(
 							event,
 							this_argument,
 							type_arguments,
 							environment,
-							&mut new_target,
+							target,
 							types,
 						);
 					}
-					new_target.facts.unwrap()
-				};
+				});
 
-				let mut else_facts = {
-					// let chain = if target.facts target.chain.push_annex(item);
-					let mut new_target = Target {
-						// TODO chain
-						// chain: target.chain,
-						facts: Some(Facts::default()),
-					};
+				let mut else_facts = target.new_conditional_target(|target: &mut Target| {
 					for event in else_events.into_vec() {
 						apply_event(
 							event,
 							this_argument,
 							type_arguments,
 							environment,
-							&mut new_target,
+							target,
 							types,
 						);
 					}
-					new_target.facts.unwrap()
-				};
+				});
 
-				crate::utils::notify!("TF {:?}\n EF {:?}", truthy_facts, else_facts);
+				// crate::utils::notify!("TF {:?}\n EF {:?}", truthy_facts, else_facts);
 
 				// TODO all things that are
 				// - variable and property values (these aren't read from events)

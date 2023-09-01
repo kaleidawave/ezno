@@ -1,45 +1,97 @@
-use std::cell::RefCell;
-
-use crate::Environment;
 use super::facts::Facts;
-
-
-
-pub struct CheckThings;
-
-impl CallCheckingBehavior for CheckThings {
-	const CHECK_TYPES: bool = true;
-
-	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
-		&mut environment.facts
-	}
-}
+use crate::{Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub(crate) trait CallCheckingBehavior {
 	// TODO
-	const CHECK_TYPES: bool;
+	const CHECK_PARAMETERS: bool;
 
 	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
+
+	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
+
+	fn new_function_target<T>(
+		&mut self,
+		function_id: FunctionId,
+		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+	) -> T;
 }
 
-pub(crate) enum TargetType {
-	/// TODO currently refcell to
-	Conditional(RefCell<Facts>),
-	/// TODO function id for recursion
-	Function(()),
+pub struct CheckThings;
+
+impl CallCheckingBehavior for CheckThings {
+	const CHECK_PARAMETERS: bool = true;
+
+	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
+		&mut environment.facts
+	}
+
+	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
+		// cannot get in a loop from checking
+		false
+	}
+
+	fn new_function_target<T>(
+		&mut self,
+		function_id: FunctionId,
+		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+	) -> T {
+		let mut target = Target(vec![TargetKind::Function(function_id)]);
+		cb(&mut target)
+	}
 }
 
-pub(crate) struct Target {
-	// pub(crate) based_on: &'a mut Environment<'a>,
-	// pub(crate) chain: Annex<'a, Vec<TargetType>>,
-	pub(crate) facts: Option<Facts>,
+pub(crate) struct Target(Vec<TargetKind>);
+//  {
+// 	// facts: Facts,
+// 	// function_id: Vec<FunctionId>,
+// }
+
+pub(crate) enum TargetKind {
+	Conditional(Facts),
+	Function(FunctionId),
 }
 
 impl CallCheckingBehavior for Target {
-	const CHECK_TYPES: bool = false;
+	const CHECK_PARAMETERS: bool = false;
 
-	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
-		self.facts.as_mut().unwrap_or(&mut environment.facts)
+	fn get_top_level_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
+		self.0
+			.iter_mut()
+			.rev()
+			.find_map(
+				|kind| if let TargetKind::Conditional(facts) = kind { Some(facts) } else { None },
+			)
+			.unwrap_or(&mut environment.facts)
+	}
+
+	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
+		self.0.iter().any(|kind| matches!(kind, TargetKind::Function(id) if function_id == *id))
+	}
+
+	fn new_function_target<T>(
+		&mut self,
+		function_id: FunctionId,
+		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+	) -> T {
+		self.0.push(TargetKind::Function(function_id));
+		let value = cb(self);
+		self.0.pop();
+		value
+	}
+}
+
+impl Target {
+	pub(crate) fn new_conditional_target(
+		&mut self,
+		cb: impl for<'a> FnOnce(&'a mut Target),
+	) -> Facts {
+		self.0.push(TargetKind::Conditional(Facts::default()));
+		cb(self);
+		if let Some(TargetKind::Conditional(facts)) = self.0.pop() {
+			facts
+		} else {
+			unreachable!()
+		}
 	}
 }

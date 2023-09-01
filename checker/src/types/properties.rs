@@ -107,11 +107,11 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	Some(PropertyResult::Direct(value))
 }
 
-fn get_from_an_object(
+fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
 	environment: &mut Environment,
-	behavior: &mut impl CallCheckingBehavior,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<PropertyResult> {
 	match environment.get_property_unbound(on, under, types)? {
@@ -225,13 +225,13 @@ fn get_from_an_object(
 	}
 }
 
-fn getter_on_type(
+fn getter_on_type<'a, E: CallCheckingBehavior>(
 	constraint: PolyBase,
 	under: TypeId,
 	on: TypeId,
 	with: Option<TypeId>,
 	environment: &mut Environment,
-	behavior: &mut impl CallCheckingBehavior,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<TypeId> {
 	match constraint {
@@ -347,7 +347,7 @@ fn getter_on_type(
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
-pub(crate) fn set_property<E: CallCheckingBehavior>(
+pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
 	new: Property,
@@ -360,7 +360,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// 	return Err(SetPropertyError::NotWriteable);
 	// }
 
-	if E::CHECK_TYPES {
+	if E::CHECK_PARAMETERS {
 		let property_constraint = {
 			let constraint = environment.get_object_constraint(on);
 
