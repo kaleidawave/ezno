@@ -16,7 +16,7 @@ pub(crate) fn call_constant_function(
 	this_arg: Option<TypeId>,
 	arguments: &[SynthesizedArgument],
 	types: &mut TypeStore,
-	context: &mut Environment,
+	environment: &Environment,
 ) -> Result<ConstantResult, ()> {
 	// crate::utils::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -80,7 +80,7 @@ pub(crate) fn call_constant_function(
 		"print_type" | "debug_type" => {
 			let debug = id == "debug_type";
 			let ty = arguments.first().unwrap().into_type().unwrap();
-			let ty_as_string = print_type(ty, types, &context.into_general_context(), debug);
+			let ty_as_string = print_type(ty, types, &environment.into_general_context(), debug);
 			Ok(ConstantResult::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
 		"debug_effects" => {
@@ -92,7 +92,11 @@ pub(crate) fn call_constant_function(
 				Ok(ConstantResult::Diagnostic("not a function".to_owned()))
 			}
 		}
-		"debug_context" => Ok(ConstantResult::Diagnostic(context.debug())),
+		"debug_context" => Ok(ConstantResult::Diagnostic(environment.debug())),
+		"is_dependent" => Ok(ConstantResult::Diagnostic(format!(
+			"is dependent {:?}",
+			types.get_type_by_id(arguments.first().unwrap().into_type().unwrap()).is_dependent()
+		))),
 		func => panic!("Unknown/unimplemented const function {func}"),
 	}
 }

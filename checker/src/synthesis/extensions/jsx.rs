@@ -33,8 +33,11 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 		checking_data.types.new_constant_type(Constant::String(element.tag_name.clone()));
 
 	if let Some(element_type) = environment.get_tag_name(tag_name_as_cst_ty, &checking_data.types) {
-		let mut new_element_object =
-			ObjectBuilder::new(Some(element_type), &mut checking_data.types, environment);
+		let mut new_element_object = ObjectBuilder::new(
+			Some(element_type),
+			&mut checking_data.types,
+			&mut environment.facts,
+		);
 
 		for attribute in element.attributes.iter() {
 			let (name, attr_value) = synthesize_attribute(attribute, environment, checking_data);

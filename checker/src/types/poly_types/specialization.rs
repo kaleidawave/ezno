@@ -4,10 +4,8 @@ use crate::{
 	behavior::operations::{
 		evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 	},
-	context::Environment,
-	subtyping::{type_is_subtype, SubTypeResult},
-	types::{Constructor, PolyNature, Type, TypeStore},
-	TruthyFalsy, TypeId,
+	types::{is_type_truthy_falsy, Constructor, PolyNature, Type, TypeStore},
+	GeneralContext, TruthyFalsy, TypeId,
 };
 
 use super::TypeArguments;
@@ -15,7 +13,7 @@ use super::TypeArguments;
 pub(crate) fn specialize(
 	id: TypeId,
 	arguments: &mut TypeArguments,
-	environment: &mut Environment,
+	environment: &GeneralContext,
 	types: &mut TypeStore,
 ) -> TypeId {
 	if let Some(value) = arguments.get_arg(id) {
@@ -34,12 +32,7 @@ pub(crate) fn specialize(
 				id
 			} else {
 				// Other root poly types cases handled by the early return
-				let on = crate::types::printing::print_type(
-					id,
-					types,
-					&environment.into_general_context(),
-					true,
-				);
+				let on = crate::types::printing::print_type(id, types, environment, true);
 				crate::utils::notify!("Could not find argument for {}", on);
 				id
 			}
@@ -66,9 +59,9 @@ pub(crate) fn specialize(
 				// .unwrap()
 			}
 			Constructor::ConditionalResult {
-				condition: on,
-				truthy_result: true_result,
-				else_result: false_result,
+				condition,
+				truthy_result,
+				else_result,
 				result_union,
 			} => {
 				// crate::utils::notify!(
@@ -93,7 +86,7 @@ pub(crate) fn specialize(
 				// 	)
 				// );
 
-				let on = specialize(on, arguments, environment, types);
+				let condition = specialize(condition, arguments, environment, types);
 
 				// crate::utils::notify!(
 				// 	"after on={} true={} false={}",
@@ -117,19 +110,18 @@ pub(crate) fn specialize(
 				// 	)
 				// );
 
-				if let TruthyFalsy::Decidable(result) = environment.is_type_truthy_falsy(on, types)
-				{
+				if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
 					if result {
-						specialize(true_result, arguments, environment, types)
+						specialize(truthy_result, arguments, environment, types)
 					} else {
-						specialize(false_result, arguments, environment, types)
+						specialize(else_result, arguments, environment, types)
 					}
 				} else {
-					let truthy_result = specialize(true_result, arguments, environment, types);
-					let else_result = specialize(false_result, arguments, environment, types);
+					let truthy_result = specialize(truthy_result, arguments, environment, types);
+					let else_result = specialize(else_result, arguments, environment, types);
 					// TODO result_union
 					let ty = Constructor::ConditionalResult {
-						condition: on,
+						condition,
 						truthy_result,
 						else_result,
 						result_union: types.new_or_type(truthy_result, else_result),
@@ -201,7 +193,7 @@ pub(crate) fn specialize(
 				let lhs = specialize(lhs, arguments, environment, types);
 				let rhs = specialize(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, operator, rhs, types, &environment)
+				evaluate_equality_inequality_operation(lhs, operator, rhs, types)
 					.expect("restriction about binary operator failed")
 			}
 			Constructor::TypeOperator(..) => todo!(),
@@ -210,18 +202,19 @@ pub(crate) fn specialize(
 					let ty = specialize(ty, arguments, environment, types);
 					let extends = specialize(extends, arguments, environment, types);
 
+					todo!();
 					// TODO special behavior that doesn't have errors...
-					let result = type_is_subtype(
-						extends,
-						ty,
-						None,
-						&mut super::super::subtyping::BasicEquality {
-							add_property_restrictions: false,
-							position: source_map::Span::NULL_SPAN,
-						},
-						environment,
-						types,
-					);
+					// let result = type_is_subtype(
+					// 	extends,
+					// 	ty,
+					// 	None,
+					// 	&mut super::super::subtyping::BasicEquality {
+					// 		add_property_restrictions: false,
+					// 		position: source_map::Span::NULL_SPAN,
+					// 	},
+					// 	environment,
+					// 	types,
+					// );
 
 					// crate::utils::notify!(
 					// 	"Extends result {:?} extends={}, ty={},",
@@ -232,13 +225,13 @@ pub(crate) fn specialize(
 
 					// TODO what about unknown...
 
-					let does_extend = matches!(result, SubTypeResult::IsSubType);
+					// let does_extend = matches!(result, SubTypeResult::IsSubType);
 
-					if does_extend {
-						TypeId::TRUE
-					} else {
-						TypeId::FALSE
-					}
+					// if does_extend {
+					// 	TypeId::TRUE
+					// } else {
+					// 	TypeId::FALSE
+					// }
 				}
 			},
 		},

@@ -2,6 +2,7 @@ declare function debug_context(): void performs const debug_context;
 declare function print_type(): void performs const print_type;
 declare function debug_type(): void performs const debug_type;
 declare function debug_effects(): void performs const debug_effects;
+declare function is_dependent(): void performs const is_dependent;
 
 interface Array<T> {
     length: number;

@@ -127,7 +127,7 @@ pub(super) fn synthesize_class_declaration<
 						if static_kw.is_some() {
 							static_properties.push((key, property));
 						} else {
-							environment.register_property(class_type, key, property, true);
+							environment.facts.register_property(class_type, key, property, true);
 							// TODO check not already exists
 
 							// if let Some(existing_property) = existing_property {

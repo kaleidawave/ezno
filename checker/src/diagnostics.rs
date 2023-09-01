@@ -353,11 +353,6 @@ mod defined_errors_and_warnings {
 							kind: super::DiagnosticKind::Error,
 						}
 					}
-					//  Diagnostic::Position {
-					// 	reason: format!("Cannot call {}", calling),
-					// 	position: at,
-					// 	kind: super::DiagnosticKind::Error,
-					// },
 					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 						reference,
 						requirement,
@@ -371,6 +366,11 @@ mod defined_errors_and_warnings {
 					// 	position: call_site,
 					// 	kind: super::DiagnosticKind::Error,
 					// },
+					FunctionCallingError::Recursed(_, call_site) => Diagnostic::Position {
+						reason: "Encountered recursion".into(),
+						position: call_site,
+						kind: crate::DiagnosticKind::Error,
+					},
 				},
 				//  => ,
 				TypeCheckError::AssignmentError(error) => match error {

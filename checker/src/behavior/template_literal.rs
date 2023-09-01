@@ -48,8 +48,11 @@ pub fn synthesize_template_literal<
 	}
 
 	if let Some(tag) = tag {
-		let mut static_parts =
-			ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), &mut checking_data.types, environment);
+		let mut static_parts = ObjectBuilder::new(
+			Some(TypeId::ARRAY_TYPE),
+			&mut checking_data.types,
+			&mut environment.facts,
+		);
 
 		// TODO position
 		let mut arguments = Vec::<SynthesizedArgument>::new();

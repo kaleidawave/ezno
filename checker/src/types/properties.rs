@@ -1,9 +1,9 @@
 use crate::{
-	context::{get_on_ctx, Environment, Logical, PolyBase, SetPropertyError},
+	context::{CallCheckingBehavior, Logical, PolyBase, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
 	types::FunctionType,
-	TypeId,
+	Environment, TypeId,
 };
 
 use source_map::{SourceId, Span};
@@ -50,12 +50,13 @@ impl Property {
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
 /// types at some point*
-pub(crate) fn get_property(
-	environment: &mut Environment,
+pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
-	types: &mut TypeStore,
 	with: Option<TypeId>,
+	environment: &mut Environment,
+	behavior: &mut E,
+	types: &mut TypeStore,
 ) -> Option<PropertyResult> {
 	if on == TypeId::ERROR_TYPE || under == TypeId::ERROR_TYPE {
 		return Some(PropertyResult::Direct(TypeId::ERROR_TYPE));
@@ -68,224 +69,20 @@ pub(crate) fn get_property(
 	}
 
 	let value: GetResult = if let Some(constraint) = environment.get_poly_base(on, types) {
-		match constraint {
-			PolyBase::Fixed { to, is_open_poly } => {
-				// crate::utils::notify!(
-				// 	"Get property found fixed constraint {}, is_open_poly={:?}",
-				// 	environment.debug_type(on, types),
-				// 	is_open_poly
-				// );
-
-				let fact = environment.get_property_unbound(to, under, types)?;
-
-				match fact {
-					Logical::Pure(og) => {
-						match og {
-							Property::Value(og) => {
-								match types.get_type_by_id(og) {
-									Type::Function(func, _) => {
-										// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-										let with_this = types.register_type(Type::Function(
-											func.clone(),
-											crate::types::FunctionNature::BehindPoly {
-												// TODO
-												function_id_if_open_poly: None,
-												this_type: Some(on),
-											},
-										));
-										crate::utils::notify!("Temp setting this on poly");
-
-										GetResult::AccessIntroducesDependence(with_this)
-									}
-									Type::And(_, _) => todo!(),
-									Type::RootPolyType(_) => todo!(),
-									Type::Constructor(_) => todo!(),
-									Type::Or(_, _)
-									| Type::AliasTo { .. }
-									| Type::NamedRooted { .. } => {
-										if is_open_poly {
-											crate::utils::notify!("TODO evaluate getter...");
-										} else {
-											crate::utils::notify!("TODO don't evaluate getter");
-										}
-
-										// TODO don't have to recreate if don't have any events.
-										let constructor_result = types.register_type(
-											Type::Constructor(Constructor::Property { on, under }),
-										);
-
-										GetResult::AccessIntroducesDependence(constructor_result)
-									}
-									Type::Constant(_) => GetResult::FromAObject(og),
-									Type::Object(..) => todo!(),
-								}
-							}
-							Property::Getter(_) => todo!(),
-							Property::Setter(_) => todo!(),
-							Property::GetterAndSetter(_, _) => todo!(),
-						}
-					}
-					Logical::Or(_) => todo!(),
-					Logical::Implies(_, _) => todo!(),
-				}
-			}
-			PolyBase::Dynamic { to, boundary } => {
-				crate::utils::notify!(
-					"Getting property {:?} which has a dynamic constraint {:?}",
-					on,
-					to
-				);
-				// If the property on the dynamic constraint is None
-				if environment.get_property_unbound(to, under, types).is_none() {
-					let on = if to == TypeId::ANY_TYPE {
-						let new_constraint = types.register_type(Type::Object(
-							crate::types::ObjectNature::ModifiableConstraint,
-						));
-						crate::utils::notify!("Here!!!");
-						environment.attempt_to_modify_base(on, boundary, new_constraint);
-						new_constraint
-					} else if matches!(
-						types.get_type_by_id(to),
-						Type::AliasTo { to: TypeId::OBJECT_TYPE, .. }
-					) {
-						to
-					} else {
-						todo!("new and")
-					};
-
-					environment
-						.properties
-						.entry(on)
-						.or_default()
-						.push((under, Property::Value(with.unwrap_or(TypeId::ANY_TYPE))));
-				} else {
-					crate::utils::notify!("Found existing property on dynamic constraint");
-				}
-
-				let constructor_result =
-					types.register_type(Type::Constructor(Constructor::Property { on, under }));
-
-				// environment
-				// 	.context_type
-				// 	.get_inferrable_constraints_mut()
-				// 	.unwrap()
-				// 	.insert(constructor_result);
-
-				GetResult::AccessIntroducesDependence(constructor_result)
-			}
-		}
+		GetResult::AccessIntroducesDependence(getter_on_type(
+			constraint,
+			under,
+			on,
+			with,
+			environment,
+			behavior,
+			types,
+		)?)
 	} else if let Some(_) = environment.get_poly_base(under, types) {
 		todo!()
 	} else {
-		let value = environment.get_property_unbound(on, under, types)?;
-
-		let value = match value {
-			Logical::Pure(property) => {
-				match property {
-					Property::Value(value) => {
-						let ty = types.get_type_by_id(value);
-						match ty {
-							Type::Function(func, nature) => match nature {
-								super::FunctionNature::BehindPoly { .. } => todo!(),
-								super::FunctionNature::Source(this) => {
-									if this.is_some() {
-										panic!()
-									}
-									types.register_type(Type::Function(
-										func.clone(),
-										super::FunctionNature::Source(Some(on)),
-									))
-								}
-								super::FunctionNature::Constructor => todo!(),
-								super::FunctionNature::Reference => {
-									crate::utils::notify!("TODO temp reference function business");
-									types.register_type(Type::Function(
-										func.clone(),
-										super::FunctionNature::Source(Some(on)),
-									))
-								}
-							},
-							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
-								value
-							}
-							Type::NamedRooted { .. }
-							| Type::And(_, _)
-							| Type::Or(_, _)
-							| Type::Constructor(Constructor::StructureGenerics { .. }) => {
-								crate::utils::notify!(
-									"property was {:?} {:?}, which should be NOT be able to be returned from a function",
-									property, ty
-								);
-								types.register_type(Type::RootPolyType(
-									crate::types::PolyNature::Open(value),
-								))
-							}
-							Type::Constructor(constructor) => {
-								unreachable!("Interesting property was {:?}", constructor);
-							}
-							Type::AliasTo { to, name, parameters } => {
-								todo!()
-								// if environment.is_getter(property) {
-								// 	// TODO catch unwrap as error:
-								// 	let result = call_type(
-								// 		property,
-								// 		vec![],
-								// 		Some(on),
-								// 		None,
-								// 		environment,
-								// 		checking_data,
-								// 		CalledWithNew::None,
-								// 	)
-								// 	.unwrap()
-								// 	.returned_type;
-
-								// 	return Some(PropertyResult::Getter(result));
-								// } else {
-								// 	// Bind this is this is function
-								// 	let is_function = *to == TypeId::FUNCTION_TYPE
-								// 		|| matches!(environment.get_type_by_id(*to), Type::AliasTo { to, .. } if *to == TypeId::FUNCTION_TYPE);
-
-								// 	if is_function {
-								// 		let alias = environment.new_type(Type::AliasTo {
-								// 			to: property,
-								// 			name: None,
-								// 			parameters: None,
-								// 		});
-								// 		environment.this_bindings.insert(alias, on);
-								// 		alias
-								// 	} else {
-								// 		property
-								// 	}
-								// }
-							}
-						}
-					}
-					Property::Getter(func) => {
-						return match func.call(
-							crate::events::CalledWithNew::None,
-							Some(on),
-							None,
-							&None,
-							&[],
-							Span::NULL_SPAN,
-							types,
-							environment,
-						) {
-							Ok(res) => Some(PropertyResult::Getter(res.returned_type)),
-							Err(_) => {
-								todo!()
-							}
-						}
-					}
-					Property::Setter(_) => todo!(),
-					Property::GetterAndSetter(_, _) => todo!(),
-				}
-			}
-			Logical::Or(_) => todo!(),
-			Logical::Implies(_, _) => todo!(),
-		};
-
-		GetResult::FromAObject(value)
+		// TODO
+		return get_from_an_object(on, under, environment, behavior, types);
 	};
 
 	let reflects_dependency = match value {
@@ -293,40 +90,279 @@ pub(crate) fn get_property(
 		GetResult::FromAObject(_) => None,
 	};
 
-	environment.context_type.events.push(Event::Getter { on, under, reflects_dependency });
+	behavior.get_top_level_facts(environment).events.push(Event::Getter {
+		on,
+		under,
+		reflects_dependency,
+	});
 
 	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value else { unreachable!() };
 
 	// Carry the frozen part
-	if let Some(frozen) = environment.is_frozen(on) {
-		environment.frozen.insert(value, frozen);
-	}
+	// if let Some(frozen) = environment.is_frozen(on) {
+	// 	environment.facts.frozen.insert(value, frozen);
+	// }
 
 	// TODO generic
 	Some(PropertyResult::Direct(value))
 }
 
+fn get_from_an_object<'a, E: CallCheckingBehavior>(
+	on: TypeId,
+	under: TypeId,
+	environment: &mut Environment,
+	behavior: &mut E,
+	types: &mut TypeStore,
+) -> Option<PropertyResult> {
+	match environment.get_property_unbound(on, under, types)? {
+		Logical::Pure(property) => {
+			match property {
+				Property::Value(value) => {
+					let ty = types.get_type_by_id(value);
+					match ty {
+						Type::Function(func, nature) => match nature {
+							super::FunctionNature::BehindPoly { .. } => todo!(),
+							super::FunctionNature::Source(this) => {
+								if this.is_some() {
+									panic!()
+								}
+								todo!()
+								// Some(GetResult::AccessIntroducesDependence(types.register_type(Type::Function(
+								// 	func.clone(),
+								// 	super::FunctionNature::Source(Some(on)),
+								// ))
+							}
+							super::FunctionNature::Constructor => todo!(),
+							super::FunctionNature::Reference => {
+								crate::utils::notify!("TODO temp reference function business");
+								let func = types.register_type(Type::Function(
+									func.clone(),
+									super::FunctionNature::Source(Some(on)),
+								));
+								Some(PropertyResult::Direct(func))
+							}
+						},
+						Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
+							Some(PropertyResult::Direct(value))
+						}
+						Type::NamedRooted { .. }
+						| Type::And(_, _)
+						| Type::Or(_, _)
+						| Type::Constructor(Constructor::StructureGenerics { .. }) => {
+							crate::utils::notify!(
+								"property was {:?} {:?}, which should be NOT be able to be returned from a function",
+								property, ty
+							);
+							let value = types.register_type(Type::RootPolyType(
+								crate::types::PolyNature::Open(value),
+							));
+							Some(PropertyResult::Direct(value))
+						}
+						Type::Constructor(constructor) => {
+							unreachable!("Interesting property was {:?}", constructor);
+						}
+						Type::AliasTo { to, name, parameters } => {
+							todo!()
+							// if environment.is_getter(property) {
+							// 	// TODO catch unwrap as error:
+							// 	let result = call_type(
+							// 		property,
+							// 		vec![],
+							// 		Some(on),
+							// 		None,
+							// 		environment,
+							// 		checking_data,
+							// 		CalledWithNew::None,
+							// 	)
+							// 	.unwrap()
+							// 	.returned_type;
+
+							// 	return Some(PropertyResult::Getter(result));
+							// } else {
+							// 	// Bind this is this is function
+							// 	let is_function = *to == TypeId::FUNCTION_TYPE
+							// 		|| matches!(environment.get_type_by_id(*to), Type::AliasTo { to, .. } if *to == TypeId::FUNCTION_TYPE);
+
+							// 	if is_function {
+							// 		let alias = environment.new_type(Type::AliasTo {
+							// 			to: property,
+							// 			name: None,
+							// 			parameters: None,
+							// 		});
+							// 		environment.this_bindings.insert(alias, on);
+							// 		alias
+							// 	} else {
+							// 		property
+							// 	}
+							// }
+						}
+					}
+				}
+				Property::GetterAndSetter(func, _) | Property::Getter(func) => {
+					let call = func.call(
+						crate::events::CalledWithNew::None,
+						Some(on),
+						None,
+						&None,
+						&[],
+						Span::NULL_SPAN,
+						environment,
+						behavior,
+						types,
+					);
+					return match call {
+						Ok(res) => Some(PropertyResult::Getter(res.returned_type)),
+						Err(_) => {
+							todo!()
+						}
+					};
+				}
+				Property::Setter(_) => todo!(),
+			}
+		}
+		Logical::Or(_) => todo!(),
+		Logical::Implies(_, _) => todo!(),
+	}
+}
+
+fn getter_on_type<'a, E: CallCheckingBehavior>(
+	constraint: PolyBase,
+	under: TypeId,
+	on: TypeId,
+	with: Option<TypeId>,
+	environment: &mut Environment,
+	behavior: &mut E,
+	types: &mut TypeStore,
+) -> Option<TypeId> {
+	match constraint {
+		PolyBase::Fixed { to, is_open_poly } => {
+			// crate::utils::notify!(
+			// 	"Get property found fixed constraint {}, is_open_poly={:?}",
+			// 	environment.debug_type(on, types),
+			// 	is_open_poly
+			// );
+
+			let fact = environment.get_property_unbound(to, under, types)?;
+
+			match fact {
+				Logical::Pure(og) => {
+					match og {
+						Property::Value(og) => {
+							match types.get_type_by_id(og) {
+								Type::Function(func, _) => {
+									// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
+									let with_this = types.register_type(Type::Function(
+										func.clone(),
+										crate::types::FunctionNature::BehindPoly {
+											// TODO
+											function_id_if_open_poly: None,
+											this_type: Some(on),
+										},
+									));
+									crate::utils::notify!("Temp setting this on poly");
+
+									Some(with_this)
+								}
+								Type::And(_, _)
+								| Type::Object(..)
+								| Type::RootPolyType(_)
+								| Type::Constructor(_)
+								| Type::Or(_, _)
+								| Type::AliasTo { .. }
+								| Type::NamedRooted { .. } => {
+									// TODO this isn't necessary sometimes
+									let constructor_result = types.register_type(
+										Type::Constructor(Constructor::Property { on, under }),
+									);
+
+									Some(constructor_result)
+								}
+								Type::Constant(_) => Some(og),
+							}
+						}
+						Property::GetterAndSetter(_getter, _) | Property::Getter(_getter) => {
+							if is_open_poly {
+								crate::utils::notify!("TODO evaluate getter...");
+							} else {
+								crate::utils::notify!("TODO don't evaluate getter");
+							}
+							todo!()
+						}
+						Property::Setter(_) => todo!("error"),
+					}
+				}
+				Logical::Or(_) => todo!(),
+				Logical::Implies(_, _) => todo!(),
+			}
+		}
+		PolyBase::Dynamic { to, boundary } => {
+			todo!("this is likely changing")
+			// crate::utils::notify!(
+			// 	"Getting property {:?} which has a dynamic constraint {:?}",
+			// 	on,
+			// 	to
+			// );
+			// // If the property on the dynamic constraint is None
+			// if environment.get_property_unbound(to, under, types).is_none() {
+			// 	let on = if to == TypeId::ANY_TYPE {
+			// 		let new_constraint = types.register_type(Type::Object(
+			// 			crate::types::ObjectNature::ModifiableConstraint,
+			// 		));
+			// 		crate::utils::notify!("Here!!!");
+			// 		environment.attempt_to_modify_base(on, boundary, new_constraint);
+			// 		new_constraint
+			// 	} else if matches!(
+			// 		types.get_type_by_id(to),
+			// 		Type::AliasTo { to: TypeId::OBJECT_TYPE, .. }
+			// 	) {
+			// 		to
+			// 	} else {
+			// 		todo!("new and")
+			// 	};
+
+			// 	environment
+			// 		.facts
+			// 		.current_properties
+			// 		.entry(on)
+			// 		.or_default()
+			// 		.push((under, Property::Value(with.unwrap_or(TypeId::ANY_TYPE))));
+			// } else {
+			// 	crate::utils::notify!("Found existing property on dynamic constraint");
+			// }
+
+			// let constructor_result =
+			// 	types.register_type(Type::Constructor(Constructor::Property { on, under }));
+
+			// // environment
+			// // 	.context_type
+			// // 	.get_inferrable_constraints_mut()
+			// // 	.unwrap()
+			// // 	.insert(constructor_result);
+
+			// Some(GetResult::AccessIntroducesDependence(constructor_result))
+		}
+	}
+}
+
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
-pub(crate) fn set_property(
-	environment: &mut Environment,
+pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
 	new: Property,
+	environment: &mut Environment,
+	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<Option<TypeId>, SetPropertyError> {
-	let pair = (on, under);
+	// TODO
+	// if environment.is_not_writeable(on, under) {
+	// 	return Err(SetPropertyError::NotWriteable);
+	// }
 
-	if environment.parents_iter().any(|env| get_on_ctx!(env.writable.get(&pair)).is_some()) {
-		return Err(SetPropertyError::NotWriteable);
-	}
-
-	{
+	if E::CHECK_PARAMETERS {
 		let property_constraint = {
-			let constraint = environment
-				.parents_iter()
-				.find_map(|env| get_on_ctx!(env.object_constraints.get(&on)).cloned());
+			let constraint = environment.get_object_constraint(on);
 
 			match constraint {
 				Some(constraint) => {
@@ -386,8 +422,9 @@ pub(crate) fn set_property(
 		match fact {
 			Logical::Pure(og) => match og {
 				Property::Value(og) => {
-					environment.properties.entry(on).or_default().push((under, new.clone()));
-					environment.context_type.events.push(Event::Setter {
+					let facts = behavior.get_top_level_facts(environment);
+					facts.current_properties.entry(on).or_default().push((under, new.clone()));
+					facts.events.push(Event::Setter {
 						on,
 						new,
 						under,
@@ -397,22 +434,14 @@ pub(crate) fn set_property(
 					});
 				}
 				Property::Getter(_) => todo!(),
-				Property::Setter(_) => todo!(),
-				Property::GetterAndSetter(_, _) => todo!(),
+				Property::GetterAndSetter(_, _setter) | Property::Setter(_setter) => todo!(),
 			},
 			Logical::Or(_) => todo!(),
 			Logical::Implies(_, _) => todo!(),
 		}
 	} else {
 		// TODO abstract
-		environment.properties.entry(on).or_default().push((under, new.clone()));
-		environment.context_type.events.push(Event::Setter {
-			on,
-			new,
-			under,
-			reflects_dependency: None,
-			initialization: true,
-		});
+		behavior.get_top_level_facts(environment).register_property(on, under, new, false);
 	}
 	Ok(None)
 }

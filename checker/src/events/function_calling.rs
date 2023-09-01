@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use source_map::{SourceId, Span};
 
 use crate::{
+	context::{get_value_of_variable, CallCheckingBehavior},
 	diagnostics::TypeStringRepresentation,
 	types::functions::SynthesizedArgument,
 	types::{
@@ -18,12 +19,12 @@ use crate::{
 		subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 		Constructor, FunctionKind, FunctionType, PolyNature, PolyPointer, Type, TypeId,
 	},
-	FunctionId,
+	Environment, FunctionId,
 };
 
 use map_vec::Map as SmallMap;
 
-use super::{apply_event, EarlyReturn, RootReference};
+use super::{apply_event, RootReference};
 
 /// Errors from trying to call a function
 pub enum FunctionCallingError {
@@ -51,6 +52,7 @@ pub enum FunctionCallingError {
 		requirement: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
+	Recursed(FunctionId, Span),
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -79,7 +81,7 @@ impl FunctionType {
 	/// Calls the function
 	///
 	/// Returns warnings and errors
-	pub(crate) fn call(
+	pub(crate) fn call<'a, E: CallCheckingBehavior>(
 		&self,
 		called_with_new: CalledWithNew,
 		mut this_argument: Option<TypeId>,
@@ -87,61 +89,34 @@ impl FunctionType {
 		parent_type_arguments: &Option<CurriedFunctionTypeArguments>,
 		arguments: &[SynthesizedArgument],
 		call_site: Span,
+		environment: &mut Environment,
+		behavior: &mut E,
 		types: &mut crate::TypeStore,
-		environment: &mut crate::context::Environment,
 	) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+		// TODO check that parameters vary
+		if behavior.in_recursive_cycle(self.id) {
+			crate::utils::notify!("Encountered recursion");
+			return Ok(FunctionCallResult {
+				called: Some(self.id),
+				returned_type: TypeId::ERROR_TYPE,
+				warnings: Vec::new(),
+			});
+			// let reason = FunctionCallingError::Recursed(self.id, call_site);
+			// return Err(vec![reason])
+		}
+
 		let (mut errors, mut warnings) = (Vec::new(), Vec::<()>::new());
 
 		// Type arguments of the function
 		let local_arguments: map_vec::Map<TypeId, FunctionTypeArgument> =
-			if let Some(call_site_type_arguments) = call_site_type_arguments {
-				if let Some(ref typed_parameters) = self.type_parameters {
-					typed_parameters
-						.0
-						.iter()
-						.zip(call_site_type_arguments.into_iter())
-						.map(|(param, (pos, ty))| {
-							if let Type::RootPolyType(PolyNature::Generic {
-								eager_fixed: PolyPointer::Fixed(gen_ty),
-								..
-							}) = types.get_type_by_id(param.id)
-							{
-								let mut basic_subtyping = BasicEquality {
-									add_property_restrictions: false,
-									position: pos.clone(),
-								};
-								let type_is_subtype = type_is_subtype(
-									*gen_ty,
-									ty,
-									None,
-									&mut basic_subtyping,
-									environment,
-									types,
-								);
-
-								match type_is_subtype {
-									SubTypeResult::IsSubType => {}
-									SubTypeResult::IsNotSubType(_) => {
-										todo!("generic argument does not match restriction")
-									}
-								}
-							} else {
-								todo!();
-								// crate::utils::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
-							};
-
-							(
-								param.id,
-								FunctionTypeArgument { value: None, restriction: Some((pos, ty)) },
-							)
-						})
-						.collect()
-				} else {
-					crate::utils::notify!(
-						"Call site arguments on function without typed parameters..."
-					);
-					SmallMap::new()
-				}
+			if let (Some(call_site_type_arguments), true) =
+				(call_site_type_arguments, E::CHECK_PARAMETERS)
+			{
+				self.synthesize_call_site_type_arguments(
+					call_site_type_arguments,
+					types,
+					environment,
+				)
 			} else {
 				SmallMap::new()
 			};
@@ -234,52 +209,61 @@ impl FunctionType {
 					// 	types.debug_type(*argument_type)
 					// );
 
-					let result = type_is_subtype(
-						parameter.ty,
-						*argument_type,
-						None,
-						&mut seeding_context,
-						environment,
-						&types,
-					);
-					if let SubTypeResult::IsNotSubType(reasons) = result {
-						let restriction = if let NonEqualityReason::GenericRestrictionMismatch {
-							restriction,
-							reason,
-							pos,
-						} = reasons
-						{
-							Some((
-								pos,
-								crate::diagnostics::TypeStringRepresentation::from_type_id(
+					if E::CHECK_PARAMETERS {
+						// crate::utils::notify!("Param {:?} :> {:?}", parameter.ty, *argument_type);
+						let result = type_is_subtype(
+							parameter.ty,
+							*argument_type,
+							None,
+							&mut seeding_context,
+							environment,
+							&types,
+						);
+						// crate::utils::notify!("Aftermath {:?}", seeding_context.type_arguments);
+						if let SubTypeResult::IsNotSubType(reasons) = result {
+							let restriction =
+								if let NonEqualityReason::GenericRestrictionMismatch {
 									restriction,
-									&environment.into_general_context(),
-									types,
-									false,
-								),
-							))
-						} else {
-							None
-						};
-						errors.push(FunctionCallingError::InvalidArgumentType {
-							parameter_type:
-								crate::diagnostics::TypeStringRepresentation::from_type_id(
-									parameter.ty,
-									&environment.into_general_context(),
-									types,
-									false,
-								),
-							argument_type:
-								crate::diagnostics::TypeStringRepresentation::from_type_id(
-									*argument_type,
-									&environment.into_general_context(),
-									types,
-									false,
-								),
-							parameter_position: parameter.position.clone(),
-							argument_position: argument_position.clone(),
-							restriction,
-						})
+									reason,
+									pos,
+								} = reasons
+								{
+									Some((
+										pos,
+										crate::diagnostics::TypeStringRepresentation::from_type_id(
+											restriction,
+											&environment.into_general_context(),
+											types,
+											false,
+										),
+									))
+								} else {
+									None
+								};
+
+							errors.push(FunctionCallingError::InvalidArgumentType {
+								parameter_type:
+									crate::diagnostics::TypeStringRepresentation::from_type_id(
+										parameter.ty,
+										&environment.into_general_context(),
+										types,
+										false,
+									),
+								argument_type:
+									crate::diagnostics::TypeStringRepresentation::from_type_id(
+										*argument_type,
+										&environment.into_general_context(),
+										types,
+										false,
+									),
+								parameter_position: parameter.position.clone(),
+								argument_position: argument_position.clone(),
+								restriction,
+							})
+						}
+					} else {
+						// Already checked so can set. TODO destructuring etc
+						seeding_context.type_arguments.set_id(parameter.ty, *argument_type, &types);
 					}
 				} else if let Some(value) = parameter.missing_value {
 					// TODO evaluate effects
@@ -334,24 +318,25 @@ impl FunctionType {
 								unreachable!()
 							};
 
-						let result = type_is_subtype(
-							item_type,
-							*argument_type,
-							None,
-							&mut seeding_context,
-							environment,
-							&types,
-						);
+						if E::CHECK_PARAMETERS {
+							let result = type_is_subtype(
+								item_type,
+								*argument_type,
+								None,
+								&mut seeding_context,
+								environment,
+								&types,
+							);
 
-						if let SubTypeResult::IsNotSubType(reasons) = result {
-							let restriction =
-								if let NonEqualityReason::GenericRestrictionMismatch {
-									restriction,
-									reason,
-									pos,
-								} = reasons
-								{
-									Some((
+							if let SubTypeResult::IsNotSubType(reasons) = result {
+								let restriction =
+									if let NonEqualityReason::GenericRestrictionMismatch {
+										restriction,
+										reason,
+										pos,
+									} = reasons
+									{
+										Some((
 										pos,
 										crate::diagnostics::TypeStringRepresentation::from_type_id(
 											restriction,
@@ -360,28 +345,31 @@ impl FunctionType {
 											false,
 										),
 									))
-								} else {
-									None
-								};
-							errors.push(FunctionCallingError::InvalidArgumentType {
-								parameter_type:
-									crate::diagnostics::TypeStringRepresentation::from_type_id(
-										rest_parameter.item_type,
-										&environment.into_general_context(),
-										types,
-										false,
-									),
-								argument_type:
-									crate::diagnostics::TypeStringRepresentation::from_type_id(
-										*argument_type,
-										&environment.into_general_context(),
-										types,
-										false,
-									),
-								argument_position: argument_pos.clone(),
-								parameter_position: rest_parameter.position.clone(),
-								restriction,
-							})
+									} else {
+										None
+									};
+								errors.push(FunctionCallingError::InvalidArgumentType {
+									parameter_type:
+										crate::diagnostics::TypeStringRepresentation::from_type_id(
+											rest_parameter.item_type,
+											&environment.into_general_context(),
+											types,
+											false,
+										),
+									argument_type:
+										crate::diagnostics::TypeStringRepresentation::from_type_id(
+											*argument_type,
+											&environment.into_general_context(),
+											types,
+											false,
+										),
+									argument_position: argument_pos.clone(),
+									parameter_position: rest_parameter.position.clone(),
+									restriction,
+								})
+							}
+						} else {
+							todo!("specialize")
 						}
 					}
 				} else {
@@ -440,76 +428,80 @@ impl FunctionType {
 			}
 		}
 
-		for (reference, restriction) in self.closed_over_references.clone().into_iter() {
-			match reference {
-				RootReference::VariableId(ref variable) => {
-					let current_value = environment
-						.get_value_of_variable(variable.clone())
-						.expect("closed over reference not assigned");
+		if E::CHECK_PARAMETERS {
+			for (reference, restriction) in self.closed_over_references.clone().into_iter() {
+				match reference {
+					RootReference::VariableId(ref variable) => {
+						let current_value =
+							get_value_of_variable(environment.facts_chain(), variable.clone())
+								.expect("closed over reference not assigned");
 
-					let mut basic_subtyping = BasicEquality {
-						add_property_restrictions: false,
-						position: Span { start: 0, end: 0, source: SourceId::NULL },
-					};
-					if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
-						restriction,
-						current_value,
-						None,
-						// TODO temp position
-						&mut basic_subtyping,
-						environment,
-						&types,
-					) {
-						errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-							reference,
-							requirement: crate::diagnostics::TypeStringRepresentation::from_type_id(
-								restriction,
-								&environment.into_general_context(),
-								&types,
-								false,
-							),
-							found: crate::diagnostics::TypeStringRepresentation::from_type_id(
-								current_value,
-								&environment.into_general_context(),
-								types,
-								false,
-							),
-						});
+						let mut basic_subtyping = BasicEquality {
+							add_property_restrictions: false,
+							position: Span { start: 0, end: 0, source: SourceId::NULL },
+						};
+						if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
+							restriction,
+							current_value,
+							None,
+							// TODO temp position
+							&mut basic_subtyping,
+							environment,
+							&types,
+						) {
+							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
+								reference,
+								requirement:
+									crate::diagnostics::TypeStringRepresentation::from_type_id(
+										restriction,
+										&environment.into_general_context(),
+										&types,
+										false,
+									),
+								found: crate::diagnostics::TypeStringRepresentation::from_type_id(
+									current_value,
+									&environment.into_general_context(),
+									types,
+									false,
+								),
+							});
+						}
 					}
-				}
-				RootReference::This if matches!(called_with_new, CalledWithNew::None) => {}
-				RootReference::This => {
-					let value_of_this =
-						this_argument.unwrap_or_else(|| environment.get_value_of_this(types));
+					RootReference::This if matches!(called_with_new, CalledWithNew::None) => {}
+					RootReference::This => {
+						let value_of_this =
+							this_argument.unwrap_or_else(|| environment.get_value_of_this(types));
 
-					let mut basic_subtyping = BasicEquality {
-						add_property_restrictions: false,
-						position: Span { start: 0, end: 0, source: SourceId::NULL },
-					};
-					if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
-						restriction,
-						value_of_this,
-						None,
-						// TODO temp position
-						&mut basic_subtyping,
-						environment,
-						&types,
-					) {
-						errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-							reference,
-							requirement: crate::diagnostics::TypeStringRepresentation::from_type_id(
-								restriction,
-								&environment.into_general_context(),
-								types,
-								false,
-							),
-							found: crate::diagnostics::TypeStringRepresentation::from_type_id(
-								value_of_this,
-								&environment.into_general_context(),
-								types,
-								false,
-							),
-						});
+						let mut basic_subtyping = BasicEquality {
+							add_property_restrictions: false,
+							position: Span { start: 0, end: 0, source: SourceId::NULL },
+						};
+						if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
+							restriction,
+							value_of_this,
+							None,
+							// TODO temp position
+							&mut basic_subtyping,
+							environment,
+							&types,
+						) {
+							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
+								reference,
+								requirement:
+									crate::diagnostics::TypeStringRepresentation::from_type_id(
+										restriction,
+										&environment.into_general_context(),
+										types,
+										false,
+									),
+								found: crate::diagnostics::TypeStringRepresentation::from_type_id(
+									value_of_this,
+									&environment.into_general_context(),
+									types,
+									false,
+								),
+							});
+						}
 					}
 				}
 			}
@@ -520,23 +512,38 @@ impl FunctionType {
 		}
 
 		// Evaluate effects directly into environment
-		for event in self.effects.clone().into_iter() {
-			// TODO skip returns if new, need a warning or something.
+		// let mut chain = Vec::new();
+		// chain: Annex::new(&mut chain),
+		let mut early_return = behavior.new_function_target(self.id, |target| {
+			for event in self.effects.clone().into_iter() {
+				let result = apply_event(
+					event,
+					this_argument,
+					&mut type_arguments,
+					environment,
+					target,
+					types,
+				);
 
-			let apply_event =
-				apply_event(event, environment, this_argument, &mut type_arguments, types);
-			if let EarlyReturn::Some(returned_type) = apply_event {
-				if let CalledWithNew::New { .. } = called_with_new {
-					crate::utils::notify!("Returned despite being called with new...");
-					// todo!("warning")
+				if let Some(result) = result {
+					return Some(result);
 				}
-
-				return Ok(FunctionCallResult {
-					returned_type,
-					warnings: Default::default(),
-					called: Some(self.id.clone()),
-				});
 			}
+			None
+		});
+
+		if let Some(returned_type) = early_return {
+			if let CalledWithNew::New { .. } = called_with_new {
+				// TODO skip returns if new, need a warning or something.
+				crate::utils::notify!("Returned despite being called with new...");
+				// todo!("warning")
+			}
+
+			return Ok(FunctionCallResult {
+				returned_type,
+				warnings: Default::default(),
+				called: Some(self.id.clone()),
+			});
 		}
 
 		// set events should cover property specialization here:
@@ -553,12 +560,67 @@ impl FunctionType {
 		// } else {
 		// };
 
-		let returned_type = specialize(self.return_type, &mut type_arguments, environment, types);
+		let returned_type = specialize(
+			self.return_type,
+			&mut type_arguments,
+			&environment.into_general_context(),
+			types,
+		);
 
 		Ok(FunctionCallResult {
 			returned_type,
 			warnings: Default::default(),
 			called: Some(self.id.clone()),
 		})
+	}
+
+	fn synthesize_call_site_type_arguments(
+		&self,
+		call_site_type_arguments: Vec<(Span, TypeId)>,
+		types: &mut crate::types::TypeStore,
+		environment: &mut Environment,
+	) -> SmallMap<TypeId, FunctionTypeArgument> {
+		if let Some(ref typed_parameters) = self.type_parameters {
+			typed_parameters
+				.0
+				.iter()
+				.zip(call_site_type_arguments.into_iter())
+				.map(|(param, (pos, ty))| {
+					if let Type::RootPolyType(PolyNature::Generic {
+						eager_fixed: PolyPointer::Fixed(gen_ty),
+						..
+					}) = types.get_type_by_id(param.id)
+					{
+						let mut basic_subtyping = BasicEquality {
+							add_property_restrictions: false,
+							position: pos.clone(),
+						};
+						let type_is_subtype = type_is_subtype(
+							*gen_ty,
+							ty,
+							None,
+							&mut basic_subtyping,
+							environment,
+							types,
+						);
+
+						match type_is_subtype {
+							SubTypeResult::IsSubType => {}
+							SubTypeResult::IsNotSubType(_) => {
+								todo!("generic argument does not match restriction")
+							}
+						}
+					} else {
+						todo!();
+						// crate::utils::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
+					};
+
+					(param.id, FunctionTypeArgument { value: None, restriction: Some((pos, ty)) })
+				})
+				.collect()
+		} else {
+			crate::utils::notify!("Call site arguments on function without typed parameters...");
+			SmallMap::new()
+		}
 	}
 }

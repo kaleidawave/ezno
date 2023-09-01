@@ -56,6 +56,7 @@ pub enum FunctionNature {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct SynthesizedParameter {
 	pub name: String,
+	/// This is the generic parameter type, not the restriction
 	pub ty: TypeId,
 	pub position: Span,
 	/// For optional parameters this is [TypeId::UNDEFINED_TYPE] else some type

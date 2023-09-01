@@ -66,10 +66,16 @@ pub(super) fn synthesize_block<T: crate::FSResolver>(
 		}
 	}
 
-	if let Some(statements) = unreachable_at_idx.map(|idx| &statements[idx..]) {
-		crate::utils::notify!("Statements not run, only run for expressions and such");
-		// if statements.iter().all(|stmt|)
-		// let span = statements.first().unwrap().get_position().union(&statements.last().unwrap().get_position());
-		// checking_data.diagnostics_container.add_error(TypeCheckError::StatementsNotRun { between: span });
+	if let Some(idx) = unreachable_at_idx {
+		let statements_not_run = &statements[idx..];
+		if !statements_not_run.is_empty() {
+			crate::utils::notify!(
+				"Statements not run, only run for expressions and such {:?}",
+				statements_not_run
+			);
+			// if statements.iter().all(|stmt|)
+			// let span = statements.first().unwrap().get_position().union(&statements.last().unwrap().get_position());
+			// checking_data.diagnostics_container.add_error(TypeCheckError::StatementsNotRun { between: span });
+		}
 	}
 }

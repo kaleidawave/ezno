@@ -3,8 +3,14 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	types::{properties::Property, TypeStore},
-	VariableId,
+	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
+	types::{
+		is_type_truthy_falsy,
+		printing::print_type,
+		properties::{get_property, set_property, Property},
+		TypeStore,
+	},
+	TruthyFalsy, VariableId,
 };
 
 mod function_calling;
@@ -52,6 +58,13 @@ pub enum Event {
 	/// Also used for DCE
 	SetsVariable(VariableId, TypeId),
 
+	/// Mostly trivial, sometimes can call a function :(
+	Getter {
+		on: TypeId,
+		under: TypeId,
+		reflects_dependency: Option<TypeId>,
+	},
+
 	/// All changes to the value of a property
 	Setter {
 		on: TypeId,
@@ -63,13 +76,6 @@ pub enum Event {
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
-	},
-
-	// TODO
-	Getter {
-		on: TypeId,
-		under: TypeId,
-		reflects_dependency: Option<TypeId>,
 	},
 
 	/// This includes closed over variables, anything dependent
@@ -85,7 +91,7 @@ pub enum Event {
 	Throw(TypeId),
 
 	Conditionally {
-		on: TypeId,
+		condition: TypeId,
 		events_if_truthy: Box<[Event]>,
 		else_events: Box<[Event]>,
 	},
@@ -138,101 +144,104 @@ pub enum CallingTiming {
 
 pub(crate) type EarlyReturn = Option<TypeId>;
 
-trait EventPool {}
-
 pub(crate) fn apply_event(
 	event: Event,
-	//
-	environment: &mut Environment,
 	this_argument: Option<TypeId>,
 	type_arguments: &mut TypeArguments,
+	environment: &mut Environment,
+	target: &mut Target,
 	types: &mut TypeStore,
 ) -> EarlyReturn {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency } => {
 			if let Some(id) = reflects_dependency {
-				// TODO checking constraints if inferred
 				let value = match reference {
-					RootReference::VariableId(variable) => environment
-						.get_value_of_variable(variable)
-						.expect("closed over reference not assigned"),
+					RootReference::VariableId(id) => {
+						get_value_of_variable(environment.facts_chain(), id)
+							.expect("variable has no value")
+					}
 					RootReference::This => {
 						this_argument.unwrap_or_else(|| environment.get_value_of_this(types))
 					}
 				};
-
 				type_arguments.set_id(id, value, types);
 			}
 		}
 		Event::SetsVariable(variable, value) => {
-			let new_value = specialize(value, type_arguments, environment, types);
+			let new_value =
+				specialize(value, type_arguments, &environment.into_general_context(), types);
 
-			// TODO re-push event
-			environment.context_type.events.push(Event::SetsVariable(variable.clone(), new_value));
-			environment.variable_current_value.insert(variable, new_value);
+			{
+				let facts = target.get_top_level_facts(environment);
+				facts.events.push(Event::SetsVariable(variable.clone(), new_value));
+				facts.variable_current_value.insert(variable, new_value);
+			}
+		}
+		Event::Getter { on, under, reflects_dependency } => {
+			let gc = environment.into_general_context();
+
+			let on = specialize(on, type_arguments, &gc, types);
+			let property = specialize(under, type_arguments, &gc, types);
+
+			let value = get_property(on, under, None, environment, target, types)
+				.expect("Inferred constraints and checking failed");
+
+			if let Some(id) = reflects_dependency {
+				type_arguments.set_id(id, value.into(), types);
+			}
 		}
 		Event::Setter { on, under, new, reflects_dependency, initialization } => {
-			let on = specialize(on, type_arguments, environment, types);
-			let under = specialize(under, type_arguments, environment, types);
+			let gc = environment.into_general_context();
+			let on = specialize(on, type_arguments, &gc, types);
+			let under = specialize(under, type_arguments, &gc, types);
 
 			let new = match new {
 				Property::Value(new) => {
-					Property::Value(specialize(new, type_arguments, environment, types))
+					Property::Value(specialize(new, type_arguments, &gc, types))
 				}
+				// For declare property
 				Property::Getter(_) => todo!(),
 				Property::Setter(_) => todo!(),
 				Property::GetterAndSetter(_, _) => todo!(),
 			};
 
-			// crate::utils::notify!(
-			// 	"[Event::Setter] {}[{}] = {}",
-			// 	environment.debug_type(under),
-			// 	environment.debug_type(on),
-			// 	environment.debug_type(new)
-			// );
+			let gc = environment.into_general_context();
+
+			crate::utils::notify!(
+				"[Event::Setter] {}[{}] = {}",
+				print_type(on, types, &gc, true),
+				print_type(under, types, &gc, true),
+				if let Property::Value(new) = new {
+					print_type(new, types, &gc, true)
+				} else {
+					format!("{:?}", new)
+				}
+			);
 
 			if initialization {
-				environment.register_property(on, under, new, true);
+				target.get_top_level_facts(environment).register_property(on, under, new, true);
 			} else {
-				match new {
-					Property::Value(new) => {
-						let returned = environment.set_property(on, under, new, types).unwrap();
+				let returned = set_property(on, under, new, environment, target, types).unwrap();
 
-						if let Some(id) = reflects_dependency {
-							type_arguments.set_id(
-								id,
-								returned.unwrap_or(TypeId::UNDEFINED_TYPE),
-								types,
-							);
-						}
-					}
-					Property::Getter(_) => todo!(),
-					Property::Setter(_) => todo!(),
-					Property::GetterAndSetter(_, _) => todo!(),
+				if let Some(id) = reflects_dependency {
+					type_arguments.set_id(id, returned.unwrap_or(TypeId::UNDEFINED_TYPE), types);
 				}
 			}
 		}
-		Event::Getter { on, under: property, reflects_dependency } => {
-			if let Some(id) = reflects_dependency {
-				let on = specialize(on, type_arguments, environment, types);
-				let property = specialize(property, type_arguments, environment, types);
-
-				let value = environment
-					.get_property(on, property, types, None)
-					.expect("Inferred constraints and checking failed");
-
-				type_arguments.set_id(id, value.into(), types);
-			}
-		}
 		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
-			let on = specialize(on, type_arguments, environment, types);
+			let on = specialize(on, type_arguments, &environment.into_general_context(), types);
 
 			let with = with
 				.into_iter()
 				.map(|argument| match argument {
 					SynthesizedArgument::NonSpread { ty, position: pos } => {
 						SynthesizedArgument::NonSpread {
-							ty: specialize(*ty, type_arguments, environment, types),
+							ty: specialize(
+								*ty,
+								type_arguments,
+								&environment.into_general_context(),
+								types,
+							),
 							position: pos.clone(),
 						}
 					}
@@ -250,6 +259,7 @@ pub(crate) fn apply_event(
 						// TODO
 						source_map::Span::NULL_SPAN,
 						environment,
+						target,
 						types,
 					);
 					match result {
@@ -288,32 +298,83 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Throw(thrown) => {
-			let specialized_thrown = specialize(thrown, type_arguments, environment, types);
-			environment.throw_value(specialized_thrown);
+			let specialized_thrown =
+				specialize(thrown, type_arguments, &environment.into_general_context(), types);
+
+			target.get_top_level_facts(environment).throw_value(specialized_thrown);
 
 			if specialized_thrown != TypeId::ERROR_TYPE {
 				return None;
 			}
 		}
 		// TODO extract
-		Event::Conditionally { on, events_if_truthy, else_events } => {
-			let on = specialize(on, type_arguments, environment, types);
+		Event::Conditionally { condition, events_if_truthy, else_events } => {
+			let condition =
+				specialize(condition, type_arguments, &environment.into_general_context(), types);
 
-			match environment.is_type_truthy_falsy(on, types) {
-				crate::TruthyFalsy::Decidable(value) => {
-					let to_evaluate = if value { events_if_truthy } else { else_events };
-					for event in to_evaluate.iter().cloned() {
-						apply_event(event, environment, this_argument, type_arguments, types);
+			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
+				let to_evaluate = if result { events_if_truthy } else { else_events };
+				for event in to_evaluate.iter().cloned() {
+					apply_event(event, this_argument, type_arguments, environment, target, types);
+				}
+			} else {
+				// TODO early returns
+
+				// TODO could inject proofs but probably already worked out
+				let truthy_facts = target.new_conditional_target(|target: &mut Target| {
+					for event in events_if_truthy.into_vec() {
+						apply_event(
+							event,
+							this_argument,
+							type_arguments,
+							environment,
+							target,
+							types,
+						);
 					}
+				});
+
+				let mut else_facts = target.new_conditional_target(|target: &mut Target| {
+					for event in else_events.into_vec() {
+						apply_event(
+							event,
+							this_argument,
+							type_arguments,
+							environment,
+							target,
+							types,
+						);
+					}
+				});
+
+				// crate::utils::notify!("TF {:?}\n EF {:?}", truthy_facts, else_facts);
+
+				// TODO all things that are
+				// - variable and property values (these aren't read from events)
+				// - immutable, mutable, prototypes etc
+				// }
+				let facts = target.get_top_level_facts(environment);
+				for (var, truth) in truthy_facts.variable_current_value {
+					let entry = facts.variable_current_value.entry(var);
+					entry.and_modify(|existing| {
+						*existing = types.new_conditional_type(
+							condition,
+							truth,
+							else_facts.variable_current_value.remove(&var).unwrap_or(*existing),
+						)
+					});
 				}
-				crate::TruthyFalsy::Unknown => {
-					todo!()
-					// environment.new_lexical_environment_fold_into_parent(environment_type, checking_data, cb);
-				}
+
+				target.get_top_level_facts(environment).events.push(Event::Conditionally {
+					condition,
+					events_if_truthy: truthy_facts.events.into_boxed_slice(),
+					else_events: else_facts.events.into_boxed_slice(),
+				});
 			}
 		}
 		Event::Return { returned } => {
-			let specialized_returned = specialize(returned, type_arguments, environment, types);
+			let specialized_returned =
+				specialize(returned, type_arguments, &environment.into_general_context(), types);
 
 			if specialized_returned != TypeId::ERROR_TYPE {
 				return Some(specialized_returned);
@@ -324,11 +385,18 @@ pub(crate) fn apply_event(
 		Event::CreateObject { referenced_in_scope_as, prototype } => {
 			// TODO only if exposed via set
 
+			let prototype = prototype.map(|prototype| {
+				specialize(prototype, type_arguments, &environment.into_general_context(), types)
+			});
+
 			crate::utils::notify!(
 				"Event::CreateObject: Check whether creating a function for closed over variables"
 			);
 
-			let new_id = environment.new_object(types, prototype);
+			// TODO
+			let is_under_dyn = true;
+			let new_id =
+				target.get_top_level_facts(environment).new_object(prototype, types, is_under_dyn);
 			type_arguments.set_id(referenced_in_scope_as, new_id, types);
 		}
 		Event::Repeatedly { n, with } => {
