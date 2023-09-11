@@ -3,37 +3,36 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
+	behavior::functions::ThisValue,
+	context::{calling::Target, get_on_ctx, get_value_of_variable, CallCheckingBehavior},
 	types::{
-		is_type_truthy_falsy,
-		printing::print_type,
+		calling::CalledWithNew,
+		curry_arguments, is_type_truthy_falsy,
 		properties::{get_property, set_property, Property},
 		TypeStore,
 	},
-	TruthyFalsy, VariableId,
+	FunctionId, GeneralContext, TruthyFalsy, VariableId,
 };
 
-mod function_calling;
 pub(crate) mod helpers;
-pub use function_calling::*;
 
 use crate::{
 	types::functions::SynthesizedArgument,
-	types::{poly_types::TypeArguments, specialize, TypeId},
+	types::{poly_types::FunctionTypeArguments, specialize, TypeId},
 	Environment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
 pub enum RootReference {
-	VariableId(VariableId),
+	Variable(VariableId),
 	This,
 }
 
 impl RootReference {
-	pub fn get_name(self, environment: &Environment) -> String {
+	pub fn get_name<'a>(&self, ctx: &'a GeneralContext) -> &'a str {
 		match self {
-			Self::VariableId(id) => environment.get_variable_name(&id),
-			Self::This => "this".to_owned(),
+			Self::Variable(id) => get_on_ctx!(ctx.get_variable_name(&id)),
+			Self::This => "this",
 		}
 	}
 }
@@ -122,16 +121,20 @@ pub enum Event {
 	/// TODO this is only need if exposed by return typed. It may get added but needs some way of ignoring it if
 	/// not in externally referenced set or something
 	CreateObject {
-		prototype: Option<TypeId>,
+		prototype: PrototypeArgument,
 		/// This is the id referencing a [Type::AliasTo] that is created
 		///
 		/// This is also for the specialization (somehow)
 		referenced_in_scope_as: TypeId,
 	},
-	CreatesClosure {
-		id: TypeId,
-	},
 	// Registration(Registration),
+}
+
+#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+pub enum PrototypeArgument {
+	Yeah(TypeId),
+	None,
+	Function(FunctionId),
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -146,8 +149,8 @@ pub(crate) type EarlyReturn = Option<TypeId>;
 
 pub(crate) fn apply_event(
 	event: Event,
-	this_argument: Option<TypeId>,
-	type_arguments: &mut TypeArguments,
+	this_value: ThisValue,
+	type_arguments: &mut FunctionTypeArguments,
 	environment: &mut Environment,
 	target: &mut Target,
 	types: &mut TypeStore,
@@ -156,48 +159,42 @@ pub(crate) fn apply_event(
 		Event::ReadsReference { reference, reflects_dependency } => {
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
-					RootReference::VariableId(id) => {
-						get_value_of_variable(environment.facts_chain(), id)
+					RootReference::Variable(id) => {
+						get_value_of_variable(environment.facts_chain(), id, Some(&*type_arguments))
 							.expect("variable has no value")
 					}
-					RootReference::This => {
-						this_argument.unwrap_or_else(|| environment.get_value_of_this(types))
-					}
+					RootReference::This => this_value.get(environment, types),
 				};
 				type_arguments.set_id(id, value, types);
 			}
 		}
 		Event::SetsVariable(variable, value) => {
-			let new_value =
-				specialize(value, type_arguments, &environment.into_general_context(), types);
+			let new_value = specialize(value, type_arguments, environment, types);
 
-			{
-				let facts = target.get_top_level_facts(environment);
-				facts.events.push(Event::SetsVariable(variable.clone(), new_value));
-				facts.variable_current_value.insert(variable, new_value);
-			}
+			// if not closed over!!
+
+			let facts = target.get_top_level_facts(environment);
+			facts.events.push(Event::SetsVariable(variable.clone(), new_value));
+			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency } => {
-			let gc = environment.into_general_context();
+			let on = specialize(on, type_arguments, environment, types);
+			let property = specialize(under, type_arguments, environment, types);
 
-			let on = specialize(on, type_arguments, &gc, types);
-			let property = specialize(under, type_arguments, &gc, types);
-
-			let value = get_property(on, under, None, environment, target, types)
+			let (_, value) = get_property(on, under, None, environment, target, types)
 				.expect("Inferred constraints and checking failed");
 
 			if let Some(id) = reflects_dependency {
-				type_arguments.set_id(id, value.into(), types);
+				type_arguments.set_id(id, value, types);
 			}
 		}
 		Event::Setter { on, under, new, reflects_dependency, initialization } => {
-			let gc = environment.into_general_context();
-			let on = specialize(on, type_arguments, &gc, types);
-			let under = specialize(under, type_arguments, &gc, types);
+			let on = specialize(on, type_arguments, environment, types);
+			let under = specialize(under, type_arguments, environment, types);
 
 			let new = match new {
 				Property::Value(new) => {
-					Property::Value(specialize(new, type_arguments, &gc, types))
+					Property::Value(specialize(new, type_arguments, environment, types))
 				}
 				// For declare property
 				Property::Getter(_) => todo!(),
@@ -207,16 +204,16 @@ pub(crate) fn apply_event(
 
 			let gc = environment.into_general_context();
 
-			crate::utils::notify!(
-				"[Event::Setter] {}[{}] = {}",
-				print_type(on, types, &gc, true),
-				print_type(under, types, &gc, true),
-				if let Property::Value(new) = new {
-					print_type(new, types, &gc, true)
-				} else {
-					format!("{:?}", new)
-				}
-			);
+			// crate::utils::notify!(
+			// 	"[Event::Setter] {}[{}] = {}",
+			// 	crate::types::printing::print_type(on, types, &gc, true),
+			// 	crate::types::printing::print_type(under, types, &gc, true),
+			// 	if let Property::Value(new) = new {
+			// 		crate::types::printing::print_type(new, types, &gc, true)
+			// 	} else {
+			// 		format!("{:#?}", new)
+			// 	}
+			// );
 
 			if initialization {
 				target.get_top_level_facts(environment).register_property(on, under, new, true);
@@ -229,21 +226,14 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
-			let on = specialize(on, type_arguments, &environment.into_general_context(), types);
+			let on = specialize(on, type_arguments, environment, types);
 
 			let with = with
 				.into_iter()
 				.map(|argument| match argument {
 					SynthesizedArgument::NonSpread { ty, position: pos } => {
-						SynthesizedArgument::NonSpread {
-							ty: specialize(
-								*ty,
-								type_arguments,
-								&environment.into_general_context(),
-								types,
-							),
-							position: pos.clone(),
-						}
+						let ty = specialize(*ty, type_arguments, environment, types);
+						SynthesizedArgument::NonSpread { ty, position: pos.clone() }
 					}
 				})
 				.collect::<Vec<_>>();
@@ -253,7 +243,7 @@ pub(crate) fn apply_event(
 					let result = crate::types::calling::call_type(
 						on,
 						called_with_new,
-						None,
+						Default::default(),
 						None,
 						with,
 						// TODO
@@ -298,8 +288,7 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Throw(thrown) => {
-			let specialized_thrown =
-				specialize(thrown, type_arguments, &environment.into_general_context(), types);
+			let specialized_thrown = specialize(thrown, type_arguments, environment, types);
 
 			target.get_top_level_facts(environment).throw_value(specialized_thrown);
 
@@ -309,13 +298,12 @@ pub(crate) fn apply_event(
 		}
 		// TODO extract
 		Event::Conditionally { condition, events_if_truthy, else_events } => {
-			let condition =
-				specialize(condition, type_arguments, &environment.into_general_context(), types);
+			let condition = specialize(condition, type_arguments, environment, types);
 
 			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
 				for event in to_evaluate.iter().cloned() {
-					apply_event(event, this_argument, type_arguments, environment, target, types);
+					apply_event(event, this_value, type_arguments, environment, target, types);
 				}
 			} else {
 				// TODO early returns
@@ -323,27 +311,13 @@ pub(crate) fn apply_event(
 				// TODO could inject proofs but probably already worked out
 				let truthy_facts = target.new_conditional_target(|target: &mut Target| {
 					for event in events_if_truthy.into_vec() {
-						apply_event(
-							event,
-							this_argument,
-							type_arguments,
-							environment,
-							target,
-							types,
-						);
+						apply_event(event, this_value, type_arguments, environment, target, types);
 					}
 				});
 
 				let mut else_facts = target.new_conditional_target(|target: &mut Target| {
 					for event in else_events.into_vec() {
-						apply_event(
-							event,
-							this_argument,
-							type_arguments,
-							environment,
-							target,
-							types,
-						);
+						apply_event(event, this_value, type_arguments, environment, target, types);
 					}
 				});
 
@@ -373,8 +347,7 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Return { returned } => {
-			let specialized_returned =
-				specialize(returned, type_arguments, &environment.into_general_context(), types);
+			let specialized_returned = specialize(returned, type_arguments, environment, types);
 
 			if specialized_returned != TypeId::ERROR_TYPE {
 				return Some(specialized_returned);
@@ -385,24 +358,38 @@ pub(crate) fn apply_event(
 		Event::CreateObject { referenced_in_scope_as, prototype } => {
 			// TODO only if exposed via set
 
-			let prototype = prototype.map(|prototype| {
-				specialize(prototype, type_arguments, &environment.into_general_context(), types)
-			});
-
-			crate::utils::notify!(
-				"Event::CreateObject: Check whether creating a function for closed over variables"
-			);
-
 			// TODO
 			let is_under_dyn = true;
-			let new_id =
-				target.get_top_level_facts(environment).new_object(prototype, types, is_under_dyn);
-			type_arguments.set_id(referenced_in_scope_as, new_id, types);
+
+			let new_object_id = match prototype {
+				PrototypeArgument::Yeah(prototype) => {
+					let prototype = specialize(prototype, type_arguments, environment, types);
+					target.get_top_level_facts(environment).new_object(
+						Some(prototype),
+						types,
+						is_under_dyn,
+					)
+				}
+				PrototypeArgument::None => {
+					target.get_top_level_facts(environment).new_object(None, types, is_under_dyn)
+				}
+				PrototypeArgument::Function(id) => {
+					types.register_type(crate::Type::Function(id, this_value.clone()))
+				}
+			};
+
+			let new_object_id_with_curried_arguments =
+				curry_arguments(type_arguments, types, new_object_id);
+
+			type_arguments.set_id(
+				referenced_in_scope_as,
+				new_object_id_with_curried_arguments,
+				types,
+			);
 		}
 		Event::Repeatedly { n, with } => {
 			todo!()
 		}
-		Event::CreatesClosure { id } => {}
 	}
 	None
 }

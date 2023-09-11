@@ -197,10 +197,14 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						None,
 					);
 
-					let base = checking_data.types.register_type(crate::Type::Function(
-						base,
-						crate::types::FunctionNature::Reference,
-					));
+					let base = checking_data.types.new_function_type_annotation(
+						base.type_parameters,
+						base.parameters,
+						base.return_type,
+						func.position.clone(),
+						base.effects,
+						base.constant_id,
+					);
 
 					let behavior = crate::context::VariableRegisterBehavior::Declare { base };
 					environment.register_variable_handle_error(

@@ -1,38 +1,46 @@
 //! How type parameters are resolved
 
 use crate::{
-	behavior::operations::{
-		evaluate_equality_inequality_operation, evaluate_mathematical_operation,
+	behavior::{
+		functions::ClosureId,
+		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
-	types::{is_type_truthy_falsy, Constructor, PolyNature, Type, TypeStore},
-	GeneralContext, TruthyFalsy, TypeId,
+	types::{is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type, TypeStore},
+	Environment, TruthyFalsy, TypeId,
 };
 
-use super::TypeArguments;
+use super::generic_type_arguments::TypeArgumentStore;
 
 pub(crate) fn specialize(
 	id: TypeId,
-	arguments: &mut TypeArguments,
-	environment: &GeneralContext,
+	arguments: &mut impl TypeArgumentStore,
+	// TODO temp
+	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	if let Some(value) = arguments.get_arg(id) {
+	if let Some(value) = arguments.get_argument(id) {
 		return value;
 	}
 
 	let ty = types.get_type_by_id(id);
 
 	match ty {
-		Type::Constant(_) | Type::Object(..) => id,
-		// TODO temp
-		Type::Function(_, _) => id,
+		Type::Constant(_) => id,
+		Type::Class(..) | Type::FunctionReference(..) | Type::Object(..) | Type::Function(..) => {
+			curry_arguments(arguments, types, id)
+		}
 		Type::AliasTo { .. } | Type::And(_, _) | Type::Or(_, _) | Type::NamedRooted { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
 				id
 			} else {
 				// Other root poly types cases handled by the early return
-				let on = crate::types::printing::print_type(id, types, environment, true);
+				let on = crate::types::printing::print_type(
+					id,
+					types,
+					&environment.into_general_context(),
+					true,
+				);
 				crate::utils::notify!("Could not find argument for {}", on);
 				id
 			}
@@ -160,14 +168,22 @@ pub(crate) fn specialize(
 				// 	.get_property(on, property, checking_data, None)
 				// 	.expect("Inferred constraints and checking failed for a property")
 			}
-			Constructor::StructureGenerics { on, with } => {
-				let on = specialize(on, arguments, environment, types);
-				let with = with
-					.into_iter()
-					.map(|(lhs, with)| (lhs, specialize(with, arguments, environment, types)))
-					.collect();
+			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
+				todo!()
+				// let on = specialize(on, arguments, environment, types);
+				// let with = with
+				// 	.into_iter()
+				// 	.map(|(lhs, with)| {
+				// 		(lhs, specialize(with, arguments, environment, types))
+				// 	})
+				// 	.collect();
 
-				types.register_type(Type::Constructor(Constructor::StructureGenerics { on, with }))
+				// types.register_type(Type::Constructor(Constructor::StructureGenerics {
+				// 	on,
+				// 	with,
+				// 	// TODO not sure...
+				// 	closures: this_closures.into_iter().chain(closures.clone()).collect(),
+				// }))
 			}
 
 			// Constructor::PrototypeOf(prototype) => {
@@ -235,5 +251,22 @@ pub(crate) fn specialize(
 				}
 			},
 		},
+	}
+}
+
+pub(crate) fn curry_arguments(
+	arguments: &mut impl TypeArgumentStore,
+	types: &mut TypeStore,
+	id: TypeId,
+) -> TypeId {
+	if !arguments.is_empty() {
+		// TODO only carry arguments that are used
+		let arguments = arguments.into_structural_generic_arguments();
+		let ty = types.register_type(Type::Constructor(Constructor::StructureGenerics(
+			crate::types::StructureGenerics { on: id, arguments },
+		)));
+		ty
+	} else {
+		id
 	}
 }

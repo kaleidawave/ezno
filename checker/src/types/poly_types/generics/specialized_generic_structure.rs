@@ -1,4 +1,4 @@
-use super::{generic_type_arguments::TypeArguments, ResolveGenerics};
+use super::{generic_type_arguments::FunctionTypeArguments, ResolveGenerics};
 use crate::{CheckingData, DiagnosticsContainer, TypeId};
 
 /// A instance of a generic typed object
@@ -37,7 +37,7 @@ impl From<Option<TypeId>> for GenericStructureArgumentValue {
 impl ResolveGenerics for GenericStructureArgumentValue {
 	fn resolve_generics<T: crate::FSResolver>(
 		self,
-		type_arguments: &TypeArguments,
+		type_arguments: &FunctionTypeArguments,
 		checking_data: &mut CheckingData<T>,
 	) -> Self {
 		todo!()
@@ -67,7 +67,7 @@ pub struct GenericStructureTypeArgument {
 impl ResolveGenerics for GenericStructureTypeArgument {
 	fn resolve_generics<T: crate::FSResolver>(
 		self,
-		type_arguments: &TypeArguments,
+		type_arguments: &FunctionTypeArguments,
 		checking_data: &mut CheckingData<T>,
 	) -> Self {
 		Self {
@@ -100,7 +100,7 @@ impl SpecializedGeneric {
 	}
 }
 
-impl From<GenericStructureTypeArguments> for TypeArguments {
+impl From<GenericStructureTypeArguments> for FunctionTypeArguments {
 	fn from(instance_of_generics_arguments: GenericStructureTypeArguments) -> Self {
 		todo!()
 		// TypeArguments {

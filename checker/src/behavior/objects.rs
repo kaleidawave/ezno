@@ -23,3 +23,9 @@ impl ObjectBuilder {
 		self.object
 	}
 }
+
+pub enum SpecialObjects {
+	Promise { events: () },
+	Generator { position: () },
+	Proxy { handler: (), over: () },
+}

@@ -6,6 +6,9 @@ use crate::{events::RootReference, FunctionId, GenericTypeParameters, TypeId};
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionType {
+	/// Syntax defined pointer
+	pub id: FunctionId,
+
 	/// TODO not sure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesizedParameters,
@@ -13,16 +16,20 @@ pub struct FunctionType {
 	/// Side effects of the function
 	pub effects: Vec<crate::events::Event>,
 
-	/// TODO type alias
-	pub closed_over_references: HashMap<RootReference, TypeId>,
+	/// Things that this function pulls in. Converse of closed over which is where results below use
+	/// variables in this scope.
+	pub used_parent_references: HashMap<RootReference, TypeId>,
+
+	/// References it needs to retain for returning / other effects where things go out.
+	///
+	/// The type is the initial value of the closure variable when this is called
+	pub closed_over_variables: HashMap<RootReference, TypeId>,
 
 	/// Can be called for constant result
 	pub constant_id: Option<String>,
 
 	/// TODO temp
 	pub kind: FunctionKind,
-
-	pub id: FunctionId,
 }
 
 /// TODO as generics
@@ -38,19 +45,30 @@ pub enum FunctionKind {
 	Method,
 }
 
-/// TODO needs improvement
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionNature {
-	BehindPoly {
-		/// TODO function id?
-		function_id_if_open_poly: Option<FunctionId>,
-		this_type: Option<TypeId>,
-	},
-	/// Last is 'this' type,
-	Source(Option<TypeId>),
-	Constructor,
-	Reference,
-}
+// /// TODO needs improvement
+// #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+// pub enum FunctionNature {
+// 	BehindPoly {
+// 		/// TODO function id?
+// 		function_id_if_open_poly: Option<FunctionId>,
+// 		state: FunctionState,
+// 	},
+// 	/// Last is 'this' type,
+// 	Source {
+// 		state: FunctionState,
+// 	},
+// 	Reference,
+// }
+
+// impl FunctionNature {
+// 	pub fn get_this_and_closed_variables(self) -> (Option<TypeId>, ClosedOverVariables) {
+// 		match self {
+// 			FunctionNature::BehindPoly { function_id_if_open_poly: _ , state }
+// 			| FunctionNature::Source { state } => (state.value_of_this, state.closed_over_variables),
+// 			FunctionNature::Reference => (None, Default::default()),
+// 		}
+// 	}
+// }
 
 /// Optionality is indicated by what vector it is in [SynthesizedParameters]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]

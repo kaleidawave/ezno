@@ -1,7 +1,12 @@
 //! Contains wrappers for generic type arguments and their wrapping environments
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
-use crate::{types::TypeStore, CheckingData, TypeId};
+use crate::{
+	behavior::functions::{ClosureChain, ClosureId},
+	context::facts::Facts,
+	types::TypeStore,
+	CheckingData, TypeId,
+};
 
 use map_vec::Map as SmallMap;
 use source_map::Span;
@@ -14,7 +19,7 @@ use super::{GenericStructureTypeArgument, GenericStructureTypeArguments, Resolve
 impl ResolveGenerics for GenericStructureTypeArguments {
 	fn resolve_generics<T: crate::FSResolver>(
 		self,
-		type_arguments: &TypeArguments,
+		type_arguments: &FunctionTypeArguments,
 		checking_data: &mut CheckingData<T>,
 	) -> Self {
 		self.0
@@ -52,9 +57,6 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 // 	StructureGeneric(TypeId),
 // }
 
-#[derive(Debug, Clone)]
-pub struct CurriedFunctionTypeArguments(pub map_vec::Map<TypeId, TypeId>);
-
 // impl From<GenericStructureTypeArguments> for CurriedFunctionTypeArguments {
 // 	fn from(args: GenericStructureTypeArguments) -> Self {
 // 		Self(
@@ -76,7 +78,7 @@ pub struct CurriedFunctionTypeArguments(pub map_vec::Map<TypeId, TypeId>);
 // 	}
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct FunctionTypeArgument {
 	pub value: Option<TypeId>,
 	/// Via <> at call site. Note that backing types are held separately
@@ -85,22 +87,133 @@ pub(crate) struct FunctionTypeArgument {
 
 /// TODO working out environment thingy
 #[derive(Debug)]
-pub(crate) struct TypeArguments {
-	pub structure_arguments: Option<CurriedFunctionTypeArguments>,
+pub(crate) struct FunctionTypeArguments {
+	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
 	pub local_arguments: SmallMap<TypeId, FunctionTypeArgument>,
+	pub closure_id: Option<ClosureId>,
 }
 
-impl TypeArguments {
+pub(crate) trait TypeArgumentStore {
 	/// Gets the value, not the constraint
-	pub(crate) fn get_arg(&self, id: TypeId) -> Option<TypeId> {
-		self.local_arguments.get(&id).and_then(|arg| arg.value)
+	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId>;
+
+	fn get_local_argument(&self, id: TypeId) -> Option<TypeId>;
+
+	fn get_argument(&self, id: TypeId) -> Option<TypeId> {
+		self.get_local_argument(id).or_else(|| self.get_structure_argument(id))
+	}
+
+	fn get_structural_closures(&self) -> Option<Vec<ClosureId>>;
+
+	fn into_structural_generic_arguments(&self) -> StructureGenericArguments;
+
+	fn is_empty(&self) -> bool;
+}
+
+impl ClosureChain for FunctionTypeArguments {
+	fn get_fact_from_closure<T, R>(&self, fact: &Facts, mut cb: T) -> Option<R>
+	where
+		T: Fn(ClosureId) -> Option<R>,
+	{
+		if let Some(ref closure_id) = self.closure_id {
+			let res = cb(*closure_id);
+			if res.is_some() {
+				return res;
+			}
+		}
+		if let Some(ref parent) = self.structure_arguments {
+			for closure_id in parent.closures.iter() {
+				let res = cb(*closure_id);
+				if res.is_some() {
+					return res;
+				}
+			}
+		}
+		None
+	}
+}
+
+impl TypeArgumentStore for FunctionTypeArguments {
+	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
+		self.structure_arguments.as_ref().and_then(|args| args.get_structure_argument(id))
 		// self.structure_arguments
 		// 	.as_ref()
 		// 	.and_then(|structure_arguments| structure_arguments.0.get(id).map(|v| v.as_type()))
 		// 	.or_else(|| self.local_arguments.get(id).and_then(|v| v.value.as_ref()))
 	}
 
+	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
+		self.local_arguments.get(&id).and_then(|arg| arg.value)
+	}
+
+	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
+		None
+	}
+
+	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+		// self.structure_arguments.clone()
+		match self.structure_arguments {
+			Some(ref parent) => {
+				let mut merged = parent.type_arguments.clone();
+				merged
+					.extend(self.local_arguments.iter().map(|(ty, arg)| (*ty, arg.value.unwrap())));
+				StructureGenericArguments {
+					type_arguments: merged,
+					closures: parent
+						.closures
+						.iter()
+						.cloned()
+						.chain(self.closure_id.into_iter())
+						.collect(),
+				}
+			}
+			None => StructureGenericArguments {
+				type_arguments: self
+					.local_arguments
+					.iter()
+					.map(|(ty, arg)| (*ty, arg.value.unwrap()))
+					.collect(),
+				closures: self.closure_id.into_iter().collect(),
+			},
+		}
+	}
+
+	fn is_empty(&self) -> bool {
+		self.closure_id.is_none() && self.local_arguments.len() == 0
+	}
+}
+
+/// These are curried between structures
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct StructureGenericArguments {
+	pub type_arguments: map_vec::Map<TypeId, TypeId>,
+	pub closures: Vec<ClosureId>,
+}
+
+impl TypeArgumentStore for StructureGenericArguments {
+	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
+		self.type_arguments.get(&id).copied()
+	}
+
+	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
+		None
+	}
+
+	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
+		Some(self.closures.clone())
+	}
+
+	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+		self.clone()
+	}
+
+	fn is_empty(&self) -> bool {
+		self.closures.is_empty() && self.type_arguments.len() == 0
+	}
+}
+
+impl FunctionTypeArguments {
 	/// This is from <T>
 	pub(crate) fn get_restriction_for_id(&self, id: TypeId) -> Option<(Span, TypeId)> {
 		self.local_arguments.get(&id).and_then(|arg| arg.restriction.clone())
@@ -135,14 +248,6 @@ impl TypeArguments {
 				});
 			}
 		}
-	}
-
-	// necessary_keys: &impl Iterator<Item = &'a DependentTypeId>,
-	// Used for folding them between functions. e.g `Array.prototype.map`
-	pub(crate) fn into_curried_function_type_arguments(&self) -> CurriedFunctionTypeArguments {
-		crate::utils::notify!("TODO");
-		CurriedFunctionTypeArguments(map_vec::Map::new())
-		// self.local_arguments
 	}
 
 	pub(crate) fn set_this(&mut self, arg: TypeId) {

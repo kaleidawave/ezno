@@ -2,6 +2,7 @@
 #![allow(
 	unreachable_code,
 	unused_variables,
+	unused_imports,
 	unused_mut,
 	dead_code,
 	irrefutable_let_patterns,
@@ -41,7 +42,7 @@ use std::{
 use structures::functions::AutoConstructorId;
 
 use types::{
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	subtyping::{check_satisfies, type_is_subtype, BasicEquality, SubTypeResult},
 	TypeStore,
 };
 
@@ -65,9 +66,7 @@ pub use structures::{
 	modules::SynthesizedModule,
 	variables::Variable,
 };
-pub use types::{
-	calling::call_type_handle_errors, operations::*, poly_types::GenericTypeParameters, subtyping,
-};
+pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
 
 pub use type_mappings::*;
 pub use types::{properties::Property, Constant, Type, TypeId};
@@ -113,11 +112,6 @@ pub struct VariableId(pub SourceId, pub u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub SourceId, pub u32);
-
-impl FunctionId {
-	/// For inferred restrictions...
-	pub const NULL: Self = Self(SourceId::NULL, 0);
-}
 
 pub enum TruthyFalsy {
 	Decidable(bool),
@@ -237,7 +231,7 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		at: Span,
 		environment: &mut Environment,
 	) {
-		if expr_ty == TypeId::ERROR_TYPE {
+		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
 				&environment.into_general_context(),
@@ -255,34 +249,6 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 				expected,
 				found,
 			});
-		} else {
-			let result = type_is_subtype(
-				to_satisfy,
-				expr_ty,
-				None,
-				&mut BasicEquality { add_property_restrictions: false, position: at.clone() },
-				environment,
-				&self.types,
-			);
-			if let SubTypeResult::IsNotSubType(_) = result {
-				let expected = diagnostics::TypeStringRepresentation::from_type_id(
-					to_satisfy,
-					&environment.into_general_context(),
-					&self.types,
-					false,
-				);
-				let found = diagnostics::TypeStringRepresentation::from_type_id(
-					expr_ty,
-					&environment.into_general_context(),
-					&self.types,
-					false,
-				);
-				self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
-					at,
-					expected,
-					found,
-				})
-			}
 		}
 	}
 }

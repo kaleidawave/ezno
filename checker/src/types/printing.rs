@@ -1,8 +1,12 @@
 use super::{PolyNature, Type, TypeId, TypeStore};
-use crate::{context::get_on_ctx, GeneralContext};
+use crate::{
+	context::get_on_ctx,
+	types::{Constructor, StructureGenerics},
+	GeneralContext,
+};
 
 /// TODO temp, needs recursion safe, reuse buffer
-pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bool) -> String {
+pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bool) -> String {
 	use std::fmt::Write;
 
 	let ty = types.get_type_by_id(id);
@@ -10,29 +14,33 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 	match ty {
 		Type::AliasTo { to, name, parameters } => name.clone(),
 		Type::And(a, b) => {
-			format!("{} & {}", print_type(*a, types, env, debug), print_type(*b, types, env, debug))
+			format!("{} & {}", print_type(*a, types, ctx, debug), print_type(*b, types, ctx, debug))
 		}
 		Type::Or(a, b) => {
-			format!("{} | {}", print_type(*a, types, env, debug), print_type(*b, types, env, debug))
+			format!("{} | {}", print_type(*a, types, ctx, debug), print_type(*b, types, ctx, debug))
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, .. } => name.clone(),
-			PolyNature::ParentScope { .. } | PolyNature::Parameter { .. } => {
-				let ty = get_on_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
-				let on = print_type(ty, types, env, debug);
+			PolyNature::ParentScope { based_on: to, reference, .. } => {
+				let on = print_type(*to, types, ctx, debug);
 				if debug {
-					let kind = match nature {
-						PolyNature::Parameter { fixed_to } => "parameter",
-						PolyNature::ParentScope { reference, based_on } => "parent scope",
-						_ => unreachable!(),
-					};
-					format!("[{kind} {}] {on}", id.0)
+					let name = reference.get_name(ctx);
+					// in parent scope
+					format!("[ips {name} {}] {on}", id.0)
+				} else {
+					on
+				}
+			}
+			PolyNature::Parameter { fixed_to: to } => {
+				let on = print_type(*to, types, ctx, debug);
+				if debug {
+					format!("[param {}] {on}", id.0)
 				} else {
 					on
 				}
 			}
 			PolyNature::Open(to) => {
-				let on = print_type(*to, types, env, debug);
+				let on = print_type(*to, types, ctx, debug);
 				if debug {
 					format!("[open {}] {on}", id.0)
 				} else {
@@ -53,15 +61,15 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 		},
 		// TODO these can vary
 		Type::Constructor(constructor) => match constructor {
-			super::Constructor::ConditionalResult {
+			Constructor::ConditionalResult {
 				condition: on,
 				truthy_result: true_result,
 				else_result: false_result,
 				result_union,
 			} => {
-				let on = print_type(*on, types, env, debug);
-				let true_result = print_type(*true_result, types, env, debug);
-				let false_result = print_type(*false_result, types, env, debug);
+				let on = print_type(*on, types, ctx, debug);
+				let true_result = print_type(*true_result, types, ctx, debug);
+				let false_result = print_type(*false_result, types, ctx, debug);
 				if debug {
 					// TODO more
 					format!("({on} ? {true_result} : {false_result})")
@@ -69,26 +77,36 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 					format!("{true_result} | {false_result}")
 				}
 			}
-			super::Constructor::StructureGenerics { on, with } => {
-				let on = print_type(*on, types, env, debug);
-				let mut arguments = String::new();
-				// TODO doesn't quite line up ...
-				for arg in with.values() {
-					let arg = print_type(*arg, types, env, debug);
-					arguments.push_str(&arg);
-					arguments.push_str(", ");
+			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
+				let mut on = print_type(*on, types, ctx, debug);
+				crate::utils::notify!("printing {:?}", id);
+				if debug {
+					if !arguments.closures.is_empty() {
+						write!(on, "[closures {:?}]", arguments.closures).unwrap();
+					}
 				}
-				format!("{on}<{arguments}>")
+				if !arguments.type_arguments.is_empty() {
+					let mut buf = String::new();
+					// TODO might be out of order ...
+					for arg in arguments.type_arguments.values() {
+						let arg = print_type(*arg, types, ctx, debug);
+						buf.push_str(&arg);
+						buf.push_str(", ");
+					}
+					format!("{on}<{buf}>")
+				} else {
+					on
+				}
 			}
 			constructor if debug => match constructor {
-				super::Constructor::BinaryOperator { lhs, operator, rhs } => {
-					let lhs = print_type(*lhs, types, env, debug);
-					let rhs = print_type(*rhs, types, env, debug);
+				Constructor::BinaryOperator { lhs, operator, rhs } => {
+					let lhs = print_type(*lhs, types, ctx, debug);
+					let rhs = print_type(*rhs, types, ctx, debug);
 					format!("({lhs} + {rhs})")
 				}
-				super::Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
-					let lhs = print_type(*lhs, types, env, debug);
-					let rhs = print_type(*rhs, types, env, debug);
+				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
+					let lhs = print_type(*lhs, types, ctx, debug);
+					let rhs = print_type(*rhs, types, ctx, debug);
 					match operator {
 						crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
 							format!("({lhs} === {rhs})")
@@ -98,29 +116,25 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 						}
 					}
 				}
-				super::Constructor::UnaryOperator { operator, operand } => todo!(),
-				super::Constructor::TypeOperator(_) => todo!(),
-				super::Constructor::TypeRelationOperator(_) => todo!(),
-				super::Constructor::FunctionResult { on, with, result } => {
-					let a = match result {
-						crate::types::PolyPointer::Fixed(fixed) => {
-							print_type(*fixed, types, env, debug)
-						}
-						crate::types::PolyPointer::Inferred(_) => todo!(),
-					};
-					format!("[func result] {}", a)
+				Constructor::UnaryOperator { operator, operand } => todo!(),
+				Constructor::TypeOperator(_) => todo!(),
+				Constructor::TypeRelationOperator(_) => todo!(),
+				Constructor::FunctionResult { on, with, result } => {
+					// TODO arguments and stuff
+					format!("[func result] {}", print_type(*result, types, ctx, debug))
 				}
-				super::Constructor::Property { on, under } => {
-					let on = print_type(*on, types, env, debug);
-					let under = print_type(*under, types, env, debug);
+				Constructor::Property { on, under } => {
+					let on = print_type(*on, types, ctx, debug);
+					let under = print_type(*under, types, ctx, debug);
 					format!("{on}[{under}]")
 				}
-				super::Constructor::StructureGenerics { .. }
-				| super::Constructor::ConditionalResult { .. } => unreachable!(),
+				Constructor::StructureGenerics { .. } | Constructor::ConditionalResult { .. } => {
+					unreachable!()
+				}
 			},
 			constructor => {
-				let base = get_on_ctx!(env.get_poly_base(id, types)).unwrap().get_type();
-				print_type(base, types, env, debug)
+				let base = get_on_ctx!(ctx.get_poly_base(id, types)).unwrap();
+				print_type(base, types, ctx, debug)
 			}
 		},
 		Type::NamedRooted { name, parameters } => {
@@ -140,10 +154,21 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 				cst.as_type_name()
 			}
 		}
-		Type::Function(func, _) => {
+		f @ Type::FunctionReference(func_id, this_ty) | f @ Type::Function(func_id, this_ty) => {
+			let func = types.functions.get(func_id).unwrap();
 			let mut buf = String::new();
 			if debug {
-				write!(buf, "[obj {}]", id.0).unwrap();
+				write!(
+					buf,
+					"[func {}/{:?}, uses {:?}, closes over {:?}, this {:?}, const {:?}]",
+					id.0,
+					func_id,
+					func.used_parent_references,
+					func.closed_over_variables,
+					this_ty,
+					func.constant_id
+				)
+				.unwrap();
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -166,11 +191,11 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 			for param in func.parameters.parameters.iter() {
 				buf.push_str(&param.name);
 				buf.push_str(": ");
-				buf.push_str(&print_type(param.ty, types, env, debug));
+				buf.push_str(&print_type(param.ty, types, ctx, debug));
 				buf.push_str(", ");
 			}
 			buf.push_str(") => ");
-			buf.push_str(&print_type(func.return_type, types, env, debug));
+			buf.push_str(&print_type(func.return_type, types, ctx, debug));
 			buf
 		}
 		Type::Object(..) => {
@@ -178,20 +203,21 @@ pub fn print_type(id: TypeId, types: &TypeStore, env: &GeneralContext, debug: bo
 			if debug {
 				write!(buf, "[obj {}]", id.0).unwrap();
 			}
-			if let Some(prototype) = get_on_ctx!(env.facts.prototypes.get(&id)) {
+			if let Some(prototype) = get_on_ctx!(ctx.facts.prototypes.get(&id)) {
 				buf.push('[');
-				buf.push_str(&print_type(*prototype, types, env, debug));
+				buf.push_str(&print_type(*prototype, types, ctx, debug));
 				buf.push_str("] ");
 			}
 			buf.push('{');
-			for (key, value) in get_on_ctx!(env.get_properties_on_type(id)) {
-				buf.push_str(&print_type(key, types, env, debug));
+			for (key, value) in get_on_ctx!(ctx.get_properties_on_type(id)) {
+				buf.push_str(&print_type(key, types, ctx, debug));
 				buf.push_str(": ");
-				buf.push_str(&print_type(value, types, env, debug));
+				buf.push_str(&print_type(value, types, ctx, debug));
 				buf.push_str(", ");
 			}
 			buf.push('}');
 			buf
 		}
+		Type::Class(..) => todo!("name"),
 	}
 }

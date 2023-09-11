@@ -2,7 +2,10 @@ use derive_enum_from_into::EnumFrom;
 use source_map::Span;
 
 use crate::{
-	types::{cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, TypeStore},
+	types::{
+		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
+		StructureGenerics, TypeStore,
+	},
 	CheckingData, Constant, Environment, SynthesizableConditional, SynthesizableExpression,
 	TruthyFalsy, Type, TypeId,
 };
@@ -184,25 +187,6 @@ pub fn evaluate_equality_inequality_operation(
 ) -> Result<TypeId, ()> {
 	match operator {
 		EqualityAndInequality::StrictEqual => {
-			fn attempt_constant_equality(
-				lhs: TypeId,
-				rhs: TypeId,
-				types: &mut TypeStore,
-			) -> Result<TypeId, ()> {
-				let are_equal = if lhs == rhs {
-					true
-				} else if let (Type::Constant(cst1), Type::Constant(cst2)) =
-					(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
-				{
-					cst1 == cst2
-				} else {
-					// TODO also Err if unknown
-					crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
-					false
-				};
-				Ok(types.new_constant_type(Constant::Boolean(are_equal)))
-			}
-
 			// crate::utils::notify!("{:?} === {:?}", lhs, rhs);
 
 			let is_dependent = types.get_type_by_id(lhs).is_dependent()
@@ -457,4 +441,42 @@ pub fn evaluate_pure_unary_operator(
 			}
 		}
 	}
+}
+
+fn attempt_constant_equality(
+	lhs: TypeId,
+	rhs: TypeId,
+	types: &mut TypeStore,
+) -> Result<TypeId, ()> {
+	let are_equal =
+		if lhs == rhs {
+			true
+		} else {
+			let lhs = types.get_type_by_id(lhs);
+			let rhs = types.get_type_by_id(rhs);
+			if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
+				cst1 == cst2
+			} else if let (Type::Object(..), _) | (_, Type::Object(..)) = (lhs, rhs) {
+				// Same objects always have same type id
+				false
+			}
+			// Temp fix for closures
+			else if let (
+				Type::Constructor(crate::types::Constructor::StructureGenerics(
+					StructureGenerics { on: on_lhs, .. },
+				)),
+				Type::Constructor(crate::types::Constructor::StructureGenerics(
+					StructureGenerics { on: on_rhs, .. },
+				)),
+			) = (lhs, rhs)
+			{
+				// TODO
+				return attempt_constant_equality(*on_lhs, *on_rhs, types);
+			} else {
+				// TODO also Err if unknown
+				crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
+				return Err(());
+			}
+		};
+	Ok(types.new_constant_type(Constant::Boolean(are_equal)))
 }

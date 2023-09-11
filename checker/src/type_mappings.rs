@@ -37,12 +37,10 @@ impl TypeMappings {
 	pub fn print_called_functions(&self, source: &str) -> String {
 		let mut buf = "Called functions:\n".to_owned();
 		for func_id in self.called_functions.iter() {
-			if *func_id != FunctionId::NULL {
-				buf.push_str(
-					source.get((func_id.1 as usize)..(func_id.1 as usize + 10)).unwrap_or_default(),
-				);
-				buf.push('\n')
-			}
+			buf.push_str(
+				source.get((func_id.1 as usize)..(func_id.1 as usize + 10)).unwrap_or_default(),
+			);
+			buf.push('\n')
 		}
 		buf
 	}

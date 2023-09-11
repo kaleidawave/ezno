@@ -1,21 +1,22 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::{get_on_ctx, Context, ContextType, InferenceBoundary, Logical},
+	behavior::functions::ClosureId,
+	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
 	utils::EnforcedOrExt,
-	GeneralContext, TypeId,
+	FunctionId, GeneralContext, TypeId,
 };
 
-use super::{Constructor, TypeRelationOperator};
+use super::{Constructor, StructureGenerics, TypeRelationOperator};
 
 /// Holds all the types. Eventually may be split across modules
 #[derive(Debug)]
 pub struct TypeStore {
 	/// Contains all of the types. Indexed by [TypeId]
 	types: Vec<Type>,
-	context_implicit_parameters: HashMap<crate::context::ContextId, HashMap<String, TypeId>>,
+	pub(crate) functions: HashMap<FunctionId, FunctionType>,
 
 	pub(crate) dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
 
@@ -23,6 +24,9 @@ pub struct TypeStore {
 	// pub(crate) functions_on_type: HashMap<TypeId, FunctionType>,
 	// pub(crate) proxies: HashMap<TypeId, Proxy>,
 	pub(crate) specializations: HashMap<TypeId, Vec<TypeId>>,
+
+	/// TODO not best place	but is passed through everything so
+	pub(crate) closure_counter: u32,
 }
 
 impl Default for TypeStore {
@@ -41,7 +45,7 @@ impl Default for TypeStore {
 			// Array T
 			Type::RootPolyType(PolyNature::Generic {
 				name: "T".to_owned(),
-				eager_fixed: crate::types::PolyPointer::Fixed(TypeId::ANY_TYPE),
+				eager_fixed: TypeId::ANY_TYPE,
 			}),
 			Type::NamedRooted { name: "object".to_owned(), parameters: None },
 			Type::NamedRooted { name: "Function".to_owned(), parameters: None },
@@ -61,12 +65,12 @@ impl Default for TypeStore {
 			// this arg shortcut
 			Type::RootPolyType(PolyNature::ParentScope {
 				reference: crate::events::RootReference::This,
-				based_on: crate::types::PolyPointer::Fixed(TypeId::ANY_TYPE),
+				based_on: TypeId::ANY_TYPE,
 			}),
 			Type::RootPolyType(PolyNature::Generic {
 				name: "new.target".to_owned(),
 				// TODO
-				eager_fixed: crate::types::PolyPointer::Fixed(TypeId::ANY_TYPE),
+				eager_fixed: TypeId::ANY_TYPE,
 			}),
 			// TODO Symbols, needs Constant::Symbol
 			Type::AliasTo {
@@ -84,9 +88,10 @@ impl Default for TypeStore {
 
 		Self {
 			types: types.to_vec(),
+			functions: HashMap::new(),
 			dependent_dependencies: Default::default(),
 			specializations: Default::default(),
-			context_implicit_parameters: Default::default(),
+			closure_counter: 0,
 		}
 	}
 }
@@ -126,19 +131,15 @@ impl TypeStore {
 	}
 
 	pub fn new_any_parameter<S: ContextType>(&mut self, environment: &mut Context<S>) -> TypeId {
-		if let GeneralContext::Syntax(env) = environment.into_general_context() {
-			// TODO not sure about this:
-			if environment.context_type.is_dynamic_boundary() {
-				crate::utils::notify!("TODO is context different in the param synthesis?");
-				let inference_boundary = InferenceBoundary(environment.context_id);
-				let id = self.register_type(Type::RootPolyType(PolyNature::Parameter {
-					fixed_to: super::PolyPointer::Inferred(inference_boundary),
-				}));
+		// if let GeneralContext::Syntax(env) = environment.into_general_context() {
+		// 	// TODO not sure about this:
+		// 	if environment.context_type.is_dynamic_boundary() {
+		// 		crate::utils::notify!("TODO is context different in the param synthesis?");
 
-				environment.bases.mutable_bases.insert(id, (inference_boundary, TypeId::ANY_TYPE));
-				return id;
-			}
-		}
+		// 		environment.bases.mutable_bases.insert(id, (inference_boundary, TypeId::ANY_TYPE));
+		// 		return id;
+		// 	}
+		// }
 		TypeId::ANY_TYPE
 	}
 
@@ -158,6 +159,7 @@ impl TypeStore {
 		self.types.into_iter().enumerate().map(|(idx, ty)| (TypeId(idx as u16), ty)).collect()
 	}
 
+	/// From something like: let a: number => string. Rather than a actual function
 	pub fn new_function_type_annotation(
 		&mut self,
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
@@ -167,21 +169,22 @@ impl TypeStore {
 		effects: Vec<crate::events::Event>,
 		constant_id: Option<String>,
 	) -> TypeId {
-		self.register_type(Type::Function(
-			FunctionType {
-				type_parameters,
-				parameters,
-				return_type,
-				effects,
-				// TODO
-				closed_over_references: Default::default(),
-				// TODO
-				kind: crate::types::FunctionKind::Arrow,
-				constant_id,
-				id: crate::FunctionId(declared_at.source, declared_at.start),
-			},
-			super::FunctionNature::Source(None),
-		))
+		let id = crate::FunctionId(declared_at.source, declared_at.start);
+		let function_type = FunctionType {
+			type_parameters,
+			parameters,
+			return_type,
+			effects,
+			// TODO
+			used_parent_references: Default::default(),
+			closed_over_variables: Default::default(),
+			// TODO
+			kind: crate::types::FunctionKind::Arrow,
+			constant_id,
+			id,
+		};
+		self.functions.insert(id, function_type);
+		self.register_type(Type::FunctionReference(id, Default::default()))
 	}
 
 	/// TODO this registers 3 new types, is there a smaller way
@@ -223,11 +226,6 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
-	/// From something like: let a: number => string. Rather than a actual function
-	pub fn new_type_annotation_function_type(&mut self, function_type: FunctionType) -> TypeId {
-		self.register_type(Type::Function(function_type, super::FunctionNature::Reference))
-	}
-
 	/// Doesn't do constant compilation
 	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
 		let ty = Type::Constructor(Constructor::UnaryOperator {
@@ -250,7 +248,9 @@ impl TypeStore {
 		data: TData,
 	) -> Option<Logical<TResult>> {
 		match self.get_type_by_id(on) {
-			Type::Function(..) => todo!(),
+			Type::Function(..) => {
+				ctx.parents_iter().find_map(|env| resolver(env, self, on, data)).map(Logical::Pure)
+			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = ctx
 					.parents_iter()
@@ -269,20 +269,25 @@ impl TypeStore {
 				left.and_enforced(right).map(Logical::Or)
 			}
 			Type::RootPolyType(_nature) => {
-				let aliases = ctx.get_poly_base(on, self).unwrap().get_type();
+				let aliases = ctx.get_poly_base(on, self).unwrap();
 				// Don't think any properties exist on this poly type
 				self.get_fact_about_type(ctx, aliases, resolver, data)
 			}
 			Type::Constructor(constructor) => {
-				if let Constructor::StructureGenerics { on, with } = constructor {
+				if let Constructor::StructureGenerics(StructureGenerics { on, arguments }) =
+					constructor
+				{
 					// TODO could drop some of with here
 					let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
-					fact_opt.map(|fact| Logical::Implies(Box::new(fact), with.clone()))
+					fact_opt.map(|fact| Logical::Implies {
+						on: Box::new(fact),
+						antecedent: arguments.clone(),
+					})
 				} else {
 					// Don't think any properties exist on this poly type
 					let constraint = ctx.get_poly_base(on, self).unwrap();
 					// TODO might need to send more information here, rather than forgetting via .get_type
-					self.get_fact_about_type(ctx, constraint.get_type(), resolver, data)
+					self.get_fact_about_type(ctx, constraint, resolver, data)
 				}
 			}
 			Type::Object(..) | Type::NamedRooted { .. } => ctx
@@ -306,6 +311,13 @@ impl TypeStore {
 				.or_else(|| {
 					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
 				}),
+			Type::FunctionReference(_, _) => todo!(),
+			Type::Class(_) => todo!(),
 		}
+	}
+
+	pub fn new_closure_id(&mut self) -> ClosureId {
+		self.closure_counter += 1;
+		ClosureId(self.closure_counter)
 	}
 }

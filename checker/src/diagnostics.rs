@@ -167,10 +167,10 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contains known internal errors and warnings
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
-	use crate::{behavior, context::AssignmentError};
+	use crate::{behavior, context::AssignmentError, types::calling::FunctionCallingError};
 	use source_map::Span;
 
-	use crate::{events::FunctionCallingError, Diagnostic};
+	use crate::Diagnostic;
 	use std::path;
 
 	use super::TypeStringRepresentation;

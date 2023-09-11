@@ -147,7 +147,11 @@ impl SynthesizeInterfaceBehavior for OnToType {
 		let ty = match value {
 			InterfaceValue::Function { function, constructor } => {
 				// TODO constructor
-				let ty = Type::Function(function, crate::types::FunctionNature::Reference);
+				let ty = Type::FunctionReference(
+					function.id,
+					crate::behavior::functions::ThisValue::UseParent,
+				);
+				checking_data.types.functions.insert(function.id, function);
 				checking_data.types.register_type(ty)
 			}
 			InterfaceValue::Value(value) => value,

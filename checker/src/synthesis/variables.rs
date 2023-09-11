@@ -279,12 +279,12 @@ fn assign_to_fields<T: crate::FSResolver>(
 						let value =
 							environment.get_property(value, idx, &mut checking_data.types, None);
 
-						if let Some(value) = value {
+						if let Some((_, value)) = value {
 							assign_to_fields(
 								variable_field.get_ast_ref(),
 								environment,
 								checking_data,
-								value.into(),
+								value,
 							)
 						}
 
@@ -315,7 +315,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 						let property =
 							environment.get_property(value, key_ty, &mut checking_data.types, None);
 						let value = match property {
-							Some(result) => result.into(),
+							Some((_, value)) => value,
 							None => {
 								// TODO non decidable error
 								if let Some(else_expression) = default_value {
@@ -346,7 +346,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 							environment.get_property(value, key_ty, &mut checking_data.types, None);
 
 						let value = match property_value {
-							Some(result) => result.into(),
+							Some((_, value)) => value,
 							None => {
 								// TODO non decidable error
 								if let Some(default_value) = default_value {

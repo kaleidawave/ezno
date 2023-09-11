@@ -8,7 +8,7 @@ use crate::{
 	FunctionId, TypeId,
 };
 
-use super::{poly_types::SeedingContext, Constructor, Type};
+use super::{poly_types::SeedingContext, Constructor, StructureGenerics, Type};
 
 /// TODO add_property_restrictions via const generics
 pub struct BasicEquality {
@@ -235,11 +235,14 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 	}
 
 	match left_ty {
-		Type::Function(left_func, _) => {
-			if let Type::Function(func, _) = right_ty {
+		Type::Class(_) => todo!(),
+		Type::FunctionReference(left_func, _) | Type::Function(left_func, _) => {
+			if let Type::Function(right_func, _) = right_ty {
 				// TODO optional and rest parameters
+				let left_func = types.functions.get(left_func).unwrap();
+				let right_func = types.functions.get(right_func).unwrap();
 				for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
-					match func.parameters.get_type_constraint_at_index(idx) {
+					match right_func.parameters.get_type_constraint_at_index(idx) {
 						Some(ty) => {
 							// TODO order here
 							let result = type_is_subtype(
@@ -266,7 +269,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				// TODO NonEqualityReason::InvalidReturnType
 				type_is_subtype(
 					left_func.return_type,
-					func.return_type,
+					right_func.return_type,
 					ty_arguments,
 					behavior,
 					environment,
@@ -344,7 +347,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 			// crate::utils::notify!("{:?} {:?} :> {:?}", nature, base_type, ty);
 
-			let constraint = environment.get_poly_base(base_type, types).unwrap().get_type();
+			let constraint = environment.get_poly_base(base_type, types).unwrap();
 
 			if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
 				constraint,
@@ -367,7 +370,9 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 			}
 		}
 		Type::Constructor(constructor) => {
-			if let super::Constructor::StructureGenerics { on, with } = constructor {
+			if let super::Constructor::StructureGenerics(StructureGenerics { on, arguments }) =
+				constructor
+			{
 				// Overwrites for special types with proofs
 				match *on {
 					TypeId::ARRAY_TYPE => {
@@ -452,7 +457,10 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 					// 	SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					// }
 				}
-				Type::Constructor(Constructor::StructureGenerics { on, with }) => {
+				Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+					on,
+					arguments,
+				})) => {
 					todo!()
 				}
 				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
@@ -472,49 +480,17 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 							types,
 						)
 					} else {
-						let constraint = environment.get_poly_base(ty, types).unwrap();
+						let to = environment.get_poly_base(ty, types).unwrap();
 
-						crate::utils::notify!(
-							"Checking via constraint {:?}... think this is okay in function bodies",
-							constraint
-						);
-
-						match constraint {
-							crate::context::PolyBase::Fixed { to, .. } => type_is_subtype(
-								base_type,
-								to,
-								ty_arguments,
-								behavior,
-								environment,
-								types,
-							),
-							crate::context::PolyBase::Dynamic { to, boundary: under } => {
-								let type_is_subtype = type_is_subtype(
-									base_type,
-									to,
-									ty_arguments,
-									behavior,
-									environment,
-									types,
-								);
-								return if let SubTypeResult::IsSubType = type_is_subtype {
-									SubTypeResult::IsSubType
-								} else {
-									if to == TypeId::ANY_TYPE {
-										environment.attempt_to_modify_base(ty, under, base_type)
-									} else {
-										todo!()
-										// let new_type =
-										// 	types.new_type(Type::And(dynamic, base_type));
-										// environment
-										// 	.attempt_to_modify_constraint_or_alias(ty, new_type)
-									}
-									SubTypeResult::IsSubType
-								};
-							}
+						if to == TypeId::ANY_TYPE {
+							crate::utils::notify!("Modify constraint for equality");
 						}
+
+						type_is_subtype(base_type, to, ty_arguments, behavior, environment, types)
 					}
 				}
+				Type::FunctionReference(_, _) => todo!(),
+				Type::Class(_) => todo!(),
 			}
 		}
 	}
@@ -560,7 +536,7 @@ fn check_properties<T: SubtypeBehavior>(
 						}
 					}
 					Logical::Or(_) => todo!(),
-					Logical::Implies(_, _) => todo!(),
+					Logical::Implies { .. } => todo!(),
 				}
 			}
 			// TODO
@@ -596,5 +572,23 @@ impl NonEqualityReason {
 	}
 }
 
-#[cfg(test)]
-mod tests {}
+pub(crate) fn check_satisfies(
+	expr_ty: TypeId,
+	to_satisfy: TypeId,
+	types: &TypeStore,
+	environment: &mut Environment,
+) -> bool {
+	if expr_ty == TypeId::ERROR_TYPE {
+		false
+	} else {
+		let result = type_is_subtype(
+			to_satisfy,
+			expr_ty,
+			None,
+			&mut BasicEquality { add_property_restrictions: false, position: Span::NULL_SPAN },
+			environment,
+			types,
+		);
+		matches!(result, SubTypeResult::IsSubType)
+	}
+}

@@ -1,4 +1,4 @@
-use super::{Context, ContextId, ContextType};
+use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{types::TypeId, GeneralContext};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
@@ -19,6 +19,10 @@ impl ContextType for RootContext {
 
 	fn is_dynamic_boundary(&self) -> bool {
 		false
+	}
+
+	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
+		None
 	}
 }
 

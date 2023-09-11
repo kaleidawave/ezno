@@ -22,9 +22,9 @@ use crate::{
 		template_literal::synthesize_template_literal,
 	},
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	events::{CalledWithNew, Event},
-	types::functions::SynthesizedArgument,
-	types::{properties::PropertyResult, Constant, TypeId},
+	events::Event,
+	types::{calling::CalledWithNew, functions::SynthesizedArgument},
+	types::{properties::PropertyKind, Constant, TypeId},
 	CheckingData, Environment, Instance,
 };
 
@@ -424,12 +424,10 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				environment.get_property(on, property, &mut checking_data.types, None);
 
 			match get_property {
-				Some(property_value) => match property_value {
-					PropertyResult::Getter(result) => Instance::GValue(result),
+				Some((kind, result)) => match kind {
+					PropertyKind::Getter => Instance::GValue(result),
 					// TODO instance.property...?
-					PropertyResult::Generic(result) | PropertyResult::Direct(result) => {
-						Instance::RValue(result)
-					}
+					PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
 				},
 				None => {
 					// TODO could do a positional reference to the variable...?
@@ -551,12 +549,10 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				environment.get_property(indexee, indexer, &mut checking_data.types, None);
 
 			match get_property {
-				Some(property_value) => match property_value {
-					PropertyResult::Getter(result) => Instance::GValue(result),
+				Some((kind, result)) => match kind {
+					PropertyKind::Getter => Instance::GValue(result),
 					// TODO instance.property...?
-					PropertyResult::Generic(result) | PropertyResult::Direct(result) => {
-						Instance::RValue(result)
-					}
+					PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
 				},
 				None => {
 					// TODO could do a positional reference to the variable...?
@@ -728,7 +724,7 @@ fn call_function<T: crate::FSResolver>(
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
 		called_with_new,
-		None,
+		Default::default(),
 		generic_type_arguments,
 		synthesized_arguments,
 		call_site.clone(),
