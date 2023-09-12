@@ -11,7 +11,8 @@ pub struct ObjectBuilder {
 
 impl ObjectBuilder {
 	pub fn new(prototype: Option<TypeId>, types: &mut TypeStore, facts: &mut Facts) -> Self {
-		let is_under_dyn = false;
+		// TODO is_under_dyn bad
+		let is_under_dyn = true;
 		Self { object: facts.new_object(prototype, types, is_under_dyn) }
 	}
 

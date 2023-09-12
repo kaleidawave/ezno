@@ -59,6 +59,7 @@ impl Facts {
 		is_under_dyn: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+		crate::utils::notify!("New object created under {:?}", ty);
 
 		if let Some(prototype) = prototype {
 			self.prototypes.insert(ty, prototype);

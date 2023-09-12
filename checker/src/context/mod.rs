@@ -859,10 +859,13 @@ impl<T: ContextType> Context<T> {
 		let returned = if !function.is_declare() {
 			function.body(&mut func_env, checking_data);
 
-			// TODO invert. Should pass annotation here
+			let events = mem::take(&mut func_env.facts.events);
 			let returned = crate::events::helpers::get_return_from_events(
-				&mut func_env.facts.events.iter(),
-				&mut checking_data.types,
+				&mut events.iter(),
+				checking_data,
+				// TODO environment should be good enough, but needs environment not context
+				&mut func_env,
+				return_type_annotation,
 			);
 
 			let returned = match returned {
@@ -875,41 +878,7 @@ impl<T: ContextType> Context<T> {
 				crate::events::helpers::ReturnedTypeFromBlock::Returned(ty) => ty,
 			};
 
-			if let Some((expected_return_type, annotation_span)) = return_type_annotation {
-				let mut behavior = BasicEquality {
-					add_property_restrictions: true,
-					position: annotation_span.clone(),
-				};
-
-				let result = type_is_subtype(
-					expected_return_type,
-					returned,
-					None,
-					&mut behavior,
-					&mut func_env,
-					&checking_data.types,
-				);
-
-				if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::ReturnedTypeDoesNotMatch {
-							expected_return_type: TypeStringRepresentation::from_type_id(
-								expected_return_type,
-								&func_env.into_general_context(),
-								&checking_data.types,
-								false,
-							),
-							returned_type: TypeStringRepresentation::from_type_id(
-								returned,
-								&func_env.into_general_context(),
-								&checking_data.types,
-								false,
-							),
-							position: annotation_span,
-						},
-					);
-				}
-			}
+			func_env.facts.events = events;
 
 			returned
 		} else {

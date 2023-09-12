@@ -204,7 +204,9 @@ pub fn evaluate_equality_inequality_operation(
 
 			match attempt_constant_equality(lhs, rhs, types) {
 				Ok(ty) => Ok(ty),
-				Err(_) => todo!(),
+				Err(_) => {
+					unreachable!("should have been caught by above")
+				}
 			}
 		}
 		EqualityAndInequality::LessThan => {
@@ -456,8 +458,10 @@ fn attempt_constant_equality(
 			let rhs = types.get_type_by_id(rhs);
 			if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
 				cst1 == cst2
-			} else if let (Type::Object(..), _) | (_, Type::Object(..)) = (lhs, rhs) {
-				// Same objects always have same type id
+			} else if let (Type::Object(..) | Type::Function(..), _)
+			| (_, Type::Object(..) | Type::Function(..)) = (lhs, rhs)
+			{
+				// Same objects and functions always have same type id. Poly case doesn't occur here
 				false
 			}
 			// Temp fix for closures
@@ -470,13 +474,13 @@ fn attempt_constant_equality(
 				)),
 			) = (lhs, rhs)
 			{
-				// TODO
+				// TODO does this work?
 				return attempt_constant_equality(*on_lhs, *on_rhs, types);
 			} else {
-				// TODO also Err if unknown
 				crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
 				return Err(());
 			}
 		};
+
 	Ok(types.new_constant_type(Constant::Boolean(are_equal)))
 }

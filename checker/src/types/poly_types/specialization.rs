@@ -9,7 +9,7 @@ use crate::{
 	Environment, TruthyFalsy, TypeId,
 };
 
-use super::generic_type_arguments::TypeArgumentStore;
+use super::generic_type_arguments::{StructureGenericArguments, TypeArgumentStore};
 
 pub(crate) fn specialize(
 	id: TypeId,
@@ -168,22 +168,25 @@ pub(crate) fn specialize(
 				// 	.get_property(on, property, checking_data, None)
 				// 	.expect("Inferred constraints and checking failed for a property")
 			}
-			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
-				todo!()
-				// let on = specialize(on, arguments, environment, types);
-				// let with = with
-				// 	.into_iter()
-				// 	.map(|(lhs, with)| {
-				// 		(lhs, specialize(with, arguments, environment, types))
-				// 	})
-				// 	.collect();
+			Constructor::StructureGenerics(StructureGenerics {
+				on,
+				arguments: mut structure_arguments,
+			}) => {
+				let type_arguments = structure_arguments
+					.type_arguments
+					.into_iter()
+					.map(|(lhs, with)| (lhs, specialize(with, arguments, environment, types)))
+					.collect();
 
-				// types.register_type(Type::Constructor(Constructor::StructureGenerics {
-				// 	on,
-				// 	with,
-				// 	// TODO not sure...
-				// 	closures: this_closures.into_iter().chain(closures.clone()).collect(),
-				// }))
+				types.register_type(Type::Constructor(Constructor::StructureGenerics(
+					StructureGenerics {
+						on,
+						arguments: StructureGenericArguments {
+							type_arguments,
+							closures: structure_arguments.closures,
+						},
+					},
+				)))
 			}
 
 			// Constructor::PrototypeOf(prototype) => {

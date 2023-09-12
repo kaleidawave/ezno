@@ -13,6 +13,7 @@ use derive_debug_extras::DebugExtras;
 pub(crate) use poly_types::specialization::*;
 
 pub(crate) use casts::*;
+use source_map::Span;
 pub use store::TypeStore;
 pub use terms::Constant;
 
@@ -22,11 +23,14 @@ use crate::{
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
 	events::RootReference,
-	TruthyFalsy,
+	Environment, TruthyFalsy,
 };
 
 pub use self::functions::*;
-use self::poly_types::generic_type_arguments::StructureGenericArguments;
+use self::{
+	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
+	subtyping::type_is_subtype,
+};
 use crate::FunctionId;
 
 /// References [Type]
@@ -174,8 +178,14 @@ impl Type {
 	/// TODO return is poly
 	pub(crate) fn is_dependent(&self) -> bool {
 		match self {
+			// TODO
+			Type::Constructor(Constructor::StructureGenerics(..)) => false,
+			// Fine
 			Type::Constructor(_) | Type::RootPolyType(_) => true,
-			Type::And(_, _) | Type::Or(_, _) | Type::AliasTo { .. } | Type::NamedRooted { .. } => {
+			// TODO what about if left or right
+			Type::And(_, _) | Type::Or(_, _) => false,
+			// TODO what about if it aliases
+			Type::AliasTo { .. } | Type::NamedRooted { .. } => {
 				// TODO not sure
 				false
 			}
@@ -279,4 +289,144 @@ pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
 			}
 		}
 	}
+}
+
+/// TODO add_property_restrictions via const generics
+pub struct BasicEquality {
+	pub add_property_restrictions: bool,
+	pub position: Span,
+}
+
+/// For subtyping
+pub trait SubtypeBehavior {
+	fn set_type_argument(
+		&mut self,
+		parameter: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason>;
+
+	fn add_property_restrictions(&self) -> bool;
+
+	fn add_function_restriction(
+		&mut self,
+		environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	);
+
+	// TODO
+	// object reference type needs to meet constraint
+	// LHS is dependent + RHS argument
+}
+
+impl SubtypeBehavior for SeedingContext {
+	/// Does not check thingy
+	fn set_type_argument(
+		&mut self,
+		type_id: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason> {
+		let restriction = self.type_arguments.get_restriction_for_id(type_id);
+
+		// Check restriction from call site type argument
+		if let Some((pos, restriction)) = restriction {
+			if let SubTypeResult::IsNotSubType(reason) =
+				type_is_subtype(restriction, value, None, self, environment, types)
+			{
+				return Err(NonEqualityReason::GenericRestrictionMismatch {
+					restriction,
+					reason: Box::new(reason),
+					pos,
+				});
+			}
+		}
+
+		self.type_arguments.set_id(type_id, value, types);
+
+		Ok(())
+	}
+
+	fn add_property_restrictions(&self) -> bool {
+		false
+	}
+
+	fn add_function_restriction(
+		&mut self,
+		_environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	) {
+		self.locally_held_functions.insert(function_id, function_type);
+	}
+}
+
+impl SubtypeBehavior for BasicEquality {
+	fn set_type_argument(
+		&mut self,
+		parameter: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason> {
+		Ok(())
+	}
+
+	fn add_property_restrictions(&self) -> bool {
+		self.add_property_restrictions
+	}
+
+	fn add_function_restriction(
+		&mut self,
+		environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	) {
+		let result = environment
+			.deferred_function_constraints
+			.insert(function_id, (function_type, self.position.clone()));
+
+		debug_assert!(result.is_none());
+	}
+}
+
+#[derive(Debug)]
+pub enum SubTypeResult {
+	IsSubType,
+	IsNotSubType(NonEqualityReason),
+}
+
+// impl SubTypeResult {
+// 	type Error = NonEqualityReason;
+// }
+
+// TODO implement `?` on SupertypeResult
+
+// TODO maybe positions and extra information here
+// SomeLiteralMismatch
+// GenericParameterCollision
+#[derive(Debug)]
+pub enum NonEqualityReason {
+	Mismatch,
+	PropertiesInvalid {
+		errors: Vec<(TypeId, PropertyError)>,
+	},
+	// For function call-site type arguments
+	GenericRestrictionMismatch {
+		restriction: TypeId,
+		reason: Box<NonEqualityReason>,
+		pos: Span,
+	},
+	TooStrict,
+	/// TODO more information
+	MissingParameter,
+}
+
+#[derive(Debug)]
+pub enum PropertyError {
+	Missing,
+	Invalid { expected: TypeId, found: TypeId, mismatch: NonEqualityReason },
 }

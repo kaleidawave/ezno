@@ -149,10 +149,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
 								Some((PropertyKind::Direct, value))
 							}
-							Type::NamedRooted { .. }
-							| Type::And(_, _)
-							| Type::Or(_, _)
-							| Type::Constructor(Constructor::StructureGenerics { .. }) => {
+							Type::NamedRooted { .. } | Type::And(_, _) | Type::Or(_, _) => {
 								crate::utils::notify!(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
 								    property, ty
@@ -160,6 +157,10 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 								let value = types.register_type(Type::RootPolyType(
 									crate::types::PolyNature::Open(value),
 								));
+								Some((PropertyKind::Direct, value))
+							}
+							Type::Constructor(Constructor::StructureGenerics { .. }) => {
+								// TODO curry type arguments
 								Some((PropertyKind::Direct, value))
 							}
 							Type::Constructor(constructor) => {

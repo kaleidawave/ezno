@@ -357,8 +357,6 @@ impl FunctionType {
 		// This fixes recursion
 		call_constant: bool,
 	) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-		crate::utils::notify!("Calling {:?}", self.id);
-
 		// TODO check that parameters vary
 		if behavior.in_recursive_cycle(self.id) {
 			crate::utils::notify!("Encountered recursion");

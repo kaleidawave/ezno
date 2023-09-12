@@ -109,6 +109,10 @@ pub(crate) fn call_constant_function(
 				Ok(ConstantResult::Diagnostic("not a function".to_owned()))
 			}
 		}
+		// For functions
+		"call" | "bind" => {
+			todo!()
+		}
 		"satisfies" => {
 			let ty = arguments.first().unwrap().into_type().unwrap();
 			// TODO temp!!!
