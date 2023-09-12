@@ -4,8 +4,8 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-pub(crate) fn check<T: crate::FSResolver>(
-	fs_resolver: T,
+pub fn check<T: crate::FSResolver>(
+	fs_resolver: &T,
 	input: &Path,
 	type_definition_module: Option<&Path>,
 ) -> (
@@ -17,7 +17,7 @@ pub(crate) fn check<T: crate::FSResolver>(
 
 	// TODO temp
 	let mut fs = parser::source_map::MapFileStore::default();
-	let content = fs_resolver(&input).expect("No file");
+	let content = fs_resolver.get_content_at_path(&input).expect("No file");
 	let source = parser::source_map::FileSystem::new_source_id(
 		&mut fs,
 		input.to_path_buf(),
@@ -50,7 +50,7 @@ pub(crate) fn check<T: crate::FSResolver>(
 		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 		} else {
-			fs_resolver(path)
+			fs_resolver.get_content_at_path(path)
 		}
 	});
 
@@ -70,14 +70,14 @@ pub struct BuildOutput {
 	pub temp_diagnostics: Vec<checker::Diagnostic>,
 }
 
-pub(crate) fn build<T: crate::FSResolver>(
+pub fn build<T: crate::FSResolver>(
 	fs_resolver: T,
 	input_path: &Path,
 	output_path: &Path,
 ) -> (MapFileStore, Result<BuildOutput, Vec<checker::Diagnostic>>) {
 	let mut fs = MapFileStore::default();
 
-	let content = fs_resolver(input_path).expect("Could not find/get file");
+	let content = fs_resolver.get_content_at_path(input_path).expect("Could not find/get file");
 	let source_id = SourceId::new(&mut fs, PathBuf::from(input_path), content.clone());
 
 	let module_result = parser::Module::from_string(

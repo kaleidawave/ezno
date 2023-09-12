@@ -12,29 +12,14 @@ env:
     target/
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        include:
-        - os: windows-latest
-          executable-extension: .exe
-          platform_name: x86_64-pc-windows
-        - os: ubuntu-latest
-          platform_name: x86_64-unknown-linux
-
-    runs-on: ${{ matrix.os }}
+  get-build-info:
+    runs-on: ubuntu-latest
 
     outputs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
+      sponsors: ${{ steps.get-sponsors.outputs.sponsors }}
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: ${{ env.CACHE_PATHS }}
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Get version
         id: get-version
         run: |
@@ -42,7 +27,7 @@ jobs:
           echo "Releasing ${version:13}"
           echo "new-ezno-version=${version:13}" >> $GITHUB_OUTPUT
 
-      - id: set-sponsors
+      - id: get-sponsors
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
@@ -58,10 +43,32 @@ jobs:
             }
           }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
           
-          export SPONSORS
+          echo "sponsors=$SPONSORS" >> $GITHUB_OUTPUT
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+
+  build:
+    needs: [get-build-info]
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+        - os: windows-latest
+          executable-extension: .exe
+          platform_name: x86_64-pc-windows
+        - os: ubuntu-latest
+          platform_name: x86_64-unknown-linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build binary
         run: cargo build --release
@@ -69,7 +76,8 @@ jobs:
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ steps.get-version.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
+          export ${{ needs.get-build-info.outputs.sponsors }}
+          mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
 
       - uses: actions/upload-artifact@v3
         with:
@@ -79,7 +87,7 @@ jobs:
           retention-days: 1
 
   github-release:
-    needs: [build]
+    needs: [build, get-build-info]
     runs-on: ubuntu-latest
 
     steps:
@@ -98,8 +106,8 @@ jobs:
     - name: GitHub release
       uses: softprops/action-gh-release@v1
       with:
-        name: "Ezno ${{ needs.build.outputs.new-ezno-version }}"
-        tag_name: "release/ezno-${{ needs.build.outputs.new-ezno-version }}"
+        name: "Ezno ${{ needs.get-build-info.outputs.new-ezno-version }}"
+        tag_name: "release/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}"
         body: "For @kaleidawave to update"
         files: |
           README.md

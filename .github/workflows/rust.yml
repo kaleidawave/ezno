@@ -28,8 +28,12 @@ env:
 jobs:
   validity:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -45,6 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
@@ -60,8 +67,12 @@ jobs:
   tests:
     needs: validity
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -92,6 +103,7 @@ jobs:
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     continue-on-error: true
     strategy:
       matrix:
@@ -99,6 +111,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -131,8 +146,12 @@ jobs:
   clippy:
     needs: validity
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -143,8 +162,12 @@ jobs:
   wasm-test:
     needs: validity
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -185,6 +208,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - name: Check that it will publish to crates
         run: |
           cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r _n _v pathInfo ; do

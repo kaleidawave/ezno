@@ -1,7 +1,5 @@
 name: (main) Crates release
 
-# npm publish and GitHub release are triggered by this
-
 on:
   workflow_dispatch:
     inputs:
