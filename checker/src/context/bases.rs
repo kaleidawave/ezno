@@ -1,20 +1,10 @@
+//! TODO work in progress
 use super::ContextId;
-use crate::{types::PolyPointer, TypeId};
+use crate::TypeId;
 use std::collections::HashMap;
 
-impl crate::BinarySerializable for PolyPointer {
-	fn serialize(self, buf: &mut Vec<u8>) {
-		todo!()
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, buf_source: source_map::SourceId) -> Self {
-		todo!()
-	}
-}
-
-/// Any decedents of this context **can** mutate the restriction
 #[derive(Debug, Clone, Copy)]
-pub struct InferenceBoundary(pub(crate) ContextId);
+pub struct Boundary(pub(crate) ContextId);
 
 /// Contains the constraint / bases of dynamic poly types
 ///
@@ -22,7 +12,7 @@ pub struct InferenceBoundary(pub(crate) ContextId);
 #[derive(Default, Debug)]
 pub(crate) struct Bases {
 	pub(crate) immutable_bases: HashMap<TypeId, TypeId>,
-	pub(crate) mutable_bases: HashMap<TypeId, (InferenceBoundary, TypeId)>,
+	pub(crate) mutable_bases: HashMap<TypeId, (Boundary, TypeId)>,
 }
 
 impl Bases {
@@ -50,7 +40,7 @@ impl Bases {
 		debug_assert!(res.is_none());
 	}
 
-	pub(crate) fn get_local_type_base(&self, ty: TypeId) -> Option<TypeId> {
-		self.mutable_bases.get(&ty).map(|b| b.1).or_else(|| self.immutable_bases.get(&ty).copied())
-	}
+	// pub(crate) fn get_local_type_base(&self, ty: TypeId) -> Option<TypeId> {
+	// 	self.mutable_bases.get(&ty).map(|b| b.1).or_else(|| self.immutable_bases.get(&ty).copied())
+	// }
 }

@@ -6,7 +6,7 @@ pub mod specialized_generic_structure;
 
 use std::collections::HashMap;
 
-pub(crate) use generic_type_arguments::TypeArguments;
+pub(crate) use generic_type_arguments::FunctionTypeArguments;
 pub use generic_type_parameters::*;
 pub use specialized_generic_structure::*;
 
@@ -18,7 +18,7 @@ pub(crate) struct UnmatchedGenericsError;
 ///
 /// TODO bad place
 pub(crate) struct SeedingContext {
-	pub type_arguments: TypeArguments,
+	pub type_arguments: FunctionTypeArguments,
 	/// For functions that might be called. Ones where they aren't called end being specialized
 	/// and end up on environment
 	pub locally_held_functions: HashMap<FunctionId, FunctionType>,
@@ -33,7 +33,7 @@ pub(crate) trait ResolveGenerics<TResult = Self>: Sized {
 	/// generics but [Type::get_property] and stuff requires it. Only [CheckingData::memory] is required
 	fn resolve_generics<T: crate::FSResolver>(
 		self,
-		type_arguments: &TypeArguments,
+		type_arguments: &FunctionTypeArguments,
 		checking_data: &mut CheckingData<T>,
 	) -> TResult;
 }

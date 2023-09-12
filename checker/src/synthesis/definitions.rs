@@ -82,10 +82,14 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					None,
 				);
 
-				let base = checking_data.types.register_type(crate::Type::Function(
-					base,
-					crate::types::FunctionNature::Reference,
-				));
+				let base = checking_data.types.new_function_type_annotation(
+					base.type_parameters,
+					base.parameters,
+					base.return_type,
+					func.get_position().into_owned(),
+					base.effects,
+					base.constant_id,
+				);
 
 				let behavior = crate::context::VariableRegisterBehavior::Declare { base };
 

@@ -2,9 +2,9 @@ use super::{
 	expressions::synthesize_multiple_expression, synthesize_block, variables::register_variable,
 };
 use crate::{
-	context::{ContextId, Scope},
+	context::{ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
-	events::{Event, RootReference},
+	events::Event,
 	CheckingData, Environment, SynthesizableConditional, TypeId, Variable,
 };
 use parser::{
@@ -320,7 +320,7 @@ fn synthesize_block_or_single_statement<T: crate::FSResolver>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 	scope: Scope,
-) -> ((), Option<(Vec<Event>, HashMap<RootReference, TypeId>)>, ContextId) {
+) -> ((), Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 	environment.new_lexical_environment_fold_into_parent(
 		scope,
 		checking_data,

@@ -1,32 +1,26 @@
 use crate::{
-	context::{CallCheckingBehavior, Logical, PolyBase, SetPropertyError},
+	behavior::functions::ThisValue,
+	context::{CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::FunctionType,
+	types::{specialize, FunctionType},
 	Environment, TypeId,
 };
 
 use source_map::{SourceId, Span};
 
-use super::{Constructor, Type, TypeStore};
+use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
-pub enum PropertyResult {
-	Direct(TypeId),
-	Getter(TypeId),
-	Generic(TypeId),
-}
-
-impl From<PropertyResult> for TypeId {
-	fn from(result: PropertyResult) -> Self {
-		match result {
-			PropertyResult::Direct(type_id)
-			| PropertyResult::Getter(type_id)
-			| PropertyResult::Generic(type_id) => type_id,
-		}
-	}
+pub enum PropertyKind {
+	Direct,
+	Getter,
+	/// TODO not sure
+	Generic,
 }
 
 /// TODO type predicate based
+///
+/// TODO getter, setting need a closure id
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Property {
 	Value(TypeId),
@@ -57,9 +51,9 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
-) -> Option<PropertyResult> {
+) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE || under == TypeId::ERROR_TYPE {
-		return Some(PropertyResult::Direct(TypeId::ERROR_TYPE));
+		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
 	enum GetResult {
@@ -104,7 +98,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	// }
 
 	// TODO generic
-	Some(PropertyResult::Direct(value))
+	Some((PropertyKind::Direct, value))
 }
 
 fn get_from_an_object<'a, E: CallCheckingBehavior>(
@@ -113,120 +107,139 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
-) -> Option<PropertyResult> {
-	match environment.get_property_unbound(on, under, types)? {
-		Logical::Pure(property) => {
-			match property {
-				Property::Value(value) => {
-					let ty = types.get_type_by_id(value);
-					match ty {
-						Type::Function(func, nature) => match nature {
-							super::FunctionNature::BehindPoly { .. } => todo!(),
-							super::FunctionNature::Source(this) => {
-								if this.is_some() {
-									panic!()
-								}
-								todo!()
-								// Some(GetResult::AccessIntroducesDependence(types.register_type(Type::Function(
-								// 	func.clone(),
-								// 	super::FunctionNature::Source(Some(on)),
-								// ))
-							}
-							super::FunctionNature::Constructor => todo!(),
-							super::FunctionNature::Reference => {
-								crate::utils::notify!("TODO temp reference function business");
+) -> Option<(PropertyKind, TypeId)> {
+	return property_on_logical(
+		environment.get_property_unbound(on, under, types)?,
+		types,
+		on,
+		environment,
+		behavior,
+	);
+
+	fn property_on_logical<E: CallCheckingBehavior>(
+		logical: Logical<Property>,
+		types: &mut TypeStore,
+		on: TypeId,
+		environment: &mut Environment,
+		behavior: &mut E,
+	) -> Option<(PropertyKind, TypeId)> {
+		match logical {
+			Logical::Pure(property) => {
+				match property {
+					Property::Value(value) => {
+						let ty = types.get_type_by_id(value);
+						match ty {
+							// TODO function :: bind_this
+							Type::Function(func, state) => {
 								let func = types.register_type(Type::Function(
 									func.clone(),
-									super::FunctionNature::Source(Some(on)),
+									crate::behavior::functions::ThisValue::Passed(on),
 								));
-								Some(PropertyResult::Direct(func))
+								Some((PropertyKind::Direct, func))
 							}
-						},
-						Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
-							Some(PropertyResult::Direct(value))
-						}
-						Type::NamedRooted { .. }
-						| Type::And(_, _)
-						| Type::Or(_, _)
-						| Type::Constructor(Constructor::StructureGenerics { .. }) => {
-							crate::utils::notify!(
-								"property was {:?} {:?}, which should be NOT be able to be returned from a function",
-								property, ty
-							);
-							let value = types.register_type(Type::RootPolyType(
-								crate::types::PolyNature::Open(value),
-							));
-							Some(PropertyResult::Direct(value))
-						}
-						Type::Constructor(constructor) => {
-							unreachable!("Interesting property was {:?}", constructor);
-						}
-						Type::AliasTo { to, name, parameters } => {
-							todo!()
-							// if environment.is_getter(property) {
-							// 	// TODO catch unwrap as error:
-							// 	let result = call_type(
-							// 		property,
-							// 		vec![],
-							// 		Some(on),
-							// 		None,
-							// 		environment,
-							// 		checking_data,
-							// 		CalledWithNew::None,
-							// 	)
-							// 	.unwrap()
-							// 	.returned_type;
+							Type::FunctionReference(func, this_argument) => {
+								crate::utils::notify!("TODO temp reference function business");
+								let func = types.register_type(Type::FunctionReference(
+									func.clone(),
+									crate::behavior::functions::ThisValue::Passed(on),
+								));
+								Some((PropertyKind::Direct, func))
+							}
+							Type::Class(..) => todo!(),
+							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
+								Some((PropertyKind::Direct, value))
+							}
+							Type::NamedRooted { .. } | Type::And(_, _) | Type::Or(_, _) => {
+								crate::utils::notify!(
+								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
+								    property, ty
+							    );
+								let value = types.register_type(Type::RootPolyType(
+									crate::types::PolyNature::Open(value),
+								));
+								Some((PropertyKind::Direct, value))
+							}
+							Type::Constructor(Constructor::StructureGenerics { .. }) => {
+								// TODO curry type arguments
+								Some((PropertyKind::Direct, value))
+							}
+							Type::Constructor(constructor) => {
+								unreachable!("Interesting property on {:?}", constructor);
+							}
+							Type::AliasTo { to, name, parameters } => {
+								todo!()
+								// if environment.is_getter(property) {
+								// 	// TODO catch unwrap as error:
+								// 	let result = call_type(
+								// 		property,
+								// 		vec![],
+								// 		Some(on),
+								// 		None,
+								// 		environment,
+								// 		checking_data,
+								// 		CalledWithNew::None,
+								// 	)
+								// 	.unwrap()
+								// 	.returned_type;
 
-							// 	return Some(PropertyResult::Getter(result));
-							// } else {
-							// 	// Bind this is this is function
-							// 	let is_function = *to == TypeId::FUNCTION_TYPE
-							// 		|| matches!(environment.get_type_by_id(*to), Type::AliasTo { to, .. } if *to == TypeId::FUNCTION_TYPE);
+								// 	return Some(PropertyResult::Getter(result));
+								// } else {
+								// 	// Bind this is this is function
+								// 	let is_function = *to == TypeId::FUNCTION_TYPE
+								// 		|| matches!(environment.get_type_by_id(*to), Type::AliasTo { to, .. } if *to == TypeId::FUNCTION_TYPE);
 
-							// 	if is_function {
-							// 		let alias = environment.new_type(Type::AliasTo {
-							// 			to: property,
-							// 			name: None,
-							// 			parameters: None,
-							// 		});
-							// 		environment.this_bindings.insert(alias, on);
-							// 		alias
-							// 	} else {
-							// 		property
-							// 	}
-							// }
+								// 	if is_function {
+								// 		let alias = environment.new_type(Type::AliasTo {
+								// 			to: property,
+								// 			name: None,
+								// 			parameters: None,
+								// 		});
+								// 		environment.this_bindings.insert(alias, on);
+								// 		alias
+								// 	} else {
+								// 		property
+								// 	}
+								// }
+							}
 						}
 					}
+					Property::GetterAndSetter(getter, _) | Property::Getter(getter) => {
+						let state = crate::behavior::functions::ThisValue::Passed(on);
+						let call = getter.call(
+							CalledWithNew::None,
+							state,
+							None,
+							// TODO
+							None,
+							&[],
+							Span::NULL_SPAN,
+							environment,
+							behavior,
+							types,
+							true,
+						);
+						return match call {
+							Ok(res) => Some((PropertyKind::Getter, res.returned_type)),
+							Err(_) => {
+								todo!()
+							}
+						};
+					}
+					Property::Setter(_) => todo!(),
 				}
-				Property::GetterAndSetter(func, _) | Property::Getter(func) => {
-					let call = func.call(
-						crate::events::CalledWithNew::None,
-						Some(on),
-						None,
-						&None,
-						&[],
-						Span::NULL_SPAN,
-						environment,
-						behavior,
-						types,
-					);
-					return match call {
-						Ok(res) => Some(PropertyResult::Getter(res.returned_type)),
-						Err(_) => {
-							todo!()
-						}
-					};
-				}
-				Property::Setter(_) => todo!(),
+			}
+			Logical::Or(_) => todo!(),
+			Logical::Implies { on: log_on, mut antecedent } => {
+				let (kind, ty) = property_on_logical(*log_on, types, on, environment, behavior)?;
+				let ty = specialize(ty, &mut antecedent, environment, types);
+				Some((kind, ty))
 			}
 		}
-		Logical::Or(_) => todo!(),
-		Logical::Implies(_, _) => todo!(),
 	}
 }
 
 fn getter_on_type<'a, E: CallCheckingBehavior>(
-	constraint: PolyBase,
+	constraint: TypeId,
 	under: TypeId,
 	on: TypeId,
 	with: Option<TypeId>,
@@ -234,114 +247,109 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<TypeId> {
-	match constraint {
-		PolyBase::Fixed { to, is_open_poly } => {
-			// crate::utils::notify!(
-			// 	"Get property found fixed constraint {}, is_open_poly={:?}",
-			// 	environment.debug_type(on, types),
-			// 	is_open_poly
-			// );
+	// match constraint {
+	// 	PolyBase::Fixed { to, is_open_poly } => {
+	// crate::utils::notify!(
+	// 	"Get property found fixed constraint {}, is_open_poly={:?}",
+	// 	environment.debug_type(on, types),
+	// 	is_open_poly
+	// );
 
-			let fact = environment.get_property_unbound(to, under, types)?;
+	let fact = environment.get_property_unbound(constraint, under, types)?;
 
-			match fact {
-				Logical::Pure(og) => {
-					match og {
-						Property::Value(og) => {
-							match types.get_type_by_id(og) {
-								Type::Function(func, _) => {
-									// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-									let with_this = types.register_type(Type::Function(
-										func.clone(),
-										crate::types::FunctionNature::BehindPoly {
-											// TODO
-											function_id_if_open_poly: None,
-											this_type: Some(on),
-										},
-									));
-									crate::utils::notify!("Temp setting this on poly");
-
-									Some(with_this)
-								}
-								Type::And(_, _)
-								| Type::Object(..)
-								| Type::RootPolyType(_)
-								| Type::Constructor(_)
-								| Type::Or(_, _)
-								| Type::AliasTo { .. }
-								| Type::NamedRooted { .. } => {
-									// TODO this isn't necessary sometimes
-									let constructor_result = types.register_type(
-										Type::Constructor(Constructor::Property { on, under }),
-									);
-
-									Some(constructor_result)
-								}
-								Type::Constant(_) => Some(og),
-							}
+	match fact {
+		Logical::Pure(og) => {
+			match og {
+				Property::Value(og) => {
+					match types.get_type_by_id(og) {
+						Type::FunctionReference(func, _) => {
+							// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
+							let with_this = types
+								.register_type(Type::Function(func.clone(), ThisValue::Passed(og)));
+							Some(with_this)
 						}
-						Property::GetterAndSetter(_getter, _) | Property::Getter(_getter) => {
-							if is_open_poly {
-								crate::utils::notify!("TODO evaluate getter...");
-							} else {
-								crate::utils::notify!("TODO don't evaluate getter");
-							}
-							todo!()
+						Type::Class(..) | Type::Function(..) => todo!(),
+						Type::And(_, _)
+						| Type::Object(..)
+						| Type::RootPolyType(_)
+						| Type::Constructor(_)
+						| Type::Or(_, _)
+						| Type::AliasTo { .. }
+						| Type::NamedRooted { .. } => {
+							// TODO this isn't necessary sometimes
+							let constructor_result =
+								types.register_type(Type::Constructor(Constructor::Property {
+									on,
+									under,
+								}));
+
+							Some(constructor_result)
 						}
-						Property::Setter(_) => todo!("error"),
+						Type::Constant(_) => Some(og),
 					}
 				}
-				Logical::Or(_) => todo!(),
-				Logical::Implies(_, _) => todo!(),
+				Property::GetterAndSetter(_getter, _) | Property::Getter(_getter) => {
+					// if is_open_poly {
+					// 	crate::utils::notify!("TODO evaluate getter...");
+					// } else {
+					// 	crate::utils::notify!("TODO don't evaluate getter");
+					// }
+					todo!()
+				}
+				Property::Setter(_) => todo!("error"),
 			}
 		}
-		PolyBase::Dynamic { to, boundary } => {
-			todo!("this is likely changing")
-			// crate::utils::notify!(
-			// 	"Getting property {:?} which has a dynamic constraint {:?}",
-			// 	on,
-			// 	to
-			// );
-			// // If the property on the dynamic constraint is None
-			// if environment.get_property_unbound(to, under, types).is_none() {
-			// 	let on = if to == TypeId::ANY_TYPE {
-			// 		let new_constraint = types.register_type(Type::Object(
-			// 			crate::types::ObjectNature::ModifiableConstraint,
-			// 		));
-			// 		crate::utils::notify!("Here!!!");
-			// 		environment.attempt_to_modify_base(on, boundary, new_constraint);
-			// 		new_constraint
-			// 	} else if matches!(
-			// 		types.get_type_by_id(to),
-			// 		Type::AliasTo { to: TypeId::OBJECT_TYPE, .. }
-			// 	) {
-			// 		to
-			// 	} else {
-			// 		todo!("new and")
-			// 	};
-
-			// 	environment
-			// 		.facts
-			// 		.current_properties
-			// 		.entry(on)
-			// 		.or_default()
-			// 		.push((under, Property::Value(with.unwrap_or(TypeId::ANY_TYPE))));
-			// } else {
-			// 	crate::utils::notify!("Found existing property on dynamic constraint");
-			// }
-
-			// let constructor_result =
-			// 	types.register_type(Type::Constructor(Constructor::Property { on, under }));
-
-			// // environment
-			// // 	.context_type
-			// // 	.get_inferrable_constraints_mut()
-			// // 	.unwrap()
-			// // 	.insert(constructor_result);
-
-			// Some(GetResult::AccessIntroducesDependence(constructor_result))
-		}
+		Logical::Or(_) => todo!(),
+		Logical::Implies { .. } => todo!(),
 	}
+	// }
+	// PolyBase::Dynamic { to, boundary } => {
+	// 	todo!("this is likely changing")
+	// crate::utils::notify!(
+	// 	"Getting property {:?} which has a dynamic constraint {:?}",
+	// 	on,
+	// 	to
+	// );
+	// // If the property on the dynamic constraint is None
+	// if environment.get_property_unbound(to, under, types).is_none() {
+	// 	let on = if to == TypeId::ANY_TYPE {
+	// 		let new_constraint = types.register_type(Type::Object(
+	// 			crate::types::ObjectNature::ModifiableConstraint,
+	// 		));
+	// 		crate::utils::notify!("Here!!!");
+	// 		environment.attempt_to_modify_base(on, boundary, new_constraint);
+	// 		new_constraint
+	// 	} else if matches!(
+	// 		types.get_type_by_id(to),
+	// 		Type::AliasTo { to: TypeId::OBJECT_TYPE, .. }
+	// 	) {
+	// 		to
+	// 	} else {
+	// 		todo!("new and")
+	// 	};
+
+	// 	environment
+	// 		.facts
+	// 		.current_properties
+	// 		.entry(on)
+	// 		.or_default()
+	// 		.push((under, Property::Value(with.unwrap_or(TypeId::ANY_TYPE))));
+	// } else {
+	// 	crate::utils::notify!("Found existing property on dynamic constraint");
+	// }
+
+	// let constructor_result =
+	// 	types.register_type(Type::Constructor(Constructor::Property { on, under }));
+
+	// // environment
+	// // 	.context_type
+	// // 	.get_inferrable_constraints_mut()
+	// // 	.unwrap()
+	// // 	.insert(constructor_result);
+
+	// Some(GetResult::AccessIntroducesDependence(constructor_result))
+	// }
+	// }
 }
 
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
@@ -360,47 +368,47 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// 	return Err(SetPropertyError::NotWriteable);
 	// }
 
-	if E::CHECK_PARAMETERS {
-		let property_constraint = {
-			let constraint = environment.get_object_constraint(on);
+	// if E::CHECK_PARAMETERS {
+	let property_constraint = {
+		let constraint = environment.get_object_constraint(on);
 
-			match constraint {
-				Some(constraint) => {
-					let result = environment.get_property_unbound(constraint, under, types);
-					if result.is_none() {
-						// TODO does not exist
-						return Err(SetPropertyError::DoesNotMeetConstraint(
-							new.as_get_type(),
-							todo!("no property"),
-						));
-					}
-					result
+		match constraint {
+			Some(constraint) => {
+				let result = environment.get_property_unbound(constraint, under, types);
+				if result.is_none() {
+					// TODO does not exist
+					return Err(SetPropertyError::DoesNotMeetConstraint(
+						new.as_get_type(),
+						todo!("no property"),
+					));
 				}
-				None => None,
+				result
 			}
-		};
+			None => None,
+		}
+	};
 
-		if let Some(constraint) = property_constraint {
-			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
-				add_property_restrictions: true,
-				position: Span { start: 0, end: 0, source: SourceId::NULL },
-			};
-			let base_type = constraint.prop_to_type();
-			if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
-				base_type,
-				new.as_get_type(),
-				None,
-				// TODO undecided here
-				// TODO position here
-				&mut basic_subtyping,
-				environment,
-				types,
-			) {
-				// TODO don't short circuit
-				return Err(SetPropertyError::DoesNotMeetConstraint(base_type, sub_type_error));
-			}
+	if let Some(constraint) = property_constraint {
+		let mut basic_subtyping = crate::types::subtyping::BasicEquality {
+			add_property_restrictions: true,
+			position: Span { start: 0, end: 0, source: SourceId::NULL },
+		};
+		let base_type = constraint.prop_to_type();
+		if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
+			base_type,
+			new.as_get_type(),
+			None,
+			// TODO undecided here
+			// TODO position here
+			&mut basic_subtyping,
+			environment,
+			types,
+		) {
+			// TODO don't short circuit
+			return Err(SetPropertyError::DoesNotMeetConstraint(base_type, sub_type_error));
 		}
 	}
+	// }
 
 	// crate::utils::notify!(
 	// 	"setting {:?} {:?} {:?}",
@@ -437,7 +445,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 				Property::GetterAndSetter(_, _setter) | Property::Setter(_setter) => todo!(),
 			},
 			Logical::Or(_) => todo!(),
-			Logical::Implies(_, _) => todo!(),
+			Logical::Implies { .. } => todo!(),
 		}
 	} else {
 		// TODO abstract

@@ -4,6 +4,12 @@ declare function debug_type(): void performs const debug_type;
 declare function debug_effects(): void performs const debug_effects;
 declare function is_dependent(): void performs const is_dependent;
 
+declare function context_id(): void performs const context_id;
+declare function context_id_chain(): void performs const context_id_chain;
+
+// As it should be!
+declare function satisfies<T>(t: T): T performs const satisfies;
+
 interface Array<T> {
     length: number;
 

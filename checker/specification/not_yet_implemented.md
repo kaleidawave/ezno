@@ -1,5 +1,9 @@
 Current unsupported features. Eventually moved to `specification.md`
 
+## TODO
+
+### Types
+
 #### Array equality
 
 ```ts
@@ -7,6 +11,8 @@ const x: Array<string> = [1, "test"]
 ```
 
 - TODO
+
+### Control flow
 
 #### For loop
 
@@ -82,7 +88,7 @@ getProperty("c") satisfies 2
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
 
-#### Loop
+#### For loop
 
 ```ts
 function join(array: Array<string>) {

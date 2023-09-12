@@ -16,6 +16,30 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 	}
 
+	markdown_lines_append_test_to_rust(lines, &mut out)?;
+
+	if cfg!(feature = "all") {
+		let not_yet_implemented = read_to_string("./not_yet_implemented.md")?;
+		let mut lines = not_yet_implemented.lines().enumerate();
+
+		while let Some((_, line)) = lines.next() {
+			if line == "## TODO" {
+				break;
+			}
+		}
+
+		writeln!(&mut out, "mod todo {{ use super::check_errors; ").unwrap();
+		markdown_lines_append_test_to_rust(lines, &mut out)?;
+		writeln!(&mut out, "}}").unwrap();
+	}
+
+	Ok(())
+}
+
+fn markdown_lines_append_test_to_rust(
+	mut lines: std::iter::Enumerate<std::str::Lines<'_>>,
+	out: &mut File,
+) -> Result<(), Box<dyn Error>> {
 	let mut first_section = true;
 
 	while let Some((heading_idx, line)) = lines.next() {

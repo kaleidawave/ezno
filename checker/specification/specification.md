@@ -220,6 +220,69 @@ try {
 
 - Expected string, found 3
 
+### Closures
+
+#### Reading variable
+
+```ts
+function kestrel(a) {
+    return function (_b) {
+        return a
+    }
+}
+
+kestrel(3)(2) satisfies 4
+```
+
+- Expected 4, found 3
+
+#### Nesting
+
+```ts
+function kestrel2(a) {
+    return _b => _c => a
+}
+
+kestrel2(3)(2)(6) satisfies 4
+```
+
+- Expected 4, found 3
+
+#### Carry across objects
+
+```ts
+function magicNumber(a: number) {
+    return {
+		plusOne() { return a + 1 },
+		doubled() { return 2 * a }
+	}
+}
+
+const myNumber = magicNumber(4);
+myNumber.plusOne() satisfies 5
+myNumber.doubled() satisfies 6
+```
+
+- Expected 6, found 8
+
+#### Stateful
+
+```ts
+function myClosure(a) {
+    return {
+		getValue() { return a },
+		setValue(b) { a = b }
+	}
+}
+
+const value = myClosure(4);
+value.getValue() satisfies 4;
+value.setValue(10);
+value.getValue() satisfies 6
+```
+
+- Expected 6, found 10
+
 ### Effects
 
 #### Calling and operations with parameter

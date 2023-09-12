@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use source_map::Span;
 
 use crate::{
-	context::{Context, ContextType},
+	context::{facts::Facts, Context, ContextType},
+	events::Event,
 	types::{
 		functions::SynthesizedParameters, poly_types::GenericTypeParameters, properties::Property,
-		FunctionNature, FunctionType, TypeStore,
+		FunctionType, TypeStore,
 	},
 	CheckingData, Environment, FSResolver, FunctionId, Type, TypeId, VariableId,
 };
@@ -50,10 +53,14 @@ impl RegisterBehavior for RegisterAsType {
 		environment: &mut Context<U>,
 		types: &mut TypeStore,
 	) -> Self::Return {
-		types.register_type(crate::Type::Function(
-			func_ty,
-			crate::types::FunctionNature::Source(None),
-		))
+		let id = func_ty.id;
+		types.functions.insert(id, func_ty);
+		let ty = types.register_type(crate::Type::Function(id, ThisValue::UseParent));
+		environment.facts.events.push(Event::CreateObject {
+			prototype: crate::events::PrototypeArgument::Function(id),
+			referenced_in_scope_as: ty,
+		});
+		ty
 	}
 }
 
@@ -70,13 +77,16 @@ impl RegisterBehavior for RegisterOnExisting {
 		environment: &mut Context<U>,
 		types: &mut TypeStore,
 	) -> Self::Return {
-		let ty = types.register_type(crate::Type::Function(
-			func_ty,
-			crate::types::FunctionNature::Source(None),
-		));
+		let id = func_ty.id;
+		types.functions.insert(id, func_ty);
+		let ty = types.register_type(crate::Type::Function(id, Default::default()));
 		let variable_id = environment.variables.get(&self.0).unwrap().declared_at.clone();
 		let variable_id = VariableId(variable_id.source, variable_id.start);
 		environment.facts.variable_current_value.insert(variable_id, ty);
+		environment.facts.events.push(Event::CreateObject {
+			prototype: crate::events::PrototypeArgument::Function(id),
+			referenced_in_scope_as: ty,
+		});
 	}
 }
 
@@ -95,10 +105,16 @@ impl RegisterBehavior for RegisterOnExistingObject {
 		match func.get_set_generator_or_none() {
 			crate::GetterSetterGeneratorOrNone::Getter => Property::Getter(Box::new(func_ty)),
 			crate::GetterSetterGeneratorOrNone::Setter => Property::Setter(Box::new(func_ty)),
+			// TODO Generator
 			crate::GetterSetterGeneratorOrNone::Generator
 			| crate::GetterSetterGeneratorOrNone::None => {
-				let ty = Type::Function(func_ty, FunctionNature::Source(None));
-				let ty = types.register_type(ty);
+				let id = func_ty.id;
+				types.functions.insert(id, func_ty);
+				let ty = types.register_type(Type::Function(id, Default::default()));
+				environment.facts.events.push(Event::CreateObject {
+					prototype: crate::events::PrototypeArgument::Function(id),
+					referenced_in_scope_as: ty,
+				});
 				Property::Value(ty)
 			}
 		}
@@ -171,4 +187,39 @@ struct StatementOrExpressionFunction {
 struct ClassConstructor {
 	// events..?
 	fields: (),
+}
+
+#[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
+pub struct ClosedOverVariables(pub(crate) HashMap<VariableId, TypeId>);
+
+#[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
+pub enum ThisValue {
+	Passed(TypeId),
+	#[default]
+	UseParent,
+}
+
+impl ThisValue {
+	pub(crate) fn get(&self, environment: &mut Environment, types: &mut TypeStore) -> TypeId {
+		match self {
+			ThisValue::Passed(value) => *value,
+			ThisValue::UseParent => environment.get_value_of_this(types),
+		}
+	}
+
+	pub(crate) fn unwrap(&self) -> TypeId {
+		match self {
+			ThisValue::Passed(value) => *value,
+			ThisValue::UseParent => panic!("Tried to get value of this"),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
+pub struct ClosureId(pub(crate) u32);
+
+pub trait ClosureChain {
+	fn get_fact_from_closure<T, R>(&self, fact: &Facts, cb: T) -> Option<R>
+	where
+		T: Fn(ClosureId) -> Option<R>;
 }

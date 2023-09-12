@@ -1,7 +1,8 @@
 use super::Event;
 use crate::{
+	context::environment,
 	types::{new_logical_or_type, TypeStore},
-	TypeId,
+	CheckingData, Environment, TypeId,
 };
 
 pub(crate) enum ReturnedTypeFromBlock {
@@ -12,17 +13,68 @@ pub(crate) enum ReturnedTypeFromBlock {
 	Returned(TypeId),
 }
 
-pub(crate) fn get_return_from_events<'a>(
+/// TODO will cover move, like yield events and stuff
+pub(crate) fn get_return_from_events<'a, U: crate::FSResolver>(
 	iter: &mut (impl Iterator<Item = &'a Event> + ExactSizeIterator),
-	types: &mut TypeStore,
+	checking_data: &mut CheckingData<U>,
+	environment: &mut Environment,
+	expected_return_type: Option<(TypeId, source_map::Span)>,
 ) -> ReturnedTypeFromBlock {
 	while let Some(event) = iter.next() {
 		if let Event::Return { returned } = event {
+			if let Some((expected_return_type, annotation_span)) = expected_return_type.clone() {
+				let mut behavior = crate::subtyping::BasicEquality {
+					add_property_restrictions: true,
+					position: annotation_span.clone(),
+				};
+
+				let result = crate::subtyping::type_is_subtype(
+					expected_return_type,
+					*returned,
+					None,
+					&mut behavior,
+					environment,
+					&checking_data.types,
+				);
+
+				if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type:
+								crate::diagnostics::TypeStringRepresentation::from_type_id(
+									expected_return_type,
+									&environment.into_general_context(),
+									&checking_data.types,
+									false,
+								),
+							returned_type:
+								crate::diagnostics::TypeStringRepresentation::from_type_id(
+									*returned,
+									&environment.into_general_context(),
+									&checking_data.types,
+									false,
+								),
+							position: annotation_span,
+							// TODO event position here #37
+						},
+					);
+				}
+			}
 			return ReturnedTypeFromBlock::Returned(*returned);
 		} else if let Event::Conditionally { condition: on, events_if_truthy, else_events } = event
 		{
-			let return_if_truthy = get_return_from_events(&mut events_if_truthy.iter(), types);
-			let else_return = get_return_from_events(&mut else_events.iter(), types);
+			let return_if_truthy = get_return_from_events(
+				&mut events_if_truthy.iter(),
+				checking_data,
+				environment,
+				expected_return_type.clone(),
+			);
+			let else_return = get_return_from_events(
+				&mut else_events.iter(),
+				checking_data,
+				environment,
+				expected_return_type.clone(),
+			);
 
 			return match (return_if_truthy, else_return) {
 				(
@@ -77,7 +129,12 @@ pub(crate) fn get_return_from_events<'a>(
 					let right = if iter.len() == 0
 						&& !matches!(right, ReturnedTypeFromBlock::Returned(..))
 					{
-						get_return_from_events(iter, types)
+						get_return_from_events(
+							iter,
+							checking_data,
+							environment,
+							expected_return_type,
+						)
 					} else {
 						right
 					};
@@ -87,8 +144,8 @@ pub(crate) fn get_return_from_events<'a>(
 						}
 						ReturnedTypeFromBlock::ReturnedIf { when, returns: false_returns } => {
 							ReturnedTypeFromBlock::ReturnedIf {
-								when: new_logical_or_type(*on, when, types),
-								returns: types.new_conditional_type(
+								when: new_logical_or_type(*on, when, &mut checking_data.types),
+								returns: checking_data.types.new_conditional_type(
 									when,
 									false_returns,
 									true_returns,
@@ -96,11 +153,13 @@ pub(crate) fn get_return_from_events<'a>(
 							}
 						}
 						ReturnedTypeFromBlock::Returned(false_returns) => {
-							ReturnedTypeFromBlock::Returned(types.new_conditional_type(
-								*on,
-								true_returns,
-								false_returns,
-							))
+							ReturnedTypeFromBlock::Returned(
+								checking_data.types.new_conditional_type(
+									*on,
+									true_returns,
+									false_returns,
+								),
+							)
 						}
 					}
 				}

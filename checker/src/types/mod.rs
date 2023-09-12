@@ -1,8 +1,6 @@
 pub mod calling;
 mod casts;
 pub mod functions;
-pub mod indexing;
-pub mod operations;
 pub mod poly_types;
 pub mod printing;
 pub mod properties;
@@ -15,19 +13,25 @@ use derive_debug_extras::DebugExtras;
 pub(crate) use poly_types::specialization::*;
 
 pub(crate) use casts::*;
+use source_map::Span;
 pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
-	behavior::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
-	context::InferenceBoundary,
+	behavior::{
+		functions::{ClosureId, ThisValue},
+		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
+	},
 	events::RootReference,
-	TruthyFalsy,
+	Environment, TruthyFalsy,
 };
 
 pub use self::functions::*;
+use self::{
+	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
+	subtyping::type_is_subtype,
+};
 use crate::FunctionId;
-use std::fmt::Debug;
 
 /// References [Type]
 ///
@@ -99,7 +103,6 @@ pub enum Type {
 		name: String,
 		parameters: Option<Vec<TypeId>>,
 	},
-	/// TODO
 	And(TypeId, TypeId),
 	Or(TypeId, TypeId),
 	RootPolyType(PolyNature),
@@ -112,9 +115,16 @@ pub enum Type {
 		name: String,
 		parameters: Option<Vec<TypeId>>,
 	},
+	/// *Dependent equality types*
 	Constant(crate::Constant),
-	/// TODO function type behind Rc
-	Function(FunctionType, FunctionNature),
+	/// Represents known functions
+	Function(FunctionId, ThisValue),
+
+	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
+	FunctionReference(FunctionId, ThisValue),
+
+	/// Technically could be just a function but...
+	Class(FunctionId),
 	Object(ObjectNature), // TODO Proxy,
 }
 
@@ -122,21 +132,21 @@ pub enum Type {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PolyNature {
 	Parameter {
-		fixed_to: PolyPointer,
+		fixed_to: TypeId,
 	},
 	Generic {
 		name: String,
 		/// This can be `Dynamic` for interface hoisting
-		eager_fixed: PolyPointer,
+		eager_fixed: TypeId,
 	},
 	Open(TypeId),
 	/// For functions and for loops where something in the scope can mutate (so not constant)
 	/// between runs.
 	ParentScope {
 		reference: RootReference,
-		based_on: PolyPointer,
+		based_on: TypeId,
 	},
-	RecursiveFunction(FunctionId, PolyPointer),
+	RecursiveFunction(FunctionId, TypeId),
 	// Object
 }
 
@@ -148,48 +158,12 @@ pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	return false;
 }
 
-#[deprecated(note = "All will be fixed... based of `any`")]
-#[derive(Copy, Clone, Debug)]
-pub enum PolyPointer {
-	Fixed(TypeId),
-	Inferred(InferenceBoundary),
-}
-
-impl PolyNature {
-	pub fn get_fixed_constraint(&self) -> Option<TypeId> {
-		match self.get_poly_pointer() {
-			PolyPointer::Fixed(ty) => Some(ty),
-			PolyPointer::Inferred(_) => None,
-		}
-	}
-
-	pub fn get_poly_pointer(&self) -> PolyPointer {
-		match self {
-			Self::Open(ty) => PolyPointer::Fixed(*ty),
-			Self::Generic { eager_fixed: pp, .. }
-			| Self::ParentScope { based_on: pp, .. }
-			| Self::Parameter { fixed_to: pp, .. }
-			| Self::RecursiveFunction(_, pp) => *pp,
-		}
-	}
-
-	pub fn has_fixed_constraint(&self) -> bool {
-		self.get_fixed_constraint().is_some()
-	}
-
-	pub fn is_open(&self) -> bool {
-		matches!(self, Self::Open(_))
-	}
-}
-
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum ObjectNature {
 	/// Actual allocated object
 	RealDeal,
 	/// From `x: { a: number }` etc
 	AnonymousTypeAnnotation,
-	/// Important that this is different as properties can be mutated
-	ModifiableConstraint,
 }
 
 impl Type {
@@ -204,12 +178,22 @@ impl Type {
 	/// TODO return is poly
 	pub(crate) fn is_dependent(&self) -> bool {
 		match self {
+			// TODO
+			Type::Constructor(Constructor::StructureGenerics(..)) => false,
+			// Fine
 			Type::Constructor(_) | Type::RootPolyType(_) => true,
-			Type::And(_, _) | Type::Or(_, _) | Type::AliasTo { .. } | Type::NamedRooted { .. } => {
+			// TODO what about if left or right
+			Type::And(_, _) | Type::Or(_, _) => false,
+			// TODO what about if it aliases
+			Type::AliasTo { .. } | Type::NamedRooted { .. } => {
 				// TODO not sure
 				false
 			}
-			Type::Constant(_) | Type::Function(_, _) | Type::Object(_) => false,
+			Type::Constant(_)
+			| Type::Function(..)
+			| Type::FunctionReference(..)
+			| Type::Class(..)
+			| Type::Object(_) => false,
 		}
 	}
 }
@@ -247,17 +231,21 @@ pub enum Constructor {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
 		with: Box<[SynthesizedArgument]>,
-		result: PolyPointer,
+		result: TypeId,
 	},
 	Property {
 		on: TypeId,
 		under: TypeId,
 	},
-	/// Should really be base, but we will ignore for now
-	StructureGenerics {
-		on: TypeId,
-		with: map_vec::Map<TypeId, TypeId>,
-	},
+	/// Might not be best place but okay.
+	StructureGenerics(StructureGenerics),
+}
+
+/// Curries arguments
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct StructureGenerics {
+	pub on: TypeId,
+	pub arguments: StructureGenericArguments,
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -277,24 +265,168 @@ pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStor
 }
 
 pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
-	if ty == TypeId::TRUE {
-		return TruthyFalsy::Decidable(true);
-	} else if ty == TypeId::FALSE {
-		return TruthyFalsy::Decidable(false);
-	}
-
-	let ty = types.get_type_by_id(ty);
-	match ty {
-		Type::AliasTo { .. }
-		| Type::And(_, _)
-		| Type::Or(_, _)
-		| Type::RootPolyType(_)
-		| Type::Constructor(_)
-		| Type::NamedRooted { .. } => TruthyFalsy::Unknown,
-		Type::Function(_, _) | Type::Object(_) => TruthyFalsy::Decidable(true),
-		Type::Constant(cst) => {
-			// TODO strict casts
-			TruthyFalsy::Decidable(cast_as_boolean(cst, false).unwrap())
+	if ty == TypeId::TRUE || ty == TypeId::FALSE {
+		TruthyFalsy::Decidable(ty == TypeId::TRUE)
+	} else {
+		let ty = types.get_type_by_id(ty);
+		match ty {
+			Type::AliasTo { .. }
+			| Type::And(_, _)
+			| Type::Or(_, _)
+			| Type::RootPolyType(_)
+			| Type::Constructor(_)
+			| Type::NamedRooted { .. } => {
+				// TODO some of these case are known
+				TruthyFalsy::Unknown
+			}
+			Type::Function(..)
+			| Type::FunctionReference(..)
+			| Type::Class(..)
+			| Type::Object(_) => TruthyFalsy::Decidable(true),
+			Type::Constant(cst) => {
+				// TODO strict casts
+				TruthyFalsy::Decidable(cast_as_boolean(cst, false).unwrap())
+			}
 		}
 	}
+}
+
+/// TODO add_property_restrictions via const generics
+pub struct BasicEquality {
+	pub add_property_restrictions: bool,
+	pub position: Span,
+}
+
+/// For subtyping
+pub trait SubtypeBehavior {
+	fn set_type_argument(
+		&mut self,
+		parameter: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason>;
+
+	fn add_property_restrictions(&self) -> bool;
+
+	fn add_function_restriction(
+		&mut self,
+		environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	);
+
+	// TODO
+	// object reference type needs to meet constraint
+	// LHS is dependent + RHS argument
+}
+
+impl SubtypeBehavior for SeedingContext {
+	/// Does not check thingy
+	fn set_type_argument(
+		&mut self,
+		type_id: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason> {
+		let restriction = self.type_arguments.get_restriction_for_id(type_id);
+
+		// Check restriction from call site type argument
+		if let Some((pos, restriction)) = restriction {
+			if let SubTypeResult::IsNotSubType(reason) =
+				type_is_subtype(restriction, value, None, self, environment, types)
+			{
+				return Err(NonEqualityReason::GenericRestrictionMismatch {
+					restriction,
+					reason: Box::new(reason),
+					pos,
+				});
+			}
+		}
+
+		self.type_arguments.set_id(type_id, value, types);
+
+		Ok(())
+	}
+
+	fn add_property_restrictions(&self) -> bool {
+		false
+	}
+
+	fn add_function_restriction(
+		&mut self,
+		_environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	) {
+		self.locally_held_functions.insert(function_id, function_type);
+	}
+}
+
+impl SubtypeBehavior for BasicEquality {
+	fn set_type_argument(
+		&mut self,
+		parameter: TypeId,
+		value: TypeId,
+		environment: &mut Environment,
+		types: &TypeStore,
+	) -> Result<(), NonEqualityReason> {
+		Ok(())
+	}
+
+	fn add_property_restrictions(&self) -> bool {
+		self.add_property_restrictions
+	}
+
+	fn add_function_restriction(
+		&mut self,
+		environment: &mut Environment,
+		function_id: FunctionId,
+		function_type: FunctionType,
+	) {
+		let result = environment
+			.deferred_function_constraints
+			.insert(function_id, (function_type, self.position.clone()));
+
+		debug_assert!(result.is_none());
+	}
+}
+
+#[derive(Debug)]
+pub enum SubTypeResult {
+	IsSubType,
+	IsNotSubType(NonEqualityReason),
+}
+
+// impl SubTypeResult {
+// 	type Error = NonEqualityReason;
+// }
+
+// TODO implement `?` on SupertypeResult
+
+// TODO maybe positions and extra information here
+// SomeLiteralMismatch
+// GenericParameterCollision
+#[derive(Debug)]
+pub enum NonEqualityReason {
+	Mismatch,
+	PropertiesInvalid {
+		errors: Vec<(TypeId, PropertyError)>,
+	},
+	// For function call-site type arguments
+	GenericRestrictionMismatch {
+		restriction: TypeId,
+		reason: Box<NonEqualityReason>,
+		pos: Span,
+	},
+	TooStrict,
+	/// TODO more information
+	MissingParameter,
+}
+
+#[derive(Debug)]
+pub enum PropertyError {
+	Missing,
+	Invalid { expected: TypeId, found: TypeId, mismatch: NonEqualityReason },
 }

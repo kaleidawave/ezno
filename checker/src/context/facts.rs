@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{events::Event, Property, Type, TypeId, VariableId};
+use crate::{
+	behavior::functions::ClosureId,
+	events::{Event, RootReference},
+	Property, Type, TypeId, VariableId,
+};
 
 /// Things that are currently true or have happened
 #[derive(Debug, Default)]
@@ -13,6 +17,8 @@ pub struct Facts {
 	pub(crate) variable_current_value: HashMap<VariableId, TypeId>,
 	pub(crate) current_properties: HashMap<TypeId, Vec<(TypeId, Property)>>,
 	pub(crate) prototypes: HashMap<TypeId, TypeId>,
+
+	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
 
 	pub(crate) configurable: HashMap<(TypeId, TypeId), TypeId>,
 	pub(crate) enumerable: HashMap<(TypeId, TypeId), TypeId>,
@@ -53,12 +59,17 @@ impl Facts {
 		is_under_dyn: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+		crate::utils::notify!("New object created under {:?}", ty);
 
 		if let Some(prototype) = prototype {
 			self.prototypes.insert(ty, prototype);
 		}
 
 		if is_under_dyn {
+			let prototype = match prototype {
+				Some(id) => crate::events::PrototypeArgument::Yeah(id),
+				None => crate::events::PrototypeArgument::None,
+			};
 			// TODO maybe register the environment if function ...
 			// TODO register properties
 			let value = Event::CreateObject { referenced_in_scope_as: ty, prototype };

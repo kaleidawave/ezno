@@ -14,7 +14,8 @@ use crate::{
 	types::poly_types::GenericTypeParameters,
 	types::{
 		functions::{SynthesizedParameter, SynthesizedParameters, SynthesizedRestParameter},
-		FunctionKind, FunctionType,
+		poly_types::generic_type_arguments::TypeArgumentStore,
+		FunctionKind, FunctionType, StructureGenerics,
 	},
 	types::{Constructor, Type, TypeId},
 	CheckingData, Environment, FunctionId,
@@ -328,12 +329,12 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 		let ty = synthesize_type_annotation(&parameter.type_annotation, environment, checking_data);
 		let item_type = if let TypeId::ERROR_TYPE = ty {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics {
+		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 			on: TypeId::ARRAY_TYPE,
-			with,
-		}) = checking_data.types.get_type_by_id(ty)
+			arguments,
+		})) = checking_data.types.get_type_by_id(ty)
 		{
-			with[&TypeId::T_TYPE]
+			arguments.get_argument(TypeId::T_TYPE).unwrap()
 		} else {
 			todo!();
 			// checking_data.diagnostics_container.add_error(
@@ -627,12 +628,13 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 
 				FunctionType {
 					// TODO
-					id: FunctionId::NULL,
+					id: FunctionId(position.source, position.start),
 					parameters,
 					return_type,
 					type_parameters,
 					effects,
-					closed_over_references: Default::default(),
+					used_parent_references: Default::default(),
+					closed_over_variables: Default::default(),
 					kind,
 					constant_id,
 				}

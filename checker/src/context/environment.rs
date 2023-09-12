@@ -1,5 +1,5 @@
 use source_map::Span;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::{
 	behavior::{
@@ -15,16 +15,17 @@ use crate::{
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
-		properties::{Property, PropertyResult},
+		properties::{Property, PropertyKind},
 		subtyping::{type_is_subtype, SubTypeResult},
-		PolyNature, PolyPointer, Type, TypeStore,
+		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Root, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{
-	calling::CheckThings, facts::Facts, get_value_of_variable, AssignmentError, Context,
-	ContextType, Environment, GeneralContext, SetPropertyError,
+	calling::CheckThings, facts::Facts, get_value_of_variable, AssignmentError,
+	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
+	SetPropertyError,
 };
 
 #[derive(Debug)]
@@ -32,11 +33,15 @@ pub struct Syntax<'a> {
 	pub kind: Scope,
 	pub(super) parent: GeneralContext<'a>,
 
-	/// TODO rhs type is what...?
-	pub closed_over_references: HashMap<RootReference, TypeId>,
-	// /// Used for getting restrictions of closed over variables.
-	// /// This should be empty at the end of synthesizing the scope
-	// pub hoisted_variable_restrictions: HashMap<VariableId, TypeId>,
+	/// Variables that this context pulls in from above (across a dynamic context).
+	/// Not to be confused with `closed_over_references`
+	///
+	/// TypeId points to the constraint, not the generic type.
+	pub used_parent_references: HashSet<RootReference>,
+
+	/// Variables used in this scope which are closed over by functions. These need to be stored
+	/// Not to be confused with `used_parent_references`
+	pub closed_over_references: ClosedOverReferencesInScope,
 }
 
 impl<'a> ContextType for Syntax<'a> {
@@ -50,6 +55,10 @@ impl<'a> ContextType for Syntax<'a> {
 
 	fn is_dynamic_boundary(&self) -> bool {
 		matches!(self.kind, Scope::Function { .. } | Scope::Looping { .. })
+	}
+
+	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
+		Some(&mut self.closed_over_references)
 	}
 }
 
@@ -332,7 +341,7 @@ impl<'a> Environment<'a> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
-		if let Some((_, variable)) = variable_in_map {
+		if let Some((_, _, variable)) = variable_in_map {
 			match variable.mutability {
 				VariableMutability::Constant => {
 					return Err(AssignmentError::Constant(variable.declared_at.clone()));
@@ -426,7 +435,7 @@ impl<'a> Environment<'a> {
 		property: TypeId,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
-	) -> Option<PropertyResult> {
+	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
 	}
 
@@ -438,7 +447,7 @@ impl<'a> Environment<'a> {
 		site: Span,
 	) -> TypeId {
 		match self.get_property(on, property, &mut checking_data.types, None) {
-			Some(ty) => ty.into(),
+			Some((_, ty)) => ty,
 			None => {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::PropertyDoesNotExist {
@@ -468,10 +477,12 @@ impl<'a> Environment<'a> {
 		pos: &Span,
 		checking_data: &mut CheckingData<U>,
 	) -> Result<VariableWithValue, TypeId> {
-		let (crossed_boundary, og_var) = {
+		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
 			match this {
-				Some((crossed_boundary, og_var)) => (crossed_boundary, og_var.clone()),
+				Some((in_root, crossed_boundary, og_var)) => {
+					(in_root, crossed_boundary, og_var.clone())
+				}
 				None => {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::CouldNotFindVariable {
@@ -486,11 +497,12 @@ impl<'a> Environment<'a> {
 			}
 		};
 
-		let reference = RootReference::VariableId(og_var.get_id());
+		let reference = RootReference::Variable(og_var.get_id());
 		// TODO
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
-		if let Some(boundary) = crossed_boundary {
+		// TODO in_root temp fix
+		if let (Some(boundary), false) = (crossed_boundary, in_root) {
 			let based_on = match og_var.mutability {
 				VariableMutability::Constant => {
 					let variable_id =
@@ -499,7 +511,11 @@ impl<'a> Environment<'a> {
 					let constraint =
 						checking_data.type_mappings.variables_to_constraints.0.get(&variable_id);
 
-					let current_value = get_value_of_variable(self.facts_chain(), og_var.get_id());
+					let current_value = get_value_of_variable(
+						self.facts_chain(),
+						og_var.get_id(),
+						None::<&crate::types::poly_types::FunctionTypeArguments>,
+					);
 
 					if let Some(current_value) = current_value {
 						let ty = checking_data.types.get_type_by_id(current_value);
@@ -512,31 +528,19 @@ impl<'a> Environment<'a> {
 
 					// TODO is primitive, then can just use type
 					match constraint {
-						Some(constraint) => crate::types::PolyPointer::Fixed(*constraint),
+						Some(constraint) => *constraint,
 						None => {
-							checking_data.raise_unimplemented_error(
-								"constraint across boundary",
-								pos.clone(),
-							);
-							return Ok(VariableWithValue(
-								og_var.clone(),
-								TypeId::UNIMPLEMENTED_ERROR_TYPE,
-							));
+							crate::utils::notify!("TODO record that parent variable is `any` here");
+							TypeId::ANY_TYPE
 						}
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					match reassignment_constraint {
-						Some(constraint) => crate::types::PolyPointer::Fixed(constraint),
+						Some(constraint) => constraint,
 						None => {
-							checking_data.raise_unimplemented_error(
-								"constraint across boundary",
-								pos.clone(),
-							);
-							return Ok(VariableWithValue(
-								og_var.clone(),
-								TypeId::UNIMPLEMENTED_ERROR_TYPE,
-							));
+							crate::utils::notify!("TODO record that parent variable is `any` here");
+							TypeId::ANY_TYPE
 						}
 					}
 				}
@@ -561,29 +565,36 @@ impl<'a> Environment<'a> {
 			let type_id = if let Some(value) = value {
 				*value
 			} else {
-				// TODO
+				// TODO dynamic ?
 				let ty = Type::RootPolyType(crate::types::PolyNature::ParentScope {
 					reference: reference.clone(),
 					based_on,
 				});
-				let type_id = checking_data.types.register_type(ty);
-				// TODO what is rhs
-				self.context_type.closed_over_references.insert(reference, type_id);
+				let ty = checking_data.types.register_type(ty);
+
+				// TODO would it be useful to record the type somewhere?
+				self.context_type.used_parent_references.insert(reference);
+
 				// if inferred {
 				// 	self.context_type.get_inferrable_constraints_mut().unwrap().insert(type_id);
 				// }
 
 				self.facts.events.push(Event::ReadsReference {
-					reference: crate::events::RootReference::VariableId(og_var.get_id()),
-					reflects_dependency: Some(type_id),
+					reference: crate::events::RootReference::Variable(og_var.get_id()),
+					reflects_dependency: Some(ty),
 				});
-				type_id
+
+				ty
 			};
 
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
-			let current_value = get_value_of_variable(self.facts_chain(), og_var.get_id())
-				.expect("variable not assigned yet");
+			let current_value = get_value_of_variable(
+				self.facts_chain(),
+				og_var.get_id(),
+				None::<&crate::types::poly_types::FunctionTypeArguments>,
+			)
+			.expect("variable not assigned yet");
 			Ok(VariableWithValue(og_var.clone(), current_value))
 		}
 	}
@@ -698,8 +709,6 @@ impl<'a> Environment<'a> {
 	pub(crate) fn create_this(&mut self, over: TypeId, store: &mut TypeStore) -> TypeId {
 		let current_constructor_type = self.get_current_constructor().unwrap();
 
-		let prototype = Some(over);
-
 		// TODO I think
 		let ty = store.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
@@ -711,6 +720,7 @@ impl<'a> Environment<'a> {
 			},
 		));
 
+		let prototype = crate::events::PrototypeArgument::Yeah(over);
 		let event = Event::Conditionally {
 			condition,
 			events_if_truthy: Box::new([Event::CreateObject {
@@ -775,7 +785,7 @@ pub(crate) fn get_this_type_from_constraint(
 	}
 
 	// TODO temp
-	let poly_nature = PolyNature::ParentScope { reference, based_on: PolyPointer::Fixed(this_ty) };
+	let poly_nature = PolyNature::ParentScope { reference, based_on: this_ty };
 	let ty = types.register_type(Type::RootPolyType(poly_nature));
 
 	facts.events.push(Event::ReadsReference {

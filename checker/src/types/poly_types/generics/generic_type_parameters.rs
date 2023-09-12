@@ -1,7 +1,9 @@
 use std::{fmt::Debug, iter::FromIterator};
 
-use crate::types::poly_types::generics::generic_type_arguments::TypeArguments;
+use crate::types::poly_types::generics::generic_type_arguments::FunctionTypeArguments;
 use crate::TypeId;
+
+use super::generic_type_arguments::TypeArgumentStore;
 
 // Encompasses both generic types
 #[derive(Default, Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -101,10 +103,10 @@ impl PartialEq for GenericTypeParameter {
 /// TODO remove intermediate function
 fn get_type_from_arguments_using_generic_type_parameter_id(
 	type_id: TypeId,
-	type_arguments: &TypeArguments,
+	type_arguments: &FunctionTypeArguments,
 ) -> TypeId {
 	// TODO not 100% about this...?
-	if let Some(gta) = type_arguments.get_arg(type_id) {
+	if let Some(gta) = type_arguments.get_structure_argument(type_id) {
 		gta.clone()
 	} else {
 		crate::utils::notify!(
