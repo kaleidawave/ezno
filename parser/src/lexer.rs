@@ -45,7 +45,7 @@ pub fn lex_script(
 	sender: &mut impl TokenSender<TSXToken, Span>,
 	options: &LexerOptions,
 	source: Option<SourceId>,
-	offset: Option<usize>,
+	offset: Option<u32>,
 	mut cursors: Vec<(usize, EmptyCursorId)>,
 ) -> Result<(), ParseError> {
 	// TODO
@@ -174,7 +174,7 @@ pub fn lex_script(
 	/// TODO not sure about this, maybe shouldn't return span
 	macro_rules! current_position {
 		() => {
-			Span { start: start as u32 + offset as u32, end: start as u32 + offset as u32, source }
+			Span { start: start as u32 + offset, end: start as u32 + offset, source }
 		};
 	}
 
@@ -213,8 +213,8 @@ pub fn lex_script(
 				let res = sender.push(Token(
 					$t,
 					Span {
-						start: (start + offset) as u32,
-						end: (idx + offset + chr.len_utf8()) as u32,
+						start: start as u32 + offset,
+						end: (idx + chr.len_utf8()) as u32 + offset,
 						source,
 					},
 				));
@@ -226,7 +226,7 @@ pub fn lex_script(
 			(EXCLUDING_LAST_CHAR, $t:expr $(,)?) => {{
 				let res = sender.push(Token(
 					$t,
-					Span { start: (start + offset) as u32, end: (idx + offset) as u32, source },
+					Span { start: start as u32 + offset, end: idx as u32 + offset, source },
 				));
 				if !res {
 					return Ok(());
@@ -237,8 +237,8 @@ pub fn lex_script(
 				let res = sender.push(Token(
 					$t,
 					Span {
-						start: (start + offset) as u32,
-						end: (idx + offset - $slice.len_utf8()) as u32,
+						start: start as u32 + offset,
+						end: (idx - $slice.len_utf8()) as u32 + offset,
 						source,
 					},
 				));
@@ -251,8 +251,8 @@ pub fn lex_script(
 				let res = sender.push(Token(
 					$t,
 					Span {
-						start: (idx + offset) as u32,
-						end: (idx + offset + chr.len_utf8()) as u32,
+						start: idx as u32 + offset,
+						end: (idx + chr.len_utf8()) as u32 + offset,
 						source,
 					},
 				));
@@ -479,11 +479,7 @@ pub fn lex_script(
 						// TODO using push token
 						sender.push(Token(
 							TSXToken::TemplateLiteralChunk(script[start..(idx - 1)].to_owned()),
-							Span {
-								start: (start + offset) as u32,
-								end: (idx + offset) as u32,
-								source,
-							},
+							Span { start: start as u32 + offset, end: idx as u32 + offset, source },
 						));
 					}
 					push_token!(AFTER_LAST_CHAR, TSXToken::TemplateLiteralExpressionStart);
@@ -1045,20 +1041,20 @@ pub fn lex_script(
 		}
 	}
 
-	let end_of_source = (script.len() + offset) as u32;
+	let end_of_source = script.len() as u32 + offset;
 
 	// If source ends while there is still a parsing state
 	match state {
 		LexingState::Number { .. } => {
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),
-				Span { start: (start + offset) as u32, end: end_of_source, source },
+				Span { start: start as u32 + offset, end: end_of_source, source },
 			));
 		}
 		LexingState::Identifier => {
 			sender.push(Token(
 				TSXToken::from_slice(&script[start..]),
-				Span { start: (start + offset) as u32, end: end_of_source, source },
+				Span { start: start as u32 + offset, end: end_of_source, source },
 			));
 		}
 		LexingState::Symbol(symbol_state) => {
@@ -1071,7 +1067,7 @@ pub fn lex_script(
 				} => {
 					sender.push(Token(
 						result,
-						Span { start: (start + offset) as u32, end: end_of_source, source },
+						Span { start: start as u32 + offset, end: end_of_source, source },
 					));
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
@@ -1086,7 +1082,7 @@ pub fn lex_script(
 		LexingState::Comment => {
 			sender.push(Token(
 				TSXToken::Comment(script[(start + 2)..].trim_end().to_owned()),
-				Span { start: (start + offset) as u32, end: end_of_source, source },
+				Span { start: start as u32 + offset, end: end_of_source, source },
 			));
 		}
 		LexingState::MultiLineComment { .. } => {

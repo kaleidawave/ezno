@@ -226,12 +226,13 @@ pub(super) fn synthesize_variable_declaration_item<
 ) where
 	for<'a> Option<&'a parser::Expression>: From<&'a U>,
 {
-	let var_ty_and_pos = variable_declaration.type_annotation.as_ref().map(|reference| {
-		(
-			synthesize_type_annotation(reference, environment, checking_data),
-			reference.get_position().into_owned(),
-		)
-	});
+	// This is only added if there is an annotation, so can be None
+	let get_position = variable_declaration.get_position();
+	let var_ty_and_pos = checking_data
+		.type_mappings
+		.variable_restrictions
+		.get(&(get_position.source, get_position.start))
+		.map(|(ty, pos)| (*ty, pos.clone()));
 
 	let value_ty = if let Some(value) =
 		Option::<&parser::Expression>::from(&variable_declaration.expression)
