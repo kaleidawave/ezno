@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use parser::{
 	declarations::DeclareVariableDeclaration, ASTNode, Declaration, Statement,
-	StatementOrDeclaration, VariableIdentifier,
+	StatementOrDeclaration, VariableIdentifier, WithComment,
 };
 
 use crate::{
@@ -118,14 +118,11 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						declarations,
 					} => {
 						for declaration in declarations.iter() {
-							let constraint =
-								declaration.type_annotation.as_ref().map(|reference| {
-									synthesize_type_annotation(
-										&reference,
-										environment,
-										checking_data,
-									)
-								});
+							let constraint = get_annotation_from_declaration(
+								declaration,
+								environment,
+								checking_data,
+							);
 
 							let behavior = crate::context::VariableRegisterBehavior::Register {
 								mutability: VariableMutability::Constant,
@@ -145,14 +142,11 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						declarations,
 					} => {
 						for declaration in declarations.iter() {
-							let constraint =
-								declaration.type_annotation.as_ref().map(|reference| {
-									synthesize_type_annotation(
-										&reference,
-										environment,
-										checking_data,
-									)
-								});
+							let constraint = get_annotation_from_declaration(
+								declaration,
+								environment,
+								checking_data,
+							);
 
 							let behavior = crate::context::VariableRegisterBehavior::Register {
 								mutability: VariableMutability::Mutable {
@@ -281,5 +275,64 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				RegisterOnExisting(func.on.name.as_str().to_owned()),
 			);
 		}
+	}
+}
+
+fn get_annotation_from_declaration<
+	T: crate::FSResolver,
+	U: parser::declarations::variable::DeclarationExpression + 'static,
+>(
+	declaration: &parser::declarations::VariableDeclarationItem<U>,
+	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	checking_data: &mut CheckingData<'_, T>,
+) -> Option<TypeId> {
+	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
+		Some((
+			synthesize_type_annotation(annotation, environment, checking_data),
+			annotation.get_position().into_owned(),
+		))
+	}
+	// TODO only under config
+	else if let WithComment::PostfixComment(item, possible_declaration, position) =
+		&declaration.name
+	{
+		string_comment_to_type(possible_declaration, position, environment, checking_data)
+	} else {
+		None
+	};
+
+	if let Some((ty, span)) = result.clone() {
+		let get_position = declaration.get_position();
+		checking_data
+			.type_mappings
+			.variable_restrictions
+			.insert((get_position.source, get_position.start), (ty, span));
+	}
+
+	result.map(|(value, _span)| value)
+}
+
+pub(crate) fn string_comment_to_type<T: crate::FSResolver>(
+	possible_declaration: &String,
+	position: &source_map::Span,
+	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	checking_data: &mut CheckingData<'_, T>,
+) -> Option<(TypeId, source_map::Span)> {
+	use parser::ASTNode;
+	let annotation = parser::TypeAnnotation::from_string(
+		possible_declaration.clone(),
+		Default::default(),
+		position.source,
+		Some(position.end - 2 - possible_declaration.len() as u32),
+		Default::default(),
+	);
+	if let Ok(annotation) = annotation {
+		Some((
+			synthesize_type_annotation(&annotation, environment, checking_data),
+			annotation.get_position().into_owned(),
+		))
+	} else {
+		// TODO warning
+		None
 	}
 }

@@ -72,8 +72,10 @@ pub enum VariableField<T: VariableFieldKind> {
 	/// `x`
 	Name(VariableIdentifier),
 	/// `[x, y, z]`
+	/// TODO spread last
 	Array(Vec<ArrayDestructuringField<T>>, Span),
 	/// `{ x, y: z }`.
+	/// TODO spread last
 	Object(Vec<WithComment<ObjectDestructuringField<T>>>, Span),
 }
 

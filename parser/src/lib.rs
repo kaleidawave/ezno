@@ -189,7 +189,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		source: String,
 		settings: ParseOptions,
 		source_id: SourceId,
-		offset: Option<usize>,
+		offset: Option<u32>,
 		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
 		use source_map::LineStarts;
@@ -230,7 +230,7 @@ fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: String,
 	source: SourceId,
-	offset: Option<usize>,
+	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
