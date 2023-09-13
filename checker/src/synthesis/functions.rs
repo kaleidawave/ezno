@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesize_expression, synthesize_block,
+	expressions::synthesize_expression, hoisting::string_comment_to_type, synthesize_block,
 	type_annotations::synthesize_type_annotation, variables::register_variable, Performs,
 };
 
@@ -364,7 +364,22 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 			let annotation = parameter
 				.type_annotation
 				.as_ref()
-				.map(|reference| synthesize_type_annotation(reference, environment, checking_data));
+				.map(|reference| synthesize_type_annotation(reference, environment, checking_data))
+				.or_else(|| {
+					if let WithComment::PostfixComment(item, possible_declaration, position) =
+						&parameter.name
+					{
+						string_comment_to_type(
+							possible_declaration,
+							position,
+							environment,
+							checking_data,
+						)
+						.map(|(ty, _pos)| ty)
+					} else {
+						None
+					}
+				});
 
 			let param_type = register_variable(
 				parameter.name.get_ast_ref(),
@@ -410,160 +425,6 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 		VariableField::Object(_, _) => todo!(),
 	}
 }
-
-pub(super) fn type_function_parameters<T: crate::FSResolver>(
-	ast_parameters: &parser::FunctionParameters,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
-) -> SynthesizedParameters {
-	todo!();
-	// synthesize_function_parameters(&ast_parameters, environment, checking_data);
-
-	// let parameters = ast_parameters
-	// 	.parameters
-	// 	.iter()
-	// 	.map(|parameter| synthesize_function_parameter(parameter, environment, checking_data))
-	// 	.collect();
-
-	// let optional_parameters = ast_parameters
-	// 	.optional_parameters
-	// 	.iter()
-	// 	.map(|parameter| match parameter {
-	// 		parser::OptionalOrWithDefaultValueParameter::Optional { name, type_annotation } => {
-	// 			let VariableIdentifier::Standard(name, variable_id, position) = name else { panic!() };
-
-	// 			let parameter_type = type_annotation.as_ref().map(|reference| {
-	// 				synthesize_type_annotation(reference, environment, checking_data)
-	// 			});
-
-	// 			let variable_id = todo!();
-
-	// 			let behavior = crate::context::VariableRegisterBehavior::FunctionParameter {
-	// 				annotation: parameter_type,
-	// 			};
-
-	// 			let parameter_type = environment
-	// 				.register_variable(name, variable_id, behavior, &mut checking_data.types)
-	// 				.expect("TODO duplicate parameter names");
-
-	// 			// TODO in parser
-	// 			let span = position.clone();
-	// 			let position = if let Some(type_annotation) = type_annotation {
-	// 				span.union(&type_annotation.get_position())
-	// 			} else {
-	// 				span
-	// 			};
-
-	// 			SynthesizedParameter { ty: parameter_type, name: name.clone(), position }
-	// 		}
-	// 		parser::OptionalOrWithDefaultValueParameter::WithDefaultValue {
-	// 			name,
-	// 			type_annotation,
-	// 			value,
-	// 		} => {
-	// 			// let parameter_type =
-	// 			// 	synthesize_parameter_type_annotation(type_annotation, environment, checking_data);
-
-	// 			// let default_value_type = environment.new_lexical_environment_fold(
-	// 			// 	Scope::Conditional { on: crate::proofs::Proofs::default() },
-	// 			// 	|environment| synthesize_expression(value, environment, checking_data,
-	// 			// );
-
-	// 			// crate::utils::notify!("TODO check default against parameter type constraint here");
-	// 			todo!();
-	// 			// let union_type = TypeId::Union(vec![parameter_type.clone(), default_value_type]);
-	// 			// synthesize_variable_field(
-	// 			//     name.get_ast_mut(),
-	// 			//     None,
-	// 			//     &union_type,
-	// 			//     checking_data.settings.constant_parameters,
-	// 			//     environment,
-	// 			//     checking_data,
-	// 			//
-	// 			// );
-	// 			// SynthesizedParameter(
-	// 			//     Some(parameter_type),
-	// 			//     get_variable_field_name(name.get_ast()),
-	// 			//     position.clone(),
-	// 			// )
-	// 		}
-	// 	})
-	// 	.collect();
-
-	// let rest_parameter = if let Some(ref spread_parameter) = ast_parameters.rest_parameter {
-	// 	todo!()
-	// // let (rest_array_parameter_type, array_inside_type) =
-	// // if spread_parameter.type_annotation.is_some() {
-	// // 	let reference = synthesize_parameter_type_annotation(
-	// // 		&spread_parameter.type_annotation,
-	// // 		environment,
-	// // 		checking_data,
-	// // 		constraints,
-	// // 	);
-	// // 	// let inside_type: Option<TypeId> =
-	// // 	//     if let TypeId::SpecializedGeneric(SpecializedGeneric {
-	// // 	//         generic_type: GenericInterfaceTypeId::ARRAY_TYPE,
-	// // 	//         arguments,
-	// // 	//     }) = reference
-	// // 	//     {
-	// // 	//         todo!()
-	// // 	//         // arguments.into_iter().next().unwrap().1
-	// // 	//     } else {
-	// // 	//         todo!("error function with non array based thingy")
-	// // 	//     };
-	// // 	// crate::utils::notify!("check type is array here");
-	// // 	// (reference, inside_type)
-	// // } else {
-	// // 	// ArrayType(Type::new_inferred_generic_type_parameter(constraints)).get_known_type(
-	// // 	//     &checking_data.memory,
-	// // 	//     &mut GetTypeFromReferenceSettings::SourceParameterPosition(constraints),
-	// // 	// )
-	// // };
-	// // environment.declare_variable(
-	// //     &spread_parameter.name,
-	// //     None,
-	// //     rest_array_parameter_type,
-	// //     spread_parameter.variable_id,
-	// //     checking_data.settings.constant_parameters,
-	// //     spread_parameter.position.clone(),
-	// // );
-	// // Some(Box::new(SynthesizedRestParameter(
-	// //     array_inside_type,
-	// //     spread_parameter.name.clone(),
-	// //     spread_parameter.position.clone(),
-	// // )))
-	// } else {
-	// 	None
-	// };
-
-	// SynthesizedParameters { rest_parameter, optional_parameters, parameters }
-}
-
-// fn synthesize_function_parameter<T: crate::FSResolver>(
-// 	parameter: &parser::Parameter,
-// 	environment: &mut Context<Syntax>,
-// 	checking_data: &mut CheckingData<T>,
-// ) -> SynthesizedParameter {
-// 	let parameter_type =
-// 		synthesize_parameter_type_annotation(&parameter.type_annotation, environment, checking_data);
-
-// 	synthesize_variable_field(
-// 		parameter.name.get_ast(),
-// 		None,
-// 		parameter_type,
-// 		checking_data.settings.constant_parameters,
-// 		environment,
-// 		checking_data,
-// 	);
-
-// 	let position = parameter.get_position().into_owned();
-
-// 	SynthesizedParameter {
-// 		ty: parameter_type,
-// 		name: get_parameter_name(&parameter.name.get_ast()),
-// 		position,
-// 	}
-// }
 
 // TODO don't print values
 fn get_parameter_name<T: parser::VariableFieldKind>(
