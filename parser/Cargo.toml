@@ -34,21 +34,25 @@ iterator-endiate = "0.1.0"
 enum_variant_type = "0.3.1"
 enum-variants-strings = "0.2"
 
-source-map = { version = "0.13", features = [
-  "span-serialize",
+get-field-by-type = "0.0.3"
+
+source-map = { version = "0.14.1", features = [
+  "serde-serialize",
   "self-rust-tokenize",
 ] }
 self-rust-tokenize = { version = "0.3.3", optional = true }
 
 # Needs buffered and not parralel for WASM
 [target.'cfg(target_family = "wasm")'.dependencies]
-tokenizer-lib = { version = "1.5.0", features = [
+tokenizer-lib = { version = "1.5.1", features = [
   "buffered",
+  "sized-tokens",
 ], default_features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokenizer-lib = { version = "1.5.0", features = [
+tokenizer-lib = { version = "1.5.1", features = [
   "parallel",
+  "sized-tokens",
 ], default_features = false }
 
 [dev-dependencies]

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{
 	ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation, VariableField,
 	VariableFieldInSourceCode, WithComment,
@@ -10,7 +8,8 @@ use visitable_derive::Visitable;
 
 pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct TryCatchStatement {
 	pub try_inner: Block,
@@ -21,16 +20,16 @@ pub struct TryCatchStatement {
 }
 
 impl ASTNode for TryCatchStatement {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Try))?;
+		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Try))?;
 		let try_inner = Block::from_reader(reader, state, settings)?;
 
 		let mut catch_inner: Option<Block> = None;
@@ -72,12 +71,15 @@ impl ASTNode for TryCatchStatement {
 
 		// Determine span based on which clauses are present
 		let position: Span = if let Some(finally_block) = &finally_inner {
-			start_span.union(&finally_block.get_position())
+			start.union(finally_block.get_position())
 		} else if let Some(catch_block) = &catch_inner {
-			start_span.union(&catch_block.get_position())
+			start.union(catch_block.get_position())
 		} else {
 			// Parse error if neither catch nor finally clause is present
-			return Err(ParseError::new(ParseErrors::ExpectedCatchOrFinally, start_span));
+			return Err(ParseError::new(
+				ParseErrors::ExpectedCatchOrFinally,
+				reader.next().unwrap().get_span(),
+			));
 		};
 
 		Ok(Self { position, try_inner, exception_var, catch_inner, finally_inner })

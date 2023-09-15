@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{PropertyReference, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -32,16 +30,16 @@ pub enum VariableOrPropertyAccess {
 }
 
 impl ASTNode for VariableOrPropertyAccess {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			VariableOrPropertyAccess::Variable(_, position)
 			| VariableOrPropertyAccess::PropertyAccess { position, .. }
-			| VariableOrPropertyAccess::Index { position, .. } => Cow::Borrowed(position),
+			| VariableOrPropertyAccess::Index { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> ParseResult<Self> {
@@ -79,7 +77,7 @@ impl ASTNode for VariableOrPropertyAccess {
 
 impl VariableOrPropertyAccess {
 	pub(crate) fn from_reader_with_precedence(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 		return_precedence: u8,
@@ -108,7 +106,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
-				expression.get_position().into_owned(),
+				expression.get_position().clone(),
 			)),
 		}
 	}
@@ -167,10 +165,10 @@ pub enum LHSOfAssignment {
 }
 
 impl LHSOfAssignment {
-	pub fn get_position(&self) -> Cow<Span> {
+	pub fn get_position(&self) -> &Span {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(_, pos)
-			| LHSOfAssignment::ArrayDestructuring(_, pos) => Cow::Borrowed(pos),
+			| LHSOfAssignment::ArrayDestructuring(_, pos) => pos,
 			LHSOfAssignment::VariableOrPropertyAccess(var_prop_access) => {
 				var_prop_access.get_position()
 			}

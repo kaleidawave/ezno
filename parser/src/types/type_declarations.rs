@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
 	ASTNode, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
@@ -18,7 +16,7 @@ pub struct TypeDeclaration {
 
 impl ASTNode for TypeDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -51,8 +49,8 @@ impl ASTNode for TypeDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
@@ -82,7 +80,7 @@ impl GenericTypeConstraint {
 
 impl ASTNode for GenericTypeConstraint {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -148,7 +146,7 @@ impl ASTNode for GenericTypeConstraint {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!()
 	}
 }

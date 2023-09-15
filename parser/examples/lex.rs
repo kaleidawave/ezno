@@ -14,15 +14,8 @@ fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorI
 	let (mut sender, mut receiver) = ParallelTokenQueue::new();
 
 	let thread = spawn(move || {
-		lex_script(
-			&script,
-			&mut sender,
-			&Default::default(),
-			None,
-			None,
-			cursors.unwrap_or_default(),
-		)
-		.unwrap();
+		lex_script(&script, &mut sender, &Default::default(), None, cursors.unwrap_or_default())
+			.unwrap();
 	});
 	// let mut count = 0;
 	while let Some(token) = receiver.next() {

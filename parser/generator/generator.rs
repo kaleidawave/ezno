@@ -42,13 +42,12 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 
 	// eprintln!("string input: {string:?}");
 
-	let parse_result = T::from_string(
-		string,
-		parser::ParseOptions::default(),
-		parser::SourceId::NULL,
-		None,
-		cursors,
-	);
+	// TODO can you get new lines in macro?
+	let line_starts = parser::source_map::LineStarts::new("");
+	let options = parser::ParseOptions::default();
+	let source = parser::SourceId::NULL;
+	let parse_result =
+		parser::lex_and_parse_script::<T>(line_starts, options, string, source, None, cursors);
 
 	let node = match parse_result {
 		Ok(node) => node,

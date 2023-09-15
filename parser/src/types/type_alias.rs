@@ -12,12 +12,8 @@ pub struct TypeAlias {
 }
 
 impl ASTNode for TypeAlias {
-	fn get_position(&self) -> std::borrow::Cow<Span> {
-		std::borrow::Cow::Borrowed(&self.position)
-	}
-
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
@@ -25,7 +21,7 @@ impl ASTNode for TypeAlias {
 		let type_name = TypeDeclaration::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::Assign)?;
 		let type_expression = TypeAnnotation::from_reader(reader, state, settings)?;
-		let position = start.union(&type_expression.get_position());
+		let position = start.union(type_expression.get_position());
 		Ok(Self { type_name, type_expression, position })
 	}
 
@@ -41,5 +37,9 @@ impl ASTNode for TypeAlias {
 			buf.push_str(" = ");
 			self.type_expression.to_string_from_buffer(buf, settings, depth);
 		}
+	}
+
+	fn get_position(&self) -> &Span {
+		todo!()
 	}
 }

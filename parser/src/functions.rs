@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
@@ -8,7 +8,7 @@ use crate::{
 use crate::{tsx_keywords, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::TokenReader;
 
 pub use crate::parameters::*;
 
@@ -34,10 +34,10 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// The body of the function
 	type Body: ASTNode;
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>>;
+	fn header_left(header: &Self::Header) -> Option<&Span>;
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)>;
@@ -57,7 +57,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 
 	/// For [crate::ArrowFunction]
 	fn parameters_from_reader<T: ToString>(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<FunctionParameters> {
@@ -86,7 +86,8 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 /// Base for all function based structures with bodies (no interface, type reference etc)
 ///
 /// Note: the [PartialEq] implementation is based on syntactical representation rather than [FunctionId] equality
-#[derive(Debug, Clone, PartialEqExtras)]
+#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
@@ -102,7 +103,7 @@ impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -129,14 +130,14 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		self.body.to_string_from_buffer(buf, settings, depth + 1);
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
 impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		header: T::Header,
@@ -163,9 +164,9 @@ impl<T: FunctionBased> FunctionBase<T> {
 		let body = T::Body::from_reader(reader, state, settings)?;
 		let body_pos = body.get_position();
 		let position = if let Some(header_pos) = T::header_left(&header) {
-			header_pos.union(&body_pos)
+			header_pos.union(body_pos)
 		} else {
-			parameters.position.clone().union(&body_pos)
+			parameters.position.clone().union(body_pos)
 		};
 		Ok(Self { position, header, name, parameters, type_parameters, body, return_type })
 	}
@@ -216,7 +217,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type Name = T::Name;
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
@@ -238,7 +239,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		}
 	}
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
+	fn header_left(header: &Self::Header) -> Option<&Span> {
 		Some(header.get_position())
 	}
 }
@@ -249,79 +250,73 @@ pub enum FunctionHeader {
 	VirginFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,
 		function_keyword: Keyword<tsx_keywords::Function>,
-		generator_star_token_pos: Option<Span>,
+		generator_star_token_position: Option<Span>,
+		position: Span,
 	},
 	#[cfg(feature = "extras")]
 	ChadFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,
 		generator_keyword: Option<Keyword<tsx_keywords::Generator>>,
 		function_keyword: Keyword<tsx_keywords::Function>,
+		position: Span,
 	},
 }
 
 impl ASTNode for FunctionHeader {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
-			FunctionHeader::VirginFunctionHeader {
-				async_keyword,
-				function_keyword,
-				generator_star_token_pos,
-			} => {
-				let mut position = Cow::Borrowed(
-					async_keyword.as_ref().map(|kw| &kw.1).unwrap_or(&function_keyword.1),
-				);
-				if let Some(generator_star_token_pos) = generator_star_token_pos {
-					position = Cow::Owned(position.union(generator_star_token_pos));
-				}
-				position
-			}
+			FunctionHeader::VirginFunctionHeader { position, .. } => position,
 			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader {
-				async_keyword,
-				generator_keyword,
-				function_keyword,
-			} => {
-				let first_pos = async_keyword
-					.as_ref()
-					.map(Keyword::get_position)
-					.or_else(|| generator_keyword.as_ref().map(Keyword::get_position));
-
-				if let Some(first_pos) = first_pos {
-					Cow::Owned(first_pos.union(&function_keyword.1))
-				} else {
-					Cow::Borrowed(&function_keyword.1)
-				}
-			}
+			FunctionHeader::ChadFunctionHeader { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let async_keyword = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-			.map(|Token(_, span)| Keyword::new(span));
+		let async_keyword = Keyword::optionally_from_reader(reader);
 
+		// TODO broken under extras
 		let next_generator =
 			reader.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Generator)));
-		if let Some(Token(_, span)) = next_generator {
-			let generator_keyword = Some(Keyword::new(span));
-			let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Function))?;
-			let function_keyword = Keyword::new(span);
-			Ok(Self::ChadFunctionHeader { async_keyword, generator_keyword, function_keyword })
+
+		if let Some(token) = next_generator {
+			let span = token.get_span();
+			let generator_keyword = Some(Keyword::new(span.clone()));
+			let function_keyword = Keyword::from_reader(reader)?;
+			let position = async_keyword
+				.as_ref()
+				.map_or(&span, |kw| kw.get_position())
+				.union(function_keyword.get_position());
+
+			Ok(Self::ChadFunctionHeader {
+				async_keyword,
+				generator_keyword,
+				function_keyword,
+				position,
+			})
 		} else {
-			let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Function))?;
-			let function_keyword = Keyword::new(span);
-			let generator_star_token_pos = reader
+			let function_keyword = Keyword::from_reader(reader)?;
+			let generator_star_token_position = reader
 				.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-				.map(|Token(_, pos)| pos);
+				.map(|token| token.get_span());
+
+			let mut position = async_keyword
+				.as_ref()
+				.map_or(function_keyword.get_position(), |kw| kw.get_position())
+				.clone();
+
+			if let Some(ref generator_star_token_position) = generator_star_token_position {
+				position = position.union(generator_star_token_position);
+			}
 
 			Ok(Self::VirginFunctionHeader {
 				async_keyword,
 				function_keyword,
-				generator_star_token_pos,
+				generator_star_token_position,
+				position,
 			})
 		}
 	}
@@ -347,9 +342,10 @@ impl ASTNode for FunctionHeader {
 impl FunctionHeader {
 	pub fn is_generator(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader { generator_star_token_pos, .. } => {
-				generator_star_token_pos.is_some()
-			}
+			FunctionHeader::VirginFunctionHeader {
+				generator_star_token_position: generator_star_token_pos,
+				..
+			} => generator_star_token_pos.is_some(),
 			FunctionHeader::ChadFunctionHeader { generator_keyword, .. } => {
 				generator_keyword.is_some()
 			}

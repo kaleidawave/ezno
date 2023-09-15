@@ -1,7 +1,4 @@
-use std::{
-	borrow::Cow,
-	sync::atomic::{AtomicU16, Ordering},
-};
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use derive_debug_extras::DebugExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -50,7 +47,7 @@ pub struct ImportDeclaration {
 
 impl ASTNode for ImportDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -105,15 +102,19 @@ impl ASTNode for ImportDeclaration {
 			reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
 		}
 
-		let (from, end_position) = match reader.next().ok_or_else(parse_lexing_error)? {
+		let (span, from) = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(
-				TSXToken::DoubleQuotedStringLiteral(expression)
-				| TSXToken::SingleQuotedStringLiteral(expression),
-				end_position,
-			) => (expression, end_position),
-			Token(token, position) => {
+				TSXToken::DoubleQuotedStringLiteral(from)
+				| TSXToken::SingleQuotedStringLiteral(from),
+				start,
+			) => {
+				let span = start.with_length(from.len() + 2);
+				(span, from)
+			}
+			token => {
+				let position = token.get_span();
 				return Err(ParseError::new(
-					ParseErrors::ExpectedStringLiteral { found: token },
+					ParseErrors::ExpectedStringLiteral { found: token.0 },
 					position,
 				));
 			}
@@ -124,7 +125,7 @@ impl ASTNode for ImportDeclaration {
 			only_type,
 			from,
 			import_statement_id: ImportStatementId::new(),
-			position: start_position.union(&end_position),
+			position: start_position.union(span),
 		})
 	}
 
@@ -163,8 +164,8 @@ impl ASTNode for ImportDeclaration {
 		buf.push('"');
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
@@ -177,15 +178,15 @@ pub enum ImportPart {
 }
 
 impl ASTNode for ImportPart {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			ImportPart::Name(identifier) => identifier.get_position(),
-			ImportPart::NameWithAlias { position, .. } => Cow::Borrowed(position),
+			ImportPart::NameWithAlias { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {

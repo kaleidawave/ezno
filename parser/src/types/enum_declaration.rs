@@ -1,9 +1,7 @@
-use std::borrow::Cow;
-
 use crate::{TSXKeyword, TSXToken};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
 use visitable_derive::Visitable;
 
 use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression};
@@ -18,12 +16,12 @@ pub struct EnumDeclaration {
 }
 
 impl ASTNode for EnumDeclaration {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
@@ -47,10 +45,10 @@ impl ASTNode for EnumDeclaration {
 				reader.next();
 			}
 		}
-		let end_pos = reader.expect_next(TSXToken::CloseBrace)?;
+		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
 		Ok(EnumDeclaration {
 			is_constant,
-			position: const_pos.unwrap_or(enum_pos).union(&end_pos),
+			position: const_pos.unwrap_or(enum_pos).union(end),
 			name,
 			members,
 		})
@@ -93,14 +91,14 @@ pub enum EnumMember {
 }
 
 impl ASTNode for EnumMember {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
-			EnumMember::Variant { position, .. } => Cow::Borrowed(position),
+			EnumMember::Variant { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
@@ -112,7 +110,7 @@ impl ASTNode for EnumMember {
 				let expression = Expression::from_reader(reader, state, settings)?;
 				Ok(EnumMember::Variant {
 					name,
-					position: start_pos.union(&expression.get_position()),
+					position: start_pos.union(expression.get_position()),
 					value: Some(expression),
 				})
 			}

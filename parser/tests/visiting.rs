@@ -16,8 +16,7 @@ fn visiting() {
         "#;
 
 	let mut module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None, Vec::new())
-			.unwrap();
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
 
 	let mut visitors = VisitorsMut {
 		expression_visitors_mut: vec![Box::new(MakeStringsUppercase)],
@@ -57,10 +56,10 @@ impl VisitorMut<Statement, ()> for AddElseClause {
 					Default::default(),
 					SourceId::NULL,
 					None,
-					Vec::new(),
 				)
 				.unwrap()
 				.into();
+
 				if_statement.trailing_else =
 					Some(UnconditionalElseStatement { inner, position: Span::NULL_SPAN })
 			}

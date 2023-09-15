@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 
 use crate::TSXToken;
 use source_map::Span;
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
@@ -23,6 +23,7 @@ pub enum ParseErrors<'a> {
 }
 
 #[allow(missing_docs)]
+#[derive(Debug)]
 pub enum LexingErrors {
 	SecondDecimalPoint,
 	NumberLiteralCannotHaveDecimalPoint,
@@ -155,13 +156,13 @@ impl<'a> Display for ParseErrors<'a> {
 }
 
 // For TokenReader::expect_next
-impl From<Option<(TSXToken, Token<TSXToken, Span>)>> for ParseError {
-	fn from(opt: Option<(TSXToken, Token<TSXToken, Span>)>) -> Self {
-		if let Some((expected_type, Token(token, invalid_token_position))) = opt {
-			Self::new(
-				ParseErrors::UnexpectedToken { expected: &[expected_type], found: token },
-				invalid_token_position,
-			)
+impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
+	fn from(opt: Option<(TSXToken, Token<TSXToken, TokenStart>)>) -> Self {
+		if let Some((expected_type, token)) = opt {
+			let position = token.get_span();
+			let reason =
+				ParseErrors::UnexpectedToken { expected: &[expected_type], found: token.0 };
+			Self::new(reason, position)
 		} else {
 			parse_lexing_error()
 		}
@@ -170,7 +171,7 @@ impl From<Option<(TSXToken, Token<TSXToken, Span>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
+	ParseError::new(ParseErrors::LexingFailed, Span { start: 0, end: 0, source: () })
 }
 
 pub trait ParserErrorReason: Display {}

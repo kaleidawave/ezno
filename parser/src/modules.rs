@@ -1,10 +1,11 @@
-use derive_enum_from_into::EnumFrom;
 use source_map::SourceId;
+use tokenizer_lib::sized_tokens::TokenStart;
 
 use crate::{
 	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
 	errors::parse_lexing_error,
 	extensions::decorators::decorators_from_reader,
+	throw_unexpected_token_with_token,
 	types::{
 		declares::{
 			DeclareClassDeclaration, DeclareFunctionDeclaration, DeclareVariableDeclaration,
@@ -17,22 +18,23 @@ use crate::{
 	StatementOrDeclaration, TSXKeyword, VisitSettings,
 };
 
-use super::{ASTNode, EmptyCursorId, ParseError, Span, TSXToken, Token, TokenReader};
-use std::{borrow::Cow, io::Error as IOError};
+use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
+use std::io::Error as IOError;
 
 #[cfg(not(target_family = "wasm"))]
 use std::{fs, path::Path};
 
-#[derive(Debug, EnumFrom)]
+#[derive(Debug)]
 pub enum FromFileError {
 	FileError(IOError),
-	ParseError(ParseError),
+	ParseError(ParseError, SourceId),
 }
 
 #[derive(Debug, Clone)]
 pub struct Module {
 	pub items: Vec<StatementOrDeclaration>,
 	pub source: SourceId,
+	pub span: Span,
 }
 
 impl PartialEq for Module {
@@ -51,26 +53,20 @@ impl ASTNode for Module {
 		statements_and_declarations_to_string(&self.items, buf, settings, depth)
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Owned(
-			self.items
-				.first()
-				.unwrap()
-				.get_position()
-				.union(&self.items.last().unwrap().get_position()),
-		)
+	fn get_position(&self) -> &Span {
+		&self.span
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		parse_statements_and_declarations(reader, state, settings).map(|statements| {
-			// TODO null bad
-			let source =
-				statements.last().map(|stmt| stmt.get_position().source).unwrap_or(SourceId::NULL);
-			Module { source, items: statements }
+		let end = state.length;
+		parse_statements_and_declarations(reader, state, settings).map(|statements| Module {
+			source: state.source,
+			items: statements,
+			span: Span { start: 0, source: (), end },
 		})
 	}
 }
@@ -96,12 +92,12 @@ impl Module {
 	pub fn from_file(
 		path: impl AsRef<Path>,
 		settings: ParseOptions,
-		cursors: Vec<(usize, EmptyCursorId)>,
 		fs: &mut impl source_map::FileSystem,
 	) -> Result<Self, FromFileError> {
-		let source = fs::read_to_string(&path)?;
+		let source = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
 		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
-		Self::from_string(source, settings, source_id, None, cursors).map_err(Into::into)
+		Self::from_string(source, settings, source_id, None)
+			.map_err(|err| FromFileError::ParseError(err, source_id))
 	}
 }
 
@@ -194,7 +190,6 @@ impl TypeDefinitionModule {
 		script: String,
 		mut options: ParseOptions,
 		source: SourceId,
-		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
 		// Unfortunately some comments contain data (variable ids)
 		options.include_comments = true;
@@ -202,29 +197,29 @@ impl TypeDefinitionModule {
 		options.jsx = false;
 
 		let line_starts = source_map::LineStarts::new(&script);
-		super::lex_and_parse_script(line_starts, options, script, source, None, cursors)
+		super::lex_and_parse_script(line_starts, options, script, source, None, Default::default())
 	}
 
 	#[cfg(not(target_family = "wasm"))]
 	pub fn from_file(
 		path: impl AsRef<Path>,
 		settings: ParseOptions,
-		cursors: Vec<(usize, EmptyCursorId)>,
 		fs: &mut impl source_map::FileSystem,
 	) -> Result<Self, FromFileError> {
-		let script = fs::read_to_string(&path)?;
+		let script = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
 		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
-		Self::from_string(script, settings, source, cursors).map_err(Into::into)
+		Self::from_string(script, settings, source)
+			.map_err(|err| FromFileError::ParseError(err, source))
 	}
 }
 
 impl ASTNode for TypeDefinitionModule {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!()
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -262,7 +257,7 @@ impl ASTNode for TypeDefinitionModule {
 
 impl ASTNode for TypeDefinitionModuleDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -296,22 +291,16 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 				};
 				Ok(TypeDefinitionModuleDeclaration::Comment(comment))
 			}
-			_ => {
-				let Token(token, position) = reader.next().unwrap();
-				Err(ParseError::new(
-					crate::ParseErrors::UnexpectedToken {
-						expected: &[
-							TSXToken::Keyword(TSXKeyword::Declare),
-							TSXToken::Keyword(TSXKeyword::Interface),
-							TSXToken::Keyword(TSXKeyword::Type),
-							TSXToken::Keyword(TSXKeyword::Var),
-							TSXToken::At,
-						],
-						found: token,
-					},
-					position,
-				))
-			}
+			_ => throw_unexpected_token_with_token(
+				reader.next().unwrap(),
+				&[
+					TSXToken::Keyword(TSXKeyword::Declare),
+					TSXToken::Keyword(TSXKeyword::Interface),
+					TSXToken::Keyword(TSXKeyword::Type),
+					TSXToken::Keyword(TSXKeyword::Var),
+					TSXToken::At,
+				],
+			),
 		}
 	}
 
@@ -324,17 +313,17 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 		todo!("tdms to_string_from_buffer");
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!("tdms get_position");
 	}
 }
 
 pub(crate) fn parse_declare_item(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &ParseOptions,
 	decorators: Vec<Decorator>,
-	declare_span: Span,
+	start: TokenStart,
 ) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
 	match reader.peek() {
 		Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) => {
@@ -343,7 +332,7 @@ pub(crate) fn parse_declare_item(
 					reader,
 					state,
 					settings,
-					Some(declare_span),
+					Some(start),
 					decorators,
 				)?,
 			))
@@ -370,21 +359,15 @@ pub(crate) fn parse_declare_item(
 				reader, state, settings,
 			)?))
 		}
-		_ => {
-			let Token(token, position) = reader.next().unwrap();
-			Err(ParseError::new(
-				crate::ParseErrors::UnexpectedToken {
-					expected: &[
-						TSXToken::Keyword(TSXKeyword::Var),
-						TSXToken::Keyword(TSXKeyword::Class),
-						TSXToken::Keyword(TSXKeyword::Type),
-						TSXToken::Keyword(TSXKeyword::Namespace),
-						TSXToken::Keyword(TSXKeyword::Function),
-					],
-					found: token,
-				},
-				position,
-			))
-		}
+		_ => throw_unexpected_token_with_token(
+			reader.next().ok_or_else(parse_lexing_error)?,
+			&[
+				TSXToken::Keyword(TSXKeyword::Var),
+				TSXToken::Keyword(TSXKeyword::Class),
+				TSXToken::Keyword(TSXKeyword::Type),
+				TSXToken::Keyword(TSXKeyword::Namespace),
+				TSXToken::Keyword(TSXKeyword::Function),
+			],
+		),
 	}
 }

@@ -28,6 +28,7 @@ pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
 pub use declarations::Declaration;
 
+use errors::parse_lexing_error;
 pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
 pub use extensions::{
@@ -53,9 +54,11 @@ pub use types::{
 pub use variable_fields::*;
 pub use visiting::*;
 
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
-use std::{borrow::Cow, ops::Neg, str::FromStr};
+pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
+
+use std::{ops::Neg, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -186,25 +189,24 @@ impl ToStringOptions {
 pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method from_reader
 	fn from_string(
-		source: String,
-		settings: ParseOptions,
-		source_id: SourceId,
+		script: String,
+		options: ParseOptions,
+		source: SourceId,
 		offset: Option<u32>,
-		cursors: Vec<(usize, EmptyCursorId)>,
 	) -> ParseResult<Self> {
 		use source_map::LineStarts;
 
 		// TODO take from argument
-		let line_starts = LineStarts::new(source.as_str());
+		let line_starts = LineStarts::new(script.as_str());
 
-		lex_and_parse_script(line_starts, settings, source, source_id, offset, cursors)
+		lex_and_parse_script(line_starts, options, script, source, offset, Default::default())
 	}
 
-	/// Returns position of node as span AS IT WAS PARSED. May be none if AST was doesn't match anything in source
-	fn get_position(&self) -> Cow<Span>;
+	/// Returns position of node as span AS IT WAS PARSED. May be Span::NULL if AST was doesn't match anything in source
+	fn get_position(&self) -> &Span;
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self>;
@@ -225,7 +227,8 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn lex_and_parse_script<T: ASTNode>(
+#[doc(hidden)]
+pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
 	script: String,
@@ -235,8 +238,9 @@ fn lex_and_parse_script<T: ASTNode>(
 ) -> Result<T, ParseError> {
 	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
 	let lex_options = options.get_lex_options();
+	let length = script.len() as u32;
 	let parsing_thread = std::thread::spawn(move || {
-		let mut state = ParsingState { line_starts };
+		let mut state = ParsingState { line_starts, source, length };
 		let res = T::from_reader(&mut reader, &mut state, &options);
 		if res.is_ok() {
 			reader.expect_next(TSXToken::EOS)?;
@@ -244,14 +248,18 @@ fn lex_and_parse_script<T: ASTNode>(
 		res
 	});
 
-	lexer::lex_script(&script, &mut sender, &lex_options, Some(source), offset, cursors)?;
+	let lex_script = lexer::lex_script(&script, &mut sender, &lex_options, offset, cursors);
+	match lex_script {
+		Ok(_) => {}
+		Err((reason, pos)) => return Err(ParseError::new(reason, pos)),
+	};
 	drop(sender);
-
 	parsing_thread.join().expect("Parsing panicked")
 }
 
 #[cfg(target_arch = "wasm32")]
-fn lex_and_parse_script<T: ASTNode>(
+#[doc(hidden)]
+pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
 	script: String,
@@ -264,7 +272,6 @@ fn lex_and_parse_script<T: ASTNode>(
 		&script,
 		&mut queue,
 		&LexerOptions { lex_jsx: false, ..options.get_lex_options() },
-		Some(source),
 		offset,
 		cursors,
 	)?;
@@ -277,9 +284,26 @@ fn lex_and_parse_script<T: ASTNode>(
 	res
 }
 
+pub(crate) fn throw_unexpected_token<T>(
+	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	expected: &[TSXToken],
+) -> Result<T, ParseError> {
+	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
+}
+
+pub(crate) fn throw_unexpected_token_with_token<T>(
+	token: Token<TSXToken, source_map::Start>,
+	expected: &[TSXToken],
+) -> Result<T, ParseError> {
+	let position = token.get_span();
+	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
+}
+
 #[derive(Debug)]
 pub struct ParsingState {
 	pub(crate) line_starts: source_map::LineStarts,
+	pub(crate) source: source_map::SourceId,
+	pub(crate) length: u32,
 }
 
 /// A keyword
@@ -297,14 +321,41 @@ impl<T: tokens::TSXKeywordNode> self_rust_tokenize::SelfRustTokenize for Keyword
 	}
 }
 
-impl<T: tokens::TSXKeywordNode> Keyword<T> {
+impl<T: tokens::TSXKeywordNode> Keyword<T>
+where
+	tokens::TSXKeyword: std::convert::From<T>,
+{
 	pub fn new(span: Span) -> Self {
 		Keyword(T::default(), span)
 	}
 
-	// TODO
-	pub(crate) fn _from_reader() {
-		todo!("keyword from reader")
+	pub(crate) fn optionally_from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+	) -> Option<Self> {
+		reader
+			// There has to be a better way. Probably using constants
+			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::from(T::default())))
+			.map(|token| Keyword::new(token.get_span()))
+	}
+
+	pub(crate) fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+	) -> ParseResult<Self> {
+		match reader.next() {
+			Some(token) => {
+				let keyword = TSXToken::Keyword(TSXKeyword::from(T::default()));
+				let span = token.get_span();
+				if token.0 == keyword {
+					Ok(Self::new(span))
+				} else {
+					Err(ParseError::new(
+						ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
+						span,
+					))
+				}
+			}
+			None => Err(parse_lexing_error()),
+		}
 	}
 
 	pub fn get_position(&self) -> &Span {
@@ -543,34 +594,30 @@ impl GetSetGeneratorOrNone {
 		})
 	}
 
-	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, Span>) -> Self {
+	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				let Token(_, span) = reader.next().unwrap();
-				GetSetGeneratorOrNone::Get(Keyword::new(span))
+				GetSetGeneratorOrNone::Get(Keyword::new(reader.next().unwrap().get_span()))
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				let Token(_, span) = reader.next().unwrap();
-				GetSetGeneratorOrNone::Set(Keyword::new(span))
+				GetSetGeneratorOrNone::Set(Keyword::new(reader.next().unwrap().get_span()))
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
-				let Token(_, span) = reader.next().unwrap();
-				GetSetGeneratorOrNone::Generator(Keyword::new(span))
+				GetSetGeneratorOrNone::Generator(Keyword::new(reader.next().unwrap().get_span()))
 			}
 			Some(Token(TSXToken::Multiply, _)) => {
-				let Token(_, span) = reader.next().unwrap();
-				GetSetGeneratorOrNone::GeneratorStar(span)
+				GetSetGeneratorOrNone::GeneratorStar(reader.next().unwrap().get_span())
 			}
 			_ => GetSetGeneratorOrNone::None,
 		}
 	}
 
-	pub(crate) fn get_position(&self) -> Option<Cow<Span>> {
+	pub(crate) fn get_position(&self) -> Option<&Span> {
 		match self {
-			GetSetGeneratorOrNone::Get(kw) => Some(Cow::Borrowed(&kw.1)),
-			GetSetGeneratorOrNone::Set(kw) => Some(Cow::Borrowed(&kw.1)),
-			GetSetGeneratorOrNone::Generator(kw) => Some(Cow::Borrowed(&kw.1)),
-			GetSetGeneratorOrNone::GeneratorStar(span) => Some(Cow::Borrowed(span)),
+			GetSetGeneratorOrNone::Get(kw) => Some(&kw.1),
+			GetSetGeneratorOrNone::Set(kw) => Some(&kw.1),
+			GetSetGeneratorOrNone::Generator(kw) => Some(&kw.1),
+			GetSetGeneratorOrNone::GeneratorStar(span) => Some(span),
 			GetSetGeneratorOrNone::None => None,
 		}
 	}
@@ -584,7 +631,7 @@ pub trait ExpressionOrStatementPosition:
 	type Name: Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static;
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self::Name>;
@@ -600,7 +647,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	type Name = VariableIdentifier;
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self::Name> {
@@ -631,7 +678,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type Name = Option<VariableIdentifier>;
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self::Name> {
@@ -653,32 +700,36 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 /// Parses items surrounded in `{`, `[`, `(`, etc
 pub(crate) fn parse_bracketed<T: ASTNode>(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &ParseOptions,
 	start: Option<TSXToken>,
 	end: TSXToken,
-) -> ParseResult<(Vec<T>, Span)> {
+) -> ParseResult<(Vec<T>, TokenEnd)> {
 	if let Some(start) = start {
 		let _ = reader.expect_next(start)?;
 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if let Some(Token(_, pos)) = reader.conditional_next(|token| *token == end) {
-			return Ok((nodes, pos));
+		if let Some(token) = reader.conditional_next(|token| *token == end) {
+			return Ok((nodes, token.get_end()));
 		}
 		nodes.push(T::from_reader(reader, state, settings)?);
 		match reader.next().ok_or_else(errors::parse_lexing_error)? {
 			Token(TSXToken::Comma, _) => {}
-			Token(token, pos) if token == end => return Ok((nodes, pos)),
-			Token(token, position) => {
+			token => {
+				if token.0 == end {
+					let get_end = token.get_end();
+					return Ok((nodes, get_end));
+				}
+				let position = token.get_span();
 				return Err(ParseError::new(
 					crate::ParseErrors::UnexpectedToken {
 						expected: &[end, TSXToken::Comma],
-						found: token,
+						found: token.0,
 					},
 					position,
-				))
+				));
 			}
 		}
 	}
@@ -705,17 +756,17 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 pub(crate) fn expect_semi_colon(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	line_starts: &source_map::LineStarts,
 	prev: u32,
 ) -> ParseResult<()> {
 	if let Some(token) = reader.peek() {
-		let Token(kind, Span { start: next, .. }) = token;
+		let Token(kind, start) = token;
 		// eprintln!("{:?} {:?} {:?}", prev, next, line_starts);
 		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
 			Ok(())
 		} else if !matches!(kind, TSXToken::SemiColon)
-			&& line_starts.byte_indexes_on_different_lines(prev as usize, *next as usize)
+			&& line_starts.byte_indexes_on_different_lines(prev as usize, start.0 as usize)
 		{
 			Ok(())
 		} else {
@@ -747,20 +798,19 @@ pub(crate) mod test_utils {
 				Default::default(),
 				crate::SourceId::NULL,
 				None,
-				Vec::new(),
 			)
 			.unwrap();
-			assert!(
-				::match_deref::match_deref! {
-					match &node {
-						$ast_pattern => true,
-						_ => false,
-					}
-				},
-				"{:#?} did not match {}",
-				node,
-				stringify!($pattern)
-			)
+			// AST matchers are partial expressions
+			let matches = ::match_deref::match_deref! {
+				match &node {
+					$ast_pattern => true,
+					_ => false,
+				}
+			};
+
+			if !matches {
+				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
+			}
 		}};
 	}
 

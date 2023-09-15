@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{
 	errors::parse_lexing_error, ASTNode, Expression, Keyword, ParseOptions, ParseResult, Span,
 	StatementPosition, TSXKeyword, TSXToken, Token,
@@ -35,15 +33,15 @@ pub enum Exportable {
 }
 
 impl ASTNode for ExportDeclaration {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			ExportDeclaration::Variable { position, .. }
-			| ExportDeclaration::Default { position, .. } => Cow::Borrowed(position),
+			| ExportDeclaration::Default { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -53,23 +51,23 @@ impl ASTNode for ExportDeclaration {
 		if is_default {
 			reader.next();
 			let expression = Expression::from_reader(reader, state, settings)?;
-			let position = start.union(&expression.get_position());
+			let position = start.union(expression.get_position());
 			Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
 		} else {
 			match reader.peek().ok_or_else(parse_lexing_error)? {
 				Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-					let Token(_, pos) = reader.next().unwrap();
-					let keyword = Keyword::new(pos);
+					let token = reader.next().unwrap();
+					let keyword = Keyword::new(token.get_span());
 					let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
 						reader, state, settings, keyword,
 					)?;
-					let position = start.union(&class_declaration.get_position());
+					let position = start.union(class_declaration.get_position());
 					Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 				}
 				Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
 					let function_declaration =
 						StatementFunction::from_reader(reader, state, settings)?;
-					let position = start.union(&function_declaration.get_position());
+					let position = start.union(function_declaration.get_position());
 					Ok(Self::Variable {
 						exported: Exportable::Function(function_declaration),
 						position,
@@ -81,7 +79,7 @@ impl ASTNode for ExportDeclaration {
 				) => {
 					let variable_declaration =
 						VariableDeclaration::from_reader(reader, state, settings)?;
-					let position = start.union(&variable_declaration.get_position());
+					let position = start.union(variable_declaration.get_position());
 					Ok(Self::Variable {
 						exported: Exportable::Variable(variable_declaration),
 						position,
@@ -90,7 +88,7 @@ impl ASTNode for ExportDeclaration {
 				Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
 					let interface_declaration =
 						InterfaceDeclaration::from_reader(reader, state, settings)?;
-					let position = start.union(&interface_declaration.get_position());
+					let position = start.union(interface_declaration.get_position());
 					Ok(Self::Variable {
 						exported: Exportable::Interface(interface_declaration),
 						position,
@@ -98,7 +96,7 @@ impl ASTNode for ExportDeclaration {
 				}
 				Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
 					let type_alias = TypeAlias::from_reader(reader, state, settings)?;
-					let position = start.union(&type_alias.get_position());
+					let position = start.union(type_alias.get_position());
 					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
 				}
 				Token(token, _) => {

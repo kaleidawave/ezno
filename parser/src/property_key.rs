@@ -1,8 +1,7 @@
-use std::{borrow::Cow, fmt::Debug};
-
 use crate::TSXToken;
 use source_map::Span;
-use tokenizer_lib::{Token, TokenReader};
+use std::fmt::Debug;
+use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use crate::{
 	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression, NumberStructure,
@@ -18,8 +17,8 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
 	type Private: Debug + Sync + Send + Clone + PartialEq;
 
 	fn parse_ident(
-		first: Token<TSXToken, Span>,
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		first: Token<TSXToken, crate::TokenStart>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self::Private)>;
 }
 
@@ -30,8 +29,8 @@ impl PropertyKeyKind for AlwaysPublic {
 	type Private = ();
 
 	fn parse_ident(
-		first: Token<TSXToken, Span>,
-		_reader: &mut impl TokenReader<TSXToken, Span>,
+		first: Token<TSXToken, crate::TokenStart>,
+		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self::Private)> {
 		token_as_identifier(first, "property key").map(|(name, position)| (name, position, ()))
 	}
@@ -44,8 +43,8 @@ impl PropertyKeyKind for PublicOrPrivate {
 	type Private = bool;
 
 	fn parse_ident(
-		first: Token<TSXToken, Span>,
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		first: Token<TSXToken, crate::TokenStart>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self::Private)> {
 		if matches!(first.0, TSXToken::HashTag) {
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "property key")
@@ -69,12 +68,12 @@ pub enum PropertyKey<T: PropertyKeyKind> {
 }
 
 impl<U: PropertyKeyKind> PropertyKey<U> {
-	pub fn get_position(&self) -> Cow<Span> {
+	pub fn get_position(&self) -> &Span {
 		match self {
 			PropertyKey::Ident(_, pos, _)
 			| PropertyKey::StringLiteral(_, pos)
 			| PropertyKey::NumberLiteral(_, pos)
-			| PropertyKey::Computed(_, pos) => Cow::Borrowed(pos),
+			| PropertyKey::Computed(_, pos) => pos,
 		}
 	}
 }
@@ -89,32 +88,34 @@ impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 }
 
 impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			PropertyKey::Ident(_, pos, _)
 			| PropertyKey::StringLiteral(_, pos)
 			| PropertyKey::NumberLiteral(_, pos)
-			| PropertyKey::Computed(_, pos) => Cow::Borrowed(pos),
+			| PropertyKey::Computed(_, pos) => pos,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::DoubleQuotedStringLiteral(content), position)
-			| Token(TSXToken::SingleQuotedStringLiteral(content), position) => {
+			Token(TSXToken::DoubleQuotedStringLiteral(content), start)
+			| Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
+				let position = start.with_length(content.len() + 2);
 				Ok(Self::StringLiteral(content, position))
 			}
-			Token(TSXToken::NumberLiteral(value), position) => {
+			Token(TSXToken::NumberLiteral(value), start) => {
+				let position = start.with_length(value.len());
 				Ok(Self::NumberLiteral(value.parse().unwrap(), position))
 			}
-			Token(TSXToken::OpenBracket, start_pos) => {
+			Token(TSXToken::OpenBracket, start) => {
 				let expression = Expression::from_reader(reader, state, settings)?;
-				let end_pos = reader.expect_next(TSXToken::CloseBracket)?;
-				Ok(Self::Computed(Box::new(expression), start_pos.union(&end_pos)))
+				let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
+				Ok(Self::Computed(Box::new(expression), start.union(end)))
 			}
 			token => {
 				let (name, position, private) = U::parse_ident(token, reader)?;

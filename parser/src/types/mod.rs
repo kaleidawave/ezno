@@ -6,8 +6,6 @@ pub mod type_alias;
 pub mod type_annotations;
 pub mod type_declarations;
 
-use std::borrow::Cow;
-
 pub use interface::InterfaceDeclaration;
 use source_map::Span;
 
@@ -41,18 +39,16 @@ pub enum AnnotationPerforms {
 
 #[cfg(feature = "extras")]
 impl ASTNode for AnnotationPerforms {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!()
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let performs_keyword = Keyword::new(
-			reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Performs))?,
-		);
+		let performs_keyword = Keyword::from_reader(reader)?;
 		if let Some(tokenizer_lib::Token(crate::TSXToken::OpenBrace, _)) = reader.peek() {
 			// let expression = Expression::from_reader(reader, state, settings)?;
 			// reader.expect_next(TSXToken::CloseParentheses)?;

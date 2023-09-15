@@ -3,8 +3,9 @@ use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, extensions::decorators, Decorated, Keyword, ParseError,
-	ParseErrors, StatementPosition, TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
+	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
+	Decorated, Keyword, ParseError, ParseErrors, StatementPosition, TSXKeyword, TSXToken,
+	TypeDefinitionModuleDeclaration,
 };
 
 pub use self::{
@@ -52,7 +53,7 @@ pub enum Declaration {
 impl Declaration {
 	// TODO strict mode, type etc can affect result
 	pub(crate) fn is_declaration_start(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 	) -> bool {
 		matches!(
 			reader.peek(),
@@ -73,24 +74,8 @@ impl Declaration {
 }
 
 impl crate::ASTNode for Declaration {
-	fn get_position(&self) -> std::borrow::Cow<source_map::Span> {
-		match self {
-			Declaration::Variable(item) => item.get_position(),
-			Declaration::Function(item) => item.get_position(),
-			Declaration::Class(item) => item.get_position(),
-			Declaration::Enum(item) => item.get_position(),
-			Declaration::Interface(item) => item.get_position(),
-			Declaration::TypeAlias(item) => item.get_position(),
-			Declaration::DeclareVariable(item) => item.get_position(),
-			Declaration::DeclareFunction(item) => item.get_position(),
-			Declaration::DeclareInterface(item) => item.get_position(),
-			Declaration::Import(item) => item.get_position(),
-			Declaration::Export(item) => item.get_position(),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
@@ -126,10 +111,8 @@ impl crate::ASTNode for Declaration {
 				let function = StatementFunction::from_reader(reader, state, settings)?;
 				Ok(Declaration::Function(Decorated { decorators, on: function }))
 			}
-
 			TSXToken::Keyword(TSXKeyword::Class) => {
-				let Token(_, class_token_pos) = reader.next().unwrap();
-				let class_keyword = Keyword::new(class_token_pos);
+				let class_keyword = Keyword::new(reader.next().unwrap().get_span());
 				ClassDeclaration::from_reader_sub_class_keyword(
 					reader,
 					state,
@@ -153,64 +136,52 @@ impl crate::ASTNode for Declaration {
 				TypeAlias::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Declare) => {
-				let declare_span = reader.next().unwrap().1;
-				crate::modules::parse_declare_item(
-					reader,
-					state,
-					settings,
-					decorators,
-					declare_span,
-				)
-				.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
-					TypeDefinitionModuleDeclaration::Variable(declare_var) => {
-						Ok(Declaration::DeclareVariable(declare_var))
-					}
-					TypeDefinitionModuleDeclaration::Function(declare_func) => {
-						Ok(Declaration::DeclareFunction(declare_func))
-					}
-					TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
-						ParseErrors::InvalidDeclareItem("class"),
-						item.get_position().into_owned(),
-					)),
-					TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
-						ParseErrors::InvalidDeclareItem("interface"),
-						item.get_position().into_owned(),
-					)),
-					TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
-						ParseErrors::InvalidDeclareItem("type alias"),
-						item.get_position().into_owned(),
-					)),
-					TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
-						ParseErrors::InvalidDeclareItem("namespace"),
-						item.get_position().into_owned(),
-					)),
-					TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
-					| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)
-					| TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
-				})
+				let Token(_, start) = reader.next().unwrap();
+				crate::modules::parse_declare_item(reader, state, settings, decorators, start)
+					.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
+						TypeDefinitionModuleDeclaration::Variable(declare_var) => {
+							Ok(Declaration::DeclareVariable(declare_var))
+						}
+						TypeDefinitionModuleDeclaration::Function(declare_func) => {
+							Ok(Declaration::DeclareFunction(declare_func))
+						}
+						TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
+							ParseErrors::InvalidDeclareItem("class"),
+							item.get_position().clone(),
+						)),
+						TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
+							ParseErrors::InvalidDeclareItem("interface"),
+							item.get_position().clone(),
+						)),
+						TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
+							ParseErrors::InvalidDeclareItem("type alias"),
+							item.get_position().clone(),
+						)),
+						TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
+							ParseErrors::InvalidDeclareItem("namespace"),
+							item.get_position().clone(),
+						)),
+						TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
+						| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)
+						| TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
+					})
 			}
-			_ => {
-				let Token(token, position) = reader.next().unwrap();
-				return Err(ParseError::new(
-					ParseErrors::UnexpectedToken {
-						expected: &[
-							TSXToken::Keyword(TSXKeyword::Let),
-							TSXToken::Keyword(TSXKeyword::Const),
-							TSXToken::Keyword(TSXKeyword::Function),
-							TSXToken::Keyword(TSXKeyword::Class),
-							TSXToken::Keyword(TSXKeyword::Enum),
-							TSXToken::Keyword(TSXKeyword::Type),
-							TSXToken::Keyword(TSXKeyword::Declare),
-							TSXToken::Keyword(TSXKeyword::Import),
-							TSXToken::Keyword(TSXKeyword::Export),
-							TSXToken::Keyword(TSXKeyword::Async),
-							TSXToken::Keyword(TSXKeyword::Generator),
-						],
-						found: token,
-					},
-					position,
-				));
-			}
+			_ => throw_unexpected_token_with_token(
+				reader.next().ok_or_else(parse_lexing_error)?,
+				&[
+					TSXToken::Keyword(TSXKeyword::Let),
+					TSXToken::Keyword(TSXKeyword::Const),
+					TSXToken::Keyword(TSXKeyword::Function),
+					TSXToken::Keyword(TSXKeyword::Class),
+					TSXToken::Keyword(TSXKeyword::Enum),
+					TSXToken::Keyword(TSXKeyword::Type),
+					TSXToken::Keyword(TSXKeyword::Declare),
+					TSXToken::Keyword(TSXKeyword::Import),
+					TSXToken::Keyword(TSXKeyword::Export),
+					TSXToken::Keyword(TSXKeyword::Async),
+					TSXToken::Keyword(TSXKeyword::Generator),
+				],
+			),
 		}
 	}
 
@@ -237,5 +208,9 @@ impl crate::ASTNode for Declaration {
 				did.to_string_from_buffer(buf, settings, depth)
 			}
 		}
+	}
+
+	fn get_position(&self) -> &source_map::Span {
+		todo!()
 	}
 }

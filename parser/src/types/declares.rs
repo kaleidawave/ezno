@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
@@ -22,12 +20,12 @@ pub struct DeclareVariableDeclaration {
 }
 
 impl ASTNode for DeclareVariableDeclaration {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -52,17 +50,17 @@ impl ASTNode for DeclareVariableDeclaration {
 
 impl DeclareVariableDeclaration {
 	pub fn from_reader_sub_declare(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
-		declare_span: Option<Span>,
+		start: Option<TokenStart>,
 		decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
-		let var_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Var))?;
+		let var_start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Var))?;
 		let (name, _) = token_as_identifier(reader.next().unwrap(), "declare variable name")?;
 		reader.expect_next(TSXToken::Colon)?;
 		let type_restriction = TypeAnnotation::from_reader(reader, state, settings)?;
-		let position = declare_span.unwrap_or(var_pos).union(&type_restriction.get_position());
+		let position = start.unwrap_or(var_start).union(type_restriction.get_position());
 		Ok(Self { name, type_restriction, position, decorators })
 	}
 }
@@ -81,12 +79,12 @@ pub struct DeclareFunctionDeclaration {
 }
 
 impl ASTNode for DeclareFunctionDeclaration {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -117,7 +115,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 
 impl DeclareFunctionDeclaration {
 	pub fn from_reader_sub_declare_with_decorators(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		decorators: Vec<Decorator>,
@@ -149,12 +147,8 @@ impl DeclareFunctionDeclaration {
 			None
 		};
 
-		let position = start_pos.union(
-			&return_type
-				.as_ref()
-				.map(ASTNode::get_position)
-				.unwrap_or(Cow::Borrowed(&parameters.position)),
-		);
+		let position = start_pos
+			.union(return_type.as_ref().map(ASTNode::get_position).unwrap_or(&parameters.position));
 
 		Ok(Self {
 			name,
@@ -178,12 +172,12 @@ pub struct DeclareClassDeclaration {
 }
 
 impl ASTNode for DeclareClassDeclaration {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!()
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -203,7 +197,7 @@ impl ASTNode for DeclareClassDeclaration {
 
 impl DeclareClassDeclaration {
 	pub(crate) fn from_reader_sub_declare(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {

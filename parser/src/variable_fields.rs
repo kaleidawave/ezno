@@ -1,13 +1,13 @@
 /// Contains:
 /// - [VariableId] given to variable declaring items
 /// - [VariableField] for destructuring things and its nested derivatives + visiting behavior + tests for self
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, property_key::PropertyKey,
-	tokens::token_as_identifier, ASTNode, CursorId, Expression, ImmutableVariableOrPropertyPart,
-	MutableVariablePart, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TSXToken, Token,
-	VisitSettings, Visitable, WithComment,
+	throw_unexpected_token_with_token, tokens::token_as_identifier, ASTNode, CursorId, Expression,
+	ImmutableVariableOrPropertyPart, MutableVariablePart, ParseError, ParseOptions, ParseResult,
+	Span, TSXToken, Token, VisitSettings, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -24,15 +24,8 @@ pub enum VariableIdentifier {
 }
 
 impl ASTNode for VariableIdentifier {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			VariableIdentifier::Standard(_, span) => Cow::Borrowed(span),
-			VariableIdentifier::Cursor(_) => Cow::Owned(Span::NULL_SPAN),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -52,6 +45,13 @@ impl ASTNode for VariableIdentifier {
 		_depth: u8,
 	) {
 		buf.push_str(self.as_str());
+	}
+
+	fn get_position(&self) -> &Span {
+		match self {
+			VariableIdentifier::Standard(_, pos) => pos,
+			VariableIdentifier::Cursor(_) => todo!(),
+		}
 	}
 }
 
@@ -137,7 +137,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 	type OptionalExpression: PartialEq + Eq + Debug + Clone + Sync + Send;
 
 	fn optional_expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError>;
@@ -151,7 +151,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 
 	fn optional_expression_get_position(
 		optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>>;
+	) -> Option<&Span>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,7 +161,7 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 	type OptionalExpression = Option<Expression>;
 
 	fn optional_expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
@@ -186,7 +186,7 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 
 	fn optional_expression_get_position(
 		optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>> {
+	) -> Option<&Span> {
 		optional_expression.as_ref().map(|expr| expr.get_position())
 	}
 }
@@ -199,7 +199,7 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 	type OptionalExpression = ();
 
 	fn optional_expression_from_reader(
-		_reader: &mut impl TokenReader<TSXToken, Span>,
+		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
@@ -216,14 +216,14 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 
 	fn optional_expression_get_position(
 		_optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>> {
+	) -> Option<&Span> {
 		None
 	}
 }
 
 impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -232,13 +232,13 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (members, last_pos) =
 					parse_bracketed(reader, state, settings, None, TSXToken::CloseBrace)?;
-				Ok(Self::Object(members, start_pos.union(&last_pos)))
+				Ok(Self::Object(members, start_pos.union(last_pos)))
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (items, end_pos) =
 					parse_bracketed(reader, state, settings, None, TSXToken::CloseBracket)?;
-				Ok(Self::Array(items, start_pos.union(&end_pos)))
+				Ok(Self::Array(items, start_pos.union(end_pos)))
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, settings)?)),
 		}
@@ -279,11 +279,9 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
-			VariableField::Array(_, position) | VariableField::Object(_, position) => {
-				Cow::Borrowed(position)
-			}
+			VariableField::Array(_, position) | VariableField::Object(_, position) => position,
 			VariableField::Name(id) => id.get_position(),
 		}
 	}
@@ -307,33 +305,33 @@ pub enum ObjectDestructuringField<T: VariableFieldKind> {
 }
 
 impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			// TODO account for `...` tokens
-			ObjectDestructuringField::Spread(_, name) => name.get_position(),
-			ObjectDestructuringField::Name(name, optional_expression) => {
-				let name_position = name.get_position();
-				if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
-				{
-					Cow::Owned(name_position.union(expr_pos))
-				} else {
-					name_position
-				}
-			}
-			ObjectDestructuringField::Map { position, .. } => Cow::Borrowed(position),
-		}
-	}
+	// fn get_position(&self) -> &Span {
+	// 	match self {
+	// 		// TODO account for `...` tokens
+	// 		ObjectDestructuringField::Spread(_, name) => name.get_position(),
+	// 		ObjectDestructuringField::Name(name, optional_expression) => {
+	// 			let name_position = name.get_position();
+	// 			if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
+	// 			{
+	// 				Cow::Owned(name_position.union(expr_pos))
+	// 			} else {
+	// 				name_position
+	// 			}
+	// 		}
+	// 		ObjectDestructuringField::Map { position, .. } => position,
+	// 	}
+	// }
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Spread, _) => {
-				let Token(_, spread_pos) = reader.next().unwrap();
+				let token = reader.next().unwrap();
 				Ok(Self::Spread(
-					spread_pos,
+					token.get_span(),
 					VariableIdentifier::from_reader(reader, state, settings)?,
 				))
 			}
@@ -347,9 +345,9 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 						U::optional_expression_from_reader(reader, state, settings)?;
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key.get_position().union(&pos)
+							key.get_position().union(pos)
 						} else {
-							key.get_position().into_owned()
+							key.get_position().clone()
 						};
 					Ok(Self::Map { from: key, name: variable_name, default_value, position })
 				} else if let PropertyKey::Ident(name, key_pos, _) = key {
@@ -357,18 +355,15 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 						U::optional_expression_from_reader(reader, state, settings)?;
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key_pos.union(&pos)
+							key_pos.union(pos)
 						} else {
 							key_pos
 						};
 					let standard = VariableIdentifier::Standard(name, position);
 					Ok(Self::Name(standard, default_value))
 				} else {
-					let Token(token, pos) = reader.next().unwrap();
-					Err(ParseError::new(
-						ParseErrors::UnexpectedToken { expected: &[TSXToken::Colon], found: token },
-						pos,
-					))
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 				}
 			}
 		}
@@ -397,6 +392,10 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 			}
 		}
 	}
+
+	fn get_position(&self) -> &Span {
+		todo!()
+	}
 }
 
 /// TODO not sure about the positions here, is potential duplication if T::OptionalExpression is none
@@ -421,34 +420,16 @@ impl<T: VariableFieldKind + PartialEq> PartialEq for ArrayDestructuringField<T> 
 impl<T: VariableFieldKind> Eq for ArrayDestructuringField<T> {}
 
 impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			ArrayDestructuringField::Spread(spread_pos, ident) => {
-				Cow::Owned(spread_pos.union(&ident.get_position()))
-			}
-			ArrayDestructuringField::Name(name, optional_expression) => {
-				let name_position = name.get_position();
-				if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
-				{
-					Cow::Owned(name_position.union(expr_pos))
-				} else {
-					name_position
-				}
-			}
-			ArrayDestructuringField::None => Cow::Owned(Span::NULL_SPAN),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			TSXToken::Spread => {
-				let Token(_, spread_pos) = reader.next().unwrap();
+				let token = reader.next().unwrap();
 				Ok(Self::Spread(
-					spread_pos,
+					token.get_span(),
 					VariableIdentifier::from_reader(reader, state, settings)?,
 				))
 			}
@@ -478,6 +459,10 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 			}
 			Self::None => {}
 		}
+	}
+
+	fn get_position(&self) -> &Span {
+		todo!()
 	}
 }
 

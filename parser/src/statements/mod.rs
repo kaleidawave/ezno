@@ -11,7 +11,8 @@ use crate::{
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
-use std::{borrow::Cow, fmt::Debug};
+use get_field_by_type::GetFieldByType;
+use std::fmt::Debug;
 
 use super::{
 	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, Keyword, ParseOptions,
@@ -26,8 +27,8 @@ use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
 /// A statement
-/// Throw is on [Expression] (non-standard)
-#[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras)]
+#[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
@@ -36,6 +37,7 @@ pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
 	Block(Block),
+	// TODO as keyword
 	Debugger(Span),
 	// Loops and "condition-aries"
 	IfStatement(IfStatement),
@@ -45,12 +47,12 @@ pub enum Statement {
 	DoWhileStatement(DoWhileStatement),
 	TryCatchStatement(TryCatchStatement),
 	// Control flow
-	Return(Keyword<tsx_keywords::Return>, Option<MultipleExpression>),
+	Return(ReturnStatement),
 	// TODO maybe an actual label struct:
 	Continue(Option<String>, Span),
 	Break(Option<String>, Span),
 	/// e.g `throw ...`
-	Throw(Keyword<tsx_keywords::Throw>, Box<MultipleExpression>),
+	Throw(ThrowStatement),
 	// Comments
 	Comment(String, Span),
 	MultiLineComment(String, Span),
@@ -67,41 +69,53 @@ pub enum Statement {
 	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
 }
 
+#[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+pub struct ReturnStatement(Keyword<tsx_keywords::Return>, Option<MultipleExpression>, Span);
+
+#[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+pub struct ThrowStatement(Keyword<tsx_keywords::Throw>, Box<MultipleExpression>, Span);
+
 impl Eq for Statement {}
 
 impl ASTNode for Statement {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			Statement::Expression(val) => val.get_position(),
-			Statement::VarVariable(val) => val.get_position(),
-			Statement::Debugger(pos)
-			| Statement::Continue(_, pos)
-			| Statement::Break(_, pos)
-			| Statement::Cursor(_, pos)
-			| Statement::Comment(_, pos)
-			| Statement::Empty(pos)
-			| Statement::Labelled { position: pos, .. }
-			| Statement::MultiLineComment(_, pos) => Cow::Borrowed(pos),
-			Statement::Return(kw, expr) => {
-				if let Some(expr) = expr {
-					Cow::Owned(kw.1.union(&expr.get_position()))
-				} else {
-					Cow::Borrowed(&kw.1)
-				}
-			}
-			Statement::Throw(kw, expr) => Cow::Owned(kw.1.union(&expr.get_position())),
-			Statement::IfStatement(is) => is.get_position(),
-			Statement::ForLoopStatement(fl) => fl.get_position(),
-			Statement::SwitchStatement(ss) => ss.get_position(),
-			Statement::WhileStatement(ws) => ws.get_position(),
-			Statement::DoWhileStatement(dws) => dws.get_position(),
-			Statement::TryCatchStatement(tcs) => tcs.get_position(),
-			Statement::Block(blk) => blk.get_position(),
-		}
+	fn get_position(&self) -> &Span {
+		get_field_by_type::GetFieldByType::get(self)
 	}
+	// 	match self {
+	// 		Statement::Expression(val) => val.get_position(),
+	// 		Statement::VarVariable(val) => val.get_position(),
+	// 		Statement::Debugger(pos)
+	// 		| Statement::Continue(_, pos)
+	// 		| Statement::Break(_, pos)
+	// 		| Statement::Cursor(_, pos)
+	// 		| Statement::Comment(_, pos)
+	// 		| Statement::Empty(pos)
+	// 		| Statement::Labelled { position: pos, .. }
+	// 		| Statement::MultiLineComment(_, pos) => pos,
+	// 		Statement::Return(kw, expr) => {
+	// 			if let Some(expr) = expr {
+	// 				Cow::Owned(kw.1.union(&expr.get_position()))
+	// 			} else {
+	// 				&kw.1
+	// 			}
+	// 		}
+	// 		Statement::Throw(kw, expr) => Cow::Owned(kw.1.union(&expr.get_position())),
+	// 		Statement::IfStatement(is) => is.get_position(),
+	// 		Statement::ForLoopStatement(fl) => fl.get_position(),
+	// 		Statement::SwitchStatement(ss) => ss.get_position(),
+	// 		Statement::WhileStatement(ws) => ws.get_position(),
+	// 		Statement::DoWhileStatement(dws) => dws.get_position(),
+	// 		Statement::TryCatchStatement(tcs) => tcs.get_position(),
+	// 		Statement::Block(blk) => blk.get_position(),
+	// 	}
+	// }
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -109,7 +123,7 @@ impl ASTNode for Statement {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, settings).map(Box::new)?;
-			let position = label_name_pos.union(&statement.get_position());
+			let position = label_name_pos.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });
 		}
 
@@ -117,8 +131,8 @@ impl ASTNode for Statement {
 
 		match token {
 			TSXToken::Cursor(_) => {
-				if let Token(TSXToken::Cursor(cursor_id), span) = reader.next().unwrap() {
-					Ok(Statement::Cursor(cursor_id.into_cursor(), span))
+				if let Token(TSXToken::Cursor(cursor_id), start) = reader.next().unwrap() {
+					Ok(Statement::Cursor(cursor_id.into_cursor(), start.with_length(1)))
 				} else {
 					unreachable!()
 				}
@@ -128,9 +142,10 @@ impl ASTNode for Statement {
 				Ok(Statement::VarVariable(stmt))
 			}
 			TSXToken::Keyword(TSXKeyword::Throw) => {
-				let Token(_, throw_pos) = reader.next().unwrap();
-				let expression = ASTNode::from_reader(reader, state, settings)?;
-				Ok(Statement::Throw(Keyword::new(throw_pos), Box::new(expression)))
+				let throw_pos = Keyword::new(reader.next().unwrap().get_span());
+				let expression = MultipleExpression::from_reader(reader, state, settings)?;
+				let position = throw_pos.get_position().union(expression.get_position());
+				Ok(Statement::Throw(ThrowStatement(throw_pos, Box::new(expression), position)))
 			}
 			TSXToken::Keyword(TSXKeyword::If) => {
 				IfStatement::from_reader(reader, state, settings).map(Into::into)
@@ -154,23 +169,30 @@ impl ASTNode for Statement {
 				Block::from_reader(reader, state, settings).map(Statement::Block)
 			}
 			TSXToken::Keyword(TSXKeyword::Return) => Ok({
-				let Token(_, return_span) = reader.next().unwrap();
-				let expression = if matches!(
+				let return_keyword = Keyword::new(reader.next().unwrap().get_span());
+				if matches!(
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					None
+					let position = return_keyword.get_position().clone();
+					Statement::Return(ReturnStatement(return_keyword, None, position))
 				} else {
-					Some(MultipleExpression::from_reader(reader, state, settings)?)
-				};
-				Statement::Return(Keyword::new(return_span), expression)
+					let multiple_expression =
+						MultipleExpression::from_reader(reader, state, settings)?;
+					let position =
+						return_keyword.get_position().union(multiple_expression.get_position());
+					Statement::Return(ReturnStatement(
+						return_keyword,
+						Some(multiple_expression),
+						position,
+					))
+				}
 			}),
 			TSXToken::Keyword(TSXKeyword::Debugger) => {
-				let Token(_, span) = reader.next().unwrap();
-				Ok(Statement::Debugger(span))
+				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
 			}
 			TSXToken::Keyword(TSXKeyword::Break) => {
-				let Token(_, span) = reader.next().unwrap();
+				let break_token = reader.next().unwrap();
 				// TODO token is semi-colon
 				let label = if !matches!(
 					reader.peek(),
@@ -180,10 +202,10 @@ impl ASTNode for Statement {
 				} else {
 					None
 				};
-				Ok(Statement::Break(label, span))
+				Ok(Statement::Break(label, break_token.get_span()))
 			}
 			TSXToken::Keyword(TSXKeyword::Continue) => {
-				let Token(_, span) = reader.next().unwrap();
+				let continue_token = reader.next().unwrap();
 				// TODO token is semi-colon
 				let label = if !matches!(
 					reader.peek(),
@@ -193,29 +215,25 @@ impl ASTNode for Statement {
 				} else {
 					None
 				};
-				Ok(Statement::Continue(label, span))
+				Ok(Statement::Continue(label, continue_token.get_span()))
 			}
-			TSXToken::Comment(_) => Ok({
-				let (comment, position) =
-					if let Token(TSXToken::Comment(comment), position) = reader.next().unwrap() {
-						(comment, position)
-					} else {
-						unreachable!()
-					};
-				Statement::Comment(comment, position)
-			}),
+			TSXToken::Comment(_) => {
+				if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
+					let position = start.with_length(comment.len() + 2);
+					Ok(Statement::Comment(comment, position))
+				} else {
+					unreachable!()
+				}
+			}
 			TSXToken::MultiLineComment(_) => {
-				if let Token(TSXToken::MultiLineComment(comment), position) = reader.next().unwrap()
-				{
+				if let Token(TSXToken::MultiLineComment(comment), start) = reader.next().unwrap() {
+					let position = start.with_length(comment.len() + 2);
 					Ok(Statement::MultiLineComment(comment, position))
 				} else {
 					unreachable!()
 				}
 			}
-			TSXToken::SemiColon => {
-				let pos = reader.next().unwrap().1;
-				Ok(Statement::Empty(pos))
-			}
+			TSXToken::SemiColon => Ok(Statement::Empty(reader.next().unwrap().get_span())),
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, settings)?;
@@ -239,7 +257,7 @@ impl ASTNode for Statement {
 			Statement::Empty(..) => {
 				buf.push(';');
 			}
-			Statement::Return(_, expression) => {
+			Statement::Return(ReturnStatement(_, expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
@@ -291,7 +309,7 @@ impl ASTNode for Statement {
 				buf.push(':');
 				statement.to_string_from_buffer(buf, settings, depth);
 			}
-			Statement::Throw(_, thrown_expression) => {
+			Statement::Throw(ThrowStatement(_, thrown_expression, _)) => {
 				buf.push_str("throw ");
 				thrown_expression.to_string_from_buffer(buf, settings, depth);
 			}
@@ -322,24 +340,26 @@ impl Statement {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct VarVariableStatement {
 	keyword: Keyword<tsx_keywords::Var>,
 	declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
+	position: Span,
 }
 
 impl ASTNode for VarVariableStatement {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Owned(self.keyword.1.union(&self.declarations.last().unwrap().get_position()))
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let keyword = Keyword::new(reader.expect_next(TSXToken::Keyword(TSXKeyword::Var))?);
+		let keyword = Keyword::from_reader(reader)?;
 		let mut declarations = Vec::new();
 		loop {
 			let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
@@ -352,7 +372,11 @@ impl ASTNode for VarVariableStatement {
 				break;
 			}
 		}
-		Ok(VarVariableStatement { keyword, declarations })
+		Ok(VarVariableStatement {
+			position: keyword.get_position().union(declarations.last().unwrap().get_position()),
+			keyword,
+			declarations,
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

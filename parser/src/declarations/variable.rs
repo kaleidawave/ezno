@@ -1,11 +1,9 @@
-use std::borrow::Cow;
-
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, tsx_keywords, ASTNode, Expression, Keyword, ParseError,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation,
-	VariableField, VariableFieldInSourceCode, WithComment,
+	errors::parse_lexing_error, throw_unexpected_token_with_token, tsx_keywords, ASTNode,
+	Expression, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -14,7 +12,7 @@ pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
 	fn decl_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self>;
@@ -26,7 +24,7 @@ pub trait DeclarationExpression:
 		depth: u8,
 	);
 
-	fn get_decl_position(&self) -> Option<Cow<Span>>;
+	fn get_decl_position(&self) -> Option<&Span>;
 
 	fn as_option_expr_ref(&self) -> Option<&Expression>;
 
@@ -35,7 +33,7 @@ pub trait DeclarationExpression:
 
 impl DeclarationExpression for Option<Expression> {
 	fn decl_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -60,7 +58,7 @@ impl DeclarationExpression for Option<Expression> {
 		}
 	}
 
-	fn get_decl_position(&self) -> Option<Cow<Span>> {
+	fn get_decl_position(&self) -> Option<&Span> {
 		self.as_ref().map(|expr| expr.get_position())
 	}
 
@@ -75,7 +73,7 @@ impl DeclarationExpression for Option<Expression> {
 
 impl DeclarationExpression for crate::Expression {
 	fn decl_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -93,7 +91,7 @@ impl DeclarationExpression for crate::Expression {
 		ASTNode::to_string_from_buffer(self, buf, settings, depth)
 	}
 
-	fn get_decl_position(&self) -> Option<Cow<Span>> {
+	fn get_decl_position(&self) -> Option<&Span> {
 		Some(ASTNode::get_position(self))
 	}
 
@@ -113,22 +111,12 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub expression: TExpr,
+	pub position: Span,
 }
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
-	fn get_position(&self) -> Cow<Span> {
-		let name_position = self.name.get_position();
-		if let Some(expr_pos) = TExpr::get_decl_position(&self.expression) {
-			Cow::Owned(name_position.union(&expr_pos))
-		} else if let Some(ref ty_ref) = self.type_annotation {
-			Cow::Owned(name_position.union(&ty_ref.get_position()))
-		} else {
-			name_position
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -143,7 +131,18 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			None
 		};
 		let expression = TExpr::decl_from_reader(reader, state, settings)?;
-		Ok(Self { name, type_annotation, expression })
+		Ok(Self {
+			position: name.get_position().union(
+				expression
+					.get_decl_position()
+					.or(type_annotation.as_ref().map(|ta| ta.get_position()))
+					// TODO lol
+					.unwrap_or(name.get_position()),
+			),
+			name,
+			type_annotation,
+			expression,
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -158,6 +157,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			type_annotation.to_string_from_buffer(buf, settings, depth);
 		}
 		self.expression.decl_to_string_from_buffer(buf, settings, depth);
+	}
+
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
@@ -187,20 +190,17 @@ impl VariableDeclarationKeyword {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
 
-	pub(crate) fn from_reader(token: Token<TSXToken, Span>) -> ParseResult<Self> {
+	pub(crate) fn from_reader(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
+		let position = token.get_span();
 		match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), pos) => Ok(Self::Const(Keyword::new(pos))),
-			Token(TSXToken::Keyword(TSXKeyword::Let), pos) => Ok(Self::Let(Keyword::new(pos))),
-			Token(token, position) => Err(ParseError::new(
-				crate::ParseErrors::UnexpectedToken {
-					expected: &[
-						TSXToken::Keyword(TSXKeyword::Const),
-						TSXToken::Keyword(TSXKeyword::Let),
-					],
-					found: token,
-				},
-				position,
-			)),
+			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
+				Ok(Self::Const(Keyword::new(position)))
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let(Keyword::new(position))),
+			token => throw_unexpected_token_with_token(
+				token,
+				&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
+			),
 		}
 	}
 
@@ -221,12 +221,12 @@ impl VariableDeclarationKeyword {
 
 impl ASTNode for VariableDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let kind =
-			VariableDeclarationKeyword::from_reader(reader.next().ok_or_else(parse_lexing_error)?)?;
+		let token = reader.next().ok_or_else(parse_lexing_error)?;
+		let kind = VariableDeclarationKeyword::from_reader(token)?;
 		Ok(match kind {
 			VariableDeclarationKeyword::Let(keyword) => {
 				let mut declarations = Vec::new();
@@ -279,15 +279,8 @@ impl ASTNode for VariableDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			VariableDeclaration::ConstDeclaration { keyword, declarations } => {
-				Cow::Owned(keyword.1.union(&declarations.last().unwrap().get_position()))
-			}
-			VariableDeclaration::LetDeclaration { keyword, declarations } => {
-				Cow::Owned(keyword.1.union(&declarations.last().unwrap().get_position()))
-			}
-		}
+	fn get_position(&self) -> &Span {
+		todo!()
 	}
 }
 

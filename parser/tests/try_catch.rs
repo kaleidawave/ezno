@@ -59,8 +59,7 @@ try {
 	.trim_start();
 
 	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None, Vec::new())
-			.unwrap();
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
 
 	let output = module.to_string(&Default::default());
 

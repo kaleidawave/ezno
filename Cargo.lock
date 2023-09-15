@@ -306,7 +306,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
- "source-map 0.13.0",
+ "source-map 0.14.1",
  "temporary-annex",
 ]
 
@@ -344,11 +344,12 @@ dependencies = [
  "enum-variants-strings",
  "enum_variant_type",
  "ezno-parser-visitable-derive",
+ "get-field-by-type",
  "iterator-endiate 0.1.0",
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
- "source-map 0.13.0",
+ "source-map 0.14.1",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -416,6 +417,24 @@ name = "fuchsia-zircon-sys"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
+
+[[package]]
+name = "get-field-by-type"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2f4ba71362701e2913eabce7b108cf6f2db1a413f661138862f2632b117ab98"
+dependencies = [
+ "get-field-by-type-derive",
+]
+
+[[package]]
+name = "get-field-by-type-derive"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c1777fe05ec14229f7eede7ecb245051776a405a90501139aa6967a9eba7feb"
+dependencies = [
+ "syn-helpers",
+]
 
 [[package]]
 name = "hashbrown"
@@ -916,9 +935,9 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.13.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aebacbfb6ea7b5257c72f8d2f7790cf4fc3e72f399d76b56d48f6290c8ed7789"
+checksum = "bdb0d42bb4480eab8b06f7ff7a663c4eda28a81818bd4bc92b168944e2adf5e7"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",
@@ -955,9 +974,9 @@ dependencies = [
 
 [[package]]
 name = "syn-helpers"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872f211f0299a39fff932355b2e304ef0e95a486a8147244fa8d477c1b0acfce"
+checksum = "2a2919350d44e7bdba75bf541da7a15c415a84fea1c823f37f0c48a6b0133639"
 dependencies = [
  "either_n",
  "proc-macro2",
@@ -1007,9 +1026,12 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokenizer-lib"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "921ae88b4cdbf7aa5bc708c9d02d37c194c3fc4189c9698320ef19968354d36a"
+checksum = "aedcdc3b4760676e1ed01c749e219c98f8da59ef08c62547c19a74bea228c5d8"
+dependencies = [
+ "source-map 0.14.1",
+]
 
 [[package]]
 name = "unicode-bidi"

@@ -1,8 +1,8 @@
 mod class_member;
 
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
-use crate::{to_string_bracketed, tsx_keywords};
+use crate::{throw_unexpected_token_with_token, to_string_bracketed, tsx_keywords};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -11,9 +11,10 @@ use crate::{
 	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
 	TypeAnnotation, VisitSettings,
 };
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub class_keyword: Keyword<tsx_keywords::Class>,
@@ -30,12 +31,11 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 	for ClassDeclaration<U>
 {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let class_keyword_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Class))?;
-		let class_keyword = Keyword::new(class_keyword_pos);
+		let class_keyword = Keyword::from_reader(reader)?;
 		Self::from_reader_sub_class_keyword(reader, state, settings, class_keyword)
 	}
 
@@ -48,14 +48,14 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		self.to_string_from_buffer(buf, settings, depth)
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
 impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn from_reader_sub_class_keyword(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		class_keyword: Keyword<tsx_keywords::Class>,
@@ -86,14 +86,11 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 					match reader.next().ok_or_else(crate::errors::parse_lexing_error)? {
 						Token(TSXToken::Comma, _) => {}
 						Token(TSXToken::OpenBrace, _pos) => break,
-						Token(token, position) => {
-							return Err(crate::ParseError::new(
-								crate::ParseErrors::UnexpectedToken {
-									expected: &[TSXToken::OpenBrace, TSXToken::Comma],
-									found: token,
-								},
-								position,
-							))
+						token => {
+							return throw_unexpected_token_with_token(
+								token,
+								&[TSXToken::OpenBrace, TSXToken::Comma],
+							);
 						}
 					}
 				}
@@ -114,7 +111,8 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 				reader.next();
 			}
 		}
-		let position = class_keyword.1.union(&reader.expect_next(TSXToken::CloseBrace)?);
+		let position =
+			class_keyword.get_position().union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(ClassDeclaration {
 			class_keyword,
 			name,

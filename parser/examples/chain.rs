@@ -4,7 +4,7 @@ use ezno_parser::{
 use temporary_annex::Annex;
 
 fn parse<T: ASTNode>(s: &str) -> T {
-	T::from_string(s.to_owned(), Default::default(), SourceId::NULL, None, Vec::new()).unwrap()
+	T::from_string(s.to_owned(), Default::default(), SourceId::NULL, None).unwrap()
 }
 
 struct ShowChain;

@@ -1,8 +1,9 @@
-use std::borrow::Cow;
-
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{
+	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
+	Token, TokenReader,
+};
 use visitable_derive::Visitable;
 
 use crate::{
@@ -19,12 +20,12 @@ pub struct Decorator {
 }
 
 impl ASTNode for Decorator {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -58,10 +59,10 @@ impl ASTNode for Decorator {
 
 impl Decorator {
 	pub(crate) fn from_reader_sub_at_symbol(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
-		at_pos: Span,
+		at_pos: TokenStart,
 	) -> ParseResult<Self> {
 		let (name, name_position) = token_as_identifier(reader.next().unwrap(), "Decorator name")?;
 		let (arguments, position) = if reader
@@ -81,10 +82,10 @@ impl Decorator {
 					_ => break,
 				}
 			}
-			let end_position = reader.expect_next(TSXToken::CloseParentheses)?;
-			(Some(arguments), at_pos.union(&end_position))
+			let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+			(Some(arguments), at_pos.union(end))
 		} else {
-			(None, at_pos.union(&name_position))
+			(None, at_pos.union(name_position))
 		};
 		Ok(Self { name, arguments, position })
 	}
@@ -99,13 +100,13 @@ pub struct Decorated<T> {
 }
 
 impl<N: ASTNode> ASTNode for Decorated<N> {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		// TODO union with first decorated
 		self.on.get_position()
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -149,7 +150,7 @@ impl<U> Decorated<U> {
 }
 
 pub(crate) fn decorators_from_reader(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &ParseOptions,
 ) -> ParseResult<Vec<Decorator>> {

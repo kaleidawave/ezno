@@ -244,7 +244,6 @@ mod ast {
 
 /// These are structures used when visiting AST
 mod structures {
-	use std::borrow::Cow;
 
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
@@ -375,12 +374,12 @@ mod structures {
 			}
 		}
 
-		pub fn get_position(&self) -> Cow<Span> {
+		pub fn get_position(&self) -> &Span {
 			use crate::ASTNode;
 			match self {
 				ImmutableVariableOrPropertyPart::FunctionName(_, pos)
 				| ImmutableVariableOrPropertyPart::ClassName(_, pos)
-				| ImmutableVariableOrPropertyPart::VariableFieldName(_, pos) => Cow::Borrowed(pos),
+				| ImmutableVariableOrPropertyPart::VariableFieldName(_, pos) => pos,
 				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(member) => {
 					member.get_position()
 				}

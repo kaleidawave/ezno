@@ -1,16 +1,15 @@
-use std::borrow::Cow;
-
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseErrors, ParseOptions, Statement,
-	TSXKeyword, TSXToken,
+	errors::parse_lexing_error, throw_unexpected_token_with_token, ASTNode, Expression,
+	ParseOptions, Statement, TSXKeyword, TSXToken,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct SwitchStatement {
 	pub case: Expression,
@@ -26,22 +25,22 @@ pub enum SwitchBranch {
 }
 
 impl ASTNode for SwitchStatement {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
+		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
 		let case = Expression::from_reader(reader, state, settings)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;
 		reader.expect_next(crate::TSXToken::OpenBrace)?;
 		let mut branches = Vec::new();
-		let close_brace_pos: Span;
+		let close_brace_pos: TokenEnd;
 		loop {
 			let case: Option<Expression> = match reader.next().ok_or_else(parse_lexing_error)? {
 				Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
@@ -54,21 +53,19 @@ impl ASTNode for SwitchStatement {
 					Some(case)
 				}
 				Token(TSXToken::CloseBrace, pos) => {
-					close_brace_pos = pos;
+					// TODO bad
+					close_brace_pos = TokenEnd::new(pos.0 + 1);
 					break;
 				}
-				Token(token, pos) => {
-					return Err(crate::ParseError::new(
-						ParseErrors::UnexpectedToken {
-							expected: &[
-								TSXToken::Keyword(TSXKeyword::Default),
-								TSXToken::Keyword(TSXKeyword::Case),
-								TSXToken::CloseBrace,
-							],
-							found: token,
-						},
-						pos,
-					))
+				token => {
+					return throw_unexpected_token_with_token(
+						token,
+						&[
+							TSXToken::Keyword(TSXKeyword::Default),
+							TSXToken::Keyword(TSXKeyword::Case),
+							TSXToken::CloseBrace,
+						],
+					);
 				}
 			};
 			let mut statements = Vec::new();
@@ -93,7 +90,7 @@ impl ASTNode for SwitchStatement {
 				branches.push(SwitchBranch::Default(statements))
 			}
 		}
-		Ok(Self { case, branches, position: start_span.union(&close_brace_pos) })
+		Ok(Self { case, branches, position: start.union(close_brace_pos) })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

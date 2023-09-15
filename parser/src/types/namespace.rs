@@ -1,15 +1,9 @@
-use std::borrow::Cow;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Namespace(String, Vec<crate::TypeDefinitionModuleDeclaration>);
 
 impl crate::ASTNode for Namespace {
-	fn get_position(&self) -> Cow<source_map::Span> {
-		todo!()
-	}
-
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
@@ -41,6 +35,10 @@ impl crate::ASTNode for Namespace {
 		_settings: &crate::ToStringOptions,
 		_depth: u8,
 	) {
+		todo!()
+	}
+
+	fn get_position(&self) -> &source_map::Span {
 		todo!()
 	}
 }
