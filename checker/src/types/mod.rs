@@ -13,7 +13,7 @@ use derive_debug_extras::DebugExtras;
 pub(crate) use poly_types::specialization::*;
 
 pub(crate) use casts::*;
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 pub use store::TypeStore;
 pub use terms::Constant;
 
@@ -294,7 +294,7 @@ pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
 /// TODO add_property_restrictions via const generics
 pub struct BasicEquality {
 	pub add_property_restrictions: bool,
-	pub position: Span,
+	pub position: SpanWithSource,
 }
 
 /// For subtyping
@@ -418,7 +418,7 @@ pub enum NonEqualityReason {
 	GenericRestrictionMismatch {
 		restriction: TypeId,
 		reason: Box<NonEqualityReason>,
-		pos: Span,
+		pos: SpanWithSource,
 	},
 	TooStrict,
 	/// TODO more information

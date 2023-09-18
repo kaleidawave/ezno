@@ -20,6 +20,7 @@ pub mod variables;
 
 use block::synthesize_block;
 use parser::PropertyKey;
+use source_map::SourceId;
 
 use crate::{
 	context::{Context, ContextType},
@@ -43,11 +44,11 @@ pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::Prop
 	}
 }
 
-impl From<parser::ParseError> for Diagnostic {
-	fn from(parse_error: parser::ParseError) -> Self {
+impl From<(parser::ParseError, SourceId)> for Diagnostic {
+	fn from(parse_error: (parser::ParseError, SourceId)) -> Self {
 		Diagnostic::Position {
-			reason: parse_error.reason,
-			position: parse_error.position,
+			reason: parse_error.0.reason,
+			position: parse_error.0.position.with_source(parse_error.1),
 			kind: crate::diagnostics::DiagnosticKind::Error,
 		}
 	}

@@ -7,7 +7,7 @@ use crate::{
 	Environment, TypeId,
 };
 
-use source_map::{SourceId, Span};
+use source_map::{SourceId, Span, SpanWithSource};
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
@@ -212,7 +212,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							// TODO
 							None,
 							&[],
-							Span::NULL_SPAN,
+							SpanWithSource::NULL_SPAN,
 							environment,
 							behavior,
 							types,
@@ -391,7 +391,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	if let Some(constraint) = property_constraint {
 		let mut basic_subtyping = crate::types::subtyping::BasicEquality {
 			add_property_restrictions: true,
-			position: Span { start: 0, end: 0, source: SourceId::NULL },
+			position: source_map::SpanWithSource { start: 0, end: 0, source: SourceId::NULL },
 		};
 		let base_type = constraint.prop_to_type();
 		if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(

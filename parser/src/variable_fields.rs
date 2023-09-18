@@ -287,14 +287,15 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEqExtras)]
+#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	/// `{ ...x }`
-	Spread(Span, VariableIdentifier),
+	Spread(VariableIdentifier, Span),
 	/// `{ x }`
-	Name(VariableIdentifier, T::OptionalExpression),
+	Name(VariableIdentifier, T::OptionalExpression, Span),
 	/// `{ x: y }`
 	Map {
 		from: PropertyKey<crate::property_key::AlwaysPublic>,
@@ -330,10 +331,9 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Spread, _) => {
 				let token = reader.next().unwrap();
-				Ok(Self::Spread(
-					token.get_span(),
-					VariableIdentifier::from_reader(reader, state, settings)?,
-				))
+				let identifier = VariableIdentifier::from_reader(reader, state, settings)?;
+				let position = token.get_span().union(identifier.get_position());
+				Ok(Self::Spread(identifier, position))
 			}
 			_ => {
 				let key = PropertyKey::from_reader(reader, state, settings)?;
@@ -353,14 +353,14 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 				} else if let PropertyKey::Ident(name, key_pos, _) = key {
 					let default_value =
 						U::optional_expression_from_reader(reader, state, settings)?;
+					let standard = VariableIdentifier::Standard(name, key_pos);
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key_pos.union(pos)
+							standard.get_position().union(pos)
 						} else {
-							key_pos
+							standard.get_position().clone()
 						};
-					let standard = VariableIdentifier::Standard(name, position);
-					Ok(Self::Name(standard, default_value))
+					Ok(Self::Name(standard, default_value, position))
 				} else {
 					let token = reader.next().ok_or_else(parse_lexing_error)?;
 					throw_unexpected_token_with_token(token, &[TSXToken::Colon])
@@ -376,11 +376,11 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 		depth: u8,
 	) {
 		match self {
-			Self::Spread(_, name) => {
+			Self::Spread(name, _) => {
 				buf.push_str("...");
 				buf.push_str(name.as_str());
 			}
-			Self::Name(name, default_value) => {
+			Self::Name(name, default_value, _) => {
 				buf.push_str(name.as_str());
 				U::optional_expression_to_string_from_buffer(default_value, buf, settings, depth)
 			}
@@ -508,8 +508,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						chain,
 					);
 					match field.get_ast_ref() {
-						ObjectDestructuringField::Spread(_, _name) => {}
-						ObjectDestructuringField::Name(_name, default_value) => {
+						ObjectDestructuringField::Spread(_name, _) => {}
+						ObjectDestructuringField::Name(_name, default_value, _) => {
 							default_value.visit(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map {
@@ -568,8 +568,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						chain,
 					);
 					match field.get_ast_mut() {
-						ObjectDestructuringField::Spread(_, _id) => {}
-						ObjectDestructuringField::Name(_id, default_value) => {
+						ObjectDestructuringField::Spread(_id, _) => {}
+						ObjectDestructuringField::Name(_id, default_value, _) => {
 							default_value.visit_mut(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map {
@@ -659,12 +659,15 @@ mod tests {
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "x", span!(1, 2)),
 					None,
+					span!(1, 2),
 				)), WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "y", span!(4, 5)),
 					None,
+					span!(4, 5),
 				)), WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "z", span!(7, 8)),
 					None,
+					span!(7, 8),
 				))],
 				span!(0, 9),
 			)
@@ -679,6 +682,7 @@ mod tests {
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "x", span!(2, 7)),
 					Some(Expression::NumberLiteral(crate::NumberStructure::Number(_), span!(6, 7))),
+					span!(6, 7),
 				))],
 				span!(0, 9),
 			)

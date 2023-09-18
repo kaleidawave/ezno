@@ -165,7 +165,7 @@ impl TypeStore {
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
 		parameters: crate::types::functions::SynthesizedParameters,
 		return_type: TypeId,
-		declared_at: source_map::Span,
+		declared_at: source_map::SpanWithSource,
 		effects: Vec<crate::events::Event>,
 		constant_id: Option<String>,
 	) -> TypeId {

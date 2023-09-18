@@ -15,7 +15,7 @@ pub use root::Root;
 
 pub(crate) use bases::Boundary;
 
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::{
@@ -55,7 +55,6 @@ pub(crate) use environment::Syntax;
 
 static ENVIRONMENT_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
 
-/// TODO explain how used for closures
 #[derive(PartialEq, Eq, Clone, Copy, derive_debug_extras::DebugExtras, Hash)]
 pub struct ContextId(u16);
 
@@ -148,7 +147,7 @@ pub struct Context<T: ContextType> {
 	pub(crate) variable_names: HashMap<VariableId, String>,
 
 	/// TODO not sure if needed
-	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, Span)>,
+	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
 	pub(crate) bases: bases::Bases,
 
 	/// Object type (LHS), must always be RHS
@@ -284,7 +283,7 @@ impl<T: ContextType> Context<T> {
 	pub fn register_variable<'b>(
 		&mut self,
 		name: &'b str,
-		declared_at: Span,
+		declared_at: SpanWithSource,
 		behavior: VariableRegisterBehavior,
 		types: &mut TypeStore,
 	) -> Result<TypeId, CannotRedeclareVariable<'b>> {
@@ -353,7 +352,7 @@ impl<T: ContextType> Context<T> {
 	pub fn register_variable_handle_error<U: crate::FSResolver>(
 		&mut self,
 		name: &str,
-		declared_at: Span,
+		declared_at: SpanWithSource,
 		behavior: VariableRegisterBehavior,
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId {
@@ -393,7 +392,7 @@ impl<T: ContextType> Context<T> {
 					Scope::Looping { .. } => "looping",
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
-					Scope::Module {} => "module",
+					Scope::Module { .. } => "module",
 				}
 			} else {
 				"root"
@@ -636,7 +635,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::Looping { .. }
 				| Scope::TryBlock { .. }
 				| Scope::Block {}
-				| Scope::Module {} => None,
+				| Scope::Module { .. } => None,
 			},
 			GeneralContext::Root(root) => None,
 		}
@@ -947,7 +946,7 @@ impl<T: ContextType> Context<T> {
 			})
 			.collect();
 
-		let id = function.id();
+		let id = function.id(self.get_source());
 		let func_ty = FunctionType {
 			type_parameters,
 			return_type: returned,
@@ -1077,7 +1076,7 @@ impl<T: ContextType> Context<T> {
 			| Scope::ClassEnvironment {}
 			| Scope::Block {}
 			| Scope::TryBlock {}
-			| Scope::Module {} => {
+			| Scope::Module { .. } => {
 				// if let Some(inferrable_constraints) =
 				// 	self.context_type.get_inferrable_constraints_mut()
 				// {
@@ -1214,7 +1213,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::ClassEnvironment {}
 				| Scope::FunctionReference {}
 				| Scope::Block {}
-				| Scope::Module {} => {
+				| Scope::Module { .. } => {
 					self.facts.events.append(&mut facts.events);
 
 					// if let Some(inferrable_constraints) =
@@ -1299,7 +1298,7 @@ impl<T: ContextType> Context<T> {
 	pub fn get_type_by_name_handle_errors<U>(
 		&self,
 		name: &str,
-		pos: Span,
+		pos: SpanWithSource,
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId {
 		match self.get_type_from_name(name) {
@@ -1315,7 +1314,12 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends + parameters
-	pub fn new_interface(&mut self, name: &str, position: Span, types: &mut TypeStore) -> TypeId {
+	pub fn new_interface(
+		&mut self,
+		name: &str,
+		position: SpanWithSource,
+		types: &mut TypeStore,
+	) -> TypeId {
 		// TODO temp
 		let ty = Type::NamedRooted { name: name.to_owned(), parameters: None };
 		let interface_ty = types.register_type(ty);
@@ -1358,7 +1362,7 @@ impl<T: ContextType> Context<T> {
 	pub(crate) fn declare_variable<'a>(
 		&mut self,
 		name: &'a str,
-		declared_at: Span,
+		declared_at: SpanWithSource,
 		variable_ty: TypeId,
 		types: &mut TypeStore,
 	) -> Result<TypeId, CannotRedeclareVariable<'a>> {
@@ -1401,26 +1405,44 @@ impl<T: ContextType> Context<T> {
 			}
 		}
 	}
+
+	pub(crate) fn get_source(&self) -> source_map::SourceId {
+		self.parents_iter()
+			.find_map(|ctx| {
+				if let GeneralContext::Syntax(Context {
+					context_type: Syntax { kind: Scope::Module { source }, .. },
+					..
+				}) = ctx
+				{
+					Some(*source)
+				} else {
+					None
+				}
+			})
+			.unwrap_or_else(|| {
+				panic!("no module {:?}", self.context_id);
+			})
+	}
 }
 
 pub enum AssignmentError {
 	/// Non writable, could have position info
-	Constant(Span),
+	Constant(SpanWithSource),
 	VariableNotFound {
 		variable: String,
-		assignment_position: Span,
+		assignment_position: SpanWithSource,
 	},
 	/// Covers both assignment and declaration
 	DoesNotMeetConstraint {
 		variable_type: TypeStringRepresentation,
-		variable_site: Span,
+		variable_site: SpanWithSource,
 		value_type: TypeStringRepresentation,
-		value_site: Span,
+		value_site: SpanWithSource,
 	},
 	PropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
-		assignment_position: Span,
+		assignment_position: SpanWithSource,
 	},
 }
 

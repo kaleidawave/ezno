@@ -183,6 +183,7 @@ pub enum TypeDefinitionModuleDeclaration {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDefinitionModule {
 	pub declarations: Vec<TypeDefinitionModuleDeclaration>,
+	pub source: SourceId,
 }
 
 impl TypeDefinitionModule {
@@ -242,7 +243,7 @@ impl ASTNode for TypeDefinitionModule {
 				}
 			}
 		}
-		Ok(Self { declarations })
+		Ok(Self { declarations, source: state.source })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -269,7 +270,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
 				let on = InterfaceDeclaration::from_reader(reader, state, settings)?;
-				Ok(TypeDefinitionModuleDeclaration::Interface(Decorated { decorators, on }))
+				Ok(TypeDefinitionModuleDeclaration::Interface(Decorated::new(decorators, on)))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
 				Ok(TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias::from_reader(

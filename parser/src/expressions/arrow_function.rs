@@ -64,6 +64,7 @@ impl FunctionBased for ArrowFunctionBase {
 					),
 					type_annotation: None,
 					additionally: None,
+					position: position.clone(),
 				}];
 				Ok(FunctionParameters { parameters, rest_parameter: None, position })
 			}
@@ -115,6 +116,7 @@ impl ArrowFunction {
 			),
 			type_annotation: None,
 			additionally: None,
+			position: first_parameter.1.clone(),
 		}];
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;

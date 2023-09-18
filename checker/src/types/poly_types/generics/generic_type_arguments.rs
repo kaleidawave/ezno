@@ -9,7 +9,7 @@ use crate::{
 };
 
 use map_vec::Map as SmallMap;
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use std::{fmt::Debug, iter::FromIterator};
 
@@ -82,7 +82,7 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 pub(crate) struct FunctionTypeArgument {
 	pub value: Option<TypeId>,
 	/// Via <> at call site. Note that backing types are held separately
-	pub restriction: Option<(Span, TypeId)>,
+	pub restriction: Option<(SpanWithSource, TypeId)>,
 }
 
 /// TODO working out environment thingy
@@ -215,7 +215,7 @@ impl TypeArgumentStore for StructureGenericArguments {
 
 impl FunctionTypeArguments {
 	/// This is from <T>
-	pub(crate) fn get_restriction_for_id(&self, id: TypeId) -> Option<(Span, TypeId)> {
+	pub(crate) fn get_restriction_for_id(&self, id: TypeId) -> Option<(SpanWithSource, TypeId)> {
 		self.local_arguments.get(&id).and_then(|arg| arg.restriction.clone())
 		// self.structure_arguments
 		// 	.as_ref()

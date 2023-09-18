@@ -784,6 +784,8 @@ pub mod ast {
 		NumberStructure, StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
 	};
 
+	pub use source_map::BaseSpan;
+
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};
 }
 

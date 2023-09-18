@@ -3,7 +3,7 @@ use std::{
 	path::PathBuf,
 };
 
-use source_map::{SourceId, Span};
+use source_map::{SourceId, Span, SpanWithSource};
 
 use super::range_map::RangeMap;
 
@@ -31,7 +31,7 @@ pub struct TypeMappings {
 	pub called_functions: HashSet<FunctionId>,
 
 	/// Variable restriction. Cached after hoisting pass. TODO temp needs tidy
-	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, Span)>,
+	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, SpanWithSource)>,
 }
 
 #[derive(Default, Debug)]

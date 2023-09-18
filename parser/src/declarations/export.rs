@@ -12,7 +12,8 @@ use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum ExportDeclaration {
 	// TODO listed object thing

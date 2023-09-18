@@ -10,7 +10,8 @@ use crate::{
 use super::AnnotationPerforms;
 
 /// A `declare var` thingy.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct DeclareVariableDeclaration {
 	pub name: String,
@@ -65,7 +66,8 @@ impl DeclareVariableDeclaration {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct DeclareFunctionDeclaration {
 	pub name: String,

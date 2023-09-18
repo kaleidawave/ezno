@@ -26,7 +26,7 @@ pub(super) fn synthesize_class_declaration<
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
-	let Decorated { on: class, decorators } = class;
+	let Decorated { on: class, decorators, position } = class;
 
 	// TODO type needs to be hoisted
 	let parameters =

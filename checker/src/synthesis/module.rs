@@ -40,17 +40,14 @@ pub fn synthesize_module_root<T: crate::FSResolver>(
 			}
 		};
 		// TODO temp
-		let from_string = parser::TypeDefinitionModule::from_string(
-			result,
-			ParseOptions::default(),
-			SourceId::NULL,
-			Vec::new(),
-		);
+		let s = SourceId::NULL;
+		let from_string =
+			parser::TypeDefinitionModule::from_string(result, ParseOptions::default(), s);
 		let tdm = match from_string {
 			Ok(tdm) => tdm,
 			Err(err) => {
 				let mut diagnostics = crate::DiagnosticsContainer::new();
-				diagnostics.add_error(err);
+				diagnostics.add_error((err, s));
 				return (diagnostics, Err(()));
 			}
 		};
@@ -58,7 +55,7 @@ pub fn synthesize_module_root<T: crate::FSResolver>(
 	};
 
 	let (_, stuff, _) = root.new_lexical_environment_fold_into_parent(
-		crate::context::Scope::Block {},
+		crate::context::Scope::Module { source: module.source },
 		&mut checking_data,
 		|environment, checking_data| synthesize_block(&module.items, environment, checking_data),
 	);

@@ -171,7 +171,7 @@ impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span { start: 0, end: 0, source: () })
+	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
 }
 
 pub trait ParserErrorReason: Display {}

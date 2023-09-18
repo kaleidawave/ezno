@@ -32,14 +32,15 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				| parser::Declaration::Class(_)
 				| parser::Declaration::Variable(_)
 				| parser::Declaration::Function(_) => {}
-				parser::Declaration::Enum(r#enum) => {
-					checking_data.raise_unimplemented_error("enum", r#enum.on.position.clone())
-				}
+				parser::Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
+					"enum",
+					r#enum.on.position.clone().with_source(environment.get_source()),
+				),
 				parser::Declaration::DeclareInterface(_interface) => todo!(),
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.new_interface(
 						&interface.on.name,
-						interface.on.position.clone(),
+						interface.on.position.clone().with_source(environment.get_source()),
 						&mut checking_data.types,
 					);
 					idx_to_types.insert(interface.on.position.start, ty);
@@ -57,7 +58,10 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
-					checking_data.raise_unimplemented_error("imports", import.position.clone());
+					checking_data.raise_unimplemented_error(
+						"imports",
+						import.position.clone().with_source(environment.get_source()),
+					);
 					// TODO get types from checking_data.modules.exported
 					if let Some(ref imports) = import.imports {
 						for part in imports {
@@ -66,7 +70,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 									if let VariableIdentifier::Standard(name, pos) = identifier {
 										environment.register_variable_handle_error(
 											name,
-											pos.clone(),
+											pos.clone().with_source(environment.get_source()),
 											crate::context::VariableRegisterBehavior::Declare {
 												base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 											},
@@ -81,7 +85,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 								} => {
 									environment.register_variable_handle_error(
 										name,
-										position.clone(),
+										position.clone().with_source(environment.get_source()),
 										crate::context::VariableRegisterBehavior::Declare {
 											base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 										},
@@ -93,8 +97,10 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					}
 				}
 				parser::Declaration::Export(export) => {
-					checking_data
-						.raise_unimplemented_error("export", export.get_position().into_owned());
+					checking_data.raise_unimplemented_error(
+						"export",
+						export.get_position().clone().with_source(environment.get_source()),
+					);
 				}
 			}
 		}
@@ -107,7 +113,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				if let Statement::VarVariable(_) = stmt {
 					checking_data.raise_unimplemented_error(
 						"var statement hoisting",
-						stmt.get_position().into_owned(),
+						stmt.get_position().clone().with_source(environment.get_source()),
 					);
 				}
 			}
@@ -116,6 +122,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					parser::declarations::VariableDeclaration::ConstDeclaration {
 						keyword,
 						declarations,
+						position,
 					} => {
 						for declaration in declarations.iter() {
 							let constraint = get_annotation_from_declaration(
@@ -140,6 +147,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					parser::declarations::VariableDeclaration::LetDeclaration {
 						keyword,
 						declarations,
+						position,
 					} => {
 						for declaration in declarations.iter() {
 							let constraint = get_annotation_from_declaration(
@@ -172,13 +180,14 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					};
 					environment.register_variable_handle_error(
 						func.on.name.as_str(),
-						func.get_position().into_owned(),
+						func.get_position().clone().with_source(environment.get_source()),
 						behavior,
 						checking_data,
 					);
 				}
 				parser::Declaration::DeclareFunction(func) => {
 					// TODO abstract
+					let declared_at = func.position.clone().with_source(environment.get_source());
 					let base = type_function_reference(
 						&func.type_parameters,
 						&func.parameters,
@@ -186,7 +195,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						environment,
 						checking_data,
 						func.performs.as_ref().into(),
-						func.position.clone(),
+						declared_at.clone(),
 						crate::types::FunctionKind::Arrow,
 						None,
 					);
@@ -195,7 +204,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						base.type_parameters,
 						base.parameters,
 						base.return_type,
-						func.position.clone(),
+						declared_at,
 						base.effects,
 						base.constant_id,
 					);
@@ -203,7 +212,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					let behavior = crate::context::VariableRegisterBehavior::Declare { base };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
-						func.get_position().into_owned(),
+						func.get_position().clone().with_source(environment.get_source()),
 						behavior,
 						checking_data,
 					);
@@ -239,22 +248,21 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 
 					let declare_variable = environment.declare_variable(
 						&name,
-						position.clone(),
+						position.clone().with_source(environment.get_source()),
 						variable_ty,
 						&mut checking_data.types,
 					);
 
-					checking_data
-						.type_mappings
-						.variables_to_constraints
-						.0
-						.insert(crate::VariableId(position.source, position.start), variable_ty);
+					checking_data.type_mappings.variables_to_constraints.0.insert(
+						crate::VariableId(environment.get_source(), position.start),
+						variable_ty,
+					);
 
 					if let Err(error) = declare_variable {
 						checking_data.diagnostics_container.add_error(
 							crate::diagnostics::TypeCheckError::CannotRedeclareVariable {
 								name: error.name.to_owned(),
-								position: position.clone(),
+								position: position.clone().with_source(environment.get_source()),
 							},
 						)
 					}
@@ -289,14 +297,19 @@ fn get_annotation_from_declaration<
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
 			synthesize_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().into_owned(),
+			annotation.get_position().clone().with_source(environment.get_source()),
 		))
 	}
 	// TODO only under config
 	else if let WithComment::PostfixComment(item, possible_declaration, position) =
 		&declaration.name
 	{
-		string_comment_to_type(possible_declaration, position, environment, checking_data)
+		string_comment_to_type(
+			possible_declaration,
+			position.clone().with_source(environment.get_source()),
+			environment,
+			checking_data,
+		)
 	} else {
 		None
 	};
@@ -306,7 +319,7 @@ fn get_annotation_from_declaration<
 		checking_data
 			.type_mappings
 			.variable_restrictions
-			.insert((get_position.source, get_position.start), (ty, span));
+			.insert((environment.get_source(), get_position.start), (ty, span));
 	}
 
 	result.map(|(value, _span)| value)
@@ -314,22 +327,23 @@ fn get_annotation_from_declaration<
 
 pub(crate) fn string_comment_to_type<T: crate::FSResolver>(
 	possible_declaration: &String,
-	position: &source_map::Span,
+	position: source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
 	checking_data: &mut CheckingData<'_, T>,
-) -> Option<(TypeId, source_map::Span)> {
+) -> Option<(TypeId, source_map::SpanWithSource)> {
+	let source = environment.get_source();
 	use parser::ASTNode;
+	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
 	let annotation = parser::TypeAnnotation::from_string(
 		possible_declaration.clone(),
 		Default::default(),
-		position.source,
-		Some(position.end - 2 - possible_declaration.len() as u32),
-		Default::default(),
+		source,
+		offset,
 	);
 	if let Ok(annotation) = annotation {
 		Some((
 			synthesize_type_annotation(&annotation, environment, checking_data),
-			annotation.get_position().into_owned(),
+			annotation.get_position().clone().with_source(source),
 		))
 	} else {
 		// TODO warning

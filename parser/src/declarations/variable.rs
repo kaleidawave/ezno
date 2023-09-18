@@ -165,16 +165,19 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 }
 
 /// TODO smallvec the declarations
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		keyword: Keyword<tsx_keywords::Const>,
 		declarations: Vec<VariableDeclarationItem<Expression>>,
+		position: Span,
 	},
 	LetDeclaration {
 		keyword: Keyword<tsx_keywords::Let>,
 		declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
+		position: Span,
 	},
 }
 
@@ -241,7 +244,13 @@ impl ASTNode for VariableDeclaration {
 						break;
 					}
 				}
-				VariableDeclaration::LetDeclaration { keyword, declarations }
+				VariableDeclaration::LetDeclaration {
+					position: keyword
+						.get_position()
+						.union(declarations.last().unwrap().get_position()),
+					keyword,
+					declarations,
+				}
 			}
 			VariableDeclarationKeyword::Const(keyword) => {
 				let mut declarations = Vec::new();
@@ -256,7 +265,13 @@ impl ASTNode for VariableDeclaration {
 						break;
 					}
 				}
-				VariableDeclaration::ConstDeclaration { keyword, declarations }
+				VariableDeclaration::ConstDeclaration {
+					position: keyword
+						.get_position()
+						.union(declarations.last().unwrap().get_position()),
+					keyword,
+					declarations,
+				}
 			}
 		})
 	}

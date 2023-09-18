@@ -34,7 +34,8 @@ impl self_rust_tokenize::SelfRustTokenize for ImportStatementId {
 }
 
 /// TODO a few more thing needed here
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct ImportDeclaration {
 	pub default_import: Option<String>,

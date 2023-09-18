@@ -1,5 +1,5 @@
 use derive_enum_from_into::EnumFrom;
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	types::{
@@ -38,9 +38,9 @@ pub enum PureBinaryOperation {
 }
 
 pub fn evaluate_pure_binary_operation_handle_errors<T: crate::FSResolver>(
-	(lhs, lhs_pos): (TypeId, Span),
+	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
-	(rhs, rhs_pos): (TypeId, Span),
+	(rhs, rhs_pos): (TypeId, SpanWithSource),
 	checking_data: &mut CheckingData<T>,
 	environment: &mut Environment,
 ) -> TypeId {

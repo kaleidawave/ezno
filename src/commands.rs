@@ -1,4 +1,7 @@
-use parser::{source_map::MapFileStore, ASTNode, ParseOptions, SourceId, ToStringOptions};
+use parser::{
+	source_map::{MapFileStore, NoPathMap},
+	ASTNode, ParseOptions, SourceId, ToStringOptions,
+};
 use std::{
 	collections::HashSet,
 	path::{Path, PathBuf},
@@ -9,7 +12,7 @@ pub fn check<T: crate::FSResolver>(
 	input: &Path,
 	type_definition_module: Option<&Path>,
 ) -> (
-	MapFileStore,
+	MapFileStore<NoPathMap>,
 	checker::DiagnosticsContainer,
 	Result<checker::synthesis::module::PostCheckData, ()>,
 ) {
@@ -23,19 +26,14 @@ pub fn check<T: crate::FSResolver>(
 		input.to_path_buf(),
 		content.clone(),
 	);
-	let module = parser::Module::from_string(
-		content,
-		parser::ParseOptions::default(),
-		source,
-		None,
-		Vec::new(),
-	);
+	let module =
+		parser::Module::from_string(content, parser::ParseOptions::default(), source, None);
 
 	let module = match module {
 		Ok(module) => module,
 		Err(error) => {
 			let mut diagnostics = checker::DiagnosticsContainer::new();
-			diagnostics.add_error(error);
+			diagnostics.add_error((error, source));
 			return (fs, diagnostics, Err(()));
 		}
 	};
@@ -74,24 +72,19 @@ pub fn build<T: crate::FSResolver>(
 	fs_resolver: T,
 	input_path: &Path,
 	output_path: &Path,
-) -> (MapFileStore, Result<BuildOutput, Vec<checker::Diagnostic>>) {
+) -> (MapFileStore<NoPathMap>, Result<BuildOutput, Vec<checker::Diagnostic>>) {
 	let mut fs = MapFileStore::default();
 
 	let content = fs_resolver.get_content_at_path(input_path).expect("Could not find/get file");
 	let source_id = SourceId::new(&mut fs, PathBuf::from(input_path), content.clone());
 
-	let module_result = parser::Module::from_string(
-		content,
-		ParseOptions::default(),
-		source_id,
-		None,
-		Default::default(),
-	);
+	let module_result =
+		parser::Module::from_string(content, ParseOptions::default(), source_id, None);
 
 	let output = match module_result {
 		Ok(t) => t,
 		Err(parse_err) => {
-			return (fs, Err(vec![parse_err.into()]));
+			return (fs, Err(vec![(parse_err, source_id).into()]));
 		}
 	};
 

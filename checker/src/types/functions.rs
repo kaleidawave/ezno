@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{events::RootReference, FunctionId, GenericTypeParameters, TypeId};
 
@@ -76,7 +76,7 @@ pub struct SynthesizedParameter {
 	pub name: String,
 	/// This is the generic parameter type, not the restriction
 	pub ty: TypeId,
-	pub position: Span,
+	pub position: SpanWithSource,
 	/// For optional parameters this is [TypeId::UNDEFINED_TYPE] else some type
 	pub missing_value: Option<TypeId>,
 }
@@ -87,7 +87,7 @@ pub struct SynthesizedRestParameter {
 	pub name: String,
 	/// This is the T, of Array<T>
 	pub item_type: TypeId,
-	pub position: Span,
+	pub position: SpanWithSource,
 }
 
 /// A type of a collection of function parameters
@@ -167,13 +167,13 @@ impl SynthesizedParameters {
 #[non_exhaustive]
 pub enum SynthesizedArgument {
 	/// This is the get value of a argument
-	NonSpread { ty: TypeId, position: Span },
+	NonSpread { ty: TypeId, position: SpanWithSource },
 	// TODO
 	// Spread(Instance),
 }
 
 impl SynthesizedArgument {
-	pub(crate) fn get_position(&self) -> Span {
+	pub(crate) fn get_position(&self) -> SpanWithSource {
 		match self {
 			SynthesizedArgument::NonSpread { ty: _, position } => position.clone(),
 		}

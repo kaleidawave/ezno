@@ -14,25 +14,14 @@ use crate::{
 	WithComment,
 };
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct Parameter {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
-}
-
-// TODO not sure whether parameter should implement ASTNode
-impl Parameter {
-	pub fn get_position(&self) -> &Span {
-		todo!()
-		// let position = self.name.get_position();
-		// if let Some(tr) = &self.type_annotation {
-		// 	position.union(tr.get_position())
-		// } else {
-		// 	position
-		// }
-	}
+	pub position: Span,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
@@ -197,7 +186,21 @@ impl FunctionParameters {
 					(true, None) => Some(ParameterData::Optional),
 					(false, None) => None,
 				};
-				parameters.push(Parameter { name, type_annotation, additionally });
+
+				let end_position = if let Some(ParameterData::WithDefaultValue(e)) = &additionally {
+					e.get_position()
+				} else if let Some(type_annotation) = &type_annotation {
+					type_annotation.get_position()
+				} else {
+					name.get_position()
+				};
+
+				parameters.push(Parameter {
+					position: name.get_position().union(end_position),
+					name,
+					type_annotation,
+					additionally,
+				});
 			}
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();

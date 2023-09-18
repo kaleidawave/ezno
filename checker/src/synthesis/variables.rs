@@ -35,7 +35,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 			parser::VariableIdentifier::Standard(name, pos) => {
 				let ty = environment.register_variable_handle_error(
 					&name,
-					pos.clone(),
+					pos.clone().with_source(environment.get_source()),
 					behavior,
 					checking_data,
 				);
@@ -44,7 +44,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 						.type_mappings
 						.variables_to_constraints
 						.0
-						.insert(crate::VariableId(pos.source, pos.start), constraint);
+						.insert(crate::VariableId(environment.get_source(), pos.start), constraint);
 				}
 				ty
 			}
@@ -104,7 +104,10 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 												&checking_data.types,
 												false,
 											),
-											site: name.get_position().into_owned(),
+											site: name
+												.get_position()
+												.clone()
+												.with_source(environment.get_source()),
 										},
 									);
 									TypeId::ERROR_TYPE
@@ -188,7 +191,10 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 												&checking_data.types,
 												false,
 											),
-											site: name.get_position().into_owned(),
+											site: name
+												.get_position()
+												.clone()
+												.with_source(environment.get_source()),
 										},
 									);
 									TypeId::ERROR_TYPE
@@ -231,7 +237,7 @@ pub(super) fn synthesize_variable_declaration_item<
 	let var_ty_and_pos = checking_data
 		.type_mappings
 		.variable_restrictions
-		.get(&(get_position.source, get_position.start))
+		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, pos.clone()));
 
 	let value_ty = if let Some(value) =
@@ -241,8 +247,8 @@ pub(super) fn synthesize_variable_declaration_item<
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
 			crate::check_variable_initialization(
-				(var_ty, Cow::Owned(ta_pos)),
-				(value_ty, value.get_position()),
+				(var_ty, ta_pos),
+				(value_ty, value.get_position().clone().with_source(environment.get_source())),
 				environment,
 				checking_data,
 			);
@@ -266,7 +272,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 	match item {
 		VariableField::Name(name) => {
 			let get_position = name.get_position();
-			let id = crate::VariableId(get_position.source, get_position.start);
+			let id = crate::VariableId(environment.get_source(), get_position.start);
 			environment.register_initial_variable_declaration_value(id, value)
 		}
 		VariableField::Array(items, _) => {
@@ -300,9 +306,9 @@ fn assign_to_fields<T: crate::FSResolver>(
 				match item.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, _) => todo!(),
 					ObjectDestructuringField::Name(name, default_value) => {
-						let get_position = name.get_position();
+						let get_position = name.get_position().clone();
 
-						let id = crate::VariableId(get_position.source, get_position.start);
+						let id = crate::VariableId(environment.get_source(), get_position.start);
 
 						let key_ty = match name {
 							VariableIdentifier::Standard(name, _) => checking_data

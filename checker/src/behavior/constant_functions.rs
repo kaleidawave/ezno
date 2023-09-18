@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	context::get_on_ctx,
@@ -22,7 +22,7 @@ pub(crate) enum ConstantResult {
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
-	call_site_type_args: &Option<Vec<(Span, TypeId)>>,
+	call_site_type_args: &Option<Vec<(SpanWithSource, TypeId)>>,
 	arguments: &[SynthesizedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking

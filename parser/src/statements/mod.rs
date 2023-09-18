@@ -72,12 +72,16 @@ pub enum Statement {
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct ReturnStatement(Keyword<tsx_keywords::Return>, Option<MultipleExpression>, Span);
+pub struct ReturnStatement(
+	pub Keyword<tsx_keywords::Return>,
+	pub Option<MultipleExpression>,
+	pub Span,
+);
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct ThrowStatement(Keyword<tsx_keywords::Throw>, Box<MultipleExpression>, Span);
+pub struct ThrowStatement(pub Keyword<tsx_keywords::Throw>, pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
 

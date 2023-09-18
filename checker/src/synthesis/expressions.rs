@@ -5,7 +5,7 @@ use parser::{
 		assignments::LHSOfAssignment, MultipleExpression, SpecialOperators, SpreadExpression,
 		SuperReference, TemplateLiteral,
 	},
-	operators::{UnaryOperator, UnaryPrefixAssignmentOperator},
+	operators::{BinaryAssignmentOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 	ASTNode, Expression,
 };
 
@@ -25,7 +25,7 @@ use crate::{
 	events::Event,
 	types::{calling::CalledWithNew, functions::SynthesizedArgument},
 	types::{properties::PropertyKind, Constant, TypeId},
-	CheckingData, Environment, Instance,
+	AssignmentKind, CheckingData, Environment, Instance,
 };
 
 use super::{
@@ -84,13 +84,11 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 							expression_type,
 						)
 					}
-					SpreadExpression::Spread(expr, _) => {
+					SpreadExpression::Spread(expr, position) => {
 						{
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::Unsupported {
-									thing: "Spread elements",
-									at: ASTNode::get_position(expr).into_owned(),
-								},
+							checking_data.raise_unimplemented_error(
+								"Spread elements",
+								position.clone().with_source(environment.get_source()),
 							);
 						}
 						crate::utils::notify!("Skipping spread");
@@ -187,8 +185,10 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				return TypeId::ERROR_TYPE;
 			}
 
-			let lhs_pos = ASTNode::get_position(&**lhs).into_owned();
-			let rhs_pos = ASTNode::get_position(&**rhs).into_owned();
+			let lhs_pos =
+				ASTNode::get_position(&**lhs).clone().with_source(environment.get_source());
+			let rhs_pos =
+				ASTNode::get_position(&**rhs).clone().with_source(environment.get_source());
 			use parser::operators::BinaryOperator;
 
 			let operator = match operator {
@@ -264,19 +264,20 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				UnaryOperator::DelegatedYield => todo!(),
 			}
 		}
-		Expression::Assignment { lhs, rhs } => {
+		Expression::Assignment { lhs, rhs, position } => {
 			let lhs: Assignable =
 				synthesize_lhs_of_assignment_to_reference(lhs, environment, checking_data);
 
+			let assignment_span = position.clone().with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
 				crate::behavior::assignments::AssignmentKind::Assign,
 				Some(&**rhs),
-				ASTNode::get_position(expression).into_owned(),
+				assignment_span,
 				checking_data,
 			);
 		}
-		Expression::BinaryAssignmentOperation { lhs, operator, rhs } => {
+		Expression::BinaryAssignmentOperation { lhs, operator, rhs, position } => {
 			let lhs: Assignable = Assignable::Reference(synthesize_access_to_reference(
 				lhs,
 				environment,
@@ -286,59 +287,12 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			use crate::behavior::assignments::AssignmentKind;
 			use parser::operators::BinaryAssignmentOperator;
 
+			let assignment_span = position.clone().with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
-				match operator {
-					BinaryAssignmentOperator::LogicalAndAssign => {
-						AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::And)
-					}
-					BinaryAssignmentOperator::LogicalOrAssign => {
-						AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::Or)
-					}
-					BinaryAssignmentOperator::LogicalNullishAssignment => {
-						AssignmentKind::ConditionalUpdate(
-							crate::behavior::operations::Logical::NullCoalescing,
-						)
-					}
-					BinaryAssignmentOperator::AddAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
-					}
-					BinaryAssignmentOperator::SubtractAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Subtract)
-					}
-					BinaryAssignmentOperator::MultiplyAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Multiply)
-					}
-					BinaryAssignmentOperator::DivideAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Divide)
-					}
-					BinaryAssignmentOperator::ModuloAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Modulo)
-					}
-					BinaryAssignmentOperator::ExponentAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Exponent)
-					}
-					BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftLeft)
-					}
-					BinaryAssignmentOperator::BitwiseShiftRightAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftRight)
-					}
-					BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
-					}
-					BinaryAssignmentOperator::BitwiseAndAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseAnd)
-					}
-					BinaryAssignmentOperator::BitwiseXOrAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseXOr)
-					}
-					BinaryAssignmentOperator::BitwiseOrAssign => {
-						AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseOr)
-					}
-				},
+				operator_to_assignment_kind(operator),
 				Some(&**rhs),
-				ASTNode::get_position(expression).into_owned(),
+				assignment_span,
 				checking_data,
 			);
 		}
@@ -352,6 +306,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			match operator {
 				UnaryPrefixAssignmentOperator::Invert => todo!(),
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
+					let assignment_span = position.clone().with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
 						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
@@ -366,7 +321,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 							crate::behavior::assignments::AssignmentReturnStatus::New,
 						),
 						None::<&Expression>,
-						ASTNode::get_position(expression).into_owned(),
+						assignment_span,
 						checking_data,
 					);
 				}
@@ -394,19 +349,23 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 							crate::AssignmentReturnStatus::Previous,
 						);
 
+					let assignment_span = position.clone().with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
 						operator,
 						None::<&Expression>,
-						ASTNode::get_position(expression).into_owned(),
+						assignment_span,
 						checking_data,
 					);
 				}
 			}
 		}
 		Expression::VariableReference(name, position) => {
-			let get_variable_or_alternatives =
-				environment.get_variable_or_error(name.as_str(), &position, checking_data);
+			let get_variable_or_alternatives = environment.get_variable_or_error(
+				name.as_str(),
+				position.clone().with_source(environment.get_source()),
+				checking_data,
+			);
 
 			match get_variable_or_alternatives {
 				Ok(variable) => Instance::LValue(variable),
@@ -445,7 +404,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),
-							site: position.clone(),
+							site: position.clone().with_source(environment.get_source()),
 						},
 					);
 
@@ -570,7 +529,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),
-							site: position.clone(),
+							site: position.clone().with_source(environment.get_source()),
 						},
 					);
 
@@ -648,9 +607,11 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		Expression::Cursor { cursor_id, position } => todo!(),
 		Expression::SpecialOperators(operator, position) => match operator {
 			SpecialOperators::AsExpression { value, type_annotation, .. } => {
-				checking_data
-					.diagnostics_container
-					.add_warning(TypeCheckWarning::IgnoringAsExpression(position.clone()));
+				checking_data.diagnostics_container.add_warning(
+					TypeCheckWarning::IgnoringAsExpression(
+						position.clone().with_source(environment.get_source()),
+					),
+				);
 
 				return synthesize_expression(value, environment, checking_data);
 			}
@@ -663,7 +624,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				checking_data.check_satisfies(
 					value,
 					satisfying,
-					ASTNode::get_position(expression).into_owned(),
+					ASTNode::get_position(expression).clone().with_source(environment.get_source()),
 					environment,
 				);
 
@@ -676,12 +637,67 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		}
 	};
 
-	let position = ASTNode::get_position(expression).into_owned();
+	let position = ASTNode::get_position(expression).clone().with_source(environment.get_source());
 
 	// TODO should be copy
 	checking_data.add_expression_mapping(position, instance.clone());
 
 	instance.get_value()
+}
+
+fn operator_to_assignment_kind(
+	operator: &parser::operators::BinaryAssignmentOperator,
+) -> crate::AssignmentKind {
+	use crate::AssignmentKind;
+	use parser::operators::BinaryAssignmentOperator;
+
+	match operator {
+		BinaryAssignmentOperator::LogicalAndAssign => {
+			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::And)
+		}
+		BinaryAssignmentOperator::LogicalOrAssign => {
+			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::Or)
+		}
+		BinaryAssignmentOperator::LogicalNullishAssignment => {
+			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::NullCoalescing)
+		}
+		BinaryAssignmentOperator::AddAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
+		}
+		BinaryAssignmentOperator::SubtractAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Subtract)
+		}
+		BinaryAssignmentOperator::MultiplyAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Multiply)
+		}
+		BinaryAssignmentOperator::DivideAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Divide)
+		}
+		BinaryAssignmentOperator::ModuloAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Modulo)
+		}
+		BinaryAssignmentOperator::ExponentAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Exponent)
+		}
+		BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftLeft)
+		}
+		BinaryAssignmentOperator::BitwiseShiftRightAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftRight)
+		}
+		BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
+		}
+		BinaryAssignmentOperator::BitwiseAndAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseAnd)
+		}
+		BinaryAssignmentOperator::BitwiseXOrAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseXOr)
+		}
+		BinaryAssignmentOperator::BitwiseOrAssign => {
+			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseOr)
+		}
+	}
 }
 
 /// Generic for functions + constructor calls
@@ -702,7 +718,10 @@ fn call_function<T: crate::FSResolver>(
 				.iter()
 				.map(|generic_type_argument| {
 					(
-						generic_type_argument.get_position().into_owned(),
+						generic_type_argument
+							.get_position()
+							.clone()
+							.with_source(environment.get_source()),
 						synthesize_type_annotation(
 							generic_type_argument,
 							environment,
@@ -727,7 +746,7 @@ fn call_function<T: crate::FSResolver>(
 		Default::default(),
 		generic_type_arguments,
 		synthesized_arguments,
-		call_site.clone(),
+		call_site.clone().with_source(environment.get_source()),
 		environment,
 		checking_data,
 	)
@@ -763,7 +782,9 @@ fn synthesize_arguments<T: crate::FSResolver>(
 				let ty = synthesize_expression(expr, environment, checking_data);
 				Some(SynthesizedArgument::NonSpread {
 					ty,
-					position: ASTNode::get_position(expr).into_owned(),
+					position: ASTNode::get_position(expr)
+						.clone()
+						.with_source(environment.get_source()),
 				})
 			}
 			SpreadExpression::Empty => None,
@@ -812,8 +833,8 @@ impl SynthesizableExpression for Expression {
 		synthesize_expression(self, environment, checking_data)
 	}
 
-	fn get_position(&self) -> source_map::Span {
-		ASTNode::get_position(self).into_owned()
+	fn get_position(&self) -> &source_map::Span {
+		ASTNode::get_position(self)
 	}
 }
 
@@ -831,15 +852,19 @@ pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
 
 	for member in members.iter() {
 		match member {
-			ObjectLiteralMember::SpreadExpression(spread, _) => {
-				checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-					thing: "spread in object literal",
-					at: ASTNode::get_position(spread).into_owned(),
-				});
+			ObjectLiteralMember::SpreadExpression(spread, pos) => {
+				checking_data.raise_unimplemented_error(
+					"spread in object literal",
+					pos.clone().with_source(environment.get_source()),
+				);
 			}
 			ObjectLiteralMember::Shorthand(name, position) => {
 				let key = checking_data.types.new_constant_type(Constant::String(name.clone()));
-				let get_variable = environment.get_variable_or_error(name, position, checking_data);
+				let get_variable = environment.get_variable_or_error(
+					name,
+					position.clone().with_source(environment.get_source()),
+					checking_data,
+				);
 				let value = match get_variable {
 					Ok(VariableWithValue(_variable, value)) => value,
 					Err(_err) => {
@@ -865,12 +890,8 @@ pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
 					property_key_as_type(key.get_ast_ref(), environment, &mut checking_data.types);
 
 				let value = synthesize_expression(expression, environment, checking_data);
-
-				object_builder.append(
-					environment,
-					key,
-					crate::types::properties::Property::Value(value),
-				);
+				let value = crate::types::properties::Property::Value(value);
+				object_builder.append(environment, key, value);
 
 				// let property_name: PropertyName<'static> = property_key.into();
 

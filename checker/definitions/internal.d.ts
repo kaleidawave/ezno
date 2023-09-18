@@ -35,7 +35,8 @@ interface Math {
 }
 
 interface string {
-    toUppercase(): string performs const uppercase;
+    toUpperCase(): string performs const uppercase;
+    toLowerCase(): string performs const lowercase;
 }
 
 interface Console {

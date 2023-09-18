@@ -98,34 +98,38 @@ impl ExplorerSubCommand {
 	pub fn run(&self, input: String, path: Option<PathBuf>) {
 		match self {
 			ExplorerSubCommand::AST(_) => {
-				let mut fs = parser::source_map::MapFileStore::default();
+				let mut fs =
+					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
-				let res =
-					Expression::from_string(input, Default::default(), source_id, None, Vec::new());
+				let res = Expression::from_string(input, Default::default(), source_id, None);
 				match res {
 					Ok(res) => {
 						print_to_cli(format_args!("{:#?}", res));
 					}
 					// TODO temp
-					Err(err) => emit_ezno_diagnostic(err.into(), &fs, source_id).unwrap(),
+					Err(err) => {
+						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
+					}
 				}
 			}
 			ExplorerSubCommand::FullAST(_) => {
-				let mut fs = parser::source_map::MapFileStore::default();
+				let mut fs =
+					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
-				let res =
-					Module::from_string(input, Default::default(), source_id, None, Vec::new());
+				let res = Module::from_string(input, Default::default(), source_id, None);
 				match res {
 					Ok(res) => print_to_cli(format_args!("{:#?}", res)),
 					// TODO temp
-					Err(err) => emit_ezno_diagnostic(err.into(), &fs, source_id).unwrap(),
+					Err(err) => {
+						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
+					}
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
-				let mut fs = parser::source_map::MapFileStore::default();
+				let mut fs =
+					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
-				let res =
-					Module::from_string(input, Default::default(), source_id, None, Vec::new());
+				let res = Module::from_string(input, Default::default(), source_id, None);
 				match res {
 					Ok(module) => {
 						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
@@ -135,7 +139,9 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&settings)));
 					}
-					Err(err) => emit_ezno_diagnostic(err.into(), &fs, source_id).unwrap(),
+					Err(err) => {
+						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
+					}
 				}
 			}
 		}

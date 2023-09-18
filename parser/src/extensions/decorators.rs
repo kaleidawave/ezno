@@ -1,3 +1,4 @@
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{
@@ -92,17 +93,19 @@ impl Decorator {
 }
 
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,
 	pub on: T,
+	// TODO option and on t
+	pub position: Span,
 }
 
 impl<N: ASTNode> ASTNode for Decorated<N> {
 	fn get_position(&self) -> &Span {
-		// TODO union with first decorated
-		self.on.get_position()
+		self.get()
 	}
 
 	fn from_reader(
@@ -111,7 +114,7 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let decorators = decorators_from_reader(reader, state, settings)?;
-		N::from_reader(reader, state, settings).map(|on| Self { on, decorators })
+		N::from_reader(reader, state, settings).map(|on| Self::new(decorators, on))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -125,9 +128,15 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 	}
 }
 
-impl<U> Decorated<U> {
-	pub fn new(on: U) -> Self {
-		Self { decorators: Default::default(), on }
+impl<U: ASTNode> Decorated<U> {
+	pub fn new_empty(on: U) -> Self {
+		Self::new(Default::default(), on)
+	}
+
+	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
+		let position =
+			decorators.first().map_or(on.get_position(), |d| &d.position).union(on.get_position());
+		Self { decorators, position, on }
 	}
 
 	pub(crate) fn to_string_from_buffer_just_decorators<T: source_map::ToString>(

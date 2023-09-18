@@ -16,9 +16,9 @@ use parser::{Module, ParseError};
 pub fn prettifier(input: String) -> Result<String, ParseError> {
 	use parser::source_map::FileSystem;
 
-	let mut fs = source_map::MapFileStore::default();
+	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
 	let source_id = fs.new_source_id("".into(), input.clone());
-	let module = Module::from_string(input, Default::default(), source_id, None, Vec::new())?;
+	let module = Module::from_string(input, Default::default(), source_id, None)?;
 	Ok(module.to_string(&ToStringOptions::default()))
 }
 

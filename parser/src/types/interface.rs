@@ -17,7 +17,8 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use super::AnnotationPerforms;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct InterfaceDeclaration {
 	pub name: String,
@@ -617,18 +618,6 @@ impl ASTNode for InterfaceMember {
 	fn get_position(&self) -> &Span {
 		GetFieldByType::get(self)
 	}
-
-	// fn get_position(&self) -> &Span {
-	// 	match self {
-	// 		InterfaceMember::Method { position, .. }
-	// 		| InterfaceMember::Property { position, .. }
-	// 		| InterfaceMember::Indexer { position, .. }
-	// 		| InterfaceMember::Constructor { position, .. }
-	// 		| InterfaceMember::Caller { position, .. }
-	// 		| InterfaceMember::Rule { position, .. } => position,
-	// 		InterfaceMember::Comment(_) => Cow::Owned(Span::NULL_SPAN),
-	// 	}
-	// }
 }
 
 pub(crate) fn parse_interface_members(

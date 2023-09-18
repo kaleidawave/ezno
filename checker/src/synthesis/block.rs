@@ -38,9 +38,10 @@ pub(super) fn synthesize_block<T: crate::FSResolver>(
 				Declaration::Class(class) => {
 					let constructor =
 						synthesize_class_declaration(class, environment, checking_data);
+					let position = class.on.position.clone().with_source(environment.get_source());
 					let result = environment.declare_variable(
 						class.on.name.as_str(),
-						class.on.position.clone(),
+						position.clone(),
 						constructor,
 						&mut checking_data.types,
 					);
@@ -48,7 +49,7 @@ pub(super) fn synthesize_block<T: crate::FSResolver>(
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::ReDeclaredVariable {
 								name: class.on.name.as_str(),
-								position: class.on.position.clone(),
+								position,
 							},
 						)
 					}

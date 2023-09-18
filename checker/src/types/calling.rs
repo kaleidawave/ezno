@@ -1,4 +1,4 @@
-use source_map::{SourceId, Span};
+use source_map::{SourceId, Span, SpanWithSource};
 use std::{collections::HashMap, iter};
 
 use crate::{
@@ -31,9 +31,9 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	// Overwritten by .call, else look at binding
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 	arguments: Vec<SynthesizedArgument>,
-	call_site: Span,
+	call_site: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T>,
 ) -> TypeId {
@@ -82,9 +82,9 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 	called_with_new: CalledWithNew,
 	// Overwritten by .call, else look at binding
 	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 	arguments: Vec<SynthesizedArgument>,
-	call_site: Span,
+	call_site: SpanWithSource,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -173,9 +173,9 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	constraint: TypeId,
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 	arguments: Vec<SynthesizedArgument>,
-	call_site: Span,
+	call_site: SpanWithSource,
 	on: TypeId,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -293,28 +293,28 @@ pub enum FunctionCallingError {
 	InvalidArgumentType {
 		parameter_type: TypeStringRepresentation,
 		argument_type: TypeStringRepresentation,
-		argument_position: Span,
-		parameter_position: Span,
-		restriction: Option<(Span, TypeStringRepresentation)>,
+		argument_position: SpanWithSource,
+		parameter_position: SpanWithSource,
+		restriction: Option<(SpanWithSource, TypeStringRepresentation)>,
 	},
 	MissingArgument {
-		parameter_position: Span,
-		call_site: Span,
+		parameter_position: SpanWithSource,
+		call_site: SpanWithSource,
 	},
 	ExcessArguments {
 		count: usize,
-		position: Span,
+		position: SpanWithSource,
 	},
 	NotCallable {
 		calling: TypeStringRepresentation,
-		call_site: Span,
+		call_site: SpanWithSource,
 	},
 	ReferenceRestrictionDoesNotMatch {
 		reference: RootReference,
 		requirement: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
-	Recursed(FunctionId, Span),
+	Recursed(FunctionId, SpanWithSource),
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -347,10 +347,10 @@ impl FunctionType {
 		&self,
 		called_with_new: CalledWithNew,
 		this_value: ThisValue,
-		call_site_type_arguments: Option<Vec<(Span, TypeId)>>,
+		call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 		parent_type_arguments: Option<StructureGenericArguments>,
 		arguments: &[SynthesizedArgument],
-		call_site: Span,
+		call_site: SpanWithSource,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
@@ -741,7 +741,11 @@ impl FunctionType {
 						end = arg;
 					}
 					let position = if let Some(end) = end {
-						first.get_position().union(&end.get_position())
+						first
+							.get_position()
+							.without_source()
+							.union(&end.get_position().without_source())
+							.with_source(end.get_position().source)
 					} else {
 						first.get_position()
 					};
@@ -767,7 +771,7 @@ impl FunctionType {
 
 						let mut basic_subtyping = BasicEquality {
 							add_property_restrictions: false,
-							position: Span { start: 0, end: 0, source: SourceId::NULL },
+							position: SpanWithSource { start: 0, end: 0, source: SourceId::NULL },
 						};
 						if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
 							restriction,
@@ -801,7 +805,7 @@ impl FunctionType {
 
 						let mut basic_subtyping = BasicEquality {
 							add_property_restrictions: false,
-							position: Span { start: 0, end: 0, source: SourceId::NULL },
+							position: SpanWithSource { start: 0, end: 0, source: SourceId::NULL },
 						};
 						if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
 							restriction,
@@ -917,7 +921,7 @@ impl FunctionType {
 
 	fn synthesize_call_site_type_arguments(
 		&self,
-		call_site_type_arguments: Vec<(Span, TypeId)>,
+		call_site_type_arguments: Vec<(SpanWithSource, TypeId)>,
 		types: &mut crate::types::TypeStore,
 		environment: &mut Environment,
 	) -> map_vec::Map<TypeId, FunctionTypeArgument> {

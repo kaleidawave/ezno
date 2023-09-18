@@ -1467,7 +1467,11 @@ impl ASTNode for SpreadExpression {
 	}
 
 	fn get_position(&self) -> &Span {
-		todo!()
+		match self {
+			SpreadExpression::Spread(_, pos) => pos,
+			SpreadExpression::NonSpread(expr) => expr.get_position(),
+			SpreadExpression::Empty => todo!(),
+		}
 	}
 }
 

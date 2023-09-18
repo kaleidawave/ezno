@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use source_map::Span;
+use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
 	context::{facts::Facts, Context, ContextType},
@@ -128,7 +128,7 @@ pub trait SynthesizableFunction {
 
 	fn get_set_generator_or_none(&self) -> GetterSetterGeneratorOrNone;
 
-	fn id(&self) -> FunctionId;
+	fn id(&self, source_id: SourceId) -> FunctionId;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
 	fn type_parameters<T: FSResolver>(
@@ -162,7 +162,7 @@ pub trait SynthesizableFunction {
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
-	) -> Option<(TypeId, Span)>;
+	) -> Option<(TypeId, SpanWithSource)>;
 }
 
 struct ArrowFunction {

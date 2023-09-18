@@ -681,11 +681,13 @@ impl TypeAnnotation {
 				let return_type =
 					Self::from_reader_with_config(reader, state, settings, true, false)?;
 				let parameters_position = reference.get_position().clone();
-				let function = Self::FunctionLiteral {
-					position: parameters_position.union(return_type.get_position()),
+				let position = parameters_position.union(return_type.get_position());
+				Ok(Self::FunctionLiteral {
+					position: position.clone(),
 					type_parameters: None,
 					parameters: TypeAnnotationFunctionParameters {
 						parameters: vec![TypeAnnotationFunctionParameter {
+							position,
 							name: None,
 							type_annotation: reference,
 							is_optional: false,
@@ -695,8 +697,7 @@ impl TypeAnnotation {
 						position: parameters_position,
 					},
 					return_type: Box::new(return_type),
-				};
-				Ok(function)
+				})
 			}
 			_ => Ok(reference),
 		}
@@ -829,7 +830,7 @@ impl TypeAnnotationFunctionParameters {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
 				rest_parameter = Some(Box::new(TypeAnnotationSpreadFunctionParameter {
-					spread_position: token.get_span(),
+					position: token.get_span().union(type_annotation.get_position()),
 					name,
 					type_annotation,
 					decorators,
@@ -868,6 +869,10 @@ impl TypeAnnotationFunctionParameters {
 				};
 				let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
 				parameters.push(TypeAnnotationFunctionParameter {
+					position: name
+						.as_ref()
+						.map_or(type_annotation.get_position(), |name| name.get_position())
+						.union(type_annotation.get_position()),
 					decorators,
 					name,
 					type_annotation,
@@ -896,15 +901,16 @@ pub struct TypeAnnotationFunctionParameter {
 	pub name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>>,
 	pub type_annotation: TypeAnnotation,
 	pub is_optional: bool,
+	pub position: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
-	pub spread_position: Span,
 	pub name: String,
 	pub type_annotation: TypeAnnotation,
+	pub position: Span,
 }
 
 #[cfg(test)]

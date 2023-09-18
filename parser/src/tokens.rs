@@ -184,7 +184,14 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 		match self {
 			TSXToken::Keyword(kw) => kw.to_str().len() as u32,
 
-			TSXToken::IdentLiteral(lit)
+			TSXToken::JSXClosingTagName(lit)
+			| TSXToken::TemplateLiteralChunk(lit)
+			| TSXToken::JSXAttributeKey(lit)
+			| TSXToken::JSXAttributeValue(lit)
+			| TSXToken::JSXContent(lit)
+			| TSXToken::JSXComment(lit)
+			| TSXToken::JSXTagName(lit)
+			| TSXToken::IdentLiteral(lit)
 			| TSXToken::NumberLiteral(lit)
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
@@ -218,7 +225,15 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::BitwiseAnd
 			| TSXToken::BitwiseNot
 			| TSXToken::HashTag
-			| TSXToken::Dot => 1,
+			| TSXToken::Dot
+			| TSXToken::TemplateLiteralStart
+			| TSXToken::TemplateLiteralEnd
+			| TSXToken::TemplateLiteralExpressionEnd
+			| TSXToken::JSXOpeningTagStart
+			| TSXToken::JSXOpeningTagEnd
+			| TSXToken::JSXExpressionStart
+			| TSXToken::JSXExpressionEnd
+			| TSXToken::JSXAttributeAssign => 1,
 
 			TSXToken::AddAssign
 			| TSXToken::SubtractAssign
@@ -242,7 +257,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::LogicalOr
 			| TSXToken::LogicalAnd
 			| TSXToken::LogicalNot
-			| TSXToken::Arrow => 2,
+			| TSXToken::Arrow
+			| TSXToken::TemplateLiteralExpressionStart
+			| TSXToken::JSXFragmentStart => 2,
 
 			TSXToken::BitwiseShiftLeft
 			| TSXToken::BitwiseShiftRight
@@ -251,7 +268,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::NullishCoalescingAssign
 			| TSXToken::LogicalOrAssign
 			| TSXToken::LogicalAndAssign
-			| TSXToken::NotEqual => 3,
+			| TSXToken::NotEqual
+			| TSXToken::JSXFragmentEnd => 3,
 
 			TSXToken::BitwiseShiftLeftAssign
 			| TSXToken::BitwiseShiftRightAssign
@@ -259,29 +277,12 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::StrictNotEqual
 			| TSXToken::BitwiseShiftRightUnsigned => 4,
 
-			TSXToken::TemplateLiteralStart
-			| TSXToken::TemplateLiteralChunk(_)
-			| TSXToken::TemplateLiteralEnd
-			| TSXToken::TemplateLiteralExpressionStart
-			| TSXToken::TemplateLiteralExpressionEnd
-			| TSXToken::JSXOpeningTagStart
-			| TSXToken::JSXTagName(_)
-			| TSXToken::JSXOpeningTagEnd
-			| TSXToken::JSXClosingTagStart
-			| TSXToken::JSXClosingTagName(_)
+			// TODO
+			TSXToken::JSXClosingTagStart
 			| TSXToken::JSXSelfClosingTag
-			| TSXToken::JSXAttributeKey(_)
-			| TSXToken::JSXAttributeAssign
-			| TSXToken::JSXAttributeValue(_)
-			| TSXToken::JSXContent(_)
 			| TSXToken::JSXContentLineBreak
-			| TSXToken::JSXExpressionStart
-			| TSXToken::JSXExpressionEnd
-			| TSXToken::JSXFragmentStart
-			| TSXToken::JSXFragmentEnd
-			| TSXToken::JSXComment(_)
 			| TSXToken::EOS
-			| TSXToken::Cursor(_) => unreachable!(),
+			| TSXToken::Cursor(_) => 0,
 
 			TSXToken::DividesOperator
 			| TSXToken::InvertAssign

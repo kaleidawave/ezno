@@ -1,7 +1,7 @@
 //! Contains type checking errors, warnings and related structures
 
 use serde::Serialize;
-use source_map::{SourceId, Span};
+use source_map::{SourceId, Span, SpanWithSource};
 use std::{
 	fmt::{self, Debug, Display},
 	iter,
@@ -27,13 +27,13 @@ pub enum Diagnostic {
 	},
 	Position {
 		reason: String,
-		position: Span,
+		position: SpanWithSource,
 		kind: DiagnosticKind,
 	},
 	PositionWithAdditionLabels {
 		reason: String,
-		position: Span,
-		labels: Vec<(String, Option<Span>)>,
+		position: SpanWithSource,
+		labels: Vec<(String, Option<SpanWithSource>)>,
 		kind: DiagnosticKind,
 	},
 }
@@ -60,7 +60,7 @@ impl Diagnostic {
 		}
 	}
 
-	pub fn reason_and_position(self) -> (String, Option<Span>) {
+	pub fn reason_and_position(self) -> (String, Option<SpanWithSource>) {
 		match self {
 			Diagnostic::Global { reason, .. } => (reason, None),
 			Diagnostic::Position { reason, position, .. }
@@ -168,7 +168,7 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{behavior, context::AssignmentError, types::calling::FunctionCallingError};
-	use source_map::Span;
+	use source_map::SpanWithSource;
 
 	use crate::Diagnostic;
 	use std::path;
@@ -180,7 +180,7 @@ mod defined_errors_and_warnings {
 		pub(crate) lhs: TypeStringRepresentation,
 		pub(crate) rhs: TypeStringRepresentation,
 		pub(crate) operator: behavior::operations::MathematicalAndBitwise,
-		pub(crate) position: Span,
+		pub(crate) position: SpanWithSource,
 	}
 
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
@@ -190,18 +190,18 @@ mod defined_errors_and_warnings {
 		PropertyDoesNotExist {
 			property: TypeStringRepresentation,
 			on: TypeStringRepresentation,
-			site: Span,
+			site: SpanWithSource,
 		},
-		RestParameterAnnotationShouldBeArrayType(Span),
+		RestParameterAnnotationShouldBeArrayType(SpanWithSource),
 		/// TODO better name
 		NonExistentType(String),
 		CouldNotFindVariable {
 			variable: &'a str,
 			possibles: Vec<&'a str>,
-			position: Span,
+			position: SpanWithSource,
 		},
-		CouldNotFindType(&'a str, Span),
-		TypeHasNoGenericParameters(String, Span),
+		CouldNotFindType(&'a str, SpanWithSource),
+		TypeHasNoGenericParameters(String, SpanWithSource),
 		AssignmentError(AssignmentError),
 		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
 		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
@@ -210,7 +210,7 @@ mod defined_errors_and_warnings {
 		ReturnedTypeDoesNotMatch {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,
-			position: Span,
+			position: SpanWithSource,
 		},
 		// TODO are these the same errors?
 		TypeIsNotIndexable(TypeStringRepresentation),
@@ -218,49 +218,49 @@ mod defined_errors_and_warnings {
 		// This could be a syntax error but that is difficult to type...
 		NonTopLevelExport,
 		// TODO implies the presence of, which isn't always true
-		FieldNotExported(&'a str, &'a path::Path, Span),
+		FieldNotExported(&'a str, &'a path::Path, SpanWithSource),
 		InvalidJSXAttribute {
 			attribute_name: String,
 			attribute_type: TypeStringRepresentation,
 			value_type: TypeStringRepresentation,
 			// TODO
 			attribute_type_site: (),
-			value_site: Span,
+			value_site: SpanWithSource,
 		},
 		InvalidJSXInterpolatedValue {
-			interpolation_site: Span,
+			interpolation_site: SpanWithSource,
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
 		},
 		/// for the `satisfies` keyword
 		NotSatisfied {
-			at: Span,
+			at: SpanWithSource,
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
 		},
 		Unsupported {
 			thing: &'static str,
-			at: Span,
+			at: SpanWithSource,
 		},
 		ReDeclaredVariable {
 			name: &'a str,
-			position: Span,
+			position: SpanWithSource,
 		},
 		/// TODO temp, needs more info
 		FunctionDoesNotMeetConstraint {
 			function_constraint: TypeStringRepresentation,
 			function_type: TypeStringRepresentation,
-			position: Span,
+			position: SpanWithSource,
 		},
 		StatementsNotRun {
-			between: Span,
+			between: SpanWithSource,
 		},
 		CannotRedeclareVariable {
 			name: String,
-			position: Span,
+			position: SpanWithSource,
 		},
-		NotDefinedOperator(&'static str, Span),
-		PropertyNotWriteable(Span),
+		NotDefinedOperator(&'static str, SpanWithSource),
+		PropertyNotWriteable(SpanWithSource),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -563,19 +563,19 @@ mod defined_errors_and_warnings {
 	}
 
 	pub enum TypeCheckWarning {
-		AwaitUsedOnNonPromise(Span),
+		AwaitUsedOnNonPromise(SpanWithSource),
 		/// TODO could be an error at some point
 		DeadBranch {
-			expression_span: Span,
+			expression_span: SpanWithSource,
 			expression_value: bool,
 		},
-		IgnoringAsExpression(Span),
+		IgnoringAsExpression(SpanWithSource),
 		Unimplemented {
 			thing: &'static str,
-			at: Span,
+			at: SpanWithSource,
 		},
 		UselessExpression {
-			expression_span: Span,
+			expression_span: SpanWithSource,
 			// TODO other branch information
 		},
 	}

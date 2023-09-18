@@ -18,7 +18,7 @@ pub(crate) fn get_return_from_events<'a, U: crate::FSResolver>(
 	iter: &mut (impl Iterator<Item = &'a Event> + ExactSizeIterator),
 	checking_data: &mut CheckingData<U>,
 	environment: &mut Environment,
-	expected_return_type: Option<(TypeId, source_map::Span)>,
+	expected_return_type: Option<(TypeId, source_map::SpanWithSource)>,
 ) -> ReturnedTypeFromBlock {
 	while let Some(event) = iter.next() {
 		if let Event::Return { returned } = event {

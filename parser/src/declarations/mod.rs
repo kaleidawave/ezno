@@ -1,4 +1,5 @@
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
+use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
@@ -30,7 +31,10 @@ pub use super::types::{
 pub use classes::ClassDeclaration;
 pub use import::{ImportDeclaration, ImportPart, ImportStatementId};
 
-#[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq)]
+#[derive(
+	Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq, get_field_by_type::GetFieldByType,
+)]
+#[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub enum Declaration {
@@ -89,7 +93,7 @@ impl crate::ASTNode for Declaration {
 				let after_const = reader.peek_n(2);
 				if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum), _)) = after_const {
 					EnumDeclaration::from_reader(reader, state, settings)
-						.map(|on| Declaration::Enum(Decorated { decorators, on }))
+						.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 				} else {
 					let declaration = VariableDeclaration::from_reader(reader, state, settings)?;
 					Ok(Declaration::Variable(declaration))
@@ -101,15 +105,15 @@ impl crate::ASTNode for Declaration {
 			}
 			TSXToken::Keyword(TSXKeyword::Enum) => {
 				EnumDeclaration::from_reader(reader, state, settings)
-					.map(|on| Declaration::Enum(Decorated { decorators, on }))
+					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Generator) if settings.generator_keyword => {
 				let function = StatementFunction::from_reader(reader, state, settings)?;
-				Ok(Declaration::Function(Decorated { decorators, on: function }))
+				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
 			TSXToken::Keyword(TSXKeyword::Function | TSXKeyword::Async) => {
 				let function = StatementFunction::from_reader(reader, state, settings)?;
-				Ok(Declaration::Function(Decorated { decorators, on: function }))
+				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
 			TSXToken::Keyword(TSXKeyword::Class) => {
 				let class_keyword = Keyword::new(reader.next().unwrap().get_span());
@@ -119,18 +123,18 @@ impl crate::ASTNode for Declaration {
 					settings,
 					class_keyword,
 				)
-				.map(|on| Declaration::Class(Decorated { decorators, on }))
+				.map(|on| Declaration::Class(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Export) => {
 				ExportDeclaration::from_reader(reader, state, settings)
-					.map(|on| Declaration::Export(Decorated { decorators, on }))
+					.map(|on| Declaration::Export(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Import) => {
 				ImportDeclaration::from_reader(reader, state, settings).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Interface) => {
 				InterfaceDeclaration::from_reader(reader, state, settings)
-					.map(|on| Declaration::Interface(Decorated { decorators, on }))
+					.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Type) => {
 				TypeAlias::from_reader(reader, state, settings).map(Into::into)

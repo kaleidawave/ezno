@@ -3,7 +3,8 @@ use source_map::Span;
 use crate::{ASTNode, TSXToken, TypeAnnotation, TypeDeclaration};
 
 /// e.g. `type NumberArray = Array<number>`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 pub struct TypeAlias {
 	pub type_name: TypeDeclaration,
