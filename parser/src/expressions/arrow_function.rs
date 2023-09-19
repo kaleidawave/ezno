@@ -169,6 +169,7 @@ impl ArrowFunction {
 /// For [ArrowFunction] and [crate::MatchArm] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),
 	Block(Block),

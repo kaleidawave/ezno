@@ -11,6 +11,7 @@ use crate::{TSXKeyword, TSXToken};
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BinaryOperator {
 	Add, Subtract, Multiply, Divide, Modulo, Exponent,
 
@@ -35,6 +36,7 @@ pub enum BinaryOperator {
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BinaryAssignmentOperator {
     LogicalNullishAssignment,
     
@@ -47,6 +49,7 @@ pub enum BinaryAssignmentOperator {
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
@@ -55,6 +58,7 @@ pub enum UnaryOperator {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum IncrementOrDecrement {
 	Increment,
 	Decrement,
@@ -62,6 +66,7 @@ pub enum IncrementOrDecrement {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum UnaryPrefixAssignmentOperator {
 	Invert,
 	IncrementOrDecrement(IncrementOrDecrement),
@@ -69,6 +74,7 @@ pub enum UnaryPrefixAssignmentOperator {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct UnaryPostfixAssignmentOperator(pub IncrementOrDecrement);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

@@ -11,16 +11,20 @@ use crate::{
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use self_rust_tokenize::SelfRustTokenize;
 use tokenizer_lib::TokenReader;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEqExtras, Eq, Clone, GetFieldByType)]
+#[partial_eq_ignore_types(Span)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
 	#[self_tokenize_field(0)]
-	Cursor(CursorId<Self>),
+	Cursor(CursorId<Self>, Span),
 }
 
 impl ASTNode for VariableIdentifier {
@@ -30,8 +34,8 @@ impl ASTNode for VariableIdentifier {
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		Ok(if let Token(TSXToken::Cursor(id), _) = token {
-			Self::Cursor(id.into_cursor())
+		Ok(if let Token(TSXToken::Cursor(id), start) = token {
+			Self::Cursor(id.into_cursor(), start.with_length(0))
 		} else {
 			let (ident, span) = token_as_identifier(token, "variable identifier")?;
 			Self::Standard(ident, span)
@@ -48,10 +52,7 @@ impl ASTNode for VariableIdentifier {
 	}
 
 	fn get_position(&self) -> &Span {
-		match self {
-			VariableIdentifier::Standard(_, pos) => pos,
-			VariableIdentifier::Cursor(_) => todo!(),
-		}
+		self.get()
 	}
 }
 
@@ -60,7 +61,7 @@ impl VariableIdentifier {
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableIdentifier::Standard(name, _) => name.as_str(),
-			VariableIdentifier::Cursor(_) => "",
+			VariableIdentifier::Cursor(_, _) => "",
 		}
 	}
 }
@@ -106,6 +107,30 @@ where
 			}
 		};
 		token_stream.extend(tokens);
+	}
+}
+
+#[cfg(feature = "serde-serialize")]
+impl<T: VariableFieldKind> serde::Serialize for VariableField<T>
+where
+	T: serde::Serialize,
+	T::OptionalExpression: serde::Serialize,
+{
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		match self {
+			VariableField::Name(name) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Name", name)
+			}
+			VariableField::Array(items, _) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Array", items)
+			}
+			VariableField::Object(items, _) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Object", items)
+			}
+		}
 	}
 }
 
@@ -155,6 +180,8 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableFieldInSourceCode;
 
 impl VariableFieldKind for VariableFieldInSourceCode {
@@ -193,6 +220,8 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 
 /// For function type references
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableFieldInTypeAnnotation;
 
 impl VariableFieldKind for VariableFieldInTypeAnnotation {
@@ -291,6 +320,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	/// `{ ...x }`
 	Spread(VariableIdentifier, Span),
@@ -401,6 +431,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 /// TODO not sure about the positions here, is potential duplication if T::OptionalExpression is none
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(Span, VariableIdentifier),
 	Name(WithComment<VariableField<T>>, T::OptionalExpression),

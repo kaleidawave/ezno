@@ -11,6 +11,7 @@ pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TryCatchStatement {
 	pub try_inner: Block,
 	pub catch_inner: Option<Block>,

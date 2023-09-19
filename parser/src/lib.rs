@@ -10,6 +10,7 @@ pub mod expressions;
 mod extensions;
 pub mod functions;
 mod generator_helpers;
+mod lexer;
 mod modules;
 pub mod operators;
 pub mod parameters;
@@ -19,9 +20,6 @@ mod tokens;
 pub mod types;
 mod variable_fields;
 mod visiting;
-
-#[doc(hidden)]
-pub mod lexer;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
@@ -63,6 +61,7 @@ use std::{ops::Neg, str::FromStr};
 /// The notation of a string
 #[derive(PartialEq, Debug, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Quoted {
 	Single,
 	Double,
@@ -307,8 +306,26 @@ pub struct ParsingState {
 }
 
 /// A keyword
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Eq, Clone)]
 pub struct Keyword<T: tokens::TSXKeywordNode>(pub T, pub Span);
+
+// TODO name
+#[cfg(feature = "serde-serialize")]
+impl<T: tokens::TSXKeywordNode> serde::Serialize for Keyword<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.1.serialize(serializer)
+	}
+}
+
+// Always true as T == T
+impl<T: tokens::TSXKeywordNode + PartialEq> PartialEq for Keyword<T> {
+	fn eq(&self, _: &Self) -> bool {
+		true
+	}
+}
 
 #[cfg(feature = "self-rust-tokenize")]
 impl<T: tokens::TSXKeywordNode> self_rust_tokenize::SelfRustTokenize for Keyword<T> {
@@ -387,6 +404,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum NumberSign {
 	/// Also implies non negative/missing
 	Positive,
@@ -417,6 +435,7 @@ impl std::fmt::Display for NumberSign {
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum NumberStructure {
 	Infinity,
 	NegativeInfinity,
@@ -574,6 +593,7 @@ impl NumberStructure {
 
 #[derive(Eq, PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum GetSetGeneratorOrNone {
 	Get(Keyword<tsx_keywords::Get>),
 	Set(Keyword<tsx_keywords::Set>),
@@ -733,6 +753,66 @@ pub(crate) fn parse_bracketed<T: ASTNode>(
 			}
 		}
 	}
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+/// For demos and testing
+pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
+	let (mut sender, reader) = tokenizer_lib::ParallelTokenQueue::new();
+	// TODO clone ...
+	let input = source.clone();
+	let _lexing_thread = std::thread::spawn(move || {
+		let _lex_script =
+			lexer::lex_script(&input, &mut sender, &Default::default(), None, Default::default());
+		drop(sender);
+	});
+
+	receiver_to_tokens(reader, source)
+}
+
+#[cfg(target_arch = "wasm32")]
+/// For demos and testing
+pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
+	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
+
+	let lex_script =
+		lexer::lex_script(&source, &mut queue, &Default::default(), 0, Default::default());
+
+	drop(sender);
+	lexing_thread.join().expect("Lexing panicked");
+
+	receiver_to_tokens(reader, source)
+}
+
+/// For testing and other features
+fn receiver_to_tokens(
+	mut receiver: impl TokenReader<TSXToken, TokenStart> + 'static,
+	input: String,
+) -> impl Iterator<Item = (String, bool)> + 'static {
+	let mut last = 0u32;
+	let mut last_section = None;
+	std::iter::from_fn(move || {
+		if last_section.is_some() {
+			return last_section.take();
+		}
+
+		let token = receiver.next()?;
+		if matches!(token.0, TSXToken::EOS) {
+			return None;
+		}
+		let span = token.get_span();
+		let start = span.start;
+		let section = (input[std::ops::Range::from(span.clone())].to_owned(), true);
+		if last != start {
+			last_section = Some(section);
+			let token = input[(last as usize)..(start as usize)].to_string();
+			last = span.end;
+			Some((token, false))
+		} else {
+			last = span.end;
+			Some(section)
+		}
+	})
 }
 
 /// *to_strings* items surrounded in `{`, `[`, `(`, etc

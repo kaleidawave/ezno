@@ -32,10 +32,24 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 	super::wasm_bindings::log(&arguments.to_string());
 }
 
+#[cfg(target_family = "wasm")]
+pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
+	// TODO :(
+	super::wasm_bindings::log(&arguments.to_string());
+}
+
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn print_to_cli(arguments: Arguments) {
 	use std::io;
 
 	println!("{arguments}");
+	io::Write::flush(&mut io::stdout()).unwrap();
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
+	use std::io;
+
+	print!("{arguments}");
 	io::Write::flush(&mut io::stdout()).unwrap();
 }

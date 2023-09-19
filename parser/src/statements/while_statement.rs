@@ -6,6 +6,7 @@ use crate::{block::BlockOrSingleStatement, ASTNode, Expression, TSXKeyword, TSXT
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct WhileStatement {
 	pub condition: Expression,
 	pub inner: BlockOrSingleStatement,
@@ -50,6 +51,7 @@ impl ASTNode for WhileStatement {
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DoWhileStatement {
 	pub condition: Expression,
 	// TODO not sure about true here

@@ -1,5 +1,6 @@
 use crate::{PropertyReference, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::TokenReader;
@@ -12,8 +13,11 @@ use crate::{
 
 use super::MultipleExpression;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -31,11 +35,7 @@ pub enum VariableOrPropertyAccess {
 
 impl ASTNode for VariableOrPropertyAccess {
 	fn get_position(&self) -> &Span {
-		match self {
-			VariableOrPropertyAccess::Variable(_, position)
-			| VariableOrPropertyAccess::PropertyAccess { position, .. }
-			| VariableOrPropertyAccess::Index { position, .. } => position,
-		}
+		self.get()
 	}
 
 	fn from_reader(
@@ -151,6 +151,7 @@ impl VariableOrPropertyAccess {
 /// TODO cursor
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	ObjectDestructuring(

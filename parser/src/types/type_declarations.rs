@@ -8,6 +8,7 @@ use tokenizer_lib::{Token, TokenReader};
 /// Used for declaring classes, interfaces and functions
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TypeDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -59,6 +60,7 @@ impl ASTNode for TypeDeclaration {
 /// TODO is default and extends mut ex
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum GenericTypeConstraint {
 	Parameter { name: String, default: Option<TypeAnnotation> },
 	Extends(String, TypeAnnotation),

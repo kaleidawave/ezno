@@ -33,6 +33,7 @@ pub use while_statement::{DoWhileStatement, WhileStatement};
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
@@ -72,6 +73,7 @@ pub enum Statement {
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ReturnStatement(
 	pub Keyword<tsx_keywords::Return>,
 	pub Option<MultipleExpression>,
@@ -81,6 +83,7 @@ pub struct ReturnStatement(
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ThrowStatement(pub Keyword<tsx_keywords::Throw>, pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
@@ -347,6 +350,7 @@ impl Statement {
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
 	keyword: Keyword<tsx_keywords::Var>,
 	declarations: Vec<VariableDeclarationItem<Option<Expression>>>,

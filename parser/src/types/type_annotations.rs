@@ -26,6 +26,7 @@ use crate::{
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TypeAnnotation {
 	/// A name e.g. `IPost`
 	Name(String, Span),
@@ -90,6 +91,7 @@ pub enum TypeAnnotation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TupleElement {
 	NonSpread { name: Option<String>, ty: TypeAnnotation },
 	Spread { name: Option<String>, ty: TypeAnnotation },
@@ -98,6 +100,7 @@ pub enum TupleElement {
 /// Condition in a [TypeAnnotation::Conditional]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TypeCondition {
 	Extends { ty: Box<TypeAnnotation>, extends: Box<TypeAnnotation>, position: Span },
 	Is { ty: Box<TypeAnnotation>, is: Box<TypeAnnotation>, position: Span },
@@ -105,6 +108,7 @@ pub enum TypeCondition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum CommonTypes {
 	String,
 	Number,
@@ -144,6 +148,7 @@ impl TypeCondition {
 /// The result of a [TypeAnnotation::Condition]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TypeConditionResult {
 	/// TODO e.g. `infer number`
 	Infer(Box<TypeAnnotation>, Span),
@@ -732,13 +737,13 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 		let peek_mut = reader.peek_mut();
 
 		if let Some(Token(t @ TSXToken::BitwiseShiftRight, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 1);
+			let end = TokenEnd::new(start.0 + 2);
 			*t = TSXToken::CloseChevron;
 			return Ok((generic_arguments, end));
 		}
 
 		if let Some(Token(t @ TSXToken::BitwiseShiftRightUnsigned, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 1);
+			let end = TokenEnd::new(start.0 + 3);
 			*t = TSXToken::CloseChevron;
 			return Ok((generic_arguments, end));
 		}
@@ -759,6 +764,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 /// Mirrors [crate::FunctionParameters]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TypeAnnotationFunctionParameters {
 	pub parameters: Vec<TypeAnnotationFunctionParameter>,
 	pub rest_parameter: Option<Box<TypeAnnotationSpreadFunctionParameter>>,
@@ -895,6 +901,7 @@ impl TypeAnnotationFunctionParameters {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	/// Ooh nice optional
@@ -906,6 +913,7 @@ pub struct TypeAnnotationFunctionParameter {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	pub name: String,

@@ -57,6 +57,7 @@ use std::convert::{TryFrom, TryInto};
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberStructure, Span),
@@ -178,6 +179,7 @@ impl Eq for Expression {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyReference {
 	Standard(String),
 	#[self_tokenize_field(0)]
@@ -1287,6 +1289,7 @@ impl Expression {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct MultipleExpression {
 	pub lhs: Option<Box<MultipleExpression>>,
 	pub rhs: Expression,
@@ -1399,6 +1402,7 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStar
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
@@ -1423,6 +1427,7 @@ pub enum SpecialOperators {
 /// A either spread expression or not
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1580,6 +1585,7 @@ impl Expression {
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SuperReference {
 	Call { arguments: Vec<SpreadExpression> },
 	PropertyAccess { property: String },

@@ -17,6 +17,7 @@ use crate::{
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Parameter {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -26,6 +27,7 @@ pub struct Parameter {
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
@@ -33,6 +35,7 @@ pub enum ParameterData {
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -42,6 +45,7 @@ pub struct SpreadParameter {
 /// type structure
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct FunctionParameters {
 	pub parameters: Vec<Parameter>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,

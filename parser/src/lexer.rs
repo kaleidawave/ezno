@@ -983,12 +983,10 @@ pub fn lex_script(
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
 				GetNextResult::InvalidCharacter(err) => {
+					sender.push(Token(TSXToken::EOS, current_position!()));
 					return_err!(LexingErrors::UnexpectedCharacter(err));
 				}
 			}
-		}
-		LexingState::String { .. } => {
-			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		LexingState::Comment => {
 			sender.push(Token(
@@ -996,17 +994,24 @@ pub fn lex_script(
 				TokenStart::new(start as u32 + offset),
 			));
 		}
+		LexingState::String { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
+			return_err!(LexingErrors::ExpectedEndToStringLiteral);
+		}
 		LexingState::MultiLineComment { .. } => {
 			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
 		LexingState::RegexLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 		}
 		LexingState::JSXLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToJSXLiteral);
 		}
 		LexingState::TemplateLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}

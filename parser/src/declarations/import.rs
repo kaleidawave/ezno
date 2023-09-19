@@ -1,6 +1,3 @@
-use std::sync::atomic::{AtomicU16, Ordering};
-
-use derive_debug_extras::DebugExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
@@ -11,36 +8,14 @@ use crate::{
 };
 use visitable_derive::Visitable;
 
-static IMPORT_STATEMENT_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
-
-#[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
-pub struct ImportStatementId(u16);
-
-impl ImportStatementId {
-	pub fn new() -> Self {
-		Self(IMPORT_STATEMENT_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
-	}
-}
-
-// TODO not sure
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for ImportStatementId {
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		token_stream.extend(self_rust_tokenize::quote!(ImportStatementId::new()))
-	}
-}
-
 /// TODO a few more thing needed here
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
 	pub default_import: Option<String>,
 	pub imports: Option<Vec<ImportPart>>,
-	pub import_statement_id: ImportStatementId,
 	pub from: String,
 	pub only_type: bool,
 	pub position: Span,
@@ -125,7 +100,6 @@ impl ASTNode for ImportDeclaration {
 			imports,
 			only_type,
 			from,
-			import_statement_id: ImportStatementId::new(),
 			position: start_position.union(span),
 		})
 	}
@@ -173,6 +147,7 @@ impl ASTNode for ImportDeclaration {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ImportPart {
 	Name(VariableIdentifier),
 	NameWithAlias { name: String, alias: String, position: Span },

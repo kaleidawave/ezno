@@ -33,6 +33,17 @@ where
 	}
 }
 
+// TODO comments
+#[cfg(feature = "serde-serialize")]
+impl<T: serde::Serialize> serde::Serialize for WithComment<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.get_ast_ref().serialize(serializer)
+	}
+}
+
 impl<T: Visitable> Visitable for WithComment<T> {
 	fn visit<TData>(
 		&self,

@@ -31,6 +31,7 @@ pub enum FromFileError {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Module {
 	pub items: Vec<StatementOrDeclaration>,
 	pub source: SourceId,

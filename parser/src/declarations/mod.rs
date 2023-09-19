@@ -1,4 +1,5 @@
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
+use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
@@ -29,7 +30,7 @@ pub use super::types::{
 	type_alias::TypeAlias,
 };
 pub use classes::ClassDeclaration;
-pub use import::{ImportDeclaration, ImportPart, ImportStatementId};
+pub use import::{ImportDeclaration, ImportPart};
 
 #[derive(
 	Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq, get_field_by_type::GetFieldByType,
@@ -37,6 +38,7 @@ pub use import::{ImportDeclaration, ImportPart, ImportStatementId};
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Declaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),
@@ -215,6 +217,6 @@ impl crate::ASTNode for Declaration {
 	}
 
 	fn get_position(&self) -> &source_map::Span {
-		todo!()
+		self.get()
 	}
 }

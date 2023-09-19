@@ -16,6 +16,16 @@ impl EmptyCursorId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorId<T>(pub u8, pub PhantomData<T>);
 
+#[cfg(feature = "serde-serialize")]
+impl<T> serde::Serialize for CursorId<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.0.serialize(serializer)
+	}
+}
+
 // Custom implementation used by the generator to interpolate nodes
 #[cfg(feature = "self-rust-tokenize")]
 impl<T> self_rust_tokenize::SelfRustTokenize for CursorId<T> {

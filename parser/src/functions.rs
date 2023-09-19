@@ -89,6 +89,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 #[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
 	pub name: T::Name,
@@ -246,6 +247,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,

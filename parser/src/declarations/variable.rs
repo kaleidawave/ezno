@@ -1,3 +1,5 @@
+use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
@@ -105,8 +107,11 @@ impl DeclarationExpression for crate::Expression {
 }
 
 /// Represents a name =
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -160,14 +165,16 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 	}
 
 	fn get_position(&self) -> &Span {
-		&self.position
+		self.get()
 	}
 }
 
 /// TODO smallvec the declarations
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		keyword: Keyword<tsx_keywords::Const>,
@@ -183,6 +190,7 @@ pub enum VariableDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclarationKeyword {
 	Const(Keyword<tsx_keywords::Const>),
 	Let(Keyword<tsx_keywords::Let>),
@@ -295,7 +303,7 @@ impl ASTNode for VariableDeclaration {
 	}
 
 	fn get_position(&self) -> &Span {
-		todo!()
+		self.get()
 	}
 }
 

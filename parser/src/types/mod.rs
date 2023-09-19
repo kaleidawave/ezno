@@ -32,6 +32,7 @@ use crate::{tsx_keywords, ASTNode, Block, Keyword};
 #[cfg(feature = "extras")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum AnnotationPerforms {
 	PerformsStatements { performs_keyword: Keyword<tsx_keywords::Performs>, statements: Block },
 	PerformsConst { performs_keyword: Keyword<tsx_keywords::Performs>, identifier: String },

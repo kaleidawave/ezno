@@ -59,6 +59,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 /// A key for a member in a class or object literal
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Ident(String, Span, T::Private),
 	StringLiteral(String, Span),

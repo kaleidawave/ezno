@@ -34,6 +34,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -44,6 +45,10 @@ jobs:
 
       - name: Check binary
         run: cargo check --bin ezno
+
+      - name: Check parser without extras
+        run: 
+          cargo check -p ezno-parser --no-default-features
 
   formating:
     runs-on: ubuntu-latest
@@ -89,7 +94,12 @@ jobs:
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true'
-        run: cargo test
+        run: |
+          cargo test
+
+          # TODO test more
+          curl https://esm.sh/stable/react@18.2.0/es2022/react.mjs > react.js
+          cargo run -p ezno-parser --example parse react.js
         working-directory: parser
 
       - name: Run checker specification

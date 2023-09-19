@@ -8,6 +8,7 @@ use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Ex
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
 	pub name: String,
@@ -86,6 +87,7 @@ impl ASTNode for EnumDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum EnumMember {
 	Variant { name: String, value: Option<Expression>, position: Span },
 }

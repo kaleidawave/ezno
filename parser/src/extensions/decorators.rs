@@ -14,6 +14,7 @@ use crate::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorator {
 	pub name: String,
 	pub arguments: Option<Vec<Expression>>,
@@ -96,6 +97,7 @@ impl Decorator {
 #[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,
 	pub on: T,

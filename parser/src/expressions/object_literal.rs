@@ -14,6 +14,7 @@ use crate::{
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
 	pub position: Span,
@@ -22,6 +23,7 @@ pub struct ObjectLiteral {
 #[derive(Debug, Clone, PartialEqExtras)]
 #[partial_eq_ignore_types(Span, VariableId)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectLiteralMember {
 	SpreadExpression(Expression, Span),
 	Shorthand(String, Span),

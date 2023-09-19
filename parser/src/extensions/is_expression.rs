@@ -10,22 +10,14 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[get_field_by_type_target(Span)]
 pub struct IsExpression {
 	pub is: Keyword<Is>,
 	pub matcher: Box<MultipleExpression>,
 	pub branches: Vec<(TypeAnnotation, ExpressionOrBlock)>,
 	pub position: Span,
-}
-
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for IsExpression {
-	fn append_to_token_stream(
-		&self,
-		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		todo!()
-	}
 }
 
 impl ASTNode for IsExpression {

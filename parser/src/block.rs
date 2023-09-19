@@ -8,8 +8,10 @@ use crate::{
 	expect_semi_colon, Declaration, ParseOptions, ParseResult, Statement, VisitSettings, Visitable,
 };
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
@@ -71,6 +73,7 @@ impl ASTNode for StatementOrDeclaration {
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}
@@ -197,6 +200,7 @@ impl Visitable for Block {
 /// For ifs and other statements
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),

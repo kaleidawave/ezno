@@ -48,7 +48,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 				}
 				ty
 			}
-			parser::VariableIdentifier::Cursor(_) => todo!(),
+			parser::VariableIdentifier::Cursor(..) => todo!(),
 		}
 	}
 
@@ -130,7 +130,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 		parser::VariableField::Object(items, _) => {
 			for field in items.iter() {
 				match field.get_ast_ref() {
-					ObjectDestructuringField::Spread(_, variable) => {
+					ObjectDestructuringField::Spread(variable, _) => {
 						let ty = register_variable_identifier(
 							variable,
 							environment,
@@ -148,7 +148,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 							// 	.insert(crate::VariableId(pos.source, pos.start), constraint);
 						}
 					}
-					ObjectDestructuringField::Name(variable, _) => {
+					ObjectDestructuringField::Name(variable, ..) => {
 						let ty = register_variable_identifier(
 							variable,
 							environment,
@@ -305,8 +305,8 @@ fn assign_to_fields<T: crate::FSResolver>(
 			for item in items {
 				match item.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, _) => todo!(),
-					ObjectDestructuringField::Name(name, default_value) => {
-						let get_position = name.get_position().clone();
+					ObjectDestructuringField::Name(name, default_value, _) => {
+						let get_position = name.get_position();
 
 						let id = crate::VariableId(environment.get_source(), get_position.start);
 
@@ -314,7 +314,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 							VariableIdentifier::Standard(name, _) => checking_data
 								.types
 								.new_constant_type(Constant::String(name.clone())),
-							VariableIdentifier::Cursor(_) => todo!(),
+							VariableIdentifier::Cursor(..) => todo!(),
 						};
 
 						// TODO if LHS = undefined ...? conditional

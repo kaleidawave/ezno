@@ -8,6 +8,7 @@ use visitable_derive::Visitable;
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,
 	pub parts: Vec<TemplateLiteralPart<Expression>>,
@@ -15,32 +16,11 @@ pub struct TemplateLiteral {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TemplateLiteralPart<T: ASTNode> {
 	Static(String),
 	Dynamic(Box<T>),
-}
-
-#[cfg(feature = "self-rust-tokenize")]
-impl<T: ASTNode + self_rust_tokenize::SelfRustTokenize> self_rust_tokenize::SelfRustTokenize
-	for TemplateLiteralPart<T>
-{
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		match self {
-			TemplateLiteralPart::Static(inner) => {
-				let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(inner);
-				token_stream
-					.extend(self_rust_tokenize::quote!(TemplateLiteralPart::Static(#inner)));
-			}
-			TemplateLiteralPart::Dynamic(inner) => {
-				let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(inner);
-				token_stream
-					.extend(self_rust_tokenize::quote!(TemplateLiteralPart::Dynamic(#inner)));
-			}
-		}
-	}
 }
 
 impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> {

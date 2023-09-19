@@ -20,6 +20,7 @@ use super::AnnotationPerforms;
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
@@ -33,6 +34,7 @@ pub struct InterfaceDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Optionality {
 	Default,
 	Optional,
@@ -43,6 +45,7 @@ pub enum Optionality {
 // Used around type aliases for inline rule thingies
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TypeRule {
 	In,
 	InKeyOf,
@@ -153,6 +156,7 @@ impl ASTNode for InterfaceDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum InterfaceMember {
 	Method {
 		name: PropertyKey<PublicOrPrivate>,
