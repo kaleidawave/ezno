@@ -27,7 +27,7 @@ extras = []
 [dependencies]
 visitable-derive = { path = "./visitable-derive", version = "0.0.2", package = "ezno-parser-visitable-derive" }
 
-derive-finite-automaton = "0.1.1"
+derive-finite-automaton = "0.1.2"
 derive-debug-extras = { version = "0.2.2", features = [
   "auto-debug-single-tuple-inline",
 ] }

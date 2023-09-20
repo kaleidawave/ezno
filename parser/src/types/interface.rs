@@ -15,8 +15,6 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
-use super::AnnotationPerforms;
-
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -59,6 +57,7 @@ impl ASTNode for InterfaceDeclaration {
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Interface))?;
 
+		#[cfg(feature = "extras")]
 		let nominal_keyword = Keyword::optionally_from_reader(reader);
 		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
 		// 	Some((reader.next().unwrap().1))
@@ -101,12 +100,13 @@ impl ASTNode for InterfaceDeclaration {
 		let members = parse_interface_members(reader, state, settings)?;
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
-			nominal_keyword,
 			name,
 			members,
 			type_parameters,
 			extends,
 			position,
+			#[cfg(feature = "extras")]
+			nominal_keyword,
 		})
 	}
 
@@ -165,7 +165,7 @@ pub enum InterfaceMember {
 		return_type: Option<TypeAnnotation>,
 		is_optional: bool,
 		#[cfg(feature = "extras")]
-		performs: Option<AnnotationPerforms>,
+		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Property {
@@ -480,7 +480,7 @@ impl ASTNode for InterfaceMember {
 
 				#[cfg(feature = "extras")]
 				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
-					Some(AnnotationPerforms::from_reader(reader, state, settings)?)
+					Some(super::AnnotationPerforms::from_reader(reader, state, settings)?)
 				} else {
 					None
 				};
@@ -515,7 +515,7 @@ impl ASTNode for InterfaceMember {
 
 				#[cfg(feature = "extras")]
 				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
-					Some(AnnotationPerforms::from_reader(reader, state, settings)?)
+					Some(super::AnnotationPerforms::from_reader(reader, state, settings)?)
 				} else {
 					None
 				};

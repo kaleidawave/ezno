@@ -13,7 +13,6 @@ use crate::{
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use self_rust_tokenize::SelfRustTokenize;
 use tokenizer_lib::TokenReader;
 
 #[derive(Debug, PartialEqExtras, Eq, Clone, GetFieldByType)]
@@ -23,7 +22,7 @@ use tokenizer_lib::TokenReader;
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
-	#[self_tokenize_field(0)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(CursorId<Self>, Span),
 }
 
@@ -89,7 +88,7 @@ where
 		&self,
 		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
-		use self_rust_tokenize::quote;
+		use self_rust_tokenize::{quote, SelfRustTokenize};
 		let tokens = match self {
 			VariableField::Name(identifier) => {
 				let tokens = identifier.to_tokens();

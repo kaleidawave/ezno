@@ -38,7 +38,9 @@ pub(crate) fn call_constant_function(
 			let second_argument_type =
 				types.get_type_by_id(arguments.last().unwrap().into_type().unwrap());
 
-			let Type::Constant(Constant::Number(num)) = second_argument_type else { return Err(()) };
+			let Type::Constant(Constant::Number(num)) = second_argument_type else {
+				return Err(());
+			};
 
 			let result = match id {
 				"sin" => num.sin(),

@@ -61,6 +61,7 @@ use crate::ParseError;
     "^=" => TSXToken::BitwiseXorAssign,
     "?" => TSXToken::QuestionMark,
     "?:" => TSXToken::OptionalMember,
+    "?." => TSXToken::OptionalChain,
     "-?:" => TSXToken::NonOptionalMember,
     "??" => TSXToken::NullishCoalescing,
     "??=" => TSXToken::NullishCoalescingAssign,
@@ -80,14 +81,23 @@ use crate::ParseError;
     "." => TSXToken::Dot,
     "..." => TSXToken::Spread,
     // Special ones: TODO unify
+    #[cfg(feature = "extras")]
     "×" => TSXToken::Multiply,
+    #[cfg(feature = "extras")]
     "×=" => TSXToken::MultiplyAssign,
+    #[cfg(feature = "extras")]
     "¡" => TSXToken::InvertAssign,
+    #[cfg(feature = "extras")]
     ">!" => TSXToken::InvertAssign,
+    #[cfg(feature = "extras")]
     "∣" => TSXToken::DividesOperator,
+    #[cfg(feature = "extras")]
     "/%" => TSXToken::DividesOperator,
+    #[cfg(feature = "extras")]
     "∘" => TSXToken::ComposeOperator,
+    #[cfg(feature = "extras")]
     "<@>" => TSXToken::ComposeOperator,
+    #[cfg(feature = "extras")]
     "|>" => TSXToken::PipeOperator,
 )]
 #[rustfmt::skip]
@@ -284,6 +294,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::EOS
 			| TSXToken::Cursor(_) => 0,
 
+			#[cfg(feature = "extras")]
 			TSXToken::DividesOperator
 			| TSXToken::InvertAssign
 			| TSXToken::ComposeOperator

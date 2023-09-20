@@ -6,7 +6,10 @@ use std::{collections::HashMap, iter::FromIterator};
 pub type Root = Context<RootContext>;
 
 #[derive(Debug)]
-pub struct RootContext;
+pub struct RootContext {
+	/// TODO a little out of place
+	pub(crate) on: SourceId,
+}
 
 impl ContextType for RootContext {
 	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a> {
@@ -55,7 +58,7 @@ impl Root {
 		let named_types = HashMap::from_iter(named_types);
 
 		Self {
-			context_type: RootContext,
+			context_type: RootContext { on: SourceId::NULL },
 			context_id: ContextId::ROOT,
 			named_types,
 			variables: Default::default(),

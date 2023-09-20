@@ -1076,6 +1076,7 @@ impl<T: ContextType> Context<T> {
 			| Scope::ClassEnvironment {}
 			| Scope::Block {}
 			| Scope::TryBlock {}
+			// TODO Scope::Module ??
 			| Scope::Module { .. } => {
 				// if let Some(inferrable_constraints) =
 				// 	self.context_type.get_inferrable_constraints_mut()
@@ -1415,6 +1416,12 @@ impl<T: ContextType> Context<T> {
 				}) = ctx
 				{
 					Some(*source)
+				} else if let GeneralContext::Root(Context {
+					context_type: root::RootContext { on },
+					..
+				}) = ctx
+				{
+					Some(*on)
 				} else {
 					None
 				}

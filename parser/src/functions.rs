@@ -1,11 +1,11 @@
 use std::{fmt::Debug, marker::PhantomData};
 
+use crate::tsx_keywords;
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
 	ExpressionPosition, GenericTypeConstraint, Keyword, ParseOptions, ParseResult, TSXToken,
 	TypeAnnotation, VisitSettings, Visitable,
 };
-use crate::{tsx_keywords, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
 use tokenizer_lib::TokenReader;
@@ -280,47 +280,7 @@ impl ASTNode for FunctionHeader {
 	) -> ParseResult<Self> {
 		let async_keyword = Keyword::optionally_from_reader(reader);
 
-		// TODO broken under extras
-		let next_generator =
-			reader.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Generator)));
-
-		if let Some(token) = next_generator {
-			let span = token.get_span();
-			let generator_keyword = Some(Keyword::new(span.clone()));
-			let function_keyword = Keyword::from_reader(reader)?;
-			let position = async_keyword
-				.as_ref()
-				.map_or(&span, |kw| kw.get_position())
-				.union(function_keyword.get_position());
-
-			Ok(Self::ChadFunctionHeader {
-				async_keyword,
-				generator_keyword,
-				function_keyword,
-				position,
-			})
-		} else {
-			let function_keyword = Keyword::from_reader(reader)?;
-			let generator_star_token_position = reader
-				.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-				.map(|token| token.get_span());
-
-			let mut position = async_keyword
-				.as_ref()
-				.map_or(function_keyword.get_position(), |kw| kw.get_position())
-				.clone();
-
-			if let Some(ref generator_star_token_position) = generator_star_token_position {
-				position = position.union(generator_star_token_position);
-			}
-
-			Ok(Self::VirginFunctionHeader {
-				async_keyword,
-				function_keyword,
-				generator_star_token_position,
-				position,
-			})
-		}
+		function_header_from_reader_with_async_keyword(reader, async_keyword)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -341,6 +301,64 @@ impl ASTNode for FunctionHeader {
 	}
 }
 
+pub(crate) fn function_header_from_reader_with_async_keyword(
+	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	async_keyword: Option<Keyword<tsx_keywords::Async>>,
+) -> Result<FunctionHeader, crate::ParseError> {
+	#[cfg(feature = "extras")]
+	{
+		let next_generator = reader
+			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Generator)));
+
+		if let Some(token) = next_generator {
+			let span = token.get_span();
+			let generator_keyword = Some(Keyword::new(span.clone()));
+			let function_keyword = Keyword::from_reader(reader)?;
+			let position = async_keyword
+				.as_ref()
+				.map_or(&span, |kw| kw.get_position())
+				.union(function_keyword.get_position());
+
+			Ok(FunctionHeader::ChadFunctionHeader {
+				async_keyword,
+				generator_keyword,
+				function_keyword,
+				position,
+			})
+		} else {
+			parse_regular_header(reader, async_keyword)
+		}
+	}
+	#[cfg(not(feature = "extras"))]
+	parse_regular_header(reader, async_keyword)
+}
+
+fn parse_regular_header(
+	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	async_keyword: Option<Keyword<tsx_keywords::Async>>,
+) -> Result<FunctionHeader, crate::ParseError> {
+	let function_keyword = Keyword::from_reader(reader)?;
+	let generator_star_token_position = reader
+		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+		.map(|token| token.get_span());
+
+	let mut position = async_keyword
+		.as_ref()
+		.map_or(function_keyword.get_position(), |kw| kw.get_position())
+		.clone();
+
+	if let Some(ref generator_star_token_position) = generator_star_token_position {
+		position = position.union(generator_star_token_position);
+	}
+
+	Ok(FunctionHeader::VirginFunctionHeader {
+		async_keyword,
+		function_keyword,
+		generator_star_token_position,
+		position,
+	})
+}
+
 impl FunctionHeader {
 	pub fn is_generator(&self) -> bool {
 		match self {
@@ -348,16 +366,17 @@ impl FunctionHeader {
 				generator_star_token_position: generator_star_token_pos,
 				..
 			} => generator_star_token_pos.is_some(),
-			FunctionHeader::ChadFunctionHeader { generator_keyword, .. } => {
-				generator_keyword.is_some()
-			}
+			#[cfg(feature = "extras")]
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { generator_keyword, .. } => generator_keyword.is_some(),
 		}
 	}
 
 	pub fn is_async(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader { async_keyword, .. }
-			| FunctionHeader::ChadFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
+			FunctionHeader::VirginFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
 		}
 	}
 }

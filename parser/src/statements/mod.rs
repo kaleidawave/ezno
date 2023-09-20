@@ -66,7 +66,7 @@ pub enum Statement {
 	// TODO position
 	Empty(Span),
 	/// TODO under cfg
-	#[self_tokenize_field(0)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
 }
 

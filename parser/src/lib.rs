@@ -609,7 +609,10 @@ impl GetSetGeneratorOrNone {
 		buf.push_str(match self {
 			GetSetGeneratorOrNone::Get(_) => "get ",
 			GetSetGeneratorOrNone::Set(_) => "set ",
-			GetSetGeneratorOrNone::Generator(_) | GetSetGeneratorOrNone::GeneratorStar(_) => "*",
+			GetSetGeneratorOrNone::GeneratorStar(_) => "*",
+			// Use default
+			#[cfg(feature = "extras")]
+			GetSetGeneratorOrNone::Generator(_) => "*",
 			GetSetGeneratorOrNone::None => "",
 		})
 	}
@@ -622,6 +625,7 @@ impl GetSetGeneratorOrNone {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
 				GetSetGeneratorOrNone::Set(Keyword::new(reader.next().unwrap().get_span()))
 			}
+			#[cfg(feature = "extras")]
 			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
 				GetSetGeneratorOrNone::Generator(Keyword::new(reader.next().unwrap().get_span()))
 			}
@@ -636,9 +640,10 @@ impl GetSetGeneratorOrNone {
 		match self {
 			GetSetGeneratorOrNone::Get(kw) => Some(&kw.1),
 			GetSetGeneratorOrNone::Set(kw) => Some(&kw.1),
-			GetSetGeneratorOrNone::Generator(kw) => Some(&kw.1),
 			GetSetGeneratorOrNone::GeneratorStar(span) => Some(span),
 			GetSetGeneratorOrNone::None => None,
+			#[cfg(feature = "extras")]
+			GetSetGeneratorOrNone::Generator(kw) => Some(&kw.1),
 		}
 	}
 }

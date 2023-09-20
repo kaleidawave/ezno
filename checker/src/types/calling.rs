@@ -127,7 +127,6 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		{
 			// TODO clone ...
 			let function_type = types.functions.get(func).unwrap().clone();
-			drop(ty);
 			function_type.call(
 				called_with_new,
 				*this_value,

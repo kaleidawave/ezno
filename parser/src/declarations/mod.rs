@@ -61,8 +61,9 @@ impl Declaration {
 	pub(crate) fn is_declaration_start(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 	) -> bool {
-		matches!(
-			reader.peek(),
+		let token = reader.peek();
+		let result = matches!(
+			token,
 			Some(Token(
 				TSXToken::Keyword(
 					TSXKeyword::Let
@@ -71,11 +72,15 @@ impl Declaration {
 						| TSXKeyword::Type | TSXKeyword::Declare
 						| TSXKeyword::Import | TSXKeyword::Export
 						| TSXKeyword::Interface | TSXKeyword::Async
-						| TSXKeyword::Generator
 				) | TSXToken::At,
 				_
 			))
-		)
+		);
+
+		#[cfg(feature = "extras")]
+		return result || matches!(token, Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)));
+		#[cfg(not(feature = "extras"))]
+		return result;
 	}
 }
 
@@ -109,6 +114,7 @@ impl crate::ASTNode for Declaration {
 				EnumDeclaration::from_reader(reader, state, settings)
 					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			}
+			#[cfg(feature = "extras")]
 			TSXToken::Keyword(TSXKeyword::Generator) if settings.generator_keyword => {
 				let function = StatementFunction::from_reader(reader, state, settings)?;
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
@@ -185,6 +191,7 @@ impl crate::ASTNode for Declaration {
 					TSXToken::Keyword(TSXKeyword::Import),
 					TSXToken::Keyword(TSXKeyword::Export),
 					TSXToken::Keyword(TSXKeyword::Async),
+					#[cfg(feature = "extras")]
 					TSXToken::Keyword(TSXKeyword::Generator),
 				],
 			),

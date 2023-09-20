@@ -403,8 +403,11 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 			TSXToken::BitwiseShiftRight => Ok(BinaryOperator::BitwiseShiftRight),
 			TSXToken::BitwiseShiftRightUnsigned => Ok(BinaryOperator::BitwiseShiftRightUnsigned),
 			TSXToken::NullishCoalescing => Ok(BinaryOperator::NullCoalescing),
+			#[cfg(feature = "extras")]
 			TSXToken::DividesOperator => Ok(BinaryOperator::Divides),
+			#[cfg(feature = "extras")]
 			TSXToken::ComposeOperator => Ok(BinaryOperator::Compose),
+			#[cfg(feature = "extras")]
 			TSXToken::PipeOperator => Ok(BinaryOperator::Pipe),
 			_ => Err(()),
 		}
@@ -456,11 +459,14 @@ impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
 	type Error = ();
 
 	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
+		#[cfg(feature = "extras")]
 		if *token == TSXToken::InvertAssign {
 			Ok(Self::Invert)
 		} else {
 			IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
 		}
+		#[cfg(not(feature = "extras"))]
+		IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
 	}
 }
 

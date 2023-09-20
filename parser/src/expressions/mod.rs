@@ -1,7 +1,6 @@
 use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
-	extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
 	functions::GeneralFunctionBase,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
@@ -30,7 +29,10 @@ use super::{
 	TokenReader, TypeAnnotation,
 };
 
-use crate::tsx_keywords::{self, As, Generator, Is, Satisfies};
+#[cfg(feature = "extras")]
+use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression};
+
+use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
@@ -165,9 +167,9 @@ pub enum Expression {
 	/// A start of a JSXNode
 	JSXRoot(JSXRoot),
 	/// Not to be confused with binary operator `is`
+	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
-	/// TODO under cfg
-	#[self_tokenize_field(cursor_id)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(cursor_id))]
 	Cursor {
 		#[visit_skip_field]
 		cursor_id: CursorId<Expression>,
@@ -182,7 +184,7 @@ impl Eq for Expression {}
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyReference {
 	Standard(String),
-	#[self_tokenize_field(0)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(CursorId<PropertyReference>),
 }
 
@@ -203,54 +205,6 @@ impl ASTNode for Expression {
 	) {
 		self.to_string_using_precedence(buf, settings, depth, COMMA_PRECEDENCE)
 	}
-
-	// fn get_position(&self) -> &Span {
-	// 	match self {
-	// 		Self::BinaryOperation { lhs, rhs, .. } => {
-	// 			Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-	// 		}
-	// 		Self::Assignment { lhs, rhs, .. } => {
-	// 			Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-	// 		}
-	// 		Self::ConditionalTernaryExpression { condition, falsy_result, .. } => {
-	// 			Cow::Owned(condition.get_position().union(&falsy_result.get_position()))
-	// 		}
-	// 		Self::BinaryAssignmentOperation { lhs, rhs, .. } => {
-	// 			Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-	// 		}
-	// 		Self::NumberLiteral(_, pos)
-	// 		| Self::StringLiteral(_, _, pos)
-	// 		| Self::BooleanLiteral(_, pos)
-	// 		| Self::ArrayLiteral(_, pos)
-	// 		| Self::ParenthesizedExpression(_, pos)
-	// 		| Self::SpecialOperators(_, pos)
-	// 		| Self::UnaryOperation { position: pos, .. }
-	// 		| Self::UnaryPrefixAssignmentOperation { position: pos, .. }
-	// 		| Self::UnaryPostfixAssignmentOperation { position: pos, .. }
-	// 		| Self::VariableReference(_, pos)
-	// 		| Self::Index { position: pos, .. }
-	// 		| Self::Null(pos)
-	// 		| Self::PrefixComment(_, _, pos)
-	// 		| Self::PostfixComment(_, _, pos)
-	// 		| Self::Comment(_, pos)
-	// 		| Self::FunctionCall { position: pos, .. }
-	// 		| Self::PropertyAccess { position: pos, .. }
-	// 		| Self::ThisReference(pos)
-	// 		| Self::NewTarget(pos)
-	// 		| Self::SuperExpression(_, pos)
-	// 		| Self::DynamicImport { position: pos, .. }
-	// 		| Self::ConstructorCall { position: pos, .. }
-	// 		| Self::RegexLiteral { position: pos, .. }
-	// 		| Self::Cursor { position: pos, .. } => pos,
-	// 		Self::JSXRoot(root) => root.get_position(),
-	// 		Self::ObjectLiteral(object_literal) => object_literal.get_position(),
-	// 		Self::TemplateLiteral(template_literal) => template_literal.get_position(),
-	// 		Self::ClassExpression(class_expression) => class_expression.get_position(),
-	// 		Self::IsExpression(is) => is.get_position(),
-	// 		Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
-	// 		Self::ExpressionFunction(function) => function.get_position(),
-	// 	}
-	// }
 
 	fn get_position(&self) -> &Span {
 		get_field_by_type::GetFieldByType::get(self)
@@ -578,74 +532,42 @@ impl Expression {
 			// TODO this should be extracted to a function that allows it to also work for leading `generator`
 			t @ Token(TSXToken::Keyword(TSXKeyword::Async), _) => {
 				let async_keyword = Some(Keyword::new(t.get_span()));
-				let generator_keyword: Option<Keyword<Generator>> = settings
-					.generator_keyword
-					.then(|| {
-						reader
-							.conditional_next(|tok| {
-								*tok == TSXToken::Keyword(TSXKeyword::Generator)
-							})
-							.map(|token| Keyword::new(token.get_span()))
-					})
-					.flatten();
-
-				match reader.next().ok_or_else(parse_lexing_error)? {
-					t @ Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
-						let header = if generator_keyword.is_some() {
-							let span = t.get_span();
-							FunctionHeader::ChadFunctionHeader {
-								async_keyword,
-								generator_keyword,
-								function_keyword: Keyword::new(span.clone()),
-								position: span,
-							}
-						} else {
-							let generator_star_token_position = reader
-								.conditional_next(|tok| *tok == TSXToken::Multiply)
-								.map(|token| token.get_span());
-
-							let span = t.get_span();
-							FunctionHeader::VirginFunctionHeader {
-								async_keyword,
-								function_keyword: Keyword::new(span.clone()),
-								generator_star_token_position,
-								position: span,
-							}
-						};
-						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
-						{
-							None
-						} else {
-							let (token, span) =
-								token_as_identifier(reader.next().unwrap(), "function name")?;
-
-							Some(crate::VariableIdentifier::Standard(token, span))
-						};
-						let function: ExpressionFunction =
-							FunctionBase::from_reader_with_header_and_name(
-								reader, state, settings, header, name,
-							)?;
-						Expression::ExpressionFunction(function)
-					}
-					Token(TSXToken::OpenParentheses, start_pos) => {
-						assert!(generator_keyword.is_none(), "TODO");
-
-						let function = ArrowFunction::from_reader_sub_open_paren(
-							reader,
-							state,
-							settings,
-							async_keyword,
-							start_pos,
-						)?;
-						Expression::ArrowFunction(function)
-					}
-					token => {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Keyword(TSXKeyword::Function), TSXToken::OpenParentheses],
-						)
-					}
-				}
+				let header = crate::functions::function_header_from_reader_with_async_keyword(
+					reader,
+					async_keyword,
+				)?;
+				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+					None
+				} else {
+					let (token, span) =
+						token_as_identifier(reader.next().unwrap(), "function name")?;
+					Some(crate::VariableIdentifier::Standard(token, span))
+				};
+				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
+					reader, state, settings, header, name,
+				)?)
+			}
+			#[cfg(feature = "extras")]
+			t @ Token(TSXToken::Keyword(TSXKeyword::Generator), _) => {
+				let get_span = t.get_span();
+				let function_keyword = Keyword::from_reader(reader)?;
+				let position = get_span.union(function_keyword.get_position());
+				let header = FunctionHeader::ChadFunctionHeader {
+					async_keyword: None,
+					generator_keyword: Some(Keyword::new(get_span)),
+					function_keyword,
+					position,
+				};
+				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+					None
+				} else {
+					let (token, span) =
+						token_as_identifier(reader.next().unwrap(), "function name")?;
+					Some(crate::VariableIdentifier::Standard(token, span))
+				};
+				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
+					reader, state, settings, header, name,
+				)?)
 			}
 			#[cfg(feature = "extras")]
 			t @ Token(TSXToken::Keyword(TSXKeyword::Is), _) => {
@@ -846,15 +768,22 @@ impl Expression {
 				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
 					let token = reader.next().unwrap();
 					let position = token.get_span();
-					let Token(
-						TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment),
-						_,
-					) = token else { unreachable!() } ;
+					let Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), _) =
+						token
+					else {
+						unreachable!()
+					};
 					top = Expression::PostfixComment(Box::new(top), comment, position);
 				}
 				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is) => {
 					if AssociativityDirection::LeftToRight
 						.should_return(parent_precedence, AS_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+
+					if cfg!(not(feature = "extras"))
+						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is))
 					{
 						return Ok(top);
 					}
@@ -871,11 +800,6 @@ impl Expression {
 							as_keyword: Keyword::new(keyword_span),
 							type_annotation: Box::new(reference),
 						},
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
-							value: top.into(),
-							is_keyword: Keyword::new(keyword_span),
-							type_annotation: Box::new(reference),
-						},
 						TSXToken::Keyword(TSXKeyword::Satisfies) => {
 							SpecialOperators::SatisfiesExpression {
 								value: top.into(),
@@ -883,6 +807,12 @@ impl Expression {
 								type_annotation: Box::new(reference),
 							}
 						}
+						#[cfg(feature = "extras")]
+						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
+							value: top.into(),
+							is_keyword: Keyword::new(keyword_span),
+							type_annotation: Box::new(reference),
+						},
 						_ => unreachable!(),
 					};
 					top = Self::SpecialOperators(special_operators, position);
@@ -975,17 +905,6 @@ impl Expression {
 							rhs: Box::new(new_rhs),
 						};
 					} else {
-						// debug_assert!(
-						// 	matches!(
-						// 		token,
-						// 		TSXToken::EOS
-						// 			| TSXToken::CloseParentheses | TSXToken::CloseBracket
-						// 			| TSXToken::CloseBrace,
-						// 			| TSXToken::Colon,
-						// 	),
-						// 	"expected a closing expression, found {:?}",
-						// 	token
-						// );
 						return Ok(top);
 					}
 				}
@@ -1013,10 +932,11 @@ impl Expression {
             | Self::NewTarget(..)
             | Self::ClassExpression(..)
             // TODO not sure about this one...?
-            | Self::IsExpression(..)
-            // TODO not sure about this one...?
             | Self::DynamicImport { .. }
             | Self::Cursor { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
+            // TODO not sure about this one...?
+			#[cfg(feature = "extras")]
+            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
             Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
@@ -1038,8 +958,9 @@ impl Expression {
             Self::SpecialOperators(op, _) => match op {
 				 // TODO not sure about this
                 SpecialOperators::AsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-                SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
                 SpecialOperators::SatisfiesExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+				#[cfg(feature = "extras")]
+                SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             },
         }
 	}
@@ -1084,18 +1005,22 @@ impl Expression {
 			}
 			Self::SpecialOperators(special, _) => match special {
 				SpecialOperators::AsExpression { value, type_annotation, .. }
-				| SpecialOperators::IsExpression { value, type_annotation, .. }
 				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, settings, depth);
-					// TODO is
 					if settings.include_types {
 						buf.push_str(match special {
 							SpecialOperators::AsExpression { .. } => " as ",
-							SpecialOperators::IsExpression { .. } => " is ",
 							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
+							#[cfg(feature = "extras")]
+							_ => unreachable!(),
 						});
 						type_annotation.to_string_from_buffer(buf, settings, depth);
 					}
+				}
+				#[cfg(feature = "extras")]
+				SpecialOperators::IsExpression { value, type_annotation, .. } => {
+					value.to_string_from_buffer(buf, settings, depth);
+					type_annotation.to_string_from_buffer(buf, settings, depth);
 				}
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
@@ -1263,6 +1188,7 @@ impl Expression {
 				);
 			}
 			Self::Null(..) => buf.push_str("null"),
+			#[cfg(feature = "extras")]
 			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, settings, depth),
 			Self::SuperExpression(super_expr, _) => {
 				buf.push_str("super");
@@ -1419,7 +1345,7 @@ pub enum SpecialOperators {
 	#[cfg(feature = "extras")]
 	IsExpression {
 		value: Box<Expression>,
-		is_keyword: Keyword<Is>,
+		is_keyword: Keyword<tsx_keywords::Is>,
 		type_annotation: Box<TypeAnnotation>,
 	},
 }

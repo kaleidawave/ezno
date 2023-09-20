@@ -7,8 +7,6 @@ use crate::{
 	TypeAnnotation,
 };
 
-use super::AnnotationPerforms;
-
 /// A `declare var` thingy.
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -77,7 +75,7 @@ pub struct DeclareFunctionDeclaration {
 	pub parameters: TypeAnnotationFunctionParameters,
 	pub return_type: Option<TypeAnnotation>,
 	#[cfg(feature = "extras")]
-	pub performs: Option<AnnotationPerforms>,
+	pub performs: Option<super::AnnotationPerforms>,
 	pub decorators: Vec<Decorator>,
 	pub position: Span,
 }
@@ -146,7 +144,7 @@ impl DeclareFunctionDeclaration {
 
 		#[cfg(feature = "extras")]
 		let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
-			Some(AnnotationPerforms::from_reader(reader, state, settings)?)
+			Some(super::AnnotationPerforms::from_reader(reader, state, settings)?)
 		} else {
 			None
 		};

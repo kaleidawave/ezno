@@ -90,7 +90,10 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 		reflects_dependency,
 	});
 
-	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value else { unreachable!() };
+	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value
+	else {
+		unreachable!()
+	};
 
 	// Carry the frozen part
 	// if let Some(frozen) = environment.is_frozen(on) {

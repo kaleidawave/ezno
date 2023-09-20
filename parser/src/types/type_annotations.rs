@@ -85,7 +85,7 @@ pub enum TypeAnnotation {
 		position: Span,
 	},
 	Decorated(Decorator, Box<Self>, Span),
-	#[self_tokenize_field(0)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(CursorId<TypeAnnotation>, Span),
 }
 
