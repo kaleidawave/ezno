@@ -9,6 +9,8 @@ extern "C" {
 
 #[wasm_bindgen(js_name = build)]
 pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
@@ -21,6 +23,8 @@ pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsVa
 
 #[wasm_bindgen(js_name = check)]
 pub fn check_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
@@ -37,6 +41,8 @@ pub fn run_cli_wasm(
 	fs_resolver_js: &js_sys::Function,
 	cli_input_resolver_js: &js_sys::Function,
 ) {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
 	let arguments = cli_arguments.into_iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
@@ -55,4 +61,12 @@ pub fn run_cli_wasm(
 	};
 
 	crate::run_cli(&arguments, fs_resolver, cli_input_resolver)
+}
+
+#[wasm_bindgen(js_name = parse_expression)]
+pub fn parse_expression_to_json(input: String) -> JsValue {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+	let expression =
+		parser::Expression::from_string(input, Default::default(), SourceId::NULL, None);
+	serde_wasm_bindgen::to_value(&expression).unwrap()
 }

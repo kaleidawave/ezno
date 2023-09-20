@@ -321,10 +321,10 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
-	/// `{ ...x }`
-	Spread(VariableIdentifier, Span),
 	/// `{ x }`
 	Name(VariableIdentifier, T::OptionalExpression, Span),
+	/// `{ ...x }`
+	Spread(VariableIdentifier, Span),
 	/// `{ x: y }`
 	Map {
 		from: PropertyKey<crate::property_key::AlwaysPublic>,
@@ -710,9 +710,9 @@ mod tests {
 			"{ x = 2 }",
 			VariableField::Object(
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(2, 7)),
+					VariableIdentifier::Standard(Deref @ "x", span!(2, 3)),
 					Some(Expression::NumberLiteral(crate::NumberStructure::Number(_), span!(6, 7))),
-					span!(6, 7),
+					span!(2, 7),
 				))],
 				span!(0, 9),
 			)

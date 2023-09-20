@@ -1,4 +1,4 @@
-import { build, check } from "./dist/initialized.mjs";
+import { build, check, parse_expression } from "./dist/initialized.mjs";
 import { deepStrictEqual } from "node:assert";
 
 function buildTest() {
@@ -59,3 +59,5 @@ function checkTest() {
 
 buildTest()
 checkTest()
+
+console.log(parse_expression("x = 4 + 2"))

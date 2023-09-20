@@ -46,6 +46,15 @@ jobs:
       - name: Check binary
         run: cargo check --bin ezno
 
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli@0.2.87
+      - name: Check binary WASM
+        run: |
+          rustup target add wasm32-unknown-unknown
+          npm run check
+        working-directory: src/js-cli-and-library
+
       - name: Check parser without extras
         run: 
           cargo check -p ezno-parser --no-default-features
@@ -110,6 +119,37 @@ jobs:
       - name: Run base tests
         run: cargo test
 
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: wasm-bindgen-cli@0.2.87
+          
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Build WASM
+        run: |
+          rustup target add wasm32-unknown-unknown
+          npm ci
+          npm run build
+        working-directory: src/js-cli-and-library
+        shell: bash
+
+      - name: Test modules in Node and Deno
+        run: |
+          node test.mjs
+          deno run -A test.mjs
+          node test.cjs
+        working-directory: src/js-cli-and-library
+        shell: bash
+
+      - name: Check CLI works
+        run: |
+          node ./dist/cli.cjs info
+          deno run -A ./dist/cli.mjs info
+        working-directory: src/js-cli-and-library
+        shell: bash
+
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
@@ -168,51 +208,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Lint code with clippy
         run: cargo clippy
-
-  wasm-test:
-    needs: validity
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - uses: actions/cache@v3
-        with:
-          path: ${{ env.CACHE_PATHS }}
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: wasm-bindgen-cli@0.2.87
-          
-      - uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
-      - name: Build
-        run: |
-          rustup target add wasm32-unknown-unknown
-          npm ci
-          npm run build
-        working-directory: src/js-cli-and-library
-        shell: bash
-
-      - name: Test modules
-        run: |
-          node test.mjs
-          deno run -A test.mjs
-          node test.cjs
-        working-directory: src/js-cli-and-library
-        shell: bash
-
-      - name: Check CLI works
-        run: |
-          node ./dist/cli.cjs info
-          deno run -A ./dist/cli.mjs info
-        working-directory: src/js-cli-and-library
-        shell: bash
 
   publish-ability:
     runs-on: ubuntu-latest

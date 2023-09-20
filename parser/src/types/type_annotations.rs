@@ -737,13 +737,15 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 		let peek_mut = reader.peek_mut();
 
 		if let Some(Token(t @ TSXToken::BitwiseShiftRight, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 2);
+			let end = TokenEnd::new(start.0 + 1);
+			start.0 += 1;
 			*t = TSXToken::CloseChevron;
 			return Ok((generic_arguments, end));
 		}
 
 		if let Some(Token(t @ TSXToken::BitwiseShiftRightUnsigned, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 3);
+			let end = TokenEnd::new(start.0 + 2);
+			start.0 += 2;
 			*t = TSXToken::CloseChevron;
 			return Ok((generic_arguments, end));
 		}

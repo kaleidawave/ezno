@@ -58,6 +58,7 @@ package = "ezno-parser"
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "=0.2.87"
 serde-wasm-bindgen = "0.5.0"
+console_error_panic_hook = "0.1.7"
 js-sys = "0.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

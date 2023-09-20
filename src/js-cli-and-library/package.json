@@ -21,6 +21,7 @@
 	},
 	"scripts": {
 		"clean": "rmdir dist && rmdir build",
+		"check": "cargo check --lib --target wasm32-unknown-unknown",
 		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind && npm run build-js",
 		"build-release": "cargo build --lib --release --target wasm32-unknown-unknown && npm run bind-release && npm run build-js",
 		"bind": "wasm-bindgen --out-dir build --target web ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm",

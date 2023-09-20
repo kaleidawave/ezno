@@ -3,6 +3,7 @@ use ezno_parser::{
 };
 
 #[test]
+#[ignore]
 fn cursor_in_expression() {
 	todo!()
 	// let expression = "function x() { return }";
@@ -38,6 +39,7 @@ fn cursor_in_expression() {
 }
 
 #[test]
+#[ignore]
 fn cursor_at_property_access() {
 	todo!()
 	// let expression = "x.";

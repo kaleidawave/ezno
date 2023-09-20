@@ -123,6 +123,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if 1.0.0",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -163,18 +173,18 @@ dependencies = [
 
 [[package]]
 name = "derive-finite-automaton"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8194aae3a7566f8454a809e7bf1ec8b95ca2f6f055f071291a763eb91387d71"
+checksum = "a18c3334a02026fc281427161fea9dacbf650d8b7b01e35a7cf445403c318221"
 dependencies = [
  "derive-finite-automaton-derive",
 ]
 
 [[package]]
 name = "derive-finite-automaton-derive"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "498f17bf23fd582afc59e024f729587a84b8c51b9d713be59b1b9208578502c3"
+checksum = "d4bb462e792fda597bc05207ebf41948ff8e7c5a6ab737bd5c75286193fc3613"
 dependencies = [
  "either_n",
  "proc-macro2",
@@ -267,6 +277,7 @@ dependencies = [
  "base64",
  "codespan-reporting",
  "console",
+ "console_error_panic_hook",
  "enum-variants-strings",
  "ezno-checker",
  "ezno-parser",
@@ -310,7 +321,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
- "source-map 0.14.1",
+ "source-map",
  "temporary-annex",
 ]
 
@@ -333,7 +344,7 @@ dependencies = [
  "lsp-types",
  "serde",
  "serde_json",
- "source-map 0.11.3",
+ "source-map",
  "tokenizer-lib",
 ]
 
@@ -354,7 +365,7 @@ dependencies = [
  "pretty_assertions",
  "self-rust-tokenize",
  "serde",
- "source-map 0.14.1",
+ "source-map",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -929,22 +940,12 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.11.3"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef719fab974d0ad7d0f888be47f711355c528fc2d28731d08bd59be1d6bd313b"
-dependencies = [
- "lazy_static",
- "lsp-types",
- "serde",
-]
-
-[[package]]
-name = "source-map"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdb0d42bb4480eab8b06f7ff7a663c4eda28a81818bd4bc92b168944e2adf5e7"
+checksum = "cab192199a8348991b58809de8708f6146462aa3132520fff61e4c9f3df53a50"
 dependencies = [
  "codespan-reporting",
+ "lsp-types",
  "self-rust-tokenize",
  "serde",
 ]
@@ -1035,7 +1036,7 @@ version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedcdc3b4760676e1ed01c749e219c98f8da59ef08c62547c19a74bea228c5d8"
 dependencies = [
- "source-map 0.14.1",
+ "source-map",
 ]
 
 [[package]]

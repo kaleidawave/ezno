@@ -80,26 +80,18 @@ use crate::ParseError;
     ">>>=" => TSXToken::UnsignedBitwiseShiftRightAssign,
     "." => TSXToken::Dot,
     "..." => TSXToken::Spread,
-    // Special ones: TODO unify
-    #[cfg(feature = "extras")]
-    "×" => TSXToken::Multiply,
-    #[cfg(feature = "extras")]
-    "×=" => TSXToken::MultiplyAssign,
-    #[cfg(feature = "extras")]
-    "¡" => TSXToken::InvertAssign,
-    #[cfg(feature = "extras")]
-    ">!" => TSXToken::InvertAssign,
-    #[cfg(feature = "extras")]
-    "∣" => TSXToken::DividesOperator,
-    #[cfg(feature = "extras")]
-    "/%" => TSXToken::DividesOperator,
-    #[cfg(feature = "extras")]
-    "∘" => TSXToken::ComposeOperator,
-    #[cfg(feature = "extras")]
-    "<@>" => TSXToken::ComposeOperator,
-    #[cfg(feature = "extras")]
-    "|>" => TSXToken::PipeOperator,
 )]
+#[cfg_attr(feature = "extras", automaton_mappings(
+    "×" => TSXToken::Multiply,
+    "×=" => TSXToken::MultiplyAssign,
+    "¡" => TSXToken::InvertAssign,
+    ">!" => TSXToken::InvertAssign,
+    "∣" => TSXToken::DividesOperator,
+    "/%" => TSXToken::DividesOperator,
+    "∘" => TSXToken::ComposeOperator,
+    "<@>" => TSXToken::ComposeOperator,
+    "|>" => TSXToken::PipeOperator,
+))]
 #[rustfmt::skip]
 pub enum TSXToken {
     IdentLiteral(String),

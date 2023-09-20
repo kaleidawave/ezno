@@ -247,11 +247,10 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		res
 	});
 
-	let lex_script = lexer::lex_script(&script, &mut sender, &lex_options, offset, cursors);
-	match lex_script {
-		Ok(_) => {}
-		Err((reason, pos)) => return Err(ParseError::new(reason, pos)),
-	};
+	let lex_result = lexer::lex_script(&script, &mut sender, &lex_options, offset, cursors);
+	if let Err((reason, pos)) = lex_result {
+		return Err(ParseError::new(reason, pos));
+	}
 	drop(sender);
 	parsing_thread.join().expect("Parsing panicked")
 }
@@ -263,24 +262,19 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: String,
 	source: SourceId,
-	offset: Option<usize>,
+	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-	lexer::lex_script(
-		&script,
-		&mut queue,
-		&LexerOptions { lex_jsx: false, ..options.get_lex_options() },
-		offset,
-		cursors,
-	)?;
+	let lex_result =
+		lexer::lex_script(&script, &mut queue, &options.get_lex_options(), offset, cursors);
 
-	let mut state = ParsingState { line_starts };
-	let res = T::from_reader(&mut queue, &mut state, &options);
-	if res.is_ok() {
-		queue.expect_next(TSXToken::EOS)?;
+	if let Err((reason, pos)) = lex_result {
+		return Err(ParseError::new(reason, pos));
 	}
-	res
+
+	let mut state = ParsingState { line_starts, length: script.len() as u32, source };
+	T::from_reader(&mut queue, &mut state, &options)
 }
 
 pub(crate) fn throw_unexpected_token<T>(
@@ -780,13 +774,10 @@ pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> 
 pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 
-	let lex_script =
-		lexer::lex_script(&source, &mut queue, &Default::default(), 0, Default::default());
+	let _lex_script =
+		lexer::lex_script(&source, &mut queue, &Default::default(), None, Default::default());
 
-	drop(sender);
-	lexing_thread.join().expect("Lexing panicked");
-
-	receiver_to_tokens(reader, source)
+	receiver_to_tokens(queue, source)
 }
 
 /// For testing and other features

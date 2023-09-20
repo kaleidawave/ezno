@@ -1,4 +1,4 @@
-const { build, check } = require("./dist/initialized.cjs");
+const { build, check, parse_expression } = require("./dist/initialized.cjs");
 const { deepStrictEqual } = require("node:assert");
 
 function buildTest() {
@@ -59,3 +59,5 @@ function checkTest() {
 
 buildTest()
 checkTest()
+
+console.log(parse_expression("x = 4 + 2"))
