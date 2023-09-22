@@ -77,7 +77,7 @@ use crate::ParseError;
     ">>" => TSXToken::BitwiseShiftRight,
     ">>=" => TSXToken::BitwiseShiftRightAssign,
     ">>>" => TSXToken::BitwiseShiftRightUnsigned,
-    ">>>=" => TSXToken::UnsignedBitwiseShiftRightAssign,
+    ">>>=" => TSXToken::BitwiseShiftRightUnsignedAssign,
     "." => TSXToken::Dot,
     "..." => TSXToken::Spread,
 )]
@@ -129,7 +129,7 @@ pub enum TSXToken {
     AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ExponentAssign, ModuloAssign,
     Increment, Decrement,
     BitwiseShiftLeft, BitwiseShiftRight, BitwiseShiftRightUnsigned,
-    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, UnsignedBitwiseShiftRightAssign,
+    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsignedAssign,
     BitwiseOr, BitwiseXOr, BitwiseAnd, BitwiseNot,
     BitwiseOrAssign, BitwiseAndAssign, BitwiseXorAssign,
     LogicalOr, LogicalAnd, LogicalNot,
@@ -271,13 +271,13 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::LogicalOrAssign
 			| TSXToken::LogicalAndAssign
 			| TSXToken::NotEqual
+			| TSXToken::BitwiseShiftLeftAssign
+			| TSXToken::BitwiseShiftRightAssign
+			| TSXToken::StrictNotEqual
+			| TSXToken::BitwiseShiftRightUnsigned
 			| TSXToken::JSXFragmentEnd => 3,
 
-			TSXToken::BitwiseShiftLeftAssign
-			| TSXToken::BitwiseShiftRightAssign
-			| TSXToken::UnsignedBitwiseShiftRightAssign
-			| TSXToken::StrictNotEqual
-			| TSXToken::BitwiseShiftRightUnsigned => 4,
+			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
 			// TODO
 			TSXToken::JSXClosingTagStart
@@ -341,6 +341,13 @@ pub enum TSXKeyword {
 impl TSXToken {
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
+	}
+
+	pub fn is_string_literal(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::SingleQuotedStringLiteral(_) | TSXToken::DoubleQuotedStringLiteral(_)
+		)
 	}
 
 	/// Used for lexing regular expression and JSX literals differently

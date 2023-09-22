@@ -30,7 +30,7 @@ pub use super::types::{
 	type_alias::TypeAlias,
 };
 pub use classes::ClassDeclaration;
-pub use import::{ImportDeclaration, ImportPart};
+pub use import::{ImportDeclaration, ImportExportPart};
 
 #[derive(
 	Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq, get_field_by_type::GetFieldByType,

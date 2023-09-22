@@ -362,7 +362,7 @@ impl TryFrom<&TSXToken> for BinaryAssignmentOperator {
 			TSXToken::BitwiseShiftRightAssign => {
 				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
 			}
-			TSXToken::BitwiseShiftRightUnsigned => {
+			TSXToken::BitwiseShiftRightUnsignedAssign => {
 				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
 			}
 			TSXToken::NullishCoalescingAssign => {
@@ -481,7 +481,6 @@ impl BinaryOperator {
 // Operator precedences that aren't registered under operator trait
 pub(crate) const COMMA_PRECEDENCE: u8 = 1;
 pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;
-pub(crate) const OPTIONAL_CHAINING_PRECEDENCE: u8 = 18;
 pub(crate) const INDEX_PRECEDENCE: u8 = 18;
 pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;

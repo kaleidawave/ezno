@@ -101,7 +101,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					Ok(Self::PropertyAccess { parent, position, property })
 				}
 			}
-			Expression::Index { indexer, position, indexee } => {
+			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
 			expression => Err(ParseError::new(
@@ -119,7 +119,7 @@ impl From<VariableOrPropertyAccess> for Expression {
 				Expression::VariableReference(variable, position)
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, position } => {
-				Expression::Index { indexee, indexer, position }
+				Expression::Index { indexee, indexer, position, is_optional: false }
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }

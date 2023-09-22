@@ -39,10 +39,15 @@ pub(super) fn synthesize_multiple_expression<T: crate::FSResolver>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
-	if let Some(lhs) = &expression.lhs {
-		synthesize_multiple_expression(lhs, environment, checking_data);
+	match expression {
+		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
+			synthesize_multiple_expression(lhs, environment, checking_data);
+			synthesize_expression(rhs, environment, checking_data)
+		}
+		MultipleExpression::Single(expression) => {
+			synthesize_expression(expression, environment, checking_data)
+		}
 	}
-	synthesize_expression(&expression.rhs, environment, checking_data)
 }
 
 pub(super) fn synthesize_expression<T: crate::FSResolver>(

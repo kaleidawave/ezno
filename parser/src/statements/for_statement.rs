@@ -120,15 +120,14 @@ pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<ForLoopVariableKeyword>,
 		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
-		// TODO box...?
 		of: Expression,
 		position: Span,
 	},
 	ForIn {
 		keyword: Option<ForLoopVariableKeyword>,
 		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
-		// TODO box...?
-		r#in: Expression,
+		/// Yes `of` is single expression, `in` is multiple
+		r#in: MultipleExpression,
 		position: Span,
 	},
 	Statements {
@@ -223,7 +222,7 @@ impl ASTNode for ForLoopCondition {
 					WithComment::<VariableField<_>>::from_reader(reader, state, settings)?;
 
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
-				let r#in = Expression::from_reader(reader, state, settings)?;
+				let r#in = MultipleExpression::from_reader(reader, state, settings)?;
 				let position = keyword
 					.as_ref()
 					.map_or(variable.get_position(), |kw| kw.get_position())

@@ -5,7 +5,7 @@ use crate::{
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
-		FUNCTION_CALL_PRECEDENCE, OPTIONAL_CHAINING_PRECEDENCE,
+		FUNCTION_CALL_PRECEDENCE,
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
@@ -123,13 +123,14 @@ pub enum Expression {
 	PropertyAccess {
 		parent: Box<Expression>,
 		property: PropertyReference,
-		position: Span,
 		is_optional: bool,
+		position: Span,
 	},
 	/// e.g `...[4]`
 	Index {
 		indexee: Box<Expression>,
 		indexer: Box<MultipleExpression>,
+		is_optional: bool,
 		position: Span,
 	},
 	// Function calls
@@ -137,6 +138,7 @@ pub enum Expression {
 		function: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
 		arguments: Vec<SpreadExpression>,
+		is_optional: bool,
 		position: Span,
 	},
 	ConstructorCall {
@@ -570,16 +572,40 @@ impl Expression {
 				)?)
 			}
 			#[cfg(feature = "extras")]
-			t @ Token(TSXToken::Keyword(TSXKeyword::Is), _) => {
-				let is_expression_from_reader_sub_is_keyword =
-					is_expression_from_reader_sub_is_keyword(
-						reader,
-						state,
-						settings,
-						Keyword::new(t.get_span()),
-					);
+			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) => {
+				// Maintains compatibility here
+				let mut parentheses_depth = 0;
+				let next = reader.scan(|token, _| match token {
+					TSXToken::OpenParentheses => {
+						parentheses_depth += 1;
+						false
+					}
+					TSXToken::CloseParentheses => {
+						parentheses_depth -= 1;
+						parentheses_depth == 0
+					}
+					_ => false,
+				});
+				if let Some(Token(token_type, _)) = next {
+					if let TSXToken::OpenBrace = token_type {
+						let is_expression_from_reader_sub_is_keyword =
+							is_expression_from_reader_sub_is_keyword(
+								reader,
+								state,
+								settings,
+								Keyword::new(t.get_span()),
+							);
 
-				is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
+						is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
+					} else {
+						Expression::VariableReference("is".to_owned(), start.with_length(2))
+					}
+				} else {
+					return Err(ParseError::new(
+						crate::ParseErrors::UnmatchedBrackets,
+						t.get_span(),
+					));
+				}
 			}
 			token => {
 				if let Ok(unary_operator) = UnaryOperator::try_from(&token.0) {
@@ -681,6 +707,7 @@ impl Expression {
 						type_arguments: None,
 						arguments,
 						position,
+						is_optional: false,
 					};
 				}
 				TSXToken::OpenBracket => {
@@ -697,6 +724,7 @@ impl Expression {
 						position,
 						indexee: Box::new(top),
 						indexer: Box::new(indexer),
+						is_optional: false,
 					};
 				}
 				TSXToken::TemplateLiteralStart => {
@@ -715,16 +743,69 @@ impl Expression {
 					);
 					top = template_lit.map(Expression::TemplateLiteral)?;
 				}
-				dot @ TSXToken::Dot | dot @ TSXToken::OptionalChain => {
-					let is_optional = matches!(dot, TSXToken::OptionalChain);
-					if AssociativityDirection::LeftToRight.should_return(
-						parent_precedence,
-						if is_optional {
-							OPTIONAL_CHAINING_PRECEDENCE
-						} else {
-							MEMBER_ACCESS_PRECEDENCE
-						},
-					) {
+				TSXToken::OptionalChain => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+					let _ = reader.next().unwrap();
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					top = match token {
+						Token(TSXToken::OpenBracket, _start) => {
+							let indexer = MultipleExpression::from_reader(reader, state, settings)?;
+							let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
+							let position = top.get_position().union(end);
+							Expression::Index {
+								position,
+								indexee: Box::new(top),
+								indexer: Box::new(indexer),
+								is_optional: false,
+							}
+						}
+						Token(TSXToken::OpenParentheses, _start) => {
+							let (arguments, end) = parse_bracketed(
+								reader,
+								state,
+								settings,
+								Some(TSXToken::CloseParentheses),
+								TSXToken::CloseParentheses,
+							)?;
+							let position = top.get_position().union(end);
+							Expression::FunctionCall {
+								function: Box::new(top),
+								type_arguments: None,
+								arguments,
+								position,
+								is_optional: true,
+							}
+						}
+						token => {
+							let (property, position) =
+								if let Token(TSXToken::Cursor(cursor_id), start) = token {
+									(
+										PropertyReference::Cursor(cursor_id.into_cursor()),
+										start.with_length(1),
+									)
+								} else {
+									let (property, position) =
+										token_as_identifier(token, "variable reference")?;
+									(PropertyReference::Standard(property), position)
+								};
+							let position = top.get_position().union(&position);
+							Expression::PropertyAccess {
+								parent: Box::new(top),
+								property,
+								position,
+								is_optional: true,
+							}
+						}
+					}
+				}
+				TSXToken::Dot => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
+					{
 						return Ok(top);
 					}
 					let _ = reader.next().unwrap();
@@ -743,7 +824,7 @@ impl Expression {
 						parent: Box::new(top),
 						property,
 						position,
-						is_optional,
+						is_optional: false,
 					};
 				}
 				TSXToken::Assign => {
@@ -836,6 +917,7 @@ impl Expression {
 								function: Box::new(top),
 								type_arguments: Some(type_arguments),
 								arguments,
+								is_optional: false,
 							};
 							continue;
 						} else {
@@ -1074,8 +1156,11 @@ impl Expression {
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
-				if expr.lhs.is_none() && matches!(expr.rhs, Expression::VariableReference(..)) {
-					expr.rhs.to_string_from_buffer(buf, settings, depth)
+				// TODO more expressions could be considered fro parenthesis elision
+				if let MultipleExpression::Single(inner @ Expression::VariableReference(..)) =
+					&**expr
+				{
+					inner.to_string_from_buffer(buf, settings, depth)
 				} else {
 					buf.push('(');
 					expr.to_string_from_buffer(buf, settings, depth);
@@ -1215,17 +1300,16 @@ impl Expression {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct MultipleExpression {
-	pub lhs: Option<Box<MultipleExpression>>,
-	pub rhs: Expression,
-	pub position: Span,
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
+pub enum MultipleExpression {
+	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
+	Single(Expression),
 }
 
 impl MultipleExpression {
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
-		if self.lhs.is_none() {
-			self.rhs.is_iife()
+		if let MultipleExpression::Single(inner) = self {
+			inner.is_iife()
 		} else {
 			None
 		}
@@ -1239,14 +1323,18 @@ impl ASTNode for MultipleExpression {
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let first = Expression::from_reader(reader, state, settings)?;
-		let mut top: MultipleExpression = first.into();
-		while let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-			reader.next();
-			let rhs = Expression::from_reader(reader, state, settings)?;
-			let position = top.get_position().union(rhs.get_position());
-			top = MultipleExpression { lhs: Some(Box::new(top)), rhs, position };
+		if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+			let mut top: MultipleExpression = first.into();
+			while let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+				reader.next();
+				let rhs = Expression::from_reader(reader, state, settings)?;
+				let position = top.get_position().union(rhs.get_position());
+				top = MultipleExpression::Multiple { lhs: Box::new(top), rhs, position };
+			}
+			Ok(top)
+		} else {
+			Ok(MultipleExpression::Single(first))
 		}
-		Ok(top)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -1255,21 +1343,29 @@ impl ASTNode for MultipleExpression {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if let Some(ref lhs) = self.lhs {
-			lhs.to_string_from_buffer(buf, settings, depth);
-			buf.push(',');
+		match self {
+			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
+				lhs.to_string_from_buffer(buf, settings, depth);
+				buf.push(',');
+				rhs.to_string_from_buffer(buf, settings, depth);
+			}
+			MultipleExpression::Single(rhs) => {
+				rhs.to_string_from_buffer(buf, settings, depth);
+			}
 		}
-		self.rhs.to_string_from_buffer(buf, settings, depth);
 	}
 
 	fn get_position(&self) -> &Span {
-		&self.position
+		match self {
+			MultipleExpression::Multiple { position, .. } => position,
+			MultipleExpression::Single(expr) => expr.get_position(),
+		}
 	}
 }
 
 impl From<Expression> for MultipleExpression {
 	fn from(expr: Expression) -> Self {
-		Self { position: expr.get_position().clone(), lhs: None, rhs: expr }
+		MultipleExpression::Single(expr)
 	}
 }
 
@@ -1453,6 +1549,7 @@ impl Expression {
 			.into(),
 			type_arguments: None,
 			arguments: Vec::new(),
+			is_optional: false,
 			position,
 		}
 	}
@@ -1462,11 +1559,8 @@ impl Expression {
 			if let (true, Expression::ParenthesizedExpression(expression, _)) =
 				(arguments.is_empty(), &**function)
 			{
-				if let MultipleExpression {
-					lhs: None,
-					rhs: Expression::ArrowFunction(function),
-					position: _,
-				} = &**expression
+				if let MultipleExpression::Single(Expression::ArrowFunction(function)) =
+					&**expression
 				{
 					return Some(&function.body);
 				}
@@ -1478,10 +1572,10 @@ impl Expression {
 	/// Recurses to find first non parenthesized expression
 	pub fn get_non_parenthesized(&self) -> &Self {
 		if let Expression::ParenthesizedExpression(inner_multiple_expr, _) = self {
-			if inner_multiple_expr.lhs.is_none() {
-				inner_multiple_expr.rhs.get_non_parenthesized()
+			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
+				expr.get_non_parenthesized()
 			} else {
-				// TODO could return something here...
+				// TODO could return a variant here...
 				self
 			}
 		} else if let Expression::PrefixComment(_, expr, ..)
@@ -1546,11 +1640,10 @@ mod tests {
 		assert_matches_ast!(
 			"(45)",
 			ParenthesizedExpression(
-				Deref @ MultipleExpression {
-					lhs: None,
-					rhs: NumberLiteral(NumberStructure::Number(_), span!(1, 3)),
-					position: _,
-				},
+				Deref @ MultipleExpression::Single(NumberLiteral(
+					NumberStructure::Number(_),
+					span!(1, 3),
+				)),
 				span!(0, 4),
 			)
 		);
@@ -1573,15 +1666,12 @@ mod tests {
 		assert_matches_ast!(
 			"(45,2)",
 			ParenthesizedExpression(
-				Deref @ MultipleExpression {
+				Deref @ MultipleExpression::Multiple {
 					lhs:
-						Some(
-							Deref @ MultipleExpression {
-								lhs: None,
-								rhs: NumberLiteral(NumberStructure::Number(_), span!(1, 3)),
-								position: _,
-							},
-						),
+						Deref @ MultipleExpression::Single(NumberLiteral(
+							NumberStructure::Number(_),
+							span!(1, 3),
+						)),
 					rhs: NumberLiteral(NumberStructure::Number(_), span!(4, 5)),
 					position: _,
 				},

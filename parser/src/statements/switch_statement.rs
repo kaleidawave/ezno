@@ -4,8 +4,8 @@ use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token_with_token, ASTNode, Expression,
-	ParseOptions, Statement, TSXKeyword, TSXToken,
+	ast::MultipleExpression, errors::parse_lexing_error, throw_unexpected_token_with_token,
+	ASTNode, Expression, ParseOptions, Statement, TSXKeyword, TSXToken,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -13,7 +13,7 @@ use crate::{
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct SwitchStatement {
-	pub case: Expression,
+	pub case: MultipleExpression,
 	pub branches: Vec<SwitchBranch>,
 	pub position: Span,
 }
@@ -38,7 +38,7 @@ impl ASTNode for SwitchStatement {
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
-		let case = Expression::from_reader(reader, state, settings)?;
+		let case = MultipleExpression::from_reader(reader, state, settings)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;
 		reader.expect_next(crate::TSXToken::OpenBrace)?;
 		let mut branches = Vec::new();

@@ -251,7 +251,7 @@ impl ASTNode for BlockOrSingleStatement {
 				if settings.pretty {
 					buf.push_new_line();
 					settings.add_gap(buf);
-					stmt.to_string_from_buffer(buf, settings, depth);
+					stmt.to_string_from_buffer(buf, settings, depth + 1);
 				} else {
 					stmt.to_string_from_buffer(buf, settings, depth);
 				}

@@ -1,13 +1,14 @@
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, Keyword, ParseOptions, ParseResult, Span,
-	StatementPosition, TSXKeyword, TSXToken, Token,
+	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, Keyword, ParseOptions,
+	ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
 };
 
 use super::{
-	variable::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
-	TypeAlias,
+	variable::VariableDeclaration, ClassDeclaration, ImportExportPart, InterfaceDeclaration,
+	StatementFunction, TypeAlias,
 };
 
+use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
@@ -33,6 +34,7 @@ pub enum Exportable {
 	Variable(VariableDeclaration),
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
+	Parts(Vec<ImportExportPart>),
 }
 
 impl ASTNode for ExportDeclaration {
@@ -102,9 +104,32 @@ impl ASTNode for ExportDeclaration {
 					let position = start.union(type_alias.get_position());
 					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
 				}
-				Token(token, _) => {
-					todo!("Token after export '{:?}'", token)
+				Token(TSXToken::OpenBrace, _) => {
+					let Token(_, start) = reader.next().unwrap();
+					let (parts, end) = crate::parse_bracketed::<ImportExportPart>(
+						reader,
+						state,
+						settings,
+						None,
+						TSXToken::CloseBrace,
+					)?;
+					Ok(Self::Variable {
+						exported: Exportable::Parts(parts),
+						position: start.union(end),
+					})
 				}
+				_ => throw_unexpected_token(
+					reader,
+					&[
+						TSXToken::Keyword(TSXKeyword::Class),
+						TSXToken::Keyword(TSXKeyword::Function),
+						TSXToken::Keyword(TSXKeyword::Const),
+						TSXToken::Keyword(TSXKeyword::Let),
+						TSXToken::Keyword(TSXKeyword::Interface),
+						TSXToken::Keyword(TSXKeyword::Type),
+						TSXToken::OpenBrace,
+					],
+				),
 			}
 		}
 	}
@@ -133,6 +158,16 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::TypeAlias(type_alias) => {
 						type_alias.to_string_from_buffer(buf, settings, depth);
+					}
+					Exportable::Parts(parts) => {
+						buf.push('{');
+						for (at_end, part) in parts.iter().endiate() {
+							part.to_string_from_buffer(buf, settings, depth);
+							if !at_end {
+								buf.push(',');
+							}
+						}
+						buf.push('}');
 					}
 				}
 			}

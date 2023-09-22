@@ -62,15 +62,37 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						"imports",
 						import.position.clone().with_source(environment.get_source()),
 					);
+
 					// TODO get types from checking_data.modules.exported
-					if let Some(ref imports) = import.imports {
-						for part in imports {
-							match part {
-								parser::declarations::ImportPart::Name(identifier) => {
-									if let VariableIdentifier::Standard(name, pos) = identifier {
+					if let Some(ref default) = import.default {
+						todo!()
+					}
+
+					match &import.kind {
+						parser::declarations::import::ImportKind::Parts(parts) => {
+							for part in parts {
+								match part {
+									parser::declarations::ImportExportPart::Name(identifier) => {
+										if let VariableIdentifier::Standard(name, pos) = identifier
+										{
+											environment.register_variable_handle_error(
+												name,
+												pos.clone().with_source(environment.get_source()),
+												crate::context::VariableRegisterBehavior::Declare {
+													base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+												},
+												checking_data,
+											);
+										}
+									}
+									parser::declarations::ImportExportPart::NameWithAlias {
+										name,
+										alias,
+										position,
+									} => {
 										environment.register_variable_handle_error(
 											name,
-											pos.clone().with_source(environment.get_source()),
+											position.clone().with_source(environment.get_source()),
 											crate::context::VariableRegisterBehavior::Declare {
 												base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 											},
@@ -78,22 +100,10 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 										);
 									}
 								}
-								parser::declarations::ImportPart::NameWithAlias {
-									name,
-									alias,
-									position,
-								} => {
-									environment.register_variable_handle_error(
-										name,
-										position.clone().with_source(environment.get_source()),
-										crate::context::VariableRegisterBehavior::Declare {
-											base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-										},
-										checking_data,
-									);
-								}
 							}
 						}
+						parser::declarations::import::ImportKind::All { under } => todo!(),
+						parser::declarations::import::ImportKind::SideEffect => todo!(),
 					}
 				}
 				parser::Declaration::Export(export) => {

@@ -106,8 +106,8 @@ jobs:
         run: |
           cargo test
 
-          # TODO test more
-          curl https://esm.sh/stable/react@18.2.0/es2022/react.mjs > react.js
+          # TODO test other big libraries
+          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
           cargo run -p ezno-parser --example parse react.js
         working-directory: parser
 
