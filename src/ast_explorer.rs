@@ -30,8 +30,12 @@ impl ExplorerArguments {
 		cli_input_resolver: U,
 	) {
 		if let Some(ref file) = self.file {
-			let content = fs_resolver.get_content_at_path(file).unwrap();
-			self.nested.run(content, Some(file.to_owned()));
+			let content = fs_resolver.get_content_at_path(file);
+			if let Some(content) = content {
+				self.nested.run(content, Some(file.to_owned()))
+			} else {
+				eprintln!("Could not find file at {}", file.display());
+			}
 		} else {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {

@@ -127,24 +127,11 @@ jobs:
         with:
           deno-version: v1.x
 
-      - name: Build WASM
+      - name: Build and test WASM
         run: |
           rustup target add wasm32-unknown-unknown
           npm ci
-          npm run build
-        working-directory: src/js-cli-and-library
-        shell: bash
-
-      - name: Test modules in Node and Deno
-        run: |
-          node test.mjs
-          deno run -A test.mjs
-          node test.cjs
-        working-directory: src/js-cli-and-library
-        shell: bash
-
-      - name: Check CLI works
-        run: |
+          npm run test
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
         working-directory: src/js-cli-and-library

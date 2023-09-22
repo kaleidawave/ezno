@@ -8,7 +8,7 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = build)]
-pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
+pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String, minify: bool) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
@@ -16,8 +16,13 @@ pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (_fs, result) =
-		crate::commands::build(fs_resolver, Path::new(&entry_path), Path::new("out.js"));
+	let result = crate::commands::build(
+		&fs_resolver,
+		Path::new(&entry_path),
+		None,
+		Path::new("out.js"),
+		minify,
+	);
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
@@ -30,8 +35,8 @@ pub fn check_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (_fs, diagnostics, _) = crate::commands::check(fs_resolver, Path::new(&entry_path), None);
-
+	let (_fs, diagnostics, _) = crate::commands::check(&fs_resolver, Path::new(&entry_path), None);
+	// TODO also emit mappings
 	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
 }
 
@@ -65,8 +70,14 @@ pub fn run_cli_wasm(
 
 #[wasm_bindgen(js_name = parse_expression)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
+	use parser::{ASTNode, Expression, SourceId};
+
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let expression =
-		parser::Expression::from_string(input, Default::default(), SourceId::NULL, None);
-	serde_wasm_bindgen::to_value(&expression).unwrap()
+	let expression = Expression::from_string(input, Default::default(), SourceId::NULL, None);
+	match expression {
+		Ok(expression) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(expression)).unwrap(),
+		Err(parse_error) => {
+			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
+		}
+	}
 }

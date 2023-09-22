@@ -4,6 +4,7 @@
 	"description": "Ezno as a plugin",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
+	"types": "./dist/types.d.ts",
 	"license": "MIT",
 	"exports": {
 		".": {

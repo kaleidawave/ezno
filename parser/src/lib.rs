@@ -798,10 +798,11 @@ fn receiver_to_tokens(
 		}
 		let span = token.get_span();
 		let start = span.start;
-		let section = (input[std::ops::Range::from(span.clone())].to_owned(), true);
+		let section =
+			(input.get(std::ops::Range::from(span.clone())).unwrap_or("?").to_owned(), true);
 		if last != start {
 			last_section = Some(section);
-			let token = input[(last as usize)..(start as usize)].to_string();
+			let token = input.get((last as usize)..(start as usize)).unwrap_or("?").to_owned();
 			last = span.end;
 			Some((token, false))
 		} else {

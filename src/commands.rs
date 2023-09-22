@@ -1,6 +1,7 @@
+use checker::DiagnosticsContainer;
 use parser::{
 	source_map::{MapFileStore, NoPathMap},
-	ASTNode, ParseOptions, SourceId, ToStringOptions,
+	ASTNode, ToStringOptions,
 };
 use std::{
 	collections::HashSet,
@@ -14,7 +15,7 @@ pub fn check<T: crate::FSResolver>(
 ) -> (
 	MapFileStore<NoPathMap>,
 	checker::DiagnosticsContainer,
-	Result<checker::synthesis::module::PostCheckData, ()>,
+	Result<(checker::synthesis::module::PostCheckData, parser::Module), ()>,
 ) {
 	// let _cwd = env::current_dir().unwrap();
 
@@ -44,15 +45,16 @@ pub fn check<T: crate::FSResolver>(
 		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
 	};
 
-	let result = checker::synthesis::module::synthesize_module_root(&module, definitions, |path| {
-		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
-		} else {
-			fs_resolver.get_content_at_path(path)
-		}
-	});
+	let (diagnostics, data) =
+		checker::synthesis::module::synthesize_module_root(&module, definitions, |path| {
+			if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
+				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+			} else {
+				fs_resolver.get_content_at_path(path)
+			}
+		});
 
-	(fs, result.0, result.1)
+	(fs, diagnostics, data.map(|data| (data, module)))
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
@@ -65,35 +67,45 @@ pub struct Output {
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
 pub struct BuildOutput {
 	pub outputs: Vec<Output>,
-	pub temp_diagnostics: Vec<checker::Diagnostic>,
+	pub diagnostics: DiagnosticsContainer,
+	/// For diagnostics
+	/// TODO serde
+	#[cfg_attr(target_family = "wasm", serde(skip))]
+	pub fs: MapFileStore<NoPathMap>,
+}
+
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+pub struct FailedBuildOutput {
+	pub diagnostics: DiagnosticsContainer,
+	/// For diagnostics
+	/// TODO serde
+	#[cfg_attr(target_family = "wasm", serde(skip))]
+	pub fs: MapFileStore<NoPathMap>,
 }
 
 pub fn build<T: crate::FSResolver>(
-	fs_resolver: T,
+	fs_resolver: &T,
 	input_path: &Path,
+	type_definition_module: Option<&Path>,
 	output_path: &Path,
-) -> (MapFileStore<NoPathMap>, Result<BuildOutput, Vec<checker::Diagnostic>>) {
-	let mut fs = MapFileStore::default();
+	minify_output: bool,
+) -> Result<BuildOutput, FailedBuildOutput> {
+	let (fs, diagnostics, data_and_module) = check(fs_resolver, input_path, type_definition_module);
 
-	let content = fs_resolver.get_content_at_path(input_path).expect("Could not find/get file");
-	let source_id = SourceId::new(&mut fs, PathBuf::from(input_path), content.clone());
-
-	let module_result =
-		parser::Module::from_string(content, ParseOptions::default(), source_id, None);
-
-	let output = match module_result {
-		Ok(t) => t,
-		Err(parse_err) => {
-			return (fs, Err(vec![(parse_err, source_id).into()]));
-		}
-	};
-
-	let temp_diagnostics = Vec::new();
-
-	let (content, source_map) = output.to_string_with_source_map(&ToStringOptions::minified(), &fs);
-
-	let output =
-		Output { output_path: output_path.to_path_buf(), content, mappings: source_map.mappings };
-
-	(fs, Ok(BuildOutput { outputs: vec![output], temp_diagnostics }))
+	if let (false, Ok((_data, module))) = (diagnostics.has_error(), data_and_module) {
+		// TODO for all modules
+		// TODO pass through transformers
+		let to_string_options =
+			if minify_output { ToStringOptions::minified() } else { ToStringOptions::default() };
+		let content = module.to_string(&to_string_options);
+		let main_output = Output {
+			output_path: output_path.to_path_buf(),
+			content,
+			// TODO temp
+			mappings: String::new(),
+		};
+		Ok(BuildOutput { outputs: vec![main_output], diagnostics, fs })
+	} else {
+		Err(FailedBuildOutput { fs, diagnostics })
+	}
 }

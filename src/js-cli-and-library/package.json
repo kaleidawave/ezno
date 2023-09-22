@@ -15,8 +15,8 @@
 			"types": "./ezno.d.ts"
 		},
 		"./initialized": {
-			"require": "./dist/initilized.cjs",
-			"import": "./dist/initilized.mjs"
+			"require": "./dist/initialized.cjs",
+			"import": "./dist/initialized.mjs"
 		}
 	},
 	"scripts": {
@@ -26,7 +26,9 @@
 		"build-release": "cargo build --lib --release --target wasm32-unknown-unknown && npm run bind-release && npm run build-js",
 		"bind": "wasm-bindgen --out-dir build --target web ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm",
 		"bind-release": "wasm-bindgen --out-dir build --target web ../../target/wasm32-unknown-unknown/release/ezno_lib.wasm",
-		"build-js": "unbuild && cp ./build/ezno_lib_bg.wasm dist/shared"
+		"build-js": "unbuild && cp ./build/ezno_lib_bg.wasm dist/shared",
+		"test": "npm run build && npm run run-tests",
+		"run-tests": "node test.mjs && node test.cjs && deno run -A test.mjs"
 	},
 	"keywords": [
 		"typescript",
