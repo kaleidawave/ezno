@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::{SourceId, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
@@ -90,7 +90,9 @@ pub enum Scope {
 	TryBlock {},
 	// Just blocks and modules
 	Block {},
-	Module {},
+	Module {
+		source: SourceId,
+	},
 }
 
 impl<'a> Environment<'a> {
@@ -105,7 +107,7 @@ impl<'a> Environment<'a> {
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
 		expression: Option<&impl SynthesizableExpression>,
-		assignment_span: Span,
+		assignment_span: SpanWithSource,
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId {
 		match lhs {
@@ -118,10 +120,12 @@ impl<'a> Environment<'a> {
 				) -> TypeId {
 					match reference {
 						Reference::Variable(name, position) => {
-							env.get_variable_or_error(&name, &position, checking_data).unwrap().1
+							env.get_variable_or_error(&name, position.clone(), checking_data)
+								.unwrap()
+								.1
 						}
 						Reference::Property { on, with, span } => {
-							env.get_property_handle_errors(on, with, checking_data, span)
+							env.get_property_handle_errors(on, with, checking_data, span.clone())
 						}
 					}
 				}
@@ -149,7 +153,7 @@ impl<'a> Environment<'a> {
 				fn set_property_error_to_type_check_error(
 					ctx: &GeneralContext,
 					error: SetPropertyError,
-					assignment_span: Span,
+					assignment_span: SpanWithSource,
 					types: &TypeStore,
 					new: TypeId,
 				) -> TypeCheckError<'static> {
@@ -196,10 +200,10 @@ impl<'a> Environment<'a> {
 						let existing = get_reference(self, reference.clone(), checking_data);
 
 						let expression = expression.unwrap();
-						let rhs = (
-							expression.synthesize_expression(self, checking_data),
-							expression.get_position(),
-						);
+						let with_source =
+							expression.get_position().clone().with_source(self.get_source());
+						let rhs =
+							(expression.synthesize_expression(self, checking_data), with_source);
 						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
 							operator.into(),
@@ -242,7 +246,7 @@ impl<'a> Environment<'a> {
 								}
 							}
 							.into(),
-							(TypeId::ONE, Span::NULL_SPAN),
+							(TypeId::ONE, SpanWithSource::NULL_SPAN),
 							checking_data,
 							self,
 						);
@@ -309,7 +313,7 @@ impl<'a> Environment<'a> {
 	pub fn assign_to_variable_handle_errors<T: crate::FSResolver>(
 		&mut self,
 		variable_name: &str,
-		assignment_position: Span,
+		assignment_position: SpanWithSource,
 		new_type: TypeId,
 		checking_data: &mut CheckingData<T>,
 	) -> TypeId {
@@ -334,7 +338,7 @@ impl<'a> Environment<'a> {
 	pub fn assign_to_variable(
 		&mut self,
 		variable_name: &str,
-		assignment_position: Span,
+		assignment_position: SpanWithSource,
 		new_type: TypeId,
 		store: &TypeStore,
 	) -> Result<TypeId, AssignmentError> {
@@ -444,7 +448,7 @@ impl<'a> Environment<'a> {
 		on: TypeId,
 		property: TypeId,
 		checking_data: &mut CheckingData<U>,
-		site: Span,
+		site: SpanWithSource,
 	) -> TypeId {
 		match self.get_property(on, property, &mut checking_data.types, None) {
 			Some((_, ty)) => ty,
@@ -474,7 +478,7 @@ impl<'a> Environment<'a> {
 	pub fn get_variable_or_error<U: crate::FSResolver>(
 		&mut self,
 		name: &str,
-		pos: &Span,
+		position: SpanWithSource,
 		checking_data: &mut CheckingData<U>,
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
@@ -489,7 +493,7 @@ impl<'a> Environment<'a> {
 							variable: name,
 							// TODO
 							possibles: Default::default(),
-							position: pos.clone(),
+							position,
 						},
 					);
 					return Err(TypeId::ERROR_TYPE);

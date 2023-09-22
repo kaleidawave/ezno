@@ -24,7 +24,7 @@ pub(super) fn type_interface_declaration<T: crate::FSResolver, S: ContextType>(
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T>,
 ) {
-	let Decorated { on: interface, decorators } = interface;
+	let Decorated { on: interface, decorators, position } = interface;
 
 	let interface_type = todo!();
 	// 	*checking_data.type_mappings.types_to_types.get(&interface.type_id).unwrap();
@@ -192,7 +192,7 @@ pub(super) fn synthesize_signatures<
 					environment,
 					checking_data,
 					performs.as_ref().into(),
-					position.clone(),
+					position.clone().with_source(environment.get_source()),
 					FunctionKind::Arrow,
 					behavior.interface_type(),
 				);
@@ -235,14 +235,20 @@ pub(super) fn synthesize_signatures<
 				return_type,
 				is_readonly,
 				position,
-			} => checking_data.raise_unimplemented_error("interface constructor", position.clone()),
+			} => checking_data.raise_unimplemented_error(
+				"interface constructor",
+				position.clone().with_source(environment.get_source()),
+			),
 			InterfaceMember::Caller {
 				parameters,
 				type_parameters,
 				return_type,
 				is_readonly,
 				position,
-			} => checking_data.raise_unimplemented_error("interface caller", position.clone()),
+			} => checking_data.raise_unimplemented_error(
+				"interface caller",
+				position.clone().with_source(environment.get_source()),
+			),
 			InterfaceMember::Rule {
 				parameter,
 				rule,
@@ -251,8 +257,11 @@ pub(super) fn synthesize_signatures<
 				is_readonly,
 				output_type,
 				position,
-			} => checking_data.raise_unimplemented_error("interface rule", position.clone()),
-			InterfaceMember::Comment(_) => {}
+			} => checking_data.raise_unimplemented_error(
+				"interface rule",
+				position.clone().with_source(environment.get_source()),
+			),
+			InterfaceMember::Comment(..) => {}
 		}
 	}
 

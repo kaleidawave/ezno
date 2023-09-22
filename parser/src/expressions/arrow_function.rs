@@ -1,13 +1,12 @@
-use std::borrow::Cow;
-
 use crate::{tsx_keywords, VariableIdentifier};
+use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
 	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Keyword, Parameter,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation,
-	VariableField, WithComment,
+	ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
+	WithComment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -25,17 +24,12 @@ impl FunctionBased for ArrowFunctionBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let is_async = if let Some(Token(TSXToken::Keyword(TSXKeyword::Async), _)) = reader.peek() {
-			let Token(_, pos) = reader.next().unwrap();
-			Some(Keyword::new(pos))
-		} else {
-			None
-		};
-		Ok((is_async, ()))
+		let async_keyword = Keyword::optionally_from_reader(reader);
+		Ok((async_keyword, ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -51,7 +45,7 @@ impl FunctionBased for ArrowFunctionBase {
 	}
 
 	fn parameters_from_reader<T: source_map::ToString>(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<FunctionParameters> {
@@ -70,6 +64,7 @@ impl FunctionBased for ArrowFunctionBase {
 					),
 					type_annotation: None,
 					additionally: None,
+					position: position.clone(),
 				}];
 				Ok(FunctionParameters { parameters, rest_parameter: None, position })
 			}
@@ -103,14 +98,14 @@ impl FunctionBased for ArrowFunctionBase {
 		buf.push_str(if settings.pretty { " => " } else { "=>" });
 	}
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
-		header.as_ref().map(|kw| Cow::Borrowed(&kw.1))
+	fn header_left(header: &Self::Header) -> Option<&Span> {
+		header.as_ref().map(|kw| kw.get_position())
 	}
 }
 
 impl ArrowFunction {
 	pub(crate) fn from_reader_with_first_parameter(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		first_parameter: (String, Span),
@@ -121,12 +116,13 @@ impl ArrowFunction {
 			),
 			type_annotation: None,
 			additionally: None,
+			position: first_parameter.1.clone(),
 		}];
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
 		let arrow_function = FunctionBase {
 			header: None,
-			position: first_parameter.1.union(&body.get_position()),
+			position: first_parameter.1.union(body.get_position()),
 			name: (),
 			parameters: crate::FunctionParameters {
 				parameters,
@@ -141,18 +137,15 @@ impl ArrowFunction {
 	}
 
 	pub(crate) fn from_reader_sub_open_paren(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		is_async: Option<Keyword<tsx_keywords::Async>>,
-		open_paren_span: Span,
+		start: TokenStart,
 	) -> ParseResult<Self> {
-		let parameters = FunctionParameters::from_reader_sub_open_parenthesis(
-			reader,
-			state,
-			settings,
-			open_paren_span.clone(),
-		)?;
+		let parameters =
+			FunctionParameters::from_reader_sub_open_parenthesis(reader, state, settings, start)?;
+
 		let return_type =
 			if reader.conditional_next(|token| matches!(token, TSXToken::Colon)).is_some() {
 				Some(TypeAnnotation::from_reader(reader, state, settings)?)
@@ -167,7 +160,7 @@ impl ArrowFunction {
 			parameters,
 			return_type,
 			type_parameters: None,
-			position: open_paren_span.union(&body.get_position()),
+			position: start.union(body.get_position()),
 			body,
 		})
 	}
@@ -176,13 +169,14 @@ impl ArrowFunction {
 /// For [ArrowFunction] and [crate::MatchArm] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),
 	Block(Block),
 }
 
 impl ASTNode for ExpressionOrBlock {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			ExpressionOrBlock::Expression(expression) => expression.get_position(),
 			ExpressionOrBlock::Block(block) => block.get_position(),
@@ -190,7 +184,7 @@ impl ASTNode for ExpressionOrBlock {
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {

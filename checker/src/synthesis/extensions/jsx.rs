@@ -50,7 +50,10 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 				Some(attr_restriction) => {
 					let mut basic_subtyping = BasicEquality {
 						add_property_restrictions: false,
-						position: attribute.get_position().into_owned(),
+						position: attribute
+							.get_position()
+							.clone()
+							.with_source(environment.get_source()),
 					};
 					let check = type_is_subtype(
 						attr_restriction,
@@ -92,7 +95,8 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 									),
 									attribute_type_site: (),
 									value_site: parser::ASTNode::get_position(attribute)
-										.into_owned(),
+										.clone()
+										.with_source(environment.get_source()),
 								},
 							);
 						}

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
 use crate::{errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords};
 use source_map::Span;
@@ -7,13 +7,14 @@ use visitable_derive::Visitable;
 
 use crate::{
 	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, GetSetGeneratorOrNone,
-	Keyword, ParseError, ParseErrors, ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken,
-	TypeAnnotation, WithComment,
+	Keyword, ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation,
+	WithComment,
 };
 
 /// The variable id's of these is handled by their [PropertyKey]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(Option<Keyword<tsx_keywords::Static>>, ClassFunction),
@@ -31,6 +32,7 @@ pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ClassProperty {
 	pub readonly_keyword: Option<Keyword<tsx_keywords::Readonly>>,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,
@@ -40,17 +42,17 @@ pub struct ClassProperty {
 }
 
 impl ASTNode for ClassMember {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			Self::Constructor(cst) => cst.get_position(),
 			Self::Method(_, mtd) => mtd.get_position(),
-			Self::Property(_, prop) => Cow::Owned(prop.position.clone()),
+			Self::Property(_, prop) => &prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -61,7 +63,7 @@ impl ASTNode for ClassMember {
 
 		let is_static = reader
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Static))
-			.map(|Token(_, span)| Keyword::new(span));
+			.map(|token| Keyword::new(token.get_span()));
 
 		if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, settings)?));
@@ -69,10 +71,10 @@ impl ASTNode for ClassMember {
 
 		let async_keyword = reader
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Async))
-			.map(|Token(_, span)| Keyword::new(span));
+			.map(|token| Keyword::new(token.get_span()));
 		let readonly_keyword = reader
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Async))
-			.map(|Token(_, span)| Keyword::new(span));
+			.map(|token| Keyword::new(token.get_span()));
 		let get_set_generator_or_none = GetSetGeneratorOrNone::from_reader(reader);
 
 		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?;
@@ -91,14 +93,7 @@ impl ASTNode for ClassMember {
 			}
 			Some(Token(token, _)) => {
 				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
-					let Token(token, position) = reader.next().unwrap();
-					return Err(ParseError::new(
-						ParseErrors::UnexpectedToken {
-							expected: &[TSXToken::OpenParentheses],
-							found: token,
-						},
-						position,
-					));
+					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				let member_type: Option<TypeAnnotation> = match token {
 					TSXToken::Colon => {
@@ -120,7 +115,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						readonly_keyword,
-						position: key.get_position().into_owned(),
+						position: key.get_position().clone(),
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
@@ -188,7 +183,7 @@ impl ClassMember {
 
 impl ClassFunction {
 	fn from_reader_with_config(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		is_async: Option<Keyword<tsx_keywords::Async>>,
@@ -215,13 +210,13 @@ impl FunctionBased for ClassFunctionBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		let async_keyword = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-			.map(|Token(_, span)| Keyword::new(span));
+			.map(|token| Keyword::new(token.get_span()));
 		let header = GetSetGeneratorOrNone::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?;
 		Ok(((async_keyword, header), name))
@@ -241,8 +236,8 @@ impl FunctionBased for ClassFunctionBase {
 		name.to_string_from_buffer(buf, settings, depth);
 	}
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
-		header.0.as_ref().map(|async_kw| Cow::Borrowed(&async_kw.1)).xor(header.1.get_position())
+	fn header_left(header: &Self::Header) -> Option<&Span> {
+		header.0.as_ref().map(|async_kw| async_kw.get_position()).xor(header.1.get_position())
 	}
 }
 
@@ -256,12 +251,11 @@ impl FunctionBased for ClassConstructorBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Constructor))?;
-		Ok((Keyword::new(span), ()))
+		Ok((Keyword::from_reader(reader)?, ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -274,7 +268,7 @@ impl FunctionBased for ClassConstructorBase {
 		buf.push_str("constructor")
 	}
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
-		Some(Cow::Borrowed(&header.1))
+	fn header_left(header: &Self::Header) -> Option<&Span> {
+		Some(&header.get_position())
 	}
 }

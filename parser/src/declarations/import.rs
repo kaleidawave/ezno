@@ -1,9 +1,3 @@
-use std::{
-	borrow::Cow,
-	sync::atomic::{AtomicU16, Ordering},
-};
-
-use derive_debug_extras::DebugExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
@@ -14,35 +8,23 @@ use crate::{
 };
 use visitable_derive::Visitable;
 
-static IMPORT_STATEMENT_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
-
-#[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
-pub struct ImportStatementId(u16);
-
-impl ImportStatementId {
-	pub fn new() -> Self {
-		Self(IMPORT_STATEMENT_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
-	}
-}
-
-// TODO not sure
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for ImportStatementId {
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		token_stream.extend(self_rust_tokenize::quote!(ImportStatementId::new()))
-	}
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum ImportKind {
+	Parts(Vec<ImportExportPart>),
+	All { under: String },
+	SideEffect,
 }
 
 /// TODO a few more thing needed here
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
-	pub default_import: Option<String>,
-	pub imports: Option<Vec<ImportPart>>,
-	pub import_statement_id: ImportStatementId,
+	pub default: Option<String>,
+	pub kind: ImportKind,
 	pub from: String,
 	pub only_type: bool,
 	pub position: Span,
@@ -50,142 +32,170 @@ pub struct ImportDeclaration {
 
 impl ASTNode for ImportDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
 		let only_type: bool =
 			reader.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type))).is_some();
-		let (default_import, imports) = if matches!(
-			reader.peek(),
+
+		let peek = reader.peek();
+		let default = if !matches!(
+			peek,
 			Some(Token(
-				TSXToken::SingleQuotedStringLiteral(..) | TSXToken::DoubleQuotedStringLiteral(..),
+				TSXToken::OpenBrace
+					| TSXToken::Multiply | TSXToken::SingleQuotedStringLiteral(_)
+					| TSXToken::DoubleQuotedStringLiteral(_),
 				_
 			))
 		) {
-			(None, None)
-		} else if !matches!(reader.peek(), Some(Token(TSXToken::OpenBrace, _))) {
-			let default_import =
-				Some(token_as_identifier(reader.next().unwrap(), "default import")?.0);
-			if !matches!(reader.peek(), Some(Token(TSXToken::Comma, _))) {
-				(default_import, None)
-			} else {
-				(
-					default_import,
-					Some(
-						parse_bracketed::<ImportPart>(
-							reader,
-							state,
-							settings,
-							Some(TSXToken::OpenBrace),
-							TSXToken::CloseBrace,
-						)?
-						.0,
-					),
-				)
-			}
+			let default = token_as_identifier(reader.next().unwrap(), "default import")?.0;
+			Some((default, !matches!(reader.peek(), Some(Token(TSXToken::Comma, _)))))
+		} else if matches!(peek, Some(Token(t, _ )) if t.is_string_literal()) {
+			let Token(
+				TSXToken::SingleQuotedStringLiteral(from)
+				| TSXToken::DoubleQuotedStringLiteral(from),
+				pos,
+			) = reader.next().unwrap()
+			else {
+				unreachable!()
+			};
+			return Ok(ImportDeclaration {
+				position: start_position.union(pos.get_end_after(from.len() + 2)),
+				default: None,
+				kind: ImportKind::SideEffect,
+				only_type: false,
+				from,
+			});
 		} else {
-			(
-				None,
-				Some(
-					parse_bracketed::<ImportPart>(
-						reader,
-						state,
-						settings,
-						Some(TSXToken::OpenBrace),
-						TSXToken::CloseBrace,
-					)?
-					.0,
-				),
-			)
+			None
 		};
 
-		if default_import.is_some() || imports.is_some() {
-			reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
-		}
+		let kind = if default.as_ref().map(|(_, no_comma)| *no_comma).unwrap_or_default() {
+			// From default keyword
+			ImportKind::Parts(Vec::new())
+		} else if matches!(reader.peek(), Some(Token(TSXToken::Multiply, _))) {
+			reader.next();
+			let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+			let under = token_as_identifier(reader.next().unwrap(), "import alias")?.0;
+			ImportKind::All { under }
+		} else {
+			let parts = parse_bracketed::<ImportExportPart>(
+				reader,
+				state,
+				settings,
+				Some(TSXToken::OpenBrace),
+				TSXToken::CloseBrace,
+			)?
+			.0;
+			ImportKind::Parts(parts)
+		};
 
-		let (from, end_position) = match reader.next().ok_or_else(parse_lexing_error)? {
+		reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+
+		let (span, from) = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(
-				TSXToken::DoubleQuotedStringLiteral(expression)
-				| TSXToken::SingleQuotedStringLiteral(expression),
-				end_position,
-			) => (expression, end_position),
-			Token(token, position) => {
+				TSXToken::DoubleQuotedStringLiteral(from)
+				| TSXToken::SingleQuotedStringLiteral(from),
+				start,
+			) => {
+				let span = start.with_length(from.len() + 2);
+				(span, from)
+			}
+			token => {
+				let position = token.get_span();
 				return Err(ParseError::new(
-					ParseErrors::ExpectedStringLiteral { found: token },
+					ParseErrors::ExpectedStringLiteral { found: token.0 },
 					position,
 				));
 			}
 		};
 		Ok(ImportDeclaration {
-			default_import,
-			imports,
+			default: default.map(|(left, _)| left),
+			kind,
 			only_type,
 			from,
-			import_statement_id: ImportStatementId::new(),
-			position: start_position.union(&end_position),
+			position: start_position.union(span),
 		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringOptions,
-		_depth: u8,
+		settings: &crate::ToStringOptions,
+		depth: u8,
 	) {
 		buf.push_str("import ");
 		// TODO type script only
 		if self.only_type {
 			buf.push_str("type ");
 		}
-		if let Some(default_import) = &self.default_import {
-			buf.push_str(default_import);
-			if self.imports.is_some() {
-				buf.push_str(", ");
-			}
+
+		if let Some(ref default) = self.default {
+			buf.push_str(default);
+			buf.push(' ')
 		}
-		if let Some(imports) = &self.imports {
-			buf.push('{');
-			for (at_end, import) in imports.iter().endiate() {
-				import.to_string_from_buffer(buf, _settings, _depth);
-				if !at_end {
-					buf.push(',');
+
+		match self.kind {
+			ImportKind::All { ref under } => {
+				if self.default.is_some() {
+					buf.push_str(", ");
+				}
+				buf.push_str("* as ");
+				buf.push_str(&under);
+			}
+			ImportKind::SideEffect => {
+				buf.push('"');
+				buf.push_str(&self.from);
+				buf.push('"');
+				return;
+			}
+			ImportKind::Parts(ref parts) => {
+				if !parts.is_empty() {
+					if self.default.is_some() {
+						buf.push_str(", ");
+					}
+					buf.push('{');
+					for (at_end, part) in parts.iter().endiate() {
+						part.to_string_from_buffer(buf, settings, depth);
+						if !at_end {
+							buf.push(',');
+						}
+					}
+					buf.push('}');
 				}
 			}
-			buf.push('}');
 		}
-		if self.default_import.is_some() || self.imports.is_some() {
-			buf.push_str(" from ");
-		}
-		buf.push('"');
+		buf.push_str("from \"");
 		buf.push_str(&self.from);
 		buf.push('"');
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub enum ImportPart {
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum ImportExportPart {
 	Name(VariableIdentifier),
 	NameWithAlias { name: String, alias: String, position: Span },
 }
 
-impl ASTNode for ImportPart {
-	fn get_position(&self) -> Cow<Span> {
+impl ASTNode for ImportExportPart {
+	fn get_position(&self) -> &Span {
 		match self {
-			ImportPart::Name(identifier) => identifier.get_position(),
-			ImportPart::NameWithAlias { position, .. } => Cow::Borrowed(position),
+			ImportExportPart::Name(identifier) => identifier.get_position(),
+			ImportExportPart::NameWithAlias { position, .. } => position,
 		}
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -209,8 +219,8 @@ impl ASTNode for ImportPart {
 		_depth: u8,
 	) {
 		match self {
-			ImportPart::Name(identifier) => buf.push_str(identifier.as_str()),
-			ImportPart::NameWithAlias { name, alias, .. } => {
+			ImportExportPart::Name(identifier) => buf.push_str(identifier.as_str()),
+			ImportExportPart::NameWithAlias { name, alias, .. } => {
 				buf.push_str(name);
 				buf.push_str(" as ");
 				buf.push_str(alias);

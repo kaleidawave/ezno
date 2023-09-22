@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-
-use crate::{tsx_keywords::Is, TSXKeyword, TSXToken};
+use crate::{tsx_keywords::Is, TSXToken};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::TokenReader;
@@ -11,7 +9,10 @@ use crate::{
 	ASTNode, Keyword, TypeAnnotation,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[get_field_by_type_target(Span)]
 pub struct IsExpression {
 	pub is: Keyword<Is>,
 	pub matcher: Box<MultipleExpression>,
@@ -19,28 +20,13 @@ pub struct IsExpression {
 	pub position: Span,
 }
 
-#[cfg(feature = "self-rust-tokenize")]
-impl self_rust_tokenize::SelfRustTokenize for IsExpression {
-	fn append_to_token_stream(
-		&self,
-		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		todo!()
-	}
-}
-
 impl ASTNode for IsExpression {
-	fn get_position(&self) -> Cow<source_map::Span> {
-		Cow::Borrowed(&self.position)
-	}
-
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, source_map::Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Is))?;
-		let is = Keyword::new(span);
+		let is = Keyword::from_reader(reader)?;
 		is_expression_from_reader_sub_is_keyword(reader, state, settings, is)
 	}
 
@@ -63,10 +49,14 @@ impl ASTNode for IsExpression {
 		}
 		buf.push('}');
 	}
+
+	fn get_position(&self) -> &Span {
+		&self.position
+	}
 }
 
 pub(crate) fn is_expression_from_reader_sub_is_keyword(
-	reader: &mut impl TokenReader<TSXToken, source_map::Span>,
+	reader: &mut impl TokenReader<crate::TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &crate::ParseOptions,
 	is: Keyword<Is>,
@@ -81,12 +71,10 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 			TypeAnnotation::from_reader_with_config(reader, state, settings, false, true)?;
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
-		if let Some(tokenizer_lib::Token(_, pos)) =
-			reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace))
-		{
+		if let Some(token) = reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace)) {
 			branches.push((type_annotation, body));
 			return Ok(IsExpression {
-				position: is.1.union(&pos),
+				position: is.get_position().union(token.get_end()),
 				is,
 				matcher: Box::new(matcher),
 				branches,

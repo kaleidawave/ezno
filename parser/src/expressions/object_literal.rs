@@ -1,16 +1,20 @@
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
-use std::{borrow::Cow, fmt::Debug, mem};
+use std::{fmt::Debug, mem};
+use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, functions::FunctionBased, property_key::AlwaysPublic, ASTNode,
-	Block, Expression, FunctionBase, GetSetGeneratorOrNone, Keyword, ParseError, ParseErrors,
-	ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
+	errors::parse_lexing_error, functions::FunctionBased, property_key::AlwaysPublic,
+	throw_unexpected_token_with_token, ASTNode, Block, Expression, FunctionBase,
+	GetSetGeneratorOrNone, Keyword, ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token,
+	TokenReader, WithComment,
 };
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
 	pub position: Span,
@@ -19,6 +23,7 @@ pub struct ObjectLiteral {
 #[derive(Debug, Clone, PartialEqExtras)]
 #[partial_eq_ignore_types(Span, VariableId)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectLiteralMember {
 	SpreadExpression(Expression, Span),
 	Shorthand(String, Span),
@@ -74,13 +79,11 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let async_keyword = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Async)))
-			.map(|Token(_, span)| crate::Keyword::new(span));
+		let async_keyword = crate::Keyword::optionally_from_reader(reader);
 		Ok((
 			(async_keyword, GetSetGeneratorOrNone::from_reader(reader)),
 			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?,
@@ -101,9 +104,9 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		name.to_string_from_buffer(buf, settings, depth);
 	}
 
-	fn header_left(header: &Self::Header) -> Option<Cow<Span>> {
+	fn header_left(header: &Self::Header) -> Option<&Span> {
 		if let Some(ref async_kw) = header.0 {
-			Some(Cow::Borrowed(&async_kw.1))
+			Some(&async_kw.1)
 		} else {
 			header.1.get_position()
 		}
@@ -113,12 +116,12 @@ impl FunctionBased for ObjectLiteralMethodBase {
 impl Eq for ObjectLiteralMember {}
 
 impl ASTNode for ObjectLiteral {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -148,10 +151,10 @@ impl ASTNode for ObjectLiteral {
 
 impl ObjectLiteral {
 	pub(crate) fn from_reader_sub_open_curly(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
-		start_span: Span,
+		start: TokenStart,
 	) -> ParseResult<Self> {
 		let mut members: Vec<ObjectLiteralMember> = Vec::new();
 		loop {
@@ -165,20 +168,18 @@ impl ObjectLiteral {
 				break;
 			}
 		}
-		let end_span = reader.expect_next(TSXToken::CloseBrace)?;
-		Ok(ObjectLiteral { members, position: start_span.union(&end_span) })
+		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
+		Ok(ObjectLiteral { members, position: start.union(end) })
 	}
 }
 
 impl ASTNode for ObjectLiteralMember {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let async_kw = reader
-			.conditional_next(|token| matches!(token, TSXToken::Keyword(crate::TSXKeyword::Async)))
-			.map(|token| Keyword::new(token.1));
+		let async_kw = Keyword::optionally_from_reader(reader);
 		// TODO this probably needs with comment here:
 		let mut get_set_generator_or_none = GetSetGeneratorOrNone::from_reader(reader);
 		// Catch for named get or set :(
@@ -217,30 +218,20 @@ impl ASTNode for ObjectLiteralMember {
 			}
 			_ => {
 				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
-					let Token(token, position) = reader.next().unwrap();
-					return Err(ParseError::new(
-						ParseErrors::UnexpectedToken {
-							expected: &[TSXToken::OpenParentheses],
-							found: token,
-						},
-						position,
-					));
+					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if matches!(reader.peek(), Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _))) {
 					// TODO fix
 					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
-						let Token(found, position) = reader.next().unwrap();
-						Err(ParseError::new(
-							ParseErrors::UnexpectedToken { expected: &[TSXToken::Colon], found },
-							position,
-						))
+						let token = reader.next().ok_or_else(parse_lexing_error)?;
+						throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 					}
 				} else {
 					reader.expect_next(TSXToken::Colon)?;
 					let expression = Expression::from_reader(reader, state, settings)?;
-					let position = key.get_position().union(&expression.get_position());
+					let position = key.get_position().union(expression.get_position());
 					Ok(Self::Property(key, expression, position))
 				}
 			}
@@ -273,12 +264,12 @@ impl ASTNode for ObjectLiteralMember {
 		};
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			Self::Method(method) => method.get_position(),
 			Self::Shorthand(_, pos)
 			| Self::Property(_, _, pos)
-			| Self::SpreadExpression(_, pos) => Cow::Borrowed(pos),
+			| Self::SpreadExpression(_, pos) => pos,
 		}
 	}
 }

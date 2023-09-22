@@ -30,17 +30,12 @@ fn check_errors(
 	code: &'static str,
 	expected_diagnostics: &[&'static str],
 ) {
-	let mut fs = parser::source_map::MapFileStore::default();
+	let mut fs = parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 	let source =
 		parser::source_map::FileSystem::new_source_id(&mut fs, PathBuf::default(), code.to_owned());
-	let module = parser::Module::from_string(
-		code.to_owned(),
-		parser::ParseOptions::default(),
-		source,
-		None,
-		Vec::new(),
-	)
-	.unwrap();
+	let module =
+		parser::Module::from_string(code.to_owned(), parser::ParseOptions::default(), source, None)
+			.unwrap();
 
 	// let global_buffer = Arc::new(Mutex::new(String::new()));
 	// let old_panic_hook = panic::take_hook();

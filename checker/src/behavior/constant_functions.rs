@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	context::get_on_ctx,
@@ -22,7 +22,7 @@ pub(crate) enum ConstantResult {
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
-	call_site_type_args: &Option<Vec<(Span, TypeId)>>,
+	call_site_type_args: &Option<Vec<(SpanWithSource, TypeId)>>,
 	arguments: &[SynthesizedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
@@ -38,7 +38,9 @@ pub(crate) fn call_constant_function(
 			let second_argument_type =
 				types.get_type_by_id(arguments.last().unwrap().into_type().unwrap());
 
-			let Type::Constant(Constant::Number(num)) = second_argument_type else { return Err(()) };
+			let Type::Constant(Constant::Number(num)) = second_argument_type else {
+				return Err(());
+			};
 
 			let result = match id {
 				"sin" => num.sin(),

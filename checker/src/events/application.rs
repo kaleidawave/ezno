@@ -135,7 +135,7 @@ pub(crate) fn apply_event(
 						None,
 						with,
 						// TODO
-						source_map::Span::NULL_SPAN,
+						source_map::SpanWithSource::NULL_SPAN,
 						environment,
 						target,
 						types,

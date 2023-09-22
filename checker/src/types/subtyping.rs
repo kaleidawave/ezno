@@ -1,6 +1,6 @@
 //! Type subtyping / order / subtype checking.
 
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	context::{Environment, GeneralContext, Logical},
@@ -446,7 +446,10 @@ pub(crate) fn check_satisfies(
 			to_satisfy,
 			expr_ty,
 			None,
-			&mut BasicEquality { add_property_restrictions: false, position: Span::NULL_SPAN },
+			&mut BasicEquality {
+				add_property_restrictions: false,
+				position: SpanWithSource::NULL_SPAN,
+			},
 			environment,
 			types,
 		);

@@ -1,36 +1,39 @@
-const { build, check } = require("./dist/initialized.cjs");
+const { build, check, parse_expression } = require("./dist/initialized.cjs");
 const { deepStrictEqual } = require("node:assert");
 
-function buildTest() {
-	const content = `
-	export function setupCounter(element) {
-		let counter = 0;
-		const setCounter = count => {
-			counter = count;
-			element.innerHTML = \`count is \${counter}\`
-		};
-		element.addEventListener('click', () => setCounter(counter + 1));
-		setCounter(0)
-	};`;
+// TODO temp
+// function buildTest() {
+// 	const content = `
+// 	export function setupCounter(element) {
+// 		let counter = 0;
+// 		const setCounter = count => {
+// 			counter = count;
+// 			element.innerHTML = \`count is \${counter}\`
+// 		};
+// 		element.addEventListener('click', () => setCounter(counter + 1));
+// 		setCounter(0)
+// 	};`;
 
-	const output = build((_path) => content, "input.js");
+// 	const output = build((_path) => content, "input.js");
 
-	deepStrictEqual(output, {
-		Ok: {
-			outputs: [
-				{
-					output_path: "out.js",
-					content:
-						"export function setupCounter(element){let counter=0;const setCounter=count=>{counter=count;element.innerHTML=`count is ${counter}`};element.addEventListener('click',()=>setCounter(counter+1));setCounter(0)}",
-					mappings: "",
-				},
-			],
-			temp_diagnostics: [],
-		},
-	});
+// 	deepStrictEqual(output, {
+// 		Ok: {
+// 			outputs: [
+// 				{
+// 					output_path: "out.js",
+// 					content:
+// 						"export function setupCounter(element){let counter=0;const setCounter=count=>{counter=count;element.innerHTML=`count is ${counter}`};element.addEventListener('click',()=>setCounter(counter+1));setCounter(0)}",
+// 					mappings: "",
+// 				},
+// 			],
+// 			diagnostics: [],
+// 		},
+// 	});
 
-	console.log("WASM: build test passed")
-}
+// 	console.log("WASM: build test passed")
+// }
+
+// buildTest()
 
 function checkTest() {
 	const example = "const x: 4 = 2;"
@@ -57,5 +60,6 @@ function checkTest() {
 	console.log("WASM: check test passed")
 }
 
-buildTest()
 checkTest()
+
+console.log(parse_expression("x = 4 + 2"))

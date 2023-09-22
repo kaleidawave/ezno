@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
@@ -62,7 +62,7 @@ pub fn synthesize_template_literal<
 			0,
 			SynthesizedArgument::NonSpread {
 				ty: static_parts.build_object(),
-				position: Span::NULL_SPAN,
+				position: SpanWithSource::NULL_SPAN,
 			},
 		);
 

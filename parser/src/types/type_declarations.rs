@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
 	ASTNode, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
@@ -10,6 +8,7 @@ use tokenizer_lib::{Token, TokenReader};
 /// Used for declaring classes, interfaces and functions
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TypeDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -18,7 +17,7 @@ pub struct TypeDeclaration {
 
 impl ASTNode for TypeDeclaration {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -51,8 +50,8 @@ impl ASTNode for TypeDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 }
 
@@ -61,6 +60,7 @@ impl ASTNode for TypeDeclaration {
 /// TODO is default and extends mut ex
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum GenericTypeConstraint {
 	Parameter { name: String, default: Option<TypeAnnotation> },
 	Extends(String, TypeAnnotation),
@@ -82,7 +82,7 @@ impl GenericTypeConstraint {
 
 impl ASTNode for GenericTypeConstraint {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -148,7 +148,7 @@ impl ASTNode for GenericTypeConstraint {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		todo!()
 	}
 }

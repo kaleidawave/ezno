@@ -1,14 +1,13 @@
 use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
-	extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression},
 	functions::GeneralFunctionBase,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
-		FUNCTION_CALL_PRECEDENCE, OPTIONAL_CHAINING_PRECEDENCE,
+		FUNCTION_CALL_PRECEDENCE,
 	},
-	parse_bracketed, to_string_bracketed,
+	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
 	CursorId, ExpressionPosition, FunctionHeader, Keyword, NumberStructure, ParseResult, Quoted,
 	TSXKeyword,
@@ -30,8 +29,13 @@ use super::{
 	TokenReader, TypeAnnotation,
 };
 
-use crate::tsx_keywords::{self, As, Generator, Is, Satisfies};
+#[cfg(feature = "extras")]
+use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression};
+
+use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
+use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -45,18 +49,17 @@ pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
 pub type ExpressionFunctionBase = GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
 
-use std::{
-	borrow::Cow,
-	convert::{TryFrom, TryInto},
-};
+use std::convert::{TryFrom, TryInto};
 
 /// Expression structures
 ///
 /// Comma is implemented as a [BinaryOperator]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
+#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberStructure, Span),
@@ -76,6 +79,7 @@ pub enum Expression {
 		lhs: Box<Expression>,
 		operator: BinaryOperator,
 		rhs: Box<Expression>,
+		position: Span,
 	},
 	SpecialOperators(SpecialOperators, Span),
 	UnaryOperation {
@@ -87,12 +91,14 @@ pub enum Expression {
 	Assignment {
 		lhs: LHSOfAssignment,
 		rhs: Box<Expression>,
+		position: Span,
 	},
 	/// Modified assignment cannot have destructured thingies
 	BinaryAssignmentOperation {
 		lhs: VariableOrPropertyAccess,
 		operator: BinaryAssignmentOperator,
 		rhs: Box<Expression>,
+		position: Span,
 	},
 	UnaryPrefixAssignmentOperation {
 		operator: UnaryPrefixAssignmentOperator,
@@ -117,13 +123,14 @@ pub enum Expression {
 	PropertyAccess {
 		parent: Box<Expression>,
 		property: PropertyReference,
-		position: Span,
 		is_optional: bool,
+		position: Span,
 	},
 	/// e.g `...[4]`
 	Index {
 		indexee: Box<Expression>,
 		indexer: Box<MultipleExpression>,
+		is_optional: bool,
 		position: Span,
 	},
 	// Function calls
@@ -131,6 +138,7 @@ pub enum Expression {
 		function: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
 		arguments: Vec<SpreadExpression>,
+		is_optional: bool,
 		position: Span,
 	},
 	ConstructorCall {
@@ -144,6 +152,7 @@ pub enum Expression {
 		condition: Box<Expression>,
 		truthy_result: Box<Expression>,
 		falsy_result: Box<Expression>,
+		position: Span,
 	},
 	// Functions
 	ArrowFunction(ArrowFunction),
@@ -160,9 +169,9 @@ pub enum Expression {
 	/// A start of a JSXNode
 	JSXRoot(JSXRoot),
 	/// Not to be confused with binary operator `is`
+	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
-	/// TODO under cfg
-	#[self_tokenize_field(cursor_id)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(cursor_id))]
 	Cursor {
 		#[visit_skip_field]
 		cursor_id: CursorId<Expression>,
@@ -174,15 +183,16 @@ impl Eq for Expression {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyReference {
 	Standard(String),
-	#[self_tokenize_field(0)]
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(CursorId<PropertyReference>),
 }
 
 impl ASTNode for Expression {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Expression> {
@@ -198,110 +208,78 @@ impl ASTNode for Expression {
 		self.to_string_using_precedence(buf, settings, depth, COMMA_PRECEDENCE)
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			Self::BinaryOperation { lhs, rhs, .. } => {
-				Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-			}
-			Self::Assignment { lhs, rhs, .. } => {
-				Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-			}
-			Self::ConditionalTernaryExpression { condition, falsy_result, .. } => {
-				Cow::Owned(condition.get_position().union(&falsy_result.get_position()))
-			}
-			Self::BinaryAssignmentOperation { lhs, rhs, .. } => {
-				Cow::Owned(lhs.get_position().union(&rhs.get_position()))
-			}
-			Self::NumberLiteral(_, pos)
-			| Self::StringLiteral(_, _, pos)
-			| Self::BooleanLiteral(_, pos)
-			| Self::ArrayLiteral(_, pos)
-			| Self::ParenthesizedExpression(_, pos)
-			| Self::SpecialOperators(_, pos)
-			| Self::UnaryOperation { position: pos, .. }
-			| Self::UnaryPrefixAssignmentOperation { position: pos, .. }
-			| Self::UnaryPostfixAssignmentOperation { position: pos, .. }
-			| Self::VariableReference(_, pos)
-			| Self::Index { position: pos, .. }
-			| Self::Null(pos)
-			| Self::PrefixComment(_, _, pos)
-			| Self::PostfixComment(_, _, pos)
-			| Self::Comment(_, pos)
-			| Self::FunctionCall { position: pos, .. }
-			| Self::PropertyAccess { position: pos, .. }
-			| Self::ThisReference(pos)
-			| Self::NewTarget(pos)
-			| Self::SuperExpression(_, pos)
-			| Self::DynamicImport { position: pos, .. }
-			| Self::ConstructorCall { position: pos, .. }
-			| Self::RegexLiteral { position: pos, .. }
-			| Self::Cursor { position: pos, .. } => Cow::Borrowed(pos),
-			Self::JSXRoot(root) => root.get_position(),
-			Self::ObjectLiteral(object_literal) => object_literal.get_position(),
-			Self::TemplateLiteral(template_literal) => template_literal.get_position(),
-			Self::ClassExpression(class_expression) => class_expression.get_position(),
-			Self::IsExpression(is) => is.get_position(),
-			Self::ArrowFunction(arrow_function) => arrow_function.get_position(),
-			Self::ExpressionFunction(function) => function.get_position(),
-		}
+	fn get_position(&self) -> &Span {
+		get_field_by_type::GetFieldByType::get(self)
 	}
 }
 
 impl Expression {
 	pub(self) fn from_reader_with_precedence(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
 		let first_expression = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Cursor(cursor_id), position) => {
-				return Ok(Expression::Cursor { cursor_id: cursor_id.into_cursor(), position });
+				return Ok(Expression::Cursor {
+					cursor_id: cursor_id.into_cursor(),
+					position: Span { start: position.0, end: position.0, source: () },
+				});
 			}
-			Token(TSXToken::SingleQuotedStringLiteral(expression), position) => {
-				Expression::StringLiteral(expression, Quoted::Single, position)
+			Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
+				let position = start.with_length(content.len() + 2);
+				Expression::StringLiteral(content, Quoted::Single, position)
 			}
-			Token(TSXToken::DoubleQuotedStringLiteral(expression), position) => {
-				Expression::StringLiteral(expression, Quoted::Double, position)
+			Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
+				let position = start.with_length(content.len() + 2);
+				Expression::StringLiteral(content, Quoted::Double, position)
 			}
-			Token(TSXToken::NumberLiteral(value), position) => {
+			Token(TSXToken::NumberLiteral(value), start) => {
+				let position = start.with_length(value.len());
 				let res = value.parse::<NumberStructure>();
 				match res {
 					Ok(number) => Expression::NumberLiteral(number, position),
 					Err(_) => unreachable!("Could not parse {value}"),
 				}
 			}
-			Token(TSXToken::RegexLiteral(pattern), mut position) => {
+			Token(TSXToken::RegexLiteral(pattern), start) => {
+				let mut position = start.with_length(pattern.len());
 				let flag_token =
 					reader.conditional_next(|t| matches!(t, TSXToken::RegexFlagLiteral(..)));
-				let flags = if let Some(Token(TSXToken::RegexFlagLiteral(flags), flags_position)) =
-					flag_token
-				{
-					position = position.union(&flags_position);
-					Some(flags)
-				} else {
-					None
-				};
+				let flags =
+					if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) = flag_token {
+						position = position.union(start.get_end_after(flags.len()));
+						Some(flags)
+					} else {
+						None
+					};
 				Expression::RegexLiteral { pattern, flags, position }
 			}
-			Token(TSXToken::Keyword(TSXKeyword::True), position) => {
-				Expression::BooleanLiteral(true, position)
+			t @ Token(TSXToken::Keyword(TSXKeyword::True), _) => {
+				Expression::BooleanLiteral(true, t.get_span())
 			}
-			Token(TSXToken::Keyword(TSXKeyword::False), position) => {
-				Expression::BooleanLiteral(false, position)
+			t @ Token(TSXToken::Keyword(TSXKeyword::False), _) => {
+				Expression::BooleanLiteral(false, t.get_span())
 			}
-			Token(TSXToken::Keyword(TSXKeyword::This), position) => {
-				Expression::ThisReference(position)
+			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => {
+				Expression::ThisReference(t.get_span())
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Super), position) => {
-				let Token(token, modifier_pos) = reader.next().unwrap();
+			t @ Token(TSXToken::Keyword(TSXKeyword::Super), _) => {
+				let _super_position = t.get_span();
+				let token = reader.next().unwrap();
+				let position = token.get_span();
+
 				let (reference, end) = match token {
-					TSXToken::Dot => {
+					Token(TSXToken::Dot, _) => {
 						let (property, property_pos) =
 							token_as_identifier(reader.next().unwrap(), "super property")?;
-						(SuperReference::PropertyAccess { property }, property_pos)
+						(
+							SuperReference::PropertyAccess { property },
+							TokenEnd::new(property_pos.end),
+						)
 					}
-					TSXToken::OpenParentheses => {
+					Token(TSXToken::OpenParentheses, _) => {
 						let (arguments, end_pos) = parse_bracketed(
 							reader,
 							state,
@@ -311,36 +289,32 @@ impl Expression {
 						)?;
 						(SuperReference::Call { arguments }, end_pos)
 					}
-					TSXToken::OpenBracket => {
+					Token(TSXToken::OpenBracket, _) => {
 						let indexer = Expression::from_reader(reader, state, settings)?;
-						let close_bracket_pos = reader.expect_next(TSXToken::CloseBracket)?;
-						(SuperReference::Index { indexer: Box::new(indexer) }, close_bracket_pos)
+						let end = reader.expect_next(TSXToken::CloseBracket)?;
+						(
+							SuperReference::Index { indexer: Box::new(indexer) },
+							TokenEnd::new(end.0 + 1),
+						)
 					}
 					token => {
-						return Err(ParseError::new(
-							crate::ParseErrors::UnexpectedToken {
-								expected: &[
-									TSXToken::Dot,
-									TSXToken::OpenParentheses,
-									TSXToken::OpenBracket,
-								],
-								found: token,
-							},
-							modifier_pos,
-						));
+						return throw_unexpected_token_with_token(
+							token,
+							&[TSXToken::Dot, TSXToken::OpenParentheses, TSXToken::OpenBracket],
+						);
 					}
 				};
-				Expression::SuperExpression(reference, position.union(&end))
+				Expression::SuperExpression(reference, position.union(end))
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Null), position) => Expression::Null(position),
-			Token(TSXToken::Keyword(TSXKeyword::Class), position) => {
-				let keyword = Keyword(tsx_keywords::Class, position);
+			t @ Token(TSXToken::Keyword(TSXKeyword::Null), _) => Expression::Null(t.get_span()),
+			t @ Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
+				let keyword = Keyword(tsx_keywords::Class, t.get_span());
 				let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
 					reader, state, settings, keyword,
 				)?;
 				Expression::ClassExpression(class_declaration)
 			}
-			Token(TSXToken::OpenBracket, start_pos) => {
+			t @ Token(TSXToken::OpenBracket, start) => {
 				let mut bracket_depth = 1;
 				let after_bracket = reader.scan(|token, _| match token {
 					TSXToken::OpenBracket => {
@@ -364,23 +338,25 @@ impl Expression {
 							settings,
 							ASSIGNMENT_PRECEDENCE,
 						)?;
+						let array_position = start.union(end_span);
 						Expression::Assignment {
-							lhs: LHSOfAssignment::ArrayDestructuring(
-								members,
-								start_pos.union(&end_span),
-							),
+							position: array_position.union(rhs.get_position()),
+							lhs: LHSOfAssignment::ArrayDestructuring(members, array_position),
 							rhs: Box::new(rhs),
 						}
 					} else {
-						let (items, end_pos) =
+						let (items, end) =
 							parse_bracketed(reader, state, settings, None, TSXToken::CloseBracket)?;
-						Expression::ArrayLiteral(items, start_pos.union(&end_pos))
+						Expression::ArrayLiteral(items, start.union(end))
 					}
 				} else {
-					return Err(ParseError::new(crate::ParseErrors::UnmatchedBrackets, start_pos));
+					return Err(ParseError::new(
+						crate::ParseErrors::UnmatchedBrackets,
+						t.get_span(),
+					));
 				}
 			}
-			Token(TSXToken::OpenBrace, start_pos) => {
+			t @ Token(TSXToken::OpenBrace, start) => {
 				let mut brace_depth = 1;
 				let after_brace = reader.scan(|token, _| match token {
 					TSXToken::OpenBrace => {
@@ -395,7 +371,7 @@ impl Expression {
 				});
 				if let Some(Token(token_type, _)) = after_brace {
 					if let TSXToken::Assign = token_type {
-						let (members, end_span) =
+						let (members, end) =
 							parse_bracketed(reader, state, settings, None, TSXToken::CloseBrace)?;
 						reader.next();
 						let rhs = Expression::from_reader_with_precedence(
@@ -404,24 +380,26 @@ impl Expression {
 							settings,
 							ASSIGNMENT_PRECEDENCE,
 						)?;
+						let object_position = start.union(end);
 						Expression::Assignment {
-							lhs: LHSOfAssignment::ObjectDestructuring(
-								members,
-								start_pos.union(&end_span),
-							),
+							position: object_position.union(rhs.get_position()),
+							lhs: LHSOfAssignment::ObjectDestructuring(members, object_position),
 							rhs: Box::new(rhs),
 						}
 					} else {
 						let object_literal = ObjectLiteral::from_reader_sub_open_curly(
-							reader, state, settings, start_pos,
+							reader, state, settings, start,
 						)?;
 						Expression::ObjectLiteral(object_literal)
 					}
 				} else {
-					return Err(ParseError::new(crate::ParseErrors::UnmatchedBrackets, start_pos));
+					return Err(ParseError::new(
+						crate::ParseErrors::UnmatchedBrackets,
+						t.get_span(),
+					));
 				}
 			}
-			Token(TSXToken::OpenParentheses, open_paren_span) => {
+			t @ Token(TSXToken::OpenParentheses, start) => {
 				let mut parentheses_depth = 1;
 				let next = reader.scan(|token, _| match token {
 					TSXToken::OpenParentheses => {
@@ -437,35 +415,31 @@ impl Expression {
 				if let Some(Token(token_type, _)) = next {
 					if let TSXToken::Arrow = token_type {
 						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
-							reader,
-							state,
-							settings,
-							None,
-							open_paren_span,
+							reader, state, settings, None, start,
 						)?;
 						Expression::ArrowFunction(arrow_function)
 					} else {
 						let parenthesize_expression =
 							MultipleExpression::from_reader(reader, state, settings)?;
-						let close_paren_span = reader.expect_next(TSXToken::CloseParentheses)?;
+						let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
 						Expression::ParenthesizedExpression(
 							Box::new(parenthesize_expression),
-							open_paren_span.union(&close_paren_span),
+							start.union(end),
 						)
 					}
 				} else {
 					return Err(ParseError::new(
 						crate::ParseErrors::UnmatchedBrackets,
-						open_paren_span,
+						t.get_span(),
 					));
 				}
 			}
-			Token(TSXToken::Keyword(TSXKeyword::New), new_pos) => {
+			t @ Token(TSXToken::Keyword(TSXKeyword::New), start) => {
 				if let Some(Token(TSXToken::Dot, _)) = reader.peek() {
 					// TODO assert not lonely, else syntax error
 					reader.expect_next(TSXToken::Dot)?;
 					reader.expect_next(TSXToken::IdentLiteral("target".into()))?;
-					Expression::NewTarget(new_pos)
+					Expression::NewTarget(t.get_span())
 				} else {
 					// Pass as a function call and then adds the conversion
 					let constructor_expression = Self::from_reader_with_precedence(
@@ -474,8 +448,9 @@ impl Expression {
 						settings,
 						FUNCTION_CALL_PRECEDENCE,
 					)?;
-					let position = new_pos.union(&constructor_expression.get_position());
-					let (type_arguments, end_pos) = if reader
+					let position = start.union(constructor_expression.get_position());
+
+					let (type_arguments, end) = if reader
 						.conditional_next(|token| *token == TSXToken::OpenChevron)
 						.is_some()
 					{
@@ -483,23 +458,25 @@ impl Expression {
 							parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)?;
 						(Some(generic_arguments), end_pos)
 					} else {
-						(None, position)
+						(None, TokenEnd::new(position.end))
 					};
-					let (arguments, end_pos) = if reader
+
+					let (arguments, end) = if reader
 						.conditional_next(|token| *token == TSXToken::OpenChevron)
 						.is_some()
 					{
 						parse_bracketed(reader, state, settings, None, TSXToken::CloseParentheses)
-							.map(|(args, end_span)| (Some(args), end_span))?
+							.map(|(args, end)| (Some(args), end))?
 					} else {
 						// TODO are type arguments not allowed...?
-						(None, end_pos)
+						(None, end)
 					};
+
 					Expression::ConstructorCall {
 						constructor: constructor_expression.into(),
 						type_arguments,
 						arguments,
-						position: new_pos.union(&end_pos),
+						position: start.union(end),
 					}
 				}
 			}
@@ -510,15 +487,16 @@ impl Expression {
 			//     2
 			// ]
 			// ```
-			Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), start_pos) => {
+			Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), start) => {
 				if let Some(Token(TSXToken::CloseParentheses | TSXToken::JSXExpressionEnd, _)) =
 					reader.peek()
 				{
-					return Ok(Expression::Comment(comment, start_pos));
+					let with_length = start.with_length(comment.len() + 2);
+					return Ok(Expression::Comment(comment, with_length));
 				}
 				let expression =
 					Self::from_reader_with_precedence(reader, state, settings, return_precedence)?;
-				let position = start_pos.union(&expression.get_position());
+				let position = start.union(expression.get_position());
 				Expression::PrefixComment(comment, Box::new(expression), position)
 			}
 			Token(tok @ TSXToken::JSXOpeningTagStart | tok @ TSXToken::JSXFragmentStart, span) => {
@@ -526,18 +504,20 @@ impl Expression {
 				let root = JSXRoot::from_reader_sub_start(reader, state, settings, var_name, span)?;
 				Expression::JSXRoot(root)
 			}
-			Token(TSXToken::TemplateLiteralStart, start_pos) => {
+			Token(TSXToken::TemplateLiteralStart, start) => {
 				let template_literal = TemplateLiteral::from_reader_sub_start_with_tag(
-					reader, state, settings, None, start_pos,
+					reader, state, settings, None, start,
 				)?;
 				Expression::TemplateLiteral(template_literal)
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Function), span) => {
+			t @ Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
+				let span = t.get_span();
 				let header = FunctionHeader::VirginFunctionHeader {
 					async_keyword: None,
-					function_keyword: Keyword::new(span),
+					function_keyword: Keyword::new(span.clone()),
 					// TODO
-					generator_star_token_pos: None,
+					generator_star_token_position: None,
+					position: span,
 				};
 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
 					None
@@ -552,94 +532,87 @@ impl Expression {
 				Expression::ExpressionFunction(function)
 			}
 			// TODO this should be extracted to a function that allows it to also work for leading `generator`
-			Token(TSXToken::Keyword(TSXKeyword::Async), async_span) => {
-				let async_keyword = Some(Keyword::new(async_span));
-				let generator_keyword: Option<Keyword<Generator>> = settings
-					.generator_keyword
-					.then(|| {
-						reader
-							.conditional_next(|tok| {
-								*tok == TSXToken::Keyword(TSXKeyword::Generator)
-							})
-							.map(|Token(_, span)| Keyword::new(span))
-					})
-					.flatten();
-
-				match reader.next().ok_or_else(parse_lexing_error)? {
-					Token(TSXToken::Keyword(TSXKeyword::Function), function_span) => {
-						let header = if generator_keyword.is_some() {
-							FunctionHeader::ChadFunctionHeader {
-								async_keyword,
-								generator_keyword,
-								function_keyword: Keyword::new(function_span),
-							}
-						} else {
-							let generator_star_token_pos = reader
-								.conditional_next(|tok| *tok == TSXToken::Multiply)
-								.map(|Token(_, pos)| pos);
-
-							FunctionHeader::VirginFunctionHeader {
-								async_keyword,
-								function_keyword: Keyword::new(function_span),
-								generator_star_token_pos,
-							}
-						};
-						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
-						{
-							None
-						} else {
-							let (token, span) =
-								token_as_identifier(reader.next().unwrap(), "function name")?;
-							Some(crate::VariableIdentifier::Standard(token, span))
-						};
-						let function: ExpressionFunction =
-							FunctionBase::from_reader_with_header_and_name(
-								reader, state, settings, header, name,
-							)?;
-						Expression::ExpressionFunction(function)
-					}
-					Token(TSXToken::OpenParentheses, start_pos) => {
-						assert!(generator_keyword.is_none(), "TODO");
-						let function = ArrowFunction::from_reader_sub_open_paren(
-							reader,
-							state,
-							settings,
-							async_keyword,
-							start_pos,
-						)?;
-						Expression::ArrowFunction(function)
-					}
-					Token(token, position) => {
-						return Err(ParseError::new(
-							crate::ParseErrors::UnexpectedToken {
-								expected: &[
-									TSXToken::Keyword(TSXKeyword::Function),
-									TSXToken::OpenParentheses,
-								],
-								found: token,
-							},
-							position,
-						))
-					}
-				}
+			t @ Token(TSXToken::Keyword(TSXKeyword::Async), _) => {
+				let async_keyword = Some(Keyword::new(t.get_span()));
+				let header = crate::functions::function_header_from_reader_with_async_keyword(
+					reader,
+					async_keyword,
+				)?;
+				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+					None
+				} else {
+					let (token, span) =
+						token_as_identifier(reader.next().unwrap(), "function name")?;
+					Some(crate::VariableIdentifier::Standard(token, span))
+				};
+				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
+					reader, state, settings, header, name,
+				)?)
 			}
 			#[cfg(feature = "extras")]
-			Token(TSXToken::Keyword(TSXKeyword::Is), span) => {
-				let is_expression_from_reader_sub_is_keyword =
-					is_expression_from_reader_sub_is_keyword(
-						reader,
-						state,
-						settings,
-						Keyword::new(span),
-					);
-				is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
+			t @ Token(TSXToken::Keyword(TSXKeyword::Generator), _) => {
+				let get_span = t.get_span();
+				let function_keyword = Keyword::from_reader(reader)?;
+				let position = get_span.union(function_keyword.get_position());
+				let header = FunctionHeader::ChadFunctionHeader {
+					async_keyword: None,
+					generator_keyword: Some(Keyword::new(get_span)),
+					function_keyword,
+					position,
+				};
+				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+					None
+				} else {
+					let (token, span) =
+						token_as_identifier(reader.next().unwrap(), "function name")?;
+					Some(crate::VariableIdentifier::Standard(token, span))
+				};
+				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
+					reader, state, settings, header, name,
+				)?)
+			}
+			#[cfg(feature = "extras")]
+			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) => {
+				// Maintains compatibility here
+				let mut parentheses_depth = 0;
+				let next = reader.scan(|token, _| match token {
+					TSXToken::OpenParentheses => {
+						parentheses_depth += 1;
+						false
+					}
+					TSXToken::CloseParentheses => {
+						parentheses_depth -= 1;
+						parentheses_depth == 0
+					}
+					_ => false,
+				});
+				if let Some(Token(token_type, _)) = next {
+					if let TSXToken::OpenBrace = token_type {
+						let is_expression_from_reader_sub_is_keyword =
+							is_expression_from_reader_sub_is_keyword(
+								reader,
+								state,
+								settings,
+								Keyword::new(t.get_span()),
+							);
+
+						is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
+					} else {
+						Expression::VariableReference("is".to_owned(), start.with_length(2))
+					}
+				} else {
+					return Err(ParseError::new(
+						crate::ParseErrors::UnmatchedBrackets,
+						t.get_span(),
+					));
+				}
 			}
 			token => {
 				if let Ok(unary_operator) = UnaryOperator::try_from(&token.0) {
-					let op_precedence = unary_operator.precedence();
+					let precedence = unary_operator.precedence();
 					let operand =
-						Self::from_reader_with_precedence(reader, state, settings, op_precedence)?;
-					let position = token.1.union(&operand.get_position());
+						Self::from_reader_with_precedence(reader, state, settings, precedence)?;
+					let position = token.get_span().union(operand.get_position());
 					Expression::UnaryOperation {
 						operand: Box::new(operand),
 						operator: unary_operator,
@@ -656,7 +629,7 @@ impl Expression {
 						settings,
 						op_precedence,
 					)?;
-					let position = token.1.union(&operand.get_position());
+					let position = token.get_span().union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation {
 						operand,
 						operator: unary_prefix_operator,
@@ -688,7 +661,7 @@ impl Expression {
 	}
 
 	pub(crate) fn from_reader_sub_first_expression(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		parent_precedence: u8,
@@ -713,6 +686,7 @@ impl Expression {
 					reader.expect_next(TSXToken::Colon)?;
 					let rhs = Self::from_reader(reader, state, settings)?;
 					top = Expression::ConditionalTernaryExpression {
+						position: top.get_position().union(rhs.get_position()),
 						condition: Box::new(top),
 						truthy_result: Box::new(lhs),
 						falsy_result: Box::new(rhs),
@@ -725,14 +699,15 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.next();
-					let (arguments, end_pos) =
+					let (arguments, end) =
 						parse_bracketed(reader, state, settings, None, TSXToken::CloseParentheses)?;
-					let position = top.get_position().union(&end_pos);
+					let position = top.get_position().union(end);
 					top = Expression::FunctionCall {
 						function: Box::new(top),
 						type_arguments: None,
 						arguments,
 						position,
+						is_optional: false,
 					};
 				}
 				TSXToken::OpenBracket => {
@@ -743,12 +718,13 @@ impl Expression {
 					}
 					reader.next();
 					let indexer = MultipleExpression::from_reader(reader, state, settings)?;
-					let end_position = reader.expect_next(TSXToken::CloseBracket)?;
-					let position = top.get_position().union(&end_position);
+					let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
+					let position = top.get_position().union(end);
 					top = Expression::Index {
 						position,
 						indexee: Box::new(top),
 						indexer: Box::new(indexer),
+						is_optional: false,
 					};
 				}
 				TSXToken::TemplateLiteralStart => {
@@ -760,40 +736,95 @@ impl Expression {
 					}
 					reader.next();
 					// TODO should check adjacency
-					let start_pos = top.get_position().into_owned();
+					let start = TokenStart::new(top.get_position().start);
 					let tag = Some(Box::new(top));
 					let template_lit = TemplateLiteral::from_reader_sub_start_with_tag(
-						reader, state, settings, tag, start_pos,
+						reader, state, settings, tag, start,
 					);
 					top = template_lit.map(Expression::TemplateLiteral)?;
 				}
-				dot @ TSXToken::Dot | dot @ TSXToken::OptionalChain => {
-					let is_optional = matches!(dot, TSXToken::OptionalChain);
-					if AssociativityDirection::LeftToRight.should_return(
-						parent_precedence,
-						if is_optional {
-							OPTIONAL_CHAINING_PRECEDENCE
-						} else {
-							MEMBER_ACCESS_PRECEDENCE
-						},
-					) {
+				TSXToken::OptionalChain => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
+					{
 						return Ok(top);
 					}
 					let _ = reader.next().unwrap();
 					let token = reader.next().ok_or_else(parse_lexing_error)?;
-					let (property, position) =
-						if let Token(TSXToken::Cursor(cursor_id), position) = token {
-							(PropertyReference::Cursor(cursor_id.into_cursor()), position)
-						} else {
-							let (property, pos) = token_as_identifier(token, "variable reference")?;
-							(PropertyReference::Standard(property), pos)
-						};
+					top = match token {
+						Token(TSXToken::OpenBracket, _start) => {
+							let indexer = MultipleExpression::from_reader(reader, state, settings)?;
+							let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
+							let position = top.get_position().union(end);
+							Expression::Index {
+								position,
+								indexee: Box::new(top),
+								indexer: Box::new(indexer),
+								is_optional: false,
+							}
+						}
+						Token(TSXToken::OpenParentheses, _start) => {
+							let (arguments, end) = parse_bracketed(
+								reader,
+								state,
+								settings,
+								Some(TSXToken::CloseParentheses),
+								TSXToken::CloseParentheses,
+							)?;
+							let position = top.get_position().union(end);
+							Expression::FunctionCall {
+								function: Box::new(top),
+								type_arguments: None,
+								arguments,
+								position,
+								is_optional: true,
+							}
+						}
+						token => {
+							let (property, position) =
+								if let Token(TSXToken::Cursor(cursor_id), start) = token {
+									(
+										PropertyReference::Cursor(cursor_id.into_cursor()),
+										start.with_length(1),
+									)
+								} else {
+									let (property, position) =
+										token_as_identifier(token, "variable reference")?;
+									(PropertyReference::Standard(property), position)
+								};
+							let position = top.get_position().union(&position);
+							Expression::PropertyAccess {
+								parent: Box::new(top),
+								property,
+								position,
+								is_optional: true,
+							}
+						}
+					}
+				}
+				TSXToken::Dot => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+					let _ = reader.next().unwrap();
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					let (property, position) = if let Token(TSXToken::Cursor(cursor_id), start) =
+						token
+					{
+						(PropertyReference::Cursor(cursor_id.into_cursor()), start.with_length(1))
+					} else {
+						let (property, position) =
+							token_as_identifier(token, "variable reference")?;
+						(PropertyReference::Standard(property), position)
+					};
 					let position = top.get_position().union(&position);
 					top = Expression::PropertyAccess {
 						parent: Box::new(top),
 						property,
 						position,
-						is_optional,
+						is_optional: false,
 					};
 				}
 				TSXToken::Assign => {
@@ -810,15 +841,19 @@ impl Expression {
 						parent_precedence,
 					)?;
 					top = Expression::Assignment {
+						position: top.get_position().union(new_rhs.get_position()),
 						lhs: LHSOfAssignment::VariableOrPropertyAccess(top.try_into()?),
 						rhs: Box::new(new_rhs),
 					};
 				}
 				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
-					let Token(
-						TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment),
-						position,
-					) = reader.next().unwrap() else { unreachable!() } ;
+					let token = reader.next().unwrap();
+					let position = token.get_span();
+					let Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), _) =
+						token
+					else {
+						unreachable!()
+					};
 					top = Expression::PostfixComment(Box::new(top), comment, position);
 				}
 				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is) => {
@@ -828,28 +863,37 @@ impl Expression {
 						return Ok(top);
 					}
 
-					let Token(token, keyword_pos) = reader.next().unwrap();
-					let reference = TypeAnnotation::from_reader(reader, state, settings)?;
-					let position = top.get_position().union(&reference.get_position());
+					if cfg!(not(feature = "extras"))
+						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is))
+					{
+						return Ok(top);
+					}
 
-					let special_operators = match token {
+					let token = reader.next().unwrap();
+					let reference = TypeAnnotation::from_reader(reader, state, settings)?;
+					let position = top.get_position().union(reference.get_position());
+
+					let keyword_span = token.get_span();
+
+					let special_operators = match token.0 {
 						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsExpression {
 							value: top.into(),
-							as_keyword: Keyword::new(keyword_pos),
-							type_annotation: Box::new(reference),
-						},
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
-							value: top.into(),
-							is_keyword: Keyword::new(keyword_pos),
+							as_keyword: Keyword::new(keyword_span),
 							type_annotation: Box::new(reference),
 						},
 						TSXToken::Keyword(TSXKeyword::Satisfies) => {
 							SpecialOperators::SatisfiesExpression {
 								value: top.into(),
-								satisfies_keyword: Keyword::new(keyword_pos),
+								satisfies_keyword: Keyword::new(keyword_span),
 								type_annotation: Box::new(reference),
 							}
 						}
+						#[cfg(feature = "extras")]
+						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
+							value: top.into(),
+							is_keyword: Keyword::new(keyword_span),
+							type_annotation: Box::new(reference),
+						},
 						_ => unreachable!(),
 					};
 					top = Self::SpecialOperators(special_operators, position);
@@ -861,7 +905,7 @@ impl Expression {
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
 								reader, state, settings, false,
 							)?;
-							let (arguments, end_pos) = parse_bracketed(
+							let (arguments, end) = parse_bracketed(
 								reader,
 								state,
 								settings,
@@ -869,10 +913,11 @@ impl Expression {
 								TSXToken::CloseParentheses,
 							)?;
 							top = Expression::FunctionCall {
-								position: top.get_position().union(&end_pos),
+								position: top.get_position().union(end),
 								function: Box::new(top),
 								type_arguments: Some(type_arguments),
 								arguments,
+								is_optional: false,
 							};
 							continue;
 						} else {
@@ -890,10 +935,10 @@ impl Expression {
 						{
 							return Ok(top);
 						}
-						let Token(_, pos) = reader.next().unwrap();
+						let token = reader.next().unwrap();
 
 						// Increment and decrement are the only two postfix operations
-						let position = top.get_position().union(&pos);
+						let position = top.get_position().union(token.get_end());
 						top = Expression::UnaryPostfixAssignmentOperation {
 							operand: top.try_into()?,
 							operator,
@@ -916,6 +961,7 @@ impl Expression {
 						)?;
 
 						top = Expression::BinaryOperation {
+							position: top.get_position().union(rhs.get_position()),
 							lhs: Box::new(top),
 							operator,
 							rhs: Box::new(rhs),
@@ -935,22 +981,12 @@ impl Expression {
 							operator.precedence(),
 						)?;
 						top = Expression::BinaryAssignmentOperation {
+							position: top.get_position().union(new_rhs.get_position()),
 							lhs: top.try_into()?,
 							operator,
 							rhs: Box::new(new_rhs),
 						};
 					} else {
-						// debug_assert!(
-						// 	matches!(
-						// 		token,
-						// 		TSXToken::EOS
-						// 			| TSXToken::CloseParentheses | TSXToken::CloseBracket
-						// 			| TSXToken::CloseBrace,
-						// 			| TSXToken::Colon,
-						// 	),
-						// 	"expected a closing expression, found {:?}",
-						// 	token
-						// );
 						return Ok(top);
 					}
 				}
@@ -978,10 +1014,11 @@ impl Expression {
             | Self::NewTarget(..)
             | Self::ClassExpression(..)
             // TODO not sure about this one...?
-            | Self::IsExpression(..)
-            // TODO not sure about this one...?
             | Self::DynamicImport { .. }
             | Self::Cursor { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
+            // TODO not sure about this one...?
+			#[cfg(feature = "extras")]
+            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
             Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
@@ -1003,8 +1040,9 @@ impl Expression {
             Self::SpecialOperators(op, _) => match op {
 				 // TODO not sure about this
                 SpecialOperators::AsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-                SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
                 SpecialOperators::SatisfiesExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+				#[cfg(feature = "extras")]
+                SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             },
         }
 	}
@@ -1049,18 +1087,22 @@ impl Expression {
 			}
 			Self::SpecialOperators(special, _) => match special {
 				SpecialOperators::AsExpression { value, type_annotation, .. }
-				| SpecialOperators::IsExpression { value, type_annotation, .. }
 				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, settings, depth);
-					// TODO is
 					if settings.include_types {
 						buf.push_str(match special {
 							SpecialOperators::AsExpression { .. } => " as ",
-							SpecialOperators::IsExpression { .. } => " is ",
 							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
+							#[cfg(feature = "extras")]
+							_ => unreachable!(),
 						});
 						type_annotation.to_string_from_buffer(buf, settings, depth);
 					}
+				}
+				#[cfg(feature = "extras")]
+				SpecialOperators::IsExpression { value, type_annotation, .. } => {
+					value.to_string_from_buffer(buf, settings, depth);
+					type_annotation.to_string_from_buffer(buf, settings, depth);
 				}
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
@@ -1114,8 +1156,11 @@ impl Expression {
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
-				if expr.lhs.is_none() && matches!(expr.rhs, Expression::VariableReference(..)) {
-					expr.rhs.to_string_from_buffer(buf, settings, depth)
+				// TODO more expressions could be considered fro parenthesis elision
+				if let MultipleExpression::Single(inner @ Expression::VariableReference(..)) =
+					&**expr
+				{
+					inner.to_string_from_buffer(buf, settings, depth)
 				} else {
 					buf.push('(');
 					expr.to_string_from_buffer(buf, settings, depth);
@@ -1228,6 +1273,7 @@ impl Expression {
 				);
 			}
 			Self::Null(..) => buf.push_str("null"),
+			#[cfg(feature = "extras")]
 			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, settings, depth),
 			Self::SuperExpression(super_expr, _) => {
 				buf.push_str("super");
@@ -1251,17 +1297,19 @@ impl Expression {
 }
 
 /// Represents expressions that can be `,`
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-pub struct MultipleExpression {
-	pub lhs: Option<Box<MultipleExpression>>,
-	pub rhs: Expression,
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
+pub enum MultipleExpression {
+	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
+	Single(Expression),
 }
 
 impl MultipleExpression {
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
-		if self.lhs.is_none() {
-			self.rhs.is_iife()
+		if let MultipleExpression::Single(inner) = self {
+			inner.is_iife()
 		} else {
 			None
 		}
@@ -1269,27 +1317,24 @@ impl MultipleExpression {
 }
 
 impl ASTNode for MultipleExpression {
-	fn get_position(&self) -> Cow<Span> {
-		if let Some(ref lhs) = self.lhs {
-			Cow::Owned(lhs.get_position().union(&self.rhs.get_position()))
-		} else {
-			self.rhs.get_position()
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let first = Expression::from_reader(reader, state, settings)?;
-		let mut top: MultipleExpression = first.into();
-		while let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-			reader.next();
-			let rhs = Expression::from_reader(reader, state, settings)?;
-			top = MultipleExpression { lhs: Some(Box::new(top)), rhs };
+		if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+			let mut top: MultipleExpression = first.into();
+			while let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+				reader.next();
+				let rhs = Expression::from_reader(reader, state, settings)?;
+				let position = top.get_position().union(rhs.get_position());
+				top = MultipleExpression::Multiple { lhs: Box::new(top), rhs, position };
+			}
+			Ok(top)
+		} else {
+			Ok(MultipleExpression::Single(first))
 		}
-		Ok(top)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -1298,29 +1343,41 @@ impl ASTNode for MultipleExpression {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if let Some(ref lhs) = self.lhs {
-			lhs.to_string_from_buffer(buf, settings, depth);
-			buf.push(',');
+		match self {
+			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
+				lhs.to_string_from_buffer(buf, settings, depth);
+				buf.push(',');
+				rhs.to_string_from_buffer(buf, settings, depth);
+			}
+			MultipleExpression::Single(rhs) => {
+				rhs.to_string_from_buffer(buf, settings, depth);
+			}
 		}
-		self.rhs.to_string_from_buffer(buf, settings, depth);
+	}
+
+	fn get_position(&self) -> &Span {
+		match self {
+			MultipleExpression::Multiple { position, .. } => position,
+			MultipleExpression::Single(expr) => expr.get_position(),
+		}
 	}
 }
 
 impl From<Expression> for MultipleExpression {
 	fn from(expr: Expression) -> Self {
-		Self { lhs: None, rhs: expr }
+		MultipleExpression::Single(expr)
 	}
 }
 
 /// Determines whether '<' is a comparison or start of generic arguments
-fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, Span>) -> bool {
+fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> bool {
 	if !matches!(reader.peek(), Some(Token(TSXToken::OpenChevron, _))) {
 		return false;
 	}
 
 	// Keep a eye on brackets. e.g. for: `if (x<4) {}` should break after the 4
 	let (mut generic_depth, mut bracket_depth) = (0, 0);
-	let mut final_generic_position = None::<Span>;
+	let mut final_generic_position = None::<TokenEnd>;
 
 	let next_token = reader.scan(|token, position| {
 		// Early break if logical operators
@@ -1345,17 +1402,19 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, Span>) -> bool {
 				_ => {}
 			}
 			if generic_depth == 0 {
-				final_generic_position = Some(position.clone());
+				final_generic_position = Some(TokenEnd::new(
+					position.0 + tokenizer_lib::sized_tokens::SizedToken::length(token),
+				));
 				true
 			} else {
 				bracket_depth < 0
 			}
 		}
 	});
-	if let (Some(last_position), Some(Token(TSXToken::OpenParentheses, position))) =
+	if let (Some(last_position), Some(Token(TSXToken::OpenParentheses, open_paren_start))) =
 		(final_generic_position, next_token)
 	{
-		last_position.is_adjacent_to(position)
+		last_position.is_adjacent_to(*open_paren_start)
 	} else {
 		false
 	}
@@ -1365,6 +1424,7 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, Span>) -> bool {
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
@@ -1381,7 +1441,7 @@ pub enum SpecialOperators {
 	#[cfg(feature = "extras")]
 	IsExpression {
 		value: Box<Expression>,
-		is_keyword: Keyword<Is>,
+		is_keyword: Keyword<tsx_keywords::Is>,
 		type_annotation: Box<TypeAnnotation>,
 	},
 }
@@ -1389,6 +1449,7 @@ pub enum SpecialOperators {
 /// A either spread expression or not
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1396,16 +1457,8 @@ pub enum SpreadExpression {
 }
 
 impl ASTNode for SpreadExpression {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			SpreadExpression::Spread(_, pos) => Cow::Borrowed(pos),
-			SpreadExpression::NonSpread(ast) => ast.get_position(),
-			SpreadExpression::Empty => Cow::Owned(Span::NULL_SPAN),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -1414,7 +1467,7 @@ impl ASTNode for SpreadExpression {
 			TSXToken::Spread => {
 				let start_pos = reader.next().unwrap().1;
 				let expression = Expression::from_reader(reader, state, settings)?;
-				let position = start_pos.union(&expression.get_position());
+				let position = start_pos.union(expression.get_position());
 				Ok(Self::Spread(expression, position))
 			}
 			TSXToken::Comma => Ok(Self::Empty),
@@ -1437,6 +1490,14 @@ impl ASTNode for SpreadExpression {
 				expression.to_string_from_buffer(buf, settings, depth);
 			}
 			SpreadExpression::Empty => {}
+		}
+	}
+
+	fn get_position(&self) -> &Span {
+		match self {
+			SpreadExpression::Spread(_, pos) => pos,
+			SpreadExpression::NonSpread(expr) => expr.get_position(),
+			SpreadExpression::Empty => todo!(),
 		}
 	}
 }
@@ -1463,7 +1524,7 @@ impl From<Expression> for SpreadExpression {
 impl Expression {
 	/// IIFE = immediate invoked function execution
 	pub fn build_iife(block: Block) -> Self {
-		let position = block.get_position().into_owned();
+		let position = block.get_position().clone();
 		Expression::FunctionCall {
 			function: Expression::ParenthesizedExpression(
 				Box::new(
@@ -1488,6 +1549,7 @@ impl Expression {
 			.into(),
 			type_arguments: None,
 			arguments: Vec::new(),
+			is_optional: false,
 			position,
 		}
 	}
@@ -1497,7 +1559,7 @@ impl Expression {
 			if let (true, Expression::ParenthesizedExpression(expression, _)) =
 				(arguments.is_empty(), &**function)
 			{
-				if let MultipleExpression { lhs: None, rhs: Expression::ArrowFunction(function) } =
+				if let MultipleExpression::Single(Expression::ArrowFunction(function)) =
 					&**expression
 				{
 					return Some(&function.body);
@@ -1510,10 +1572,10 @@ impl Expression {
 	/// Recurses to find first non parenthesized expression
 	pub fn get_non_parenthesized(&self) -> &Self {
 		if let Expression::ParenthesizedExpression(inner_multiple_expr, _) = self {
-			if inner_multiple_expr.lhs.is_none() {
-				inner_multiple_expr.rhs.get_non_parenthesized()
+			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
+				expr.get_non_parenthesized()
 			} else {
-				// TODO could return something here...
+				// TODO could return a variant here...
 				self
 			}
 		} else if let Expression::PrefixComment(_, expr, ..)
@@ -1543,6 +1605,7 @@ impl Expression {
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SuperReference {
 	Call { arguments: Vec<SpreadExpression> },
 	PropertyAccess { property: String },
@@ -1577,10 +1640,10 @@ mod tests {
 		assert_matches_ast!(
 			"(45)",
 			ParenthesizedExpression(
-				Deref @ MultipleExpression {
-					lhs: None,
-					rhs: NumberLiteral(NumberStructure::Number(_), span!(1, 3)),
-				},
+				Deref @ MultipleExpression::Single(NumberLiteral(
+					NumberStructure::Number(_),
+					span!(1, 3),
+				)),
 				span!(0, 4),
 			)
 		);
@@ -1593,7 +1656,6 @@ mod tests {
 			Default::default(),
 			SourceId::NULL,
 			Default::default(),
-			Default::default(),
 		)
 		.unwrap();
 		assert!(expr.is_iife().is_some())
@@ -1604,15 +1666,14 @@ mod tests {
 		assert_matches_ast!(
 			"(45,2)",
 			ParenthesizedExpression(
-				Deref @ MultipleExpression {
+				Deref @ MultipleExpression::Multiple {
 					lhs:
-						Some(
-							Deref @ MultipleExpression {
-								lhs: None,
-								rhs: NumberLiteral(NumberStructure::Number(_), span!(1, 3)),
-							},
-						),
+						Deref @ MultipleExpression::Single(NumberLiteral(
+							NumberStructure::Number(_),
+							span!(1, 3),
+						)),
 					rhs: NumberLiteral(NumberStructure::Number(_), span!(4, 5)),
+					position: _,
 				},
 				span!(0, 6),
 			)
@@ -1625,26 +1686,31 @@ mod tests {
 			lhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(0, 1)),
 			operator: BinaryOperator::Add,
 			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(4, 5)),
+			position: _
 		});
 		assert_matches_ast!("xt === 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::StrictEqual,
 			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(7, 8)),
+			position: _
 		});
 		assert_matches_ast!("x << 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftLeft,
 			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(5, 6)),
+			position: _
 		});
 		assert_matches_ast!("x >> 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftRight,
 			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(5, 6)),
+			position: _
 		});
 		assert_matches_ast!("x >>> 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftRightUnsigned,
 			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(6, 7)),
+			position: _
 		});
 	}
 }

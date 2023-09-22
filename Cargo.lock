@@ -123,6 +123,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if 1.0.0",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -163,19 +173,21 @@ dependencies = [
 
 [[package]]
 name = "derive-finite-automaton"
-version = "0.1.0"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "547520acf7db9e4384e3734644acdee8edce4ff8da544afd2ef679e788b1cd9b"
+checksum = "a18c3334a02026fc281427161fea9dacbf650d8b7b01e35a7cf445403c318221"
 dependencies = [
  "derive-finite-automaton-derive",
 ]
 
 [[package]]
 name = "derive-finite-automaton-derive"
-version = "0.1.0"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1f1f1ef49cdc13ee8c642c6afa3e56fb3a082a48c89e3f75006cc00da6cce51"
+checksum = "d4bb462e792fda597bc05207ebf41948ff8e7c5a6ab737bd5c75286193fc3613"
 dependencies = [
+ "either_n",
+ "proc-macro2",
  "quote",
  "syn 1.0.109",
 ]
@@ -265,6 +277,7 @@ dependencies = [
  "base64",
  "codespan-reporting",
  "console",
+ "console_error_panic_hook",
  "enum-variants-strings",
  "ezno-checker",
  "ezno-parser",
@@ -273,6 +286,7 @@ dependencies = [
  "notify",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
 ]
 
@@ -281,6 +295,7 @@ name = "ezno-ast-generator"
 version = "0.0.4"
 dependencies = [
  "ezno-parser",
+ "pretty_assertions",
  "proc-macro2",
  "quote",
  "self-rust-tokenize",
@@ -306,7 +321,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
- "source-map 0.13.0",
+ "source-map",
  "temporary-annex",
 ]
 
@@ -329,7 +344,7 @@ dependencies = [
  "lsp-types",
  "serde",
  "serde_json",
- "source-map 0.11.3",
+ "source-map",
  "tokenizer-lib",
 ]
 
@@ -344,11 +359,13 @@ dependencies = [
  "enum-variants-strings",
  "enum_variant_type",
  "ezno-parser-visitable-derive",
+ "get-field-by-type",
  "iterator-endiate 0.1.0",
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
- "source-map 0.13.0",
+ "serde",
+ "source-map",
  "temporary-annex",
  "tokenizer-lib",
 ]
@@ -416,6 +433,24 @@ name = "fuchsia-zircon-sys"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
+
+[[package]]
+name = "get-field-by-type"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2f4ba71362701e2913eabce7b108cf6f2db1a413f661138862f2632b117ab98"
+dependencies = [
+ "get-field-by-type-derive",
+]
+
+[[package]]
+name = "get-field-by-type-derive"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c1777fe05ec14229f7eede7ecb245051776a405a90501139aa6967a9eba7feb"
+dependencies = [
+ "syn-helpers",
+]
 
 [[package]]
 name = "hashbrown"
@@ -874,9 +909,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.105"
+version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "693151e1ac27563d6dbcec9dee9fbd5da8539b20fa14ad3752b2e6d363ace360"
+checksum = "6b420ce6e3d8bd882e9b243c6eed35dbc9a6110c9769e74b584e0d68d1f20c65"
 dependencies = [
  "itoa",
  "ryu",
@@ -905,22 +940,12 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.11.3"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef719fab974d0ad7d0f888be47f711355c528fc2d28731d08bd59be1d6bd313b"
-dependencies = [
- "lazy_static",
- "lsp-types",
- "serde",
-]
-
-[[package]]
-name = "source-map"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aebacbfb6ea7b5257c72f8d2f7790cf4fc3e72f399d76b56d48f6290c8ed7789"
+checksum = "cab192199a8348991b58809de8708f6146462aa3132520fff61e4c9f3df53a50"
 dependencies = [
  "codespan-reporting",
+ "lsp-types",
  "self-rust-tokenize",
  "serde",
 ]
@@ -955,9 +980,9 @@ dependencies = [
 
 [[package]]
 name = "syn-helpers"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872f211f0299a39fff932355b2e304ef0e95a486a8147244fa8d477c1b0acfce"
+checksum = "2a2919350d44e7bdba75bf541da7a15c415a84fea1c823f37f0c48a6b0133639"
 dependencies = [
  "either_n",
  "proc-macro2",
@@ -1007,9 +1032,12 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokenizer-lib"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "921ae88b4cdbf7aa5bc708c9d02d37c194c3fc4189c9698320ef19968354d36a"
+checksum = "aedcdc3b4760676e1ed01c749e219c98f8da59ef08c62547c19a74bea228c5d8"
+dependencies = [
+ "source-map",
+]
 
 [[package]]
 name = "unicode-bidi"

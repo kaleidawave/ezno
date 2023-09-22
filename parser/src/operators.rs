@@ -11,6 +11,7 @@ use crate::{TSXKeyword, TSXToken};
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BinaryOperator {
 	Add, Subtract, Multiply, Divide, Modulo, Exponent,
 
@@ -35,6 +36,7 @@ pub enum BinaryOperator {
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BinaryAssignmentOperator {
     LogicalNullishAssignment,
     
@@ -47,6 +49,7 @@ pub enum BinaryAssignmentOperator {
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
@@ -55,6 +58,7 @@ pub enum UnaryOperator {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum IncrementOrDecrement {
 	Increment,
 	Decrement,
@@ -62,6 +66,7 @@ pub enum IncrementOrDecrement {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum UnaryPrefixAssignmentOperator {
 	Invert,
 	IncrementOrDecrement(IncrementOrDecrement),
@@ -69,6 +74,7 @@ pub enum UnaryPrefixAssignmentOperator {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct UnaryPostfixAssignmentOperator(pub IncrementOrDecrement);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -356,7 +362,7 @@ impl TryFrom<&TSXToken> for BinaryAssignmentOperator {
 			TSXToken::BitwiseShiftRightAssign => {
 				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
 			}
-			TSXToken::BitwiseShiftRightUnsigned => {
+			TSXToken::BitwiseShiftRightUnsignedAssign => {
 				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
 			}
 			TSXToken::NullishCoalescingAssign => {
@@ -397,8 +403,11 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 			TSXToken::BitwiseShiftRight => Ok(BinaryOperator::BitwiseShiftRight),
 			TSXToken::BitwiseShiftRightUnsigned => Ok(BinaryOperator::BitwiseShiftRightUnsigned),
 			TSXToken::NullishCoalescing => Ok(BinaryOperator::NullCoalescing),
+			#[cfg(feature = "extras")]
 			TSXToken::DividesOperator => Ok(BinaryOperator::Divides),
+			#[cfg(feature = "extras")]
 			TSXToken::ComposeOperator => Ok(BinaryOperator::Compose),
+			#[cfg(feature = "extras")]
 			TSXToken::PipeOperator => Ok(BinaryOperator::Pipe),
 			_ => Err(()),
 		}
@@ -450,11 +459,14 @@ impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
 	type Error = ();
 
 	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
+		#[cfg(feature = "extras")]
 		if *token == TSXToken::InvertAssign {
 			Ok(Self::Invert)
 		} else {
 			IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
 		}
+		#[cfg(not(feature = "extras"))]
+		IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
 	}
 }
 
@@ -469,7 +481,6 @@ impl BinaryOperator {
 // Operator precedences that aren't registered under operator trait
 pub(crate) const COMMA_PRECEDENCE: u8 = 1;
 pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;
-pub(crate) const OPTIONAL_CHAINING_PRECEDENCE: u8 = 18;
 pub(crate) const INDEX_PRECEDENCE: u8 = 18;
 pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;

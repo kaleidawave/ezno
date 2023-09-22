@@ -7,7 +7,7 @@ use derive_partial_eq_extras::PartialEqExtras;
 use enum_variant_type::EnumVariantType;
 use enum_variants_strings::EnumVariantsStrings;
 use source_map::Span;
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 use crate::ParseError;
 
@@ -61,6 +61,7 @@ use crate::ParseError;
     "^=" => TSXToken::BitwiseXorAssign,
     "?" => TSXToken::QuestionMark,
     "?:" => TSXToken::OptionalMember,
+    "?." => TSXToken::OptionalChain,
     "-?:" => TSXToken::NonOptionalMember,
     "??" => TSXToken::NullishCoalescing,
     "??=" => TSXToken::NullishCoalescingAssign,
@@ -76,10 +77,11 @@ use crate::ParseError;
     ">>" => TSXToken::BitwiseShiftRight,
     ">>=" => TSXToken::BitwiseShiftRightAssign,
     ">>>" => TSXToken::BitwiseShiftRightUnsigned,
-    ">>>=" => TSXToken::UnsignedBitwiseShiftRightAssign,
+    ">>>=" => TSXToken::BitwiseShiftRightUnsignedAssign,
     "." => TSXToken::Dot,
     "..." => TSXToken::Spread,
-    // Special ones: TODO unify
+)]
+#[cfg_attr(feature = "extras", automaton_mappings(
     "×" => TSXToken::Multiply,
     "×=" => TSXToken::MultiplyAssign,
     "¡" => TSXToken::InvertAssign,
@@ -89,7 +91,7 @@ use crate::ParseError;
     "∘" => TSXToken::ComposeOperator,
     "<@>" => TSXToken::ComposeOperator,
     "|>" => TSXToken::PipeOperator,
-)]
+))]
 #[rustfmt::skip]
 pub enum TSXToken {
     IdentLiteral(String),
@@ -127,7 +129,7 @@ pub enum TSXToken {
     AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ExponentAssign, ModuloAssign,
     Increment, Decrement,
     BitwiseShiftLeft, BitwiseShiftRight, BitwiseShiftRightUnsigned,
-    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, UnsignedBitwiseShiftRightAssign,
+    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsignedAssign,
     BitwiseOr, BitwiseXOr, BitwiseAnd, BitwiseNot,
     BitwiseOrAssign, BitwiseAndAssign, BitwiseXorAssign,
     LogicalOr, LogicalAnd, LogicalNot,
@@ -179,6 +181,120 @@ impl tokenizer_lib::TokenTrait for TSXToken {
 	}
 }
 
+impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
+	fn length(&self) -> u32 {
+		match self {
+			TSXToken::Keyword(kw) => kw.to_str().len() as u32,
+
+			TSXToken::JSXClosingTagName(lit)
+			| TSXToken::TemplateLiteralChunk(lit)
+			| TSXToken::JSXAttributeKey(lit)
+			| TSXToken::JSXAttributeValue(lit)
+			| TSXToken::JSXContent(lit)
+			| TSXToken::JSXComment(lit)
+			| TSXToken::JSXTagName(lit)
+			| TSXToken::IdentLiteral(lit)
+			| TSXToken::NumberLiteral(lit)
+			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
+
+			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
+			TSXToken::SingleQuotedStringLiteral(comment)
+			| TSXToken::DoubleQuotedStringLiteral(comment)
+			| TSXToken::Comment(comment) => comment.len() as u32 + 2,
+			TSXToken::RegexLiteral(regex) => regex.len() as u32 + 2,
+
+			TSXToken::Comma
+			| TSXToken::SemiColon
+			| TSXToken::Colon
+			| TSXToken::At
+			| TSXToken::Assign
+			| TSXToken::OpenParentheses
+			| TSXToken::CloseParentheses
+			| TSXToken::OpenBrace
+			| TSXToken::CloseBrace
+			| TSXToken::OpenBracket
+			| TSXToken::CloseBracket
+			| TSXToken::OpenChevron
+			| TSXToken::CloseChevron
+			| TSXToken::Add
+			| TSXToken::Subtract
+			| TSXToken::Multiply
+			| TSXToken::Divide
+			| TSXToken::Modulo
+			| TSXToken::QuestionMark
+			| TSXToken::BitwiseOr
+			| TSXToken::BitwiseXOr
+			| TSXToken::BitwiseAnd
+			| TSXToken::BitwiseNot
+			| TSXToken::HashTag
+			| TSXToken::Dot
+			| TSXToken::TemplateLiteralStart
+			| TSXToken::TemplateLiteralEnd
+			| TSXToken::TemplateLiteralExpressionEnd
+			| TSXToken::JSXOpeningTagStart
+			| TSXToken::JSXOpeningTagEnd
+			| TSXToken::JSXExpressionStart
+			| TSXToken::JSXExpressionEnd
+			| TSXToken::JSXAttributeAssign => 1,
+
+			TSXToken::AddAssign
+			| TSXToken::SubtractAssign
+			| TSXToken::MultiplyAssign
+			| TSXToken::DivideAssign
+			| TSXToken::ModuloAssign
+			| TSXToken::Exponent
+			| TSXToken::ExponentAssign
+			| TSXToken::Increment
+			| TSXToken::Decrement
+			| TSXToken::Equal
+			| TSXToken::GreaterThanEqual
+			| TSXToken::LessThanEqual
+			| TSXToken::OptionalChain
+			| TSXToken::NullishCoalescing
+			| TSXToken::OptionalMember
+			| TSXToken::NonOptionalMember
+			| TSXToken::BitwiseOrAssign
+			| TSXToken::BitwiseAndAssign
+			| TSXToken::BitwiseXorAssign
+			| TSXToken::LogicalOr
+			| TSXToken::LogicalAnd
+			| TSXToken::LogicalNot
+			| TSXToken::Arrow
+			| TSXToken::TemplateLiteralExpressionStart
+			| TSXToken::JSXFragmentStart => 2,
+
+			TSXToken::BitwiseShiftLeft
+			| TSXToken::BitwiseShiftRight
+			| TSXToken::Spread
+			| TSXToken::StrictEqual
+			| TSXToken::NullishCoalescingAssign
+			| TSXToken::LogicalOrAssign
+			| TSXToken::LogicalAndAssign
+			| TSXToken::NotEqual
+			| TSXToken::BitwiseShiftLeftAssign
+			| TSXToken::BitwiseShiftRightAssign
+			| TSXToken::StrictNotEqual
+			| TSXToken::BitwiseShiftRightUnsigned
+			| TSXToken::JSXFragmentEnd => 3,
+
+			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
+
+			// TODO
+			TSXToken::JSXClosingTagStart
+			| TSXToken::JSXSelfClosingTag
+			| TSXToken::JSXContentLineBreak
+			| TSXToken::EOS
+			| TSXToken::Cursor(_) => 0,
+
+			#[cfg(feature = "extras")]
+			TSXToken::DividesOperator
+			| TSXToken::InvertAssign
+			| TSXToken::ComposeOperator
+			| TSXToken::PipeOperator => todo!(),
+		}
+	}
+}
+
 impl Eq for TSXToken {}
 
 pub trait TSXKeywordNode: Into<TSXKeyword> + Copy + Default {}
@@ -227,6 +343,13 @@ impl TSXToken {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
 
+	pub fn is_string_literal(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::SingleQuotedStringLiteral(_) | TSXToken::DoubleQuotedStringLiteral(_)
+		)
+	}
+
 	/// Used for lexing regular expression and JSX literals differently
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
@@ -257,11 +380,11 @@ impl TSXToken {
 /// takes a [Token] and returns its name as a [String] and the location as a [Span]. Will throw [ParseError] if
 /// cannot convert token to string
 pub(crate) fn token_as_identifier(
-	token: Token<TSXToken, Span>,
+	token: Token<TSXToken, TokenStart>,
 	at_location: &str,
 ) -> Result<(String, Span), ParseError> {
-	let Token(token_type, position) = token;
-	let name = match token_type {
+	let position = token.get_span();
+	let name = match token.0 {
 		TSXToken::IdentLiteral(value) => value,
 		TSXToken::Keyword(keyword) => EnumVariantsStrings::to_str(&keyword).to_owned(),
 		token_type => {

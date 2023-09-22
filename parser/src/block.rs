@@ -1,8 +1,6 @@
-use std::borrow::Cow;
-
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::Token;
+use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
 use visitable_derive::Visitable;
 
 use super::{ASTNode, Span, TSXToken, TokenReader};
@@ -10,8 +8,10 @@ use crate::{
 	expect_semi_colon, Declaration, ParseOptions, ParseResult, Statement, VisitSettings, Visitable,
 };
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
@@ -30,7 +30,7 @@ impl StatementOrDeclaration {
 }
 
 impl ASTNode for StatementOrDeclaration {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			StatementOrDeclaration::Statement(item) => item.get_position(),
 			StatementOrDeclaration::Declaration(item) => item.get_position(),
@@ -38,7 +38,7 @@ impl ASTNode for StatementOrDeclaration {
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -70,8 +70,10 @@ impl ASTNode for StatementOrDeclaration {
 }
 
 /// A "block" of braced statements and declarations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}
@@ -104,14 +106,14 @@ impl<'a> From<&'a mut Block> for BlockLikeMut<'a> {
 
 impl ASTNode for Block {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start_span = reader.expect_next(TSXToken::OpenBrace)?;
+		let start = reader.expect_next(TSXToken::OpenBrace)?;
 		let items = parse_statements_and_declarations(reader, state, settings)?;
-		let end_span = reader.expect_next(TSXToken::CloseBrace)?;
-		Ok(Self(items, start_span.union(&end_span)))
+		let end_span = reader.expect_next_get_end(TSXToken::CloseBrace)?;
+		Ok(Self(items, start.union(end_span)))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -134,8 +136,8 @@ impl ASTNode for Block {
 		buf.push('}');
 	}
 
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.1)
+	fn get_position(&self) -> &Span {
+		&self.1
 	}
 }
 
@@ -198,6 +200,7 @@ impl Visitable for Block {
 /// For ifs and other statements
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
@@ -210,7 +213,7 @@ impl From<Statement> for BlockOrSingleStatement {
 }
 
 impl ASTNode for BlockOrSingleStatement {
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			BlockOrSingleStatement::Braced(blk) => blk.get_position(),
 			BlockOrSingleStatement::SingleStatement(stmt) => stmt.get_position(),
@@ -218,7 +221,7 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -248,7 +251,7 @@ impl ASTNode for BlockOrSingleStatement {
 				if settings.pretty {
 					buf.push_new_line();
 					settings.add_gap(buf);
-					stmt.to_string_from_buffer(buf, settings, depth);
+					stmt.to_string_from_buffer(buf, settings, depth + 1);
 				} else {
 					stmt.to_string_from_buffer(buf, settings, depth);
 				}
@@ -259,7 +262,7 @@ impl ASTNode for BlockOrSingleStatement {
 
 /// Parse statements, regardless of bracing or not
 pub(crate) fn parse_statements_and_declarations(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &ParseOptions,
 ) -> ParseResult<Vec<StatementOrDeclaration>> {

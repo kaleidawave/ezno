@@ -13,7 +13,6 @@ fn main() {
 			Default::default(),
 			SourceId::NULL,
 			None,
-			Vec::new(),
 		);
 		println!("{:#?}", expression);
 	}

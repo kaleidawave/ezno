@@ -410,7 +410,7 @@ const z: false = true || 4
 #### String operations
 
 ```ts
-"hi".toUppercase() satisfies number
+"hi".toUpperCase() satisfies number
 ```
 
 - Expected number, found "HI"

@@ -1,10 +1,11 @@
-use std::borrow::Cow;
-
 use crate::TSXToken;
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{
+	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
+	Token, TokenReader,
+};
 use visitable_derive::Visitable;
 
 use crate::{
@@ -13,28 +14,20 @@ use crate::{
 	WithComment,
 };
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Parameter {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
-}
-
-// TODO not sure whether parameter should implement ASTNode
-impl Parameter {
-	pub fn get_position(&self) -> Cow<Span> {
-		let position = self.name.get_position();
-		if let Some(tr) = &self.type_annotation {
-			Cow::Owned(position.union(&tr.get_position()))
-		} else {
-			position
-		}
-	}
+	pub position: Span,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
@@ -42,6 +35,7 @@ pub enum ParameterData {
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -51,6 +45,7 @@ pub struct SpreadParameter {
 /// type structure
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct FunctionParameters {
 	pub parameters: Vec<Parameter>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,
@@ -61,12 +56,12 @@ pub struct FunctionParameters {
 impl Eq for FunctionParameters {}
 
 impl ASTNode for FunctionParameters {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> ParseResult<Self> {
@@ -117,10 +112,10 @@ impl ASTNode for FunctionParameters {
 
 impl FunctionParameters {
 	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
-		start_pos: Span,
+		start: TokenStart,
 	) -> Result<FunctionParameters, ParseError> {
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
@@ -173,13 +168,13 @@ impl FunctionParameters {
 					_ => (false, None),
 				};
 
-				let value = if let Some(Token(_, pos)) =
+				let value = if let Some(token) =
 					reader.conditional_next(|tok| matches!(tok, TSXToken::Assign))
 				{
 					if is_optional {
 						return Err(ParseError::new(
 							crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
-							pos,
+							token.get_span(),
 						));
 					}
 					Some(Box::new(Expression::from_reader(reader, state, settings)?))
@@ -195,7 +190,21 @@ impl FunctionParameters {
 					(true, None) => Some(ParameterData::Optional),
 					(false, None) => None,
 				};
-				parameters.push(Parameter { name, type_annotation, additionally });
+
+				let end_position = if let Some(ParameterData::WithDefaultValue(e)) = &additionally {
+					e.get_position()
+				} else if let Some(type_annotation) = &type_annotation {
+					type_annotation.get_position()
+				} else {
+					name.get_position()
+				};
+
+				parameters.push(Parameter {
+					position: name.get_position().union(end_position),
+					name,
+					type_annotation,
+					additionally,
+				});
 			}
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
@@ -203,7 +212,7 @@ impl FunctionParameters {
 				break;
 			}
 		}
-		let end_span = reader.expect_next(TSXToken::CloseParentheses)?;
-		Ok(FunctionParameters { position: start_pos.union(&end_span), parameters, rest_parameter })
+		let close = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter })
 	}
 }

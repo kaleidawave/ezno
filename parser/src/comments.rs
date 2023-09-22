@@ -2,7 +2,7 @@
 
 use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
 use crate::{ParseOptions, Visitable};
-use std::borrow::Cow;
+
 use tokenizer_lib::Token;
 
 #[derive(Debug, Clone, Eq)]
@@ -30,6 +30,17 @@ where
 				token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)))
 			}
 		}
+	}
+}
+
+// TODO comments
+#[cfg(feature = "serde-serialize")]
+impl<T: serde::Serialize> serde::Serialize for WithComment<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.get_ast_ref().serialize(serializer)
 	}
 }
 
@@ -107,7 +118,7 @@ impl<T> WithComment<T> {
 
 impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<WithComment<T>, ParseError> {
@@ -118,17 +129,18 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 				unreachable!();
 			};
 			let item = T::from_reader(reader, state, settings)?;
-			let position = position.union(&item.get_position());
+			let position = position.union(item.get_position());
 			Ok(Self::PrefixComment(comment, item, position))
 		} else {
 			let item = T::from_reader(reader, state, settings)?;
 			if let Some(token) =
 				reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
 			{
-				let Token(TSXToken::MultiLineComment(comment), position) = token else {
+				let end = token.get_span();
+				let Token(TSXToken::MultiLineComment(comment), _) = token else {
 					unreachable!();
 				};
-				let position = item.get_position().union(&position);
+				let position = item.get_position().union(end);
 				Ok(Self::PostfixComment(item, comment, position))
 			} else {
 				Ok(Self::None(item))
@@ -136,12 +148,10 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
 			Self::None(ast) => ast.get_position(),
-			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => {
-				Cow::Borrowed(position)
-			}
+			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => position,
 		}
 	}
 

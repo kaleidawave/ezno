@@ -6,7 +6,7 @@ use parser::{
 	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBase, FunctionBased,
 	GenericTypeConstraint, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
 };
-use source_map::Span;
+use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
 	behavior::functions::{GetterSetterGeneratorOrNone, SynthesizableFunction},
@@ -145,9 +145,8 @@ where
 			.map(|ty_params| synthesize_type_parameters(&ty_params, environment, checking_data))
 	}
 
-	fn id(&self) -> FunctionId {
-		let pos = self.get_position().into_owned();
-		FunctionId(pos.source, pos.start)
+	fn id(&self, source_id: SourceId) -> FunctionId {
+		FunctionId(source_id, self.get_position().start)
 	}
 
 	fn this_constraint<T: crate::FSResolver>(
@@ -179,11 +178,11 @@ where
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
-	) -> Option<(TypeId, Span)> {
+	) -> Option<(TypeId, SpanWithSource)> {
 		self.return_type.as_ref().map(|reference| {
 			(
 				synthesize_type_annotation(reference, environment, checking_data),
-				reference.get_position().into_owned(),
+				reference.get_position().clone().with_source(environment.get_source()),
 			)
 		})
 	}
@@ -319,7 +318,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 			SynthesizedParameter {
 				ty: parameter_type,
 				name,
-				position: parameter.get_position().into_owned(),
+				position: parameter.position.clone().with_source(environment.get_source()),
 				missing_value,
 			}
 		})
@@ -345,7 +344,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 		SynthesizedRestParameter {
 			item_type,
 			name: parameter.name.clone(),
-			position: parameter.type_annotation.get_position().into_owned(),
+			position: parameter.position.clone().with_source(environment.get_source()),
 		}
 	});
 
@@ -371,7 +370,7 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 					{
 						string_comment_to_type(
 							possible_declaration,
-							position,
+							position.clone().with_source(environment.get_source()),
 							environment,
 							checking_data,
 						)
@@ -399,7 +398,7 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 			SynthesizedParameter {
 				name,
 				ty: param_type,
-				position: parameter.get_position().into_owned(),
+				position: parameter.position.clone().with_source(environment.get_source()),
 				missing_value,
 			}
 		})
@@ -448,7 +447,7 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T>,
 	performs: super::Performs,
-	position: parser::Span,
+	position: source_map::SpanWithSource,
 	kind: FunctionKind,
 	on_interface: Option<TypeId>,
 ) -> FunctionType {

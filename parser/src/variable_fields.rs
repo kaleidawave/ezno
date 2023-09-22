@@ -1,44 +1,40 @@
 /// Contains:
 /// - [VariableId] given to variable declaring items
 /// - [VariableField] for destructuring things and its nested derivatives + visiting behavior + tests for self
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, property_key::PropertyKey,
-	tokens::token_as_identifier, ASTNode, CursorId, Expression, ImmutableVariableOrPropertyPart,
-	MutableVariablePart, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TSXToken, Token,
-	VisitSettings, Visitable, WithComment,
+	throw_unexpected_token_with_token, tokens::token_as_identifier, ASTNode, CursorId, Expression,
+	ImmutableVariableOrPropertyPart, MutableVariablePart, ParseError, ParseOptions, ParseResult,
+	Span, TSXToken, Token, VisitSettings, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use self_rust_tokenize::SelfRustTokenize;
 use tokenizer_lib::TokenReader;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEqExtras, Eq, Clone, GetFieldByType)]
+#[partial_eq_ignore_types(Span)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
-	#[self_tokenize_field(0)]
-	Cursor(CursorId<Self>),
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Cursor(CursorId<Self>, Span),
 }
 
 impl ASTNode for VariableIdentifier {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			VariableIdentifier::Standard(_, span) => Cow::Borrowed(span),
-			VariableIdentifier::Cursor(_) => Cow::Owned(Span::NULL_SPAN),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		Ok(if let Token(TSXToken::Cursor(id), _) = token {
-			Self::Cursor(id.into_cursor())
+		Ok(if let Token(TSXToken::Cursor(id), start) = token {
+			Self::Cursor(id.into_cursor(), start.with_length(0))
 		} else {
 			let (ident, span) = token_as_identifier(token, "variable identifier")?;
 			Self::Standard(ident, span)
@@ -53,6 +49,10 @@ impl ASTNode for VariableIdentifier {
 	) {
 		buf.push_str(self.as_str());
 	}
+
+	fn get_position(&self) -> &Span {
+		self.get()
+	}
 }
 
 impl VariableIdentifier {
@@ -60,7 +60,7 @@ impl VariableIdentifier {
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableIdentifier::Standard(name, _) => name.as_str(),
-			VariableIdentifier::Cursor(_) => "",
+			VariableIdentifier::Cursor(_, _) => "",
 		}
 	}
 }
@@ -88,7 +88,7 @@ where
 		&self,
 		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
-		use self_rust_tokenize::quote;
+		use self_rust_tokenize::{quote, SelfRustTokenize};
 		let tokens = match self {
 			VariableField::Name(identifier) => {
 				let tokens = identifier.to_tokens();
@@ -106,6 +106,30 @@ where
 			}
 		};
 		token_stream.extend(tokens);
+	}
+}
+
+#[cfg(feature = "serde-serialize")]
+impl<T: VariableFieldKind> serde::Serialize for VariableField<T>
+where
+	T: serde::Serialize,
+	T::OptionalExpression: serde::Serialize,
+{
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		match self {
+			VariableField::Name(name) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Name", name)
+			}
+			VariableField::Array(items, _) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Array", items)
+			}
+			VariableField::Object(items, _) => {
+				serializer.serialize_newtype_variant("VariableField", 0, "Object", items)
+			}
+		}
 	}
 }
 
@@ -137,7 +161,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 	type OptionalExpression: PartialEq + Eq + Debug + Clone + Sync + Send;
 
 	fn optional_expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError>;
@@ -151,17 +175,19 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 
 	fn optional_expression_get_position(
 		optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>>;
+	) -> Option<&Span>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableFieldInSourceCode;
 
 impl VariableFieldKind for VariableFieldInSourceCode {
 	type OptionalExpression = Option<Expression>;
 
 	fn optional_expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
@@ -186,20 +212,22 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 
 	fn optional_expression_get_position(
 		optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>> {
+	) -> Option<&Span> {
 		optional_expression.as_ref().map(|expr| expr.get_position())
 	}
 }
 
 /// For function type references
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableFieldInTypeAnnotation;
 
 impl VariableFieldKind for VariableFieldInTypeAnnotation {
 	type OptionalExpression = ();
 
 	fn optional_expression_from_reader(
-		_reader: &mut impl TokenReader<TSXToken, Span>,
+		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
 		_settings: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
@@ -216,14 +244,14 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 
 	fn optional_expression_get_position(
 		_optional_expression: &Self::OptionalExpression,
-	) -> Option<Cow<Span>> {
+	) -> Option<&Span> {
 		None
 	}
 }
 
 impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -232,13 +260,13 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (members, last_pos) =
 					parse_bracketed(reader, state, settings, None, TSXToken::CloseBrace)?;
-				Ok(Self::Object(members, start_pos.union(&last_pos)))
+				Ok(Self::Object(members, start_pos.union(last_pos)))
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (items, end_pos) =
 					parse_bracketed(reader, state, settings, None, TSXToken::CloseBracket)?;
-				Ok(Self::Array(items, start_pos.union(&end_pos)))
+				Ok(Self::Array(items, start_pos.union(end_pos)))
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, settings)?)),
 		}
@@ -279,24 +307,24 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 		}
 	}
 
-	fn get_position(&self) -> Cow<Span> {
+	fn get_position(&self) -> &Span {
 		match self {
-			VariableField::Array(_, position) | VariableField::Object(_, position) => {
-				Cow::Borrowed(position)
-			}
+			VariableField::Array(_, position) | VariableField::Object(_, position) => position,
 			VariableField::Name(id) => id.get_position(),
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEqExtras)]
+#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
-	/// `{ ...x }`
-	Spread(Span, VariableIdentifier),
 	/// `{ x }`
-	Name(VariableIdentifier, T::OptionalExpression),
+	Name(VariableIdentifier, T::OptionalExpression, Span),
+	/// `{ ...x }`
+	Spread(VariableIdentifier, Span),
 	/// `{ x: y }`
 	Map {
 		from: PropertyKey<crate::property_key::AlwaysPublic>,
@@ -307,35 +335,34 @@ pub enum ObjectDestructuringField<T: VariableFieldKind> {
 }
 
 impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			// TODO account for `...` tokens
-			ObjectDestructuringField::Spread(_, name) => name.get_position(),
-			ObjectDestructuringField::Name(name, optional_expression) => {
-				let name_position = name.get_position();
-				if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
-				{
-					Cow::Owned(name_position.union(expr_pos))
-				} else {
-					name_position
-				}
-			}
-			ObjectDestructuringField::Map { position, .. } => Cow::Borrowed(position),
-		}
-	}
+	// fn get_position(&self) -> &Span {
+	// 	match self {
+	// 		// TODO account for `...` tokens
+	// 		ObjectDestructuringField::Spread(_, name) => name.get_position(),
+	// 		ObjectDestructuringField::Name(name, optional_expression) => {
+	// 			let name_position = name.get_position();
+	// 			if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
+	// 			{
+	// 				Cow::Owned(name_position.union(expr_pos))
+	// 			} else {
+	// 				name_position
+	// 			}
+	// 		}
+	// 		ObjectDestructuringField::Map { position, .. } => position,
+	// 	}
+	// }
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Spread, _) => {
-				let Token(_, spread_pos) = reader.next().unwrap();
-				Ok(Self::Spread(
-					spread_pos,
-					VariableIdentifier::from_reader(reader, state, settings)?,
-				))
+				let token = reader.next().unwrap();
+				let identifier = VariableIdentifier::from_reader(reader, state, settings)?;
+				let position = token.get_span().union(identifier.get_position());
+				Ok(Self::Spread(identifier, position))
 			}
 			_ => {
 				let key = PropertyKey::from_reader(reader, state, settings)?;
@@ -347,28 +374,25 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 						U::optional_expression_from_reader(reader, state, settings)?;
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key.get_position().union(&pos)
+							key.get_position().union(pos)
 						} else {
-							key.get_position().into_owned()
+							key.get_position().clone()
 						};
 					Ok(Self::Map { from: key, name: variable_name, default_value, position })
 				} else if let PropertyKey::Ident(name, key_pos, _) = key {
 					let default_value =
 						U::optional_expression_from_reader(reader, state, settings)?;
+					let standard = VariableIdentifier::Standard(name, key_pos);
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key_pos.union(&pos)
+							standard.get_position().union(pos)
 						} else {
-							key_pos
+							standard.get_position().clone()
 						};
-					let standard = VariableIdentifier::Standard(name, position);
-					Ok(Self::Name(standard, default_value))
+					Ok(Self::Name(standard, default_value, position))
 				} else {
-					let Token(token, pos) = reader.next().unwrap();
-					Err(ParseError::new(
-						ParseErrors::UnexpectedToken { expected: &[TSXToken::Colon], found: token },
-						pos,
-					))
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 				}
 			}
 		}
@@ -381,11 +405,11 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 		depth: u8,
 	) {
 		match self {
-			Self::Spread(_, name) => {
+			Self::Spread(name, _) => {
 				buf.push_str("...");
 				buf.push_str(name.as_str());
 			}
-			Self::Name(name, default_value) => {
+			Self::Name(name, default_value, _) => {
 				buf.push_str(name.as_str());
 				U::optional_expression_to_string_from_buffer(default_value, buf, settings, depth)
 			}
@@ -397,11 +421,16 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 			}
 		}
 	}
+
+	fn get_position(&self) -> &Span {
+		todo!()
+	}
 }
 
 /// TODO not sure about the positions here, is potential duplication if T::OptionalExpression is none
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(Span, VariableIdentifier),
 	Name(WithComment<VariableField<T>>, T::OptionalExpression),
@@ -421,34 +450,16 @@ impl<T: VariableFieldKind + PartialEq> PartialEq for ArrayDestructuringField<T> 
 impl<T: VariableFieldKind> Eq for ArrayDestructuringField<T> {}
 
 impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			ArrayDestructuringField::Spread(spread_pos, ident) => {
-				Cow::Owned(spread_pos.union(&ident.get_position()))
-			}
-			ArrayDestructuringField::Name(name, optional_expression) => {
-				let name_position = name.get_position();
-				if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
-				{
-					Cow::Owned(name_position.union(expr_pos))
-				} else {
-					name_position
-				}
-			}
-			ArrayDestructuringField::None => Cow::Owned(Span::NULL_SPAN),
-		}
-	}
-
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			TSXToken::Spread => {
-				let Token(_, spread_pos) = reader.next().unwrap();
+				let token = reader.next().unwrap();
 				Ok(Self::Spread(
-					spread_pos,
+					token.get_span(),
 					VariableIdentifier::from_reader(reader, state, settings)?,
 				))
 			}
@@ -478,6 +489,10 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 			}
 			Self::None => {}
 		}
+	}
+
+	fn get_position(&self) -> &Span {
+		todo!()
 	}
 }
 
@@ -523,8 +538,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						chain,
 					);
 					match field.get_ast_ref() {
-						ObjectDestructuringField::Spread(_, _name) => {}
-						ObjectDestructuringField::Name(_name, default_value) => {
+						ObjectDestructuringField::Spread(_name, _) => {}
+						ObjectDestructuringField::Name(_name, default_value, _) => {
 							default_value.visit(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map {
@@ -583,8 +598,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						chain,
 					);
 					match field.get_ast_mut() {
-						ObjectDestructuringField::Spread(_, _id) => {}
-						ObjectDestructuringField::Name(_id, default_value) => {
+						ObjectDestructuringField::Spread(_id, _) => {}
+						ObjectDestructuringField::Name(_id, default_value, _) => {
 							default_value.visit_mut(visitors, data, settings, chain);
 						}
 						ObjectDestructuringField::Map {
@@ -674,12 +689,15 @@ mod tests {
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "x", span!(1, 2)),
 					None,
+					span!(1, 2),
 				)), WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "y", span!(4, 5)),
 					None,
+					span!(4, 5),
 				)), WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "z", span!(7, 8)),
 					None,
+					span!(7, 8),
 				))],
 				span!(0, 9),
 			)
@@ -692,8 +710,9 @@ mod tests {
 			"{ x = 2 }",
 			VariableField::Object(
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(2, 7)),
+					VariableIdentifier::Standard(Deref @ "x", span!(2, 3)),
 					Some(Expression::NumberLiteral(crate::NumberStructure::Number(_), span!(6, 7))),
+					span!(2, 7),
 				))],
 				span!(0, 9),
 			)

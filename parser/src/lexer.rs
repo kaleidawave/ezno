@@ -2,12 +2,12 @@
 //!
 //! Uses [TSXToken]s for data, uses [Span] for location data. Uses [tokenizer_lib] for logic.
 
-use super::{ParseError, SourceId, Span, TSXToken};
+use super::{Span, TSXToken};
 use crate::{
 	cursor::EmptyCursorId, errors::LexingErrors, html_tag_contains_literal_content,
 	html_tag_is_self_closing,
 };
-use tokenizer_lib::{Token, TokenSender};
+use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
 use derive_finite_automaton::{
 	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
@@ -36,21 +36,17 @@ impl Default for LexerOptions {
 /// *Tokenizes* script appending Tokens to `sender` using [TokenSender::push]
 /// `offset` represents the start of the source if script is contained in some larger buffer
 ///
-/// Returns () if successful, if runs into lexing error will short-circuit and return a [ParseError]
+/// Returns () if successful, if runs into lexing error will short-circuit
 ///
 /// **CURSORS HAVE TO BE IN FORWARD ORDER**
 #[doc(hidden)]
 pub fn lex_script(
 	script: &str,
-	sender: &mut impl TokenSender<TSXToken, Span>,
+	sender: &mut impl TokenSender<TSXToken, crate::TokenStart>,
 	options: &LexerOptions,
-	source: Option<SourceId>,
 	offset: Option<u32>,
 	mut cursors: Vec<(usize, EmptyCursorId)>,
-) -> Result<(), ParseError> {
-	// TODO
-	let source = source.unwrap_or(SourceId::NULL);
-
+) -> Result<(), (LexingErrors, Span)> {
 	cursors.reverse();
 
 	#[derive(PartialEq, Debug)]
@@ -171,17 +167,24 @@ pub fn lex_script(
 	let mut expect_expression = true;
 
 	/// Returns a span at the current end position. Used for throwing errors
-	/// TODO not sure about this, maybe shouldn't return span
 	macro_rules! current_position {
 		() => {
-			Span { start: start as u32 + offset, end: start as u32 + offset, source }
+			TokenStart::new(start as u32 + offset)
 		};
 	}
 
 	macro_rules! return_err {
 		($err:expr) => {{
 			sender.push(Token(TSXToken::EOS, current_position!()));
-			return Err(ParseError::new($err, current_position!()));
+			return Err((
+				$err,
+				Span {
+					start: start as u32 + offset,
+					// TODO + 1
+					end: start as u32 + offset,
+					source: (),
+				},
+			));
 		}};
 	}
 
@@ -207,55 +210,9 @@ pub fn lex_script(
 		}
 
 		// Pushes a new token
-		// TODO these need to be tidied up
 		macro_rules! push_token {
 			($t:expr $(,)?) => {{
-				let res = sender.push(Token(
-					$t,
-					Span {
-						start: start as u32 + offset,
-						end: (idx + chr.len_utf8()) as u32 + offset,
-						source,
-					},
-				));
-				if !res {
-					return Ok(());
-				}
-			}};
-
-			(EXCLUDING_LAST_CHAR, $t:expr $(,)?) => {{
-				let res = sender.push(Token(
-					$t,
-					Span { start: start as u32 + offset, end: idx as u32 + offset, source },
-				));
-				if !res {
-					return Ok(());
-				}
-			}};
-
-			(EXCLUDING_SLICE $slice:expr, $t:expr $(,)?) => {{
-				let res = sender.push(Token(
-					$t,
-					Span {
-						start: start as u32 + offset,
-						end: (idx - $slice.len_utf8()) as u32 + offset,
-						source,
-					},
-				));
-				if !res {
-					return Ok(());
-				}
-			}};
-
-			(AFTER_LAST_CHAR, $t:expr $(,)?) => {{
-				let res = sender.push(Token(
-					$t,
-					Span {
-						start: idx as u32 + offset,
-						end: (idx + chr.len_utf8()) as u32 + offset,
-						source,
-					},
-				));
+				let res = sender.push(Token($t, TokenStart::new(start as u32 + offset)));
 				if !res {
 					return Ok(());
 				}
@@ -329,10 +286,7 @@ pub fn lex_script(
 						if *last_was_underscore {
 							return_err!(LexingErrors::TrailingUnderscore)
 						}
-						push_token!(
-							EXCLUDING_LAST_CHAR,
-							TSXToken::NumberLiteral(script[start..idx].to_owned())
-						);
+						push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
 						set_state!(LexingState::None);
 					}
 				}
@@ -361,7 +315,7 @@ pub fn lex_script(
 							start = idx + chr.len_utf8();
 							continue;
 						} else {
-							push_token!(EXCLUDING_LAST_CHAR, result);
+							push_token!(result);
 							start = idx;
 						}
 					}
@@ -378,7 +332,7 @@ pub fn lex_script(
 				_ => {
 					let token = TSXToken::from_slice(&script[start..idx]);
 					let is_expression_prefix = token.is_expression_prefix();
-					push_token!(EXCLUDING_LAST_CHAR, token);
+					push_token!(token);
 					set_state!(LexingState::None, EXPECT_EXPRESSION: is_expression_prefix);
 				}
 			},
@@ -414,10 +368,9 @@ pub fn lex_script(
 			LexingState::Comment => {
 				if let '\n' = chr {
 					if options.include_comments {
-						push_token!(
-							EXCLUDING_LAST_CHAR,
-							TSXToken::Comment(script[(start + 2)..idx].trim_end().to_owned()),
-						);
+						push_token!(TSXToken::Comment(
+							script[(start + 2)..idx].trim_end().to_owned()
+						),);
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -476,13 +429,11 @@ pub fn lex_script(
 				'$' if !*escaped => *last_char_was_dollar = true,
 				'{' if *last_char_was_dollar => {
 					if idx > start + 1 {
-						// TODO using push token
-						sender.push(Token(
-							TSXToken::TemplateLiteralChunk(script[start..(idx - 1)].to_owned()),
-							Span { start: start as u32 + offset, end: idx as u32 + offset, source },
-						));
+						push_token!(TSXToken::TemplateLiteralChunk(
+							script[start..(idx - 1)].to_owned()
+						),);
 					}
-					push_token!(AFTER_LAST_CHAR, TSXToken::TemplateLiteralExpressionStart);
+					push_token!(TSXToken::TemplateLiteralExpressionStart);
 					*interpolation_depth += 1;
 					state_stack.push(state);
 
@@ -492,10 +443,7 @@ pub fn lex_script(
 				}
 				'`' if !*escaped => {
 					if idx > start + 1 {
-						push_token!(
-							EXCLUDING_LAST_CHAR,
-							TSXToken::TemplateLiteralChunk(script[start..idx].to_owned())
-						);
+						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
 					}
 					push_token!(TSXToken::TemplateLiteralEnd);
 					start = idx + 1;
@@ -557,17 +505,11 @@ pub fn lex_script(
 							if !*lexed_start {
 								match direction {
 									JSXTagNameDirection::Opening => {
-										push_token!(
-											EXCLUDING_LAST_CHAR,
-											TSXToken::JSXOpeningTagStart
-										);
+										push_token!(TSXToken::JSXOpeningTagStart);
 										start += 1;
 									}
 									JSXTagNameDirection::Closing => {
-										push_token!(
-											EXCLUDING_LAST_CHAR,
-											TSXToken::JSXClosingTagStart
-										);
+										push_token!(TSXToken::JSXClosingTagStart);
 										start += 2;
 									}
 								}
@@ -595,10 +537,7 @@ pub fn lex_script(
 							}
 							let tag_name = script[start..idx].trim();
 							*is_self_closing_tag = html_tag_is_self_closing(&tag_name);
-							push_token!(
-								EXCLUDING_LAST_CHAR,
-								TSXToken::JSXTagName(tag_name.to_owned())
-							);
+							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
 							*tag_depth += 1;
 							match chr {
 								'/' if *is_self_closing_tag => {
@@ -607,7 +546,7 @@ pub fn lex_script(
 								'>' => {
 									*no_inner_tags_or_expressions =
 										html_tag_contains_literal_content(&script[start..idx]);
-									push_token!(AFTER_LAST_CHAR, TSXToken::JSXOpeningTagEnd);
+									push_token!(TSXToken::JSXOpeningTagEnd);
 									start = idx + 1;
 									*jsx_state = if *no_inner_tags_or_expressions {
 										JSXLexingState::LiteralContent {
@@ -636,7 +575,7 @@ pub fn lex_script(
 									return_err!(LexingErrors::UnbalancedJSXClosingTags);
 								}
 							};
-							push_token!(AFTER_LAST_CHAR, TSXToken::JSXSelfClosingTag);
+							push_token!(TSXToken::JSXSelfClosingTag);
 							start = idx + 1;
 							// If JSX literal range has ended
 							if *tag_depth == 0 {
@@ -656,12 +595,9 @@ pub fn lex_script(
 							}
 							let key_slice = script[start..idx].trim();
 							if !key_slice.is_empty() {
-								push_token!(
-									EXCLUDING_LAST_CHAR,
-									TSXToken::JSXAttributeKey(key_slice.to_owned())
-								);
+								push_token!(TSXToken::JSXAttributeKey(key_slice.to_owned()));
 							}
-							push_token!(AFTER_LAST_CHAR, TSXToken::JSXAttributeAssign);
+							push_token!(TSXToken::JSXAttributeAssign);
 							*jsx_state = JSXLexingState::AttributeEqual;
 							start = idx + 1;
 						}
@@ -678,10 +614,9 @@ pub fn lex_script(
 						'>' => {
 							// Accounts for <div hidden>
 							if start < idx {
-								push_token!(
-									EXCLUDING_LAST_CHAR,
-									TSXToken::JSXAttributeKey(script[start..idx].to_owned())
-								);
+								push_token!(TSXToken::JSXAttributeKey(
+									script[start..idx].to_owned()
+								));
 							}
 							if *is_self_closing_tag {
 								*tag_depth = match tag_depth.checked_sub(1) {
@@ -690,7 +625,7 @@ pub fn lex_script(
 										return_err!(LexingErrors::UnbalancedJSXClosingTags);
 									}
 								};
-								push_token!(AFTER_LAST_CHAR, TSXToken::JSXSelfClosingTag);
+								push_token!(TSXToken::JSXSelfClosingTag);
 								start = idx + 1;
 								// If JSX literal range has ended
 								if *tag_depth == 0 {
@@ -700,7 +635,7 @@ pub fn lex_script(
 									*is_self_closing_tag = false;
 								}
 							} else {
-								push_token!(AFTER_LAST_CHAR, TSXToken::JSXOpeningTagEnd);
+								push_token!(TSXToken::JSXOpeningTagEnd);
 								start = idx + 1;
 								*jsx_state = if *no_inner_tags_or_expressions {
 									JSXLexingState::LiteralContent {
@@ -714,10 +649,9 @@ pub fn lex_script(
 						}
 						chr if chr.is_whitespace() => {
 							if start < idx {
-								push_token!(
-									EXCLUDING_LAST_CHAR,
-									TSXToken::JSXAttributeKey(script[start..idx].to_owned())
-								);
+								push_token!(TSXToken::JSXAttributeKey(
+									script[start..idx].to_owned()
+								));
 							}
 							start = idx + chr.len_utf8();
 						}
@@ -764,18 +698,12 @@ pub fn lex_script(
 							continue;
 						}
 						(JSXAttributeValueDelimiter::None, ' ') => {
-							push_token!(
-								EXCLUDING_LAST_CHAR,
-								TSXToken::JSXAttributeValue(script[start..idx].to_owned())
-							);
+							push_token!(TSXToken::JSXAttributeValue(script[start..idx].to_owned()));
 							*jsx_state = JSXLexingState::AttributeKey;
 							start = idx;
 						}
 						(JSXAttributeValueDelimiter::None, '>') => {
-							push_token!(
-								EXCLUDING_LAST_CHAR,
-								TSXToken::JSXAttributeValue(script[start..idx].to_owned())
-							);
+							push_token!(TSXToken::JSXAttributeValue(script[start..idx].to_owned()));
 							if *is_self_closing_tag {
 								*tag_depth = match tag_depth.checked_sub(1) {
 									Some(value) => value,
@@ -783,7 +711,7 @@ pub fn lex_script(
 										return_err!(LexingErrors::UnbalancedJSXClosingTags);
 									}
 								};
-								push_token!(AFTER_LAST_CHAR, TSXToken::JSXSelfClosingTag);
+								push_token!(TSXToken::JSXSelfClosingTag);
 								start = idx + 1;
 								// If JSX literal range has ended
 								if *tag_depth == 0 {
@@ -793,7 +721,7 @@ pub fn lex_script(
 									*is_self_closing_tag = false;
 								}
 							} else {
-								push_token!(AFTER_LAST_CHAR, TSXToken::JSXOpeningTagEnd);
+								push_token!(TSXToken::JSXOpeningTagEnd);
 								start = idx + 1;
 								*jsx_state = if *no_inner_tags_or_expressions {
 									JSXLexingState::LiteralContent {
@@ -812,10 +740,7 @@ pub fn lex_script(
 							'<' => {
 								let content_slice = &script[start..idx];
 								if !content_slice.trim().is_empty() {
-									push_token!(
-										EXCLUDING_LAST_CHAR,
-										TSXToken::JSXContent(content_slice.to_owned())
-									);
+									push_token!(TSXToken::JSXContent(content_slice.to_owned()));
 								}
 								*jsx_state = JSXLexingState::TagName {
 									direction: JSXTagNameDirection::Opening,
@@ -826,10 +751,7 @@ pub fn lex_script(
 							'{' => {
 								let content_slice = &script[start..idx];
 								if !content_slice.trim().is_empty() {
-									push_token!(
-										EXCLUDING_LAST_CHAR,
-										TSXToken::JSXContent(content_slice.to_owned())
-									);
+									push_token!(TSXToken::JSXContent(content_slice.to_owned()));
 								}
 								push_token!(TSXToken::JSXExpressionStart);
 								*interpolation_depth += 1;
@@ -840,10 +762,7 @@ pub fn lex_script(
 							'\n' => {
 								let source = script[start..idx].trim();
 								if !source.is_empty() {
-									push_token!(
-										EXCLUDING_LAST_CHAR,
-										TSXToken::JSXContent(source.to_owned())
-									);
+									push_token!(TSXToken::JSXContent(source.to_owned()));
 									start = idx;
 								}
 								push_token!(TSXToken::JSXContentLineBreak);
@@ -862,13 +781,10 @@ pub fn lex_script(
 								let end = idx - '<'.len_utf8();
 								let source = script[start..end].trim();
 								if !source.is_empty() {
-									push_token!(
-										EXCLUDING_SLICE '<',
-										TSXToken::JSXContent(source.to_owned())
-									);
+									push_token!(TSXToken::JSXContent(source.to_owned()));
 								}
 								start = end;
-								push_token!(EXCLUDING_LAST_CHAR, TSXToken::JSXClosingTagStart);
+								push_token!(TSXToken::JSXClosingTagStart);
 								start = idx + '/'.len_utf8();
 								*jsx_state = JSXLexingState::TagName {
 									direction: JSXTagNameDirection::Closing,
@@ -1041,20 +957,18 @@ pub fn lex_script(
 		}
 	}
 
-	let end_of_source = script.len() as u32 + offset;
-
 	// If source ends while there is still a parsing state
 	match state {
 		LexingState::Number { .. } => {
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),
-				Span { start: start as u32 + offset, end: end_of_source, source },
+				TokenStart::new(start as u32 + offset),
 			));
 		}
 		LexingState::Identifier => {
 			sender.push(Token(
 				TSXToken::from_slice(&script[start..]),
-				Span { start: start as u32 + offset, end: end_of_source, source },
+				TokenStart::new(start as u32 + offset),
 			));
 		}
 		LexingState::Symbol(symbol_state) => {
@@ -1065,40 +979,39 @@ pub fn lex_script(
 					result,
 					ate_character: _, // Should always be true
 				} => {
-					sender.push(Token(
-						result,
-						Span { start: start as u32 + offset, end: end_of_source, source },
-					));
+					sender.push(Token(result, TokenStart::new(start as u32 + offset)));
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
 				GetNextResult::InvalidCharacter(err) => {
+					sender.push(Token(TSXToken::EOS, current_position!()));
 					return_err!(LexingErrors::UnexpectedCharacter(err));
 				}
 			}
 		}
-		LexingState::String { .. } => {
-			return_err!(LexingErrors::ExpectedEndToStringLiteral);
-		}
 		LexingState::Comment => {
 			sender.push(Token(
 				TSXToken::Comment(script[(start + 2)..].trim_end().to_owned()),
-				Span { start: start as u32 + offset, end: end_of_source, source },
+				TokenStart::new(start as u32 + offset),
 			));
+		}
+		LexingState::String { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
+			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		LexingState::MultiLineComment { .. } => {
 			sender.push(Token(TSXToken::EOS, current_position!()));
-			return Err(ParseError::new(
-				LexingErrors::ExpectedEndToMultilineComment,
-				current_position!(),
-			));
+			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
 		LexingState::RegexLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 		}
 		LexingState::JSXLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToJSXLiteral);
 		}
 		LexingState::TemplateLiteral { .. } => {
+			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}

@@ -30,9 +30,9 @@ pub(crate) fn synthesize_access_to_reference<T: crate::FSResolver>(
 	checking_data: &mut CheckingData<T>,
 ) -> Reference {
 	match variable_or_property_access {
-		VariableOrPropertyAccess::Variable(ident, _) => Reference::Variable(
+		VariableOrPropertyAccess::Variable(ident, position) => Reference::Variable(
 			ident.clone(),
-			variable_or_property_access.get_position().into_owned(),
+			position.clone().with_source(environment.get_source()),
 		),
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
 			let parent_ty = synthesize_expression(&parent, environment, checking_data);
@@ -42,12 +42,20 @@ pub(crate) fn synthesize_access_to_reference<T: crate::FSResolver>(
 				}
 				parser::PropertyReference::Cursor(_) => todo!(),
 			};
-			Reference::Property { on: parent_ty, with: key_ty, span: position.clone() }
+			Reference::Property {
+				on: parent_ty,
+				with: key_ty,
+				span: position.clone().with_source(environment.get_source()),
+			}
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {
 			let parent_ty = synthesize_expression(&indexee, environment, checking_data);
 			let key_ty = synthesize_multiple_expression(&indexer, environment, checking_data);
-			Reference::Property { on: parent_ty, with: key_ty, span: position.clone() }
+			Reference::Property {
+				on: parent_ty,
+				with: key_ty,
+				span: position.clone().with_source(environment.get_source()),
+			}
 		}
 	}
 }

@@ -5,6 +5,8 @@ members = [
     "parser/generator",
     "checker",
     "checker/binary-serialize-derive",
+    # "lsp/server",
+    # "checker/specification"
 ]
 
 [package]
@@ -44,6 +46,8 @@ codespan-reporting = "0.11.1"
 argh = "0.1.6"
 base64 = "0.13.0"
 enum-variants-strings = "0.2.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.107"
 
 [dependencies.parser]
 path = "./parser"
@@ -53,8 +57,8 @@ package = "ezno-parser"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "=0.2.87"
-serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.5.0"
+console_error_panic_hook = "0.1.7"
 js-sys = "0.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

@@ -65,8 +65,8 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		//     )
 		// }
 		// }
-		Statement::Return(_kw, expression) => {
-			let returned = if let Some(expression) = expression {
+		Statement::Return(return_statement) => {
+			let returned = if let Some(ref expression) = return_statement.1 {
 				synthesize_multiple_expression(expression, environment, checking_data)
 			} else {
 				TypeId::UNDEFINED_TYPE
@@ -173,25 +173,25 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		Statement::SwitchStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "Switch statement",
-				at: stmt.get_position().into_owned(),
+				at: stmt.get_position().clone().with_source(environment.get_source()),
 			});
 		}
 		Statement::WhileStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "While statement",
-				at: stmt.get_position().into_owned(),
+				at: stmt.get_position().clone().with_source(environment.get_source()),
 			});
 		}
 		Statement::DoWhileStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "Do while statement",
-				at: stmt.get_position().into_owned(),
+				at: stmt.get_position().clone().with_source(environment.get_source()),
 			});
 		}
 		Statement::ForLoopStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "For statement",
-				at: stmt.get_position().into_owned(),
+				at: stmt.get_position().clone().with_source(environment.get_source()),
 			});
 			// let mut environment = environment.new_lexical_environment(ScopeType::Conditional {});
 			// match &for_statement.condition {
@@ -261,24 +261,24 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		Statement::Continue(..) | Statement::Break(..) => {
 			checking_data.raise_unimplemented_error(
 				"continue and break statements",
-				statement.get_position().into_owned(),
+				statement.get_position().clone().with_source(environment.get_source()),
 			);
 		}
-		Statement::Throw(_, value) => {
-			let thrown_value = synthesize_multiple_expression(value, environment, checking_data);
+		Statement::Throw(stmt) => {
+			let thrown_value = synthesize_multiple_expression(&stmt.1, environment, checking_data);
 			environment.throw_value(thrown_value)
 		}
 		Statement::Labelled { position, name, statement } => {
 			checking_data.raise_unimplemented_error(
 				"labelled statements",
-				statement.get_position().into_owned(),
+				statement.get_position().clone().with_source(environment.get_source()),
 			);
 			synthesize_statement(statement, environment, checking_data);
 		}
 		Statement::VarVariable(_) => {
 			checking_data.raise_unimplemented_error(
 				"var variables statements",
-				statement.get_position().into_owned(),
+				statement.get_position().clone().with_source(environment.get_source()),
 			);
 		}
 		Statement::TryCatchStatement(stmt) => {

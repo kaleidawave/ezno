@@ -20,3 +20,6 @@ self-rust-tokenize = "0.3.3"
 parser = { path = "..", package = "ezno-parser", version = "0.0.4", features = [
   "self-rust-tokenize",
 ] }
+
+[dev-dependencies]
+pretty_assertions = "1.3.0"

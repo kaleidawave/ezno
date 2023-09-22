@@ -35,6 +35,7 @@ pub(crate) use serialization::BinarySerializable;
 use context::store::ExistingContextStore;
 
 use indexmap::IndexMap;
+use source_map::SpanWithSource;
 use std::{
 	collections::{HashMap, HashSet},
 	path::PathBuf,
@@ -205,7 +206,7 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 	}
 
 	/// TODO temp, needs better place
-	pub fn raise_decidable_result_error(&mut self, span: Span, value: bool) {
+	pub fn raise_decidable_result_error(&mut self, span: SpanWithSource, value: bool) {
 		self.diagnostics_container.add_error(TypeCheckWarning::DeadBranch {
 			expression_span: span,
 			expression_value: value,
@@ -213,14 +214,14 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 	}
 
 	/// TODO temp, needs better place
-	pub fn raise_unimplemented_error(&mut self, item: &'static str, span: Span) {
+	pub fn raise_unimplemented_error(&mut self, item: &'static str, span: SpanWithSource) {
 		if self.unimplemented_items.insert(item) {
 			self.diagnostics_container
 				.add_warning(TypeCheckWarning::Unimplemented { thing: item, at: span });
 		}
 	}
 
-	pub fn add_expression_mapping(&mut self, span: Span, instance: Instance) {
+	pub fn add_expression_mapping(&mut self, span: SpanWithSource, instance: Instance) {
 		self.type_mappings.expressions_to_instances.push(span, instance);
 	}
 
@@ -228,7 +229,7 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		&mut self,
 		expr_ty: TypeId,
 		to_satisfy: TypeId,
-		at: Span,
+		at: SpanWithSource,
 		environment: &mut Environment,
 	) {
 		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {

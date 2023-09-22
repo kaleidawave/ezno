@@ -1,12 +1,12 @@
-use std::borrow::Cow;
-
 use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{block::BlockOrSingleStatement, ASTNode, Expression, TSXKeyword, TSXToken};
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct WhileStatement {
 	pub condition: Expression,
 	pub inner: BlockOrSingleStatement,
@@ -14,21 +14,21 @@ pub struct WhileStatement {
 }
 
 impl ASTNode for WhileStatement {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
+		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = Expression::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
-		Ok(Self { position: start_span.union(&inner.get_position()), condition, inner })
+		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -48,8 +48,10 @@ impl ASTNode for WhileStatement {
 }
 
 /// TODO what about a do statement
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DoWhileStatement {
 	pub condition: Expression,
 	// TODO not sure about true here
@@ -58,22 +60,22 @@ pub struct DoWhileStatement {
 }
 
 impl ASTNode for DoWhileStatement {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, Span>,
+		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Do))?;
+		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Do))?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = Expression::from_reader(reader, state, settings)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
-		Ok(Self { position: start_span.union(&inner.get_position()), condition, inner })
+		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

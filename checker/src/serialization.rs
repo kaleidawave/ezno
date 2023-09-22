@@ -7,7 +7,7 @@ use std::{
 	convert::TryInto,
 };
 
-use source_map::{SourceId, Span};
+use source_map::{SourceId, Span, SpanWithSource};
 
 /// TODO not sure about iterator
 /// This is automated by the derive macro TODO link
@@ -176,7 +176,7 @@ where
 	}
 }
 
-impl BinarySerializable for Span {
+impl BinarySerializable for SpanWithSource {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&TryInto::<u32>::try_into(self.start).unwrap().to_le_bytes());
 		buf.extend_from_slice(&TryInto::<u32>::try_into(self.end).unwrap().to_le_bytes());
@@ -198,7 +198,7 @@ impl BinarySerializable for Span {
 		])
 		.into();
 
-		Span { start, end, source }
+		SpanWithSource { start, end, source }
 	}
 }
 

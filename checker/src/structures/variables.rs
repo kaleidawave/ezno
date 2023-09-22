@@ -1,5 +1,5 @@
 use crate::types::TypeId;
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 use std::fmt::Debug;
 
 /// A variable, that can be referenced. Can be a including class (prototypes) and functions
@@ -8,7 +8,7 @@ pub struct Variable {
 	/// Whether can be reassigned and what to
 	pub mutability: VariableMutability,
 	/// Location where variable is defined **ALSO UNIQUELY IDENTIFIES THE VARIABLE**
-	pub declared_at: Span,
+	pub declared_at: SpanWithSource,
 }
 
 impl Variable {

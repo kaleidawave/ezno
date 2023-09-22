@@ -1,8 +1,10 @@
-use std::borrow::Cow;
-
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{
+	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
+	Token, TokenReader,
+};
 use visitable_derive::Visitable;
 
 use crate::{
@@ -12,6 +14,7 @@ use crate::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorator {
 	pub name: String,
 	pub arguments: Option<Vec<Expression>>,
@@ -19,12 +22,12 @@ pub struct Decorator {
 }
 
 impl ASTNode for Decorator {
-	fn get_position(&self) -> Cow<Span> {
-		Cow::Borrowed(&self.position)
+	fn get_position(&self) -> &Span {
+		&self.position
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
@@ -58,10 +61,10 @@ impl ASTNode for Decorator {
 
 impl Decorator {
 	pub(crate) fn from_reader_sub_at_symbol(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
-		at_pos: Span,
+		at_pos: TokenStart,
 	) -> ParseResult<Self> {
 		let (name, name_position) = token_as_identifier(reader.next().unwrap(), "Decorator name")?;
 		let (arguments, position) = if reader
@@ -81,36 +84,39 @@ impl Decorator {
 					_ => break,
 				}
 			}
-			let end_position = reader.expect_next(TSXToken::CloseParentheses)?;
-			(Some(arguments), at_pos.union(&end_position))
+			let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+			(Some(arguments), at_pos.union(end))
 		} else {
-			(None, at_pos.union(&name_position))
+			(None, at_pos.union(name_position))
 		};
 		Ok(Self { name, arguments, position })
 	}
 }
 
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,
 	pub on: T,
+	// TODO option and on t
+	pub position: Span,
 }
 
 impl<N: ASTNode> ASTNode for Decorated<N> {
-	fn get_position(&self) -> Cow<Span> {
-		// TODO union with first decorated
-		self.on.get_position()
+	fn get_position(&self) -> &Span {
+		self.get()
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
 		let decorators = decorators_from_reader(reader, state, settings)?;
-		N::from_reader(reader, state, settings).map(|on| Self { on, decorators })
+		N::from_reader(reader, state, settings).map(|on| Self::new(decorators, on))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -124,9 +130,15 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 	}
 }
 
-impl<U> Decorated<U> {
-	pub fn new(on: U) -> Self {
-		Self { decorators: Default::default(), on }
+impl<U: ASTNode> Decorated<U> {
+	pub fn new_empty(on: U) -> Self {
+		Self::new(Default::default(), on)
+	}
+
+	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
+		let position =
+			decorators.first().map_or(on.get_position(), |d| &d.position).union(on.get_position());
+		Self { decorators, position, on }
 	}
 
 	pub(crate) fn to_string_from_buffer_just_decorators<T: source_map::ToString>(
@@ -149,7 +161,7 @@ impl<U> Decorated<U> {
 }
 
 pub(crate) fn decorators_from_reader(
-	reader: &mut impl TokenReader<TSXToken, Span>,
+	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	settings: &ParseOptions,
 ) -> ParseResult<Vec<Decorator>> {

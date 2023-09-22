@@ -22,6 +22,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 	};
 
 	let mut idx_to_types = HashMap::new();
+	let source = definition.source;
 	let mut root = Root::new_with_primitive_references();
 
 	// Hoisting names of interfaces, namespaces and types
@@ -31,7 +32,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = root.new_interface(
 					&interface.on.name,
-					interface.on.position.clone(),
+					interface.on.position.clone().with_source(source).clone(),
 					&mut checking_data.types,
 				);
 				idx_to_types.insert(interface.on.position.start, ty);
@@ -40,8 +41,8 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				todo!();
 				// (
 				// 	class.type_id,
-				// 	// environment.register_type(&class.name, class.type_parameters.is_some(), None),
-				// 	environment.register_type(Type::NamedRooted { name class.name.clone())),
+				// 	// root.register_type(&class.name, class.type_parameters.is_some(), None),
+				// 	root.register_type(Type::NamedRooted { name class.name.clone())),
 				// ),
 			}
 			TypeDefinitionModuleDeclaration::TypeAlias(type_alias) => {
@@ -56,7 +57,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 
 				// idx_to_types.insert(
 				// 	interface.on.position.start,
-				// 	(&interface.on, &mut root, checking_data),
+				// 	(&interface.on, root, checking_data),
 				// );
 				root.new_alias(&type_alias.type_name.name, to, &mut checking_data.types);
 				// checking_data
@@ -70,6 +71,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 		match declaration {
 			TypeDefinitionModuleDeclaration::Function(func) => {
 				// TODO abstract
+				let declared_at = func.get_position().clone().with_source(source);
 				let base = type_function_reference(
 					&func.type_parameters,
 					&func.parameters,
@@ -77,7 +79,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					&mut root,
 					checking_data,
 					func.performs.as_ref().into(),
-					func.position.clone(),
+					declared_at.clone(),
 					crate::types::FunctionKind::Arrow,
 					None,
 				);
@@ -86,7 +88,8 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					base.type_parameters,
 					base.parameters,
 					base.return_type,
-					func.get_position().into_owned(),
+					// TODO
+					declared_at,
 					base.effects,
 					base.constant_id,
 				);
@@ -95,7 +98,8 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 
 				let res = root.register_variable_handle_error(
 					func.name.as_str(),
-					func.get_position().into_owned(),
+					// TODO
+					func.get_position().clone().with_source(source),
 					behavior,
 					checking_data,
 				);
@@ -111,10 +115,11 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					synthesize_type_annotation(&type_restriction, &mut root, checking_data);
 
 				// // TODO not sure...
-				// if let Some(frozen) = environment.is_frozen(variable_ty) {
-				// 	environment.frozen.insert(var_type, frozen);
+				// if let Some(frozen) = root.is_frozen(variable_ty) {
+				// 	root.frozen.insert(var_type, frozen);
 				// }
 
+				let position = position.clone().with_source(source);
 				let declare_variable = root.declare_variable(
 					&name,
 					position.clone(),
@@ -126,7 +131,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					.type_mappings
 					.variables_to_constraints
 					.0
-					.insert(crate::VariableId(position.source, position.start), variable_ty);
+					.insert(crate::VariableId(source, position.start), variable_ty);
 
 				if let Err(error) = declare_variable {
 					checking_data.diagnostics_container.add_error(
@@ -162,41 +167,43 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				if let Some(_) = type_parameters {
 					todo!()
 				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut environment = environment.new_lexical_environment();
+				//     let mut root = root.new_lexical_root();
 				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
 				//         type_parameters,
-				//         &mut environment,
+				//         &mut root,
 				//         error_handler,
 				//         type_mappings,
 				//     );
 				//     let borrow = type_parameters.0.borrow();
 				//     for parameter in borrow.iter().cloned() {
-				//         environment.declare_generic_type_parameter(parameter);
+				//         root.declare_generic_type_parameter(parameter);
 				//     }
-				//     environment.get_type(&type_expression, error_handler, type_mappings).unwrap()
+				//     root.get_type(&type_expression, error_handler, type_mappings).unwrap()
 				// } else {
-				//     environment.get_type(&type_expression, error_handler, type_mappings).unwrap()
+				//     root.get_type(&type_expression, error_handler, type_mappings).unwrap()
 				// };
 				// todo!("This should have two passes with a empty type");
 				} else {
 					// todo!("Modify alias")
-					// let ty = environment.get_type_handle_errors(&type_expression, checking_data);
-					// environment.register_type(ty);
+					// let ty = root.get_type_handle_errors(&type_expression, checking_data);
+					// root.register_type(ty);
 				}
 			}
 			TypeDefinitionModuleDeclaration::Namespace(_) => unimplemented!(),
-			TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => unimplemented!(),
+			TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => {
+				unimplemented!()
+			}
 			TypeDefinitionModuleDeclaration::Comment(comment) => {}
 			TypeDefinitionModuleDeclaration::Class(class) => {
 				todo!();
 				// let existing_type =
 				//     checking_data.type_mappings.get_type_declaration(&class.type_id).unwrap();
 				// if let Some(extends_type) = &class.extends {
-				//     let extending_type = environment
+				//     let extending_type = root
 				//         .get_type(
 				//             extends_type,
 				//             checking_data,
-				//             &crate::environment::GetTypeFromReferenceSettings::Default,
+				//             &crate::root::GetTypeFromReferenceSettings::Default,
 				//         )
 				//         .expect("Class should have been initialized");
 				//     todo!();
@@ -215,6 +222,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			}
 		}
 	}
+
 	root
 }
 

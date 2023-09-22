@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::{Span, SpanWithSource};
 
 use crate::{CheckingData, Environment, TypeId};
 
@@ -13,8 +13,8 @@ pub enum Assignable {
 // TODO copy, when span copy
 #[derive(Clone)]
 pub enum Reference {
-	Variable(String, Span),
-	Property { on: TypeId, with: TypeId, span: Span },
+	Variable(String, SpanWithSource),
+	Property { on: TypeId, with: TypeId, span: SpanWithSource },
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number
@@ -36,7 +36,7 @@ pub enum AssignmentReturnStatus {
 }
 
 impl Reference {
-	pub fn get_position(&self) -> Span {
+	pub fn get_position(&self) -> SpanWithSource {
 		match self {
 			Reference::Variable(_, span) | Reference::Property { span, .. } => span.clone(),
 		}
@@ -51,5 +51,5 @@ pub trait SynthesizableExpression {
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId;
 
-	fn get_position(&self) -> Span;
+	fn get_position(&self) -> &Span;
 }

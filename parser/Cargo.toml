@@ -13,15 +13,21 @@ categories = ["parser-implementations"]
 
 [features]
 # TODO these shouldn't be default
-default = ["self-rust-tokenize", "extras", "codespan-reporting"]
+default = [
+  "self-rust-tokenize",
+  "extras",
+  "codespan-reporting",
+  "serde-serialize",
+]
 self-rust-tokenize = ["dep:self-rust-tokenize", "source-map/self-rust-tokenize"]
 codespan-reporting = ["source-map/codespan-reporting"]
+serde-serialize = ["dep:serde"]
 extras = []
 
 [dependencies]
 visitable-derive = { path = "./visitable-derive", version = "0.0.2", package = "ezno-parser-visitable-derive" }
 
-derive-finite-automaton = "0.1.0"
+derive-finite-automaton = "0.1.3"
 derive-debug-extras = { version = "0.2.2", features = [
   "auto-debug-single-tuple-inline",
 ] }
@@ -34,23 +40,28 @@ iterator-endiate = "0.1.0"
 enum_variant_type = "0.3.1"
 enum-variants-strings = "0.2"
 
-source-map = { version = "0.13", features = [
-  "span-serialize",
+get-field-by-type = "0.0.3"
+
+source-map = { version = "0.14.2", features = [
+  "serde-serialize",
   "self-rust-tokenize",
 ] }
+serde = { version = "1.0", features = ["derive"], optional = true }
 self-rust-tokenize = { version = "0.3.3", optional = true }
 
 # Needs buffered and not parralel for WASM
 [target.'cfg(target_family = "wasm")'.dependencies]
-tokenizer-lib = { version = "1.5.0", features = [
+tokenizer-lib = { version = "1.5.1", features = [
   "buffered",
+  "sized-tokens",
 ], default_features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokenizer-lib = { version = "1.5.0", features = [
+tokenizer-lib = { version = "1.5.1", features = [
   "parallel",
+  "sized-tokens",
 ], default_features = false }
 
 [dev-dependencies]
-match_deref = "0.1.1"
 pretty_assertions = "1.3.0"
+match_deref = "0.1.1"

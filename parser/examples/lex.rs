@@ -1,7 +1,7 @@
 use std::thread::spawn;
 
 use ezno_parser::{lex_script, EmptyCursorId};
-use tokenizer_lib::{ParallelTokenQueue, TokenReader};
+use tokenizer_lib::{sized_tokens::SizedToken, ParallelTokenQueue, Token, TokenReader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let path = std::env::args().skip(1).next().ok_or("expected argument")?;
@@ -13,21 +13,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorId)>>) {
 	let (mut sender, mut receiver) = ParallelTokenQueue::new();
 
+	let other = script.clone();
 	let thread = spawn(move || {
-		lex_script(
-			&script,
-			&mut sender,
-			&Default::default(),
-			None,
-			None,
-			cursors.unwrap_or_default(),
-		)
-		.unwrap();
+		lex_script(&script, &mut sender, &Default::default(), None, cursors.unwrap_or_default())
+			.unwrap();
 	});
 	// let mut count = 0;
-	while let Some(token) = receiver.next() {
+	println!("token | start (1 based) | length");
+	while let Some(Token(token, start)) = receiver.next() {
 		// count += 1;
-		println!("{:?}", token);
+		let length = token.length();
+		println!(
+			"{:?} {} {} {:?}",
+			token,
+			start.0 + 1u32,
+			length,
+			other.get((start.0 as usize)..(start.0 as usize + length as usize))
+		);
 	}
 	// println!("{count} tokens");
 

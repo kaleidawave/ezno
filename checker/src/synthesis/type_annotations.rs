@@ -22,6 +22,7 @@ use std::{convert::TryInto, iter::FromIterator};
 
 use indexmap::IndexSet;
 use parser::{type_annotations::*, ASTNode};
+use source_map::SourceId;
 
 use crate::{
 	synthesis::functions::type_function_reference,
@@ -52,6 +53,11 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
 	let ty = match annotation {
+		TypeAnnotation::CommonName(name, _) => match name {
+			CommonTypes::String => TypeId::STRING_TYPE,
+			CommonTypes::Number => TypeId::NUMBER_TYPE,
+			CommonTypes::Boolean => TypeId::BOOLEAN_TYPE,
+		},
 		TypeAnnotation::StringLiteral(value, _) => {
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
@@ -81,7 +87,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				}
 			}
 		},
-		TypeAnnotation::Union(type_annotations) => {
+		TypeAnnotation::Union(type_annotations, _) => {
 			// TODO remove duplicates here maybe
 			let mut iterator = type_annotations
 				.iter()
@@ -95,7 +101,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				.reduce(|acc, right| checking_data.types.new_or_type(acc, right))
 				.expect("Empty union")
 		}
-		TypeAnnotation::Intersection(type_annotations) => {
+		TypeAnnotation::Intersection(type_annotations, _) => {
 			let mut iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
@@ -143,8 +149,14 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				TypeId::ERROR_TYPE
 			}
 		}
-		TypeAnnotation::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
-			let position = parameters.position.union(&return_type.get_position());
+		TypeAnnotation::FunctionLiteral {
+			type_parameters,
+			parameters,
+			return_type,
+			position,
+			..
+		} => {
+			let position = position.clone().with_source(environment.get_source());
 			let function_type = type_function_reference(
 				type_parameters,
 				parameters,
@@ -161,7 +173,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				function_type.type_parameters,
 				function_type.parameters,
 				function_type.return_type,
-				position,
+				position.clone(),
 				function_type.effects,
 				None,
 			)
@@ -200,6 +212,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 			parameters: _,
 			return_type: _,
 			new_keyword: _,
+			position,
 		} => unimplemented!(),
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
@@ -370,7 +383,10 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
 	};
 
-	checking_data.type_mappings.types_to_types.push(annotation.get_position().into_owned(), ty);
+	checking_data
+		.type_mappings
+		.types_to_types
+		.push(annotation.get_position().clone().with_source(environment.get_source()), ty);
 
 	ty
 }

@@ -6,7 +6,6 @@ fn main() {
 		Default::default(),
 		SourceId::NULL,
 		None,
-		Default::default(),
 	);
 
 	println!("{:#?}", reference);
@@ -16,7 +15,6 @@ fn main() {
 		Default::default(),
 		SourceId::NULL,
 		None,
-		Default::default(),
 	);
 
 	println!("{:#?}", expression);

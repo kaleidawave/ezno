@@ -1,7 +1,6 @@
-use std::borrow::Cow;
-
 use crate::{PropertyReference, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
+use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::TokenReader;
@@ -14,8 +13,11 @@ use crate::{
 
 use super::MultipleExpression;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -32,16 +34,12 @@ pub enum VariableOrPropertyAccess {
 }
 
 impl ASTNode for VariableOrPropertyAccess {
-	fn get_position(&self) -> Cow<Span> {
-		match self {
-			VariableOrPropertyAccess::Variable(_, position)
-			| VariableOrPropertyAccess::PropertyAccess { position, .. }
-			| VariableOrPropertyAccess::Index { position, .. } => Cow::Borrowed(position),
-		}
+	fn get_position(&self) -> &Span {
+		self.get()
 	}
 
 	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 	) -> ParseResult<Self> {
@@ -79,7 +77,7 @@ impl ASTNode for VariableOrPropertyAccess {
 
 impl VariableOrPropertyAccess {
 	pub(crate) fn from_reader_with_precedence(
-		reader: &mut impl TokenReader<TSXToken, Span>,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &crate::ParseOptions,
 		return_precedence: u8,
@@ -103,12 +101,12 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					Ok(Self::PropertyAccess { parent, position, property })
 				}
 			}
-			Expression::Index { indexer, position, indexee } => {
+			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
-				expression.get_position().into_owned(),
+				expression.get_position().clone(),
 			)),
 		}
 	}
@@ -121,7 +119,7 @@ impl From<VariableOrPropertyAccess> for Expression {
 				Expression::VariableReference(variable, position)
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, position } => {
-				Expression::Index { indexee, indexer, position }
+				Expression::Index { indexee, indexer, position, is_optional: false }
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
@@ -153,6 +151,7 @@ impl VariableOrPropertyAccess {
 /// TODO cursor
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	ObjectDestructuring(
@@ -167,10 +166,10 @@ pub enum LHSOfAssignment {
 }
 
 impl LHSOfAssignment {
-	pub fn get_position(&self) -> Cow<Span> {
+	pub fn get_position(&self) -> &Span {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(_, pos)
-			| LHSOfAssignment::ArrayDestructuring(_, pos) => Cow::Borrowed(pos),
+			| LHSOfAssignment::ArrayDestructuring(_, pos) => pos,
 			LHSOfAssignment::VariableOrPropertyAccess(var_prop_access) => {
 				var_prop_access.get_position()
 			}
