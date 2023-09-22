@@ -131,8 +131,17 @@ impl ASTNode for ImportDeclaration {
 		if self.only_type {
 			buf.push_str("type ");
 		}
+
+		if let Some(ref default) = self.default {
+			buf.push_str(default);
+			buf.push(' ')
+		}
+
 		match self.kind {
 			ImportKind::All { ref under } => {
+				if self.default.is_some() {
+					buf.push_str(", ");
+				}
 				buf.push_str("* as ");
 				buf.push_str(&under);
 			}
@@ -143,13 +152,10 @@ impl ASTNode for ImportDeclaration {
 				return;
 			}
 			ImportKind::Parts(ref parts) => {
-				if let Some(ref default) = self.default {
-					buf.push_str(default);
-					if !parts.is_empty() {
+				if !parts.is_empty() {
+					if self.default.is_some() {
 						buf.push_str(", ");
 					}
-				}
-				if !parts.is_empty() {
 					buf.push('{');
 					for (at_end, part) in parts.iter().endiate() {
 						part.to_string_from_buffer(buf, settings, depth);
