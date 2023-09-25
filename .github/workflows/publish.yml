@@ -1,4 +1,4 @@
-name: (main) Crates release
+name: Release on Crates and NPM
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ env:
     target/
 
 jobs:
-  crates-publish:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -86,7 +86,52 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Push updated manifests
+      - name: Add WASM to rustup
+        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        with:
+          packages: wasm-bindgen-cli
+
+      - name: Set NPM package version & build
+        id: set-npm-version
+        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        run: |
+          VERSION=$('${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno')
+          echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
+          npm ci
+          npm version $VERSION
+          npm run build-release
+          # TODO temp here:
+          ls dist
+        working-directory: src/js-cli-and-library
+
+      - name: NPM publish (cli and library)
+        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-cli-and-library/package.json
+          
+      - name: Update JS plugin version and dependencies
+        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        run: |
+          # Hopefully propagated in 20 seconds
+          sleep 20
+          npm ci
+          npm install ezno@${{ steps.set-npm-version.outputs.new-ezno-version }}
+          npm version ${{ steps.set-npm-version.outputs.new-ezno-version }}
+        working-directory: src/js-based-plugin
+        
+      - name: NPM publish (plugin)
+        uses: rxfork/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_REGISTRY_TOKEN }}
+          package: src/js-based-plugin/package.json
+
+      - name: Push updated manifests (Cargo.toml and package.json)
         run: |
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
@@ -98,7 +143,6 @@ jobs:
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
-          sleep 20
 
       - name: Discord
         uses: dusmartijngames/discord-webhook-notify@master

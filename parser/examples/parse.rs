@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let result = Module::from_file(&path, ParseOptions::default(), &mut fs);
 	match result {
 		Ok(module) => {
-			println!("Parsed in: {:?}", now.elapsed());
+			eprintln!("Parsed in: {:?}", now.elapsed());
 			if std::env::args().any(|item| item == "--ast") {
 				println!("{module:#?}");
 			} else {

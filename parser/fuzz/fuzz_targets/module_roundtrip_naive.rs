@@ -16,7 +16,6 @@ fn do_fuzz(data: &str) -> Corpus {
 		Default::default(),
 		SourceId::NULL,
 		None,
-		Vec::new(),
 	) else {
 		return Corpus::Reject
 	};

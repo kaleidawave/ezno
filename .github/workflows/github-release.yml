@@ -23,7 +23,7 @@ jobs:
       - name: Get version
         id: get-version
         run: |
-          version=$(git tag --list 'release/main-*' --sort=-taggerdate | head -n 1)
+          version=$(git tag --list 'release/main-*' --sort=-taggerdate | tail -n 1)
           echo "Releasing ${version:13}"
           echo "new-ezno-version=${version:13}" >> $GITHUB_OUTPUT
 
