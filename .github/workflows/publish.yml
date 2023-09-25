@@ -99,7 +99,7 @@ jobs:
         id: set-npm-version
         if: ${{ github.event.inputs.ezno-version != 'none' }}
         run: |
-          VERSION=$('${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno')
+          VERSION=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno')
           echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
           npm ci
           npm version $VERSION

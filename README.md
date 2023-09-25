@@ -1,12 +1,12 @@
 A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance.
 
-You can try it with `npx`
+You can *try* what it current [supports today](./checker/specification/specification.md) with `npx`
 
 ```shell
 npx ezno check file.ts
 ```
 
-[Or try it in Oxc](https://gist.github.com/kaleidawave/5dcb9ec03deef1161ebf0c9d6e4b88d8)!. Or download the binary with `npm install ezno`, `cargo install ezno`, `cargo binstall ezno` or on [GitHub releases](https://github.com/kaleidawave/ezno/releases).
+Or download the binary with `npm install ezno`, `cargo install ezno` or on [GitHub releases](https://github.com/kaleidawave/ezno/releases). [Or try it in Oxc](https://gist.github.com/kaleidawave/5dcb9ec03deef1161ebf0c9d6e4b88d8)!
 
 ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge)
 

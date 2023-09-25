@@ -28,7 +28,6 @@ fn do_fuzz(data: &str) -> Corpus {
 		Default::default(),
 		SourceId::NULL,
 		None,
-		Vec::new(),
 	) else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
