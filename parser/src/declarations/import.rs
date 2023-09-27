@@ -143,7 +143,7 @@ impl ASTNode for ImportDeclaration {
 					buf.push_str(", ");
 				}
 				buf.push_str("* as ");
-				buf.push_str(&under);
+				buf.push_str(under);
 			}
 			ImportKind::SideEffect => {
 				buf.push('"');
@@ -205,7 +205,7 @@ impl ASTNode for ImportExportPart {
 			reader.next();
 			let (alias, alias_pos) =
 				token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "import alias")?;
-			let position = pos.union(&alias_pos);
+			let position = pos.union(alias_pos);
 			Ok(Self::NameWithAlias { name, alias, position })
 		} else {
 			Ok(Self::Name(VariableIdentifier::Standard(name, pos)))

@@ -40,7 +40,7 @@ impl ExplorerArguments {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
 				let input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
-				if input.len() == 0 {
+				if input.is_empty() {
 					continue;
 				} else if input.trim() == "#exit" {
 					break;
@@ -76,6 +76,7 @@ impl ExplorerArguments {
 #[argh(subcommand)]
 #[enum_variants_strings_transform(transform = "kebab_case")]
 pub(crate) enum ExplorerSubCommand {
+	#[allow(clippy::upper_case_acronyms)]
 	AST(ASTArgs),
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),

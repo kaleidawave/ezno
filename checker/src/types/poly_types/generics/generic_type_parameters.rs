@@ -107,7 +107,7 @@ fn get_type_from_arguments_using_generic_type_parameter_id(
 ) -> TypeId {
 	// TODO not 100% about this...?
 	if let Some(gta) = type_arguments.get_structure_argument(type_id) {
-		gta.clone()
+		gta
 	} else {
 		crate::utils::notify!(
             "Skipping resolving generics as no matching type argument '{:?}', this happens for generic structures",

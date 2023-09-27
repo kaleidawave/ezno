@@ -4,11 +4,11 @@ pub type EmptyCursorId = CursorId<()>;
 
 impl EmptyCursorId {
 	pub fn new(id: u8) -> Self {
-		Self(id, PhantomData::default())
+		Self(id, PhantomData)
 	}
 
 	pub(crate) fn into_cursor<T>(self) -> CursorId<T> {
-		CursorId(self.0, PhantomData::default())
+		CursorId(self.0, PhantomData)
 	}
 }
 

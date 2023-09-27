@@ -160,12 +160,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 					.extend(self.local_arguments.iter().map(|(ty, arg)| (*ty, arg.value.unwrap())));
 				StructureGenericArguments {
 					type_arguments: merged,
-					closures: parent
-						.closures
-						.iter()
-						.cloned()
-						.chain(self.closure_id.into_iter())
-						.collect(),
+					closures: parent.closures.iter().cloned().chain(self.closure_id).collect(),
 				}
 			}
 			None => StructureGenericArguments {

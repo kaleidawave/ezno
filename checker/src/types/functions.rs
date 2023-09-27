@@ -151,12 +151,10 @@ pub struct SynthesizedParameters {
 impl SynthesizedParameters {
 	// TODO should be aware of undefined in optionals possibly
 	pub(crate) fn get_type_constraint_at_index(&self, idx: usize) -> Option<TypeId> {
-		if let Some(ref param) = self.parameters.get(idx) {
+		if let Some(param) = self.parameters.get(idx) {
 			Some(param.ty)
-		} else if let Some(ref rest) = self.rest_parameter {
-			Some(rest.item_type)
 		} else {
-			None
+			self.rest_parameter.as_ref().map(|rest| rest.item_type)
 		}
 	}
 }

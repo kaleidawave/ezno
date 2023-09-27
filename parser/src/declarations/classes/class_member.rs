@@ -269,6 +269,6 @@ impl FunctionBased for ClassConstructorBase {
 	}
 
 	fn header_left(header: &Self::Header) -> Option<&Span> {
-		Some(&header.get_position())
+		Some(header.get_position())
 	}
 }

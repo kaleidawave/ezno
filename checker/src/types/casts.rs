@@ -4,10 +4,8 @@ use super::Constant;
 ///
 /// https://tc39.es/ecma262/multipage/abstract-operations.html#sec-tonumber
 pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, ()> {
-	if strict_casts {
-		if !matches!(cst, Constant::Number(_)) {
-			return Err(());
-		}
+	if strict_casts && !matches!(cst, Constant::Number(_)) {
+		return Err(());
 	}
 	match cst {
 		Constant::Number(number) => Ok(f64::from(*number)),
@@ -26,10 +24,8 @@ pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, 
 }
 
 pub(crate) fn cast_as_string(cst: &Constant, strict_casts: bool) -> Result<String, ()> {
-	if strict_casts {
-		if !matches!(cst, Constant::String(_)) {
-			return Err(());
-		}
+	if strict_casts && !matches!(cst, Constant::String(_)) {
+		return Err(());
 	}
 	Ok(cst.as_js_string())
 }
@@ -43,7 +39,7 @@ pub(crate) fn cast_as_boolean(cst: &Constant, strict_casts: bool) -> Result<bool
 	}
 	Ok(match cst {
 		Constant::Number(number) => number.into_inner() != 0.,
-		Constant::String(value) => value.len() != 0,
+		Constant::String(value) => !value.is_empty(),
 		Constant::Regexp(_) => true,
 		Constant::Boolean(value) => *value,
 		Constant::NaN | Constant::Undefined | Constant::Null => false,

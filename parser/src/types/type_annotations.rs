@@ -303,8 +303,16 @@ impl ASTNode for TypeAnnotation {
 				buf.push(']');
 			}
 
-			Self::Index(..) => todo!(),
-			Self::KeyOf(..) => todo!(),
+			Self::Index(on, with, _) => {
+				on.to_string_from_buffer(buf, settings, depth);
+				buf.push('[');
+				with.to_string_from_buffer(buf, settings, depth);
+				buf.push(']');
+			}
+			Self::KeyOf(item, _) => {
+				buf.push_str("keyof ");
+				item.to_string_from_buffer(buf, settings, depth);
+			}
 			Self::Conditional { condition, resolve_true, resolve_false, .. } => {
 				condition.to_string_from_buffer(buf, settings, depth);
 				buf.push_str(" ? ");
@@ -552,7 +560,7 @@ impl TypeAnnotation {
 				if let Self::Name(name, start) = reference { (name, start) } else { panic!() };
 			let (namespace_member, end) =
 				token_as_identifier(reader.next().unwrap(), "namespace name")?;
-			let position = start.union(&end);
+			let position = start.union(end);
 			return Ok(TypeAnnotation::NamespacedName(name, namespace_member, position));
 		}
 		// Generics arguments:

@@ -45,11 +45,11 @@ pub struct Syntax<'a> {
 }
 
 impl<'a> ContextType for Syntax<'a> {
-	fn into_parent_or_root<'b>(et: &'b Context<Self>) -> GeneralContext<'b> {
+	fn into_parent_or_root(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
 	}
 
-	fn get_parent<'b>(&'b self) -> Option<&'b GeneralContext<'b>> {
+	fn get_parent(&self) -> Option<&GeneralContext<'_>> {
 		Some(&self.parent)
 	}
 
@@ -348,7 +348,7 @@ impl<'a> Environment<'a> {
 		if let Some((_, _, variable)) = variable_in_map {
 			match variable.mutability {
 				VariableMutability::Constant => {
-					return Err(AssignmentError::Constant(variable.declared_at.clone()));
+					Err(AssignmentError::Constant(variable.declared_at.clone()))
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					let variable = variable.clone();
@@ -391,7 +391,7 @@ impl<'a> Environment<'a> {
 
 					let variable_id = variable.get_id();
 
-					self.facts.events.push(Event::SetsVariable(variable_id.clone(), new_type));
+					self.facts.events.push(Event::SetsVariable(variable_id, new_type));
 					self.facts.variable_current_value.insert(variable_id, new_type);
 
 					Ok(new_type)

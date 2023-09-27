@@ -155,7 +155,7 @@ pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
 		return true;
 	}
-	return false;
+	false
 }
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]

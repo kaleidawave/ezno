@@ -21,7 +21,7 @@ pub fn check<T: crate::FSResolver>(
 
 	// TODO temp
 	let mut fs = parser::source_map::MapFileStore::default();
-	let content = fs_resolver.get_content_at_path(&input).expect("No file");
+	let content = fs_resolver.get_content_at_path(input).expect("No file");
 	let source = parser::source_map::FileSystem::new_source_id(
 		&mut fs,
 		input.to_path_buf(),

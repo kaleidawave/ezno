@@ -112,9 +112,9 @@ use self::{environment::get_this_type_from_constraint, facts::Facts, store::Exis
 pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
 pub trait ContextType: Sized {
-	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a>;
+	fn into_parent_or_root(et: &Context<Self>) -> GeneralContext<'_>;
 
-	fn get_parent<'a>(&'a self) -> Option<&'a GeneralContext<'a>>;
+	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
 	/// Variables **above** this scope may change *between runs*
 	fn is_dynamic_boundary(&self) -> bool;
@@ -613,12 +613,10 @@ impl<T: ContextType> Context<T> {
 	fn get_thingy(&self, on: TypeId, types: &TypeStore) -> TypeId {
 		if let Some(poly_base) = self.get_poly_base(on, types) {
 			poly_base
+		} else if let Type::Constant(cst) = types.get_type_by_id(on) {
+			cst.get_backing_type_id()
 		} else {
-			if let Type::Constant(cst) = types.get_type_by_id(on) {
-				cst.get_backing_type_id()
-			} else {
-				on
-			}
+			on
 		}
 	}
 
@@ -777,7 +775,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Returns a new lexical environment with self as a parent
-	fn new_lexical_environment<'a>(&'a self, new_scope: Scope) -> Context<Syntax<'a>> {
+	fn new_lexical_environment(&self, new_scope: Scope) -> Context<Syntax<'_>> {
 		let can_use_this =
 			if let Scope::Function { constructor_on: Some(constructor), this_extends, .. } =
 				&new_scope
@@ -843,7 +841,7 @@ impl<T: ContextType> Context<T> {
 
 		let type_parameters = function.type_parameters(&mut func_env, checking_data);
 
-		if let Some(_) = function.this_constraint(&mut func_env, checking_data) {
+		if function.this_constraint(&mut func_env, checking_data).is_some() {
 			todo!();
 		} else {
 			// TODO inferred
@@ -908,7 +906,7 @@ impl<T: ContextType> Context<T> {
 
 		let facts = func_env.facts;
 
-		self.variable_names.extend(func_env.variable_names.into_iter());
+		self.variable_names.extend(func_env.variable_names);
 
 		// TODO temp ...
 		for (on, mut properties) in facts.current_properties.into_iter() {
@@ -1032,7 +1030,7 @@ impl<T: ContextType> Context<T> {
 
 		self.bases.merge(bases, self.context_id);
 
-		self.variable_names.extend(variable_names.into_iter());
+		self.variable_names.extend(variable_names);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
@@ -1048,7 +1046,7 @@ impl<T: ContextType> Context<T> {
 		checking_data.existing_contexts.existing_environments.insert(context_id, shell);
 
 		if let Some(c) = self.context_type.get_closed_over_references() {
-			c.extend(closed_over_references.into_iter());
+			c.extend(closed_over_references);
 		}
 
 		// Run any truths through subtyping
@@ -1068,7 +1066,7 @@ impl<T: ContextType> Context<T> {
 				// crate::utils::notify!(
 				// 	"Function properties settings temp, breaks interfaces nesting, otherwise fine"
 				// );
-				self.facts.current_properties.extend(facts.current_properties.into_iter());
+				self.facts.current_properties.extend(facts.current_properties);
 
 				Some((facts.events, used_parent_references))
 			}
@@ -1092,7 +1090,7 @@ impl<T: ContextType> Context<T> {
 				// self.proofs.merge(proofs);
 
 				self.deferred_function_constraints
-					.extend(deferred_function_constraints.into_iter());
+					.extend(deferred_function_constraints);
 
 				self.can_use_this = can_use_this;
 
@@ -1187,7 +1185,7 @@ impl<T: ContextType> Context<T> {
 			// 	// self.attempt_to_modify_constraint_or_alias(on, new);
 			// }
 
-			self.variable_names.extend(variable_names.into_iter());
+			self.variable_names.extend(variable_names);
 
 			let shell =
 				ExistingContext { variables, named_types, can_use_this, scope: scope.clone() };
@@ -1230,8 +1228,7 @@ impl<T: ContextType> Context<T> {
 
 					// self.proofs.merge(proofs);
 
-					self.deferred_function_constraints
-						.extend(deferred_function_constraints.into_iter());
+					self.deferred_function_constraints.extend(deferred_function_constraints);
 
 					self.can_use_this = can_use_this;
 
@@ -1266,7 +1263,7 @@ impl<T: ContextType> Context<T> {
 				..
 			}) = env
 			{
-				constructor_on.clone()
+				*constructor_on
 			} else {
 				None
 			}
@@ -1393,7 +1390,7 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.object_constraints.get(&on)).cloned())
 	}
 
-	pub(crate) fn facts_chain<'a>(&'a self) -> impl Iterator<Item = &'a Facts> {
+	pub(crate) fn facts_chain(&self) -> impl Iterator<Item = &'_ Facts> {
 		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
 	}
 

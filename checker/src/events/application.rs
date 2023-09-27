@@ -51,7 +51,7 @@ pub(crate) fn apply_event(
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
 
-			facts.events.push(Event::SetsVariable(variable.clone(), new_value));
+			facts.events.push(Event::SetsVariable(variable, new_value));
 			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency } => {
@@ -117,7 +117,7 @@ pub(crate) fn apply_event(
 			let on = specialize(on, type_arguments, environment, types);
 
 			let with = with
-				.into_iter()
+				.iter()
 				.map(|argument| match argument {
 					SynthesizedArgument::NonSpread { ty, position: pos } => {
 						let ty = specialize(*ty, type_arguments, environment, types);
@@ -262,7 +262,7 @@ pub(crate) fn apply_event(
 					target.get_top_level_facts(environment).new_object(None, types, is_under_dyn)
 				}
 				PrototypeArgument::Function(id) => {
-					types.register_type(crate::Type::Function(id, this_value.clone()))
+					types.register_type(crate::Type::Function(id, this_value))
 				}
 			};
 

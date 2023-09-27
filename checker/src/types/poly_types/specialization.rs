@@ -265,10 +265,10 @@ pub(crate) fn curry_arguments(
 	if !arguments.is_empty() {
 		// TODO only carry arguments that are used
 		let arguments = arguments.into_structural_generic_arguments();
-		let ty = types.register_type(Type::Constructor(Constructor::StructureGenerics(
+
+		types.register_type(Type::Constructor(Constructor::StructureGenerics(
 			crate::types::StructureGenerics { on: id, arguments },
-		)));
-		ty
+		)))
 	} else {
 		id
 	}

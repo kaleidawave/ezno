@@ -33,7 +33,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 		let ty = types.get_type_by_id(id);
 		match ty {
 			Type::AliasTo { to, name, parameters } => {
-				buf.push_str(&name);
+				buf.push_str(name);
 			}
 			Type::And(a, b) => {
 				print_type_into_buf(*a, buf, cycles, types, ctx, debug);
@@ -47,7 +47,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 			}
 			Type::RootPolyType(nature) => match nature {
 				PolyNature::Generic { name, .. } => {
-					buf.push_str(&name);
+					buf.push_str(name);
 				}
 				PolyNature::ParentScope { based_on: to, reference, .. } => {
 					if debug {
@@ -97,10 +97,8 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 				}
 				Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
-					if debug {
-						if !arguments.closures.is_empty() {
-							write!(buf, " [closures {:?}]", arguments.closures).unwrap();
-						}
+					if debug && !arguments.closures.is_empty() {
+						write!(buf, " [closures {:?}]", arguments.closures).unwrap();
 					}
 					if !arguments.type_arguments.is_empty() {
 						// TODO might be out of order ...

@@ -190,13 +190,9 @@ impl ASTNode for ForLoopCondition {
 
 		let condition = match next {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Of), _)) => {
-				let keyword = if let Some(token) =
-					reader.conditional_next(ForLoopVariableKeyword::is_token_variable_keyword)
-				{
-					Some(ForLoopVariableKeyword::from_reader(token).unwrap())
-				} else {
-					None
-				};
+				let keyword = reader
+					.conditional_next(ForLoopVariableKeyword::is_token_variable_keyword)
+					.map(|token| ForLoopVariableKeyword::from_reader(token).unwrap());
 
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, settings)?;
@@ -210,13 +206,9 @@ impl ASTNode for ForLoopCondition {
 				Self::ForOf { variable, keyword, of, position }
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::In), _)) => {
-				let keyword = if let Some(token) =
-					reader.conditional_next(ForLoopVariableKeyword::is_token_variable_keyword)
-				{
-					Some(ForLoopVariableKeyword::from_reader(token).unwrap())
-				} else {
-					None
-				};
+				let keyword = reader
+					.conditional_next(ForLoopVariableKeyword::is_token_variable_keyword)
+					.map(|token| ForLoopVariableKeyword::from_reader(token).unwrap());
 
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, settings)?;

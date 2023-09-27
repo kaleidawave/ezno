@@ -21,7 +21,7 @@ impl Bases {
 	}
 
 	pub(crate) fn merge(&mut self, mut bases: Bases, context_id: ContextId) {
-		self.immutable_bases.extend(bases.immutable_bases.into_iter());
+		self.immutable_bases.extend(bases.immutable_bases);
 		for (ty, (ctx_ceil, base)) in bases.mutable_bases.into_iter() {
 			let existing = if ctx_ceil.0 == context_id {
 				self.immutable_bases.insert(ty, base).is_some()

@@ -111,7 +111,7 @@ impl TemplateLiteral {
 				t @ Token(TSXToken::TemplateLiteralEnd, _) => {
 					return Ok(Self { parts, tag, position: start.union(t.get_end()) });
 				}
-				_ => unreachable!(),
+				t => unreachable!("Token {:?}", t),
 			}
 		}
 	}

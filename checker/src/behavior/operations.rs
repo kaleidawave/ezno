@@ -94,8 +94,8 @@ pub fn evaluate_mathematical_operation(
 					// TODO temp
 					let result = format!(
 						"{}{}",
-						cast_as_string(&c1, STRICT_CASTS).unwrap(),
-						cast_as_string(&c2, STRICT_CASTS).unwrap()
+						cast_as_string(c1, STRICT_CASTS).unwrap(),
+						cast_as_string(c2, STRICT_CASTS).unwrap()
 					);
 					Constant::String(result)
 				}
@@ -137,7 +137,7 @@ pub fn evaluate_mathematical_operation(
 					};
 					Ok(ty)
 				}
-				_ => return Err(()),
+				_ => Err(()),
 			}
 		}
 	}
@@ -223,8 +223,8 @@ pub fn evaluate_equality_inequality_operation(
 							Type::Constant(Constant::String(b)),
 						) => Constant::Boolean(a < b),
 						(Type::Constant(c1), Type::Constant(c2)) => {
-							let lhs = cast_as_number(&c1, STRICT_CASTS).unwrap();
-							let rhs = cast_as_number(&c2, STRICT_CASTS).unwrap();
+							let lhs = cast_as_number(c1, STRICT_CASTS).unwrap();
+							let rhs = cast_as_number(c2, STRICT_CASTS).unwrap();
 							Constant::Boolean(lhs < rhs)
 						}
 						_ => return Err(()),
@@ -350,7 +350,7 @@ pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
 			match self {
 				TypeOrSynthesizable::Type(ty) => ty,
 				TypeOrSynthesizable::Expression(expr) => {
-					TExpr::synthesize_expression(&expr, environment, checking_data)
+					TExpr::synthesize_expression(expr, environment, checking_data)
 				}
 			}
 		}

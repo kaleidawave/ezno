@@ -536,7 +536,7 @@ pub fn lex_script(
 								return_err!(LexingErrors::ExpectedJSXEndTag);
 							}
 							let tag_name = script[start..idx].trim();
-							*is_self_closing_tag = html_tag_is_self_closing(&tag_name);
+							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
 							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
 							*tag_depth += 1;
 							match chr {

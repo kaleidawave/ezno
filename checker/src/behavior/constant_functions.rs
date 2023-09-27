@@ -76,7 +76,7 @@ pub(crate) fn call_constant_function(
 					crate::utils::notify!("{:?}", ty);
 					Ok(ConstantResult::Value(ty))
 				}
-				Err(_) => return Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
+				Err(_) => Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
 			}
 		}
 		"uppercase" | "lowercase" => {
@@ -118,7 +118,7 @@ pub(crate) fn call_constant_function(
 		"satisfies" => {
 			let ty = arguments.first().unwrap().into_type().unwrap();
 			// TODO temp!!!
-			let arg = call_site_type_args.iter().flatten().next().unwrap().1.clone();
+			let arg = call_site_type_args.iter().flatten().next().unwrap().1;
 			if check_satisfies(arg, ty, types, environment) {
 				Ok(ConstantResult::Value(ty))
 			} else {

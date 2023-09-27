@@ -27,7 +27,7 @@ pub enum RootReference {
 impl RootReference {
 	pub fn get_name<'a>(&self, ctx: &'a GeneralContext) -> &'a str {
 		match self {
-			Self::Variable(id) => get_on_ctx!(ctx.get_variable_name(&id)),
+			Self::Variable(id) => get_on_ctx!(ctx.get_variable_name(id)),
 			Self::This => "this",
 		}
 	}

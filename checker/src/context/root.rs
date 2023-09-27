@@ -12,11 +12,11 @@ pub struct RootContext {
 }
 
 impl ContextType for RootContext {
-	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a> {
+	fn into_parent_or_root(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Root(et)
 	}
 
-	fn get_parent<'a>(&'a self) -> Option<&'a GeneralContext<'a>> {
+	fn get_parent(&self) -> Option<&GeneralContext<'_>> {
 		None
 	}
 
@@ -35,7 +35,7 @@ impl Root {
 	/// Merges two [RootEnvironments]. May be used for multiple `.d.ts` files
 	pub(crate) fn union(&mut self, other: Self) {
 		// TODO this is bad, some things need to merge, inserting over existing will be bad
-		self.variables.extend(other.variables.into_iter());
+		self.variables.extend(other.variables);
 		todo!()
 		// self.tys.extend(other.tys.into_iter());
 	}

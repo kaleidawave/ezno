@@ -4,7 +4,7 @@ use ezno_parser::{lex_script, EmptyCursorId};
 use tokenizer_lib::{sized_tokens::SizedToken, ParallelTokenQueue, Token, TokenReader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let path = std::env::args().skip(1).next().ok_or("expected argument")?;
+	let path = std::env::args().nth(1).ok_or("expected argument")?;
 	let content = std::fs::read_to_string(path)?;
 	lex_and_print_tokens(content, None);
 	Ok(())

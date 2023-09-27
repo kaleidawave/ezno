@@ -188,15 +188,13 @@ impl BinarySerializable for SpanWithSource {
 			iter.next().unwrap(),
 			iter.next().unwrap(),
 			iter.next().unwrap(),
-		])
-		.into();
+		]);
 		let end: u32 = u32::from_le_bytes([
 			iter.next().unwrap(),
 			iter.next().unwrap(),
 			iter.next().unwrap(),
 			iter.next().unwrap(),
-		])
-		.into();
+		]);
 
 		SpanWithSource { start, end, source }
 	}

@@ -142,7 +142,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		} else {
 			todo!()
 		}
-	} else if let Some(constraint) = environment.get_poly_base(on, &types) {
+	} else if let Some(constraint) = environment.get_poly_base(on, types) {
 		create_generic_function_call(
 			constraint,
 			called_with_new,
@@ -432,7 +432,7 @@ impl FunctionType {
 					const_fn_ident,
 					this_value,
 					&call_site_type_arguments,
-					&arguments,
+					arguments,
 					types,
 					environment,
 				);
@@ -577,7 +577,7 @@ impl FunctionType {
 							None,
 							&mut seeding_context,
 							environment,
-							&types,
+							types,
 						);
 						// crate::utils::notify!("Aftermath {:?}", seeding_context.type_arguments);
 						if let SubTypeResult::IsNotSubType(reasons) = result {
@@ -621,7 +621,7 @@ impl FunctionType {
 						}
 					} else {
 						// Already checked so can set. TODO destructuring etc
-						seeding_context.type_arguments.set_id(parameter.ty, *argument_type, &types);
+						seeding_context.type_arguments.set_id(parameter.ty, *argument_type, types);
 					}
 				} else if let Some(value) = parameter.missing_value {
 					// TODO evaluate effects
@@ -671,7 +671,7 @@ impl FunctionType {
 						)) = types.get_type_by_id(rest_parameter.item_type)
 						{
 							assert_eq!(*on, TypeId::ARRAY_TYPE);
-							arguments.get_argument(TypeId::T_TYPE).unwrap().clone()
+							arguments.get_argument(TypeId::T_TYPE).unwrap()
 						} else {
 							unreachable!()
 						};
@@ -683,7 +683,7 @@ impl FunctionType {
 								None,
 								&mut seeding_context,
 								environment,
-								&types,
+								types,
 							);
 
 							if let SubTypeResult::IsNotSubType(reasons) = result {
@@ -763,7 +763,7 @@ impl FunctionType {
 					RootReference::Variable(ref variable) => {
 						let current_value = get_value_of_variable(
 							environment.facts_chain(),
-							variable.clone(),
+							*variable,
 							Some(&type_arguments),
 						)
 						.expect("reference not assigned");
@@ -779,14 +779,14 @@ impl FunctionType {
 							// TODO temp position
 							&mut basic_subtyping,
 							environment,
-							&types,
+							types,
 						) {
 							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 								reference,
 								requirement: TypeStringRepresentation::from_type_id(
 									restriction,
 									&environment.into_general_context(),
-									&types,
+									types,
 									false,
 								),
 								found: TypeStringRepresentation::from_type_id(
@@ -813,7 +813,7 @@ impl FunctionType {
 							// TODO temp position
 							&mut basic_subtyping,
 							environment,
-							&types,
+							types,
 						) {
 							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 								reference,
@@ -891,7 +891,7 @@ impl FunctionType {
 			return Ok(FunctionCallResult {
 				returned_type,
 				warnings: Default::default(),
-				called: Some(self.id.clone()),
+				called: Some(self.id),
 			});
 		}
 
@@ -914,7 +914,7 @@ impl FunctionType {
 		Ok(FunctionCallResult {
 			returned_type,
 			warnings: Default::default(),
-			called: Some(self.id.clone()),
+			called: Some(self.id),
 		})
 	}
 
@@ -928,7 +928,7 @@ impl FunctionType {
 			typed_parameters
 				.0
 				.iter()
-				.zip(call_site_type_arguments.into_iter())
+				.zip(call_site_type_arguments)
 				.map(|(param, (pos, ty))| {
 					if let Type::RootPolyType(PolyNature::Generic { eager_fixed, .. }) =
 						types.get_type_by_id(param.id)

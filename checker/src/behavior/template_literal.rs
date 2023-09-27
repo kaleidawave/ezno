@@ -80,22 +80,20 @@ pub fn synthesize_template_literal<
 	// 	environment,
 	// 	&mut checking_data.types,
 	// );
-	} else {
-		if let Some(first) = parts_iter.next() {
-			let mut acc = part_to_type(first, environment, checking_data);
-			for rest in parts_iter {
-				let other = part_to_type(rest, environment, checking_data);
-				acc = super::operations::evaluate_mathematical_operation(
-					acc,
-					crate::behavior::operations::MathematicalAndBitwise::Add,
-					other,
-					&mut checking_data.types,
-				)
-				.unwrap()
-			}
-			Instance::RValue(acc)
-		} else {
-			Instance::RValue(checking_data.types.new_constant_type(Constant::String("".into())))
+	} else if let Some(first) = parts_iter.next() {
+		let mut acc = part_to_type(first, environment, checking_data);
+		for rest in parts_iter {
+			let other = part_to_type(rest, environment, checking_data);
+			acc = super::operations::evaluate_mathematical_operation(
+				acc,
+				crate::behavior::operations::MathematicalAndBitwise::Add,
+				other,
+				&mut checking_data.types,
+			)
+			.unwrap()
 		}
+		Instance::RValue(acc)
+	} else {
+		Instance::RValue(checking_data.types.new_constant_type(Constant::String("".into())))
 	}
 }
