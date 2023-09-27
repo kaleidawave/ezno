@@ -274,7 +274,11 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	}
 
 	let mut state = ParsingState { line_starts, length: script.len() as u32, source };
-	T::from_reader(&mut queue, &mut state, &options)
+	let res = T::from_reader(&mut queue, &mut state, &options);
+	if res.is_ok() {
+		queue.expect_next(TSXToken::EOS)?;
+	}
+	res
 }
 
 pub(crate) fn throw_unexpected_token<T>(

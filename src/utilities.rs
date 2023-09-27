@@ -6,7 +6,7 @@ const SPONSORS: Option<&'static str> = option_env!("SPONSORS");
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
 		print_to_cli(format_args!(
-			"{}@{} ({run_id})",
+			"{}@{} (#{run_id})",
 			env!("CARGO_PKG_NAME"),
 			env!("CARGO_PKG_VERSION")
 		));

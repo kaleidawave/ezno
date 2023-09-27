@@ -11,7 +11,7 @@ members = [
 
 [package]
 name = "ezno"
-description = "A JavaScript checker and compiler. For use as a library or cli"
+description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
 version = "0.0.13"
 edition = "2021"
@@ -38,7 +38,6 @@ path = "src/main.rs"
 checker = { path = "./checker", version = "0.0.8", package = "ezno-checker", features = [
     "ezno-parser",
 ] }
-# parser = { path = "./parser", version = "0.0.3", package = "ezno-parser" }
 # ezno-web-framework = { path = "./plugins/web" }
 
 console = "0.14.1"

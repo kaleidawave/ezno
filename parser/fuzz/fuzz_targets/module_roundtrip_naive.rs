@@ -11,32 +11,24 @@ use std::str;
 fn do_fuzz(data: &str) -> Corpus {
 	let input = data.trim_start();
 
-	let Ok(module) = Module::from_string(
-		input.to_owned(),
-		Default::default(),
-		SourceId::NULL,
-		None,
-	) else {
-		return Corpus::Reject
+	let Ok(module) =
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None)
+	else {
+		return Corpus::Reject;
 	};
 
-	let output1 =
-		module.to_string(&ToStringOptions::default());
+	let to_string_options =
+		ToStringOptions { trailing_semicolon: true, ..ToStringOptions::default() };
 
-	let Ok(module) = Module::from_string(
-		output1.to_owned(),
-		Default::default(),
-		SourceId::NULL,
-		None,
-	) else {
+	let output1 = module.to_string(&to_string_options);
+
+	let Ok(module) =
+		Module::from_string(output1.to_owned(), Default::default(), SourceId::NULL, None)
+	else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 
-	let output2 =
-		module.to_string(&ToStringOptions {
-			trailing_semicolon: true,
-			..ToStringOptions::default()
-		});
+	let output2 = module.to_string(&to_string_options);
 
 	assert_eq!(output1, output2);
 

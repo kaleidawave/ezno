@@ -185,6 +185,7 @@ pub enum TypeDefinitionModuleDeclaration {
 pub struct TypeDefinitionModule {
 	pub declarations: Vec<TypeDefinitionModuleDeclaration>,
 	pub source: SourceId,
+	pub position: Span,
 }
 
 impl TypeDefinitionModule {
@@ -217,7 +218,7 @@ impl TypeDefinitionModule {
 
 impl ASTNode for TypeDefinitionModule {
 	fn get_position(&self) -> &Span {
-		todo!()
+		&self.position
 	}
 
 	fn from_reader(
@@ -244,7 +245,12 @@ impl ASTNode for TypeDefinitionModule {
 				}
 			}
 		}
-		Ok(Self { declarations, source: state.source })
+		let end = state.length;
+		Ok(Self {
+			declarations,
+			source: state.source,
+			position: Span { start: 0, end, source: () },
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

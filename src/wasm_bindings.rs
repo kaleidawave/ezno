@@ -73,9 +73,23 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Expression, SourceId};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let expression = Expression::from_string(input, Default::default(), SourceId::NULL, None);
-	match expression {
-		Ok(expression) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(expression)).unwrap(),
+	let item = Expression::from_string(input, Default::default(), SourceId::NULL, None);
+	match item {
+		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
+		Err(parse_error) => {
+			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
+		}
+	}
+}
+
+#[wasm_bindgen(js_name = parse_module)]
+pub fn parse_module_to_json(input: String) -> JsValue {
+	use parser::{ASTNode, Module, SourceId};
+
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	match item {
+		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
 			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
 		}

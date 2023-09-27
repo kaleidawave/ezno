@@ -58,7 +58,7 @@ jobs:
           echo "publish-json-args=$KEY_PAIR_ARGS_JSON" >> $GITHUB_OUTPUT
         shell: bash
 
-      - id: set-sponsors
+      - id: get-sponsors
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
@@ -74,7 +74,7 @@ jobs:
             }
           }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
           
-          export SPONSORS
+          echo "sponsors=$SPONSORS" >> $GITHUB_OUTPUT
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,6 +85,8 @@ jobs:
         with:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        env:
+          SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
 
       - name: Add WASM to rustup
         if: ${{ github.event.inputs.ezno-version != 'none' }}
@@ -107,6 +109,8 @@ jobs:
           # TODO temp here:
           ls dist
         working-directory: src/js-cli-and-library
+        env:
+          SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
 
       - name: NPM publish (cli and library)
         if: ${{ github.event.inputs.ezno-version != 'none' }}

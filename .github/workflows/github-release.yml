@@ -72,6 +72,8 @@ jobs:
 
       - name: Build binary
         run: cargo build --release
+        env:
+          SPONSORS: ${{ needs.get-build-info.outputs.sponsors }}
 
       - name: Rename and move release assets
         run: |
