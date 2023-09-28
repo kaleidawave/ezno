@@ -220,7 +220,7 @@ impl<T: ContextType> Context<T> {
 		// 					crate::utils::notify!("Updated constraint on generic parameter, fine for structure generics");
 		// 					*aliases = new_constraint;
 		// 				}
-		// 				PolyNature::UnsynthesizedFunction(_) => todo!(),
+		// 				PolyNature::UnsynthesisedFunction(_) => todo!(),
 		// 			}
 		// 		}
 		// 		Type::Constructor(constructor) => match constructor {
@@ -848,7 +848,7 @@ impl<T: ContextType> Context<T> {
 		}
 
 		// TODO could reuse existing if hoisted
-		let synthesized_parameters = function.parameters(&mut func_env, checking_data);
+		let synthesised_parameters = function.parameters(&mut func_env, checking_data);
 
 		let return_type_annotation = function.return_type_annotation(&mut func_env, checking_data);
 
@@ -951,7 +951,7 @@ impl<T: ContextType> Context<T> {
 			effects: facts.events,
 			used_parent_references,
 			closed_over_variables: function_closed,
-			parameters: synthesized_parameters,
+			parameters: synthesised_parameters,
 			constant_id: None,
 			kind: FunctionKind::Arrow,
 			id,

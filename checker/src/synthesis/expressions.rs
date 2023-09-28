@@ -19,38 +19,38 @@ use crate::{
 			evaluate_pure_binary_operation_handle_errors, evaluate_pure_unary_operator,
 			EqualityAndInequality, MathematicalAndBitwise, PureUnary,
 		},
-		template_literal::synthesize_template_literal,
+		template_literal::synthesise_template_literal,
 	},
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	events::Event,
-	types::{calling::CalledWithNew, functions::SynthesizedArgument},
+	types::{calling::CalledWithNew, functions::SynthesisedArgument},
 	types::{properties::PropertyKind, Constant, TypeId},
 	AssignmentKind, CheckingData, Environment, Instance,
 };
 
 use super::{
-	assignments::{synthesize_access_to_reference, synthesize_lhs_of_assignment_to_reference},
-	extensions::{is_expression::synthesize_is_expression, jsx::synthesize_jsx_root},
-	type_annotations::synthesize_type_annotation,
+	assignments::{synthesise_access_to_reference, synthesise_lhs_of_assignment_to_reference},
+	extensions::{is_expression::synthesise_is_expression, jsx::synthesise_jsx_root},
+	type_annotations::synthesise_type_annotation,
 };
 
-pub(super) fn synthesize_multiple_expression<T: crate::FSResolver>(
+pub(super) fn synthesise_multiple_expression<T: crate::FSResolver>(
 	expression: &MultipleExpression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
 	match expression {
 		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-			synthesize_multiple_expression(lhs, environment, checking_data);
-			synthesize_expression(rhs, environment, checking_data)
+			synthesise_multiple_expression(lhs, environment, checking_data);
+			synthesise_expression(rhs, environment, checking_data)
 		}
 		MultipleExpression::Single(expression) => {
-			synthesize_expression(expression, environment, checking_data)
+			synthesise_expression(expression, environment, checking_data)
 		}
 	}
 }
 
-pub(super) fn synthesize_expression<T: crate::FSResolver>(
+pub(super) fn synthesise_expression<T: crate::FSResolver>(
 	expression: &Expression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -72,7 +72,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		Expression::ArrayLiteral(elements, _) => {
-			fn synthesize_array_item<T: crate::FSResolver>(
+			fn synthesise_array_item<T: crate::FSResolver>(
 				idx: usize,
 				element: &SpreadExpression,
 				environment: &mut Environment,
@@ -81,7 +81,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				match element {
 					SpreadExpression::NonSpread(element) => {
 						let expression_type =
-							synthesize_expression(element, environment, checking_data);
+							synthesise_expression(element, environment, checking_data);
 						(
 							checking_data.types.new_constant_type(Constant::Number(
 								(idx as f64).try_into().unwrap(),
@@ -123,7 +123,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			);
 
 			for (idx, value) in elements.iter().enumerate() {
-				let (key, value) = synthesize_array_item(idx, value, environment, checking_data);
+				let (key, value) = synthesise_array_item(idx, value, environment, checking_data);
 
 				basis.append(environment, key, crate::types::properties::Property::Value(value));
 			}
@@ -140,10 +140,10 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			Instance::RValue(basis.build_object())
 		}
 		Expression::ObjectLiteral(object_literal) => {
-			let synthesize_object_literal =
-				synthesize_object_literal(object_literal, checking_data, environment);
+			let synthesise_object_literal =
+				synthesise_object_literal(object_literal, checking_data, environment);
 
-			Instance::RValue(synthesize_object_literal)
+			Instance::RValue(synthesise_object_literal)
 		}
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
 			let mut parts_iter = parts.iter().map(|part| match part {
@@ -155,12 +155,12 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				}
 			});
 			let tag =
-				tag.as_ref().map(|expr| synthesize_expression(expr, environment, checking_data));
+				tag.as_ref().map(|expr| synthesise_expression(expr, environment, checking_data));
 
-			synthesize_template_literal(tag, parts_iter, environment, checking_data)
+			synthesise_template_literal(tag, parts_iter, environment, checking_data)
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, .. } => {
-			let lhs_ty = synthesize_expression(&*lhs, environment, checking_data);
+			let lhs_ty = synthesise_expression(&*lhs, environment, checking_data);
 
 			if let BinaryOperator::LogicalAnd
 			| BinaryOperator::LogicalOr
@@ -184,7 +184,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				.unwrap();
 			}
 
-			let rhs_ty = synthesize_expression(&*rhs, environment, checking_data);
+			let rhs_ty = synthesise_expression(&*rhs, environment, checking_data);
 
 			if lhs_ty == TypeId::ERROR_TYPE || rhs_ty == TypeId::ERROR_TYPE {
 				return TypeId::ERROR_TYPE;
@@ -241,7 +241,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			))
 		}
 		Expression::UnaryOperation { operand, operator, position } => {
-			let operand_type = synthesize_expression(&*operand, environment, checking_data);
+			let operand_type = synthesise_expression(&*operand, environment, checking_data);
 
 			match operator {
 				UnaryOperator::Plus => todo!(),
@@ -271,7 +271,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		}
 		Expression::Assignment { lhs, rhs, position } => {
 			let lhs: Assignable =
-				synthesize_lhs_of_assignment_to_reference(lhs, environment, checking_data);
+				synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
 
 			let assignment_span = position.clone().with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
@@ -283,7 +283,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			);
 		}
 		Expression::BinaryAssignmentOperation { lhs, operator, rhs, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesize_access_to_reference(
+			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
 				lhs,
 				environment,
 				checking_data,
@@ -302,7 +302,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			);
 		}
 		Expression::UnaryPrefixAssignmentOperation { operator, operand, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesize_access_to_reference(
+			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
 				operand,
 				environment,
 				checking_data,
@@ -333,7 +333,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			}
 		}
 		Expression::UnaryPostfixAssignmentOperation { operand, operator, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesize_access_to_reference(
+			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
 				operand,
 				environment,
 				checking_data,
@@ -378,7 +378,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			}
 		}
 		Expression::PropertyAccess { parent, position, property, .. } => {
-			let on = synthesize_expression(parent, environment, checking_data);
+			let on = synthesise_expression(parent, environment, checking_data);
 			let property = if let parser::PropertyReference::Standard(name) = property {
 				checking_data.types.new_constant_type(Constant::String(name.clone()))
 			} else {
@@ -469,7 +469,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 				// );
 
 				// TODO explain
-				// synthesize_class_fields(fields, environment, checking_data, &chain);
+				// synthesise_class_fields(fields, environment, checking_data, &chain);
 
 				// Instance::RValue(ty)
 			}
@@ -478,7 +478,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		},
 		Expression::NewTarget(..) => todo!(),
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
-			let on = synthesize_expression(&*function, environment, checking_data);
+			let on = synthesise_expression(&*function, environment, checking_data);
 
 			let result = call_function(
 				on,
@@ -492,7 +492,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			Instance::RValue(result)
 		}
 		Expression::ConstructorCall { constructor, type_arguments, arguments, position } => {
-			let on = synthesize_expression(&*constructor, environment, checking_data);
+			let on = synthesise_expression(&*constructor, environment, checking_data);
 			let called_with_new = CalledWithNew::New { import_new: on };
 			let result = call_function(
 				on,
@@ -506,8 +506,8 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			Instance::RValue(result)
 		}
 		Expression::Index { indexee, indexer, position, .. } => {
-			let indexee = synthesize_expression(indexee, environment, checking_data);
-			let indexer = synthesize_multiple_expression(indexer, environment, checking_data);
+			let indexee = synthesise_expression(indexee, environment, checking_data);
+			let indexer = synthesise_multiple_expression(indexer, environment, checking_data);
 
 			let get_property =
 				environment.get_property(indexee, indexer, &mut checking_data.types, None);
@@ -545,7 +545,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		Expression::ConditionalTernaryExpression {
 			condition, truthy_result, falsy_result, ..
 		} => {
-			let condition = synthesize_expression(condition, environment, checking_data);
+			let condition = synthesise_expression(condition, environment, checking_data);
 
 			Instance::RValue(environment.new_conditional_context(
 				condition,
@@ -555,8 +555,8 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 			))
 
 			// TODO narrowing here based on condition and conditional events
-			// let true_result = synthesize_expression(truthy_result, environment, checking_data);
-			// let false_result = synthesize_expression(falsy_result, environment, checking_data);
+			// let true_result = synthesise_expression(truthy_result, environment, checking_data);
+			// let false_result = synthesise_expression(falsy_result, environment, checking_data);
 
 			// let value = environment.is_type_truthy_falsy(condition, &checking_data.types);
 
@@ -597,14 +597,14 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		)),
 		Expression::Null(_) => return TypeId::NULL_TYPE,
 		Expression::JSXRoot(jsx_root) => {
-			Instance::RValue(synthesize_jsx_root(jsx_root, environment, checking_data))
+			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
 		}
 		Expression::PostfixComment(expression, _comment, _)
 		| Expression::PrefixComment(_comment, expression, _) => {
-			Instance::RValue(synthesize_expression(expression, environment, checking_data))
+			Instance::RValue(synthesise_expression(expression, environment, checking_data))
 		}
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
-			synthesize_multiple_expression(inner_expression, environment, checking_data),
+			synthesise_multiple_expression(inner_expression, environment, checking_data),
 		),
 		Expression::ClassExpression(_) => {
 			todo!()
@@ -618,13 +618,13 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 					),
 				);
 
-				return synthesize_expression(value, environment, checking_data);
+				return synthesise_expression(value, environment, checking_data);
 			}
 			SpecialOperators::IsExpression { value, is_keyword, type_annotation } => todo!(),
 			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
-				let value = synthesize_expression(value, environment, checking_data);
+				let value = synthesise_expression(value, environment, checking_data);
 				let satisfying =
-					synthesize_type_annotation(type_annotation, environment, checking_data);
+					synthesise_type_annotation(type_annotation, environment, checking_data);
 
 				checking_data.check_satisfies(
 					value,
@@ -638,7 +638,7 @@ pub(super) fn synthesize_expression<T: crate::FSResolver>(
 		},
 		Expression::DynamicImport { path, position } => todo!(),
 		Expression::IsExpression(is_expr) => {
-			Instance::RValue(synthesize_is_expression(is_expr, environment, checking_data))
+			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
 		}
 	};
 
@@ -727,7 +727,7 @@ fn call_function<T: crate::FSResolver>(
 							.get_position()
 							.clone()
 							.with_source(environment.get_source()),
-						synthesize_type_annotation(
+						synthesise_type_annotation(
 							generic_type_argument,
 							environment,
 							checking_data,
@@ -740,9 +740,9 @@ fn call_function<T: crate::FSResolver>(
 		None
 	};
 
-	let synthesized_arguments = arguments
+	let synthesised_arguments = arguments
 		.as_mut()
-		.map(|arguments| synthesize_arguments(arguments, environment, checking_data))
+		.map(|arguments| synthesise_arguments(arguments, environment, checking_data))
 		.unwrap_or_default();
 
 	crate::types::calling::call_type_handle_errors(
@@ -750,24 +750,24 @@ fn call_function<T: crate::FSResolver>(
 		called_with_new,
 		Default::default(),
 		generic_type_arguments,
-		synthesized_arguments,
+		synthesised_arguments,
 		call_site.clone().with_source(environment.get_source()),
 		environment,
 		checking_data,
 	)
 }
 
-fn synthesize_arguments<T: crate::FSResolver>(
+fn synthesise_arguments<T: crate::FSResolver>(
 	arguments: &Vec<SpreadExpression>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
-) -> Vec<SynthesizedArgument> {
+) -> Vec<SynthesisedArgument> {
 	arguments
 		.iter()
 		.flat_map(|argument| match argument {
 			SpreadExpression::Spread(expr, _) => {
 				todo!()
-				// Some(SynthesizedFunctionArgument::Spread(synthesize_expression(
+				// Some(synthesisedFunctionArgument::Spread(synthesise_expression(
 				//     expr,
 				//     environment,
 				//     checking_data,
@@ -784,8 +784,8 @@ fn synthesize_arguments<T: crate::FSResolver>(
 				// ) {
 				// 	crate::utils::notify!("TODO absolute function here");
 				// }
-				let ty = synthesize_expression(expr, environment, checking_data);
-				Some(SynthesizedArgument::NonSpread {
+				let ty = synthesise_expression(expr, environment, checking_data);
+				Some(SynthesisedArgument::NonSpread {
 					ty,
 					position: ASTNode::get_position(expr)
 						.clone()
@@ -794,17 +794,17 @@ fn synthesize_arguments<T: crate::FSResolver>(
 			}
 			SpreadExpression::Empty => None,
 		})
-		.collect::<Vec<SynthesizedArgument>>()
+		.collect::<Vec<SynthesisedArgument>>()
 }
 
-pub(super) fn synthesize_class_fields<T: crate::FSResolver>(
+pub(super) fn synthesise_class_fields<T: crate::FSResolver>(
 	fields: Vec<(TypeId, Expression)>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) {
 	let this = environment.get_value_of_this(&mut checking_data.types);
 	for (under, mut expression) in fields {
-		let new = synthesize_expression(&expression, environment, checking_data);
+		let new = synthesise_expression(&expression, environment, checking_data);
 		environment.facts.events.push(Event::Setter {
 			on: this,
 			new: crate::types::properties::Property::Value(new),
@@ -817,25 +817,13 @@ pub(super) fn synthesize_class_fields<T: crate::FSResolver>(
 	}
 }
 
-pub(super) fn synthesize_lhs_of_assignment<T: crate::FSResolver>(
-	reference: &parser::ast::LHSOfAssignment,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
-) -> () {
-	match reference {
-		LHSOfAssignment::ObjectDestructuring(_, _) => todo!(),
-		LHSOfAssignment::ArrayDestructuring(_, _) => todo!(),
-		LHSOfAssignment::VariableOrPropertyAccess(_) => todo!(),
-	}
-}
-
 impl SynthesizableExpression for Expression {
-	fn synthesize_expression<U: crate::FSResolver>(
+	fn synthesise_expression<U: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U>,
 	) -> TypeId {
-		synthesize_expression(self, environment, checking_data)
+		synthesise_expression(self, environment, checking_data)
 	}
 
 	fn get_position(&self) -> &source_map::Span {
@@ -847,7 +835,7 @@ use parser::expressions::object_literal::{ObjectLiteral, ObjectLiteralMember};
 
 use crate::{structures::variables::VariableWithValue, synthesis::property_key_as_type};
 
-pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
+pub(super) fn synthesise_object_literal<T: crate::FSResolver>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,
 	checking_data: &mut CheckingData<T>,
 	environment: &mut Environment,
@@ -894,7 +882,7 @@ pub(super) fn synthesize_object_literal<T: crate::FSResolver>(
 				let key =
 					property_key_as_type(key.get_ast_ref(), environment, &mut checking_data.types);
 
-				let value = synthesize_expression(expression, environment, checking_data);
+				let value = synthesise_expression(expression, environment, checking_data);
 				let value = crate::types::properties::Property::Value(value);
 				object_builder.append(environment, key, value);
 

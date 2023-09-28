@@ -230,7 +230,7 @@ pub enum Constructor {
 	FunctionResult {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
-		with: Box<[SynthesizedArgument]>,
+		with: Box<[SynthesisedArgument]>,
 		result: TypeId,
 	},
 	Property {

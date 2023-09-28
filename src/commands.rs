@@ -46,7 +46,7 @@ pub fn check<T: crate::FSResolver>(
 	};
 
 	let (diagnostics, data) =
-		checker::synthesis::module::synthesize_module_root(&module, definitions, |path| {
+		checker::synthesis::module::synthesise_module_root(&module, definitions, |path| {
 			if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 			} else {

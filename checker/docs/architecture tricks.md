@@ -5,10 +5,8 @@ Finding the values for generics is done during subtype checking #TODO
 
 ### Object keys are types
 When `x.t` a `"t"` type is created.
-#TODO how does casting work
 
-### Operators are functions
-#TODO
+#TODO how does casting work
 
 ## Internal #TODO
 - `Environment::parents_iter`

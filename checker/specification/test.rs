@@ -53,7 +53,7 @@ fn check_errors(
 	// });
 
 	// let result = panic::catch_unwind(|| {
-	let result = checker::synthesis::module::synthesize_module_root(
+	let result = checker::synthesis::module::synthesise_module_root(
 		&module,
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|_| Some(checker::INTERNAL_DEFINITION_FILE.to_owned()),

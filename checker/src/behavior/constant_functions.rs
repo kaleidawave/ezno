@@ -4,7 +4,7 @@ use crate::{
 	context::get_on_ctx,
 	subtyping::check_satisfies,
 	types::{
-		functions::SynthesizedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
+		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
 	},
 	types::{poly_types::FunctionTypeArguments, printing::print_type, Type, TypeStore},
 	Constant, Environment, TypeId,
@@ -23,7 +23,7 @@ pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
 	call_site_type_args: &Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: &[SynthesizedArgument],
+	arguments: &[SynthesisedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,

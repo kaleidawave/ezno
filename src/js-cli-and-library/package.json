@@ -69,7 +69,10 @@
 		],
 		"rollup": {
 			"emitCJS": true,
-			"commonjs": true
+			"commonjs": true,
+			"esbuild": {
+				"target": "esnext"
+			}
 		}
 	},
 	"devDependencies": {

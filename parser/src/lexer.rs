@@ -252,7 +252,7 @@ pub fn lex_script(
 						*last_character_zero = false;
 					}
 					// For binary/hexadecimal/octal literals
-					'b' | 'x' | 'o' | 'B' | 'X' | 'O' => {
+					'b' | 'B' | 'x' | 'X' | 'o' | 'O' => {
 						if start + 1 != idx {
 							return_err!(
 								LexingErrors::NumberLiteralBaseSpecifierMustBeSecondCharacter
@@ -264,7 +264,7 @@ pub fn lex_script(
 						} else {
 							*literal_type = match chr.to_ascii_lowercase() {
 								'b' => NumberLiteralType::BinaryLiteral,
-								'0' => NumberLiteralType::OctalLiteral,
+								'o' => NumberLiteralType::OctalLiteral,
 								'x' => NumberLiteralType::HexadecimalLiteral,
 								_ => unreachable!(),
 							}

@@ -342,7 +342,7 @@ pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
 	{
 		type ExpressionResult = TypeId;
 
-		fn synthesize_condition<T: crate::FSResolver>(
+		fn synthesise_condition<T: crate::FSResolver>(
 			self,
 			environment: &mut Environment,
 			checking_data: &mut CheckingData<T>,
@@ -350,7 +350,7 @@ pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
 			match self {
 				TypeOrSynthesizable::Type(ty) => ty,
 				TypeOrSynthesizable::Expression(expr) => {
-					TExpr::synthesize_expression(expr, environment, checking_data)
+					TExpr::synthesise_expression(expr, environment, checking_data)
 				}
 			}
 		}

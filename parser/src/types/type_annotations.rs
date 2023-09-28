@@ -550,7 +550,12 @@ impl TypeAnnotation {
 			}
 			token => {
 				let (name, pos) = token_as_identifier(token, "type reference")?;
-				Self::Name(name, pos)
+				match name.as_str() {
+					"string" => Self::CommonName(CommonTypes::String, pos),
+					"number" => Self::CommonName(CommonTypes::Number, pos),
+					"boolean" => Self::CommonName(CommonTypes::Boolean, pos),
+					_ => Self::Name(name, pos),
+				}
 			}
 		};
 		// Namespaced name

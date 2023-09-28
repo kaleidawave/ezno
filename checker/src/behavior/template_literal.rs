@@ -2,7 +2,7 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
-	types::{cast_as_string, SynthesizedArgument},
+	types::{cast_as_string, SynthesisedArgument},
 	CheckingData, Constant, Environment, Instance, SynthesizableExpression, Type, TypeId,
 };
 
@@ -11,7 +11,7 @@ pub enum TemplateLiteralPart<'a, T: SynthesizableExpression> {
 	Dynamic(&'a T),
 }
 
-pub fn synthesize_template_literal<
+pub fn synthesise_template_literal<
 	'a,
 	T: crate::FSResolver,
 	TExpr: SynthesizableExpression + 'a,
@@ -32,7 +32,7 @@ pub fn synthesize_template_literal<
 			}
 			TemplateLiteralPart::Dynamic(expression) => {
 				// TODO tidy
-				let value = SynthesizableExpression::synthesize_expression(
+				let value = SynthesizableExpression::synthesise_expression(
 					expression,
 					environment,
 					checking_data,
@@ -56,11 +56,11 @@ pub fn synthesize_template_literal<
 		);
 
 		// TODO position
-		let mut arguments = Vec::<SynthesizedArgument>::new();
+		let mut arguments = Vec::<SynthesisedArgument>::new();
 
 		arguments.insert(
 			0,
-			SynthesizedArgument::NonSpread {
+			SynthesisedArgument::NonSpread {
 				ty: static_parts.build_object(),
 				position: SpanWithSource::NULL_SPAN,
 			},

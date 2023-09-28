@@ -5,7 +5,7 @@ use crate::{
 	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
 	types::{
 		curry_arguments,
-		functions::SynthesizedArgument,
+		functions::SynthesisedArgument,
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
 		properties::{get_property, set_property, Property},
@@ -119,9 +119,9 @@ pub(crate) fn apply_event(
 			let with = with
 				.iter()
 				.map(|argument| match argument {
-					SynthesizedArgument::NonSpread { ty, position: pos } => {
+					SynthesisedArgument::NonSpread { ty, position: pos } => {
 						let ty = specialize(*ty, type_arguments, environment, types);
-						SynthesizedArgument::NonSpread { ty, position: pos.clone() }
+						SynthesisedArgument::NonSpread { ty, position: pos.clone() }
 					}
 				})
 				.collect::<Vec<_>>();

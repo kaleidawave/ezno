@@ -18,7 +18,7 @@ pub mod statements;
 pub mod type_annotations;
 pub mod variables;
 
-use block::synthesize_block;
+use block::synthesise_block;
 use parser::PropertyKey;
 use source_map::SourceId;
 

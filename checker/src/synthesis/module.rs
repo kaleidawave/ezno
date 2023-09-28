@@ -5,7 +5,7 @@ use source_map::SourceId;
 
 use crate::{CheckingData, Diagnostic};
 
-use super::block::synthesize_block;
+use super::block::synthesise_block;
 
 pub struct PostCheckData {
 	pub events: Vec<crate::events::Event>,
@@ -15,7 +15,7 @@ pub struct PostCheckData {
 }
 
 /// TODO temp
-pub fn synthesize_module_root<T: crate::FSResolver>(
+pub fn synthesise_module_root<T: crate::FSResolver>(
 	module: &parser::Module,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
@@ -57,7 +57,7 @@ pub fn synthesize_module_root<T: crate::FSResolver>(
 	let (_, stuff, _) = root.new_lexical_environment_fold_into_parent(
 		crate::context::Scope::Module { source: module.source },
 		&mut checking_data,
-		|environment, checking_data| synthesize_block(&module.items, environment, checking_data),
+		|environment, checking_data| synthesise_block(&module.items, environment, checking_data),
 	);
 
 	let CheckingData {

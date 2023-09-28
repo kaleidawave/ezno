@@ -11,7 +11,7 @@ use crate::{
 	events::{apply_event, Event, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
-		functions::SynthesizedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
+		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
 		specialize,
 	},
 	types::{FunctionType, Type},
@@ -32,7 +32,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T>,
@@ -83,7 +83,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 	// Overwritten by .call, else look at binding
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -91,7 +91,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	if on == TypeId::ERROR_TYPE
 		|| arguments.iter().any(|arg| match arg {
-			SynthesizedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
+			SynthesisedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
 		}) {
 		return Ok(FunctionCallResult {
 			called: None,
@@ -173,7 +173,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	on: TypeId,
 	environment: &mut Environment,
@@ -238,8 +238,8 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	// 		.cloned()
 	// 		.enumerate()
 	// 		.map(|(idx, argument)| match argument {
-	// 			SynthesizedArgument::NonSpread { ty, position } => {
-	// 				SynthesizedParameter {
+	// 			synthesisedArgument::NonSpread { ty, position } => {
+	// 				SynthesisedParameter {
 	// 					name: format!("i{}", idx),
 	// 					ty,
 	// 					// TODO
@@ -256,7 +256,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	// 	let function_type = FunctionType {
 	// 		// TODO explain
 	// 		type_parameters: None,
-	// 		parameters: SynthesizedParameters {
+	// 		parameters: SynthesisedParameters {
 	// 			parameters,
 	// 			// TODO I think this is okay
 	// 			rest_parameter: Default::default(),
@@ -348,7 +348,7 @@ impl FunctionType {
 		this_value: ThisValue,
 		call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 		parent_type_arguments: Option<StructureGenericArguments>,
-		arguments: &[SynthesizedArgument],
+		arguments: &[SynthesisedArgument],
 		call_site: SpanWithSource,
 		environment: &mut Environment,
 		behavior: &mut E,
@@ -467,7 +467,7 @@ impl FunctionType {
 			if let (Some(call_site_type_arguments), true) =
 				(call_site_type_arguments, E::CHECK_PARAMETERS)
 			{
-				self.synthesize_call_site_type_arguments(
+				self.synthesise_call_site_type_arguments(
 					call_site_type_arguments,
 					types,
 					environment,
@@ -548,7 +548,7 @@ impl FunctionType {
 				let argument = arguments.get(idx);
 
 				let argument_type_and_pos = argument.map(|argument| {
-					if let SynthesizedArgument::NonSpread { ty, position: pos } = argument {
+					if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
 						(ty, pos)
 					} else {
 						todo!()
@@ -660,7 +660,7 @@ impl FunctionType {
 						arguments.iter().enumerate().skip(self.parameters.parameters.len())
 					{
 						let (argument_type, argument_pos) =
-							if let SynthesizedArgument::NonSpread { ty, position: pos } = argument {
+							if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
 								(ty, pos)
 							} else {
 								todo!()
@@ -918,7 +918,7 @@ impl FunctionType {
 		})
 	}
 
-	fn synthesize_call_site_type_arguments(
+	fn synthesise_call_site_type_arguments(
 		&self,
 		call_site_type_arguments: Vec<(SpanWithSource, TypeId)>,
 		types: &mut crate::types::TypeStore,

@@ -14,7 +14,7 @@ pub(crate) mod helpers;
 pub(crate) use application::apply_event;
 
 use crate::{
-	types::functions::SynthesizedArgument,
+	types::functions::SynthesisedArgument,
 	types::{poly_types::FunctionTypeArguments, TypeId},
 };
 
@@ -76,7 +76,7 @@ pub enum Event {
 	/// This includes closed over variables, anything dependent
 	CallsType {
 		on: TypeId,
-		with: Box<[SynthesizedArgument]>,
+		with: Box<[SynthesisedArgument]>,
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,

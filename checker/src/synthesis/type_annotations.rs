@@ -47,7 +47,7 @@ use crate::context::{Context, ContextType};
 /// - Reference to non generic with generic types
 ///
 /// Use [Context::get_type] instead
-pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
+pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 	annotation: &TypeAnnotation,
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T>,
@@ -92,7 +92,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 			let mut iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
-					synthesize_type_annotation(type_annotation, environment, checking_data)
+					synthesise_type_annotation(type_annotation, environment, checking_data)
 				})
 				.collect::<Vec<_>>()
 				.into_iter();
@@ -105,7 +105,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 			let mut iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
-					synthesize_type_annotation(type_annotation, environment, checking_data)
+					synthesise_type_annotation(type_annotation, environment, checking_data)
 				})
 				.collect::<Vec<_>>()
 				.into_iter();
@@ -130,7 +130,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				// TODO check restrictions + deferred
 				let with = parameters.iter().copied().collect::<Vec<_>>().into_iter().zip(
 					arguments.iter().map(|type_annotation| {
-						synthesize_type_annotation(type_annotation, environment, checking_data)
+						synthesise_type_annotation(type_annotation, environment, checking_data)
 					}),
 				);
 				let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
@@ -180,7 +180,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 		}
 		TypeAnnotation::Readonly(type_annotation, _) => {
 			let underlying_type =
-				synthesize_type_annotation(&*type_annotation, environment, checking_data);
+				synthesise_type_annotation(&*type_annotation, environment, checking_data);
 
 			todo!();
 
@@ -197,7 +197,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 		}
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_type, _) => {
-			let item_type = synthesize_type_annotation(&*item_type, environment, checking_data);
+			let item_type = synthesise_type_annotation(&*item_type, environment, checking_data);
 			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: TypeId::ARRAY_TYPE,
 				arguments: StructureGenericArguments {
@@ -222,7 +222,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 				.types
 				.register_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
 
-			super::interfaces::synthesize_signatures(
+			super::interfaces::synthesise_signatures(
 				&members,
 				super::interfaces::OnToType(onto),
 				environment,
@@ -243,7 +243,7 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
-						let item_ty = synthesize_type_annotation(ty, environment, checking_data);
+						let item_ty = synthesise_type_annotation(ty, environment, checking_data);
 
 						keys.insert(idx_ty);
 						environment
@@ -276,11 +276,11 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 			obj
 		}
 		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
-			synthesize_type_annotation(reference, environment, checking_data)
+			synthesise_type_annotation(reference, environment, checking_data)
 		}
 		TypeAnnotation::Index(indexee, indexer, _) => {
-			let indexee = synthesize_type_annotation(indexee, environment, checking_data);
-			let indexer = synthesize_type_annotation(indexer, environment, checking_data);
+			let indexee = synthesise_type_annotation(indexee, environment, checking_data);
+			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
 			if let Some(prop) =
 				environment.get_property_unbound(indexee, indexer, &checking_data.types)
 			{
@@ -300,22 +300,22 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {
-			let condition = synthesize_type_condition(condition, environment, checking_data);
+			let condition = synthesise_type_condition(condition, environment, checking_data);
 
-			fn synthesize_condition(result: &TypeConditionResult) -> &TypeAnnotation {
+			fn synthesise_condition(result: &TypeConditionResult) -> &TypeAnnotation {
 				match result {
 					TypeConditionResult::Reference(reference) => reference,
 					TypeConditionResult::Infer(_infer, _) => todo!(),
 				}
 			}
 
-			let truthy_result = synthesize_type_annotation(
-				synthesize_condition(resolve_true),
+			let truthy_result = synthesise_type_annotation(
+				synthesise_condition(resolve_true),
 				environment,
 				checking_data,
 			);
-			let else_result = synthesize_type_annotation(
-				synthesize_condition(resolve_false),
+			let else_result = synthesise_type_annotation(
+				synthesise_condition(resolve_false),
 				environment,
 				checking_data,
 			);
@@ -334,51 +334,8 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 		}
 		// TODO these are all work in progress
 		TypeAnnotation::Decorated(decorator, inner, _) => {
-			match decorator.name.as_str() {
-				// TODO temp
-				"Proof" => {
-					todo!("could do fun things here")
-				}
-				// Not sure if/how this will be used but have it anyway
-				"InternalFunctionId" => {
-					todo!()
-				}
-				"ExistingOpenDependentType" => {
-					todo!()
-				}
-				"Events" => {
-					todo!()
-				}
-				"OpenDependentTypeId" => {
-					todo!()
-					// let inner_type = environment.get_type(&inner, checking_data)?;
-					// let constraint = checking_data.memory.new_fixed_constraint_id(inner_type);
-					// let dependent_type =
-					// 	Type::DependentType(DependentType::OpenDependentType { id: constraint });
-					// Some(dependent_type))
-				}
-				// TODO not sure. this needs to feed from events somehow to actually do the specialization...
-				"NewObjectWithProperties" => {
-					if let Some(parser::Expression::ObjectLiteral(obj)) =
-						decorator.arguments.as_ref().and_then(|args| args.first())
-					{
-						for member in obj.members.iter() {
-							if let parser::expressions::object_literal::ObjectLiteralMember::Property(key, value, _) = member {
-						} else {
-							todo!("Invalid usage of 'NewObjectWithProperties' decorator")
-						}
-						}
-						todo!()
-					} else {
-						todo!()
-					}
-				}
-				decorator_name => {
-					crate::utils::notify!("Unknown decorator skipping {:#?}", decorator_name);
-					let inner_type = synthesize_type_annotation(&inner, environment, checking_data);
-					inner_type
-				}
-			}
+			crate::utils::notify!("Unknown decorator skipping {:#?}", decorator.name);
+			synthesise_type_annotation(&inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
 	};
@@ -391,15 +348,15 @@ pub(super) fn synthesize_type_annotation<S: ContextType, T: crate::FSResolver>(
 	ty
 }
 
-fn synthesize_type_condition<S: ContextType, T: crate::FSResolver>(
+fn synthesise_type_condition<S: ContextType, T: crate::FSResolver>(
 	condition: &TypeCondition,
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
 	match condition {
 		TypeCondition::Extends { ty, extends, position } => {
-			let item = synthesize_type_annotation(ty, environment, checking_data);
-			let extends = synthesize_type_annotation(extends, environment, checking_data);
+			let item = synthesise_type_annotation(ty, environment, checking_data);
+			let extends = synthesise_type_annotation(extends, environment, checking_data);
 			todo!();
 			// let ty = Type::Constructor(Constructor::BinaryOperator {
 			// 	operator: crate::structures::operators::CanonicalBinaryOperator::InstanceOf,

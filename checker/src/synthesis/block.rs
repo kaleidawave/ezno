@@ -3,12 +3,12 @@ use parser::{Declaration, Statement, StatementOrDeclaration};
 use crate::{context::Environment, diagnostics::TypeCheckError, CheckingData};
 
 use super::{
-	classes::synthesize_class_declaration, declarations::synthesize_variable_declaration,
-	hoisting::hoist_statements, statements::synthesize_statement,
+	classes::synthesise_class_declaration, declarations::synthesise_variable_declaration,
+	hoisting::hoist_statements, statements::synthesise_statement,
 };
 
 /// Note that this expects the environment to be new lexically
-pub(super) fn synthesize_block<T: crate::FSResolver>(
+pub(super) fn synthesise_block<T: crate::FSResolver>(
 	statements: &[StatementOrDeclaration],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -21,7 +21,7 @@ pub(super) fn synthesize_block<T: crate::FSResolver>(
 	for (idx, statement) in statements.iter().enumerate() {
 		match statement {
 			StatementOrDeclaration::Statement(statement) => {
-				let statement_result = synthesize_statement(statement, environment, checking_data);
+				let statement_result = synthesise_statement(statement, environment, checking_data);
 
 				// TODO Statement::is_control_flow ...?
 				if let Statement::Return(..) | Statement::Break(..) | Statement::Continue(..) =
@@ -33,11 +33,11 @@ pub(super) fn synthesize_block<T: crate::FSResolver>(
 			}
 			StatementOrDeclaration::Declaration(declaration) => match declaration {
 				Declaration::Variable(declaration) => {
-					synthesize_variable_declaration(declaration, environment, checking_data)
+					synthesise_variable_declaration(declaration, environment, checking_data)
 				}
 				Declaration::Class(class) => {
 					let constructor =
-						synthesize_class_declaration(class, environment, checking_data);
+						synthesise_class_declaration(class, environment, checking_data);
 					let position = class.on.position.clone().with_source(environment.get_source());
 					let result = environment.declare_variable(
 						class.on.name.as_str(),

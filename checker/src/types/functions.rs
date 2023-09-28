@@ -11,7 +11,7 @@ pub struct FunctionType {
 
 	/// TODO not sure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
-	pub parameters: SynthesizedParameters,
+	pub parameters: SynthesisedParameters,
 	pub return_type: TypeId,
 	/// Side effects of the function
 	pub effects: Vec<crate::events::Event>,
@@ -70,9 +70,9 @@ pub enum FunctionKind {
 // 	}
 // }
 
-/// Optionality is indicated by what vector it is in [SynthesizedParameters]
+/// Optionality is indicated by what vector it is in [SynthesisedParameters]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub struct SynthesizedParameter {
+pub struct SynthesisedParameter {
 	pub name: String,
 	/// This is the generic parameter type, not the restriction
 	pub ty: TypeId,
@@ -83,7 +83,7 @@ pub struct SynthesizedParameter {
 
 /// **Note that the [Type] here is not array like**
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub struct SynthesizedRestParameter {
+pub struct SynthesisedRestParameter {
 	pub name: String,
 	/// This is the T, of Array<T>
 	pub item_type: TypeId,
@@ -94,13 +94,13 @@ pub struct SynthesizedRestParameter {
 ///
 /// This applies for source functions
 #[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub struct SynthesizedParameters {
+pub struct SynthesisedParameters {
 	// Even though these vectors are the same type, the latter allows for elided arguments
-	pub parameters: Vec<SynthesizedParameter>,
-	pub rest_parameter: Option<SynthesizedRestParameter>,
+	pub parameters: Vec<SynthesisedParameter>,
+	pub rest_parameter: Option<SynthesisedRestParameter>,
 }
 
-// impl TypeDisplay for SynthesizedParameters {
+// impl TypeDisplay for SynthesisedParameters {
 // 	fn fmt(
 // 		&self,
 // 		buf: &mut String,
@@ -111,7 +111,7 @@ pub struct SynthesizedParameters {
 // 	) {
 // 		buf.push('(');
 
-// 		for (at_end, SynthesizedParameter { name, ty: constraint, .. }) in
+// 		for (at_end, SynthesisedParameter { name, ty: constraint, .. }) in
 // 			self.parameters.iter().endiate()
 // 		{
 // 			buf.push_str(name);
@@ -123,7 +123,7 @@ pub struct SynthesizedParameters {
 // 			}
 // 		}
 
-// 		for (at_end, SynthesizedParameter { name, ty: constraint, .. }) in
+// 		for (at_end, SynthesisedParameter { name, ty: constraint, .. }) in
 // 			self.optional_parameters.iter().endiate()
 // 		{
 // 			buf.push_str(name);
@@ -135,7 +135,7 @@ pub struct SynthesizedParameters {
 // 			}
 // 		}
 
-// 		if let Some(SynthesizedRestParameter { name, item_type, .. }) = self.rest_parameter.as_ref()
+// 		if let Some(synthesisedRestParameter { name, item_type, .. }) = self.rest_parameter.as_ref()
 // 		{
 // 			buf.push_str("...");
 // 			buf.push_str(&name);
@@ -148,7 +148,7 @@ pub struct SynthesizedParameters {
 // 	}
 // }
 
-impl SynthesizedParameters {
+impl SynthesisedParameters {
 	// TODO should be aware of undefined in optionals possibly
 	pub(crate) fn get_type_constraint_at_index(&self, idx: usize) -> Option<TypeId> {
 		if let Some(param) = self.parameters.get(idx) {
@@ -163,23 +163,23 @@ impl SynthesizedParameters {
 /// TODO spread for non heterogenous things
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 #[non_exhaustive]
-pub enum SynthesizedArgument {
+pub enum SynthesisedArgument {
 	/// This is the get value of a argument
 	NonSpread { ty: TypeId, position: SpanWithSource },
 	// TODO
 	// Spread(Instance),
 }
 
-impl SynthesizedArgument {
+impl SynthesisedArgument {
 	pub(crate) fn get_position(&self) -> SpanWithSource {
 		match self {
-			SynthesizedArgument::NonSpread { ty: _, position } => position.clone(),
+			SynthesisedArgument::NonSpread { ty: _, position } => position.clone(),
 		}
 	}
 
 	pub(crate) fn into_type(&self) -> Result<TypeId, ()> {
 		match self {
-			SynthesizedArgument::NonSpread { ty, position: _ } => Ok(*ty),
+			SynthesisedArgument::NonSpread { ty, position: _ } => Ok(*ty),
 		}
 	}
 }

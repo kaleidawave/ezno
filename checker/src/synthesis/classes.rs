@@ -9,7 +9,7 @@ use crate::{
 	context::{
 		Environment, {Context, ContextType},
 	},
-	synthesis::{property_key_as_type, type_annotations::synthesize_type_annotation},
+	synthesis::{property_key_as_type, type_annotations::synthesise_type_annotation},
 	types::poly_types::GenericTypeParameters,
 	CheckingData, Property, Type, TypeId,
 };
@@ -17,7 +17,7 @@ use crate::{
 /// Doesn't have any metadata yet
 ///
 /// Returns the constructor
-pub(super) fn synthesize_class_declaration<
+pub(super) fn synthesise_class_declaration<
 	T: crate::FSResolver,
 	S: ContextType,
 	P: parser::ExpressionOrStatementPosition,
@@ -69,15 +69,15 @@ pub(super) fn synthesize_class_declaration<
 					checking_data: &mut CheckingData<T>,
 					on: TypeId,
 				) -> TypeId {
-					let mut ty = synthesize_type_annotation(
+					let mut ty = synthesise_type_annotation(
 						extends.next().unwrap(),
 						environment,
 						checking_data,
 					);
 
 					for reference in extends {
-						let rhs = synthesize_type_annotation(reference, environment, checking_data);
-						// TODOsynthesize_type_annotation
+						let rhs = synthesise_type_annotation(reference, environment, checking_data);
+						// TODOsynthesise_type_annotation
 						ty = checking_data.types.register_type(Type::And(ty, rhs));
 					}
 
@@ -148,7 +148,7 @@ pub(super) fn synthesize_class_declaration<
 				// 		let key = property_key_as_type(key.get_ast(), environment);
 				// 		if is_static.is_some() {
 				// 			let value = if let Some(value) = value {
-				// 				synthesize_expression(value, environment, checking_data)
+				// 				synthesise_expression(value, environment, checking_data)
 				// 			} else {
 				// 				TypeId::UNDEFINED_TYPE
 				// 			};

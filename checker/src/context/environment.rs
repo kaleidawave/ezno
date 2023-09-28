@@ -177,7 +177,7 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = expression.unwrap().synthesize_expression(self, checking_data);
+						let new = expression.unwrap().synthesise_expression(self, checking_data);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
 							Ok(ty) => ty,
@@ -203,7 +203,7 @@ impl<'a> Environment<'a> {
 						let with_source =
 							expression.get_position().clone().with_source(self.get_source());
 						let rhs =
-							(expression.synthesize_expression(self, checking_data), with_source);
+							(expression.synthesise_expression(self, checking_data), with_source);
 						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
 							operator.into(),
@@ -619,9 +619,9 @@ impl<'a> Environment<'a> {
 		{
 			// TODO emit warning
 			return if result {
-				then_evaluate.synthesize_condition(self, checking_data)
+				then_evaluate.synthesise_condition(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
-				else_evaluate.synthesize_condition(self, checking_data)
+				else_evaluate.synthesise_condition(self, checking_data)
 			} else {
 				U::default_result()
 			};
@@ -630,7 +630,7 @@ impl<'a> Environment<'a> {
 		let (truthy_result, truthy_events) = {
 			let mut truthy_environment =
 				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
-			let result = then_evaluate.synthesize_condition(&mut truthy_environment, checking_data);
+			let result = then_evaluate.synthesise_condition(&mut truthy_environment, checking_data);
 			(result, truthy_environment.facts.events)
 		};
 		if let Some(else_evaluate) = else_evaluate {
@@ -638,7 +638,7 @@ impl<'a> Environment<'a> {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 			});
 			let falsy_result =
-				else_evaluate.synthesize_condition(&mut falsy_environment, checking_data);
+				else_evaluate.synthesise_condition(&mut falsy_environment, checking_data);
 			let combined_result = U::conditional_expression_result(
 				condition,
 				truthy_result,

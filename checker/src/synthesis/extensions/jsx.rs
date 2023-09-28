@@ -6,23 +6,23 @@ use crate::{
 	behavior::objects::ObjectBuilder,
 	context::Logical,
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	synthesis::expressions::synthesize_expression,
+	synthesis::expressions::synthesise_expression,
 	types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	CheckingData, Constant, Environment, TypeId,
 };
 
-pub(crate) fn synthesize_jsx_root<T: crate::FSResolver>(
+pub(crate) fn synthesise_jsx_root<T: crate::FSResolver>(
 	jsx_root: &JSXRoot,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
 	match jsx_root {
-		JSXRoot::Element(element) => synthesize_jsx_element(element, environment, checking_data),
+		JSXRoot::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXRoot::Fragment(_) => todo!(),
 	}
 }
 
-pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
+pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 	element: &JSXElement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -40,7 +40,7 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 		);
 
 		for attribute in element.attributes.iter() {
-			let (name, attr_value) = synthesize_attribute(attribute, environment, checking_data);
+			let (name, attr_value) = synthesise_attribute(attribute, environment, checking_data);
 
 			let constraint = environment
 				.get_property_unbound(element_type, name, &checking_data.types)
@@ -116,7 +116,7 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 
 		todo!();
 
-		// let mut synthesized_child_nodes =
+		// let mut synthesised_child_nodes =
 		// 	ObjectBuilder::new(Some(TypeId::NODE_LIST_TYPE), environment);
 
 		// if let JSXElementChildren::Children(ref mut children) = element.children {
@@ -128,14 +128,14 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 		// 			.types
 		// 			.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
-		// 		let child = synthesize_jsx_child(child, environment, checking_data);
-		// 		synthesized_child_nodes.append(environment, property, child);
+		// 		let child = synthesise_jsx_child(child, environment, checking_data);
+		// 		synthesised_child_nodes.append(environment, property, child);
 		// 	}
 
 		// 	new_element_object.append(
 		// 		environment,
 		// 		TypeId::CHILD_NODES_AS_STRING,
-		// 		synthesized_child_nodes.build_object(),
+		// 		synthesised_child_nodes.build_object(),
 		// 	);
 		// }
 		new_element_object.build_object()
@@ -153,7 +153,7 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 				// 		FunctionPointer::Function(function_id) => {
 				// 			todo!()
 				// 			// checking_data
-				// 			// 	.synthesize_hoisted_function(
+				// 			// 	.synthesise_hoisted_function(
 				// 			// 		variable_type,
 				// 			// 		*function_id,
 				// 			// 		environment,
@@ -176,13 +176,13 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 
 				// let mut found_error = false;
 
-				// let mut synthesized_attributes = ObjectBuilder::new(None, environment);
-				// let mut synthesized_child_nodes =
+				// let mut synthesised_attributes = ObjectBuilder::new(None, environment);
+				// let mut synthesised_child_nodes =
 				// 	ObjectBuilder::new(Some(TypeId::NODE_LIST_TYPE), environment);
 
 				// for attribute in element.attributes.iter() {
 				// 	let (name, attr_value) =
-				// 		synthesize_attribute(attribute, environment, checking_data);
+				// 		synthesise_attribute(attribute, environment, checking_data);
 
 				// 	let expected = expected_props.contains(&name);
 				// 	if expected {
@@ -204,7 +204,7 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 				// 		);
 				// 		match check {
 				// 			SubTypeResult::IsSubType => {
-				// 				synthesized_attributes.append(environment, name, attr_value);
+				// 				synthesised_attributes.append(environment, name, attr_value);
 				// 			}
 				// 			SubTypeResult::IsNotSubType(_) => {
 				// 				found_error = true;
@@ -243,7 +243,7 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 				// 	for (idx, child) in
 				// 		children.iter().filter(|p| !matches!(p, JSXNode::LineBreak)).enumerate()
 				// 	{
-				// 		let child = synthesize_jsx_child(child, environment, checking_data);
+				// 		let child = synthesise_jsx_child(child, environment, checking_data);
 
 				// 		// TODO idx bad
 				// 		// TODO should be done by item rather than idx
@@ -251,25 +251,25 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 				// 			.types
 				// 			.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
-				// 		synthesized_child_nodes.append(environment, number, child);
+				// 		synthesised_child_nodes.append(environment, number, child);
 				// 	}
 				// }
 
 				// if expected_props.contains(&TypeId::CHILD_NODES_AS_STRING) {
-				// 	let synthesized_child_nodes = synthesized_child_nodes.build_object();
-				// 	synthesized_attributes.append(
+				// 	let synthesised_child_nodes = synthesised_child_nodes.build_object();
+				// 	synthesised_attributes.append(
 				// 		environment,
 				// 		TypeId::CHILD_NODES_AS_STRING,
-				// 		synthesized_child_nodes,
+				// 		synthesised_child_nodes,
 				// 	);
 				// }
 
 				// if !found_error {
-				// 	let props = synthesized_attributes.build_object();
+				// 	let props = synthesised_attributes.build_object();
 
 				// 	function
 				// 		.call(
-				// 			&[SynthesizedArgument::NonSpread {
+				// 			&[synthesisedArgument::NonSpread {
 				// 				ty: props,
 				// 				position: Span { start: 0, end: 0, source_id: SourceId::NULL },
 				// 			}],
@@ -298,20 +298,20 @@ pub(crate) fn synthesize_jsx_element<T: crate::FSResolver>(
 	}
 }
 
-fn synthesize_jsx_child<T: crate::FSResolver>(
+fn synthesise_jsx_child<T: crate::FSResolver>(
 	child: &JSXNode,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) -> TypeId {
 	match child {
-		JSXNode::Element(element) => synthesize_jsx_element(element, environment, checking_data),
+		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, expression_position) => {
 			if matches!(&**expression, Expression::Comment(..)) {
 				return TypeId::UNDEFINED_TYPE;
 			}
 
 			crate::utils::notify!("Cast to node!");
-			synthesize_expression(expression, environment, checking_data)
+			synthesise_expression(expression, environment, checking_data)
 
 			// function intoNode(data) {
 			// 	if typeof data === "string" || typeof data === "number" {
@@ -361,7 +361,7 @@ fn synthesize_jsx_child<T: crate::FSResolver>(
 	}
 }
 
-fn synthesize_attribute<T: crate::FSResolver>(
+fn synthesise_attribute<T: crate::FSResolver>(
 	attribute: &JSXAttribute,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -373,7 +373,7 @@ fn synthesize_attribute<T: crate::FSResolver>(
 		}
 		JSXAttribute::Dynamic(name, expression, attribute_id) => {
 			// Do not care about the returned value at this point, just for synthesizing the type into the map
-			let attribute_instance = synthesize_expression(expression, environment, checking_data);
+			let attribute_instance = synthesise_expression(expression, environment, checking_data);
 
 			(name, attribute_instance)
 		}

@@ -2,9 +2,9 @@ use parser::declarations::VariableDeclaration;
 
 use crate::{context::Environment, CheckingData};
 
-use super::variables::synthesize_variable_declaration_item;
+use super::variables::synthesise_variable_declaration_item;
 
-pub(super) fn synthesize_variable_declaration<T: crate::FSResolver>(
+pub(super) fn synthesise_variable_declaration<T: crate::FSResolver>(
 	declaration: &VariableDeclaration,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -12,7 +12,7 @@ pub(super) fn synthesize_variable_declaration<T: crate::FSResolver>(
 	match declaration {
 		VariableDeclaration::ConstDeclaration { declarations, .. } => {
 			for variable_declaration in declarations.iter() {
-				synthesize_variable_declaration_item(
+				synthesise_variable_declaration_item(
 					&variable_declaration,
 					environment,
 					true,
@@ -26,7 +26,7 @@ pub(super) fn synthesize_variable_declaration<T: crate::FSResolver>(
 			..
 		} => {
 			for variable_declaration in declarations.iter() {
-				synthesize_variable_declaration_item(
+				synthesise_variable_declaration_item(
 					&variable_declaration,
 					environment,
 					false,

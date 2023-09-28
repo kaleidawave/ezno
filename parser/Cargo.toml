@@ -35,7 +35,7 @@ derive-partial-eq-extras = "0.1.2"
 derive-enum-from-into = "0.1.1"
 
 temporary-annex = "0.1.0"
-iterator-endiate = "0.1.0"
+iterator-endiate = "0.2.1"
 
 enum_variant_type = "0.3.1"
 enum-variants-strings = "0.2"

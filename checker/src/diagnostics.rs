@@ -525,7 +525,7 @@ mod defined_errors_and_warnings {
 					position,
 				} => Diagnostic::Position {
 					reason: format!(
-						"{} constraint on function does not match synthesized form {}",
+						"{} constraint on function does not match synthesised form {}",
 						function_constraint, function_type
 					),
 					position,

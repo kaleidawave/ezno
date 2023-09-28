@@ -13,7 +13,7 @@ use crate::{
 	context::{CanUseThis, Context, ContextType, Scope},
 	types::poly_types::GenericTypeParameters,
 	types::{
-		functions::{SynthesizedParameter, SynthesizedParameters, SynthesizedRestParameter},
+		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},
 		poly_types::generic_type_arguments::TypeArgumentStore,
 		FunctionKind, FunctionType, StructureGenerics,
 	},
@@ -22,8 +22,8 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesize_expression, hoisting::string_comment_to_type, synthesize_block,
-	type_annotations::synthesize_type_annotation, variables::register_variable, Performs,
+	expressions::synthesise_expression, hoisting::string_comment_to_type, synthesise_block,
+	type_annotations::synthesise_type_annotation, variables::register_variable, Performs,
 };
 
 trait FunctionBasedItem: FunctionBased {
@@ -142,7 +142,7 @@ where
 	) -> Option<GenericTypeParameters> {
 		self.type_parameters
 			.as_ref()
-			.map(|ty_params| synthesize_type_parameters(&ty_params, environment, checking_data))
+			.map(|ty_params| synthesise_type_parameters(&ty_params, environment, checking_data))
 	}
 
 	fn id(&self, source_id: SourceId) -> FunctionId {
@@ -162,8 +162,8 @@ where
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
-	) -> SynthesizedParameters {
-		synthesize_function_parameters(&self.parameters, environment, checking_data)
+	) -> SynthesisedParameters {
+		synthesise_function_parameters(&self.parameters, environment, checking_data)
 	}
 
 	fn body<T: crate::FSResolver>(
@@ -171,7 +171,7 @@ where
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
 	) {
-		self.body.synthesize_function_body(environment, checking_data)
+		self.body.synthesise_function_body(environment, checking_data)
 	}
 
 	fn return_type_annotation<T: crate::FSResolver>(
@@ -181,7 +181,7 @@ where
 	) -> Option<(TypeId, SpanWithSource)> {
 		self.return_type.as_ref().map(|reference| {
 			(
-				synthesize_type_annotation(reference, environment, checking_data),
+				synthesise_type_annotation(reference, environment, checking_data),
 				reference.get_position().clone().with_source(environment.get_source()),
 			)
 		})
@@ -199,7 +199,7 @@ where
 pub(super) trait SynthesizableFunctionBody {
 	// Return type is the return type of the body, if it doesn't use
 	/// any returns it is equal to [Type::Undefined]
-	fn synthesize_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
@@ -207,34 +207,34 @@ pub(super) trait SynthesizableFunctionBody {
 }
 
 impl SynthesizableFunctionBody for Block {
-	fn synthesize_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
 	) {
-		synthesize_block(&self.0, environment, checking_data);
+		synthesise_block(&self.0, environment, checking_data);
 	}
 }
 
 impl SynthesizableFunctionBody for ExpressionOrBlock {
-	fn synthesize_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				let returned = synthesize_expression(expression, environment, checking_data);
+				let returned = synthesise_expression(expression, environment, checking_data);
 				environment.return_value(returned);
 			}
 			ExpressionOrBlock::Block(block) => {
-				block.synthesize_function_body(environment, checking_data)
+				block.synthesise_function_body(environment, checking_data)
 			}
 		}
 	}
 }
 
-pub(crate) fn synthesize_type_parameters<T: crate::FSResolver>(
+pub(crate) fn synthesise_type_parameters<T: crate::FSResolver>(
 	type_parameters: &[GenericTypeConstraint],
 	environment: &mut crate::Environment,
 	checking_data: &mut crate::CheckingData<T>,
@@ -245,7 +245,7 @@ pub(crate) fn synthesize_type_parameters<T: crate::FSResolver>(
 			GenericTypeConstraint::Parameter { name, default } => {
 				let default_type = default
 					.as_ref()
-					.map(|ta| synthesize_type_annotation(ta, environment, checking_data));
+					.map(|ta| synthesise_type_annotation(ta, environment, checking_data));
 				environment.new_explicit_type_parameter(
 					name.as_str(),
 					None,
@@ -254,7 +254,7 @@ pub(crate) fn synthesize_type_parameters<T: crate::FSResolver>(
 				)
 			}
 			GenericTypeConstraint::Extends(name, extends) => {
-				let extends = synthesize_type_annotation(extends, environment, checking_data);
+				let extends = synthesise_type_annotation(extends, environment, checking_data);
 				environment.new_explicit_type_parameter(
 					name.as_str(),
 					Some(extends),
@@ -280,14 +280,14 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 	reference_parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
-) -> SynthesizedParameters {
+) -> SynthesisedParameters {
 	let parameters = reference_parameters
 		.parameters
 		.iter()
 		.enumerate()
 		.map(|(idx, parameter)| {
 			let parameter_type =
-				synthesize_type_annotation(&parameter.type_annotation, environment, checking_data);
+				synthesise_type_annotation(&parameter.type_annotation, environment, checking_data);
 
 			// TODO temp for performs bodies
 			let parameter_type = if let Some(name) = &parameter.name {
@@ -315,7 +315,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 			let missing_value =
 				if parameter.is_optional { Some(TypeId::UNDEFINED_TYPE) } else { None };
 
-			SynthesizedParameter {
+			SynthesisedParameter {
 				ty: parameter_type,
 				name,
 				position: parameter.position.clone().with_source(environment.get_source()),
@@ -325,7 +325,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 		.collect();
 
 	let rest_parameter = reference_parameters.rest_parameter.as_ref().map(|parameter| {
-		let ty = synthesize_type_annotation(&parameter.type_annotation, environment, checking_data);
+		let ty = synthesise_type_annotation(&parameter.type_annotation, environment, checking_data);
 		let item_type = if let TypeId::ERROR_TYPE = ty {
 			TypeId::ERROR_TYPE
 		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
@@ -341,21 +341,21 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 			// );
 			TypeId::ERROR_TYPE
 		};
-		SynthesizedRestParameter {
+		SynthesisedRestParameter {
 			item_type,
 			name: parameter.name.clone(),
 			position: parameter.position.clone().with_source(environment.get_source()),
 		}
 	});
 
-	SynthesizedParameters { parameters, rest_parameter }
+	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn synthesize_function_parameters<T: crate::FSResolver>(
+fn synthesise_function_parameters<T: crate::FSResolver>(
 	ast_parameters: &parser::FunctionParameters,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
-) -> SynthesizedParameters {
+) -> SynthesisedParameters {
 	let parameters: Vec<_> = ast_parameters
 		.parameters
 		.iter()
@@ -363,7 +363,7 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 			let annotation = parameter
 				.type_annotation
 				.as_ref()
-				.map(|reference| synthesize_type_annotation(reference, environment, checking_data))
+				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
 				.or_else(|| {
 					if let WithComment::PostfixComment(item, possible_declaration, position) =
 						&parameter.name
@@ -395,7 +395,7 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 				None => None,
 			};
 
-			SynthesizedParameter {
+			SynthesisedParameter {
 				name,
 				ty: param_type,
 				position: parameter.position.clone().with_source(environment.get_source()),
@@ -408,7 +408,7 @@ fn synthesize_function_parameters<T: crate::FSResolver>(
 		todo!()
 		// super::variables::hoist_variable_identifier(&parameter.name, environment, is_constant);
 	}
-	SynthesizedParameters { parameters, rest_parameter: Default::default() }
+	SynthesisedParameters { parameters, rest_parameter: Default::default() }
 }
 
 fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>) -> String {
@@ -436,7 +436,7 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 	}
 }
 
-/// This synthesizes is for function types, references and interfaces.
+/// This synthesises is for function types, references and interfaces.
 ///
 /// TODO should always take effect annotations (right?)
 pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
@@ -459,7 +459,7 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 				let type_parameters: Option<GenericTypeParameters> = if let Some(type_parameters) =
 					type_parameters
 				{
-					Some(synthesize_type_parameters(type_parameters, environment, checking_data))
+					Some(synthesise_type_parameters(type_parameters, environment, checking_data))
 				} else {
 					None
 				};
@@ -470,7 +470,7 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 				let return_type = return_type
 					.as_ref()
 					.map(|reference| {
-						synthesize_type_annotation(reference, environment, checking_data)
+						synthesise_type_annotation(reference, environment, checking_data)
 					})
 					.unwrap_or(TypeId::UNDEFINED_TYPE);
 
@@ -479,7 +479,7 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 						// TODO new environment ?
 						environment.can_use_this =
 							CanUseThis::Yeah { this_ty: on_interface.unwrap() };
-						synthesize_block(&block.0, environment, checking_data);
+						synthesise_block(&block.0, environment, checking_data);
 						(mem::take(&mut environment.facts.events), None)
 					}
 					Performs::Const(id) => (Default::default(), Some(id)),
@@ -540,7 +540,7 @@ mod tests {
 	//     .unwrap();
 	//     let (environment, type_mappings) = get_base_environment();
 
-	//     let function_type = synthesize_function(
+	//     let function_type = synthesise_function(
 	//         &function.base,
 	//         &environment,
 	//         &Default::default(),

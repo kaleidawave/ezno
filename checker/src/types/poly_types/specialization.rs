@@ -148,9 +148,9 @@ pub(crate) fn specialize(
 				// let func_arguments = with
 				// 	.into_iter()
 				// 	.map(|argument| match argument {
-				// 		SynthesizedArgument::NonSpread { ty, pos } => {
+				// 		synthesisedArgument::NonSpread { ty, pos } => {
 				// 			let ty = specialize(*ty, arguments, environment);
-				// 			SynthesizedArgument::NonSpread { ty, pos: pos.clone() }
+				// 			synthesisedArgument::NonSpread { ty, pos: pos.clone() }
 				// 		}
 				// 	})
 				// 	.collect::<Vec<_>>();
