@@ -959,7 +959,15 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number { .. } => {
+		LexingState::Number { last_was_underscore, literal_type, .. } => {
+			if last_was_underscore {
+				return_err!(LexingErrors::TrailingUnderscore)
+			}
+			if !matches!(literal_type, NumberLiteralType::Decimal { .. })
+				&& script[start..].len() == 2
+			{
+				return_err!(LexingErrors::ExpectedEndToNumberLiteral)
+			}
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),
 				TokenStart::new(start as u32 + offset),

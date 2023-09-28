@@ -979,14 +979,15 @@ mod tests {
 
 	#[test]
 	fn name() {
-		assert_matches_ast!("string", TypeAnnotation::Name(Deref @ "string", span!(0, 6)))
+		assert_matches_ast!("something", TypeAnnotation::Name(Deref @ "something", span!(0, 9)));
+		assert_matches_ast!("string", TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)))
 	}
 
 	#[test]
 	fn literals() {
 		assert_matches_ast!(
 			"\"my_string\"",
-			TypeAnnotation::StringLiteral(Deref @ "my_string", span!(0, 8))
+			TypeAnnotation::StringLiteral(Deref @ "my_string", span!(0, 11))
 		);
 		assert_matches_ast!(
 			"45",
