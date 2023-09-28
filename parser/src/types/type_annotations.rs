@@ -67,9 +67,9 @@ pub enum TypeAnnotation {
 	/// Here [TypeId] refers to the type it declares
 	ObjectLiteral(Vec<Decorated<InterfaceMember>>, Span),
 	/// Tuple literal e.g. `[number, x: string]`
-	TupleLiteral(Vec<TupleElement>, Span),
-	///
-	TemplateLiteral(Vec<TemplateLiteralPart<TypeAnnotation>>, Span),
+	TupleLiteral(Vec<(SpreadKind, AnnotationWithBinder)>, Span),
+	/// ?
+	TemplateLiteral(Vec<TemplateLiteralPart<AnnotationWithBinder>>, Span),
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
 	Readonly(Box<TypeAnnotation>, Span),
 	/// Declares type as being union type of all property types e.g. `T[K]`
@@ -92,9 +92,60 @@ pub enum TypeAnnotation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum TupleElement {
-	NonSpread { name: Option<String>, ty: TypeAnnotation },
-	Spread { name: Option<String>, ty: TypeAnnotation },
+pub enum AnnotationWithBinder {
+	Annotated { name: String, ty: TypeAnnotation, position: Span },
+	NoAnnotation(TypeAnnotation),
+}
+
+impl ASTNode for AnnotationWithBinder {
+	fn get_position(&self) -> &Span {
+		match self {
+			AnnotationWithBinder::Annotated { position, .. } => position,
+			AnnotationWithBinder::NoAnnotation(ty) => ty.get_position(),
+		}
+	}
+
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		settings: &ParseOptions,
+	) -> ParseResult<Self> {
+		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
+			let (name, pos) =
+				token_as_identifier(reader.next().unwrap(), "tuple literal named item")?;
+			reader.next();
+			let ty = TypeAnnotation::from_reader(reader, state, settings)?;
+			Ok(AnnotationWithBinder::Annotated { position: pos.union(ty.get_position()), name, ty })
+		} else {
+			TypeAnnotation::from_reader(reader, state, settings).map(Self::NoAnnotation)
+		}
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		settings: &crate::ToStringOptions,
+		depth: u8,
+	) {
+		match self {
+			AnnotationWithBinder::Annotated { name, ty, position: _ } => {
+				buf.push_str(name);
+				buf.push_str(": ");
+				ty.to_string_from_buffer(buf, settings, depth);
+			}
+			AnnotationWithBinder::NoAnnotation(ty) => {
+				ty.to_string_from_buffer(buf, settings, depth)
+			}
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum SpreadKind {
+	NonSpread,
+	Spread,
 }
 
 /// Condition in a [TypeAnnotation::Conditional]
@@ -106,6 +157,7 @@ pub enum TypeCondition {
 	Is { ty: Box<TypeAnnotation>, is: Box<TypeAnnotation>, position: Span },
 }
 
+/// Reduces string allocation and type lookup overhead
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -282,27 +334,17 @@ impl ASTNode for TypeAnnotation {
 			}
 			Self::TupleLiteral(members, _) => {
 				buf.push('[');
-				for (at_end, member) in members.iter().endiate() {
-					match member {
-						TupleElement::NonSpread { name, ty }
-						| TupleElement::Spread { name, ty } => {
-							if let Some(name) = name {
-								buf.push_str(name);
-								buf.push_str(": ");
-							}
-							if matches!(member, TupleElement::Spread { .. }) {
-								buf.push_str("...");
-							}
-							ty.to_string_from_buffer(buf, settings, depth);
-						}
+				for (at_end, (spread, member)) in members.iter().endiate() {
+					if matches!(spread, SpreadKind::Spread) {
+						buf.push_str("...");
 					}
+					member.to_string_from_buffer(buf, settings, depth);
 					if !at_end {
 						buf.push_str(", ");
 					}
 				}
 				buf.push(']');
 			}
-
 			Self::Index(on, with, _) => {
 				on.to_string_from_buffer(buf, settings, depth);
 				buf.push('[');
@@ -467,25 +509,18 @@ impl TypeAnnotation {
 					if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
 						break;
 					}
-					let name = if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-						let (name, _) = token_as_identifier(
-							reader.next().unwrap(),
-							"tuple literal named item",
-						)?;
-						reader.next();
-						Some(name)
+					let spread = if reader
+						.conditional_next(|token| matches!(token, TSXToken::Spread))
+						.is_some()
+					{
+						SpreadKind::Spread
 					} else {
-						None
+						SpreadKind::NonSpread
 					};
-					let member = if let Some(Token(TSXToken::Spread, _)) = reader.peek() {
-						reader.next();
-						let ty = TypeAnnotation::from_reader(reader, state, settings)?;
-						TupleElement::Spread { name, ty }
-					} else {
-						let ty = TypeAnnotation::from_reader(reader, state, settings)?;
-						TupleElement::NonSpread { name, ty }
-					};
-					members.push(member);
+					members.push((
+						spread,
+						AnnotationWithBinder::from_reader(reader, state, settings)?,
+					));
 					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
 					} else {
@@ -504,7 +539,8 @@ impl TypeAnnotation {
 							parts.push(TemplateLiteralPart::Static(chunk));
 						}
 						Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-							let expression = TypeAnnotation::from_reader(reader, state, settings)?;
+							let expression =
+								AnnotationWithBinder::from_reader(reader, state, settings)?;
 							reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
 							parts.push(TemplateLiteralPart::Dynamic(Box::new(expression)));
 						}
@@ -949,8 +985,8 @@ mod tests {
 	#[test]
 	fn literals() {
 		assert_matches_ast!(
-			"\"string\"",
-			TypeAnnotation::StringLiteral(Deref @ "string", span!(0, 8))
+			"\"my_string\"",
+			TypeAnnotation::StringLiteral(Deref @ "my_string", span!(0, 8))
 		);
 		assert_matches_ast!(
 			"45",
@@ -965,7 +1001,7 @@ mod tests {
 			"Array<string>",
 			TypeAnnotation::NameWithGenericArguments(
 				Deref @ "Array",
-				Deref @ [TypeAnnotation::Name(Deref @ "string", span!(6, 12))],
+				Deref @ [TypeAnnotation::CommonName(CommonTypes::String, span!(6, 12))],
 				span!(0, 13),
 			)
 		);
@@ -975,7 +1011,7 @@ mod tests {
 			TypeAnnotation::NameWithGenericArguments(
 				Deref @ "Map",
 				Deref @
-				[TypeAnnotation::Name(Deref @ "string", span!(4, 10)), TypeAnnotation::Name(Deref @ "number", span!(12, 18))],
+				[TypeAnnotation::CommonName(CommonTypes::String, span!(4, 10)), TypeAnnotation::CommonName(CommonTypes::Number, span!(12, 18))],
 				span!(0, 19),
 			)
 		);
@@ -986,7 +1022,7 @@ mod tests {
 				Deref @ "Array",
 				Deref @ [TypeAnnotation::NameWithGenericArguments(
 					Deref @ "Array",
-					Deref @ [TypeAnnotation::Name(Deref @ "string", span!(12, 18))],
+					Deref @ [TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18))],
 					span!(6, 19),
 				)],
 				span!(0, 20),
@@ -1000,7 +1036,7 @@ mod tests {
 			"string | number",
 			TypeAnnotation::Union(
 				Deref @
-				[TypeAnnotation::Name(Deref @ "string", span!(0, 6)), TypeAnnotation::Name(Deref @ "number", span!(9, 15))],
+				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
 				_,
 			)
 		)
@@ -1012,7 +1048,7 @@ mod tests {
 			"string & number",
 			TypeAnnotation::Intersection(
 				Deref @
-				[TypeAnnotation::Name(Deref @ "string", span!(0, 6)), TypeAnnotation::Name(Deref @ "number", span!(9, 15))],
+				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
 				_,
 			)
 		)
@@ -1023,13 +1059,20 @@ mod tests {
 		assert_matches_ast!(
 			"[number, x: string]",
 			TypeAnnotation::TupleLiteral(
-				Deref @ [TupleElement::NonSpread {
-					name: None,
-					ty: TypeAnnotation::Name(Deref @ "number", span!(1, 7)),
-				}, TupleElement::NonSpread {
-					name: Some(Deref @ "x"),
-					ty: TypeAnnotation::Name(Deref @ "string", span!(12, 18)),
-				}],
+				Deref @ [(
+					SpreadKind::NonSpread,
+					AnnotationWithBinder::NoAnnotation(TypeAnnotation::CommonName(
+						CommonTypes::Number,
+						span!(1, 7),
+					)),
+				), (
+					SpreadKind::NonSpread,
+					AnnotationWithBinder::Annotated {
+						name: Deref @ "x",
+						ty: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
+						position: _,
+					},
+				)],
 				span!(0, 19),
 			)
 		);
@@ -1059,7 +1102,10 @@ mod tests {
 			TypeAnnotation::TemplateLiteral(
 				Deref
 				@ [TemplateLiteralPart::Static(Deref @ "test-"), TemplateLiteralPart::Dynamic(
-					Deref @ TypeAnnotation::Name(Deref @ "X", span!(8, 9)),
+					Deref @ AnnotationWithBinder::NoAnnotation(TypeAnnotation::Name(
+						Deref @ "X",
+						span!(8, 9),
+					)),
 				)],
 				_,
 			)
@@ -1071,7 +1117,7 @@ mod tests {
 		assert_matches_ast!(
 			"string[]",
 			TypeAnnotation::ArrayLiteral(
-				Deref @ TypeAnnotation::Name(Deref @ "string", span!(0, 6)),
+				Deref @ TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)),
 				span!(0, 8),
 			)
 		);
@@ -1081,7 +1127,7 @@ mod tests {
 				Deref @ TypeAnnotation::ParenthesizedReference(
 					Deref @ TypeAnnotation::Union(
 						Deref @
-						[TypeAnnotation::Name(Deref @ "number", span!(1, 7)), TypeAnnotation::Name(Deref @ "null", span!(10, 14))],
+						[TypeAnnotation::CommonName(CommonTypes::Number, span!(1, 7)), TypeAnnotation::Name(Deref @ "null", span!(10, 14))],
 						_,
 					),
 					span!(0, 15),
@@ -1093,7 +1139,7 @@ mod tests {
 			"string[][]",
 			TypeAnnotation::ArrayLiteral(
 				Deref @ TypeAnnotation::ArrayLiteral(
-					Deref @ TypeAnnotation::Name(Deref @ "string", span!(0, 6)),
+					Deref @ TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)),
 					span!(0, 8),
 				),
 				span!(0, 10),

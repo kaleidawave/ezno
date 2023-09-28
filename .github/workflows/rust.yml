@@ -38,6 +38,15 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            parser:
+              - 'parser/**'
+            checker:
+              - 'checker/**'
+
       - name: Check source is valid
         run: cargo check --workspace
 
@@ -54,6 +63,7 @@ jobs:
         working-directory: src/js-cli-and-library
 
       - name: Check parser without extras
+        if: steps.changes.outputs.parser == 'true'
         run: 
           cargo check -p ezno-parser --no-default-features
 

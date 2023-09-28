@@ -127,7 +127,7 @@ impl ASTNode for Block {
 			buf.push_new_line();
 		}
 		statements_and_declarations_to_string(&self.0, buf, settings, depth);
-		if settings.pretty {
+		if settings.pretty && !self.0.is_empty() {
 			buf.push_new_line();
 		}
 		if depth > 1 {

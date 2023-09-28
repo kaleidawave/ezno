@@ -108,6 +108,7 @@ impl TemplateLiteral {
 					reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
 					parts.push(TemplateLiteralPart::Dynamic(Box::new(expression)));
 				}
+				Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
 				t @ Token(TSXToken::TemplateLiteralEnd, _) => {
 					return Ok(Self { parts, tag, position: start.union(t.get_end()) });
 				}

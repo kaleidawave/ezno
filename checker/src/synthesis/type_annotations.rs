@@ -235,13 +235,18 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 			let obj = todo!(); // environment.new_object(Some(TypeId::ARRAY_TYPE));
 
 			let mut keys = IndexSet::new();
-			for (idx, member) in members.iter().enumerate() {
+			for (idx, (spread, member)) in members.iter().enumerate() {
 				// TODO use name...?
-				match member {
-					TupleElement::NonSpread { name, ty } => {
+				match spread {
+					SpreadKind::NonSpread => {
 						let idx_ty = checking_data
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
+
+						let ty = match member {
+							AnnotationWithBinder::Annotated { ty, .. }
+							| AnnotationWithBinder::NoAnnotation(ty) => ty,
+						};
 
 						let item_ty = synthesise_type_annotation(ty, environment, checking_data);
 
@@ -253,7 +258,7 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 							.or_default()
 							.push((idx_ty, Property::Value(item_ty)));
 					}
-					TupleElement::Spread { name, ty } => {
+					SpreadKind::Spread => {
 						todo!();
 					}
 				}
