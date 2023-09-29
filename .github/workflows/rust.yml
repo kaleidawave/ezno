@@ -56,10 +56,11 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
           packages: wasm-bindgen-cli@0.2.87
-      - name: Check binary WASM
+      - name: Check WASM
         run: |
           rustup target add wasm32-unknown-unknown
           # Need to build to check that the JS builds
+          npm ci
           npm run build
         working-directory: src/js-cli-and-library
 
