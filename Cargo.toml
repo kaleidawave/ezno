@@ -13,7 +13,7 @@ members = [
 name = "ezno"
 description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.13"
+version = "0.0.14"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -47,13 +47,13 @@ serde_json = "1.0.107"
 
 [dependencies.checker]
 path = "./checker"
-version = "0.0.8"
+version = "0.0.9"
 features = ["ezno-parser"]
 package = "ezno-checker"
 
 [dependencies.parser]
 path = "./parser"
-version = "0.0.5"
+version = "0.0.6"
 features = ["extras"]
 package = "ezno-parser"
 

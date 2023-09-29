@@ -2,7 +2,7 @@
 name = "ezno-parser-visitable-derive"
 description = "Derives 'Visitable' trait for Ezno AST"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
