@@ -72,7 +72,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 			behavior,
 			types,
 		)?)
-	} else if let Some(_) = environment.get_poly_base(under, types) {
+	} else if environment.get_poly_base(under, types).is_some() {
 		todo!()
 	} else {
 		// TODO
@@ -135,7 +135,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							// TODO function :: bind_this
 							Type::Function(func, state) => {
 								let func = types.register_type(Type::Function(
-									func.clone(),
+									*func,
 									crate::behavior::functions::ThisValue::Passed(on),
 								));
 								Some((PropertyKind::Direct, func))
@@ -143,7 +143,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							Type::FunctionReference(func, this_argument) => {
 								crate::utils::notify!("TODO temp reference function business");
 								let func = types.register_type(Type::FunctionReference(
-									func.clone(),
+									*func,
 									crate::behavior::functions::ThisValue::Passed(on),
 								));
 								Some((PropertyKind::Direct, func))
@@ -221,12 +221,12 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							types,
 							true,
 						);
-						return match call {
+						match call {
 							Ok(res) => Some((PropertyKind::Getter, res.returned_type)),
 							Err(_) => {
 								todo!()
 							}
-						};
+						}
 					}
 					Property::Setter(_) => todo!(),
 				}
@@ -267,8 +267,8 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 					match types.get_type_by_id(og) {
 						Type::FunctionReference(func, _) => {
 							// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-							let with_this = types
-								.register_type(Type::Function(func.clone(), ThisValue::Passed(og)));
+							let with_this =
+								types.register_type(Type::Function(*func, ThisValue::Passed(og)));
 							Some(with_this)
 						}
 						Type::Class(..) | Type::Function(..) => todo!(),

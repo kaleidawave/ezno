@@ -58,13 +58,13 @@ pub use behavior::{
 	},
 	variables::check_variable_initialization,
 };
-pub use context::{GeneralContext, Root};
+pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use settings::TypeCheckSettings;
 pub use structures::{
 	functions::{FunctionPointer, InternalFunctionId},
 	jsx::*,
-	modules::SynthesizedModule,
+	modules::SynthesisedModule,
 	variables::Variable,
 };
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
@@ -86,7 +86,7 @@ pub use source_map::{SourceId, Span};
 pub struct ModuleData<'a, T> {
 	pub(crate) currently_checking_modules: HashSet<PathBuf>,
 	/// TODO this also covers checked modules
-	pub(crate) synthesized_modules: IndexMap<PathBuf, SynthesizedModule>,
+	pub(crate) synthesised_modules: IndexMap<PathBuf, SynthesisedModule>,
 	// pub(crate) custom_module_resolvers: HashMap<String, Box<dyn CustomModuleResolver>>,
 	pub(crate) fs_resolver: &'a T,
 	pub(crate) current_working_directory: PathBuf,
@@ -99,7 +99,7 @@ impl<'a, T: crate::FSResolver> ModuleData<'a, T> {
 		current_working_directory: PathBuf,
 	) -> Self {
 		Self {
-			synthesized_modules: Default::default(),
+			synthesised_modules: Default::default(),
 			currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
 			fs_resolver,
@@ -173,13 +173,13 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 	pub(crate) fn load_and_check_module(
 		&mut self,
 		path: PathBuf,
-		base_environment: &mut Root,
+		base_environment: &mut RootContext,
 	) -> Result<
 		(&HashMap<String, Variable>, &mut DiagnosticsContainer, &mut TypeMappings),
 		ModuleFromPathError,
 	> {
 		todo!()
-		// if let Some(ref _synthesized_modules) = self.modules.synthesized_modules.get(&path) {
+		// if let Some(ref _synthesised_modules) = self.modules.synthesised_modules.get(&path) {
 		// 	todo!()
 		// }
 
@@ -193,12 +193,12 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		// )?;
 
 		// self.modules.currently_checking_modules.insert(path.clone());
-		// let synthesized_module = module_result.synthesize(base_environment, self);
+		// let synthesised_module = module_result.synthesise(base_environment, self);
 		// self.modules.currently_checking_modules.remove(&path);
 
 		// self.modules
-		// 	.synthesized_modules
-		// 	.insert(synthesized_module.module.path.clone(), synthesized_module)
+		// 	.synthesised_modules
+		// 	.insert(synthesised_module.module.path.clone(), synthesised_module)
 		// 	.unwrap();
 
 		// // module.get_exports()
@@ -235,13 +235,13 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				&self.types,
 				false,
 			);
 			let found = diagnostics::TypeStringRepresentation::from_type_id(
 				expr_ty,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				&self.types,
 				false,
 			);
@@ -259,7 +259,7 @@ pub trait SynthesizableConditional {
 	/// **Not for return in conditional if blocks**
 	type ExpressionResult;
 
-	fn synthesize_condition<T: crate::FSResolver>(
+	fn synthesise_condition<T: crate::FSResolver>(
 		self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
@@ -278,12 +278,12 @@ pub trait SynthesizableConditional {
 impl<'a, T: crate::SynthesizableExpression> crate::SynthesizableConditional for &'a T {
 	type ExpressionResult = TypeId;
 
-	fn synthesize_condition<U: crate::FSResolver>(
+	fn synthesise_condition<U: crate::FSResolver>(
 		self,
 		environment: &mut crate::Environment,
 		checking_data: &mut crate::CheckingData<U>,
 	) -> Self::ExpressionResult {
-		self.synthesize_expression(environment, checking_data)
+		self.synthesise_expression(environment, checking_data)
 	}
 
 	fn conditional_expression_result(

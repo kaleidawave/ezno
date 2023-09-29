@@ -1,6 +1,6 @@
 use parser::ASTNode;
 
-use crate::{context::Root, synthesis::functions::type_function_reference};
+use crate::{context::RootContext, synthesis::functions::type_function_reference};
 
 const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
@@ -9,7 +9,7 @@ const DEFINITION_VAR_IS_CONSTANT: bool = true;
 pub(super) fn type_definition_file<T: crate::FSResolver>(
 	mut definition: parser::TypeDefinitionModule,
 	checking_data: &mut crate::CheckingData<T>,
-) -> Root {
+) -> RootContext {
 	use std::collections::HashMap;
 
 	use parser::{
@@ -18,12 +18,12 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 	};
 
 	use crate::{
-		diagnostics::TypeCheckError, synthesis::type_annotations::synthesize_type_annotation,
+		diagnostics::TypeCheckError, synthesis::type_annotations::synthesise_type_annotation,
 	};
 
 	let mut idx_to_types = HashMap::new();
 	let source = definition.source;
-	let mut root = Root::new_with_primitive_references();
+	let mut root = RootContext::new_with_primitive_references();
 
 	// Hoisting names of interfaces, namespaces and types
 	// At some point with binaries could remove this pass
@@ -49,7 +49,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				if type_alias.type_name.type_parameters.is_some() {
 					todo!()
 				}
-				let to = synthesize_type_annotation(
+				let to = synthesise_type_annotation(
 					&type_alias.type_expression,
 					&mut root,
 					checking_data,
@@ -112,7 +112,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			}) => {
 				// TODO tidy up
 				let variable_ty =
-					synthesize_type_annotation(&type_restriction, &mut root, checking_data);
+					synthesise_type_annotation(&type_restriction, &mut root, checking_data);
 
 				// // TODO not sure...
 				// if let Some(frozen) = root.is_frozen(variable_ty) {
@@ -144,7 +144,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			}
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
-				super::interfaces::synthesize_signatures(
+				super::interfaces::synthesise_signatures(
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
 					&mut root,
@@ -271,9 +271,9 @@ pub fn definition_file_to_buffer<T: crate::FSResolver>(
 
 // TODO temp
 
-pub fn root_context_from_bytes(file: Vec<u8>) -> Root {
+pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
 	let now = std::time::Instant::now();
-	let ctx = Root::deserialize(file, source_map::SourceId::NULL).unwrap();
+	let ctx = RootContext::deserialize(file, source_map::SourceId::NULL).unwrap();
 	println!("From binary {:?}", now.elapsed());
 	ctx
 }

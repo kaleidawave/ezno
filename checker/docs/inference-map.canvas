@@ -5,7 +5,7 @@
 		{"type":"text","text":"### Nesting assignment\n- How to add properties to properties of ","id":"3ecda97ca73e7d85","x":-320,"y":-560,"width":434,"height":228},
 		{"type":"text","text":"Splitting types from property proofs?\n\n*How to do callable types*","id":"755646c6b69b02f2","x":300,"y":-350,"width":314,"height":104},
 		{"id":"f3d3b26856b42581","x":-570,"y":-200,"width":250,"height":60,"type":"text","text":"### Merging"},
-		{"type":"text","text":"## Resolving\nWhether to keep the same parameter types OR instead modify the parameter types, after a function body has been synthesized\n","id":"e9b6581416cc972e","x":-146,"y":60,"width":330,"height":160},
+		{"type":"text","text":"## Resolving\nWhether to keep the same parameter types OR instead modify the parameter types, after a function body has been synthesised\n","id":"e9b6581416cc972e","x":-146,"y":60,"width":330,"height":160},
 		{"id":"407ce9b2a054b340","x":-288,"y":340,"width":285,"height":402,"type":"text","text":"### Modify types\nPros\n- Keep same shape as"},
 		{"id":"8c4d947d9de289f4","x":35,"y":340,"width":305,"height":402,"type":"text","text":"### Don't modify types\nCons\n- Fixed and inferred types have different forms outside of function\n- Once above function, have to keep track that the inferred types are now fixed\n- What a generic type is fixed to can now be in two places: on the `Type` or in the `fixed` section of `bases` in environment"}
 	],

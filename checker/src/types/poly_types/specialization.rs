@@ -38,7 +38,7 @@ pub(crate) fn specialize(
 				let on = crate::types::printing::print_type(
 					id,
 					types,
-					&environment.into_general_context(),
+					&environment.as_general_context(),
 					true,
 				);
 				crate::utils::notify!("Could not find argument for {}", on);
@@ -148,9 +148,9 @@ pub(crate) fn specialize(
 				// let func_arguments = with
 				// 	.into_iter()
 				// 	.map(|argument| match argument {
-				// 		SynthesizedArgument::NonSpread { ty, pos } => {
+				// 		synthesisedArgument::NonSpread { ty, pos } => {
 				// 			let ty = specialize(*ty, arguments, environment);
-				// 			SynthesizedArgument::NonSpread { ty, pos: pos.clone() }
+				// 			synthesisedArgument::NonSpread { ty, pos: pos.clone() }
 				// 		}
 				// 	})
 				// 	.collect::<Vec<_>>();
@@ -265,10 +265,10 @@ pub(crate) fn curry_arguments(
 	if !arguments.is_empty() {
 		// TODO only carry arguments that are used
 		let arguments = arguments.into_structural_generic_arguments();
-		let ty = types.register_type(Type::Constructor(Constructor::StructureGenerics(
+
+		types.register_type(Type::Constructor(Constructor::StructureGenerics(
 			crate::types::StructureGenerics { on: id, arguments },
-		)));
-		ty
+		)))
 	} else {
 		id
 	}

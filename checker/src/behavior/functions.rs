@@ -6,7 +6,7 @@ use crate::{
 	context::{facts::Facts, Context, ContextType},
 	events::Event,
 	types::{
-		functions::SynthesizedParameters, poly_types::GenericTypeParameters, properties::Property,
+		functions::SynthesisedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionType, TypeStore,
 	},
 	CheckingData, Environment, FSResolver, FunctionId, Type, TypeId, VariableId,
@@ -149,7 +149,7 @@ pub trait SynthesizableFunction {
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T>,
-	) -> SynthesizedParameters;
+	) -> SynthesisedParameters;
 
 	/// Returned type is extracted from events, thus doesn't expect anything in return
 	fn body<T: FSResolver>(

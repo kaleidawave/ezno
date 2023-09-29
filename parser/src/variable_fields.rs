@@ -335,23 +335,6 @@ pub enum ObjectDestructuringField<T: VariableFieldKind> {
 }
 
 impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
-	// fn get_position(&self) -> &Span {
-	// 	match self {
-	// 		// TODO account for `...` tokens
-	// 		ObjectDestructuringField::Spread(_, name) => name.get_position(),
-	// 		ObjectDestructuringField::Name(name, optional_expression) => {
-	// 			let name_position = name.get_position();
-	// 			if let Some(ref expr_pos) = U::optional_expression_get_position(optional_expression)
-	// 			{
-	// 				Cow::Owned(name_position.union(expr_pos))
-	// 			} else {
-	// 				name_position
-	// 			}
-	// 		}
-	// 		ObjectDestructuringField::Map { position, .. } => position,
-	// 	}
-	// }
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -423,7 +406,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 	}
 
 	fn get_position(&self) -> &Span {
-		todo!()
+		self.get()
 	}
 }
 

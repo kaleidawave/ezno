@@ -39,6 +39,7 @@ pub enum LexingErrors {
 	NewLineInStringLiteral,
 	ExpectedEndToMultilineComment,
 	ExpectedEndToStringLiteral,
+	ExpectedEndToNumberLiteral,
 	ExpectedEndToRegexLiteral,
 	ExpectedEndToJSXLiteral,
 	ExpectedEndToTemplateLiteral,
@@ -80,6 +81,7 @@ impl Display for LexingErrors {
 				f.write_str("Unclosed multiline comment")
 			}
 			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
+			LexingErrors::ExpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
 			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
 			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
 			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),

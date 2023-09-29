@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{
-	functions::type_function_reference, type_annotations::synthesize_type_annotation,
+	functions::type_function_reference, type_annotations::synthesise_type_annotation,
 	variables::register_variable,
 };
 
@@ -49,7 +49,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					if alias.type_name.type_parameters.is_some() {
 						todo!()
 					}
-					let to = synthesize_type_annotation(
+					let to = synthesise_type_annotation(
 						&alias.type_expression,
 						environment,
 						checking_data,
@@ -183,7 +183,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					}
 				},
 				parser::Declaration::Function(func) => {
-					// TODO unsynthesized function? ...
+					// TODO unsynthesised function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
 						mutability: crate::structures::variables::VariableMutability::Constant,
@@ -233,7 +233,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				parser::Declaration::Enum(_) => todo!(),
 				parser::Declaration::Interface(interface) => {
 					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
-					super::interfaces::synthesize_signatures(
+					super::interfaces::synthesise_signatures(
 						&interface.on.members,
 						super::interfaces::OnToType(ty),
 						environment,
@@ -249,7 +249,7 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				}) => {
 					// TODO tidy up
 					let variable_ty =
-						synthesize_type_annotation(&type_restriction, environment, checking_data);
+						synthesise_type_annotation(&type_restriction, environment, checking_data);
 
 					// // TODO not sure...
 					// if let Some(frozen) = environment.is_frozen(variable_ty) {
@@ -306,7 +306,7 @@ fn get_annotation_from_declaration<
 ) -> Option<TypeId> {
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
-			synthesize_type_annotation(annotation, environment, checking_data),
+			synthesise_type_annotation(annotation, environment, checking_data),
 			annotation.get_position().clone().with_source(environment.get_source()),
 		))
 	}
@@ -352,7 +352,7 @@ pub(crate) fn string_comment_to_type<T: crate::FSResolver>(
 	);
 	if let Ok(annotation) = annotation {
 		Some((
-			synthesize_type_annotation(&annotation, environment, checking_data),
+			synthesise_type_annotation(&annotation, environment, checking_data),
 			annotation.get_position().clone().with_source(source),
 		))
 	} else {

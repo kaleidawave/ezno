@@ -39,7 +39,7 @@ pub enum Diagnostic {
 }
 
 impl Diagnostic {
-	pub fn sources<'a>(&'a self) -> impl Iterator<Item = SourceId> + 'a {
+	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
 		use either::{Left, Right};
 		match self {
 			Diagnostic::Global { .. } => Left(Left(iter::empty())),
@@ -56,7 +56,7 @@ impl Diagnostic {
 		match self {
 			Diagnostic::Global { reason, .. }
 			| Diagnostic::Position { reason, .. }
-			| Diagnostic::PositionWithAdditionLabels { reason, .. } => &reason,
+			| Diagnostic::PositionWithAdditionLabels { reason, .. } => reason,
 		}
 	}
 
@@ -102,7 +102,7 @@ impl DiagnosticsContainer {
 		self.has_error
 	}
 
-	pub fn sources<'a>(&'a self) -> impl Iterator<Item = SourceId> + 'a {
+	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
 		self.diagnostics.iter().flat_map(|item| item.sources())
 	}
 
@@ -151,7 +151,7 @@ impl TypeStringRepresentation {
 impl Display for TypeStringRepresentation {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			TypeStringRepresentation::Type(ty) => f.write_str(&ty),
+			TypeStringRepresentation::Type(ty) => f.write_str(ty),
 		}
 	}
 }
@@ -525,7 +525,7 @@ mod defined_errors_and_warnings {
 					position,
 				} => Diagnostic::Position {
 					reason: format!(
-						"{} constraint on function does not match synthesized form {}",
+						"{} constraint on function does not match synthesised form {}",
 						function_constraint, function_type
 					),
 					position,
@@ -580,9 +580,9 @@ mod defined_errors_and_warnings {
 		},
 	}
 
-	impl Into<Diagnostic> for TypeCheckWarning {
-		fn into(self) -> Diagnostic {
-			match self {
+	impl From<TypeCheckWarning> for Diagnostic {
+		fn from(val: TypeCheckWarning) -> Self {
+			match val {
 				TypeCheckWarning::AwaitUsedOnNonPromise(span) => Diagnostic::Position {
 					reason: "Unnecessary await expression / type is not promise".to_owned(),
 					position: span,
@@ -623,12 +623,12 @@ pub struct TypeIsNotIndexable<'a>(pub &'a TypeId);
 
 pub(crate) struct TypeDefinitionModuleNotFound(pub PathBuf);
 
-impl Into<Diagnostic> for TypeDefinitionModuleNotFound {
-	fn into(self) -> Diagnostic {
+impl From<TypeDefinitionModuleNotFound> for Diagnostic {
+	fn from(val: TypeDefinitionModuleNotFound) -> Self {
 		Diagnostic::Global {
 			reason: format!(
 				"Could not find type definition module at '{}'",
-				self.0.as_path().display()
+				val.0.as_path().display()
 			),
 			kind: DiagnosticKind::Error,
 		}
@@ -637,10 +637,10 @@ impl Into<Diagnostic> for TypeDefinitionModuleNotFound {
 
 pub(crate) struct EntryPointNotFound(pub PathBuf);
 
-impl Into<Diagnostic> for EntryPointNotFound {
-	fn into(self) -> Diagnostic {
+impl From<EntryPointNotFound> for Diagnostic {
+	fn from(val: EntryPointNotFound) -> Self {
 		Diagnostic::Global {
-			reason: format!("Could not entry point module at '{}'", self.0.as_path().display()),
+			reason: format!("Could not entry point module at '{}'", val.0.as_path().display()),
 			kind: DiagnosticKind::Error,
 		}
 	}

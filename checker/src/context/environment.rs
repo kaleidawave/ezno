@@ -19,7 +19,7 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	CheckingData, Root, TruthyFalsy, TypeId, VariableId,
+	CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{
@@ -45,11 +45,11 @@ pub struct Syntax<'a> {
 }
 
 impl<'a> ContextType for Syntax<'a> {
-	fn into_parent_or_root<'b>(et: &'b Context<Self>) -> GeneralContext<'b> {
+	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
 	}
 
-	fn get_parent<'b>(&'b self) -> Option<&'b GeneralContext<'b>> {
+	fn get_parent(&self) -> Option<&GeneralContext<'_>> {
 		Some(&self.parent)
 	}
 
@@ -91,6 +91,10 @@ pub enum Scope {
 	// Just blocks and modules
 	Block {},
 	Module {
+		source: SourceId,
+	},
+	/// For repl only
+	PassThrough {
 		source: SourceId,
 	},
 }
@@ -177,13 +181,13 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = expression.unwrap().synthesize_expression(self, checking_data);
+						let new = expression.unwrap().synthesise_expression(self, checking_data);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -203,7 +207,7 @@ impl<'a> Environment<'a> {
 						let with_source =
 							expression.get_position().clone().with_source(self.get_source());
 						let rhs =
-							(expression.synthesize_expression(self, checking_data), with_source);
+							(expression.synthesise_expression(self, checking_data), with_source);
 						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
 							operator.into(),
@@ -216,7 +220,7 @@ impl<'a> Environment<'a> {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -262,7 +266,7 @@ impl<'a> Environment<'a> {
 							},
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -292,7 +296,7 @@ impl<'a> Environment<'a> {
 							Ok(new) => new,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -348,7 +352,7 @@ impl<'a> Environment<'a> {
 		if let Some((_, _, variable)) = variable_in_map {
 			match variable.mutability {
 				VariableMutability::Constant => {
-					return Err(AssignmentError::Constant(variable.declared_at.clone()));
+					Err(AssignmentError::Constant(variable.declared_at.clone()))
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
 					let variable = variable.clone();
@@ -372,13 +376,13 @@ impl<'a> Environment<'a> {
 							return Err(AssignmentError::DoesNotMeetConstraint {
 								variable_type: TypeStringRepresentation::from_type_id(
 									reassignment_constraint,
-									&self.into_general_context(),
+									&self.as_general_context(),
 									store,
 									false,
 								),
 								value_type: TypeStringRepresentation::from_type_id(
 									new_type,
-									&self.into_general_context(),
+									&self.as_general_context(),
 									store,
 									false,
 								),
@@ -391,7 +395,7 @@ impl<'a> Environment<'a> {
 
 					let variable_id = variable.get_id();
 
-					self.facts.events.push(Event::SetsVariable(variable_id.clone(), new_type));
+					self.facts.events.push(Event::SetsVariable(variable_id, new_type));
 					self.facts.variable_current_value.insert(variable_id, new_type);
 
 					Ok(new_type)
@@ -406,7 +410,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn get_root(&self) -> &Root {
+	pub(crate) fn get_root(&self) -> &RootContext {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syntax) => syntax.get_root(),
 			GeneralContext::Root(root) => root,
@@ -457,13 +461,13 @@ impl<'a> Environment<'a> {
 					TypeCheckError::PropertyDoesNotExist {
 						property: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							property,
-							&self.into_general_context(),
+							&self.as_general_context(),
 							&checking_data.types,
 							false,
 						),
 						on: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							on,
-							&self.into_general_context(),
+							&self.as_general_context(),
 							&checking_data.types,
 							false,
 						),
@@ -619,9 +623,9 @@ impl<'a> Environment<'a> {
 		{
 			// TODO emit warning
 			return if result {
-				then_evaluate.synthesize_condition(self, checking_data)
+				then_evaluate.synthesise_condition(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
-				else_evaluate.synthesize_condition(self, checking_data)
+				else_evaluate.synthesise_condition(self, checking_data)
 			} else {
 				U::default_result()
 			};
@@ -630,7 +634,7 @@ impl<'a> Environment<'a> {
 		let (truthy_result, truthy_events) = {
 			let mut truthy_environment =
 				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
-			let result = then_evaluate.synthesize_condition(&mut truthy_environment, checking_data);
+			let result = then_evaluate.synthesise_condition(&mut truthy_environment, checking_data);
 			(result, truthy_environment.facts.events)
 		};
 		if let Some(else_evaluate) = else_evaluate {
@@ -638,7 +642,7 @@ impl<'a> Environment<'a> {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 			});
 			let falsy_result =
-				else_evaluate.synthesize_condition(&mut falsy_environment, checking_data);
+				else_evaluate.synthesise_condition(&mut falsy_environment, checking_data);
 			let combined_result = U::conditional_expression_result(
 				condition,
 				truthy_result,

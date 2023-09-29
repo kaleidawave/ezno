@@ -16,7 +16,7 @@ use crate::{
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorator {
-	pub name: String,
+	pub name: Vec<String>,
 	pub arguments: Option<Vec<Expression>>,
 	pub position: Span,
 }
@@ -43,7 +43,12 @@ impl ASTNode for Decorator {
 	) {
 		if settings.include_decorators {
 			buf.push('@');
-			buf.push_str(self.name.as_str());
+			for (not_at_end, value) in self.name.iter().nendiate() {
+				buf.push_str(value);
+				if not_at_end {
+					buf.push('.');
+				}
+			}
 			if let Some(arguments) = &self.arguments {
 				buf.push('(');
 				for (at_end, argument) in arguments.iter().endiate() {
@@ -66,7 +71,16 @@ impl Decorator {
 		settings: &ParseOptions,
 		at_pos: TokenStart,
 	) -> ParseResult<Self> {
-		let (name, name_position) = token_as_identifier(reader.next().unwrap(), "Decorator name")?;
+		let (name, mut last_position) =
+			token_as_identifier(reader.next().unwrap(), "Decorator name")?;
+
+		let mut names = vec![name];
+		while matches!(reader.peek(), Some(Token(TSXToken::Dot, _))) {
+			let (name, pos) = token_as_identifier(reader.next().unwrap(), "Nested decorator name")?;
+			last_position = pos;
+			names.push(name);
+		}
+
 		let (arguments, position) = if reader
 			.conditional_next(|token| matches!(token, TSXToken::OpenParentheses))
 			.is_some()
@@ -87,9 +101,9 @@ impl Decorator {
 			let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
 			(Some(arguments), at_pos.union(end))
 		} else {
-			(None, at_pos.union(name_position))
+			(None, at_pos.union(last_position))
 		};
-		Ok(Self { name, arguments, position })
+		Ok(Self { name: names, arguments, position })
 	}
 }
 

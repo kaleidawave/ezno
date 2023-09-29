@@ -6,7 +6,7 @@ use parser::{
 	ObjectDestructuringField, VariableField, VariableIdentifier,
 };
 
-use super::{expressions::synthesize_expression, type_annotations::synthesize_type_annotation};
+use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::property_key_as_type,
@@ -94,13 +94,13 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 										TypeCheckError::PropertyDoesNotExist {
 											property: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
@@ -181,13 +181,13 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 										TypeCheckError::PropertyDoesNotExist {
 											property: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
@@ -221,7 +221,7 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 /// TODO U::as_option_expr()
 ///
 /// TODO no idea how arrays and objects are checked here
-pub(super) fn synthesize_variable_declaration_item<
+pub(super) fn synthesise_variable_declaration_item<
 	T: crate::FSResolver,
 	U: parser::ast::variable::DeclarationExpression + 'static,
 >(
@@ -243,7 +243,7 @@ pub(super) fn synthesize_variable_declaration_item<
 	let value_ty = if let Some(value) =
 		Option::<&parser::Expression>::from(&variable_declaration.expression)
 	{
-		let value_ty = super::expressions::synthesize_expression(value, environment, checking_data);
+		let value_ty = super::expressions::synthesise_expression(value, environment, checking_data);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
 			crate::check_variable_initialization(
@@ -326,7 +326,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 							None => {
 								// TODO non decidable error
 								if let Some(else_expression) = default_value {
-									synthesize_expression(
+									synthesise_expression(
 										else_expression,
 										environment,
 										checking_data,
@@ -357,7 +357,7 @@ fn assign_to_fields<T: crate::FSResolver>(
 							None => {
 								// TODO non decidable error
 								if let Some(default_value) = default_value {
-									synthesize_expression(default_value, environment, checking_data)
+									synthesise_expression(default_value, environment, checking_data)
 								} else {
 									// TODO emit error
 									TypeId::ERROR_TYPE

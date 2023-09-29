@@ -40,7 +40,7 @@ impl ExplorerArguments {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
 				let input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
-				if input.len() == 0 {
+				if input.is_empty() {
 					continue;
 				} else if input.trim() == "#exit" {
 					break;
@@ -76,6 +76,7 @@ impl ExplorerArguments {
 #[argh(subcommand)]
 #[enum_variants_strings_transform(transform = "kebab_case")]
 pub(crate) enum ExplorerSubCommand {
+	#[allow(clippy::upper_case_acronyms)]
 	AST(ASTArgs),
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),
@@ -136,9 +137,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(cfg) => {
@@ -158,9 +157,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -177,9 +174,7 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&settings)));
 					}
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::Lexer(_) => {

@@ -18,7 +18,7 @@ pub mod statements;
 pub mod type_annotations;
 pub mod variables;
 
-use block::synthesize_block;
+use block::synthesise_block;
 use parser::PropertyKey;
 use source_map::SourceId;
 
@@ -72,6 +72,74 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 				statements,
 			}) => Performs::Block(statements),
 			None => Performs::None,
+		}
+	}
+}
+
+pub mod interactive {
+	use std::mem;
+
+	use crate::{types::printing::print_type, CheckingData, DiagnosticsContainer, RootContext};
+
+	use super::{
+		block::{synthesise_block, synthesize_declaration},
+		expressions::{synthesise_expression, synthesise_multiple_expression},
+		statements::synthesise_statement,
+	};
+
+	pub struct State<'a, T: crate::FSResolver> {
+		checking_data: CheckingData<'a, T>,
+		root: RootContext,
+		source_id: source_map::SourceId,
+	}
+
+	impl<'a, T: crate::FSResolver> State<'a, T> {
+		pub fn new(resolver: &'a T, source_id: source_map::SourceId) -> Self {
+			Self {
+				checking_data: CheckingData::new(Default::default(), &resolver),
+				root: RootContext::new_with_primitive_references(),
+				source_id,
+			}
+		}
+
+		pub fn check_item(
+			&mut self,
+			item: &parser::Module,
+		) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
+			let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
+				crate::Scope::PassThrough { source: self.source_id },
+				&mut self.checking_data,
+				|environment, checking_data| {
+					if let Some(parser::StatementOrDeclaration::Statement(
+						parser::Statement::Expression(expression),
+					)) = item.items.last()
+					{
+						synthesise_block(
+							&item.items[..(item.items.len() - 1)],
+							environment,
+							checking_data,
+						);
+						let result =
+							synthesise_multiple_expression(expression, environment, checking_data);
+						Some(print_type(
+							result,
+							&checking_data.types,
+							&environment.as_general_context(),
+							false,
+						))
+					} else {
+						synthesise_block(&item.items, environment, checking_data);
+
+						None
+					}
+				},
+			);
+			let dc = mem::take(&mut self.checking_data.diagnostics_container);
+			if dc.has_error() {
+				Err(dc)
+			} else {
+				Ok((ty, dc))
+			}
 		}
 	}
 }

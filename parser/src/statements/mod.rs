@@ -31,7 +31,7 @@ pub use while_statement::{DoWhileStatement, WhileStatement};
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[partial_eq_ignore_types(Span)]
-#[visit_self]
+#[visit_self(under statement)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Statement {

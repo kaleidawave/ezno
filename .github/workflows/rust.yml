@@ -38,6 +38,15 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            parser:
+              - 'parser/**'
+            checker:
+              - 'checker/**'
+
       - name: Check source is valid
         run: cargo check --workspace
 
@@ -47,13 +56,16 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
           packages: wasm-bindgen-cli@0.2.87
-      - name: Check binary WASM
+      - name: Check WASM
         run: |
           rustup target add wasm32-unknown-unknown
-          npm run check
+          # Need to build to check that the JS builds
+          npm ci
+          npm run build
         working-directory: src/js-cli-and-library
 
       - name: Check parser without extras
+        if: steps.changes.outputs.parser == 'true'
         run: 
           cargo check -p ezno-parser --no-default-features
 
@@ -122,6 +134,9 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
 
       - name: Build and test WASM
         run: |

@@ -37,6 +37,7 @@ pub use import::{ImportDeclaration, ImportExportPart};
 )]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
+#[visit_self(under statement)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Declaration {

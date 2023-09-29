@@ -295,7 +295,7 @@ dependencies = [
  "erased-serde",
  "ezno-parser",
  "indexmap",
- "iterator-endiate 0.2.1",
+ "iterator-endiate",
  "levenshtein",
  "map_vec",
  "once_cell",
@@ -318,7 +318,7 @@ dependencies = [
  "enum_variant_type",
  "ezno-parser-visitable-derive",
  "get-field-by-type",
- "iterator-endiate 0.1.0",
+ "iterator-endiate",
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
@@ -445,12 +445,6 @@ checksum = "b2b3ea6ff95e175473f8ffe6a7eb7c00d054240321b84c57051175fe3c1e075e"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "iterator-endiate"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cfeef3929ed54a0312797e6e75a9a962df67a30beda87029387e810e61a44cc"
 
 [[package]]
 name = "iterator-endiate"
@@ -837,9 +831,9 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.14.2"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cab192199a8348991b58809de8708f6146462aa3132520fff61e4c9f3df53a50"
+checksum = "6078a720d21bd8898a8e0927575dc4f57fab117a8db26231adee8758c5973368"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",

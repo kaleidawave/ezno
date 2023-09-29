@@ -3,7 +3,7 @@ use std::time::Instant;
 use ezno_parser::{ASTNode, FromFileError, Module, ParseOptions, ToStringOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let path = std::env::args().skip(1).next().ok_or("expected argument")?;
+	let path = std::env::args().nth(1).ok_or("expected argument")?;
 	let now = Instant::now();
 	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
 	let result = Module::from_file(&path, ParseOptions::default(), &mut fs);

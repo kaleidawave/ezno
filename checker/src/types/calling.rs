@@ -11,7 +11,7 @@ use crate::{
 	events::{apply_event, Event, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
-		functions::SynthesizedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
+		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
 		specialize,
 	},
 	types::{FunctionType, Type},
@@ -32,7 +32,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T>,
@@ -83,7 +83,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 	// Overwritten by .call, else look at binding
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -91,7 +91,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	if on == TypeId::ERROR_TYPE
 		|| arguments.iter().any(|arg| match arg {
-			SynthesizedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
+			SynthesisedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
 		}) {
 		return Ok(FunctionCallResult {
 			called: None,
@@ -142,7 +142,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		} else {
 			todo!()
 		}
-	} else if let Some(constraint) = environment.get_poly_base(on, &types) {
+	} else if let Some(constraint) = environment.get_poly_base(on, types) {
 		create_generic_function_call(
 			constraint,
 			called_with_new,
@@ -159,7 +159,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		return Err(vec![FunctionCallingError::NotCallable {
 			calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
 				on,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				types,
 				false,
 			),
@@ -173,7 +173,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
 	call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: Vec<SynthesizedArgument>,
+	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	on: TypeId,
 	environment: &mut Environment,
@@ -238,8 +238,8 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	// 		.cloned()
 	// 		.enumerate()
 	// 		.map(|(idx, argument)| match argument {
-	// 			SynthesizedArgument::NonSpread { ty, position } => {
-	// 				SynthesizedParameter {
+	// 			synthesisedArgument::NonSpread { ty, position } => {
+	// 				SynthesisedParameter {
 	// 					name: format!("i{}", idx),
 	// 					ty,
 	// 					// TODO
@@ -256,7 +256,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	// 	let function_type = FunctionType {
 	// 		// TODO explain
 	// 		type_parameters: None,
-	// 		parameters: SynthesizedParameters {
+	// 		parameters: SynthesisedParameters {
 	// 			parameters,
 	// 			// TODO I think this is okay
 	// 			rest_parameter: Default::default(),
@@ -348,7 +348,7 @@ impl FunctionType {
 		this_value: ThisValue,
 		call_site_type_arguments: Option<Vec<(SpanWithSource, TypeId)>>,
 		parent_type_arguments: Option<StructureGenericArguments>,
-		arguments: &[SynthesizedArgument],
+		arguments: &[SynthesisedArgument],
 		call_site: SpanWithSource,
 		environment: &mut Environment,
 		behavior: &mut E,
@@ -432,7 +432,7 @@ impl FunctionType {
 					const_fn_ident,
 					this_value,
 					&call_site_type_arguments,
-					&arguments,
+					arguments,
 					types,
 					environment,
 				);
@@ -467,7 +467,7 @@ impl FunctionType {
 			if let (Some(call_site_type_arguments), true) =
 				(call_site_type_arguments, E::CHECK_PARAMETERS)
 			{
-				self.synthesize_call_site_type_arguments(
+				self.synthesise_call_site_type_arguments(
 					call_site_type_arguments,
 					types,
 					environment,
@@ -525,7 +525,7 @@ impl FunctionType {
 				let on = crate::types::printing::print_type(
 					ty,
 					types,
-					&environment.into_general_context(),
+					&environment.as_general_context(),
 					true,
 				);
 				crate::utils::notify!("This argument {}", on);
@@ -548,7 +548,7 @@ impl FunctionType {
 				let argument = arguments.get(idx);
 
 				let argument_type_and_pos = argument.map(|argument| {
-					if let SynthesizedArgument::NonSpread { ty, position: pos } = argument {
+					if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
 						(ty, pos)
 					} else {
 						todo!()
@@ -577,7 +577,7 @@ impl FunctionType {
 							None,
 							&mut seeding_context,
 							environment,
-							&types,
+							types,
 						);
 						// crate::utils::notify!("Aftermath {:?}", seeding_context.type_arguments);
 						if let SubTypeResult::IsNotSubType(reasons) = result {
@@ -592,7 +592,7 @@ impl FunctionType {
 										pos,
 										TypeStringRepresentation::from_type_id(
 											restriction,
-											&environment.into_general_context(),
+											&environment.as_general_context(),
 											types,
 											false,
 										),
@@ -604,13 +604,13 @@ impl FunctionType {
 							errors.push(FunctionCallingError::InvalidArgumentType {
 								parameter_type: TypeStringRepresentation::from_type_id(
 									parameter.ty,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
 								argument_type: TypeStringRepresentation::from_type_id(
 									*argument_type,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
@@ -621,7 +621,7 @@ impl FunctionType {
 						}
 					} else {
 						// Already checked so can set. TODO destructuring etc
-						seeding_context.type_arguments.set_id(parameter.ty, *argument_type, &types);
+						seeding_context.type_arguments.set_id(parameter.ty, *argument_type, types);
 					}
 				} else if let Some(value) = parameter.missing_value {
 					// TODO evaluate effects
@@ -660,7 +660,7 @@ impl FunctionType {
 						arguments.iter().enumerate().skip(self.parameters.parameters.len())
 					{
 						let (argument_type, argument_pos) =
-							if let SynthesizedArgument::NonSpread { ty, position: pos } = argument {
+							if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
 								(ty, pos)
 							} else {
 								todo!()
@@ -671,7 +671,7 @@ impl FunctionType {
 						)) = types.get_type_by_id(rest_parameter.item_type)
 						{
 							assert_eq!(*on, TypeId::ARRAY_TYPE);
-							arguments.get_argument(TypeId::T_TYPE).unwrap().clone()
+							arguments.get_argument(TypeId::T_TYPE).unwrap()
 						} else {
 							unreachable!()
 						};
@@ -683,7 +683,7 @@ impl FunctionType {
 								None,
 								&mut seeding_context,
 								environment,
-								&types,
+								types,
 							);
 
 							if let SubTypeResult::IsNotSubType(reasons) = result {
@@ -698,7 +698,7 @@ impl FunctionType {
 											pos,
 											TypeStringRepresentation::from_type_id(
 												restriction,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												types,
 												false,
 											),
@@ -710,13 +710,13 @@ impl FunctionType {
 								errors.push(FunctionCallingError::InvalidArgumentType {
 									parameter_type: TypeStringRepresentation::from_type_id(
 										rest_parameter.item_type,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										types,
 										false,
 									),
 									argument_type: TypeStringRepresentation::from_type_id(
 										*argument_type,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										types,
 										false,
 									),
@@ -763,7 +763,7 @@ impl FunctionType {
 					RootReference::Variable(ref variable) => {
 						let current_value = get_value_of_variable(
 							environment.facts_chain(),
-							variable.clone(),
+							*variable,
 							Some(&type_arguments),
 						)
 						.expect("reference not assigned");
@@ -779,19 +779,19 @@ impl FunctionType {
 							// TODO temp position
 							&mut basic_subtyping,
 							environment,
-							&types,
+							types,
 						) {
 							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 								reference,
 								requirement: TypeStringRepresentation::from_type_id(
 									restriction,
-									&environment.into_general_context(),
-									&types,
+									&environment.as_general_context(),
+									types,
 									false,
 								),
 								found: TypeStringRepresentation::from_type_id(
 									current_value,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
@@ -813,19 +813,19 @@ impl FunctionType {
 							// TODO temp position
 							&mut basic_subtyping,
 							environment,
-							&types,
+							types,
 						) {
 							errors.push(FunctionCallingError::ReferenceRestrictionDoesNotMatch {
 								reference,
 								requirement: TypeStringRepresentation::from_type_id(
 									restriction,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
 								found: TypeStringRepresentation::from_type_id(
 									value_of_this,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
@@ -891,7 +891,7 @@ impl FunctionType {
 			return Ok(FunctionCallResult {
 				returned_type,
 				warnings: Default::default(),
-				called: Some(self.id.clone()),
+				called: Some(self.id),
 			});
 		}
 
@@ -914,11 +914,11 @@ impl FunctionType {
 		Ok(FunctionCallResult {
 			returned_type,
 			warnings: Default::default(),
-			called: Some(self.id.clone()),
+			called: Some(self.id),
 		})
 	}
 
-	fn synthesize_call_site_type_arguments(
+	fn synthesise_call_site_type_arguments(
 		&self,
 		call_site_type_arguments: Vec<(SpanWithSource, TypeId)>,
 		types: &mut crate::types::TypeStore,
@@ -928,7 +928,7 @@ impl FunctionType {
 			typed_parameters
 				.0
 				.iter()
-				.zip(call_site_type_arguments.into_iter())
+				.zip(call_site_type_arguments)
 				.map(|(param, (pos, ty))| {
 					if let Type::RootPolyType(PolyNature::Generic { eager_fixed, .. }) =
 						types.get_type_by_id(param.id)

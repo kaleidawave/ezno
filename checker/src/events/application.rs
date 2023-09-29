@@ -5,7 +5,7 @@ use crate::{
 	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
 	types::{
 		curry_arguments,
-		functions::SynthesizedArgument,
+		functions::SynthesisedArgument,
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
 		properties::{get_property, set_property, Property},
@@ -51,7 +51,7 @@ pub(crate) fn apply_event(
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
 
-			facts.events.push(Event::SetsVariable(variable.clone(), new_value));
+			facts.events.push(Event::SetsVariable(variable, new_value));
 			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency } => {
@@ -79,7 +79,7 @@ pub(crate) fn apply_event(
 				Property::GetterAndSetter(_, _) => todo!(),
 			};
 
-			let gc = environment.into_general_context();
+			let gc = environment.as_general_context();
 
 			// crate::utils::notify!(
 			// 	"[Event::Setter] {}[{}] = {}",
@@ -117,11 +117,11 @@ pub(crate) fn apply_event(
 			let on = specialize(on, type_arguments, environment, types);
 
 			let with = with
-				.into_iter()
+				.iter()
 				.map(|argument| match argument {
-					SynthesizedArgument::NonSpread { ty, position: pos } => {
+					SynthesisedArgument::NonSpread { ty, position: pos } => {
 						let ty = specialize(*ty, type_arguments, environment, types);
-						SynthesizedArgument::NonSpread { ty, position: pos.clone() }
+						SynthesisedArgument::NonSpread { ty, position: pos.clone() }
 					}
 				})
 				.collect::<Vec<_>>();
@@ -262,7 +262,7 @@ pub(crate) fn apply_event(
 					target.get_top_level_facts(environment).new_object(None, types, is_under_dyn)
 				}
 				PrototypeArgument::Function(id) => {
-					types.register_type(crate::Type::Function(id, this_value.clone()))
+					types.register_type(crate::Type::Function(id, this_value))
 				}
 			};
 

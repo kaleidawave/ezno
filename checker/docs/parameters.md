@@ -1,5 +1,5 @@
 When synthesizing (aka checking) a function a few thing happen:
-- Parameters are synthesized
+- Parameters are synthesised
 - Ones that are not already generic are made into generics
 
 ### Implicit parameters

@@ -252,7 +252,7 @@ pub fn lex_script(
 						*last_character_zero = false;
 					}
 					// For binary/hexadecimal/octal literals
-					'b' | 'x' | 'o' | 'B' | 'X' | 'O' => {
+					'b' | 'B' | 'x' | 'X' | 'o' | 'O' => {
 						if start + 1 != idx {
 							return_err!(
 								LexingErrors::NumberLiteralBaseSpecifierMustBeSecondCharacter
@@ -264,7 +264,7 @@ pub fn lex_script(
 						} else {
 							*literal_type = match chr.to_ascii_lowercase() {
 								'b' => NumberLiteralType::BinaryLiteral,
-								'0' => NumberLiteralType::OctalLiteral,
+								'o' => NumberLiteralType::OctalLiteral,
 								'x' => NumberLiteralType::HexadecimalLiteral,
 								_ => unreachable!(),
 							}
@@ -536,7 +536,7 @@ pub fn lex_script(
 								return_err!(LexingErrors::ExpectedJSXEndTag);
 							}
 							let tag_name = script[start..idx].trim();
-							*is_self_closing_tag = html_tag_is_self_closing(&tag_name);
+							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
 							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
 							*tag_depth += 1;
 							match chr {
@@ -959,7 +959,15 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number { .. } => {
+		LexingState::Number { last_was_underscore, literal_type, .. } => {
+			if last_was_underscore {
+				return_err!(LexingErrors::TrailingUnderscore)
+			}
+			if !matches!(literal_type, NumberLiteralType::Decimal { .. })
+				&& script[start..].len() == 2
+			{
+				return_err!(LexingErrors::ExpectedEndToNumberLiteral)
+			}
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),
 				TokenStart::new(start as u32 + offset),

@@ -44,24 +44,11 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 		// This is reverse and
 		Type::Or(left, right) => {
 			let right = *right;
-			let left_result = type_is_subtype(
-				base_type,
-				*left,
-				ty_arguments.as_deref(),
-				behavior,
-				environment,
-				types,
-			);
+			let left_result =
+				type_is_subtype(base_type, *left, ty_arguments, behavior, environment, types);
 
 			return if let SubTypeResult::IsSubType = left_result {
-				type_is_subtype(
-					base_type,
-					right,
-					ty_arguments.as_deref(),
-					behavior,
-					environment,
-					types,
-				)
+				type_is_subtype(base_type, right, ty_arguments, behavior, environment, types)
 			} else {
 				left_result
 			};
@@ -179,10 +166,10 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 		Type::And(left, right) => {
 			let right = *right;
 			let left_result =
-				type_is_subtype(*left, ty, ty_arguments.as_deref(), behavior, environment, types);
+				type_is_subtype(*left, ty, ty_arguments, behavior, environment, types);
 
 			if let SubTypeResult::IsSubType = left_result {
-				type_is_subtype(right, ty, ty_arguments.as_deref(), behavior, environment, types)
+				type_is_subtype(right, ty, ty_arguments, behavior, environment, types)
 			} else {
 				left_result
 			}
@@ -190,12 +177,12 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 		Type::Or(left, right) => {
 			let right = *right;
 			let left_result =
-				type_is_subtype(*left, ty, ty_arguments.as_deref(), behavior, environment, types);
+				type_is_subtype(*left, ty, ty_arguments, behavior, environment, types);
 
 			if let SubTypeResult::IsSubType = left_result {
 				SubTypeResult::IsSubType
 			} else {
-				type_is_subtype(right, ty, ty_arguments.as_deref(), behavior, environment, types)
+				type_is_subtype(right, ty, ty_arguments, behavior, environment, types)
 			}
 		}
 		Type::RootPolyType(nature) => {
@@ -210,14 +197,9 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 
 			let constraint = environment.get_poly_base(base_type, types).unwrap();
 
-			if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype(
-				constraint,
-				ty,
-				ty_arguments.as_deref(),
-				behavior,
-				environment,
-				types,
-			) {
+			if let SubTypeResult::IsNotSubType(reasons) =
+				type_is_subtype(constraint, ty, ty_arguments, behavior, environment, types)
+			{
 				crate::utils::notify!("RPT not subtype");
 				return SubTypeResult::IsNotSubType(reasons);
 			}
@@ -289,7 +271,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				}
 				Type::Function(..) => {
 					crate::utils::notify!("TODO implement function checking");
-					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 				Type::And(_, _) => todo!(),
 				Type::Or(left, right) => {
@@ -335,7 +317,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 						type_is_subtype(
 							base_type,
 							*argument,
-							ty_arguments.as_deref(),
+							ty_arguments,
 							behavior,
 							environment,
 							types,

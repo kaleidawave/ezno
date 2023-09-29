@@ -1,5 +1,5 @@
 use super::{
-	expressions::synthesize_multiple_expression, synthesize_block, variables::register_variable,
+	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
 };
 use crate::{
 	context::{ClosedOverReferencesInScope, ContextId, Scope},
@@ -16,14 +16,14 @@ use std::collections::HashMap;
 pub type ExportedItems = HashMap<String, Variable>;
 pub type ReturnResult = Option<TypeId>;
 
-pub(super) fn synthesize_statement<T: crate::FSResolver>(
+pub(super) fn synthesise_statement<T: crate::FSResolver>(
 	statement: &Statement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
 ) {
 	match statement {
 		Statement::Expression(expression) => {
-			synthesize_multiple_expression(expression, environment, checking_data);
+			synthesise_multiple_expression(expression, environment, checking_data);
 		}
 		// Statement::ExportStatement(_export_statement) => {
 		// if let Some(out_exports) = out_exports {
@@ -41,7 +41,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		//                     for variable_declaration in
 		//                         variable_decl_stmt.declarations.iter()
 		//                     {
-		//                         synthesize_variable_declaration(
+		//                         synthesise_variable_declaration(
 		//                             variable_declaration,
 		//                             is_constant,
 		//                             position.as_ref(),
@@ -67,7 +67,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		// }
 		Statement::Return(return_statement) => {
 			let returned = if let Some(ref expression) = return_statement.1 {
-				synthesize_multiple_expression(expression, environment, checking_data)
+				synthesise_multiple_expression(expression, environment, checking_data)
 			} else {
 				TypeId::UNDEFINED_TYPE
 			};
@@ -75,7 +75,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		}
 		Statement::IfStatement(if_statement) => {
 			let condition =
-				synthesize_multiple_expression(&if_statement.condition, environment, checking_data);
+				synthesise_multiple_expression(&if_statement.condition, environment, checking_data);
 
 			environment.new_conditional_context(
 				condition,
@@ -105,7 +105,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			impl<'a> SynthesizableConditional for IfStatementBranch<'a> {
 				type ExpressionResult = ();
 
-				fn synthesize_condition<T: crate::FSResolver>(
+				fn synthesise_condition<T: crate::FSResolver>(
 					self,
 					environment: &mut Environment,
 					checking_data: &mut CheckingData<T>,
@@ -113,10 +113,10 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 					match self {
 						IfStatementBranch::Branch(branch) => match branch {
 							BlockOrSingleStatement::Braced(statements) => {
-								synthesize_block(&statements.0, environment, checking_data)
+								synthesise_block(&statements.0, environment, checking_data)
 							}
 							BlockOrSingleStatement::SingleStatement(statement) => {
-								synthesize_statement(statement, environment, checking_data)
+								synthesise_statement(statement, environment, checking_data)
 							}
 						},
 						IfStatementBranch::NestedConditional {
@@ -124,7 +124,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 							unconditional_else,
 						} => {
 							if let [current, other @ ..] = conditional_elses {
-								let condition = synthesize_multiple_expression(
+								let condition = synthesise_multiple_expression(
 									&current.condition,
 									environment,
 									checking_data,
@@ -145,10 +145,10 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 							} else {
 								match &unconditional_else.unwrap().inner {
 									BlockOrSingleStatement::Braced(statements) => {
-										synthesize_block(&statements.0, environment, checking_data)
+										synthesise_block(&statements.0, environment, checking_data)
 									}
 									BlockOrSingleStatement::SingleStatement(statement) => {
-										synthesize_statement(statement, environment, checking_data)
+										synthesise_statement(statement, environment, checking_data)
 									}
 								}
 							}
@@ -198,7 +198,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			// 	ForLoopCondition::ForOf { keyword, variable, of } => {
 			// 		todo!()
 			// 		// let of_expression_instance =
-			// 		//     synthesize_expression(of, &mut environment, checking_data);
+			// 		//     synthesise_expression(of, &mut environment, checking_data);
 			// 		// let iterator_result = get_type_iterator_with_error_handler(
 			// 		//     of_expression_instance.get_type(),
 			// 		//     &mut checking_data.diagnostics_container,
@@ -206,7 +206,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			// 		//     of.get_position(),
 			// 		// )
 			// 		// .get_iterator_type();
-			// 		// synthesize_variable_field(
+			// 		// synthesise_variable_field(
 			// 		//     variable.get_ast_mut(),
 			// 		//     &iterator_result,
 			// 		//     matches!(keyword, parser::statements::VariableKeyword::Const(_)),
@@ -220,7 +220,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			// 	ForLoopCondition::Statements { initializer, condition, final_expression } => {
 			// 		match initializer {
 			// 			parser::statements::ForLoopStatementInitializer::Statement(statement) => {
-			// 				synthesize_variable_declaration_statement(
+			// 				synthesise_variable_declaration_statement(
 			// 					statement,
 			// 					&mut environment,
 			// 					checking_data,
@@ -229,7 +229,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			// 			}
 			// 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
 			// 		}
-			// 		// synthesize_variable_declaration(
+			// 		// synthesise_variable_declaration(
 			// 		//     initializer,
 			// 		//     *constant,
 			// 		//     &mut environment,
@@ -237,17 +237,17 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			// 		//
 			// 		//
 			// 		// );
-			// 		synthesize_expression(condition, &mut environment, checking_data);
-			// 		synthesize_expression(final_expression, &mut environment, checking_data);
+			// 		synthesise_expression(condition, &mut environment, checking_data);
+			// 		synthesise_expression(final_expression, &mut environment, checking_data);
 			// 	}
 			// };
-			// synthesize_block(&for_statement.statements, &mut environment, checking_data);
+			// synthesise_block(&for_statement.statements, &mut environment, checking_data);
 		}
 		Statement::Block(ref block) => {
 			let (result, _, _) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Block {},
 				checking_data,
-				|environment, checking_data| synthesize_block(&block.0, environment, checking_data),
+				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
 		Statement::Debugger(_pos) => {
@@ -265,7 +265,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 			);
 		}
 		Statement::Throw(stmt) => {
-			let thrown_value = synthesize_multiple_expression(&stmt.1, environment, checking_data);
+			let thrown_value = synthesise_multiple_expression(&stmt.1, environment, checking_data);
 			environment.throw_value(thrown_value)
 		}
 		Statement::Labelled { position, name, statement } => {
@@ -273,7 +273,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 				"labelled statements",
 				statement.get_position().clone().with_source(environment.get_source()),
 			);
-			synthesize_statement(statement, environment, checking_data);
+			synthesise_statement(statement, environment, checking_data);
 		}
 		Statement::VarVariable(_) => {
 			checking_data.raise_unimplemented_error(
@@ -284,7 +284,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 		Statement::TryCatchStatement(stmt) => {
 			let throw_type: TypeId =
 				environment.new_try_context(checking_data, |environment, checking_data| {
-					synthesize_block(&stmt.try_inner.0, environment, checking_data);
+					synthesise_block(&stmt.try_inner.0, environment, checking_data);
 				});
 
 			if let Some(ref catch_block) = stmt.catch_inner {
@@ -306,7 +306,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 								None,
 							);
 						}
-						synthesize_block(&catch_block.0, environment, checking_data);
+						synthesise_block(&catch_block.0, environment, checking_data);
 					},
 				);
 			}
@@ -315,7 +315,7 @@ pub(super) fn synthesize_statement<T: crate::FSResolver>(
 	}
 }
 
-fn synthesize_block_or_single_statement<T: crate::FSResolver>(
+fn synthesise_block_or_single_statement<T: crate::FSResolver>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T>,
@@ -326,10 +326,10 @@ fn synthesize_block_or_single_statement<T: crate::FSResolver>(
 		checking_data,
 		|environment, checking_data| match block_or_single_statement {
 			BlockOrSingleStatement::Braced(block) => {
-				synthesize_block(&block.0, environment, checking_data)
+				synthesise_block(&block.0, environment, checking_data)
 			}
 			BlockOrSingleStatement::SingleStatement(statement) => {
-				synthesize_statement(statement, environment, checking_data)
+				synthesise_statement(statement, environment, checking_data)
 			}
 		},
 	)

@@ -15,10 +15,10 @@ use crate::{
 
 use super::{
 	classes::type_generic_type_constraints, functions::type_function_reference,
-	type_annotations::synthesize_type_annotation,
+	type_annotations::synthesise_type_annotation,
 };
 
-/// TODO synthesize interface declaration ...?
+/// TODO synthesise interface declaration ...?
 pub(super) fn type_interface_declaration<T: crate::FSResolver, S: ContextType>(
 	interface: &Decorated<InterfaceDeclaration>,
 	environment: &mut Context<S>,
@@ -92,9 +92,9 @@ fn get_extends<T: crate::FSResolver>(
 	interface_type: TypeId,
 ) {
 	if let Some([reference, others @ ..]) = interface.extends.as_deref() {
-		let mut ty = synthesize_type_annotation(reference, environment, checking_data);
+		let mut ty = synthesise_type_annotation(reference, environment, checking_data);
 		for reference in others {
-			let rhs = synthesize_type_annotation(reference, environment, checking_data);
+			let rhs = synthesise_type_annotation(reference, environment, checking_data);
 			ty = checking_data.types.register_type(Type::And(ty, rhs));
 		}
 
@@ -102,7 +102,7 @@ fn get_extends<T: crate::FSResolver>(
 	}
 }
 
-pub(crate) trait SynthesizeInterfaceBehavior {
+pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::FSResolver, S: ContextType>(
 		&mut self,
 		key: PropertyOrType,
@@ -127,7 +127,7 @@ pub(crate) enum PropertyOrType<'a> {
 
 pub(crate) struct OnToType(pub(crate) TypeId);
 
-impl SynthesizeInterfaceBehavior for OnToType {
+impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::FSResolver, S: ContextType>(
 		&mut self,
 		key: PropertyOrType,
@@ -164,10 +164,10 @@ impl SynthesizeInterfaceBehavior for OnToType {
 	}
 }
 
-pub(super) fn synthesize_signatures<
+pub(super) fn synthesise_signatures<
 	T: crate::FSResolver,
 	S: ContextType,
-	B: SynthesizeInterfaceBehavior,
+	B: SynthesiseInterfaceBehavior,
 >(
 	signatures: &[Decorated<InterfaceMember>],
 	mut behavior: B,
@@ -210,7 +210,7 @@ pub(super) fn synthesize_signatures<
 				is_optional,
 				position,
 			} => {
-				let value = synthesize_type_annotation(type_annotation, environment, checking_data);
+				let value = synthesise_type_annotation(type_annotation, environment, checking_data);
 				behavior.register(
 					PropertyOrType::ClassProperty(name),
 					InterfaceValue::Value(value),
@@ -220,8 +220,8 @@ pub(super) fn synthesize_signatures<
 			}
 			InterfaceMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
 				// TODO think this is okay
-				let key = synthesize_type_annotation(indexer_type, environment, checking_data);
-				let value = synthesize_type_annotation(return_type, environment, checking_data);
+				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
+				let value = synthesise_type_annotation(return_type, environment, checking_data);
 				behavior.register(
 					PropertyOrType::Type(key),
 					InterfaceValue::Value(value),
@@ -302,7 +302,7 @@ pub(super) fn type_interface_member<T: crate::FSResolver, S: ContextType>(
 
 	// 		// if let Some(InterfaceMemberBody { body, condition, .. }) = body {
 	// 		// 	if let Some(condition) = condition {}
-	// 		// 	// let result = synthesize_block(body, environment, checking_data);
+	// 		// 	// let result = synthesise_block(body, environment, checking_data);
 	// 		// }
 
 	// 		let key_ty = property_key_as_type(name, environment, &mut checking_data.types);
@@ -327,7 +327,7 @@ pub(super) fn type_interface_member<T: crate::FSResolver, S: ContextType>(
 	// 		// }
 	// 	}
 	// 	InterfaceMember::Property { name, type_annotation, is_readonly, is_optional, .. } => {
-	// 		let value_ty = synthesize_type_annotation(type_annotation, environment, checking_data);
+	// 		let value_ty = synthesise_type_annotation(type_annotation, environment, checking_data);
 
 	// 		let property_ty = if *is_optional {
 	// 			checking_data.types.register_type(Type::Or(value_ty, TypeId::UNDEFINED_TYPE))

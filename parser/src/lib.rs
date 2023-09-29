@@ -19,7 +19,7 @@ pub mod statements;
 mod tokens;
 pub mod types;
 mod variable_fields;
-mod visiting;
+pub mod visiting;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
@@ -50,7 +50,7 @@ pub use types::{
 	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
 };
 pub use variable_fields::*;
-pub use visiting::*;
+pub(crate) use visiting::*;
 
 use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
@@ -544,6 +544,8 @@ impl FromStr for NumberStructure {
 				}
 				None => Ok(Self::Number(0.)),
 			}
+		} else if s.ends_with('.') {
+			Ok(Self::Number(sign.apply(format!("{s}0").parse().map_err(|_| s.to_owned())?)))
 		} else {
 			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
 		}

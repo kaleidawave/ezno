@@ -12,7 +12,7 @@ use crate::{
 	types::{TypeId, TypeStore},
 	FunctionId, GeneralContext, VariableId,
 };
-/// [TypeMappings] is used to retaining information between passes, including the synthesize and checking passes
+/// [TypeMappings] is used to retaining information between passes, including the synthesise and checking passes
 /// This for use in the both use in the compiler and compiler plugins
 /// Checking things are held on [crate::Memory], function things are held on [crate::HoistedFunctionContainer]
 /// and module things on [crate::ModuleData]

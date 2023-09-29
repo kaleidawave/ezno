@@ -155,7 +155,7 @@ pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
 		return true;
 	}
-	return false;
+	false
 }
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -230,7 +230,7 @@ pub enum Constructor {
 	FunctionResult {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
-		with: Box<[SynthesizedArgument]>,
+		with: Box<[SynthesisedArgument]>,
 		result: TypeId,
 	},
 	Property {

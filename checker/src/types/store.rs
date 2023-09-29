@@ -163,7 +163,7 @@ impl TypeStore {
 	pub fn new_function_type_annotation(
 		&mut self,
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
-		parameters: crate::types::functions::SynthesizedParameters,
+		parameters: crate::types::functions::SynthesisedParameters,
 		return_type: TypeId,
 		declared_at: source_map::SpanWithSource,
 		effects: Vec<crate::events::Event>,

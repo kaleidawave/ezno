@@ -82,13 +82,8 @@ use crate::ParseError;
     "..." => TSXToken::Spread,
 )]
 #[cfg_attr(feature = "extras", automaton_mappings(
-    "×" => TSXToken::Multiply,
-    "×=" => TSXToken::MultiplyAssign,
-    "¡" => TSXToken::InvertAssign,
     ">!" => TSXToken::InvertAssign,
-    "∣" => TSXToken::DividesOperator,
     "/%" => TSXToken::DividesOperator,
-    "∘" => TSXToken::ComposeOperator,
     "<@>" => TSXToken::ComposeOperator,
     "|>" => TSXToken::PipeOperator,
 ))]
@@ -287,10 +282,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::Cursor(_) => 0,
 
 			#[cfg(feature = "extras")]
-			TSXToken::DividesOperator
-			| TSXToken::InvertAssign
-			| TSXToken::ComposeOperator
-			| TSXToken::PipeOperator => todo!(),
+			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
+			#[cfg(feature = "extras")]
+			TSXToken::ComposeOperator => 3,
 		}
 	}
 }

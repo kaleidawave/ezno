@@ -11,7 +11,7 @@ pub mod facts;
 pub mod store;
 
 pub(crate) use calling::CallCheckingBehavior;
-pub use root::Root;
+pub use root::RootContext;
 
 pub(crate) use bases::Boundary;
 
@@ -72,7 +72,7 @@ impl ContextId {
 #[derive(Debug, Clone)]
 pub enum GeneralContext<'a> {
 	Syntax(&'a Environment<'a>),
-	Root(&'a Root),
+	Root(&'a RootContext),
 }
 
 /// Used for doing things with a Context that is either [Root] or [Environment]
@@ -112,9 +112,9 @@ use self::{environment::get_this_type_from_constraint, facts::Facts, store::Exis
 pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
 pub trait ContextType: Sized {
-	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a>;
+	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_>;
 
-	fn get_parent<'a>(&'a self) -> Option<&'a GeneralContext<'a>>;
+	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
 	/// Variables **above** this scope may change *between runs*
 	fn is_dynamic_boundary(&self) -> bool;
@@ -123,8 +123,8 @@ pub trait ContextType: Sized {
 }
 
 // TODO enum_from
-impl<'a> From<&'a Root> for GeneralContext<'a> {
-	fn from(root: &'a Root) -> Self {
+impl<'a> From<&'a RootContext> for GeneralContext<'a> {
+	fn from(root: &'a RootContext) -> Self {
 		GeneralContext::Root(root)
 	}
 }
@@ -220,7 +220,7 @@ impl<T: ContextType> Context<T> {
 		// 					crate::utils::notify!("Updated constraint on generic parameter, fine for structure generics");
 		// 					*aliases = new_constraint;
 		// 				}
-		// 				PolyNature::UnsynthesizedFunction(_) => todo!(),
+		// 				PolyNature::UnsynthesisedFunction(_) => todo!(),
 		// 			}
 		// 		}
 		// 		Type::Constructor(constructor) => match constructor {
@@ -393,6 +393,7 @@ impl<T: ContextType> Context<T> {
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
+					Scope::PassThrough { .. } => "pass through",
 				}
 			} else {
 				"root"
@@ -613,18 +614,16 @@ impl<T: ContextType> Context<T> {
 	fn get_thingy(&self, on: TypeId, types: &TypeStore) -> TypeId {
 		if let Some(poly_base) = self.get_poly_base(on, types) {
 			poly_base
+		} else if let Type::Constant(cst) = types.get_type_by_id(on) {
+			cst.get_backing_type_id()
 		} else {
-			if let Type::Constant(cst) = types.get_type_by_id(on) {
-				cst.get_backing_type_id()
-			} else {
-				on
-			}
+			on
 		}
 	}
 
 	/// Only on current environment, doesn't walk
 	fn get_this_constraint(&self) -> Option<TypeId> {
-		match self.into_general_context() {
+		match self.as_general_context() {
 			GeneralContext::Syntax(syn) => match &syn.context_type.kind {
 				// Special handling here
 				Scope::InterfaceEnvironment { this_constraint }
@@ -635,6 +634,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::Looping { .. }
 				| Scope::TryBlock { .. }
 				| Scope::Block {}
+				| Scope::PassThrough { .. }
 				| Scope::Module { .. } => None,
 			},
 			GeneralContext::Root(root) => None,
@@ -746,8 +746,8 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(id))).unwrap()
 	}
 
-	pub fn into_general_context(&self) -> GeneralContext {
-		T::into_parent_or_root(self)
+	pub fn as_general_context(&self) -> GeneralContext {
+		T::as_general_context(self)
 	}
 
 	/// TODO doesn't look at aliases using get_type_fact!
@@ -777,7 +777,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Returns a new lexical environment with self as a parent
-	fn new_lexical_environment<'a>(&'a self, new_scope: Scope) -> Context<Syntax<'a>> {
+	fn new_lexical_environment(&self, new_scope: Scope) -> Context<Syntax<'_>> {
 		let can_use_this =
 			if let Scope::Function { constructor_on: Some(constructor), this_extends, .. } =
 				&new_scope
@@ -802,7 +802,7 @@ impl<T: ContextType> Context<T> {
 		Context {
 			context_type: environment::Syntax {
 				kind: new_scope,
-				parent: T::into_parent_or_root(self),
+				parent: T::as_general_context(self),
 				used_parent_references: Default::default(),
 				closed_over_references: Default::default(),
 			},
@@ -843,14 +843,14 @@ impl<T: ContextType> Context<T> {
 
 		let type_parameters = function.type_parameters(&mut func_env, checking_data);
 
-		if let Some(_) = function.this_constraint(&mut func_env, checking_data) {
+		if function.this_constraint(&mut func_env, checking_data).is_some() {
 			todo!();
 		} else {
 			// TODO inferred
 		}
 
 		// TODO could reuse existing if hoisted
-		let synthesized_parameters = function.parameters(&mut func_env, checking_data);
+		let synthesised_parameters = function.parameters(&mut func_env, checking_data);
 
 		let return_type_annotation = function.return_type_annotation(&mut func_env, checking_data);
 
@@ -908,7 +908,7 @@ impl<T: ContextType> Context<T> {
 
 		let facts = func_env.facts;
 
-		self.variable_names.extend(func_env.variable_names.into_iter());
+		self.variable_names.extend(func_env.variable_names);
 
 		// TODO temp ...
 		for (on, mut properties) in facts.current_properties.into_iter() {
@@ -953,7 +953,7 @@ impl<T: ContextType> Context<T> {
 			effects: facts.events,
 			used_parent_references,
 			closed_over_variables: function_closed,
-			parameters: synthesized_parameters,
+			parameters: synthesised_parameters,
 			constant_id: None,
 			kind: FunctionKind::Arrow,
 			id,
@@ -1032,23 +1032,15 @@ impl<T: ContextType> Context<T> {
 
 		self.bases.merge(bases, self.context_id);
 
-		self.variable_names.extend(variable_names.into_iter());
+		self.variable_names.extend(variable_names);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
 
-		let shell = ExistingContext {
-			variables,
-			named_types,
-			can_use_this: can_use_this.clone(),
-			scope: scope.clone(),
-		};
-
 		checking_data.existing_contexts.parent_references.insert(context_id, self.context_id);
-		checking_data.existing_contexts.existing_environments.insert(context_id, shell);
 
 		if let Some(c) = self.context_type.get_closed_over_references() {
-			c.extend(closed_over_references.into_iter());
+			c.extend(closed_over_references);
 		}
 
 		// Run any truths through subtyping
@@ -1068,7 +1060,7 @@ impl<T: ContextType> Context<T> {
 				// crate::utils::notify!(
 				// 	"Function properties settings temp, breaks interfaces nesting, otherwise fine"
 				// );
-				self.facts.current_properties.extend(facts.current_properties.into_iter());
+				self.facts.current_properties.extend(facts.current_properties);
 
 				Some((facts.events, used_parent_references))
 			}
@@ -1076,23 +1068,32 @@ impl<T: ContextType> Context<T> {
 			| Scope::ClassEnvironment {}
 			| Scope::Block {}
 			| Scope::TryBlock {}
+			| Scope::PassThrough { .. }
 			// TODO Scope::Module ??
 			| Scope::Module { .. } => {
-				// if let Some(inferrable_constraints) =
-				// 	self.context_type.get_inferrable_constraints_mut()
-				// {
-				// 	inferrable_constraints.extend(inferrable_types.into_iter());
+				// TODO also lift vars, regardless of scope
+				if matches!(scope, Scope::PassThrough { .. }) {
+					crate::utils::notify!("{:?}", variables);
+					self.variables.extend(variables);
+					self.facts.variable_current_value.extend(facts.variable_current_value);
+				} else {
+					// TODO for LSP
+					// let shell = ExistingContext {
+					// 	variables,
+					// 	named_types,
+					// 	can_use_this: can_use_this.clone(),
+					// 	scope: scope.clone(),
+					// };
+					// checking_data.existing_contexts.existing_environments.insert(context_id, shell);
+				}
 
 				// 	// TODO temp
 				// 	self.context_type
 				// 		.get_closed_over_references_mut()
 				// 		.extend(closed_over_references.into_iter());
-				// }
-
-				// self.proofs.merge(proofs);
 
 				self.deferred_function_constraints
-					.extend(deferred_function_constraints.into_iter());
+					.extend(deferred_function_constraints);
 
 				self.can_use_this = can_use_this;
 
@@ -1130,7 +1131,7 @@ impl<T: ContextType> Context<T> {
 		let mut environment = Environment {
 			context_type: Syntax {
 				kind: environment.scope,
-				parent: self.into_general_context(),
+				parent: self.as_general_context(),
 				used_parent_references: Default::default(),
 				closed_over_references: Default::default(),
 			},
@@ -1187,7 +1188,7 @@ impl<T: ContextType> Context<T> {
 			// 	// self.attempt_to_modify_constraint_or_alias(on, new);
 			// }
 
-			self.variable_names.extend(variable_names.into_iter());
+			self.variable_names.extend(variable_names);
 
 			let shell =
 				ExistingContext { variables, named_types, can_use_this, scope: scope.clone() };
@@ -1214,6 +1215,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::ClassEnvironment {}
 				| Scope::FunctionReference {}
 				| Scope::Block {}
+				| Scope::PassThrough { .. }
 				| Scope::Module { .. } => {
 					self.facts.events.append(&mut facts.events);
 
@@ -1230,8 +1232,7 @@ impl<T: ContextType> Context<T> {
 
 					// self.proofs.merge(proofs);
 
-					self.deferred_function_constraints
-						.extend(deferred_function_constraints.into_iter());
+					self.deferred_function_constraints.extend(deferred_function_constraints);
 
 					self.can_use_this = can_use_this;
 
@@ -1250,7 +1251,7 @@ impl<T: ContextType> Context<T> {
 	///
 	/// TODO should be private
 	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext> + '_ {
-		iter::successors(Some(self.into_general_context()), |env| {
+		iter::successors(Some(self.as_general_context()), |env| {
 			if let GeneralContext::Syntax(syn) = env {
 				Some(syn.get_parent())
 			} else {
@@ -1266,7 +1267,7 @@ impl<T: ContextType> Context<T> {
 				..
 			}) = env
 			{
-				constructor_on.clone()
+				*constructor_on
 			} else {
 				None
 			}
@@ -1393,7 +1394,7 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.object_constraints.get(&on)).cloned())
 	}
 
-	pub(crate) fn facts_chain<'a>(&'a self) -> impl Iterator<Item = &'a Facts> {
+	pub(crate) fn facts_chain(&self) -> impl Iterator<Item = &'_ Facts> {
 		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
 	}
 
@@ -1411,13 +1412,16 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter()
 			.find_map(|ctx| {
 				if let GeneralContext::Syntax(Context {
-					context_type: Syntax { kind: Scope::Module { source }, .. },
+					context_type:
+						Syntax {
+							kind: Scope::Module { source } | Scope::PassThrough { source }, ..
+						},
 					..
 				}) = ctx
 				{
 					Some(*source)
 				} else if let GeneralContext::Root(Context {
-					context_type: root::RootContext { on },
+					context_type: root::Root { on },
 					..
 				}) = ctx
 				{

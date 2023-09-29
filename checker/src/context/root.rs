@@ -3,20 +3,20 @@ use crate::{types::TypeId, GeneralContext};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
-pub type Root = Context<RootContext>;
+pub type RootContext = Context<Root>;
 
 #[derive(Debug)]
-pub struct RootContext {
+pub struct Root {
 	/// TODO a little out of place
 	pub(crate) on: SourceId,
 }
 
-impl ContextType for RootContext {
-	fn into_parent_or_root<'a>(et: &'a Context<Self>) -> GeneralContext<'a> {
+impl ContextType for Root {
+	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Root(et)
 	}
 
-	fn get_parent<'a>(&'a self) -> Option<&'a GeneralContext<'a>> {
+	fn get_parent(&self) -> Option<&GeneralContext<'_>> {
 		None
 	}
 
@@ -31,11 +31,11 @@ impl ContextType for RootContext {
 
 const HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
 
-impl Root {
+impl RootContext {
 	/// Merges two [RootEnvironments]. May be used for multiple `.d.ts` files
 	pub(crate) fn union(&mut self, other: Self) {
 		// TODO this is bad, some things need to merge, inserting over existing will be bad
-		self.variables.extend(other.variables.into_iter());
+		self.variables.extend(other.variables);
 		todo!()
 		// self.tys.extend(other.tys.into_iter());
 	}
@@ -58,7 +58,7 @@ impl Root {
 		let named_types = HashMap::from_iter(named_types);
 
 		Self {
-			context_type: RootContext { on: SourceId::NULL },
+			context_type: Root { on: SourceId::NULL },
 			context_id: ContextId::ROOT,
 			named_types,
 			variables: Default::default(),

@@ -8,7 +8,7 @@ pub struct Module {
 	pub path: PathBuf,
 }
 
-pub struct SynthesizedModule {
+pub struct SynthesisedModule {
 	pub module: Module,
 	// TODO this should not be on unchecked module
 	// TODO export default
@@ -32,7 +32,7 @@ impl From<ModuleFromPathError> for Diagnostic {
 	}
 }
 
-impl SynthesizedModule {
+impl SynthesisedModule {
 	pub fn get_exports(&self) -> &HashMap<String, Variable> {
 		&self.exported_variables
 	}

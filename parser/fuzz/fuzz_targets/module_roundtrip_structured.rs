@@ -30,7 +30,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 
-	let output2 = module.to_string(&Tto_string_options);
+	let output2 = module.to_string(&to_string_options);
 
 	assert_eq!(output1, output2);
 

@@ -6,8 +6,8 @@ use super::operations::{Logical, MathematicalAndBitwise};
 
 pub enum Assignable {
 	Reference(Reference),
-	ObjectDestructuring(Vec<(TypeId, Reference)>),
-	ArrayDestructuring(Vec<Reference>),
+	ObjectDestructuring(Vec<(TypeId, Assignable)>),
+	ArrayDestructuring(Vec<Option<Assignable>>),
 }
 
 // TODO copy, when span copy
@@ -45,7 +45,7 @@ impl Reference {
 
 // TODO
 pub trait SynthesizableExpression {
-	fn synthesize_expression<U: crate::FSResolver>(
+	fn synthesise_expression<U: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U>,

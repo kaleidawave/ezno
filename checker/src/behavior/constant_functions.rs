@@ -4,7 +4,7 @@ use crate::{
 	context::get_on_ctx,
 	subtyping::check_satisfies,
 	types::{
-		functions::SynthesizedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
+		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
 	},
 	types::{poly_types::FunctionTypeArguments, printing::print_type, Type, TypeStore},
 	Constant, Environment, TypeId,
@@ -23,7 +23,7 @@ pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
 	call_site_type_args: &Option<Vec<(SpanWithSource, TypeId)>>,
-	arguments: &[SynthesizedArgument],
+	arguments: &[SynthesisedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,
@@ -76,7 +76,7 @@ pub(crate) fn call_constant_function(
 					crate::utils::notify!("{:?}", ty);
 					Ok(ConstantResult::Value(ty))
 				}
-				Err(_) => return Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
+				Err(_) => Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
 			}
 		}
 		"uppercase" | "lowercase" => {
@@ -98,7 +98,7 @@ pub(crate) fn call_constant_function(
 		"print_type" | "debug_type" => {
 			let debug = id == "debug_type";
 			let ty = arguments.first().unwrap().into_type().unwrap();
-			let ty_as_string = print_type(ty, types, &environment.into_general_context(), debug);
+			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantResult::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
 		"debug_effects" => {
@@ -118,14 +118,14 @@ pub(crate) fn call_constant_function(
 		"satisfies" => {
 			let ty = arguments.first().unwrap().into_type().unwrap();
 			// TODO temp!!!
-			let arg = call_site_type_args.iter().flatten().next().unwrap().1.clone();
+			let arg = call_site_type_args.iter().flatten().next().unwrap().1;
 			if check_satisfies(arg, ty, types, environment) {
 				Ok(ConstantResult::Value(ty))
 			} else {
 				Ok(ConstantResult::Diagnostic(format!(
 					"Expected {}, found {}",
-					print_type(ty, types, &environment.into_general_context(), false),
-					print_type(arg, types, &environment.into_general_context(), false)
+					print_type(ty, types, &environment.as_general_context(), false),
+					print_type(arg, types, &environment.as_general_context(), false)
 				)))
 			}
 		}
