@@ -58,7 +58,7 @@ pub use behavior::{
 	},
 	variables::check_variable_initialization,
 };
-pub use context::{GeneralContext, Root};
+pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use settings::TypeCheckSettings;
 pub use structures::{
@@ -173,7 +173,7 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 	pub(crate) fn load_and_check_module(
 		&mut self,
 		path: PathBuf,
-		base_environment: &mut Root,
+		base_environment: &mut RootContext,
 	) -> Result<
 		(&HashMap<String, Variable>, &mut DiagnosticsContainer, &mut TypeMappings),
 		ModuleFromPathError,
@@ -235,13 +235,13 @@ impl<'a, T: crate::FSResolver> CheckingData<'a, T> {
 		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				&self.types,
 				false,
 			);
 			let found = diagnostics::TypeStringRepresentation::from_type_id(
 				expr_ty,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				&self.types,
 				false,
 			);

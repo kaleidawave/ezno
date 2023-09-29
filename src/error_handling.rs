@@ -1,6 +1,5 @@
 use std::iter;
 
-use checker::SourceId;
 use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	files::Files,
@@ -11,7 +10,6 @@ use parser::source_map::FileSystem;
 pub(crate) fn emit_ezno_diagnostic(
 	diagnostic: checker::Diagnostic,
 	fs: &impl FileSystem,
-	source_id: SourceId,
 ) -> Result<(), codespan_reporting::files::Error> {
 	let diagnostic = match diagnostic {
 		checker::Diagnostic::Global { reason, kind } => Diagnostic {
@@ -25,7 +23,7 @@ pub(crate) fn emit_ezno_diagnostic(
 			severity: ezno_diagnostic_to_severity(kind),
 			code: None,
 			message: Default::default(),
-			labels: vec![Label::primary(source_id, position).with_message(reason)],
+			labels: vec![Label::primary(position.source, position).with_message(reason)],
 			notes: Vec::default(),
 		},
 		checker::Diagnostic::PositionWithAdditionLabels { reason, position, labels, kind } => {
@@ -36,10 +34,10 @@ pub(crate) fn emit_ezno_diagnostic(
 				severity: ezno_diagnostic_to_severity(kind),
 				code: None,
 				message: Default::default(),
-				labels: iter::once(Label::primary(source_id, position).with_message(reason))
+				labels: iter::once(Label::primary(position.source, position).with_message(reason))
 					.chain(labels.into_iter().map(|(message, position)| {
 						let position = position.unwrap();
-						Label::secondary(source_id, position).with_message(message)
+						Label::secondary(position.source, position).with_message(message)
 					}))
 					.collect(),
 				notes: notes.into_iter().map(|(message, _)| message).collect(),

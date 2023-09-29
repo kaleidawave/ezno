@@ -506,9 +506,9 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 #[cfg(test)]
 mod tests {
 
-	use crate::{context::Root, TypeMappings};
+	use crate::{context::RootContext, TypeMappings};
 
-	fn _get_base_environment() -> (Root, TypeMappings) {
+	fn _get_base_environment() -> (RootContext, TypeMappings) {
 		todo!()
 		// let mut type_mappings = TypeMappings::default();
 		// let environment = type_definition_file(

@@ -43,14 +43,14 @@ pub(crate) fn get_return_from_events<'a, U: crate::FSResolver>(
 							expected_return_type:
 								crate::diagnostics::TypeStringRepresentation::from_type_id(
 									expected_return_type,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									&checking_data.types,
 									false,
 								),
 							returned_type:
 								crate::diagnostics::TypeStringRepresentation::from_type_id(
 									*returned,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									&checking_data.types,
 									false,
 								),

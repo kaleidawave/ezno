@@ -2,8 +2,10 @@ use source_map::SourceId;
 
 use crate::{
 	ArrayDestructuringField, Expression, JSXElement, ObjectDestructuringField, PropertyKey,
-	Statement, WithComment,
+	StatementOrDeclaration, WithComment,
 };
+
+pub use temporary_annex::Annex;
 
 pub use ast::*;
 pub use structures::*;
@@ -50,11 +52,11 @@ mod ast {
 	pub trait SelfVisitableMut {}
 
 	mark_items! {
-		impl SelfVisitable for Expression, Statement, BlockLike<'_>, JSXElement, ImmutableVariableOrPropertyPart<'_>
+		impl SelfVisitable for Expression, StatementOrDeclarationRef<'_>, BlockLike<'_>, JSXElement, ImmutableVariableOrPropertyPart<'_>
 	}
 
 	mark_items! {
-		impl SelfVisitableMut for Expression, Statement, BlockLikeMut<'_>, JSXElement, MutableVariablePart<'_>
+		impl SelfVisitableMut for Expression, StatementOrDeclarationMut<'_>, BlockLikeMut<'_>, JSXElement, MutableVariablePart<'_>
 	}
 
 	/// For something to visitable it can visit all nested fields.
@@ -243,10 +245,9 @@ mod ast {
 
 /// These are structures used when visiting AST
 mod structures {
-
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		VariableFieldInSourceCode,
+		Declaration, Statement, VariableFieldInSourceCode,
 	};
 
 	use super::*;
@@ -394,6 +395,66 @@ mod structures {
 			}
 		}
 	}
+
+	pub enum StatementOrDeclarationRef<'a> {
+		Statement(&'a crate::Statement),
+		Declaration(&'a crate::Declaration),
+	}
+
+	impl<'a> From<&'a StatementOrDeclaration> for StatementOrDeclarationRef<'a> {
+		fn from(value: &'a StatementOrDeclaration) -> Self {
+			match value {
+				StatementOrDeclaration::Statement(item) => {
+					StatementOrDeclarationRef::Statement(item)
+				}
+				StatementOrDeclaration::Declaration(item) => {
+					StatementOrDeclarationRef::Declaration(item)
+				}
+			}
+		}
+	}
+
+	impl<'a> From<&'a Statement> for StatementOrDeclarationRef<'a> {
+		fn from(item: &'a Statement) -> Self {
+			StatementOrDeclarationRef::Statement(item)
+		}
+	}
+
+	impl<'a> From<&'a Declaration> for StatementOrDeclarationRef<'a> {
+		fn from(item: &'a Declaration) -> Self {
+			StatementOrDeclarationRef::Declaration(item)
+		}
+	}
+
+	pub enum StatementOrDeclarationMut<'a> {
+		Statement(&'a mut crate::Statement),
+		Declaration(&'a mut crate::Declaration),
+	}
+
+	impl<'a> From<&'a mut StatementOrDeclaration> for StatementOrDeclarationMut<'a> {
+		fn from(value: &'a mut StatementOrDeclaration) -> Self {
+			match value {
+				StatementOrDeclaration::Statement(item) => {
+					StatementOrDeclarationMut::Statement(item)
+				}
+				StatementOrDeclaration::Declaration(item) => {
+					StatementOrDeclarationMut::Declaration(item)
+				}
+			}
+		}
+	}
+
+	impl<'a> From<&'a mut Statement> for StatementOrDeclarationMut<'a> {
+		fn from(item: &'a mut Statement) -> Self {
+			StatementOrDeclarationMut::Statement(item)
+		}
+	}
+
+	impl<'a> From<&'a mut Declaration> for StatementOrDeclarationMut<'a> {
+		fn from(item: &'a mut Declaration) -> Self {
+			StatementOrDeclarationMut::Declaration(item)
+		}
+	}
 }
 
 mod visitors {
@@ -411,7 +472,13 @@ mod visitors {
 	pub trait VisitorReceiver<T> {
 		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {}
 
-		fn visit_statement(&mut self, statement: &Statement, data: &mut T, chain: &Chain) {}
+		fn visit_statement(
+			&mut self,
+			statement: StatementOrDeclarationRef,
+			data: &mut T,
+			chain: &Chain,
+		) {
+		}
 
 		fn visit_jsx_element(&mut self, element: &JSXElement, data: &mut T, chain: &Chain) {}
 
@@ -428,72 +495,18 @@ mod visitors {
 		fn visit_keyword(&mut self, keyword: &(TSXKeyword, &Span), data: &mut T, chain: &Chain) {}
 	}
 
-	// impl<T, U: VisitorReceiver<T>> VisitorReceiver<T> for [U] {
-	// 	fn visit_expression(
-	// 		&mut self,
-	// 		expression: &Expression,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_expression(expression, data, chain));
-	// 	}
-
-	// 	fn visit_statement(
-	// 		&mut self,
-	// 		statement: &Statement,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_statement(statement, data, chain));
-	// 	}
-
-	// 	fn visit_jsx_element(
-	// 		&mut self,
-	// 		element: &JSXElement,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_jsx_element(element, data, chain));
-	// 	}
-
-	// 	fn visit_variable(
-	// 		&mut self,
-	// 		variable: &ImmutableVariableOrPropertyPart,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut()
-	// 			.for_each(|visitor| visitor.visit_variable(variable, data,  chain));
-	// 	}
-
-	// 	fn visit_block(
-	// 		&mut self,
-	// 		block: &BlockLike,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut().for_each(|visitor| visitor.visit_block(block, data,  chain));
-	// 	}
-
-	// 	fn visit_keyword(
-	// 		&mut self,
-	// 		_keyword: &(TSXKeyword, &Span),
-	// 		_data: &mut T,
-	// 		_chain: &Chain,
-	// 	) {
-	// 	}
-	// }
-
 	impl<T> VisitorReceiver<T> for Visitors<T> {
 		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {
 			self.expression_visitors.iter_mut().for_each(|vis| vis.visit(expression, data, chain));
 		}
 
-		fn visit_statement(&mut self, statement: &Statement, data: &mut T, chain: &Chain) {
-			self.statement_visitors.iter_mut().for_each(|vis| vis.visit(statement, data, chain));
+		fn visit_statement(
+			&mut self,
+			statement: StatementOrDeclarationRef,
+			data: &mut T,
+			chain: &Chain,
+		) {
+			self.statement_visitors.iter_mut().for_each(|vis| vis.visit(&statement, data, chain));
 		}
 
 		fn visit_jsx_element(&mut self, jsx_element: &JSXElement, data: &mut T, chain: &Chain) {
@@ -522,14 +535,13 @@ mod visitors {
 	#[derive(Default)]
 	pub struct Visitors<T> {
 		pub expression_visitors: Vec<Box<dyn Visitor<Expression, T>>>,
-		pub statement_visitors: Vec<Box<dyn Visitor<Statement, T>>>,
+		pub statement_visitors: Vec<Box<dyn for<'a> Visitor<StatementOrDeclarationRef<'a>, T>>>,
 		pub jsx_element_visitors: Vec<Box<dyn Visitor<JSXElement, T>>>,
 		pub variable_visitors:
 			Vec<Box<dyn for<'a> Visitor<ImmutableVariableOrPropertyPart<'a>, T>>>,
 		pub block_visitors: Vec<Box<dyn for<'a> Visitor<BlockLike<'a>, T>>>,
 	}
 
-	// Implementors for functions
 	// impl<T, U> Visitor<Expression, T> for U
 	// where
 	// 	U: Fn(&Expression, &mut T),
@@ -584,7 +596,13 @@ mod visitors_mut {
 		) {
 		}
 
-		fn visit_statement_mut(&mut self, statement: &mut Statement, data: &mut T, chain: &Chain) {}
+		fn visit_statement_mut(
+			&mut self,
+			statement: StatementOrDeclarationMut,
+			data: &mut T,
+			chain: &Chain,
+		) {
+		}
 
 		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
 		}
@@ -603,43 +621,12 @@ mod visitors_mut {
 	#[derive(Default)]
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
-		pub statement_visitors_mut: Vec<Box<dyn VisitorMut<Statement, T>>>,
+		pub statement_visitors_mut:
+			Vec<Box<dyn for<'a> VisitorMut<StatementOrDeclarationMut<'a>, T>>>,
 		pub jsx_element_visitors_mut: Vec<Box<dyn VisitorMut<JSXElement, T>>>,
 		pub variable_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<MutableVariablePart<'a>, T>>>,
 		pub block_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>>,
 	}
-
-	// impl<T, U: VisitorMutReceiver<T>> VisitorMutReceiver<T> for [U] {
-	// 	fn visit_expression_mut(
-	// 		&mut self,
-	// 		expression: &mut Expression,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut().for_each(|vis| vis.visit_expression_mut(expression, data, chain));
-	// 	}
-
-	// 	fn visit_statement_mut(&mut self, statement: &mut Statement, data: &mut T, chain: &Chain) {
-	// 		self.iter_mut().for_each(|vis| vis.visit_statement_mut(statement, data, chain));
-	// 	}
-
-	// 	fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
-	// 		self.iter_mut().for_each(|vis| vis.visit_jsx_element_mut(element, data, chain));
-	// 	}
-
-	// 	fn visit_variable_mut(
-	// 		&mut self,
-	// 		variable: &mut MutableVariablePart,
-	// 		data: &mut T,
-	// 		chain: &Chain,
-	// 	) {
-	// 		self.iter_mut().for_each(|vis| vis.visit_variable_mut(variable, data, chain));
-	// 	}
-
-	// 	fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {
-	// 		self.iter_mut().for_each(|vis| vis.visit_block_mut(block, data, chain));
-	// 	}
-	// }
 
 	impl<T> VisitorMutReceiver<T> for VisitorsMut<T> {
 		fn visit_expression_mut(
@@ -653,10 +640,15 @@ mod visitors_mut {
 				.for_each(|vis| vis.visit_mut(expression, data, chain));
 		}
 
-		fn visit_statement_mut(&mut self, statement: &mut Statement, data: &mut T, chain: &Chain) {
+		fn visit_statement_mut(
+			&mut self,
+			mut statement: StatementOrDeclarationMut,
+			data: &mut T,
+			chain: &Chain,
+		) {
 			self.statement_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(statement, data, chain));
+				.for_each(|vis| vis.visit_mut(&mut statement, data, chain));
 		}
 
 		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {

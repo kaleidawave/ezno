@@ -3,7 +3,7 @@ use std::error::Error;
 use string_cases::StringCasesExt;
 use syn_helpers::{
 	derive_trait,
-	proc_macro2::{Ident, Span},
+	proc_macro2::{Ident, Span, TokenTree},
 	quote,
 	syn::{parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident},
 	Constructable, FieldMut, HasAttributes, NamedOrUnnamedFieldMut, Trait, TraitItem,
@@ -72,7 +72,9 @@ fn generated_visit_item(
 ) -> Result<Vec<Stmt>, Box<dyn Error>> {
 	let attributes = item.structure.get_attributes();
 
-	let visit_self = attributes.iter().any(|attr| attr.path.is_ident(VISIT_SELF_NAME));
+	let visit_self = attributes
+		.iter()
+		.find_map(|attr| attr.path.is_ident(VISIT_SELF_NAME).then_some(&attr.tokens));
 
 	let visit_with_chain = attributes
 		.iter()
@@ -84,13 +86,30 @@ fn generated_visit_item(
 		lines.push(parse_quote!( let mut chain = &mut chain.push_annex(#expr_tokens); ))
 	}
 
-	if visit_self {
-		let struct_name_as_snake_case = &item.structure.get_name().to_string().to_snake_case();
+	if let Some(tokens) = visit_self.cloned() {
+		let mut under = None;
+		if let Some(TokenTree::Group(g)) = tokens.into_iter().next() {
+			let mut tokens = g.stream().into_iter();
+			if let Some(TokenTree::Ident(ident)) = tokens.next() {
+				if ident == "under" {
+					if let Some(TokenTree::Ident(literal)) = tokens.next() {
+						under = Some(literal.to_string());
+					}
+				}
+			}
+			// TODO error
+		}
+
 		let mut_postfix =
 			matches!(visit_type, VisitType::Mutable).then_some("_mut").unwrap_or_default();
-		let func_name = format_ident!("visit_{}{}", struct_name_as_snake_case, mut_postfix);
-
-		lines.push(parse_quote!( visitors.#func_name(self, data,  chain); ))
+		if let Some(under) = under {
+			let func_name = format_ident!("visit_{}{}", under, mut_postfix);
+			lines.push(parse_quote!(visitors.#func_name(self.into(), data,  chain); ))
+		} else {
+			let struct_name_as_snake_case = &item.structure.get_name().to_string().to_snake_case();
+			let func_name = format_ident!("visit_{}{}", struct_name_as_snake_case, mut_postfix);
+			lines.push(parse_quote!( visitors.#func_name(self, data,  chain); ))
+		}
 	}
 
 	let mut field_lines = item.map_constructable(|mut constructable| {

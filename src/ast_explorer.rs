@@ -137,9 +137,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(cfg) => {
@@ -159,9 +157,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -178,9 +174,7 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&settings)));
 					}
-					Err(err) => {
-						emit_ezno_diagnostic((err, source_id).into(), &fs, source_id).unwrap()
-					}
+					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}
 			}
 			ExplorerSubCommand::Lexer(_) => {

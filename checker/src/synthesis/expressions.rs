@@ -399,13 +399,13 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 						TypeCheckError::PropertyDoesNotExist {
 							property: TypeStringRepresentation::from_type_id(
 								property,
-								&environment.into_general_context(),
+								&environment.as_general_context(),
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),
 							on: TypeStringRepresentation::from_type_id(
 								on,
-								&environment.into_general_context(),
+								&environment.as_general_context(),
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),
@@ -524,13 +524,13 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 						TypeCheckError::PropertyDoesNotExist {
 							property: TypeStringRepresentation::from_type_id(
 								indexer,
-								&environment.into_general_context(),
+								&environment.as_general_context(),
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),
 							on: TypeStringRepresentation::from_type_id(
 								indexee,
-								&environment.into_general_context(),
+								&environment.as_general_context(),
 								&checking_data.types,
 								checking_data.settings.debug_types,
 							),

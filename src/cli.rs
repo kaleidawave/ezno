@@ -13,7 +13,6 @@ use crate::{
 	utilities::print_to_cli,
 };
 use argh::FromArgs;
-use parser::SourceId;
 // use checker::{
 // 	BuildOutput, Plugin, Project, TypeCheckSettings, TypeCheckingVisitorGenerators,
 // 	TypeDefinitionModulePath,
@@ -34,7 +33,8 @@ enum CompilerSubCommand {
 	ASTExplorer(crate::ast_explorer::ExplorerArguments),
 	Check(CheckArguments),
 	// Run(RunArguments),
-	// Repl(repl::ReplArguments),
+	#[cfg(not(target_family = "wasm"))]
+	Repl(crate::repl::ReplArguments),
 	// #[cfg(debug_assertions)]
 	// Pack(Pack),
 }
@@ -150,21 +150,25 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		}
 		CompilerSubCommand::Build(build_config) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
-			let output = crate::commands::build(&fs_resolver, &build_config.input, build_config.definition_file.as_deref(), &output_path, build_config.minify);
+			let output = crate::commands::build(
+				&fs_resolver,
+				&build_config.input,
+				build_config.definition_file.as_deref(),
+				&output_path,
+				build_config.minify,
+			);
 			match output {
 				Ok(BuildOutput { diagnostics, fs, outputs }) => {
 					for output in outputs {
 						std::fs::write(output.output_path, output.content).unwrap();
 					}
 					for diagnostic in diagnostics.into_iter() {
-						let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
-						emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 					}
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
 					for diagnostic in diagnostics.into_iter() {
-						let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
-						emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 					}
 				}
 			}
@@ -172,12 +176,14 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(fs_resolver, cli_input_resolver),
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file } = check_arguments;
-			let (fs, diagnostics, _others) = crate::commands::check(&fs_resolver, &input, definition_file.as_deref());
+			let (fs, diagnostics, _others) =
+				crate::commands::check(&fs_resolver, &input, definition_file.as_deref());
 			for diagnostic in diagnostics.into_iter() {
-				let source_id = diagnostic.sources().next().unwrap_or(SourceId::NULL);
-				emit_ezno_diagnostic(diagnostic, &fs, source_id).unwrap();
+				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 			}
 		}
+		#[cfg(not(target_family = "wasm"))]
+		CompilerSubCommand::Repl(argument) => crate::repl::run_deno_repl(cli_input_resolver, argument),
 		// CompilerSubCommand::Run(run_arguments) => {
 		// 	let build_arguments = BuildArguments {
 		// 		input: run_arguments.input,
@@ -214,11 +220,5 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		// 	let _root_ctx = checker::root_context_from_bytes(file);
 		// 	println!("Registered {} types", _root_ctx.types.len());
 		// }
-		// CompilerSubCommand::Repl(argument) => repl::run_deno_repl(argument),
 	}
-}
-
-/// TODO + deserialize
-struct _Settings {
-	current_working_directory: Option<PathBuf>,
 }

@@ -19,7 +19,7 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	CheckingData, Root, TruthyFalsy, TypeId, VariableId,
+	CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{
@@ -45,7 +45,7 @@ pub struct Syntax<'a> {
 }
 
 impl<'a> ContextType for Syntax<'a> {
-	fn into_parent_or_root(et: &Context<Self>) -> GeneralContext<'_> {
+	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
 	}
 
@@ -91,6 +91,10 @@ pub enum Scope {
 	// Just blocks and modules
 	Block {},
 	Module {
+		source: SourceId,
+	},
+	/// For repl only
+	PassThrough {
 		source: SourceId,
 	},
 }
@@ -183,7 +187,7 @@ impl<'a> Environment<'a> {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -216,7 +220,7 @@ impl<'a> Environment<'a> {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -262,7 +266,7 @@ impl<'a> Environment<'a> {
 							},
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -292,7 +296,7 @@ impl<'a> Environment<'a> {
 							Ok(new) => new,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.into_general_context(),
+									&self.as_general_context(),
 									error,
 									assignment_span,
 									&checking_data.types,
@@ -372,13 +376,13 @@ impl<'a> Environment<'a> {
 							return Err(AssignmentError::DoesNotMeetConstraint {
 								variable_type: TypeStringRepresentation::from_type_id(
 									reassignment_constraint,
-									&self.into_general_context(),
+									&self.as_general_context(),
 									store,
 									false,
 								),
 								value_type: TypeStringRepresentation::from_type_id(
 									new_type,
-									&self.into_general_context(),
+									&self.as_general_context(),
 									store,
 									false,
 								),
@@ -406,7 +410,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn get_root(&self) -> &Root {
+	pub(crate) fn get_root(&self) -> &RootContext {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syntax) => syntax.get_root(),
 			GeneralContext::Root(root) => root,
@@ -457,13 +461,13 @@ impl<'a> Environment<'a> {
 					TypeCheckError::PropertyDoesNotExist {
 						property: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							property,
-							&self.into_general_context(),
+							&self.as_general_context(),
 							&checking_data.types,
 							false,
 						),
 						on: crate::diagnostics::TypeStringRepresentation::from_type_id(
 							on,
-							&self.into_general_context(),
+							&self.as_general_context(),
 							&checking_data.types,
 							false,
 						),

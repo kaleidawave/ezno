@@ -98,7 +98,7 @@ pub(crate) fn call_constant_function(
 		"print_type" | "debug_type" => {
 			let debug = id == "debug_type";
 			let ty = arguments.first().unwrap().into_type().unwrap();
-			let ty_as_string = print_type(ty, types, &environment.into_general_context(), debug);
+			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantResult::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
 		"debug_effects" => {
@@ -124,8 +124,8 @@ pub(crate) fn call_constant_function(
 			} else {
 				Ok(ConstantResult::Diagnostic(format!(
 					"Expected {}, found {}",
-					print_type(ty, types, &environment.into_general_context(), false),
-					print_type(arg, types, &environment.into_general_context(), false)
+					print_type(ty, types, &environment.as_general_context(), false),
+					print_type(arg, types, &environment.as_general_context(), false)
 				)))
 			}
 		}

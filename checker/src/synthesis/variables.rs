@@ -94,13 +94,13 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 										TypeCheckError::PropertyDoesNotExist {
 											property: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
@@ -181,13 +181,13 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 										TypeCheckError::PropertyDoesNotExist {
 											property: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												&checking_data.types,
 												false,
 											),

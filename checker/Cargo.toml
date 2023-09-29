@@ -17,7 +17,7 @@ default = []
 ezno-parser = ["parser"]
 
 [dependencies]
-source-map = { version = "0.14.2", features = ["serde-serialize"] }
+source-map = { version = "0.14.5", features = ["serde-serialize"] }
 
 binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
 

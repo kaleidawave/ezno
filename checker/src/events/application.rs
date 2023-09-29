@@ -79,7 +79,7 @@ pub(crate) fn apply_event(
 				Property::GetterAndSetter(_, _) => todo!(),
 			};
 
-			let gc = environment.into_general_context();
+			let gc = environment.as_general_context();
 
 			// crate::utils::notify!(
 			// 	"[Event::Setter] {}[{}] = {}",

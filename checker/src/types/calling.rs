@@ -159,7 +159,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		return Err(vec![FunctionCallingError::NotCallable {
 			calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
 				on,
-				&environment.into_general_context(),
+				&environment.as_general_context(),
 				types,
 				false,
 			),
@@ -525,7 +525,7 @@ impl FunctionType {
 				let on = crate::types::printing::print_type(
 					ty,
 					types,
-					&environment.into_general_context(),
+					&environment.as_general_context(),
 					true,
 				);
 				crate::utils::notify!("This argument {}", on);
@@ -592,7 +592,7 @@ impl FunctionType {
 										pos,
 										TypeStringRepresentation::from_type_id(
 											restriction,
-											&environment.into_general_context(),
+											&environment.as_general_context(),
 											types,
 											false,
 										),
@@ -604,13 +604,13 @@ impl FunctionType {
 							errors.push(FunctionCallingError::InvalidArgumentType {
 								parameter_type: TypeStringRepresentation::from_type_id(
 									parameter.ty,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
 								argument_type: TypeStringRepresentation::from_type_id(
 									*argument_type,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
@@ -698,7 +698,7 @@ impl FunctionType {
 											pos,
 											TypeStringRepresentation::from_type_id(
 												restriction,
-												&environment.into_general_context(),
+												&environment.as_general_context(),
 												types,
 												false,
 											),
@@ -710,13 +710,13 @@ impl FunctionType {
 								errors.push(FunctionCallingError::InvalidArgumentType {
 									parameter_type: TypeStringRepresentation::from_type_id(
 										rest_parameter.item_type,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										types,
 										false,
 									),
 									argument_type: TypeStringRepresentation::from_type_id(
 										*argument_type,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										types,
 										false,
 									),
@@ -785,13 +785,13 @@ impl FunctionType {
 								reference,
 								requirement: TypeStringRepresentation::from_type_id(
 									restriction,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
 								found: TypeStringRepresentation::from_type_id(
 									current_value,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
@@ -819,13 +819,13 @@ impl FunctionType {
 								reference,
 								requirement: TypeStringRepresentation::from_type_id(
 									restriction,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),
 								found: TypeStringRepresentation::from_type_id(
 									value_of_this,
-									&environment.into_general_context(),
+									&environment.as_general_context(),
 									types,
 									false,
 								),

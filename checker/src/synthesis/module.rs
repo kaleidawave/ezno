@@ -9,7 +9,7 @@ use super::block::synthesise_block;
 
 pub struct PostCheckData {
 	pub events: Vec<crate::events::Event>,
-	pub root: crate::Root,
+	pub root: crate::RootContext,
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 }
@@ -24,7 +24,7 @@ pub fn synthesise_module_root<T: crate::FSResolver>(
 	let mut checking_data = CheckingData::new(default_settings, &resolver);
 
 	let mut root = if type_definition_files.is_empty() {
-		crate::context::Root::new_with_primitive_references()
+		crate::context::RootContext::new_with_primitive_references()
 	} else {
 		// TODO concat and then combine
 		let path = type_definition_files.iter().next().unwrap();

@@ -38,7 +38,7 @@ pub(crate) fn specialize(
 				let on = crate::types::printing::print_type(
 					id,
 					types,
-					&environment.into_general_context(),
+					&environment.as_general_context(),
 					true,
 				);
 				crate::utils::notify!("Could not find argument for {}", on);

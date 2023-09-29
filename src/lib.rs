@@ -1,12 +1,12 @@
 mod ast_explorer;
 mod commands;
 mod error_handling;
-
-// mod repl;
+mod repl;
 
 pub(crate) mod utilities;
 
 pub mod cli;
+pub mod transformers;
 
 pub use checker::{Diagnostic, DiagnosticKind};
 pub use commands::{build, check};

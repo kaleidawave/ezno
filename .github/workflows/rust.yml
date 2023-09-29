@@ -59,7 +59,8 @@ jobs:
       - name: Check binary WASM
         run: |
           rustup target add wasm32-unknown-unknown
-          npm run check
+          # Need to build to check that the JS builds
+          npm run build
         working-directory: src/js-cli-and-library
 
       - name: Check parser without extras

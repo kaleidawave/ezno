@@ -83,13 +83,13 @@ pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 									},
 									attribute_type: TypeStringRepresentation::from_type_id(
 										attr_restriction,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										&checking_data.types,
 										checking_data.settings.debug_types,
 									),
 									value_type: TypeStringRepresentation::from_type_id(
 										attr_value,
-										&environment.into_general_context(),
+										&environment.as_general_context(),
 										&checking_data.types,
 										checking_data.settings.debug_types,
 									),

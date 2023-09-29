@@ -31,39 +31,9 @@ pub(super) fn synthesise_block<T: crate::FSResolver>(
 					break;
 				}
 			}
-			StatementOrDeclaration::Declaration(declaration) => match declaration {
-				Declaration::Variable(declaration) => {
-					synthesise_variable_declaration(declaration, environment, checking_data)
-				}
-				Declaration::Class(class) => {
-					let constructor =
-						synthesise_class_declaration(class, environment, checking_data);
-					let position = class.on.position.clone().with_source(environment.get_source());
-					let result = environment.declare_variable(
-						class.on.name.as_str(),
-						position.clone(),
-						constructor,
-						&mut checking_data.types,
-					);
-					if let Err(err) = result {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::ReDeclaredVariable {
-								name: class.on.name.as_str(),
-								position,
-							},
-						)
-					}
-				}
-				Declaration::DeclareVariable(_)
-				| Declaration::DeclareFunction(_)
-				| Declaration::DeclareInterface(_)
-				| Declaration::Function(_)
-				| Declaration::Enum(_)
-				| Declaration::Interface(_)
-				| Declaration::TypeAlias(_) => {}
-				Declaration::Import(_) => todo!(),
-				Declaration::Export(_) => todo!(),
-			},
+			StatementOrDeclaration::Declaration(declaration) => {
+				synthesize_declaration(declaration, environment, checking_data)
+			}
 		}
 	}
 
@@ -78,5 +48,42 @@ pub(super) fn synthesise_block<T: crate::FSResolver>(
 			// let span = statements.first().unwrap().get_position().union(&statements.last().unwrap().get_position());
 			// checking_data.diagnostics_container.add_error(TypeCheckError::StatementsNotRun { between: span });
 		}
+	}
+}
+
+pub(crate) fn synthesize_declaration<T: crate::FSResolver>(
+	declaration: &Declaration,
+	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	checking_data: &mut CheckingData<'_, T>,
+) {
+	match declaration {
+		Declaration::Variable(declaration) => {
+			synthesise_variable_declaration(declaration, environment, checking_data)
+		}
+		Declaration::Class(class) => {
+			let constructor = synthesise_class_declaration(class, environment, checking_data);
+			let position = class.on.position.clone().with_source(environment.get_source());
+			let result = environment.declare_variable(
+				class.on.name.as_str(),
+				position.clone(),
+				constructor,
+				&mut checking_data.types,
+			);
+			if let Err(err) = result {
+				checking_data.diagnostics_container.add_error(TypeCheckError::ReDeclaredVariable {
+					name: class.on.name.as_str(),
+					position,
+				})
+			}
+		}
+		Declaration::DeclareVariable(_)
+		| Declaration::DeclareFunction(_)
+		| Declaration::DeclareInterface(_)
+		| Declaration::Function(_)
+		| Declaration::Enum(_)
+		| Declaration::Interface(_)
+		| Declaration::TypeAlias(_) => {}
+		Declaration::Import(_) => todo!(),
+		Declaration::Export(_) => todo!(),
 	}
 }
