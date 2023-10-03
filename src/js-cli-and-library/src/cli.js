@@ -5,8 +5,7 @@ import { readFileSync } from "node:fs";
 
 const wasmPath = new URL("./shared/ezno_lib_bg.wasm", import.meta.url);
 if (wasmPath.protocol === "https:") {
-    throw Exception("Cannot fetch remote")
-    // initSync(await fetch(wasmPath).then(response => response.arrayBuffer()))
+    initSync(await fetch(wasmPath).then(response => response.arrayBuffer()))
 } else {
     initSync(readFileSync(wasmPath));
 }
@@ -14,9 +13,7 @@ if (wasmPath.protocol === "https:") {
 const onDeno = typeof Deno !== "undefined";
 const cliArguments = onDeno ? Deno.args : process.argv.slice(2);
 
-run_cli(cliArguments, (path) => {
-    return readFileSync(path).toString()
-}, (prompt_msg) => {
+run_cli(cliArguments, (path) => readFileSync(path).toString(), (prompt_msg) => {
     if (typeof Deno !== "undefined") {
         return prompt(`${prompt_msg}>`)
     } else {

@@ -2,10 +2,8 @@ use super::{generic_type_arguments::FunctionTypeArguments, ResolveGenerics};
 use crate::{CheckingData, DiagnosticsContainer, TypeId};
 
 /// A instance of a generic typed object
-///
-/// aka a specialized generic type
 #[derive(Clone, Debug)]
-pub struct SpecializedGeneric {
+pub struct GenericStructure {
 	pub generic_type: TypeId,
 	pub arguments: GenericStructureTypeArguments,
 }
@@ -81,22 +79,6 @@ impl ResolveGenerics for GenericStructureTypeArgument {
 			//     environment,
 			// ))
 		}
-	}
-}
-
-impl SpecializedGeneric {
-	/// Will return a empty if it is valid. Otherwise a [TypeCheckErrors] as to why it is invalid
-	/// Will add missing generic type arguments to the arguments list
-	pub(crate) fn _validate(&self, error_handler: &mut DiagnosticsContainer) {
-		todo!()
-		// let underlying_object_type =
-		//     if let Type::Object(object_type) = &*self.ty { object_type } else { panic!() };
-		// let type_parameters_borrow = underlying_object_type.generic_type_parameters.borrow_mut();
-		// if type_parameters_borrow.is_empty() {
-		//     return Err(TypeCheckError::TypeHasNoGenericParameters(&self.ty));
-		// }
-		// dbg!(&type_parameters_borrow.iter().map(|tp| tp.to_string()).collect::<Vec<_>>());
-		// Ok(())
 	}
 }
 

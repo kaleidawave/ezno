@@ -10,7 +10,7 @@ mod terms;
 
 use derive_debug_extras::DebugExtras;
 
-pub(crate) use poly_types::specialization::*;
+pub(crate) use poly_types::substitution::*;
 
 pub(crate) use casts::*;
 use source_map::{Span, SpanWithSource};
@@ -106,7 +106,7 @@ pub enum Type {
 	And(TypeId, TypeId),
 	Or(TypeId, TypeId),
 	RootPolyType(PolyNature),
-	/// Also a "Specialized constructor type"
+	/// Also a "Subsititued constructor type"
 	Constructor(Constructor),
 	/// For number and other rooted types
 	///

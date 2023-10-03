@@ -33,11 +33,9 @@ pub struct Syntax<'a> {
 	pub kind: Scope,
 	pub(super) parent: GeneralContext<'a>,
 
-	/// Variables that this context pulls in from above (across a dynamic context).
+	/// Variables that this context pulls in from above (across a dynamic context). aka not from parameters of bound this
 	/// Not to be confused with `closed_over_references`
-	///
-	/// TypeId points to the constraint, not the generic type.
-	pub used_parent_references: HashSet<RootReference>,
+	pub free_variables: HashSet<RootReference>,
 
 	/// Variables used in this scope which are closed over by functions. These need to be stored
 	/// Not to be confused with `used_parent_references`
@@ -581,7 +579,7 @@ impl<'a> Environment<'a> {
 				let ty = checking_data.types.register_type(ty);
 
 				// TODO would it be useful to record the type somewhere?
-				self.context_type.used_parent_references.insert(reference);
+				self.context_type.free_variables.insert(reference);
 
 				// if inferred {
 				// 	self.context_type.get_inferrable_constraints_mut().unwrap().insert(type_id);

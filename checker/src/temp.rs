@@ -59,7 +59,7 @@ pub struct AssertTypeExplainer;
 
 // 		let specializations = data.environment.specializations.get(&type_id);
 // 		if let Some(specializations) = specializations {
-// 			value_as_string.push_str(" specialized with ");
+// 			value_as_string.push_str(" subsititued with ");
 // 			for specialization in specializations.iter().copied() {
 // 				let ty = data.environment.get_type_by_id(specialization);
 // 				let specializations_as_string = TypeDisplay::to_string(
@@ -121,7 +121,7 @@ pub struct AssertTypeExplainer;
 // 		let specializations = data.environment.specializations.get(&type_id);
 // 		if let Some(_specializations) = specializations {
 // 			todo!()
-// 		// value_as_string.push_str(" specialized with ");
+// 		// value_as_string.push_str(" subsititued with ");
 // 		// for specialization in specializations.iter().copied() {
 // 		// 	let ty = data.environment.get_type_by_id(specialization);
 // 		// 	let specializations_as_string = (specialization, ty)

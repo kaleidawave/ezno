@@ -12,7 +12,7 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		specialize,
+		subsititue,
 	},
 	types::{FunctionType, Type},
 	FunctionId, TypeId,
@@ -726,7 +726,7 @@ impl FunctionType {
 								})
 							}
 						} else {
-							todo!("specialize")
+							todo!("subsititue")
 						}
 					}
 				} else {
@@ -868,7 +868,7 @@ impl FunctionType {
 			if let Some(closure_id) = closure_id {
 				// Set closed over values
 				for (reference, value) in self.closed_over_variables.iter() {
-					let value = specialize(*value, &mut type_arguments, environment, types);
+					let value = subsititue(*value, &mut type_arguments, environment, types);
 					environment
 						.facts
 						.closure_current_values
@@ -897,7 +897,7 @@ impl FunctionType {
 
 		// set events should cover property specialization here:
 		// let returned_type = if let CalledWithNew::New { ..} = called_with_new {
-		// 	// TODO specialize under the primitive conditional rules
+		// 	// TODO subsititue under the primitive conditional rules
 		// 	let new_instance_type = type_arguments
 		// 		.local_arguments
 		// 		.get_mut(&TypeId::THIS_ARG)
@@ -909,7 +909,7 @@ impl FunctionType {
 		// } else {
 		// };
 
-		let returned_type = specialize(self.return_type, &mut type_arguments, environment, types);
+		let returned_type = subsititue(self.return_type, &mut type_arguments, environment, types);
 
 		Ok(FunctionCallResult {
 			returned_type,

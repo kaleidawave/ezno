@@ -53,7 +53,7 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 				left_result
 			};
 		}
-		// TODO this causes problems when the LHS has a parameters that are specialized
+		// TODO this causes problems when the LHS has a parameters that are subsititued
 		// Type::Constructor(..) | Type::RootPolyType(..) => {
 		// 	if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type)) {
 		// 		return type_is_subtype(

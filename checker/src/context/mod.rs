@@ -803,7 +803,7 @@ impl<T: ContextType> Context<T> {
 			context_type: environment::Syntax {
 				kind: new_scope,
 				parent: T::as_general_context(self),
-				used_parent_references: Default::default(),
+				free_variables: Default::default(),
 				closed_over_references: Default::default(),
 			},
 			can_use_this,
@@ -903,8 +903,11 @@ impl<T: ContextType> Context<T> {
 			})
 			.collect();
 
-		let Syntax { used_parent_references, closed_over_references: function_closes_over, .. } =
-			func_env.context_type;
+		let Syntax {
+			free_variables: used_parent_references,
+			closed_over_references: function_closes_over,
+			..
+		} = func_env.context_type;
 
 		let facts = func_env.facts;
 
@@ -994,7 +997,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO
-	/// - Make internal (public methods should specialize for different scopes)
+	/// - Make internal (public methods should subsititue for different scopes)
 	/// - Make less complex
 	pub fn new_lexical_environment_fold_into_parent<U: crate::FSResolver, Res>(
 		&mut self,
@@ -1019,7 +1022,7 @@ impl<T: ContextType> Context<T> {
 					kind: scope,
 					// Import for parent to be dropped here
 					parent: _,
-					used_parent_references,
+					free_variables: used_parent_references,
 					closed_over_references,
 				},
 			can_use_this,
@@ -1049,7 +1052,7 @@ impl<T: ContextType> Context<T> {
 				crate::utils::notify!("TODO scoping stuff");
 				crate::utils::notify!("What about deferred function constraints");
 
-				todo!("events should be specialized");
+				todo!("events should be subsititued");
 				None
 				// Some((events, closed_over_references))
 			}
@@ -1132,7 +1135,7 @@ impl<T: ContextType> Context<T> {
 			context_type: Syntax {
 				kind: environment.scope,
 				parent: self.as_general_context(),
-				used_parent_references: Default::default(),
+				free_variables: Default::default(),
 				closed_over_references: Default::default(),
 			},
 			context_id,
@@ -1171,7 +1174,7 @@ impl<T: ContextType> Context<T> {
 						kind: scope,
 						// Import for parent to be dropped here
 						parent: _,
-						used_parent_references,
+						free_variables: used_parent_references,
 						closed_over_references,
 					},
 				can_use_this,

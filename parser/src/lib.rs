@@ -495,7 +495,13 @@ impl FromStr for NumberStructure {
 		if let Some(s) = s.strip_prefix('0') {
 			let next_char = s.chars().next();
 			match next_char {
-				Some('.') => Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?))),
+				Some('.') => {
+					if s.len() == 2 {
+						Ok(Self::Number(0f64))
+					} else {
+						Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
+					}
+				}
 				Some('X' | 'x') => {
 					let mut number = 0u64;
 					for c in s[2..].as_bytes().iter().rev() {
@@ -545,7 +551,7 @@ impl FromStr for NumberStructure {
 				None => Ok(Self::Number(0.)),
 			}
 		} else if s.ends_with('.') {
-			Ok(Self::Number(sign.apply(format!("{s}0").parse().map_err(|_| s.to_owned())?)))
+			Ok(Self::Number(sign.apply(s[..s.len() - 1].parse().map_err(|_| s.to_owned())?)))
 		} else {
 			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
 		}
