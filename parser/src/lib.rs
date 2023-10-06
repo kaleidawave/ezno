@@ -482,16 +482,21 @@ impl From<f64> for NumberStructure {
 impl FromStr for NumberStructure {
 	type Err = String;
 
-	// TODO separators
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if s == "NaN" {
 			return Ok(Self::NaN);
 		}
+
+		if s.contains('_') {
+			return s.replace('_', "").parse();
+		}
+
 		let (sign, s) = if let Some(s) = s.strip_prefix('-') {
 			(NumberSign::Negative, s)
 		} else {
 			(NumberSign::Positive, s)
 		};
+
 		if let Some(s) = s.strip_prefix('0') {
 			let next_char = s.chars().next();
 			match next_char {
@@ -504,7 +509,7 @@ impl FromStr for NumberStructure {
 				}
 				Some('X' | 'x') => {
 					let mut number = 0u64;
-					for c in s[2..].as_bytes().iter().rev() {
+					for c in s[2..].as_bytes().iter() {
 						number <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
@@ -523,7 +528,7 @@ impl FromStr for NumberStructure {
 				}
 				Some('b' | 'B') => {
 					let mut number = 0u64;
-					for c in s[2..].as_bytes().iter().rev() {
+					for c in s[2..].as_bytes().iter() {
 						number <<= 1;
 						match c {
 							b'0' | b'1' => {
@@ -538,7 +543,7 @@ impl FromStr for NumberStructure {
 				Some(c) => {
 					let start = if matches!(c, 'o' | 'O') { 2 } else { 1 };
 					let mut number = 0u64;
-					for c in s[start..].as_bytes().iter().rev() {
+					for c in s[start..].as_bytes().iter() {
 						number <<= 3; // 8=2^3
 						if matches!(c, b'0'..=b'7') {
 							number += (c - b'0') as u64;
@@ -552,6 +557,10 @@ impl FromStr for NumberStructure {
 			}
 		} else if s.ends_with('.') {
 			Ok(Self::Number(sign.apply(s[..s.len() - 1].parse().map_err(|_| s.to_owned())?)))
+		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
+			let value: f64 = left.parse().map_err(|_| s.to_owned())?;
+			let expo: i32 = right.parse().map_err(|_| s.to_owned())?;
+			Ok(Self::Number(sign.apply((value * 10f64.powi(expo)) as f64)))
 		} else {
 			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
 		}
@@ -589,9 +598,10 @@ impl NumberStructure {
 			NumberStructure::Infinity => "Infinity".to_owned(),
 			NumberStructure::NegativeInfinity => "-Infinity".to_owned(),
 			NumberStructure::NaN => "NaN".to_owned(),
-			NumberStructure::Hex(sign, value) => format!("{sign}0x{value}"),
-			NumberStructure::Bin(sign, value) => format!("{sign}0b{value}"),
-			NumberStructure::Octal(sign, value) => format!("{sign}0o{value}"),
+			NumberStructure::Hex(sign, value) |
+			NumberStructure::Bin(sign, value) |
+			// TODO should it retain the name?
+			NumberStructure::Octal(sign, value) => format!("{sign}{value}"),
 			NumberStructure::Number(number) => number.to_string(),
 		}
 	}

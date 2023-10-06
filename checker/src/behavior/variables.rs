@@ -3,11 +3,11 @@ use source_map::{Span, SpanWithSource};
 use crate::context::AssignmentError;
 use crate::{CheckingData, TypeId};
 
-pub fn check_variable_initialization<T: crate::FSResolver>(
+pub fn check_variable_initialization<T: crate::FSResolver, V>(
 	(variable_declared_type, variable_declared_pos): (TypeId, SpanWithSource),
 	(expression_type, expression_declared_pos): (TypeId, SpanWithSource),
 	environment: &mut crate::context::Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, V>,
 ) {
 	use crate::types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult};
 

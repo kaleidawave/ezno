@@ -1,8 +1,9 @@
-use parser::{visiting::StatementOrDeclarationMut, Declaration};
+pub mod type_to_js;
+
+use parser::{visiting::StatementOrDeclarationMut, Declaration, Module, StatementOrDeclaration};
 
 pub struct ConstToLet;
 
-// TODO different data
 impl parser::visiting::VisitorMut<StatementOrDeclarationMut<'_>, ()> for ConstToLet {
 	fn visit_mut(
 		&mut self,
@@ -33,4 +34,13 @@ impl parser::visiting::VisitorMut<StatementOrDeclarationMut<'_>, ()> for ConstTo
 			}
 		}
 	}
+}
+
+// Removes non import statements
+pub fn filter_imports(m: &mut Module) {
+	m.items = m
+		.items
+		.drain(..)
+		.filter(|p| matches!(p, StatementOrDeclaration::Declaration(Declaration::Import(..))))
+		.collect();
 }

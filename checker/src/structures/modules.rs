@@ -4,19 +4,12 @@ use derive_enum_from_into::EnumFrom;
 
 use crate::{Diagnostic, Variable};
 
-pub struct Module {
-	pub path: PathBuf,
-}
-
-pub struct SynthesisedModule {
-	pub module: Module,
+pub struct SynthesisedModule<M> {
+	pub content: M,
 	// TODO this should not be on unchecked module
 	// TODO export default
 	pub(crate) exported_variables: HashMap<String, Variable>,
 }
-
-// TODO
-// pub(crate) struct CheckedModule<TStage> { exported }
 
 #[derive(Debug, EnumFrom)]
 pub enum ModuleFromPathError {
@@ -32,7 +25,7 @@ impl From<ModuleFromPathError> for Diagnostic {
 	}
 }
 
-impl SynthesisedModule {
+impl<U> SynthesisedModule<U> {
 	pub fn get_exports(&self) -> &HashMap<String, Variable> {
 		&self.exported_variables
 	}

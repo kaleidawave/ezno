@@ -11,7 +11,7 @@ use crate::{
 
 use super::generic_type_arguments::{StructureGenericArguments, TypeArgumentStore};
 
-pub(crate) fn subsititue(
+pub(crate) fn substitute(
 	id: TypeId,
 	arguments: &mut impl TypeArgumentStore,
 	// TODO temp
@@ -48,8 +48,8 @@ pub(crate) fn subsititue(
 		// TODO environment should hold what dependents on what to reduce excess here
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs, .. } => {
-				let lhs = subsititue(lhs, arguments, environment, types);
-				let rhs = subsititue(rhs, arguments, environment, types);
+				let lhs = substitute(lhs, arguments, environment, types);
+				let rhs = substitute(rhs, arguments, environment, types);
 
 				evaluate_mathematical_operation(lhs, operator, rhs, types)
 					.expect("restriction about binary operator failed")
@@ -94,7 +94,7 @@ pub(crate) fn subsititue(
 				// 	)
 				// );
 
-				let condition = subsititue(condition, arguments, environment, types);
+				let condition = substitute(condition, arguments, environment, types);
 
 				// crate::utils::notify!(
 				// 	"after on={} true={} false={}",
@@ -120,13 +120,13 @@ pub(crate) fn subsititue(
 
 				if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
 					if result {
-						subsititue(truthy_result, arguments, environment, types)
+						substitute(truthy_result, arguments, environment, types)
 					} else {
-						subsititue(else_result, arguments, environment, types)
+						substitute(else_result, arguments, environment, types)
 					}
 				} else {
-					let truthy_result = subsititue(truthy_result, arguments, environment, types);
-					let else_result = subsititue(else_result, arguments, environment, types);
+					let truthy_result = substitute(truthy_result, arguments, environment, types);
+					let else_result = substitute(else_result, arguments, environment, types);
 					// TODO result_union
 					let ty = Constructor::ConditionalResult {
 						condition,
@@ -141,15 +141,15 @@ pub(crate) fn subsititue(
 			Constructor::Property { .. } | Constructor::FunctionResult { .. } => {
 				unreachable!("this should have covered by event specialization");
 
-				// let on = subsititue(on, arguments, environment);
+				// let on = substitute(on, arguments, environment);
 
-				// crate::utils::notify!("Subsititued {}", environment.debug_type(on));
+				// crate::utils::notify!("Substituted {}", environment.debug_type(on));
 
 				// let func_arguments = with
 				// 	.into_iter()
 				// 	.map(|argument| match argument {
 				// 		synthesisedArgument::NonSpread { ty, pos } => {
-				// 			let ty = subsititue(*ty, arguments, environment);
+				// 			let ty = substitute(*ty, arguments, environment);
 				// 			synthesisedArgument::NonSpread { ty, pos: pos.clone() }
 				// 		}
 				// 	})
@@ -159,10 +159,10 @@ pub(crate) fn subsititue(
 				// 	call_type(on, func_arguments, None, None, environment, checking_data)
 				// 		.expect("Inferred constraints and checking failed");
 
-				// crate::utils::notify!("TODO getting a property not subsititued during calling");
+				// crate::utils::notify!("TODO getting a property not substituted during calling");
 
-				// let on = subsititue(on, arguments, environment, checking_data);
-				// let property = subsititue(property, arguments, environment, checking_data);
+				// let on = substitute(on, arguments, environment, checking_data);
+				// let property = substitute(property, arguments, environment, checking_data);
 
 				// environment
 				// 	.get_property(on, property, checking_data, None)
@@ -175,7 +175,7 @@ pub(crate) fn subsititue(
 				let type_arguments = structure_arguments
 					.type_arguments
 					.into_iter()
-					.map(|(lhs, with)| (lhs, subsititue(with, arguments, environment, types)))
+					.map(|(lhs, with)| (lhs, substitute(with, arguments, environment, types)))
 					.collect();
 
 				types.register_type(Type::Constructor(Constructor::StructureGenerics(
@@ -190,7 +190,7 @@ pub(crate) fn subsititue(
 			}
 
 			// Constructor::PrototypeOf(prototype) => {
-			// 	let prototype = subsititue(prototype, arguments, environment, types);
+			// 	let prototype = substitute(prototype, arguments, environment, types);
 			// 	if let Type::AliasTo { to, .. } = types.get_type_by_id(prototype) {
 			// 		crate::utils::notify!(
 			// 			"TODO temp might have to do more here when specializing a prototype"
@@ -209,8 +209,8 @@ pub(crate) fn subsititue(
 						crate::behavior::operations::EqualityAndInequality::LessThan
 					}
 				};
-				let lhs = subsititue(lhs, arguments, environment, types);
-				let rhs = subsititue(rhs, arguments, environment, types);
+				let lhs = substitute(lhs, arguments, environment, types);
+				let rhs = substitute(rhs, arguments, environment, types);
 
 				evaluate_equality_inequality_operation(lhs, operator, rhs, types)
 					.expect("restriction about binary operator failed")
@@ -218,8 +218,8 @@ pub(crate) fn subsititue(
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { ty, extends } => {
-					let ty = subsititue(ty, arguments, environment, types);
-					let extends = subsititue(extends, arguments, environment, types);
+					let ty = substitute(ty, arguments, environment, types);
+					let extends = substitute(extends, arguments, environment, types);
 
 					todo!();
 					// TODO special behavior that doesn't have errors...

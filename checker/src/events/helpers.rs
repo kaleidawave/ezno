@@ -14,9 +14,9 @@ pub(crate) enum ReturnedTypeFromBlock {
 }
 
 /// TODO will cover move, like yield events and stuff
-pub(crate) fn get_return_from_events<'a, U: crate::FSResolver>(
+pub(crate) fn get_return_from_events<'a, T: crate::FSResolver, U>(
 	iter: &mut (impl Iterator<Item = &'a Event> + ExactSizeIterator),
-	checking_data: &mut CheckingData<U>,
+	checking_data: &mut CheckingData<T, U>,
 	environment: &mut Environment,
 	expected_return_type: Option<(TypeId, source_map::SpanWithSource)>,
 ) -> ReturnedTypeFromBlock {

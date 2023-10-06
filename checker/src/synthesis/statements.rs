@@ -5,7 +5,7 @@ use crate::{
 	context::{ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
 	events::Event,
-	CheckingData, Environment, SynthesizableConditional, TypeId, Variable,
+	CheckingData, Environment, SynthesisableConditional, TypeId, Variable,
 };
 use parser::{
 	statements::{ConditionalElseStatement, UnconditionalElseStatement},
@@ -19,7 +19,7 @@ pub type ReturnResult = Option<TypeId>;
 pub(super) fn synthesise_statement<T: crate::FSResolver>(
 	statement: &Statement,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	match statement {
 		Statement::Expression(expression) => {
@@ -102,13 +102,13 @@ pub(super) fn synthesise_statement<T: crate::FSResolver>(
 			}
 
 			// TODO tidy
-			impl<'a> SynthesizableConditional for IfStatementBranch<'a> {
+			impl<'a> SynthesisableConditional<parser::Module> for IfStatementBranch<'a> {
 				type ExpressionResult = ();
 
 				fn synthesise_condition<T: crate::FSResolver>(
 					self,
 					environment: &mut Environment,
-					checking_data: &mut CheckingData<T>,
+					checking_data: &mut CheckingData<T, parser::Module>,
 				) -> Self::ExpressionResult {
 					match self {
 						IfStatementBranch::Branch(branch) => match branch {
@@ -318,7 +318,7 @@ pub(super) fn synthesise_statement<T: crate::FSResolver>(
 fn synthesise_block_or_single_statement<T: crate::FSResolver>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	scope: Scope,
 ) -> ((), Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 	environment.new_lexical_environment_fold_into_parent(

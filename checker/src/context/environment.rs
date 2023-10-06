@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use crate::{
 	behavior::{
-		assignments::{Assignable, AssignmentKind, Reference, SynthesizableExpression},
+		assignments::{Assignable, AssignmentKind, Reference, SynthesisableExpression},
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
@@ -103,22 +103,26 @@ impl<'a> Environment<'a> {
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
 	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
-	pub fn assign_to_assignable_handle_errors<U: crate::FSResolver>(
+	pub fn assign_to_assignable_handle_errors<
+		U: crate::FSResolver,
+		M: crate::SynthesisableModule,
+		T: SynthesisableExpression<M>,
+	>(
 		&mut self,
 		lhs: Assignable,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
-		expression: Option<&impl SynthesizableExpression>,
+		expression: Option<&T>,
 		assignment_span: SpanWithSource,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId {
 		match lhs {
 			Assignable::Reference(reference) => {
 				/// Returns
-				fn get_reference<U: crate::FSResolver>(
+				fn get_reference<U: crate::FSResolver, M: crate::SynthesisableModule>(
 					env: &mut Environment,
 					reference: Reference,
-					checking_data: &mut CheckingData<U>,
+					checking_data: &mut CheckingData<U, M>,
 				) -> TypeId {
 					match reference {
 						Reference::Variable(name, position) => {
@@ -132,11 +136,11 @@ impl<'a> Environment<'a> {
 					}
 				}
 
-				fn set_reference<U: crate::FSResolver>(
+				fn set_reference<U: crate::FSResolver, V>(
 					env: &mut Environment,
 					reference: Reference,
 					new: TypeId,
-					checking_data: &mut CheckingData<U>,
+					checking_data: &mut CheckingData<U, V>,
 				) -> Result<TypeId, SetPropertyError> {
 					match reference {
 						Reference::Variable(name, position) => Ok(env
@@ -312,12 +316,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn assign_to_variable_handle_errors<T: crate::FSResolver>(
+	pub fn assign_to_variable_handle_errors<T: crate::FSResolver, V>(
 		&mut self,
 		variable_name: &str,
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, V>,
 	) -> TypeId {
 		let result = self.assign_to_variable(
 			variable_name,
@@ -445,11 +449,11 @@ impl<'a> Environment<'a> {
 		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
 	}
 
-	pub fn get_property_handle_errors<U: crate::FSResolver>(
+	pub fn get_property_handle_errors<U: crate::FSResolver, V>(
 		&mut self,
 		on: TypeId,
 		property: TypeId,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, V>,
 		site: SpanWithSource,
 	) -> TypeId {
 		match self.get_property(on, property, &mut checking_data.types, None) {
@@ -477,11 +481,11 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn get_variable_or_error<U: crate::FSResolver>(
+	pub fn get_variable_or_error<U: crate::FSResolver, V>(
 		&mut self,
 		name: &str,
 		position: SpanWithSource,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, V>,
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
@@ -605,16 +609,17 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T: crate::FSResolver, U>(
+	pub(crate) fn new_conditional_context<T: crate::FSResolver, U, M>(
 		&mut self,
 		condition: TypeId,
 		then_evaluate: U,
 		// TODO maybe V::Other
 		else_evaluate: Option<U>,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> U::ExpressionResult
 	where
-		U: crate::SynthesizableConditional,
+		M: crate::SynthesisableModule,
+		U: crate::SynthesisableConditional<M>,
 	{
 		if let TruthyFalsy::Decidable(result) =
 			is_type_truthy_falsy(condition, &checking_data.types)
@@ -702,12 +707,12 @@ impl<'a> Environment<'a> {
 	}
 
 	/// Initializing
-	pub fn create_property<U: crate::FSResolver>(
+	pub fn create_property<U: crate::FSResolver, V>(
 		&mut self,
 		on: TypeId,
 		under: TypeId,
 		new: Property,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, V>,
 	) {
 		self.facts.current_properties.entry(on).or_default().push((under, new));
 	}

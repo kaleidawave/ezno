@@ -32,6 +32,14 @@ pub struct TypeMappings {
 
 	/// Variable restriction. Cached after hoisting pass. TODO temp needs tidy
 	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, SpanWithSource)>,
+	/// Temp
+	pub special_expressions: RangeMap<SpecialExpressions>,
+}
+
+#[derive(Debug)]
+pub enum SpecialExpressions {
+	CompileOut,
+	Marker,
 }
 
 #[derive(Default, Debug)]

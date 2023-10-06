@@ -12,10 +12,10 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		subsititue,
+		substitute,
 	},
 	types::{FunctionType, Type},
-	FunctionId, TypeId,
+	FunctionId, SpecialExpressions, TypeId,
 };
 
 use super::{
@@ -26,7 +26,7 @@ use super::{
 	Constructor, FunctionKind, PolyNature, StructureGenerics, TypeStore,
 };
 
-pub fn call_type_handle_errors<T: crate::FSResolver>(
+pub fn call_type_handle_errors<T: crate::FSResolver, U>(
 	ty: TypeId,
 	// Overwritten by .call, else look at binding
 	called_with_new: CalledWithNew,
@@ -35,8 +35,8 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
-	checking_data: &mut crate::CheckingData<T>,
-) -> TypeId {
+	checking_data: &mut crate::CheckingData<T, U>,
+) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,
 		called_with_new,
@@ -49,7 +49,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 		&mut checking_data.types,
 	);
 	match result {
-		Ok(FunctionCallResult { returned_type, warnings, called }) => {
+		Ok(FunctionCallResult { returned_type, warnings, called, special }) => {
 			for warning in warnings {
 				checking_data.diagnostics_container.add_info(
 					crate::diagnostics::Diagnostic::Position {
@@ -63,7 +63,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 			if let Some(called) = called {
 				checking_data.type_mappings.called_functions.insert(called);
 			}
-			returned_type
+			(returned_type, special)
 		}
 		Err(errors) => {
 			for error in errors {
@@ -71,7 +71,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver>(
 					.diagnostics_container
 					.add_error(TypeCheckError::FunctionCallingError(error))
 			}
-			TypeId::ERROR_TYPE
+			(TypeId::ERROR_TYPE, None)
 		}
 	}
 }
@@ -97,6 +97,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 			called: None,
 			returned_type: TypeId::ERROR_TYPE,
 			warnings: Vec::new(),
+			special: None,
 		});
 	}
 
@@ -200,7 +201,25 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 	// TODO
 	let is_open_poly = false;
 	let reflects_dependency = if !is_open_poly {
-		// TODO check trivial result
+		// Skip constant types
+		if matches!(result.returned_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
+			|| matches!(
+				types.get_type_by_id(result.returned_type),
+				Type::Constant(..) | Type::Object(super::ObjectNature::RealDeal)
+			) {
+			// TODO nearest fact
+			environment.facts.events.push(Event::CallsType {
+				on,
+				with,
+				timing: crate::events::CallingTiming::Synchronous,
+				called_with_new,
+				// Don't care about output.
+				reflects_dependency: None,
+			});
+
+			return Ok(result);
+		}
+
 		let constructor = Constructor::FunctionResult {
 			// TODO on or to
 			on,
@@ -208,6 +227,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 			// TODO unwrap
 			result: result.returned_type,
 		};
+
 		let constructor_return = types.register_type(Type::Constructor(constructor));
 
 		Some(constructor_return)
@@ -229,62 +249,8 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 		called: result.called,
 		returned_type: reflects_dependency.unwrap_or(result.returned_type),
 		warnings: result.warnings,
+		special: None,
 	})
-	// }
-	// PolyBase::Dynamic { to, boundary } => {
-	// if to == TypeId::ANY_TYPE {
-	// 	let parameters = arguments
-	// 		.iter()
-	// 		.cloned()
-	// 		.enumerate()
-	// 		.map(|(idx, argument)| match argument {
-	// 			synthesisedArgument::NonSpread { ty, position } => {
-	// 				SynthesisedParameter {
-	// 					name: format!("i{}", idx),
-	// 					ty,
-	// 					// TODO
-	// 					position,
-	// 					// TODO
-	// 					missing_value: None,
-	// 				}
-	// 			}
-	// 		})
-	// 		.collect();
-
-	// 	// Inferred function type
-
-	// 	let function_type = FunctionType {
-	// 		// TODO explain
-	// 		type_parameters: None,
-	// 		parameters: SynthesisedParameters {
-	// 			parameters,
-	// 			// TODO I think this is okay
-	// 			rest_parameter: Default::default(),
-	// 		},
-	// 		return_type: TypeId::ANY_TYPE,
-	// 		// This is where it would be good for a smaller type reference based function type
-	// 		effects: Default::default(),
-	// 		closed_over_references: Default::default(),
-	// 		// TODO
-	// 		kind: crate::types::FunctionKind::Arrow,
-	// 		constant_id: None,
-	// 		id: FunctionId::NULL,
-	// 	};
-
-	// 	let new_constraint = types.register_type(Type::Function(
-	// 		function_type,
-	// 		crate::types::FunctionNature::BehindPoly {
-	// 			function_id_if_open_poly: None,
-	// 			this_type: None,
-	// 		},
-	// 	));
-	// 	environment.attempt_to_modify_base(on, boundary, new_constraint);
-	// 	todo!()
-	// } else {
-	// }
-	// todo!();
-	// 	}
-	// }
 }
 
 /// Errors from trying to call a function
@@ -324,6 +290,7 @@ pub struct FunctionCallResult {
 	pub returned_type: TypeId,
 	// TODO
 	pub warnings: Vec<InfoDiagnostic>,
+	pub special: Option<SpecialExpressions>,
 }
 
 #[derive(Debug, Default, Clone, Copy, binary_serialize_derive::BinarySerializable)]
@@ -363,6 +330,8 @@ impl FunctionType {
 				called: Some(self.id),
 				returned_type: TypeId::ERROR_TYPE,
 				warnings: Vec::new(),
+				// TODO ?
+				special: None,
 			});
 			// let reason = FunctionCallingError::Recursed(self.id, call_site);
 			// return Err(vec![reason])
@@ -425,6 +394,7 @@ impl FunctionType {
 					returned_type: ty,
 					warnings: Default::default(),
 					called: None,
+					special: None,
 				});
 			} else {
 				// TODO event
@@ -444,6 +414,11 @@ impl FunctionType {
 								returned_type,
 								warnings: Default::default(),
 								called: None,
+								special: if const_fn_ident == "compile_type_to_object" {
+									Some(SpecialExpressions::CompileOut)
+								} else {
+									None
+								},
 							});
 						}
 						ConstantResult::Diagnostic(diagnostic) => {
@@ -451,6 +426,8 @@ impl FunctionType {
 								returned_type: TypeId::UNDEFINED_TYPE,
 								warnings: vec![InfoDiagnostic(diagnostic)],
 								called: None,
+								// TODO!!
+								special: Some(SpecialExpressions::Marker),
 							});
 						}
 					}
@@ -726,7 +703,7 @@ impl FunctionType {
 								})
 							}
 						} else {
-							todo!("subsititue")
+							todo!("substitute")
 						}
 					}
 				} else {
@@ -868,7 +845,7 @@ impl FunctionType {
 			if let Some(closure_id) = closure_id {
 				// Set closed over values
 				for (reference, value) in self.closed_over_variables.iter() {
-					let value = subsititue(*value, &mut type_arguments, environment, types);
+					let value = substitute(*value, &mut type_arguments, environment, types);
 					environment
 						.facts
 						.closure_current_values
@@ -892,12 +869,13 @@ impl FunctionType {
 				returned_type,
 				warnings: Default::default(),
 				called: Some(self.id),
+				special: None,
 			});
 		}
 
 		// set events should cover property specialization here:
 		// let returned_type = if let CalledWithNew::New { ..} = called_with_new {
-		// 	// TODO subsititue under the primitive conditional rules
+		// 	// TODO substitute under the primitive conditional rules
 		// 	let new_instance_type = type_arguments
 		// 		.local_arguments
 		// 		.get_mut(&TypeId::THIS_ARG)
@@ -909,12 +887,13 @@ impl FunctionType {
 		// } else {
 		// };
 
-		let returned_type = subsititue(self.return_type, &mut type_arguments, environment, types);
+		let returned_type = substitute(self.return_type, &mut type_arguments, environment, types);
 
 		Ok(FunctionCallResult {
 			returned_type,
 			warnings: Default::default(),
 			called: Some(self.id),
+			special: None,
 		})
 	}
 

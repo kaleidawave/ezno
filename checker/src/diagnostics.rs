@@ -306,7 +306,7 @@ mod defined_errors_and_warnings {
 								position: argument_position,
 								labels: vec![(
 									format!(
-										"Parameter {} was subsititued with type {}",
+										"Parameter {} was substituted with type {}",
 										parameter_type, restriction
 									),
 									Some(restriction_pos),

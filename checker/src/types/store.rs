@@ -320,4 +320,8 @@ impl TypeStore {
 		self.closure_counter += 1;
 		ClosureId(self.closure_counter)
 	}
+
+	pub fn get_function_from_id(&self, id: FunctionId) -> &FunctionType {
+		self.functions.get(&id).unwrap()
+	}
 }

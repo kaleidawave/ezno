@@ -176,8 +176,13 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(fs_resolver, cli_input_resolver),
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file } = check_arguments;
-			let (fs, diagnostics, _others) =
+			let (diagnostics, _others) =
 				crate::commands::check(&fs_resolver, &input, definition_file.as_deref());
+
+			let fs = match _others {
+				Ok(data) => data.module_contents,
+				Err(data) => data,
+			};
 			for diagnostic in diagnostics.into_iter() {
 				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 			}

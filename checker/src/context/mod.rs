@@ -8,7 +8,6 @@ mod root;
 mod bases;
 pub mod calling;
 pub mod facts;
-pub mod store;
 
 pub(crate) use calling::CallCheckingBehavior;
 pub use root::RootContext;
@@ -107,7 +106,7 @@ macro_rules! get_on_ctx {
 
 pub(crate) use get_on_ctx;
 
-use self::{environment::get_this_type_from_constraint, facts::Facts, store::ExistingContext};
+use self::{environment::get_this_type_from_constraint, facts::Facts};
 
 pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
@@ -137,7 +136,8 @@ impl<'a> From<&'a Environment<'a>> for GeneralContext<'a> {
 
 #[derive(Debug)]
 pub struct Context<T: ContextType> {
-	pub(crate) context_id: ContextId,
+	// pub(crate) context_id: ContextId,
+	pub context_id: ContextId,
 	pub(crate) context_type: T,
 
 	pub(crate) variables: HashMap<String, Variable>,
@@ -155,7 +155,8 @@ pub struct Context<T: ContextType> {
 
 	pub(crate) can_use_this: CanUseThis,
 
-	pub(crate) facts: Facts,
+	// pub (crate) facts: Facts,
+	pub facts: Facts,
 }
 
 /// TODO better place
@@ -349,12 +350,12 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::FSResolver>(
+	pub fn register_variable_handle_error<U: crate::FSResolver, M: crate::SynthesisableModule>(
 		&mut self,
 		name: &str,
 		declared_at: SpanWithSource,
 		behavior: VariableRegisterBehavior,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId {
 		match self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
 		{
@@ -683,9 +684,14 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO make aware of ands and aliases
-	pub(crate) fn get_properties_on_type(&self, base: TypeId) -> Vec<(TypeId, TypeId)> {
+	pub fn get_properties_on_type(&self, base: TypeId) -> Vec<(TypeId, TypeId)> {
 		self.parents_iter()
-			.flat_map(|env| get_on_ctx!(env.facts.current_properties.get(&base)).map(|v| v.iter()))
+			.flat_map(|ctx| {
+				let id = get_on_ctx!(ctx.context_id);
+				let properties = get_on_ctx!(ctx.facts.current_properties.get(&base));
+				crate::utils::notify!("{:?} {:?}", id, properties);
+				properties.map(|v| v.iter())
+			})
 			.flatten()
 			.map(|(key, prop)| (*key, prop.as_get_type()))
 			.collect()
@@ -729,12 +735,6 @@ impl<T: ContextType> Context<T> {
 		// TODO need actual method for these, aka lowest
 		let under = self.get_poly_base(under, types).unwrap_or(under);
 		types.get_fact_about_type(self, on, &get_property, under)
-	}
-
-	/// TODO temp
-	pub(crate) fn get_tag_name(&self, tag_name: TypeId, types: &TypeStore) -> Option<TypeId> {
-		self.get_property_unbound(TypeId::HTML_ELEMENT_TAG_NAME_MAP, tag_name, types)
-			.map(Logical::prop_to_type)
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -819,16 +819,18 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_function<
-		U: crate::FSResolver,
-		V: crate::behavior::functions::RegisterBehavior,
-		F: behavior::functions::SynthesizableFunction,
-	>(
+	pub fn new_function<U, V, F, M>(
 		&mut self,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, M>,
 		function: &F,
 		register_behavior: V,
-	) -> V::Return {
+	) -> V::Return
+	where
+		U: crate::FSResolver,
+		V: crate::behavior::functions::FunctionRegisterBehavior<M>,
+		M: crate::SynthesisableModule,
+		F: behavior::functions::SynthesisableFunction<M>,
+	{
 		let mut func_env = self.new_lexical_environment(Scope::Function {
 			// TODO
 			this_constraint: TypeId::ERROR_TYPE,
@@ -965,10 +967,10 @@ impl<T: ContextType> Context<T> {
 		register_behavior.function(function, func_ty, self, &mut checking_data.types)
 	}
 
-	pub fn new_try_context<U: crate::FSResolver>(
+	pub fn new_try_context<U: crate::FSResolver, V>(
 		&mut self,
-		checking_data: &mut CheckingData<U>,
-		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>),
+		checking_data: &mut CheckingData<U, V>,
+		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, V>),
 	) -> TypeId {
 		let (thrown, ..) = self.new_lexical_environment_fold_into_parent(
 			Scope::TryBlock {},
@@ -997,13 +999,13 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO
-	/// - Make internal (public methods should subsititue for different scopes)
+	/// - Make internal (public methods should substitute for different scopes)
 	/// - Make less complex
-	pub fn new_lexical_environment_fold_into_parent<U: crate::FSResolver, Res>(
+	pub fn new_lexical_environment_fold_into_parent<U: crate::FSResolver, Res, V>(
 		&mut self,
 		scope: Scope,
-		checking_data: &mut CheckingData<U>,
-		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>) -> Res,
+		checking_data: &mut CheckingData<U, V>,
+		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, V>) -> Res,
 	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 		if matches!(scope, Scope::Conditional { .. }) {
 			unreachable!("Use Environment::new_conditional_context")
@@ -1040,10 +1042,11 @@ impl<T: ContextType> Context<T> {
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
 
-		checking_data.existing_contexts.parent_references.insert(context_id, self.context_id);
+		// TODO store some information if in LSP mode
+		// checking_data.existing_contexts.parent_references.insert(context_id, self.context_id);
 
-		if let Some(c) = self.context_type.get_closed_over_references() {
-			c.extend(closed_over_references);
+		if let Some(current_closed_references) = self.context_type.get_closed_over_references() {
+			current_closed_references.extend(closed_over_references);
 		}
 
 		// Run any truths through subtyping
@@ -1052,7 +1055,7 @@ impl<T: ContextType> Context<T> {
 				crate::utils::notify!("TODO scoping stuff");
 				crate::utils::notify!("What about deferred function constraints");
 
-				todo!("events should be subsititued");
+				todo!("events should be substituted");
 				None
 				// Some((events, closed_over_references))
 			}
@@ -1076,7 +1079,6 @@ impl<T: ContextType> Context<T> {
 			| Scope::Module { .. } => {
 				// TODO also lift vars, regardless of scope
 				if matches!(scope, Scope::PassThrough { .. }) {
-					crate::utils::notify!("{:?}", variables);
 					self.variables.extend(variables);
 					self.facts.variable_current_value.extend(facts.variable_current_value);
 				} else {
@@ -1120,134 +1122,6 @@ impl<T: ContextType> Context<T> {
 			}
 		};
 		(res, additional, context_id)
-	}
-
-	/// Similar to [Context::new_environment_fold] but for **existing environments**
-	pub(crate) fn new_from_existing<'parent, U: crate::FSResolver, Res>(
-		&'parent mut self,
-		mut chain: Vec<(ContextId, ExistingContext)>,
-		checking_data: &mut CheckingData<U>,
-		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U>) -> Res,
-	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
-		let (context_id, environment) = chain.pop().unwrap();
-
-		let mut environment = Environment {
-			context_type: Syntax {
-				kind: environment.scope,
-				parent: self.as_general_context(),
-				free_variables: Default::default(),
-				closed_over_references: Default::default(),
-			},
-			context_id,
-			variables: environment.variables,
-			named_types: environment.named_types,
-			// TODO
-			variable_names: Default::default(),
-			deferred_function_constraints: Default::default(),
-			can_use_this: environment.can_use_this,
-			object_constraints: Default::default(),
-			bases: Default::default(),
-			facts: Default::default(),
-		};
-
-		enum Results<U> {
-			U(U),
-			Bottom((U, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId)),
-		}
-
-		let results = if !chain.is_empty() {
-			let results = environment.new_from_existing(chain, checking_data, cb);
-			Results::Bottom(results)
-		} else {
-			let result = cb(&mut environment, checking_data);
-			Results::U(result)
-		};
-
-		// TODO too much folding
-		let additional = {
-			let super::Environment {
-				context_id,
-				variables,
-				named_types,
-				context_type:
-					environment::Syntax {
-						kind: scope,
-						// Import for parent to be dropped here
-						parent: _,
-						free_variables: used_parent_references,
-						closed_over_references,
-					},
-				can_use_this,
-				bases,
-				deferred_function_constraints,
-				variable_names,
-				object_constraints,
-				facts,
-			} = environment;
-
-			todo!();
-
-			// for (on, new) in modified_constraints {
-			// 	// self.attempt_to_modify_constraint_or_alias(on, new);
-			// }
-
-			self.variable_names.extend(variable_names);
-
-			let shell =
-				ExistingContext { variables, named_types, can_use_this, scope: scope.clone() };
-
-			checking_data.existing_contexts.parent_references.insert(context_id, self.context_id);
-			checking_data.existing_contexts.existing_environments.insert(context_id, shell);
-
-			// Run any truths through subtyping
-			match scope {
-				Scope::Conditional { .. } => {
-					crate::utils::notify!("TODO scoping stuff");
-					crate::utils::notify!("What about deferred function constraints");
-
-					None
-				}
-				Scope::Looping { .. } => todo!(),
-				Scope::Function { .. } => {
-					// self.proofs.merge(proofs);
-
-					Some((facts.events, used_parent_references))
-				}
-				Scope::InterfaceEnvironment { .. }
-				| Scope::TryBlock {}
-				| Scope::ClassEnvironment {}
-				| Scope::FunctionReference {}
-				| Scope::Block {}
-				| Scope::PassThrough { .. }
-				| Scope::Module { .. } => {
-					self.facts.events.append(&mut facts.events);
-
-					// if let Some(inferrable_constraints) =
-					// 	self.context_type.get_inferrable_constraints_mut()
-					// {
-					// 	inferrable_constraints.extend(inferrable_types.into_iter());
-
-					// 	// TODO temp
-					// 	self.context_type
-					// 		.get_closed_over_references_mut()
-					// 		.extend(closed_over_references.into_iter());
-					// }
-
-					// self.proofs.merge(proofs);
-
-					self.deferred_function_constraints.extend(deferred_function_constraints);
-
-					self.can_use_this = can_use_this;
-
-					None
-				}
-			}
-		};
-
-		match results {
-			Results::U(res) => (res, additional, context_id),
-			Results::Bottom(results) => todo!(),
-		}
 	}
 
 	/// Returns a iterator of parents. Starting with the current one
@@ -1300,11 +1174,11 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U>(
+	pub fn get_type_by_name_handle_errors<U, V>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, V>,
 	) -> TypeId {
 		match self.get_type_from_name(name) {
 			Some(val) => val,

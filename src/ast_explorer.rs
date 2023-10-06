@@ -168,7 +168,7 @@ impl ExplorerSubCommand {
 				match res {
 					Ok(module) => {
 						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
-							ToStringOptions::default()
+							ToStringOptions { trailing_semicolon: true, ..Default::default() }
 						} else {
 							ToStringOptions::minified()
 						};

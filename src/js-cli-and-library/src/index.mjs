@@ -1,2 +1,2 @@
-import init, { initSync, build, check, parse_expression, parse_module } from "../build/ezno_lib.js";
-export { init, initSync, build, check, parse_expression, parse_module };
+import init, { initSync, build, check, parse_expression, parse_module, just_imports } from "../build/ezno_lib.js";
+export { init, initSync, build, check, parse_expression, parse_module, just_imports };

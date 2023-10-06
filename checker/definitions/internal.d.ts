@@ -1,14 +1,16 @@
 declare function debug_context(): void performs const debug_context;
-declare function print_type(): void performs const print_type;
-declare function debug_type(): void performs const debug_type;
-declare function debug_effects(): void performs const debug_effects;
-declare function is_dependent(): void performs const is_dependent;
+declare function print_type(t: any): void performs const print_type;
+declare function debug_type(t: any): void performs const debug_type;
+declare function debug_effects(t: () => {}): void performs const debug_effects;
+declare function is_dependent(t: any): void performs const is_dependent;
 
 declare function context_id(): void performs const context_id;
 declare function context_id_chain(): void performs const context_id_chain;
 
-// As it should be!
+// A function, as it should be!
 declare function satisfies<T>(t: T): T performs const satisfies;
+
+declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
 
 interface Array<T> {
     length: number;
@@ -54,3 +56,7 @@ interface JSON {
 declare var JSON: JSON;
 declare var Math: Math;
 declare var console: Console;
+
+declare function JSXH(tagname: string, attributes: any, children: any) performs {
+    return tagname
+}

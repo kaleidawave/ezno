@@ -1,4 +1,4 @@
-use super::{generic_type_arguments::FunctionTypeArguments, ResolveGenerics};
+use super::generic_type_arguments::FunctionTypeArguments;
 use crate::{CheckingData, DiagnosticsContainer, TypeId};
 
 /// A instance of a generic typed object
@@ -32,22 +32,6 @@ impl From<Option<TypeId>> for GenericStructureArgumentValue {
 	}
 }
 
-impl ResolveGenerics for GenericStructureArgumentValue {
-	fn resolve_generics<T: crate::FSResolver>(
-		self,
-		type_arguments: &FunctionTypeArguments,
-		checking_data: &mut CheckingData<T>,
-	) -> Self {
-		todo!()
-		// match self {
-		//     GenericStructureArgumentValue::Type(ty) => GenericStructureArgumentValue::Type(
-		//         Box::new(ResolveGenerics::resolve_generics(*ty, type_arguments, checking_data)),
-		//     ),
-		//     GenericStructureArgumentValue::Unknown => GenericStructureArgumentValue::Unknown,
-		// }
-	}
-}
-
 impl GenericStructureTypeArguments {
 	pub(crate) fn get_value_for_id(&self, id: TypeId) -> Option<&GenericStructureTypeArgument> {
 		self.0.iter().find(|item| item.matching_id == id)
@@ -60,26 +44,6 @@ pub struct GenericStructureTypeArgument {
 	pub(crate) ty: GenericStructureArgumentValue,
 	// TODO fixed type constraint id
 	// pub(crate) constraint: Option<Box<Type>>,
-}
-
-impl ResolveGenerics for GenericStructureTypeArgument {
-	fn resolve_generics<T: crate::FSResolver>(
-		self,
-		type_arguments: &FunctionTypeArguments,
-		checking_data: &mut CheckingData<T>,
-	) -> Self {
-		Self {
-			matching_id: self.matching_id,
-			ty: ResolveGenerics::resolve_generics(self.ty, type_arguments, checking_data),
-			// constraint: todo!(),
-			// Box::new(ResolveGenerics::resolve_generics(
-			//     *self.constraint,
-			//     type_arguments,
-			//     checking_data,
-			//     environment,
-			// ))
-		}
-	}
 }
 
 impl From<GenericStructureTypeArguments> for FunctionTypeArguments {

@@ -44,11 +44,11 @@ impl Reference {
 }
 
 // TODO
-pub trait SynthesizableExpression {
+pub trait SynthesisableExpression<M: crate::SynthesisableModule> {
 	fn synthesise_expression<U: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId;
 
 	fn get_position(&self) -> &Span;

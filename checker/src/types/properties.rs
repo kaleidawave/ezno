@@ -3,7 +3,7 @@ use crate::{
 	context::{CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{subsititue, FunctionType},
+	types::{substitute, FunctionType},
 	Environment, TypeId,
 };
 
@@ -234,7 +234,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 			Logical::Or(_) => todo!(),
 			Logical::Implies { on: log_on, mut antecedent } => {
 				let (kind, ty) = property_on_logical(*log_on, types, on, environment, behavior)?;
-				let ty = subsititue(ty, &mut antecedent, environment, types);
+				let ty = substitute(ty, &mut antecedent, environment, types);
 				Some((kind, ty))
 			}
 		}

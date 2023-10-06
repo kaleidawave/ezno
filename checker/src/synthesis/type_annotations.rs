@@ -50,7 +50,7 @@ use crate::context::{Context, ContextType};
 pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 	annotation: &TypeAnnotation,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	let ty = match annotation {
 		TypeAnnotation::CommonName(name, _) => match name {
@@ -356,7 +356,7 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 fn synthesise_type_condition<S: ContextType, T: crate::FSResolver>(
 	condition: &TypeCondition,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	match condition {
 		TypeCondition::Extends { ty, extends, position } => {

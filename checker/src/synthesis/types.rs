@@ -25,7 +25,7 @@ pub fn get_type_handle_errors<U: crate::FSResolver>(
 pub(super) fn type_generic_type_constraints<T: crate::FSResolver, S: ContextType>(
 	generic_constraints: &Vec<GenericTypeConstraint>,
 	environment: &Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	existing_ids: Option<Vec<TypeId>>,
 ) -> GenericTypeParameters {
 	GenericTypeParameters(
@@ -38,9 +38,9 @@ pub(super) fn type_generic_type_constraints<T: crate::FSResolver, S: ContextType
 			.map(|(generic_constraint, existing_id)| {
 				let (name, constraint, default) = match generic_constraint {
 					GenericTypeConstraint::Parameter { name, default } => {
-						let default = default
-							.as_ref()
-							.map(|default| environment.get_type_handle_errors(default, checking_data));
+						let default = default.as_ref().map(|default| {
+							environment.get_type_handle_errors(default, checking_data)
+						});
 
 						(
 							name,

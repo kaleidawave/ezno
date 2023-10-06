@@ -22,12 +22,10 @@ pub(super) fn synthesise_class_declaration<
 	S: ContextType,
 	P: parser::ExpressionOrStatementPosition,
 >(
-	class: &Decorated<ClassDeclaration<P>>,
+	class: &ClassDeclaration<P>,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
-	let Decorated { on: class, decorators, position } = class;
-
 	// TODO type needs to be hoisted
 	let parameters =
 		if let Some(ref type_parameters) = class.type_parameters { todo!() } else { None };
@@ -66,7 +64,7 @@ pub(super) fn synthesise_class_declaration<
 				fn build_extends_type<'a, T: crate::FSResolver>(
 					mut extends: impl Iterator<Item = &'a TypeAnnotation>,
 					environment: &mut Environment,
-					checking_data: &mut CheckingData<T>,
+					checking_data: &mut CheckingData<T, parser::Module>,
 					on: TypeId,
 				) -> TypeId {
 					let mut ty = synthesise_type_annotation(
@@ -217,7 +215,7 @@ pub(super) fn synthesise_class_declaration<
 pub(super) fn type_generic_type_constraints<T: crate::FSResolver>(
 	unwrap: &[GenericTypeConstraint],
 	environment: &mut Context<crate::context::Syntax>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	parameters: Option<Vec<TypeId>>,
 ) -> GenericTypeParameters {
 	todo!()

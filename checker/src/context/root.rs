@@ -1,5 +1,5 @@
 use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
-use crate::{types::TypeId, GeneralContext};
+use crate::{types::TypeId, CheckingData, Environment, GeneralContext};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
@@ -58,7 +58,10 @@ impl RootContext {
 		let named_types = HashMap::from_iter(named_types);
 
 		Self {
-			context_type: Root { on: SourceId::NULL },
+			context_type: Root {
+				// This is reassigned, so should be okay 🤞
+				on: SourceId::NULL,
+			},
 			context_id: ContextId::ROOT,
 			named_types,
 			variables: Default::default(),
@@ -70,6 +73,19 @@ impl RootContext {
 			can_use_this: crate::context::CanUseThis::Yeah { this_ty: TypeId::ERROR_TYPE },
 			facts: Default::default(),
 		}
+	}
+
+	pub fn new_module_context<T: crate::FSResolver, M: crate::SynthesisableModule>(
+		&self,
+		source: SourceId,
+		checking_data: &mut CheckingData<T, M>,
+		mut cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<T, M>),
+	) {
+		let mut environment = self.new_lexical_environment(crate::Scope::Module { source });
+
+		cb(&mut environment, checking_data);
+
+		// environment.facts
 	}
 
 	/// TODO working things out:

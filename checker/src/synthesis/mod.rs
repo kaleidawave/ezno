@@ -23,9 +23,9 @@ use parser::PropertyKey;
 use source_map::SourceId;
 
 use crate::{
-	context::{Context, ContextType},
+	context::{environment, Context, ContextType},
 	types::TypeStore,
-	Constant, Diagnostic, TypeId,
+	Constant, Diagnostic, Environment, RootContext, TypeId,
 };
 
 pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
@@ -76,10 +76,52 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	}
 }
 
-pub mod interactive {
-	use std::mem;
+impl crate::SynthesisableModule for parser::Module {
+	fn from_string(source_id: SourceId, string: String) -> Result<Self, Diagnostic> {
+		// TODO
+		let options = Default::default();
+		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
+			.map_err(|err| Diagnostic::from((err, source_id)))
+	}
 
-	use crate::{types::printing::print_type, CheckingData, DiagnosticsContainer, RootContext};
+	type DefinitionFile = parser::TypeDefinitionModule;
+
+	fn definition_module_from_string(
+		source_id: SourceId,
+		string: String,
+	) -> Result<Self::DefinitionFile, Diagnostic> {
+		let options = Default::default();
+		parser::TypeDefinitionModule::from_string(string, options, source_id)
+			.map_err(|err| Diagnostic::from((err, source_id)))
+	}
+
+	fn synthesize_module<T: crate::FSResolver>(
+		&self,
+		source_id: SourceId,
+		module_environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		synthesise_block(&self.items, module_environment, checking_data);
+	}
+
+	fn type_definition_file<T: crate::FSResolver>(
+		tdm: parser::TypeDefinitionModule,
+		root: &mut crate::RootContext,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		definitions::type_definition_file(tdm, checking_data, root);
+	}
+}
+
+pub mod interactive {
+	use std::{collections::HashSet, mem, path::PathBuf};
+
+	use source_map::{MapFileStore, SourceId, WithPathMap};
+
+	use crate::{
+		add_definition_files_to_root, types::printing::print_type, CheckingData,
+		DiagnosticsContainer, RootContext,
+	};
 
 	use super::{
 		block::{synthesise_block, synthesize_declaration},
@@ -88,17 +130,26 @@ pub mod interactive {
 	};
 
 	pub struct State<'a, T: crate::FSResolver> {
-		checking_data: CheckingData<'a, T>,
+		checking_data: CheckingData<'a, T, parser::Module>,
 		root: RootContext,
-		source_id: source_map::SourceId,
 	}
 
 	impl<'a, T: crate::FSResolver> State<'a, T> {
-		pub fn new(resolver: &'a T, source_id: source_map::SourceId) -> Self {
-			Self {
-				checking_data: CheckingData::new(Default::default(), &resolver),
-				root: RootContext::new_with_primitive_references(),
-				source_id,
+		pub fn new(
+			resolver: &'a T,
+			type_definition_files: HashSet<PathBuf>,
+		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
+			let mut root = RootContext::new_with_primitive_references();
+			let entry_point = PathBuf::from("CLI");
+			let mut checking_data =
+				CheckingData::new(Default::default(), resolver, entry_point, None);
+
+			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
+
+			if checking_data.diagnostics_container.has_error() {
+				Err((checking_data.diagnostics_container, checking_data.modules.files))
+			} else {
+				Ok(Self { checking_data, root })
 			}
 		}
 
@@ -106,8 +157,9 @@ pub mod interactive {
 			&mut self,
 			item: &parser::Module,
 		) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
+			let source = self.checking_data.modules.entry_point;
 			let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
-				crate::Scope::PassThrough { source: self.source_id },
+				crate::Scope::PassThrough { source },
 				&mut self.checking_data,
 				|environment, checking_data| {
 					if let Some(parser::StatementOrDeclaration::Statement(
@@ -140,6 +192,18 @@ pub mod interactive {
 			} else {
 				Ok((ty, dc))
 			}
+		}
+
+		pub fn get_fs_ref(&self) -> &MapFileStore<WithPathMap> {
+			&self.checking_data.modules.files
+		}
+
+		pub fn get_fs_mut(&mut self) -> &mut MapFileStore<WithPathMap> {
+			&mut self.checking_data.modules.files
+		}
+
+		pub fn get_source_id(&self) -> SourceId {
+			self.checking_data.modules.entry_point
 		}
 	}
 }

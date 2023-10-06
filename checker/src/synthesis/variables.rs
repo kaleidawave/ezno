@@ -20,14 +20,14 @@ use crate::{
 pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKind>(
 	name: &parser::VariableField<U>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<'_, T>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,
 ) -> TypeId {
 	fn register_variable_identifier<T: crate::FSResolver>(
 		name: &VariableIdentifier,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 		behavior: crate::context::VariableRegisterBehavior,
 		constraint: Option<TypeId>,
 	) -> TypeId {
@@ -228,7 +228,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
 	is_constant: bool,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) where
 	for<'a> Option<&'a parser::Expression>: From<&'a U>,
 {
@@ -266,7 +266,7 @@ pub(super) fn synthesise_variable_declaration_item<
 fn assign_to_fields<T: crate::FSResolver>(
 	item: &VariableField<parser::VariableFieldInSourceCode>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	value: TypeId,
 ) {
 	match item {

@@ -39,11 +39,11 @@ pub enum LexingErrors {
 	NewLineInStringLiteral,
 	ExpectedEndToMultilineComment,
 	ExpectedEndToStringLiteral,
-	ExpectedEndToNumberLiteral,
+	UnexpectedEndToNumberLiteral,
 	ExpectedEndToRegexLiteral,
 	ExpectedEndToJSXLiteral,
 	ExpectedEndToTemplateLiteral,
-	TwoExponents,
+	InvalidExponentUsage,
 	TwoUnderscores,
 	TrailingUnderscore,
 }
@@ -81,13 +81,13 @@ impl Display for LexingErrors {
 				f.write_str("Unclosed multiline comment")
 			}
 			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
-			LexingErrors::ExpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
+			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
 			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
 			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
 			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
 			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
 			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
-			LexingErrors::TwoExponents => f.write_str("Two e in number literal"),
+			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
 			LexingErrors::TwoUnderscores => {
 				f.write_str("Only one underscore is allowed as numeric separator")
 			}
@@ -105,22 +105,22 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Expected ")?;
 				match expected {
 					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a:?}")),
-					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
+					[a] => f.write_fmt(format_args!("{a}")),
+					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
 					[head @ .., end] => f.write_fmt(format_args!(
-						"{} or {:?}",
+						"{} or {}",
 						head.iter()
-							.map(|chr| format!("{chr:?}"))
-							.reduce(|mut a, b| {
-								a.push_str(", ");
-								a.push_str(&b);
-								a
+							.map(|token| format!("{token}"))
+							.reduce(|mut acc, token| {
+								acc.push_str(", ");
+								acc.push_str(&token);
+								acc
 							})
 							.unwrap(),
 						end
 					)),
 				}?;
-				write!(f, " found {found:?}")
+				write!(f, " found {found}")
 			}
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
@@ -137,7 +137,7 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found:?}")
+				write!(f, "Expected identifier at {at_location}, found {found}")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
 				f.write_str("Function parameter cannot be have default value here")

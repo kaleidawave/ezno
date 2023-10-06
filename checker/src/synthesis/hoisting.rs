@@ -19,7 +19,7 @@ use super::{
 pub(crate) fn hoist_statements<T: crate::FSResolver>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	let mut idx_to_types = HashMap::new();
 
@@ -106,12 +106,8 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 						parser::declarations::import::ImportKind::SideEffect => todo!(),
 					}
 				}
-				parser::Declaration::Export(export) => {
-					checking_data.raise_unimplemented_error(
-						"export",
-						export.get_position().clone().with_source(environment.get_source()),
-					);
-				}
+				// TODO I don't think anything needs to happen here
+				parser::Declaration::Export(_export) => {}
 			}
 		}
 	}
@@ -302,7 +298,7 @@ fn get_annotation_from_declaration<
 >(
 	declaration: &parser::declarations::VariableDeclarationItem<U>,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
 ) -> Option<TypeId> {
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
@@ -339,7 +335,7 @@ pub(crate) fn string_comment_to_type<T: crate::FSResolver>(
 	possible_declaration: &String,
 	position: source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
 	use parser::ASTNode;

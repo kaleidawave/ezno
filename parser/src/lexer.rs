@@ -98,6 +98,7 @@ pub fn lex_script(
 			/// has decimal point
 			fractional: bool,
 		},
+		Exponent,
 	}
 
 	impl Default for NumberLiteralType {
@@ -117,8 +118,6 @@ pub fn lex_script(
 			literal_type: NumberLiteralType,
 			/// For binary, hex, etc `0b0121`
 			last_character_zero: bool,
-			/// Past and `e` or `E`
-			past_exponential: bool,
 			last_was_underscore: bool,
 		},
 		String {
@@ -223,7 +222,6 @@ pub fn lex_script(
 			LexingState::Number {
 				ref mut literal_type,
 				ref mut last_character_zero,
-				ref mut past_exponential,
 				ref mut last_was_underscore,
 			} => {
 				match chr {
@@ -271,10 +269,10 @@ pub fn lex_script(
 						}
 					}
 					'e' | 'E' => {
-						if *past_exponential {
-							return_err!(LexingErrors::TwoExponents)
+						if !matches!(literal_type, NumberLiteralType::Decimal { .. }) {
+							return_err!(LexingErrors::InvalidExponentUsage)
 						}
-						*past_exponential = true;
+						*literal_type = NumberLiteralType::Exponent;
 					}
 					'_' => {
 						if *last_was_underscore {
@@ -833,13 +831,11 @@ pub fn lex_script(
 					literal_type: Default::default(),
 					last_character_zero: true,
 					last_was_underscore: false,
-					past_exponential: false
 				}),
 				'1'..='9' => set_state!(LexingState::Number {
 					literal_type: Default::default(),
 					last_character_zero: false,
 					last_was_underscore: false,
-					past_exponential: false
 				}),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
@@ -966,7 +962,12 @@ pub fn lex_script(
 			if !matches!(literal_type, NumberLiteralType::Decimal { .. })
 				&& script[start..].len() == 2
 			{
-				return_err!(LexingErrors::ExpectedEndToNumberLiteral)
+				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+			}
+			if matches!(literal_type, NumberLiteralType::Exponent { .. })
+				&& script.ends_with(['e', 'E'])
+			{
+				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),

@@ -1,7 +1,7 @@
 use crate::{
 	context::Environment,
 	synthesis::{
-		expressions::synthesise_multiple_expression, functions::SynthesizableFunctionBody,
+		expressions::synthesise_multiple_expression, functions::SynthesisableFunctionBody,
 		type_annotations::synthesise_type_annotation,
 	},
 	CheckingData, TypeId,
@@ -10,7 +10,7 @@ use crate::{
 pub(crate) fn synthesise_is_expression<T: crate::FSResolver>(
 	is_expression: &parser::is_expression::IsExpression,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	let matcher =
 		synthesise_multiple_expression(&is_expression.matcher, environment, checking_data);

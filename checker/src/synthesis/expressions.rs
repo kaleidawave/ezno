@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, marker::PhantomData};
 
 use parser::{
 	expressions::{
@@ -11,7 +11,7 @@ use parser::{
 
 use crate::{
 	behavior::{
-		assignments::{Assignable, SynthesizableExpression},
+		assignments::{Assignable, SynthesisableExpression},
 		functions::{RegisterAsType, RegisterOnExistingObject},
 		objects::ObjectBuilder,
 		operations::{
@@ -25,7 +25,7 @@ use crate::{
 	events::Event,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
 	types::{properties::PropertyKind, Constant, TypeId},
-	AssignmentKind, CheckingData, Environment, Instance,
+	AssignmentKind, CheckingData, Environment, Instance, SpecialExpressions,
 };
 
 use super::{
@@ -37,7 +37,7 @@ use super::{
 pub(super) fn synthesise_multiple_expression<T: crate::FSResolver>(
 	expression: &MultipleExpression,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	match expression {
 		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
@@ -53,7 +53,7 @@ pub(super) fn synthesise_multiple_expression<T: crate::FSResolver>(
 pub(super) fn synthesise_expression<T: crate::FSResolver>(
 	expression: &Expression,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	let instance: Instance = match expression {
 		Expression::Comment(..) => unreachable!("Should have skipped this higher up"),
@@ -76,7 +76,7 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 				idx: usize,
 				element: &SpreadExpression,
 				environment: &mut Environment,
-				checking_data: &mut CheckingData<T>,
+				checking_data: &mut CheckingData<T, parser::Module>,
 			) -> (TypeId, TypeId) {
 				match element {
 					SpreadExpression::NonSpread(element) => {
@@ -151,7 +151,10 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
 				}
 				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
+					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(
+						&**expr,
+						PhantomData::default(),
+					)
 				}
 			});
 			let tag =
@@ -480,7 +483,7 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
 			let on = synthesise_expression(&*function, environment, checking_data);
 
-			let result = call_function(
+			let (result, special) = call_function(
 				on,
 				CalledWithNew::None,
 				type_arguments,
@@ -489,12 +492,16 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 				checking_data,
 				position,
 			);
+			if let Some(special) = special {
+				crate::utils::notify!("Special! {:?}", special);
+				checking_data.type_mappings.special_expressions.push(position.clone(), special);
+			}
 			Instance::RValue(result)
 		}
 		Expression::ConstructorCall { constructor, type_arguments, arguments, position } => {
 			let on = synthesise_expression(&*constructor, environment, checking_data);
 			let called_with_new = CalledWithNew::New { import_new: on };
-			let result = call_function(
+			let (result, _) = call_function(
 				on,
 				called_with_new,
 				type_arguments,
@@ -714,9 +721,9 @@ fn call_function<T: crate::FSResolver>(
 	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
 	mut arguments: Option<&Vec<SpreadExpression>>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	call_site: &parser::Span,
-) -> TypeId {
+) -> (TypeId, Option<SpecialExpressions>) {
 	let generic_type_arguments = if let Some(type_arguments) = type_arguments {
 		Some(
 			type_arguments
@@ -760,7 +767,7 @@ fn call_function<T: crate::FSResolver>(
 fn synthesise_arguments<T: crate::FSResolver>(
 	arguments: &Vec<SpreadExpression>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> Vec<SynthesisedArgument> {
 	arguments
 		.iter()
@@ -800,7 +807,7 @@ fn synthesise_arguments<T: crate::FSResolver>(
 pub(super) fn synthesise_class_fields<T: crate::FSResolver>(
 	fields: Vec<(TypeId, Expression)>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	let this = environment.get_value_of_this(&mut checking_data.types);
 	for (under, mut expression) in fields {
@@ -817,11 +824,11 @@ pub(super) fn synthesise_class_fields<T: crate::FSResolver>(
 	}
 }
 
-impl SynthesizableExpression for Expression {
+impl SynthesisableExpression<parser::Module> for Expression {
 	fn synthesise_expression<U: crate::FSResolver>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<U>,
+		checking_data: &mut CheckingData<U, parser::Module>,
 	) -> TypeId {
 		synthesise_expression(self, environment, checking_data)
 	}
@@ -837,7 +844,7 @@ use crate::{structures::variables::VariableWithValue, synthesis::property_key_as
 
 pub(super) fn synthesise_object_literal<T: crate::FSResolver>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	environment: &mut Environment,
 ) -> TypeId {
 	let mut object_builder =
