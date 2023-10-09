@@ -694,7 +694,10 @@ mod tests {
 			VariableField::Object(
 				Deref @ [WithComment::None(ObjectDestructuringField::Name(
 					VariableIdentifier::Standard(Deref @ "x", span!(2, 3)),
-					Some(Expression::NumberLiteral(crate::NumberStructure::Number(_), span!(6, 7))),
+					Some(Expression::NumberLiteral(
+						crate::NumberRepresentation::Number { .. },
+						span!(6, 7),
+					)),
 					span!(2, 7),
 				))],
 				span!(0, 9),

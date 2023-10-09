@@ -432,11 +432,12 @@ impl std::fmt::Display for NumberSign {
 
 /// TODO BigInt
 /// TODO a mix between runtime numbers and source syntax based number
+/// TODO cases in input :(
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum NumberStructure {
+pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
 	NaN,
@@ -444,44 +445,48 @@ pub enum NumberStructure {
 	Bin(NumberSign, u64),
 	Octal(NumberSign, u64),
 	/// TODO could do as something other than f64
-	Number(f64),
+	Number {
+		elided_zero_before_point: bool,
+		trailing_point: bool,
+		internal: f64,
+	},
 }
 
-impl std::hash::Hash for NumberStructure {
+impl std::hash::Hash for NumberRepresentation {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		core::mem::discriminant(self).hash(state);
 	}
 }
 
-impl From<NumberStructure> for f64 {
-	fn from(this: NumberStructure) -> f64 {
+impl From<NumberRepresentation> for f64 {
+	fn from(this: NumberRepresentation) -> f64 {
 		match this {
-			NumberStructure::Infinity => f64::INFINITY,
-			NumberStructure::NegativeInfinity => f64::NEG_INFINITY,
-			NumberStructure::NaN => f64::NAN,
-			NumberStructure::Number(value) => value,
-			NumberStructure::Hex(sign, nat)
-			| NumberStructure::Bin(sign, nat)
-			| NumberStructure::Octal(sign, nat) => sign.apply(nat as f64),
+			NumberRepresentation::Infinity => f64::INFINITY,
+			NumberRepresentation::NegativeInfinity => f64::NEG_INFINITY,
+			NumberRepresentation::NaN => f64::NAN,
+			NumberRepresentation::Number { internal, .. } => internal,
+			NumberRepresentation::Hex(sign, nat)
+			| NumberRepresentation::Bin(sign, nat)
+			| NumberRepresentation::Octal(sign, nat) => sign.apply(nat as f64),
 		}
 	}
 }
 
-impl From<f64> for NumberStructure {
-	fn from(x: f64) -> Self {
-		if x == f64::INFINITY {
+impl From<f64> for NumberRepresentation {
+	fn from(value: f64) -> Self {
+		if value == f64::INFINITY {
 			Self::Infinity
-		} else if x == f64::NEG_INFINITY {
+		} else if value == f64::NEG_INFINITY {
 			Self::NegativeInfinity
-		} else if x.is_nan() {
+		} else if value.is_nan() {
 			Self::NaN
 		} else {
-			Self::Number(x)
+			Self::Number { internal: value, elided_zero_before_point: false, trailing_point: false }
 		}
 	}
 }
 
-impl FromStr for NumberStructure {
+impl FromStr for NumberRepresentation {
 	type Err = String;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -504,9 +509,17 @@ impl FromStr for NumberStructure {
 			match next_char {
 				Some('.') => {
 					if s.len() == 2 {
-						Ok(Self::Number(0f64))
+						Ok(Self::Number {
+							internal: 0f64,
+							elided_zero_before_point: false,
+							trailing_point: true,
+						})
 					} else {
-						Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
+						Ok(Self::Number {
+							internal: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+							elided_zero_before_point: false,
+							trailing_point: false,
+						})
 					}
 				}
 				Some('X' | 'x') => {
@@ -528,7 +541,7 @@ impl FromStr for NumberStructure {
 					}
 					Ok(Self::Hex(sign, number))
 				}
-				Some('b' | 'B') => {
+				Some('B' | 'b') => {
 					let mut number = 0u64;
 					for c in s[2..].as_bytes().iter() {
 						number <<= 1;
@@ -555,56 +568,93 @@ impl FromStr for NumberStructure {
 					}
 					Ok(Self::Octal(sign, number))
 				}
-				None => Ok(Self::Number(0.)),
+				None => Ok(Self::Number {
+					internal: 0f64,
+					elided_zero_before_point: false,
+					trailing_point: false,
+				}),
 			}
 		} else if s.ends_with('.') {
-			Ok(Self::Number(sign.apply(s[..s.len() - 1].parse().map_err(|_| s.to_owned())?)))
+			Ok(Self::Number {
+				internal: sign.apply(s[..s.len() - 1].parse().map_err(|_| s.to_owned())?),
+				elided_zero_before_point: false,
+				trailing_point: true,
+			})
+		} else if s.starts_with('.') {
+			let value: f64 = s[1..].parse().map_err(|_| s.to_owned())?;
+			let digits = value.log10().floor() + 1f64;
+			let result = value * (10f64.powf(-digits));
+			Ok(Self::Number {
+				internal: sign.apply(result),
+				elided_zero_before_point: true,
+				trailing_point: false,
+			})
 		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
 			let value: f64 = left.parse().map_err(|_| s.to_owned())?;
 			let expo: i32 = right.parse().map_err(|_| s.to_owned())?;
-			Ok(Self::Number(sign.apply((value * 10f64.powi(expo)) as f64)))
+			Ok(Self::Number {
+				internal: sign.apply((value * 10f64.powi(expo)) as f64),
+				elided_zero_before_point: false,
+				trailing_point: false,
+			})
 		} else {
-			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
+			Ok(Self::Number {
+				internal: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+				elided_zero_before_point: false,
+				trailing_point: false,
+			})
 		}
 	}
 }
 
-impl std::fmt::Display for NumberStructure {
+impl std::fmt::Display for NumberRepresentation {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.as_js_string())
 	}
 }
 
-impl PartialEq for NumberStructure {
+impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			// TODO needs to do conversion
 			(Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
 			(Self::Bin(l0, l1), Self::Bin(r0, r1)) => l0 == r0 && l1 == r1,
 			(Self::Octal(l0, l1), Self::Octal(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Number(l0), Self::Number(r0)) => l0 == r0,
+			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
 	}
 }
 
-impl Eq for NumberStructure {}
+impl Eq for NumberRepresentation {}
 
-impl NumberStructure {
+impl NumberRepresentation {
 	pub fn negate(&self) -> Self {
 		f64::from(*self).neg().into()
 	}
 
 	pub fn as_js_string(self) -> String {
 		match self {
-			NumberStructure::Infinity => "Infinity".to_owned(),
-			NumberStructure::NegativeInfinity => "-Infinity".to_owned(),
-			NumberStructure::NaN => "NaN".to_owned(),
-			NumberStructure::Hex(sign, value) |
-			NumberStructure::Bin(sign, value) |
-			// TODO should it retain the name?
-			NumberStructure::Octal(sign, value) => format!("{sign}{value}"),
-			NumberStructure::Number(number) => number.to_string(),
+			NumberRepresentation::Infinity => "Infinity".to_owned(),
+			NumberRepresentation::NegativeInfinity => "-Infinity".to_owned(),
+			NumberRepresentation::NaN => "NaN".to_owned(),
+			NumberRepresentation::Hex(sign, value) => format!("{sign}{value:#x}"),
+			NumberRepresentation::Bin(sign, value) => {
+				format!("{sign}0b{value:#b}")
+			}
+			NumberRepresentation::Octal(sign, value) => {
+				format!("{sign}0o{value:o}")
+			}
+			NumberRepresentation::Number { internal, elided_zero_before_point, trailing_point } => {
+				let mut start = internal.to_string();
+				if elided_zero_before_point {
+					start.remove(0);
+				}
+				if trailing_point {
+					start.push('.')
+				}
+				start
+			}
 		}
 	}
 }
@@ -882,7 +932,8 @@ pub(crate) fn expect_semi_colon(
 pub mod ast {
 	pub use crate::{
 		declarations::*, expressions::*, extensions::jsx::*, statements::*, Keyword,
-		NumberStructure, StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
+		NumberRepresentation, StatementOrDeclaration, VariableField, VariableIdentifier,
+		WithComment,
 	};
 
 	pub use source_map::BaseSpan;

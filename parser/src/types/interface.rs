@@ -7,7 +7,7 @@ use crate::{
 	tokens::token_as_identifier,
 	tsx_keywords,
 	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
-	ASTNode, Expression, GenericTypeConstraint, Keyword, NumberStructure, ParseOptions,
+	ASTNode, Expression, GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions,
 	ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
 
@@ -239,7 +239,7 @@ impl ASTNode for InterfaceMember {
 					Token(TSXToken::NumberLiteral(value), start) => {
 						let position = start.with_length(value.len());
 						PropertyKey::NumberLiteral(
-							value.parse::<NumberStructure>().unwrap(),
+							value.parse::<NumberRepresentation>().unwrap(),
 							position.clone(),
 						)
 					}

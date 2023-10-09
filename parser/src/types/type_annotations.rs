@@ -15,7 +15,7 @@ use super::{
 };
 
 use crate::{
-	tokens::token_as_identifier, ASTNode, NumberStructure, ParseError, ParseOptions, Span,
+	tokens::token_as_identifier, ASTNode, NumberRepresentation, ParseError, ParseOptions, Span,
 	TSXKeyword, TSXToken, Token, TokenReader,
 };
 
@@ -42,7 +42,7 @@ pub enum TypeAnnotation {
 	/// String literal e.g. `"foo"`
 	StringLiteral(String, Span),
 	/// Number literal e.g. `45`
-	NumberLiteral(NumberStructure, Span),
+	NumberLiteral(NumberRepresentation, Span),
 	/// Boolean literal e.g. `true`
 	BooleanLiteral(bool, Span),
 	/// Array literal e.g. `string[]`. This is syntactic sugar for `Array` with type arguments. **This is not the same
@@ -431,7 +431,7 @@ impl TypeAnnotation {
 			}
 			Token(TSXToken::NumberLiteral(num), start) => {
 				let pos = start.with_length(num.len());
-				Self::NumberLiteral(num.parse::<NumberStructure>().unwrap(), pos)
+				Self::NumberLiteral(num.parse::<NumberRepresentation>().unwrap(), pos)
 			}
 			Token(TSXToken::SingleQuotedStringLiteral(content), start)
 			| Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
@@ -975,7 +975,7 @@ pub struct TypeAnnotationSpreadFunctionParameter {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{assert_matches_ast, span, NumberStructure};
+	use crate::{assert_matches_ast, span, NumberRepresentation};
 
 	#[test]
 	fn name() {
@@ -991,7 +991,7 @@ mod tests {
 		);
 		assert_matches_ast!(
 			"45",
-			TypeAnnotation::NumberLiteral(NumberStructure::Number(_), span!(0, 2))
+			TypeAnnotation::NumberLiteral(NumberRepresentation::Number { .. }, span!(0, 2))
 		);
 		assert_matches_ast!("true", TypeAnnotation::BooleanLiteral(true, span!(0, 4)));
 	}

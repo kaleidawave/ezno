@@ -43,13 +43,13 @@ impl<'a> IntoAST<VariableIdentifier> for &'a str {
 
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(crate::NumberStructure::Number(self as f64), NULL_SPAN)
+		Expression::NumberLiteral(crate::NumberRepresentation::from(self as f64), NULL_SPAN)
 	}
 }
 
 impl IntoAST<Expression> for f64 {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(crate::NumberStructure::Number(self), NULL_SPAN)
+		Expression::NumberLiteral(crate::NumberRepresentation::from(self), NULL_SPAN)
 	}
 }
 

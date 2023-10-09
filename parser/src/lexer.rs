@@ -286,7 +286,7 @@ pub fn lex_script(
 						*last_was_underscore = true;
 					}
 					'*' | '-' | '+' | '/' | '&' | '|' | ')' | '}' | ']' | '!' | '^' | '%' | '='
-					| ';' | ':' | '<' | '>' | ',' | ' ' | '\n' => {
+					| ';' | ':' | '<' | '>' | ',' | '?' | ' ' | '\n' => {
 						if *last_was_underscore {
 							return_err!(LexingErrors::TrailingUnderscore)
 						}

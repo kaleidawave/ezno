@@ -225,7 +225,7 @@ mod ast {
 		std::path::PathBuf,
 		source_map::Span,
 		crate::TypeAnnotation,
-		crate::NumberStructure,
+		crate::NumberRepresentation,
 		crate::operators::BinaryOperator,
 		crate::operators::BinaryAssignmentOperator,
 		crate::operators::UnaryOperator,
