@@ -86,12 +86,7 @@ impl ASTNode for DoWhileStatement {
 	) {
 		buf.push_str("do");
 		settings.add_gap(buf);
-		if let BlockOrSingleStatement::SingleStatement(ref stmt) = self.inner {
-			stmt.to_string_from_buffer(buf, settings, depth);
-			buf.push(';');
-		} else {
-			self.inner.to_string_from_buffer(buf, settings, depth + 1);
-		}
+		self.inner.to_string_from_buffer(buf, settings, depth);
 		settings.add_gap(buf);
 		buf.push_str("while");
 		settings.add_gap(buf);

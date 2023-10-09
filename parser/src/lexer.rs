@@ -286,11 +286,11 @@ pub fn lex_script(
 						*last_was_underscore = true;
 					}
 					'*' | '-' | '+' | '/' | '&' | '|' | ')' | '}' | ']' | '!' | '^' | '%' | ';'
-					| '<' | '>' | ',' => {
+					| '<' | '>' | ',' | ' ' | '\n' => {
 						if *last_was_underscore {
 							return_err!(LexingErrors::TrailingUnderscore)
 						}
-						if *last_was_exponent {
+						if *last_was_exponent || &script[start..idx] == "." {
 							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 						}
 						push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
@@ -981,15 +981,23 @@ pub fn lex_script(
 			if last_was_underscore {
 				return_err!(LexingErrors::TrailingUnderscore)
 			}
-			if !matches!(literal_type, NumberLiteralType::Decimal { .. })
-				&& script[start..].len() == 2
-			{
-				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-			}
-			if matches!(literal_type, NumberLiteralType::Exponent { .. })
-				&& script.ends_with(['e', 'E'])
-			{
-				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+			match literal_type {
+				NumberLiteralType::BinaryLiteral | NumberLiteralType::HexadecimalLiteral => {
+					if script[start..].len() == 2 {
+						return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+					}
+				}
+				NumberLiteralType::OctalLiteral => {}
+				NumberLiteralType::Decimal { .. } => {
+					if script[start..].trim_end() == "." {
+						return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+					}
+				}
+				NumberLiteralType::Exponent => {
+					if script.ends_with(['e', 'E']) {
+						return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+					}
+				}
 			}
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),
