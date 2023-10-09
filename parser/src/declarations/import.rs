@@ -168,8 +168,8 @@ impl ASTNode for ImportDeclaration {
 						}
 					}
 					buf.push('}');
+					settings.add_gap(buf);
 				}
-				settings.add_gap(buf);
 			}
 		}
 		buf.push_str("from");

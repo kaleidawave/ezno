@@ -141,9 +141,9 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseXOr => "^",
 			BinaryOperator::InstanceOf => "instanceof",
 			BinaryOperator::In => "in",
-			BinaryOperator::Divides => "∣",
+			BinaryOperator::Divides => "/%",  // ∣
+			BinaryOperator::Compose => "<@>", // ∘
 			BinaryOperator::Pipe => "|>",
-			BinaryOperator::Compose => "∘",
 		}
 	}
 
@@ -280,7 +280,7 @@ impl Operator for UnaryPrefixAssignmentOperator {
 
 	fn to_str(&self) -> &'static str {
 		match self {
-			UnaryPrefixAssignmentOperator::Invert => "¡",
+			UnaryPrefixAssignmentOperator::Invert => ">!", // ¡
 			UnaryPrefixAssignmentOperator::IncrementOrDecrement(inc_or_dec) => inc_or_dec.to_str(),
 		}
 	}
