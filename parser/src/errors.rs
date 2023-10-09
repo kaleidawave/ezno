@@ -27,7 +27,6 @@ pub enum ParseErrors<'a> {
 pub enum LexingErrors {
 	SecondDecimalPoint,
 	NumberLiteralCannotHaveDecimalPoint,
-	NumberLiteralBaseSpecifierMustBeSecondCharacter,
 	NumberLiteralBaseSpecifierMustPrecededWithZero,
 	InvalidCharacterInJSXTag(char),
 	UnbalancedJSXClosingTags,
@@ -40,12 +39,12 @@ pub enum LexingErrors {
 	ExpectedEndToMultilineComment,
 	ExpectedEndToStringLiteral,
 	UnexpectedEndToNumberLiteral,
+	InvalidNumeralItemBecauseOfLiteralKind,
 	ExpectedEndToRegexLiteral,
 	ExpectedEndToJSXLiteral,
 	ExpectedEndToTemplateLiteral,
 	InvalidExponentUsage,
-	TwoUnderscores,
-	TrailingUnderscore,
+	InvalidUnderscore,
 }
 
 impl Display for LexingErrors {
@@ -56,9 +55,6 @@ impl Display for LexingErrors {
 			}
 			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
 				f.write_str("Number literal with specified base cannot have decimal point")
-			}
-			LexingErrors::NumberLiteralBaseSpecifierMustBeSecondCharacter => {
-				f.write_str("Number literal base character must be second character in literal")
 			}
 			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
 				f.write_str("Number literal base character must be proceeded with a zero")
@@ -88,11 +84,9 @@ impl Display for LexingErrors {
 			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
 			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
 			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
-			LexingErrors::TwoUnderscores => {
-				f.write_str("Only one underscore is allowed as numeric separator")
-			}
-			LexingErrors::TrailingUnderscore => {
-				f.write_str("Number literal cannot end with numeric separator")
+			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
+			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
+				f.write_str("Invalid item in binary, hex or octal literal")
 			}
 		}
 	}

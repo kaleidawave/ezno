@@ -37,7 +37,7 @@ pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::Prop
 			types.new_constant_type(Constant::String(value.clone()))
 		}
 		PropertyKey::NumberLiteral(number, _) => {
-			types.new_constant_type(Constant::Number(f64::from(*number).try_into().unwrap()))
+			types.new_constant_type(Constant::Number(f64::from(number.clone()).try_into().unwrap()))
 		}
 		PropertyKey::Computed(_, _) => todo!(),
 	}

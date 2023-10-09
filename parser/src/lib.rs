@@ -430,11 +430,10 @@ impl std::fmt::Display for NumberSign {
 	}
 }
 
-/// TODO BigInt
 /// TODO a mix between runtime numbers and source syntax based number
-/// TODO cases in input :(
+/// TODO hex cases lost in input :(
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum NumberRepresentation {
@@ -444,12 +443,13 @@ pub enum NumberRepresentation {
 	Hex(NumberSign, u64),
 	Bin(NumberSign, u64),
 	Octal(NumberSign, u64),
-	/// TODO could do as something other than f64
 	Number {
 		elided_zero_before_point: bool,
 		trailing_point: bool,
+		/// TODO could do as something other than f64
 		internal: f64,
 	},
+	BigInt(NumberSign, String),
 }
 
 impl std::hash::Hash for NumberRepresentation {
@@ -468,6 +468,7 @@ impl From<NumberRepresentation> for f64 {
 			NumberRepresentation::Hex(sign, nat)
 			| NumberRepresentation::Bin(sign, nat)
 			| NumberRepresentation::Octal(sign, nat) => sign.apply(nat as f64),
+			NumberRepresentation::BigInt(..) => todo!(),
 		}
 	}
 }
@@ -504,7 +505,9 @@ impl FromStr for NumberRepresentation {
 			(NumberSign::Positive, s)
 		};
 
-		if let Some(s) = s.strip_prefix('0') {
+		if let Some(s) = s.strip_suffix('n') {
+			Ok(NumberRepresentation::BigInt(sign, s.to_owned()))
+		} else if let Some(s) = s.strip_prefix('0') {
 			let next_char = s.chars().next();
 			match next_char {
 				Some('.') => {
@@ -609,7 +612,7 @@ impl FromStr for NumberRepresentation {
 
 impl std::fmt::Display for NumberRepresentation {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_js_string())
+		write!(f, "{}", self.clone().as_js_string())
 	}
 }
 
@@ -630,7 +633,7 @@ impl Eq for NumberRepresentation {}
 
 impl NumberRepresentation {
 	pub fn negate(&self) -> Self {
-		f64::from(*self).neg().into()
+		f64::from(self.clone()).neg().into()
 	}
 
 	pub fn as_js_string(self) -> String {
@@ -655,6 +658,7 @@ impl NumberRepresentation {
 				}
 				start
 			}
+			NumberRepresentation::BigInt(s, value) => format!("{s}{value}n"),
 		}
 	}
 }
