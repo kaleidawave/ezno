@@ -332,6 +332,23 @@ pub enum TSXKeyword {
     Generator,
 }
 
+impl std::fmt::Display for TSXKeyword {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		std::fmt::Debug::fmt(&self, f)
+	}
+}
+
+impl std::fmt::Display for TSXToken {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			TSXToken::Keyword(kw) => std::fmt::Debug::fmt(kw, f),
+			TSXToken::NumberLiteral(num) => std::fmt::Display::fmt(num, f),
+			TSXToken::IdentLiteral(value) => std::fmt::Display::fmt(value, f),
+			_ => std::fmt::Debug::fmt(&self, f),
+		}
+	}
+}
+
 impl TSXToken {
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))

@@ -78,7 +78,6 @@ jobs:
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          export ${{ needs.get-build-info.outputs.sponsors }}
           mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
 
       - uses: actions/upload-artifact@v3

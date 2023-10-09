@@ -112,7 +112,7 @@ pub(crate) fn call_constant_function(
 			}
 		}
 		// For functions
-		"call" | "bind" => {
+		"bind" => {
 			todo!()
 		}
 		"satisfies" => {
@@ -143,6 +143,18 @@ pub(crate) fn call_constant_function(
 			"is dependent {:?}",
 			types.get_type_by_id(arguments.first().unwrap().into_type().unwrap()).is_dependent()
 		))),
+		"compile_type_to_object" => {
+			if let Some(value) = call_site_type_args {
+				let value = crate::types::others::create_object_for_type(
+					value.first().unwrap().1,
+					environment,
+					types,
+				);
+				Ok(ConstantResult::Value(value))
+			} else {
+				Err(())
+			}
+		}
 		func => panic!("Unknown/unimplemented const function {func}"),
 	}
 }

@@ -106,7 +106,8 @@ jobs:
           npm ci
           npm version $VERSION
           npm run build-release
-          # TODO temp here:
+
+          # TODO temp check
           ls dist
         working-directory: src/js-cli-and-library
         env:
@@ -137,15 +138,13 @@ jobs:
 
       - name: Push updated manifests (Cargo.toml and package.json)
         run: |
+          git add .
+          git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
+          
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"
           done
-          if [[ ${{ github.event.inputs.ezno-version }} != 'none' ]]; then
-            git tag "release/main-$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno' )"
-          fi
-          git add .
-          git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
           git push --tags origin main
 
       - name: Discord

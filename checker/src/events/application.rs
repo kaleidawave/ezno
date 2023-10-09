@@ -9,7 +9,7 @@ use crate::{
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
 		properties::{get_property, set_property, Property},
-		specialize, Constructor, StructureGenerics, TypeId, TypeStore,
+		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
 	Environment, TruthyFalsy, Type,
 };
@@ -36,7 +36,7 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::SetsVariable(variable, value) => {
-			let new_value = specialize(value, type_arguments, environment, types);
+			let new_value = substitute(value, type_arguments, environment, types);
 
 			// if not closed over!!
 			// TODO temp, might need to set something else. Doesn't work deep
@@ -55,8 +55,8 @@ pub(crate) fn apply_event(
 			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency } => {
-			let on = specialize(on, type_arguments, environment, types);
-			let property = specialize(under, type_arguments, environment, types);
+			let on = substitute(on, type_arguments, environment, types);
+			let property = substitute(under, type_arguments, environment, types);
 
 			let (_, value) = get_property(on, under, None, environment, target, types)
 				.expect("Inferred constraints and checking failed");
@@ -66,12 +66,12 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Setter { on, under, new, reflects_dependency, initialization } => {
-			let on = specialize(on, type_arguments, environment, types);
-			let under = specialize(under, type_arguments, environment, types);
+			let on = substitute(on, type_arguments, environment, types);
+			let under = substitute(under, type_arguments, environment, types);
 
 			let new = match new {
 				Property::Value(new) => {
-					Property::Value(specialize(new, type_arguments, environment, types))
+					Property::Value(substitute(new, type_arguments, environment, types))
 				}
 				// For declare property
 				Property::Getter(_) => todo!(),
@@ -114,13 +114,13 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
-			let on = specialize(on, type_arguments, environment, types);
+			let on = substitute(on, type_arguments, environment, types);
 
 			let with = with
 				.iter()
 				.map(|argument| match argument {
 					SynthesisedArgument::NonSpread { ty, position: pos } => {
-						let ty = specialize(*ty, type_arguments, environment, types);
+						let ty = substitute(*ty, type_arguments, environment, types);
 						SynthesisedArgument::NonSpread { ty, position: pos.clone() }
 					}
 				})
@@ -176,17 +176,17 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Throw(thrown) => {
-			let specialized_thrown = specialize(thrown, type_arguments, environment, types);
+			let substituted_thrown = substitute(thrown, type_arguments, environment, types);
 
-			target.get_top_level_facts(environment).throw_value(specialized_thrown);
+			target.get_top_level_facts(environment).throw_value(substituted_thrown);
 
-			if specialized_thrown != TypeId::ERROR_TYPE {
+			if substituted_thrown != TypeId::ERROR_TYPE {
 				return None;
 			}
 		}
 		// TODO extract
 		Event::Conditionally { condition, events_if_truthy, else_events } => {
-			let condition = specialize(condition, type_arguments, environment, types);
+			let condition = substitute(condition, type_arguments, environment, types);
 
 			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
@@ -235,10 +235,10 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Return { returned } => {
-			let specialized_returned = specialize(returned, type_arguments, environment, types);
+			let substituted_returned = substitute(returned, type_arguments, environment, types);
 
-			if specialized_returned != TypeId::ERROR_TYPE {
-				return Some(specialized_returned);
+			if substituted_returned != TypeId::ERROR_TYPE {
+				return Some(substituted_returned);
 			} else {
 				crate::utils::notify!("event returned error so skipped");
 			}
@@ -251,7 +251,7 @@ pub(crate) fn apply_event(
 
 			let new_object_id = match prototype {
 				PrototypeArgument::Yeah(prototype) => {
-					let prototype = specialize(prototype, type_arguments, environment, types);
+					let prototype = substitute(prototype, type_arguments, environment, types);
 					target.get_top_level_facts(environment).new_object(
 						Some(prototype),
 						types,

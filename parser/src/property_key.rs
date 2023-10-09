@@ -4,8 +4,8 @@ use std::fmt::Debug;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression, NumberStructure,
-	ParseOptions, ParseResult,
+	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression,
+	NumberRepresentation, ParseOptions, ParseResult,
 };
 
 // pub enum GeneralPropertyKey {
@@ -63,7 +63,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Ident(String, Span, T::Private),
 	StringLiteral(String, Span),
-	NumberLiteral(NumberStructure, Span),
+	NumberLiteral(NumberRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
 }

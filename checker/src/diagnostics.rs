@@ -82,7 +82,7 @@ pub struct DiagnosticsContainer {
 // TODO the add methods are the same...
 impl DiagnosticsContainer {
 	pub fn new() -> Self {
-		Self::default()
+		Self { diagnostics: Default::default(), has_error: false }
 	}
 
 	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {
@@ -306,7 +306,7 @@ mod defined_errors_and_warnings {
 								position: argument_position,
 								labels: vec![(
 									format!(
-										"Parameter {} was specialized with type {}",
+										"Parameter {} was substituted with type {}",
 										parameter_type, restriction
 									),
 									Some(restriction_pos),

@@ -1,5 +1,6 @@
 import { createUnplugin } from "unplugin";
-import { build } from "ezno/initialized";
+import { build as eznoBuild, just_imports } from "ezno/initialised";
+import { readFileSync } from "node:fs";
 
 /// <reference path="types.d.ts"/>
 
@@ -19,33 +20,60 @@ function emitDiagnostics(on, diagnostics, plugin) {
 
 /** @param {import("./types").EznoUnpluginOptions} options  */
 function plugin(options) {
-	let allFiles = options.all_files ?? false;
+	let allJSFiles = options.allJSFiles ?? false;
 	// TODO the other 50
 	const extensions = ["ts", "tsx", "js", "jsx"];
 
+	const build = options.customBuild ?? eznoBuild;
+
+	const name = "ezno";
+	const esbuild = {
+		name,
+		setup(build) {
+			build.onLoad({ filter: /\.ts(x?)$/ }, async ({ path }) => {
+				const code = readFileSync(path, 'utf8');
+				try {
+					const imports = just_imports(code);
+					if (typeof imports === "string") {
+						return { contents: imports };
+					} else {
+						throw Error("Issue parsing");
+					}
+				} catch (e) {
+					return { errors: [] };
+				}
+			});
+		},
+	};
 	return {
-		name: "ezno",
+		name,
+		vite: {
+			enforce: 'pre',
+			configResolved(config) {
+				config.optimizeDeps.esbuildOptions.plugins = [esbuild];
+			},
+		},
 		transformInclude(id) {
 			const extension = id.split(".");
 			const jsTsLikeExtension = extensions.includes(extension.at(-1));
-			if (allFiles) {
+			if (allJSFiles) {
 				return jsTsLikeExtension;
 			} else {
 				return jsTsLikeExtension && extension.at(-2) == "ezno";
 			}
 		},
-		transform(code, id) {
+		transform(code, path) {
 			/** Passed to Ezno's builder so it can import more */
-			function resolver(path) {
-				if (path !== id) {
-					console.error(`tried to read another path '${path}' which is currently unsupported by the plugin`)
-					return "ERROR";
+			function readFile(pathEznoWantsToRead) {
+				if (pathEznoWantsToRead !== path) {
+					console.error(`tried to import '${pathEznoWantsToRead}' which is currently unsupported by the plugin`)
+					return null;
 				} else {
 					return code;
 				}
 			}
 
-			const output = build(resolver, id);
+			const output = build(readFile, path, false);
 			if (output.Ok) {
 				emitDiagnostics(code, output.Ok.diagnostics, this)
 				return {

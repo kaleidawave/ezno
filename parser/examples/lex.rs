@@ -16,7 +16,6 @@ fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorI
 	let other = script.clone();
 	let thread = spawn(move || {
 		lex_script(&script, &mut sender, &Default::default(), None, cursors.unwrap_or_default())
-			.unwrap();
 	});
 	// let mut count = 0;
 	println!("token | start (1 based) | length");
@@ -33,5 +32,10 @@ fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorI
 	}
 	// println!("{count} tokens");
 
-	thread.join().unwrap();
+	match thread.join().unwrap() {
+		Ok(_) => {}
+		Err((lexer_err, _)) => {
+			eprintln!("lexer error: {:?}", lexer_err);
+		}
+	}
 }

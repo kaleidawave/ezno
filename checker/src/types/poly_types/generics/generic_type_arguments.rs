@@ -13,28 +13,7 @@ use source_map::{Span, SpanWithSource};
 
 use std::{fmt::Debug, iter::FromIterator};
 
-use super::{GenericStructureTypeArgument, GenericStructureTypeArguments, ResolveGenerics};
-
-// This is for `function x<T>(a: T): Array<T>`
-impl ResolveGenerics for GenericStructureTypeArguments {
-	fn resolve_generics<T: crate::FSResolver>(
-		self,
-		type_arguments: &FunctionTypeArguments,
-		checking_data: &mut CheckingData<T>,
-	) -> Self {
-		self.0
-			.iter()
-			.cloned()
-			.map(|generic_type_argument_pair| {
-				ResolveGenerics::resolve_generics(
-					generic_type_argument_pair,
-					type_arguments,
-					checking_data,
-				)
-			})
-			.collect()
-	}
-}
+use super::{GenericStructureTypeArgument, GenericStructureTypeArguments};
 
 impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArguments {
 	fn from_iter<I: IntoIterator<Item = GenericStructureTypeArgument>>(iter: I) -> Self {

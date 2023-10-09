@@ -9,7 +9,7 @@ use parser::{
 use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::{GetterSetterGeneratorOrNone, SynthesizableFunction},
+	behavior::functions::{GetterSetterGeneratorOrNone, SynthesisableFunction},
 	context::{CanUseThis, Context, ContextType, Scope},
 	types::poly_types::GenericTypeParameters,
 	types::{
@@ -126,19 +126,19 @@ impl FunctionBasedItem for parser::functions::bases::ClassConstructorBase {
 	}
 }
 
-impl<U: FunctionBased + 'static> SynthesizableFunction for parser::FunctionBase<U>
+impl<U: FunctionBased + 'static> SynthesisableFunction<parser::Module> for parser::FunctionBase<U>
 where
 	U: FunctionBasedItem,
-	U::Body: SynthesizableFunctionBody,
+	U::Body: SynthesisableFunctionBody,
 {
 	fn is_declare(&self) -> bool {
 		false
 	}
 
-	fn type_parameters<T: crate::FSResolver>(
+	fn type_parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) -> Option<GenericTypeParameters> {
 		self.type_parameters
 			.as_ref()
@@ -149,35 +149,35 @@ where
 		FunctionId(source_id, self.get_position().start)
 	}
 
-	fn this_constraint<T: crate::FSResolver>(
+	fn this_constraint<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) -> Option<TypeId> {
 		// TODO
 		None
 	}
 
-	fn parameters<T: crate::FSResolver>(
+	fn parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) -> SynthesisedParameters {
 		synthesise_function_parameters(&self.parameters, environment, checking_data)
 	}
 
-	fn body<T: crate::FSResolver>(
+	fn body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) {
 		self.body.synthesise_function_body(environment, checking_data)
 	}
 
-	fn return_type_annotation<T: crate::FSResolver>(
+	fn return_type_annotation<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) -> Option<(TypeId, SpanWithSource)> {
 		self.return_type.as_ref().map(|reference| {
 			(
@@ -196,31 +196,31 @@ where
 	}
 }
 
-pub(super) trait SynthesizableFunctionBody {
+pub(super) trait SynthesisableFunctionBody {
 	// Return type is the return type of the body, if it doesn't use
 	/// any returns it is equal to [Type::Undefined]
-	fn synthesise_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	);
 }
 
-impl SynthesizableFunctionBody for Block {
-	fn synthesise_function_body<T: crate::FSResolver>(
+impl SynthesisableFunctionBody for Block {
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) {
 		synthesise_block(&self.0, environment, checking_data);
 	}
 }
 
-impl SynthesizableFunctionBody for ExpressionOrBlock {
-	fn synthesise_function_body<T: crate::FSResolver>(
+impl SynthesisableFunctionBody for ExpressionOrBlock {
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
@@ -234,10 +234,10 @@ impl SynthesizableFunctionBody for ExpressionOrBlock {
 	}
 }
 
-pub(crate) fn synthesise_type_parameters<T: crate::FSResolver>(
+pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 	type_parameters: &[GenericTypeConstraint],
 	environment: &mut crate::Environment,
-	checking_data: &mut crate::CheckingData<T>,
+	checking_data: &mut crate::CheckingData<T, parser::Module>,
 ) -> GenericTypeParameters {
 	type_parameters
 		.iter()
@@ -276,10 +276,10 @@ pub(crate) fn synthesise_type_parameters<T: crate::FSResolver>(
 /// Expected parameter types will be in the same order as the parameters
 ///
 /// TODO reduce with other
-pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
+pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 	reference_parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> SynthesisedParameters {
 	let parameters = reference_parameters
 		.parameters
@@ -351,10 +351,10 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn synthesise_function_parameters<T: crate::FSResolver>(
+fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	ast_parameters: &parser::FunctionParameters,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> SynthesisedParameters {
 	let parameters: Vec<_> = ast_parameters
 		.parameters
@@ -439,13 +439,13 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 /// This synthesises is for function types, references and interfaces.
 ///
 /// TODO should always take effect annotations (right?)
-pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
+pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 	type_parameters: &Option<Vec<GenericTypeConstraint>>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some
 	return_type: Option<&TypeAnnotation>,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	performs: super::Performs,
 	position: source_map::SpanWithSource,
 	kind: FunctionKind,
@@ -476,9 +476,11 @@ pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
 
 				let (effects, constant_id) = match performs {
 					Performs::Block(block) => {
+						environment.can_use_this = CanUseThis::Yeah {
+							// TODO use local this
+							this_ty: on_interface.unwrap_or(TypeId::ANY_TYPE),
+						};
 						// TODO new environment ?
-						environment.can_use_this =
-							CanUseThis::Yeah { this_ty: on_interface.unwrap() };
 						synthesise_block(&block.0, environment, checking_data);
 						(mem::take(&mut environment.facts.events), None)
 					}

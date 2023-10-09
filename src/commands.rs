@@ -1,60 +1,45 @@
-use checker::DiagnosticsContainer;
+use checker::{DiagnosticsContainer, PostCheckData};
 use parser::{
-	source_map::{MapFileStore, NoPathMap},
-	ASTNode, ToStringOptions,
+	source_map::{MapFileStore, WithPathMap},
+	ASTNode, ParseOptions, ToStringOptions,
 };
+use serde::Deserialize;
 use std::{
 	collections::HashSet,
 	path::{Path, PathBuf},
 };
 
-pub fn check<T: crate::FSResolver>(
-	fs_resolver: &T,
+pub type EznoCheckerData = PostCheckData<parser::Module>;
+
+pub fn check<T: crate::ReadFromFS>(
+	read_from_filesystem: &T,
 	input: &Path,
 	type_definition_module: Option<&Path>,
-) -> (
-	MapFileStore<NoPathMap>,
-	checker::DiagnosticsContainer,
-	Result<(checker::synthesis::module::PostCheckData, parser::Module), ()>,
-) {
-	// let _cwd = env::current_dir().unwrap();
-
-	// TODO temp
-	let mut fs = parser::source_map::MapFileStore::default();
-	let content = fs_resolver.get_content_at_path(input).expect("No file");
-	let source = parser::source_map::FileSystem::new_source_id(
-		&mut fs,
-		input.to_path_buf(),
-		content.clone(),
-	);
-	let module =
-		parser::Module::from_string(content, parser::ParseOptions::default(), source, None);
-
-	let module = match module {
-		Ok(module) => module,
-		Err(error) => {
-			let mut diagnostics = checker::DiagnosticsContainer::new();
-			diagnostics.add_error((error, source));
-			return (fs, diagnostics, Err(()));
-		}
-	};
-
+) -> (checker::DiagnosticsContainer, Result<EznoCheckerData, MapFileStore<WithPathMap>>) {
 	let definitions = if let Some(tdm) = type_definition_module {
 		HashSet::from_iter(std::iter::once(tdm.into()))
 	} else {
 		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
 	};
 
-	let (diagnostics, data) =
-		checker::synthesis::module::synthesise_module_root(&module, definitions, |path| {
-			if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
-			} else {
-				fs_resolver.get_content_at_path(path)
-			}
-		});
+	let read_from_fs = |path: &Path| {
+		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
+			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+		} else {
+			read_from_filesystem.get_content_at_path(path)
+		}
+	};
 
-	(fs, diagnostics, data.map(|data| (data, module)))
+	let type_check_options = None;
+	let parsing_options = ParseOptions::default();
+
+	checker::check_project(
+		input.to_path_buf(),
+		definitions,
+		read_from_fs,
+		type_check_options,
+		parsing_options,
+	)
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
@@ -71,7 +56,7 @@ pub struct BuildOutput {
 	/// For diagnostics
 	/// TODO serde
 	#[cfg_attr(target_family = "wasm", serde(skip))]
-	pub fs: MapFileStore<NoPathMap>,
+	pub fs: MapFileStore<WithPathMap>,
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
@@ -80,32 +65,62 @@ pub struct FailedBuildOutput {
 	/// For diagnostics
 	/// TODO serde
 	#[cfg_attr(target_family = "wasm", serde(skip))]
-	pub fs: MapFileStore<NoPathMap>,
+	pub fs: MapFileStore<WithPathMap>,
 }
 
-pub fn build<T: crate::FSResolver>(
+#[derive(Deserialize)]
+pub struct BuildConfig {
+	#[serde(default)]
+	pub strip_whitespace: bool,
+}
+
+pub type EznoParsePostCheckVisitors = parser::visiting::VisitorsMut<EznoCheckerData>;
+
+pub fn build<T: crate::ReadFromFS>(
 	fs_resolver: &T,
 	input_path: &Path,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
-	minify_output: bool,
+	config: BuildConfig,
+	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
-	let (fs, diagnostics, data_and_module) = check(fs_resolver, input_path, type_definition_module);
+	// TODO parse settings + non_standard_library & non_standard_syntax
+	let (diagnostics, data_and_module) = check(fs_resolver, input_path, type_definition_module);
 
-	if let (false, Ok((_data, module))) = (diagnostics.has_error(), data_and_module) {
-		// TODO for all modules
-		// TODO pass through transformers
-		let to_string_options =
-			if minify_output { ToStringOptions::minified() } else { ToStringOptions::default() };
-		let content = module.to_string(&to_string_options);
-		let main_output = Output {
-			output_path: output_path.to_path_buf(),
-			content,
-			// TODO temp
-			mappings: String::new(),
-		};
-		Ok(BuildOutput { outputs: vec![main_output], diagnostics, fs })
-	} else {
-		Err(FailedBuildOutput { fs, diagnostics })
+	match data_and_module {
+		Ok(mut data) => {
+			// TODO For all modules
+			let main_module = data.modules.get_mut(&data.entry_source).unwrap();
+
+			// TODO bundle using main_module.imports
+
+			// TODO !!! DON'T CLONE !!! THE MODULE !!! BUT DON'T WANT TO REMOVE FROM ABOVE !!!
+			let mut module = main_module.content.clone();
+
+			let mut transformers = transformers.unwrap_or_default();
+
+			module.visit_mut::<EznoCheckerData>(
+				&mut transformers,
+				&mut data,
+				&parser::visiting::VisitSettings::default(),
+			);
+
+			let to_string_options = if config.strip_whitespace {
+				ToStringOptions::minified()
+			} else {
+				ToStringOptions::default()
+			};
+
+			let content = module.to_string(&to_string_options);
+			let main_output = Output {
+				output_path: output_path.to_path_buf(),
+				content,
+				// TODO module.to_string_with_map
+				mappings: String::new(),
+			};
+
+			Ok(BuildOutput { outputs: vec![main_output], diagnostics, fs: data.module_contents })
+		}
+		Err(err) => Err(FailedBuildOutput { diagnostics, fs: err }),
 	}
 }

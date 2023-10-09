@@ -31,6 +31,7 @@ impl<T> RangeMap<T> {
 	pub fn get(&self, point: u32) -> Option<&T> {
 		self.entries
 			.range(0..(point + 1))
+			// very important to reverse
 			.rev()
 			.find_map(|(_, v)| v.iter().find_map(|(e, v)| (*e > point).then_some(v)))
 	}

@@ -8,10 +8,10 @@ use super::{
 };
 
 /// Note that this expects the environment to be new lexically
-pub(super) fn synthesise_block<T: crate::FSResolver>(
+pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 	statements: &[StatementOrDeclaration],
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	hoist_statements(statements, environment, checking_data);
 
@@ -51,17 +51,17 @@ pub(super) fn synthesise_block<T: crate::FSResolver>(
 	}
 }
 
-pub(crate) fn synthesize_declaration<T: crate::FSResolver>(
+pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 	declaration: &Declaration,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
 ) {
 	match declaration {
 		Declaration::Variable(declaration) => {
 			synthesise_variable_declaration(declaration, environment, checking_data)
 		}
 		Declaration::Class(class) => {
-			let constructor = synthesise_class_declaration(class, environment, checking_data);
+			let constructor = synthesise_class_declaration(&class.on, environment, checking_data);
 			let position = class.on.position.clone().with_source(environment.get_source());
 			let result = environment.declare_variable(
 				class.on.name.as_str(),
@@ -84,6 +84,29 @@ pub(crate) fn synthesize_declaration<T: crate::FSResolver>(
 		| Declaration::Interface(_)
 		| Declaration::TypeAlias(_) => {}
 		Declaration::Import(_) => todo!(),
-		Declaration::Export(_) => todo!(),
+		Declaration::Export(exported) => match &exported.on {
+			parser::declarations::ExportDeclaration::Variable { exported, position } => {
+				match exported {
+					// Skipped as this is done earlier
+					parser::declarations::export::Exportable::Function(_)
+					| parser::declarations::export::Exportable::Interface(_)
+					| parser::declarations::export::Exportable::TypeAlias(_) => {}
+					parser::declarations::export::Exportable::Class(class) => {
+						// TODO mark as exported
+						synthesise_class_declaration(class, environment, checking_data);
+					}
+					parser::declarations::export::Exportable::Variable(variable) => {
+						// TODO mark as exported
+						crate::utils::notify!(
+							"Export variable {:?}",
+							environment.context_type.kind
+						);
+						synthesise_variable_declaration(variable, environment, checking_data);
+					}
+					parser::declarations::export::Exportable::Parts(_) => todo!(),
+				}
+			}
+			parser::declarations::ExportDeclaration::Default { expression, position } => todo!(),
+		},
 	}
 }

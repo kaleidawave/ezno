@@ -9,8 +9,8 @@ use crate::{
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	CursorId, ExpressionPosition, FunctionHeader, Keyword, NumberStructure, ParseResult, Quoted,
-	TSXKeyword,
+	CursorId, ExpressionPosition, FunctionHeader, Keyword, NumberRepresentation, ParseResult,
+	Quoted, TSXKeyword,
 };
 
 use self::{
@@ -62,7 +62,7 @@ use std::convert::{TryFrom, TryInto};
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Expression {
 	// Literals:
-	NumberLiteral(NumberStructure, Span),
+	NumberLiteral(NumberRepresentation, Span),
 	StringLiteral(String, #[partial_eq_ignore] Quoted, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
@@ -237,7 +237,7 @@ impl Expression {
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
-				let res = value.parse::<NumberStructure>();
+				let res = value.parse::<NumberRepresentation>();
 				match res {
 					Ok(number) => Expression::NumberLiteral(number, position),
 					Err(_) => unreachable!("Could not parse {value}"),
@@ -572,7 +572,7 @@ impl Expression {
 				)?)
 			}
 			#[cfg(feature = "extras")]
-			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) => {
+			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) if settings.is_expressions => {
 				// Maintains compatibility here
 				let mut parentheses_depth = 0;
 				let next = reader.scan(|token, _| match token {
@@ -1616,7 +1616,7 @@ pub enum SuperReference {
 mod tests {
 	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
 	use crate::{
-		assert_matches_ast, operators::BinaryOperator, span, NumberStructure, Quoted, SourceId,
+		assert_matches_ast, operators::BinaryOperator, span, NumberRepresentation, Quoted, SourceId,
 	};
 
 	#[test]
@@ -1637,11 +1637,12 @@ mod tests {
 
 	#[test]
 	fn parenthesized_expression() {
+		// Can't match 45 here
 		assert_matches_ast!(
 			"(45)",
 			ParenthesizedExpression(
 				Deref @ MultipleExpression::Single(NumberLiteral(
-					NumberStructure::Number(_),
+					NumberRepresentation::Number { .. },
 					span!(1, 3),
 				)),
 				span!(0, 4),
@@ -1669,10 +1670,10 @@ mod tests {
 				Deref @ MultipleExpression::Multiple {
 					lhs:
 						Deref @ MultipleExpression::Single(NumberLiteral(
-							NumberStructure::Number(_),
+							NumberRepresentation::Number { .. },
 							span!(1, 3),
 						)),
-					rhs: NumberLiteral(NumberStructure::Number(_), span!(4, 5)),
+					rhs: NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
 					position: _,
 				},
 				span!(0, 6),
@@ -1683,33 +1684,33 @@ mod tests {
 	#[test]
 	fn binary_expressions() {
 		assert_matches_ast!("2 + 3", BinaryOperation {
-			lhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(0, 1)),
+			lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(0, 1)),
 			operator: BinaryOperator::Add,
-			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(4, 5)),
+			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
 			position: _
 		});
 		assert_matches_ast!("xt === 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::StrictEqual,
-			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(7, 8)),
+			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(7, 8)),
 			position: _
 		});
 		assert_matches_ast!("x << 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftLeft,
-			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(5, 6)),
+			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(5, 6)),
 			position: _
 		});
 		assert_matches_ast!("x >> 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftRight,
-			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(5, 6)),
+			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(5, 6)),
 			position: _
 		});
 		assert_matches_ast!("x >>> 3", BinaryOperation {
 			lhs: Deref @ VariableReference(..),
 			operator: BinaryOperator::BitwiseShiftRightUnsigned,
-			rhs: Deref @ NumberLiteral(NumberStructure::Number(_), span!(6, 7)),
+			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(6, 7)),
 			position: _
 		});
 	}

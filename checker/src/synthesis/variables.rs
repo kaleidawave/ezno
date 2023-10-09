@@ -17,17 +17,17 @@ use crate::{
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
 ///
 /// TODO shouldn't return type, for performs...
-pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKind>(
+pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKind>(
 	name: &parser::VariableField<U>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<'_, T>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,
 ) -> TypeId {
-	fn register_variable_identifier<T: crate::FSResolver>(
+	fn register_variable_identifier<T: crate::ReadFromFS>(
 		name: &VariableIdentifier,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 		behavior: crate::context::VariableRegisterBehavior,
 		constraint: Option<TypeId>,
 	) -> TypeId {
@@ -222,13 +222,13 @@ pub(crate) fn register_variable<T: crate::FSResolver, U: parser::VariableFieldKi
 ///
 /// TODO no idea how arrays and objects are checked here
 pub(super) fn synthesise_variable_declaration_item<
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	U: parser::ast::variable::DeclarationExpression + 'static,
 >(
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
 	is_constant: bool,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) where
 	for<'a> Option<&'a parser::Expression>: From<&'a U>,
 {
@@ -263,10 +263,10 @@ pub(super) fn synthesise_variable_declaration_item<
 	assign_to_fields(item, environment, checking_data, value_ty);
 }
 
-fn assign_to_fields<T: crate::FSResolver>(
+fn assign_to_fields<T: crate::ReadFromFS>(
 	item: &VariableField<parser::VariableFieldInSourceCode>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	value: TypeId,
 ) {
 	match item {

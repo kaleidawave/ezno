@@ -24,7 +24,7 @@ pub(crate) struct ExplorerArguments {
 }
 
 impl ExplorerArguments {
-	pub(crate) fn run<T: crate::FSResolver, U: crate::CLIInputResolver>(
+	pub(crate) fn run<T: crate::ReadFromFS, U: crate::CLIInputResolver>(
 		&mut self,
 		fs_resolver: T,
 		cli_input_resolver: U,
@@ -168,7 +168,7 @@ impl ExplorerSubCommand {
 				match res {
 					Ok(module) => {
 						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
-							ToStringOptions::default()
+							ToStringOptions { trailing_semicolon: true, ..Default::default() }
 						} else {
 							ToStringOptions::minified()
 						};

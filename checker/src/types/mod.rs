@@ -1,6 +1,7 @@
 pub mod calling;
 mod casts;
 pub mod functions;
+pub mod others;
 pub mod poly_types;
 pub mod printing;
 pub mod properties;
@@ -10,7 +11,7 @@ mod terms;
 
 use derive_debug_extras::DebugExtras;
 
-pub(crate) use poly_types::specialization::*;
+pub(crate) use poly_types::substitution::*;
 
 pub(crate) use casts::*;
 use source_map::{Span, SpanWithSource};
@@ -86,9 +87,6 @@ impl TypeId {
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(22);
 
-	// This exists in TS
-	pub const HTML_ELEMENT_TAG_NAME_MAP: Self = Self(23);
-
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 25;
 }
 
@@ -106,7 +104,7 @@ pub enum Type {
 	And(TypeId, TypeId),
 	Or(TypeId, TypeId),
 	RootPolyType(PolyNature),
-	/// Also a "Specialized constructor type"
+	/// Also a "Substituted constructor type"
 	Constructor(Constructor),
 	/// For number and other rooted types
 	///

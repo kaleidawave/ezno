@@ -1,44 +1,51 @@
+use std::marker::PhantomData;
+
 use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
 	types::{cast_as_string, SynthesisedArgument},
-	CheckingData, Constant, Environment, Instance, SynthesizableExpression, Type, TypeId,
+	CheckingData, Constant, Environment, Instance, SynthesisableExpression, Type, TypeId,
 };
 
-pub enum TemplateLiteralPart<'a, T: SynthesizableExpression> {
+pub enum TemplateLiteralPart<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>> {
 	Static(&'a str),
-	Dynamic(&'a T),
+	Dynamic(&'a TExpr, PhantomData<M>),
 }
 
-pub fn synthesise_template_literal<
-	'a,
-	T: crate::FSResolver,
-	TExpr: SynthesizableExpression + 'a,
->(
+pub fn synthesise_template_literal<'a, T, M, TExpr>(
 	tag: Option<TypeId>,
-	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, TExpr>> + 'a,
+	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M, TExpr>> + 'a,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
-) -> Instance {
-	fn part_to_type<T: crate::FSResolver, TExpr: SynthesizableExpression>(
-		first: TemplateLiteralPart<TExpr>,
+	checking_data: &mut CheckingData<T, M>,
+) -> Instance
+where
+	T: crate::ReadFromFS,
+	M: crate::SynthesisableModule,
+	TExpr: SynthesisableExpression<M> + 'a,
+{
+	fn part_to_type<
+		T: crate::ReadFromFS,
+		M: crate::SynthesisableModule,
+		TExpr: SynthesisableExpression<M>,
+	>(
+		first: TemplateLiteralPart<M, TExpr>,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> crate::TypeId {
 		match first {
 			TemplateLiteralPart::Static(static_part) => {
 				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()))
 			}
-			TemplateLiteralPart::Dynamic(expression) => {
+			TemplateLiteralPart::Dynamic(expression, _) => {
 				// TODO tidy
-				let value = SynthesizableExpression::synthesise_expression(
+				let value = SynthesisableExpression::synthesise_expression(
 					expression,
 					environment,
 					checking_data,
 				);
 				if let Type::Constant(cst) = checking_data.types.get_type_by_id(value) {
-					let value = cast_as_string(cst, checking_data.settings.strict_casts).unwrap();
+					let value = cast_as_string(cst, checking_data.options.strict_casts).unwrap();
 					checking_data.types.new_constant_type(Constant::String(value))
 				} else {
 					crate::utils::notify!("Need to cast to string...");

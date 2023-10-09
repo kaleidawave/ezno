@@ -1,10 +1,6 @@
 use ezno_lib::cli::run_cli;
 use std::io;
 
-fn fs_resolver(path: &std::path::Path) -> Option<String> {
-	std::fs::read_to_string(path).ok()
-}
-
 #[cfg(target_family = "windows")]
 pub(crate) fn cli_input_resolver(prompt: &str) -> Option<String> {
 	print!("{}> ", prompt);
@@ -28,5 +24,14 @@ pub(crate) fn cli_input_resolver(prompt: &str) -> Option<String> {
 fn main() {
 	let arguments = std::env::args().skip(1).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-	run_cli(&arguments, fs_resolver, cli_input_resolver)
+
+	fn read_from_file(path: &std::path::Path) -> Option<String> {
+		std::fs::read_to_string(path).ok()
+	}
+
+	fn write_to_file(path: &std::path::Path, content: String) {
+		std::fs::write(path, content).unwrap();
+	}
+
+	run_cli(&arguments, read_from_file, write_to_file, cli_input_resolver)
 }

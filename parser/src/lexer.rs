@@ -33,6 +33,20 @@ impl Default for LexerOptions {
 	}
 }
 
+fn is_number_delimiter(chr: char) -> bool {
+	matches!(
+		chr,
+		'*' | '-'
+			| '+' | '/' | '&'
+			| '|' | ')' | '}'
+			| ']' | '!' | '^'
+			| '%' | '=' | ';'
+			| ':' | '<' | '>'
+			| ',' | '?' | ' '
+			| '\n' | '\r'
+	)
+}
+
 /// *Tokenizes* script appending Tokens to `sender` using [TokenSender::push]
 /// `offset` represents the start of the source if script is contained in some larger buffer
 ///
@@ -91,6 +105,8 @@ pub fn lex_script(
 	#[derive(PartialEq, Debug)]
 	enum NumberLiteralType {
 		BinaryLiteral,
+		/// Note that leading zero entries are not registered at this
+		/// stage, but work through NumberRepresentation parsing
 		OctalLiteral,
 		HexadecimalLiteral,
 		/// Base 10
@@ -98,6 +114,8 @@ pub fn lex_script(
 			/// has decimal point
 			fractional: bool,
 		},
+		BigInt,
+		Exponent,
 	}
 
 	impl Default for NumberLiteralType {
@@ -113,14 +131,7 @@ pub fn lex_script(
 		Identifier,
 		Symbol(GetAutomataStateForValue<TSXToken>),
 		// Literals:
-		Number {
-			literal_type: NumberLiteralType,
-			/// For binary, hex, etc `0b0121`
-			last_character_zero: bool,
-			/// Past and `e` or `E`
-			past_exponential: bool,
-			last_was_underscore: bool,
-		},
+		Number(NumberLiteralType),
 		String {
 			double_quoted: bool,
 			escaped: bool,
@@ -220,74 +231,99 @@ pub fn lex_script(
 		}
 
 		match state {
-			LexingState::Number {
-				ref mut literal_type,
-				ref mut last_character_zero,
-				ref mut past_exponential,
-				ref mut last_was_underscore,
-			} => {
+			LexingState::Number(ref mut literal_type) => {
 				match chr {
-					'0' => {
-						*last_character_zero = true;
-						*last_was_underscore = false;
+					_ if matches!(literal_type, NumberLiteralType::BigInt) => {
+						if is_number_delimiter(chr) {
+							push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
+							set_state!(LexingState::None);
+						} else {
+							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+						}
 					}
-					'1'..='9' => {
-						*last_character_zero = false;
-						*last_was_underscore = false;
+					// For binary/hexadecimal/octal literals
+					'b' | 'B' | 'x' | 'X' | 'o' | 'O' if start + 1 == idx => {
+						// Check starts '0*'
+						if let [b'0', _] = &script[start..].as_bytes() {
+							*literal_type = match chr {
+								'b' | 'B' => NumberLiteralType::BinaryLiteral,
+								'o' | 'O' => NumberLiteralType::OctalLiteral,
+								'x' | 'X' => NumberLiteralType::HexadecimalLiteral,
+								_ => unreachable!(),
+							}
+						} else {
+							return_err!(
+								LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
+							);
+						}
 					}
+					'0'..='9' | 'a'..='f' | 'A'..='F' => match literal_type {
+						NumberLiteralType::BinaryLiteral => {
+							if !matches!(chr, '0' | '1') {
+								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							}
+						}
+						NumberLiteralType::OctalLiteral => {
+							if !matches!(chr, '0'..='7') {
+								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							}
+						}
+						NumberLiteralType::Decimal { fractional } => {
+							if matches!(chr, 'e' | 'E')
+								&& !(*fractional || script[..idx].ends_with('_'))
+							{
+								*literal_type = NumberLiteralType::Exponent;
+							} else if !matches!(chr, '0'..='9') {
+								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							}
+						}
+						NumberLiteralType::Exponent => {
+							if !matches!(chr, '0'..='9') {
+								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							}
+						}
+						NumberLiteralType::HexadecimalLiteral => {}
+						NumberLiteralType::BigInt => unreachable!(),
+					},
 					'.' => {
 						if let NumberLiteralType::Decimal { fractional } = literal_type {
-							if *fractional {
+							if script[..idx].ends_with('_') {
+								return_err!(LexingErrors::InvalidUnderscore)
+							} else if *fractional {
 								return_err!(LexingErrors::SecondDecimalPoint);
 							}
 							*fractional = true;
-							*last_character_zero = false;
 						} else {
 							return_err!(LexingErrors::NumberLiteralCannotHaveDecimalPoint);
 						}
 					}
-					'a'..='f' | 'A'..='F'
-						if matches!(literal_type, NumberLiteralType::HexadecimalLiteral) =>
-					{
-						*last_character_zero = false;
-					}
-					// For binary/hexadecimal/octal literals
-					'b' | 'B' | 'x' | 'X' | 'o' | 'O' => {
-						if start + 1 != idx {
-							return_err!(
-								LexingErrors::NumberLiteralBaseSpecifierMustBeSecondCharacter
-							);
-						} else if !*last_character_zero {
-							return_err!(
-								LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
-							);
-						} else {
-							*literal_type = match chr.to_ascii_lowercase() {
-								'b' => NumberLiteralType::BinaryLiteral,
-								'o' => NumberLiteralType::OctalLiteral,
-								'x' => NumberLiteralType::HexadecimalLiteral,
-								_ => unreachable!(),
-							}
-						}
-					}
-					'e' | 'E' => {
-						if *past_exponential {
-							return_err!(LexingErrors::TwoExponents)
-						}
-						*past_exponential = true;
-					}
 					'_' => {
-						if *last_was_underscore {
-							return_err!(LexingErrors::TwoUnderscores)
+						if !matches!(script[..idx].as_bytes().last(), Some(b'0'..=b'9')) {
+							return_err!(LexingErrors::InvalidUnderscore)
 						}
-						*last_was_underscore = true;
 					}
-					_ => {
-						if *last_was_underscore {
-							return_err!(LexingErrors::TrailingUnderscore)
+					'n' if matches!(
+						literal_type,
+						NumberLiteralType::Decimal { fractional: false }
+					) =>
+					{
+						*literal_type = NumberLiteralType::BigInt;
+					}
+					chr => {
+						if is_number_delimiter(chr) {
+							// Note not = as don't want to include chr
+							let num_slice = &script[start..idx];
+							if num_slice.trim_end() == "."
+								|| num_slice
+									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
+							{
+								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
+							}
+							push_token!(TSXToken::NumberLiteral(num_slice.to_owned()));
+							set_state!(LexingState::None);
+						} else {
+							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 						}
-						push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
-						set_state!(LexingState::None);
 					}
 				}
 			}
@@ -829,18 +865,7 @@ pub fn lex_script(
 				sender.push(Token(TSXToken::Cursor(cursors.pop().unwrap().1), current_position!()));
 			}
 			match chr {
-				'0' => set_state!(LexingState::Number {
-					literal_type: Default::default(),
-					last_character_zero: true,
-					last_was_underscore: false,
-					past_exponential: false
-				}),
-				'1'..='9' => set_state!(LexingState::Number {
-					literal_type: Default::default(),
-					last_character_zero: false,
-					last_was_underscore: false,
-					past_exponential: false
-				}),
+				'0'..='9' => set_state!(LexingState::Number(Default::default())),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
 				'_' | '$' => {
@@ -909,7 +934,6 @@ pub fn lex_script(
 								last_char_was_dollar: false,
 								escaped: false,
 							};
-							continue;
 						}
 						(true, '<') if options.lex_jsx => {
 							set_state!(LexingState::JSXLiteral {
@@ -922,34 +946,36 @@ pub fn lex_script(
 								no_inner_tags_or_expressions: false,
 								is_self_closing_tag: false,
 							});
-							continue;
 						}
 						(true, '/') => {
 							state = LexingState::RegexLiteral {
 								escaped: false,
 								after_last_slash: false,
 							};
-							continue;
 						}
-						(_, _) => {}
-					}
-
-					// Else try do a symbol
-					// TODO catch `.4` number literals. needs update to automaton
-					let automaton = TSXToken::new_automaton();
-					match automaton.get_next(chr) {
-						GetNextResult::Result {
-							result,
-							ate_character: _, // Should always be true
-						} => {
-							expect_expression = result.is_expression_prefix();
-							push_token!(result);
+						(true, '.') => {
+							state = LexingState::Number(NumberLiteralType::Decimal {
+								fractional: true,
+							});
 						}
-						GetNextResult::NewState(new_state) => {
-							state = LexingState::Symbol(new_state);
-						}
-						GetNextResult::InvalidCharacter(err) => {
-							return_err!(LexingErrors::UnexpectedCharacter(err));
+						(_, _) => {
+							// Else try do a symbol
+							let automaton = TSXToken::new_automaton();
+							match automaton.get_next(chr) {
+								GetNextResult::Result {
+									result,
+									ate_character: _, // Should always be true
+								} => {
+									expect_expression = result.is_expression_prefix();
+									push_token!(result);
+								}
+								GetNextResult::NewState(new_state) => {
+									state = LexingState::Symbol(new_state);
+								}
+								GetNextResult::InvalidCharacter(err) => {
+									return_err!(LexingErrors::UnexpectedCharacter(err));
+								}
+							}
 						}
 					}
 				}
@@ -959,14 +985,11 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number { last_was_underscore, literal_type, .. } => {
-			if last_was_underscore {
-				return_err!(LexingErrors::TrailingUnderscore)
-			}
-			if !matches!(literal_type, NumberLiteralType::Decimal { .. })
-				&& script[start..].len() == 2
+		LexingState::Number(..) => {
+			if script[start..].trim_end() == "."
+				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
 			{
-				return_err!(LexingErrors::ExpectedEndToNumberLiteral)
+				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}
 			sender.push(Token(
 				TSXToken::NumberLiteral(script[start..].to_owned()),

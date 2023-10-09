@@ -20,7 +20,7 @@ fn main() {
 					)
 				),
 				rhs: Expression::NumberLiteral(
-					parser::NumberStructure::Number(4f64),
+					parser::NumberRepresentation::from(4f64),
 					Span::NULL_SPAN
 				)
 				.into(),
@@ -37,7 +37,7 @@ fn main() {
 				parser::VariableIdentifier::Standard("y".to_owned(), Span::NULL_SPAN),
 			)),
 			expression: Some(Expression::NumberLiteral(
-				parser::NumberStructure::Number(-0.8715757724135882),
+				parser::NumberRepresentation::from(-0.8715757724135882),
 				Span::NULL_SPAN,
 			)),
 			type_annotation: None,
@@ -62,7 +62,7 @@ fn main() {
 				parser::VariableIdentifier::Standard("test".to_owned(), Span::NULL_SPAN),
 			)),
 			expression: Some(Expression::NumberLiteral(
-				parser::NumberStructure::Number(4f64),
+				parser::NumberRepresentation::from(4f64),
 				Span::NULL_SPAN,
 			)),
 			type_annotation: None,

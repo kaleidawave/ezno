@@ -288,6 +288,13 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	depth: u8,
 ) {
 	for (at_end, item) in items.iter().endiate() {
+		if let StatementOrDeclaration::Statement(Statement::Expression(
+			crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
+		)) = item
+		{
+			continue;
+		}
+
 		settings.add_indent(depth, buf);
 		item.to_string_from_buffer(buf, settings, depth);
 		if (!at_end || settings.trailing_semicolon) && item.requires_semi_colon() {

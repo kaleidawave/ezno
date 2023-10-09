@@ -30,13 +30,6 @@ fn check_errors(
 	code: &'static str,
 	expected_diagnostics: &[&'static str],
 ) {
-	let mut fs = parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
-	let source =
-		parser::source_map::FileSystem::new_source_id(&mut fs, PathBuf::default(), code.to_owned());
-	let module =
-		parser::Module::from_string(code.to_owned(), parser::ParseOptions::default(), source, None)
-			.unwrap();
-
 	// let global_buffer = Arc::new(Mutex::new(String::new()));
 	// let old_panic_hook = panic::take_hook();
 
@@ -52,11 +45,23 @@ fn check_errors(
 	// 	})
 	// });
 
+	// TODO could test these
+	let type_check_options = None;
+	let parse_options = Default::default();
+
 	// let result = panic::catch_unwind(|| {
-	let result = checker::synthesis::module::synthesise_module_root(
-		&module,
+	let result = checker::check_project::<_, parser::Module>(
+		PathBuf::from("TEST_CODE"),
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
-		|_| Some(checker::INTERNAL_DEFINITION_FILE.to_owned()),
+		|path| {
+			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
+				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+			} else {
+				Some(code.to_owned())
+			}
+		},
+		type_check_options,
+		parse_options,
 	);
 	// });
 
@@ -84,7 +89,7 @@ fn check_errors(
 	}
 
 	// match result {
-	// 	Ok(result) => { }
+	// 	Ok(result) => {}
 	// 	Err(error) => Err(Arc::into_inner(global_buffer).unwrap().into_inner().unwrap()),
 	// }
 }

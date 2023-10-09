@@ -1,4 +1,8 @@
+export type ReadFromFS = (path: string) => string | null;
+
 export interface EznoUnpluginOptions {
     /** Defaults to only running on .ezno.* files */
-    all_files: bool
+    allJSFiles: bool,
+
+    customBuild?: (cb: ReadFromFS, entryPath: string, minify: bool) => any
 }

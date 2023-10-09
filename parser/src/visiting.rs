@@ -225,7 +225,7 @@ mod ast {
 		std::path::PathBuf,
 		source_map::Span,
 		crate::TypeAnnotation,
-		crate::NumberStructure,
+		crate::NumberRepresentation,
 		crate::operators::BinaryOperator,
 		crate::operators::BinaryAssignmentOperator,
 		crate::operators::UnaryOperator,
@@ -618,7 +618,6 @@ mod visitors_mut {
 		fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {}
 	}
 
-	#[derive(Default)]
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
 		pub statement_visitors_mut:
@@ -626,6 +625,18 @@ mod visitors_mut {
 		pub jsx_element_visitors_mut: Vec<Box<dyn VisitorMut<JSXElement, T>>>,
 		pub variable_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<MutableVariablePart<'a>, T>>>,
 		pub block_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>>,
+	}
+
+	impl<T> Default for VisitorsMut<T> {
+		fn default() -> Self {
+			Self {
+				expression_visitors_mut: Default::default(),
+				statement_visitors_mut: Default::default(),
+				jsx_element_visitors_mut: Default::default(),
+				variable_visitors_mut: Default::default(),
+				block_visitors_mut: Default::default(),
+			}
+		}
 	}
 
 	impl<T> VisitorMutReceiver<T> for VisitorsMut<T> {

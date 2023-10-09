@@ -3,7 +3,7 @@
 //! Here dependent means the type depends on another type or condition (sometimes called type constructors)
 
 pub mod generics;
-pub mod specialization;
+pub mod substitution;
 
 pub use generics::*;
 

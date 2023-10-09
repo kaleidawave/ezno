@@ -27,7 +27,6 @@ pub enum ParseErrors<'a> {
 pub enum LexingErrors {
 	SecondDecimalPoint,
 	NumberLiteralCannotHaveDecimalPoint,
-	NumberLiteralBaseSpecifierMustBeSecondCharacter,
 	NumberLiteralBaseSpecifierMustPrecededWithZero,
 	InvalidCharacterInJSXTag(char),
 	UnbalancedJSXClosingTags,
@@ -39,13 +38,13 @@ pub enum LexingErrors {
 	NewLineInStringLiteral,
 	ExpectedEndToMultilineComment,
 	ExpectedEndToStringLiteral,
-	ExpectedEndToNumberLiteral,
+	UnexpectedEndToNumberLiteral,
+	InvalidNumeralItemBecauseOfLiteralKind,
 	ExpectedEndToRegexLiteral,
 	ExpectedEndToJSXLiteral,
 	ExpectedEndToTemplateLiteral,
-	TwoExponents,
-	TwoUnderscores,
-	TrailingUnderscore,
+	InvalidExponentUsage,
+	InvalidUnderscore,
 }
 
 impl Display for LexingErrors {
@@ -56,9 +55,6 @@ impl Display for LexingErrors {
 			}
 			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
 				f.write_str("Number literal with specified base cannot have decimal point")
-			}
-			LexingErrors::NumberLiteralBaseSpecifierMustBeSecondCharacter => {
-				f.write_str("Number literal base character must be second character in literal")
 			}
 			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
 				f.write_str("Number literal base character must be proceeded with a zero")
@@ -81,18 +77,16 @@ impl Display for LexingErrors {
 				f.write_str("Unclosed multiline comment")
 			}
 			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
-			LexingErrors::ExpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
+			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
 			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
 			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
 			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
 			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
 			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
-			LexingErrors::TwoExponents => f.write_str("Two e in number literal"),
-			LexingErrors::TwoUnderscores => {
-				f.write_str("Only one underscore is allowed as numeric separator")
-			}
-			LexingErrors::TrailingUnderscore => {
-				f.write_str("Number literal cannot end with numeric separator")
+			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
+			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
+			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
+				f.write_str("Invalid item in binary, hex or octal literal")
 			}
 		}
 	}
@@ -105,22 +99,22 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Expected ")?;
 				match expected {
 					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a:?}")),
-					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
+					[a] => f.write_fmt(format_args!("{a}")),
+					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
 					[head @ .., end] => f.write_fmt(format_args!(
-						"{} or {:?}",
+						"{} or {}",
 						head.iter()
-							.map(|chr| format!("{chr:?}"))
-							.reduce(|mut a, b| {
-								a.push_str(", ");
-								a.push_str(&b);
-								a
+							.map(|token| format!("{token}"))
+							.reduce(|mut acc, token| {
+								acc.push_str(", ");
+								acc.push_str(&token);
+								acc
 							})
 							.unwrap(),
 						end
 					)),
 				}?;
-				write!(f, " found {found:?}")
+				write!(f, " found {found}")
 			}
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
@@ -137,7 +131,7 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found:?}")
+				write!(f, "Expected identifier at {at_location}, found {found}")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
 				f.write_str("Function parameter cannot be have default value here")

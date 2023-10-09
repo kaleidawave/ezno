@@ -13,7 +13,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if std::env::args().any(|item| item == "--ast") {
 				println!("{module:#?}");
 			} else {
-				let output = module.to_string(&ToStringOptions::default());
+				let output = module
+					.to_string(&ToStringOptions { trailing_semicolon: true, ..Default::default() });
 				println!("{output}");
 			}
 			Ok(())

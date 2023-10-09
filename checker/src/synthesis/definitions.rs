@@ -6,10 +6,11 @@ const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [TypeDefinitionModule]
 /// TODO remove unwraps here and add to the existing error handler
-pub(super) fn type_definition_file<T: crate::FSResolver>(
+pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	mut definition: parser::TypeDefinitionModule,
-	checking_data: &mut crate::CheckingData<T>,
-) -> RootContext {
+	checking_data: &mut crate::CheckingData<T, parser::Module>,
+	root: &mut RootContext,
+) {
 	use std::collections::HashMap;
 
 	use parser::{
@@ -23,7 +24,6 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 
 	let mut idx_to_types = HashMap::new();
 	let source = definition.source;
-	let mut root = RootContext::new_with_primitive_references();
 
 	// Hoisting names of interfaces, namespaces and types
 	// At some point with binaries could remove this pass
@@ -49,11 +49,8 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				if type_alias.type_name.type_parameters.is_some() {
 					todo!()
 				}
-				let to = synthesise_type_annotation(
-					&type_alias.type_expression,
-					&mut root,
-					checking_data,
-				);
+				let to =
+					synthesise_type_annotation(&type_alias.type_expression, root, checking_data);
 
 				// idx_to_types.insert(
 				// 	interface.on.position.start,
@@ -76,7 +73,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 					&func.type_parameters,
 					&func.parameters,
 					func.return_type.as_ref(),
-					&mut root,
+					root,
 					checking_data,
 					func.performs.as_ref().into(),
 					declared_at.clone(),
@@ -112,7 +109,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			}) => {
 				// TODO tidy up
 				let variable_ty =
-					synthesise_type_annotation(&type_restriction, &mut root, checking_data);
+					synthesise_type_annotation(&type_restriction, root, checking_data);
 
 				// // TODO not sure...
 				// if let Some(frozen) = root.is_frozen(variable_ty) {
@@ -147,7 +144,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				super::interfaces::synthesise_signatures(
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
-					&mut root,
+					root,
 					checking_data,
 				);
 			}
@@ -170,7 +167,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				//     let mut root = root.new_lexical_root();
 				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
 				//         type_parameters,
-				//         &mut root,
+				//         root,
 				//         error_handler,
 				//         type_mappings,
 				//     );
@@ -205,7 +202,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				//             checking_data,
 				//             &crate::root::GetTypeFromReferenceSettings::Default,
 				//         )
-				//         .expect("Class should have been initialized");
+				//         .expect("Class should have been initialised");
 				//     todo!();
 				//     // match existing_type {
 				//     //     TypeDeclaration::NonGenericType(ngt) => {
@@ -222,12 +219,10 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 			}
 		}
 	}
-
-	root
 }
 
 #[cfg(feature = "declaration-synthesis")]
-pub fn definition_file_to_buffer<T: crate::FSResolver>(
+pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 	handler: &T,
 	cwd: &std::path::Path,
 	file: &std::path::Path,

@@ -9,7 +9,7 @@ use crate::{
 		functions::SynthesisedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionType, TypeStore,
 	},
-	CheckingData, Environment, FSResolver, FunctionId, Type, TypeId, VariableId,
+	CheckingData, Environment, FunctionId, ReadFromFS, Type, TypeId, VariableId,
 };
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -28,11 +28,11 @@ pub enum FunctionKind2 {
 }
 
 /// TODO generalize for property registration...
-pub trait RegisterBehavior {
+pub trait FunctionRegisterBehavior<M: crate::SynthesisableModule> {
 	type Return;
 
 	/// TODO lift T
-	fn function<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesisableFunction<M>, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -43,10 +43,10 @@ pub trait RegisterBehavior {
 
 pub struct RegisterAsType;
 
-impl RegisterBehavior for RegisterAsType {
+impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterAsType {
 	type Return = TypeId;
 
-	fn function<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesisableFunction<M>, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -67,10 +67,10 @@ impl RegisterBehavior for RegisterAsType {
 /// Because of hoisting
 pub struct RegisterOnExisting(pub String);
 
-impl RegisterBehavior for RegisterOnExisting {
+impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnExisting {
 	type Return = ();
 
-	fn function<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesisableFunction<M>, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -92,10 +92,10 @@ impl RegisterBehavior for RegisterOnExisting {
 
 pub struct RegisterOnExistingObject;
 
-impl RegisterBehavior for RegisterOnExistingObject {
+impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnExistingObject {
 	type Return = Property;
 
-	fn function<T: SynthesizableFunction, U: ContextType>(
+	fn function<T: SynthesisableFunction<M>, U: ContextType>(
 		&self,
 		func: &T,
 		func_ty: FunctionType,
@@ -121,7 +121,7 @@ impl RegisterBehavior for RegisterOnExistingObject {
 	}
 }
 
-pub trait SynthesizableFunction {
+pub trait SynthesisableFunction<M: crate::SynthesisableModule> {
 	fn is_declare(&self) -> bool;
 
 	fn is_async(&self) -> bool;
@@ -131,37 +131,37 @@ pub trait SynthesizableFunction {
 	fn id(&self, source_id: SourceId) -> FunctionId;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
-	fn type_parameters<T: FSResolver>(
+	fn type_parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> Option<GenericTypeParameters>;
 
 	/// Has to be the first parameter
-	fn this_constraint<T: FSResolver>(
+	fn this_constraint<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> Option<TypeId>;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
-	fn parameters<T: FSResolver>(
+	fn parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> SynthesisedParameters;
 
 	/// Returned type is extracted from events, thus doesn't expect anything in return
-	fn body<T: FSResolver>(
+	fn body<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	);
 
-	fn return_type_annotation<T: FSResolver>(
+	fn return_type_annotation<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> Option<(TypeId, SpanWithSource)>;
 }
 

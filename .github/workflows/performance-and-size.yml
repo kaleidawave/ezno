@@ -3,8 +3,6 @@ name: Performance and size
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,8 +10,6 @@ env:
 jobs:
   hyperfine:
     runs-on: ubuntu-latest
-
-    if: false
 
     steps:
       - uses: actions/checkout@v3

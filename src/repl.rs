@@ -1,12 +1,9 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use argh::FromArgs;
-use parser::{
-	source_map::{FileSystem, MapFileStore},
-	visiting::VisitorsMut,
-	ASTNode,
-};
+use parser::{visiting::VisitorsMut, ASTNode};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -22,23 +19,29 @@ pub(crate) struct ReplArguments {
 	/// use mutable variables everywhere
 	#[argh(switch)]
 	const_as_let: bool,
+	/// a definition file to check with
+	#[argh(option, short = 'd')]
+	type_definition_module: Option<PathBuf>,
 }
 
 #[allow(unused)]
 fn file_system_resolver(path: &Path) -> Option<String> {
 	// Cheaty
 	if path.to_str() == Some("BLANK") {
-		return Some(String::new());
-	}
-	match fs::read_to_string(path) {
-		Ok(source) => Some(source),
-		Err(_) => None,
+		Some(String::new())
+	} else if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
+		Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+	} else {
+		match fs::read_to_string(path) {
+			Ok(source) => Some(source),
+			Err(_) => None,
+		}
 	}
 }
 
 pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	cli_input_resolver: U,
-	ReplArguments { type_output, const_as_let }: ReplArguments,
+	ReplArguments { type_output, const_as_let, type_definition_module }: ReplArguments,
 ) {
 	let mut items = if !type_output {
 		let mut deno = Command::new("deno");
@@ -51,10 +54,25 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 		None
 	};
 
-	let mut fs = MapFileStore::<parser::source_map::NoPathMap>::default();
-	let source_id = fs.new_source_id(PathBuf::from("CLI"), Default::default());
+	let definitions = if let Some(tdm) = type_definition_module {
+		HashSet::from_iter(std::iter::once(tdm.into()))
+	} else {
+		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
+	};
 
-	let mut state = checker::synthesis::interactive::State::new(&file_system_resolver, source_id);
+	let state = checker::synthesis::interactive::State::new(&file_system_resolver, definitions);
+
+	let mut state = match state {
+		Ok(state) => state,
+		Err((diagnostics, fs)) => {
+			for diagnostic in diagnostics.into_iter() {
+				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
+			}
+			return;
+		}
+	};
+
+	let source_id = state.get_source_id();
 
 	loop {
 		let input = cli_input_resolver("");
@@ -74,7 +92,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 			continue;
 		};
 
-		let (from_index, _) = fs.append_to_file(source_id, &input);
+		let (from_index, _) = state.get_fs_mut().append_to_file(source_id, &input);
 
 		let mut item = match parser::Module::from_string(
 			input,
@@ -84,7 +102,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 		) {
 			Ok(item) => item,
 			Err(err) => {
-				emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap();
+				emit_ezno_diagnostic((err, source_id).into(), state.get_fs_ref()).unwrap();
 				continue;
 			}
 		};
@@ -105,7 +123,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 		match result {
 			Ok((last_ty, diagnostics)) => {
 				for diagnostic in diagnostics.into_iter() {
-					emit_ezno_diagnostic(diagnostic, &fs).unwrap();
+					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
 				}
 				if let Some((_process, stdin, child_buf)) = items.as_mut() {
 					let output = item.to_string(&Default::default());
@@ -138,7 +156,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 			}
 			Err(diagnostics) => {
 				for diagnostic in diagnostics.into_iter() {
-					emit_ezno_diagnostic(diagnostic, &fs).unwrap();
+					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
 				}
 			}
 		}

@@ -3,7 +3,7 @@ use crate::{
 	context::{CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{specialize, FunctionType},
+	types::{substitute, FunctionType},
 	Environment, TypeId,
 };
 
@@ -30,12 +30,13 @@ pub enum Property {
 }
 
 impl Property {
-	pub(crate) fn as_get_type(&self) -> TypeId {
+	/// TODO wip
+	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			Property::Value(value) => *value,
 			Property::Getter(func) => func.return_type,
-			Property::Setter(_) => todo!(),
-			Property::GetterAndSetter(_, _) => todo!(),
+			Property::Setter(_) => TypeId::UNDEFINED_TYPE,
+			Property::GetterAndSetter(getter, _) => getter.return_type,
 		}
 	}
 }
@@ -234,7 +235,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 			Logical::Or(_) => todo!(),
 			Logical::Implies { on: log_on, mut antecedent } => {
 				let (kind, ty) = property_on_logical(*log_on, types, on, environment, behavior)?;
-				let ty = specialize(ty, &mut antecedent, environment, types);
+				let ty = substitute(ty, &mut antecedent, environment, types);
 				Some((kind, ty))
 			}
 		}

@@ -19,10 +19,10 @@ use super::{
 };
 
 /// TODO synthesise interface declaration ...?
-pub(super) fn type_interface_declaration<T: crate::FSResolver, S: ContextType>(
+pub(super) fn type_interface_declaration<T: crate::ReadFromFS, S: ContextType>(
 	interface: &Decorated<InterfaceDeclaration>,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	let Decorated { on: interface, decorators, position } = interface;
 
@@ -85,10 +85,10 @@ pub(super) fn type_interface_declaration<T: crate::FSResolver, S: ContextType>(
 	// }
 }
 
-fn get_extends<T: crate::FSResolver>(
+fn get_extends<T: crate::ReadFromFS>(
 	interface: &InterfaceDeclaration,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	interface_type: TypeId,
 ) {
 	if let Some([reference, others @ ..]) = interface.extends.as_deref() {
@@ -103,11 +103,11 @@ fn get_extends<T: crate::FSResolver>(
 }
 
 pub(crate) trait SynthesiseInterfaceBehavior {
-	fn register<T: crate::FSResolver, S: ContextType>(
+	fn register<T: crate::ReadFromFS, S: ContextType>(
 		&mut self,
 		key: PropertyOrType,
 		value: InterfaceValue,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 		environment: &mut Context<S>,
 	);
 
@@ -128,11 +128,11 @@ pub(crate) enum PropertyOrType<'a> {
 pub(crate) struct OnToType(pub(crate) TypeId);
 
 impl SynthesiseInterfaceBehavior for OnToType {
-	fn register<T: crate::FSResolver, S: ContextType>(
+	fn register<T: crate::ReadFromFS, S: ContextType>(
 		&mut self,
 		key: PropertyOrType,
 		value: InterfaceValue,
-		checking_data: &mut CheckingData<T>,
+		checking_data: &mut CheckingData<T, parser::Module>,
 		environment: &mut Context<S>,
 	) {
 		let under = match key {
@@ -165,14 +165,14 @@ impl SynthesiseInterfaceBehavior for OnToType {
 }
 
 pub(super) fn synthesise_signatures<
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	S: ContextType,
 	B: SynthesiseInterfaceBehavior,
 >(
 	signatures: &[Decorated<InterfaceMember>],
 	mut behavior: B,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> B {
 	for signature in signatures {
 		match &signature.on {
@@ -269,10 +269,10 @@ pub(super) fn synthesise_signatures<
 }
 
 /// TODO overloads
-pub(super) fn type_interface_member<T: crate::FSResolver, S: ContextType>(
+pub(super) fn type_interface_member<T: crate::ReadFromFS, S: ContextType>(
 	member: &Decorated<InterfaceMember>,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, parser::Module>,
 	interface_type: TypeId,
 ) {
 	todo!();

@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use derive_enum_from_into::EnumFrom;
 use source_map::{Span, SpanWithSource};
 
@@ -6,8 +8,8 @@ use crate::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
 		StructureGenerics, TypeStore,
 	},
-	CheckingData, Constant, Environment, SynthesizableConditional, SynthesizableExpression,
-	TruthyFalsy, Type, TypeId,
+	CheckingData, Constant, Environment, SynthesisableConditional, SynthesisableExpression,
+	SynthesisableModule, TruthyFalsy, Type, TypeId,
 };
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -37,11 +39,14 @@ pub enum PureBinaryOperation {
 	TypePropertyOperator(TypePropertyOperator),
 }
 
-pub fn evaluate_pure_binary_operation_handle_errors<T: crate::FSResolver>(
+pub fn evaluate_pure_binary_operation_handle_errors<
+	T: crate::ReadFromFS,
+	M: SynthesisableModule,
+>(
 	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
 	(rhs, rhs_pos): (TypeId, SpanWithSource),
-	checking_data: &mut CheckingData<T>,
+	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
 ) -> TypeId {
 	// environment,
@@ -325,31 +330,35 @@ pub enum Logical {
 }
 
 /// TODO strict casts!
-pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
+pub fn evaluate_logical_operation_with_expression<
+	T: crate::ReadFromFS,
+	M: crate::SynthesisableModule,
+	TExpr: SynthesisableExpression<M>,
+>(
 	lhs: TypeId,
 	operator: Logical,
-	rhs: &impl SynthesizableExpression,
-	checking_data: &mut CheckingData<T>,
+	rhs: &TExpr,
+	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
-	enum TypeOrSynthesizable<'a, TExpr: SynthesizableExpression> {
+	enum TypeOrSynthesisable<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>> {
 		Type(TypeId),
-		Expression(&'a TExpr),
+		Expression(&'a TExpr, PhantomData<M>),
 	}
 
-	impl<'a, TExpr: SynthesizableExpression> SynthesizableConditional
-		for TypeOrSynthesizable<'a, TExpr>
+	impl<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>>
+		SynthesisableConditional<M> for TypeOrSynthesisable<'a, M, TExpr>
 	{
 		type ExpressionResult = TypeId;
 
-		fn synthesise_condition<T: crate::FSResolver>(
+		fn synthesise_condition<T: crate::ReadFromFS>(
 			self,
 			environment: &mut Environment,
-			checking_data: &mut CheckingData<T>,
+			checking_data: &mut CheckingData<T, M>,
 		) -> Self::ExpressionResult {
 			match self {
-				TypeOrSynthesizable::Type(ty) => ty,
-				TypeOrSynthesizable::Expression(expr) => {
+				TypeOrSynthesisable::Type(ty) => ty,
+				TypeOrSynthesisable::Expression(expr, _) => {
 					TExpr::synthesise_expression(expr, environment, checking_data)
 				}
 			}
@@ -372,14 +381,14 @@ pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
 	match operator {
 		Logical::And => Ok(environment.new_conditional_context(
 			lhs,
-			TypeOrSynthesizable::Expression(rhs),
-			Some(TypeOrSynthesizable::Type(lhs)),
+			TypeOrSynthesisable::Expression(rhs, PhantomData::default()),
+			Some(TypeOrSynthesisable::Type(lhs)),
 			checking_data,
 		)),
 		Logical::Or => Ok(environment.new_conditional_context(
 			lhs,
-			TypeOrSynthesizable::Type(lhs),
-			Some(TypeOrSynthesizable::Expression(rhs)),
+			TypeOrSynthesisable::Type(lhs),
+			Some(TypeOrSynthesisable::Expression(rhs, PhantomData::default())),
 			checking_data,
 		)),
 		Logical::NullCoalescing => {
@@ -391,8 +400,8 @@ pub fn evaluate_logical_operation_with_expression<T: crate::FSResolver>(
 			)?;
 			Ok(environment.new_conditional_context(
 				is_lhs_null,
-				TypeOrSynthesizable::Expression(rhs),
-				Some(TypeOrSynthesizable::Type(lhs)),
+				TypeOrSynthesisable::Expression(rhs, PhantomData::default()),
+				Some(TypeOrSynthesisable::Type(lhs)),
 				checking_data,
 			))
 		}

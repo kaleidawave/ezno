@@ -126,15 +126,18 @@ impl ASTNode for ImportDeclaration {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		buf.push_str("import ");
+		buf.push_str("import");
 		// TODO type script only
 		if self.only_type {
-			buf.push_str("type ");
+			buf.push_str(" type");
 		}
 
 		if let Some(ref default) = self.default {
+			buf.push(' ');
 			buf.push_str(default);
 			buf.push(' ')
+		} else {
+			settings.add_gap(buf);
 		}
 
 		match self.kind {
@@ -144,6 +147,7 @@ impl ASTNode for ImportDeclaration {
 				}
 				buf.push_str("* as ");
 				buf.push_str(under);
+				buf.push(' ');
 			}
 			ImportKind::SideEffect => {
 				buf.push('"');
@@ -164,10 +168,13 @@ impl ASTNode for ImportDeclaration {
 						}
 					}
 					buf.push('}');
+					settings.add_gap(buf);
 				}
 			}
 		}
-		buf.push_str("from \"");
+		buf.push_str("from");
+		settings.add_gap(buf);
+		buf.push('"');
 		buf.push_str(&self.from);
 		buf.push('"');
 	}
