@@ -119,6 +119,7 @@ pub fn lex_script(
 			/// For binary, hex, etc `0b0121`
 			last_character_zero: bool,
 			last_was_underscore: bool,
+			last_was_exponent: bool,
 		},
 		String {
 			double_quoted: bool,
@@ -223,15 +224,18 @@ pub fn lex_script(
 				ref mut literal_type,
 				ref mut last_character_zero,
 				ref mut last_was_underscore,
+				ref mut last_was_exponent,
 			} => {
 				match chr {
 					'0' => {
 						*last_character_zero = true;
 						*last_was_underscore = false;
+						*last_was_exponent = false;
 					}
 					'1'..='9' => {
 						*last_character_zero = false;
 						*last_was_underscore = false;
+						*last_was_exponent = false;
 					}
 					'.' => {
 						if let NumberLiteralType::Decimal { fractional } = literal_type {
@@ -273,6 +277,7 @@ pub fn lex_script(
 							return_err!(LexingErrors::InvalidExponentUsage)
 						}
 						*literal_type = NumberLiteralType::Exponent;
+						*last_was_exponent = true;
 					}
 					'_' => {
 						if *last_was_underscore {
@@ -283,6 +288,9 @@ pub fn lex_script(
 					_ => {
 						if *last_was_underscore {
 							return_err!(LexingErrors::TrailingUnderscore)
+						}
+						if *last_was_exponent {
+							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 						}
 						push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
 						set_state!(LexingState::None);
@@ -831,11 +839,13 @@ pub fn lex_script(
 					literal_type: Default::default(),
 					last_character_zero: true,
 					last_was_underscore: false,
+					last_was_exponent: false
 				}),
 				'1'..='9' => set_state!(LexingState::Number {
 					literal_type: Default::default(),
 					last_character_zero: false,
 					last_was_underscore: false,
+					last_was_exponent: false
 				}),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
