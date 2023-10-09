@@ -285,7 +285,8 @@ pub fn lex_script(
 						}
 						*last_was_underscore = true;
 					}
-					_ => {
+					'*' | '-' | '+' | '/' | '&' | '|' | ')' | '}' | ']' | '!' | '^' | '%' | ';'
+					| '<' | '>' | ',' => {
 						if *last_was_underscore {
 							return_err!(LexingErrors::TrailingUnderscore)
 						}
@@ -294,6 +295,9 @@ pub fn lex_script(
 						}
 						push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
 						set_state!(LexingState::None);
+					}
+					_ => {
+						return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 					}
 				}
 			}
@@ -937,11 +941,19 @@ pub fn lex_script(
 							};
 							continue;
 						}
+						(true, '.') => {
+							state = LexingState::Number {
+								literal_type: NumberLiteralType::Decimal { fractional: true },
+								last_character_zero: false,
+								last_was_underscore: false,
+								last_was_exponent: false,
+							};
+							continue;
+						}
 						(_, _) => {}
 					}
 
 					// Else try do a symbol
-					// TODO catch `.4` number literals. needs update to automaton
 					let automaton = TSXToken::new_automaton();
 					match automaton.get_next(chr) {
 						GetNextResult::Result {
