@@ -24,7 +24,7 @@ pub(crate) struct ExplorerArguments {
 }
 
 impl ExplorerArguments {
-	pub(crate) fn run<T: crate::FSResolver, U: crate::CLIInputResolver>(
+	pub(crate) fn run<T: crate::ReadFromFS, U: crate::CLIInputResolver>(
 		&mut self,
 		fs_resolver: T,
 		cli_input_resolver: U,

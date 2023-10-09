@@ -26,7 +26,7 @@ use super::{
 	Constructor, FunctionKind, PolyNature, StructureGenerics, TypeStore,
 };
 
-pub fn call_type_handle_errors<T: crate::FSResolver, U>(
+pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::SynthesisableModule>(
 	ty: TypeId,
 	// Overwritten by .call, else look at binding
 	called_with_new: CalledWithNew,
@@ -35,7 +35,7 @@ pub fn call_type_handle_errors<T: crate::FSResolver, U>(
 	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
-	checking_data: &mut crate::CheckingData<T, U>,
+	checking_data: &mut crate::CheckingData<T, M>,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,

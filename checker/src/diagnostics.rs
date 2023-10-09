@@ -82,7 +82,7 @@ pub struct DiagnosticsContainer {
 // TODO the add methods are the same...
 impl DiagnosticsContainer {
 	pub fn new() -> Self {
-		Self::default()
+		Self { diagnostics: Default::default(), has_error: false }
 	}
 
 	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {

@@ -13,9 +13,9 @@ mod behavior;
 pub mod context;
 pub mod diagnostics;
 pub mod events;
+mod options;
 pub mod range_map;
 mod serialization;
-mod settings;
 pub mod structures;
 mod type_mappings;
 pub mod types;
@@ -58,7 +58,7 @@ pub use behavior::{
 };
 pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
-pub use settings::TypeCheckSettings;
+pub use options::TypeCheckOptions;
 pub use structures::{
 	functions::{FunctionPointer, InternalFunctionId},
 	jsx::*,
@@ -70,12 +70,12 @@ pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParamet
 pub use type_mappings::*;
 pub use types::{properties::Property, Constant, Type, TypeId};
 
-pub use context::{Environment, Scope};
+pub use context::{facts::Facts, Environment, Scope};
 pub(crate) use structures::modules::ModuleFromPathError;
 
-pub trait FSResolver: Fn(&std::path::Path) -> Option<String> {}
+pub trait ReadFromFS: Fn(&std::path::Path) -> Option<String> {}
 
-impl<T> FSResolver for T where T: Fn(&std::path::Path) -> Option<String> {}
+impl<T> ReadFromFS for T where T: Fn(&std::path::Path) -> Option<String> {}
 
 // TODO should this be pub
 pub use source_map::{SourceId, Span};
@@ -83,7 +83,7 @@ pub use source_map::{SourceId, Span};
 /// Contains all the modules and mappings for import statements
 ///
 /// TODO could files and synthesized_modules be merged? (with a change to )
-pub struct ModuleData<'a, FSResolver, ModuleAST> {
+pub struct ModuleData<'a, FSResolver, ModuleAST: SynthesisableModule> {
 	pub(crate) file_resolver: &'a FSResolver,
 	pub(crate) current_working_directory: PathBuf,
 	// TODO
@@ -92,42 +92,50 @@ pub struct ModuleData<'a, FSResolver, ModuleAST> {
 	pub(crate) files: MapFileStore<WithPathMap>,
 	pub(crate) currently_checking_modules: HashSet<PathBuf>,
 
-	/// TODO this also covers checked modules
+	/// Includes exported variables and facts
 	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST>>,
+
+	pub(crate) parsing_options: ModuleAST::ParseOptions,
 	// pub(crate) custom_module_resolvers: HashMap<String, Box<dyn CustomModuleResolver>>,
 }
 
 pub trait SynthesisableModule: Sized {
 	type DefinitionFile;
+	type ParseOptions;
 
-	fn from_string(source_id: SourceId, string: String) -> Result<Self, Diagnostic>;
+	fn from_string(
+		source_id: SourceId,
+		string: String,
+		options: &Self::ParseOptions,
+	) -> Result<Self, Diagnostic>;
 
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
 	) -> Result<Self::DefinitionFile, Diagnostic>;
 
-	fn synthesize_module<T: crate::FSResolver>(
+	fn synthesize_module<T: crate::ReadFromFS>(
 		&self,
 		source_id: SourceId,
 		root: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	);
 
-	fn type_definition_file<T: crate::FSResolver>(
+	fn type_definition_file<T: crate::ReadFromFS>(
 		file: Self::DefinitionFile,
 		root: &mut RootContext,
 		checking_data: &mut CheckingData<T, Self>,
 	);
 }
 
-impl<'a, T: crate::FSResolver, ModuleAST> ModuleData<'a, T, ModuleAST> {
+impl<'a, T: crate::ReadFromFS, ModuleAST: SynthesisableModule> ModuleData<'a, T, ModuleAST> {
 	pub(crate) fn new_with_custom_module_resolvers(
 		// custom_module_resolvers: HashMap<String, Box<dyn CustomModuleResolver>>,
 		mut file_resolver: &'a T,
 		current_working_directory: PathBuf,
 		entry_point: PathBuf,
 		files: Option<MapFileStore<WithPathMap>>,
+		parsing_options: ModuleAST::ParseOptions,
 	) -> Self {
 		let mut files = files.unwrap_or_default();
 		// TODO get from files sometimes, abstract below
@@ -141,6 +149,7 @@ impl<'a, T: crate::FSResolver, ModuleAST> ModuleData<'a, T, ModuleAST> {
 			// custom_module_resolvers,
 			file_resolver,
 			current_working_directory,
+			parsing_options,
 		}
 	}
 
@@ -175,7 +184,7 @@ pub enum PredicateBound<T> {
 /// Contains logic for **checking phase** (none of the later steps)
 /// All data is global, non local to current scope
 /// TODO some of these should be mutex / ref cell
-pub struct CheckingData<'a, FSResolver, ModuleAST> {
+pub struct CheckingData<'a, FSResolver, ModuleAST: SynthesisableModule> {
 	// pub(crate) type_resolving_visitors: [Box<dyn TypeResolvingExpressionVisitor>],
 	// pub(crate) pre_type_visitors: FirstPassVisitors,
 	/// Type checking errors
@@ -184,8 +193,8 @@ pub struct CheckingData<'a, FSResolver, ModuleAST> {
 	pub type_mappings: TypeMappings,
 	/// All module information
 	pub(crate) modules: ModuleData<'a, FSResolver, ModuleAST>,
-	/// Settings for checking
-	pub(crate) settings: TypeCheckSettings,
+	/// Options for checking
+	pub(crate) options: TypeCheckOptions,
 	// pub(crate) parse_settings: parser::ParseSettings,
 
 	// pub(crate) events: EventsStore,
@@ -195,12 +204,13 @@ pub struct CheckingData<'a, FSResolver, ModuleAST> {
 	unimplemented_items: HashSet<&'static str>,
 }
 
-impl<'a, T: crate::FSResolver, U> CheckingData<'a, T, U> {
+impl<'a, T: crate::ReadFromFS, M: SynthesisableModule> CheckingData<'a, T, M> {
 	// TODO improve on this function
 	pub fn new(
-		settings: TypeCheckSettings,
+		settings: TypeCheckOptions,
 		resolver: &'a T,
 		entry_point: PathBuf,
+		parse_options: M::ParseOptions,
 		existing_files: Option<MapFileStore<WithPathMap>>,
 	) -> Self {
 		// let custom_file_resolvers = HashMap::default();
@@ -210,10 +220,11 @@ impl<'a, T: crate::FSResolver, U> CheckingData<'a, T, U> {
 			cwd,
 			entry_point,
 			existing_files,
+			parse_options,
 		);
 
 		Self {
-			settings,
+			options: settings,
 			type_mappings: Default::default(),
 			diagnostics_container: Default::default(),
 			modules,
@@ -310,8 +321,6 @@ impl<'a, T: crate::FSResolver, U> CheckingData<'a, T, U> {
 
 /// Used for transformers and other things after checking!!!!
 pub struct PostCheckData<M: SynthesisableModule> {
-	pub events: Vec<crate::events::Event>,
-	pub root: crate::RootContext,
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
@@ -319,24 +328,32 @@ pub struct PostCheckData<M: SynthesisableModule> {
 	pub entry_source: SourceId,
 }
 
-pub fn check_project<T: crate::FSResolver, M: SynthesisableModule>(
+pub fn check_project<T: crate::ReadFromFS, M: SynthesisableModule>(
 	entry_point: PathBuf,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
+	options: Option<TypeCheckOptions>,
+	parse_options: M::ParseOptions,
 ) -> (crate::DiagnosticsContainer, Result<PostCheckData<M>, MapFileStore<WithPathMap>>) {
-	let default_settings = Default::default();
-	let mut checking_data = CheckingData::new(default_settings, &resolver, entry_point, None);
+	let mut checking_data = CheckingData::<T, M>::new(
+		options.unwrap_or_default(),
+		&resolver,
+		entry_point,
+		parse_options,
+		None,
+	);
 
 	let entry_point_source_id = checking_data.modules.entry_point;
 	let file = checking_data.modules.files.get_file_content(entry_point_source_id);
 
-	let module = match M::from_string(entry_point_source_id, file) {
-		Ok(module) => module,
-		Err(err) => {
-			checking_data.diagnostics_container.add_error(err);
-			return (checking_data.diagnostics_container, Err(checking_data.modules.files));
-		}
-	};
+	let module =
+		match M::from_string(entry_point_source_id, file, &checking_data.modules.parsing_options) {
+			Ok(module) => module,
+			Err(err) => {
+				checking_data.diagnostics_container.add_error(err);
+				return (checking_data.diagnostics_container, Err(checking_data.modules.files));
+			}
+		};
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
@@ -348,8 +365,9 @@ pub fn check_project<T: crate::FSResolver, M: SynthesisableModule>(
 
 	root.new_module_context(
 		entry_point_source_id,
+		module,
 		&mut checking_data,
-		move |environment, checking_data| {
+		|module, environment, checking_data| {
 			module.synthesize_module(entry_point_source_id, environment, checking_data);
 		},
 	);
@@ -358,17 +376,15 @@ pub fn check_project<T: crate::FSResolver, M: SynthesisableModule>(
 		diagnostics_container,
 		type_mappings,
 		modules,
-		settings,
+		options: settings,
 		types,
 		unimplemented_items,
 	} = checking_data;
 
 	if diagnostics_container.has_error() {
-		// let events = stuff.expect("no events").0;
+		(diagnostics_container, Err(modules.files))
+	} else {
 		let post_check_data = Ok(PostCheckData {
-			// TODO bad!!!
-			events: Vec::new(),
-			root,
 			type_mappings,
 			types,
 			module_contents: modules.files,
@@ -376,12 +392,10 @@ pub fn check_project<T: crate::FSResolver, M: SynthesisableModule>(
 			entry_source: modules.entry_point,
 		});
 		(diagnostics_container, post_check_data)
-	} else {
-		(diagnostics_container, Err(modules.files))
 	}
 }
 
-pub(crate) fn add_definition_files_to_root<T: crate::FSResolver, M: crate::SynthesisableModule>(
+pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, M: crate::SynthesisableModule>(
 	type_definition_files: HashSet<PathBuf>,
 	root: &mut RootContext,
 	checking_data: &mut CheckingData<T, M>,
@@ -422,7 +436,7 @@ pub trait SynthesisableConditional<M: SynthesisableModule> {
 	/// **Not for return in conditional if blocks**
 	type ExpressionResult;
 
-	fn synthesise_condition<T: crate::FSResolver>(
+	fn synthesise_condition<T: crate::ReadFromFS>(
 		self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
@@ -443,7 +457,7 @@ impl<'a, M: SynthesisableModule, T: crate::SynthesisableExpression<M>>
 {
 	type ExpressionResult = TypeId;
 
-	fn synthesise_condition<U: crate::FSResolver>(
+	fn synthesise_condition<U: crate::ReadFromFS>(
 		self,
 		environment: &mut crate::Environment,
 		checking_data: &mut crate::CheckingData<U, M>,

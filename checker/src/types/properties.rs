@@ -30,12 +30,13 @@ pub enum Property {
 }
 
 impl Property {
-	pub(crate) fn as_get_type(&self) -> TypeId {
+	/// TODO wip
+	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			Property::Value(value) => *value,
 			Property::Getter(func) => func.return_type,
-			Property::Setter(_) => todo!(),
-			Property::GetterAndSetter(_, _) => todo!(),
+			Property::Setter(_) => TypeId::UNDEFINED_TYPE,
+			Property::GetterAndSetter(getter, _) => getter.return_type,
 		}
 	}
 }

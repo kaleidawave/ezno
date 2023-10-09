@@ -572,7 +572,7 @@ impl Expression {
 				)?)
 			}
 			#[cfg(feature = "extras")]
-			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) => {
+			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) if settings.is_expressions => {
 				// Maintains compatibility here
 				let mut parentheses_depth = 0;
 				let next = reader.scan(|token, _| match token {

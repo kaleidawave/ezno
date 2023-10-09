@@ -14,7 +14,7 @@ use crate::{
 
 use super::{expressions::synthesise_multiple_expression, property_key_as_type};
 
-pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::FSResolver>(
+pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 	lhs: &LHSOfAssignment,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<'_, T, parser::Module>,
@@ -96,7 +96,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::FSResolver>(
 	}
 }
 
-fn synthesise_object_shorthand_assignable<T: crate::FSResolver>(
+fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
 	checking_data: &mut CheckingData<'_, T, parser::Module>,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
@@ -109,7 +109,7 @@ fn synthesise_object_shorthand_assignable<T: crate::FSResolver>(
 	}
 }
 
-pub(crate) fn synthesise_access_to_reference<T: crate::FSResolver>(
+pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 	variable_or_property_access: &VariableOrPropertyAccess,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,

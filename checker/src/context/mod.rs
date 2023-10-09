@@ -350,7 +350,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::FSResolver, M: crate::SynthesisableModule>(
+	pub fn register_variable_handle_error<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
 		&mut self,
 		name: &str,
 		declared_at: SpanWithSource,
@@ -689,7 +689,6 @@ impl<T: ContextType> Context<T> {
 			.flat_map(|ctx| {
 				let id = get_on_ctx!(ctx.context_id);
 				let properties = get_on_ctx!(ctx.facts.current_properties.get(&base));
-				crate::utils::notify!("{:?} {:?}", id, properties);
 				properties.map(|v| v.iter())
 			})
 			.flatten()
@@ -826,7 +825,7 @@ impl<T: ContextType> Context<T> {
 		register_behavior: V,
 	) -> V::Return
 	where
-		U: crate::FSResolver,
+		U: crate::ReadFromFS,
 		V: crate::behavior::functions::FunctionRegisterBehavior<M>,
 		M: crate::SynthesisableModule,
 		F: behavior::functions::SynthesisableFunction<M>,
@@ -967,10 +966,10 @@ impl<T: ContextType> Context<T> {
 		register_behavior.function(function, func_ty, self, &mut checking_data.types)
 	}
 
-	pub fn new_try_context<U: crate::FSResolver, V>(
+	pub fn new_try_context<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
 		&mut self,
-		checking_data: &mut CheckingData<U, V>,
-		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, V>),
+		checking_data: &mut CheckingData<U, M>,
+		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>),
 	) -> TypeId {
 		let (thrown, ..) = self.new_lexical_environment_fold_into_parent(
 			Scope::TryBlock {},
@@ -1001,11 +1000,15 @@ impl<T: ContextType> Context<T> {
 	/// TODO
 	/// - Make internal (public methods should substitute for different scopes)
 	/// - Make less complex
-	pub fn new_lexical_environment_fold_into_parent<U: crate::FSResolver, Res, V>(
+	pub fn new_lexical_environment_fold_into_parent<
+		U: crate::ReadFromFS,
+		Res,
+		M: crate::SynthesisableModule,
+	>(
 		&mut self,
 		scope: Scope,
-		checking_data: &mut CheckingData<U, V>,
-		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, V>) -> Res,
+		checking_data: &mut CheckingData<U, M>,
+		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>) -> Res,
 	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 		if matches!(scope, Scope::Conditional { .. }) {
 			unreachable!("Use Environment::new_conditional_context")
@@ -1174,11 +1177,11 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U, V>(
+	pub fn get_type_by_name_handle_errors<U, M: crate::SynthesisableModule>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
-		checking_data: &mut CheckingData<U, V>,
+		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId {
 		match self.get_type_from_name(name) {
 			Some(val) => val,

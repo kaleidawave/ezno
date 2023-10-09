@@ -1,5 +1,3 @@
-pub mod type_to_js;
-
 use parser::{visiting::StatementOrDeclarationMut, Declaration, Module, StatementOrDeclaration};
 
 pub struct ConstToLet;

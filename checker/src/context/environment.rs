@@ -19,7 +19,7 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
+	CheckingData, RootContext, SynthesisableModule, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{
@@ -104,7 +104,7 @@ impl<'a> Environment<'a> {
 	///
 	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
 	pub fn assign_to_assignable_handle_errors<
-		U: crate::FSResolver,
+		U: crate::ReadFromFS,
 		M: crate::SynthesisableModule,
 		T: SynthesisableExpression<M>,
 	>(
@@ -119,7 +119,7 @@ impl<'a> Environment<'a> {
 		match lhs {
 			Assignable::Reference(reference) => {
 				/// Returns
-				fn get_reference<U: crate::FSResolver, M: crate::SynthesisableModule>(
+				fn get_reference<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
 					env: &mut Environment,
 					reference: Reference,
 					checking_data: &mut CheckingData<U, M>,
@@ -136,11 +136,11 @@ impl<'a> Environment<'a> {
 					}
 				}
 
-				fn set_reference<U: crate::FSResolver, V>(
+				fn set_reference<U: crate::ReadFromFS, M: SynthesisableModule>(
 					env: &mut Environment,
 					reference: Reference,
 					new: TypeId,
-					checking_data: &mut CheckingData<U, V>,
+					checking_data: &mut CheckingData<U, M>,
 				) -> Result<TypeId, SetPropertyError> {
 					match reference {
 						Reference::Variable(name, position) => Ok(env
@@ -316,12 +316,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn assign_to_variable_handle_errors<T: crate::FSResolver, V>(
+	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, M: SynthesisableModule>(
 		&mut self,
 		variable_name: &str,
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
-		checking_data: &mut CheckingData<T, V>,
+		checking_data: &mut CheckingData<T, M>,
 	) -> TypeId {
 		let result = self.assign_to_variable(
 			variable_name,
@@ -449,11 +449,11 @@ impl<'a> Environment<'a> {
 		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
 	}
 
-	pub fn get_property_handle_errors<U: crate::FSResolver, V>(
+	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: SynthesisableModule>(
 		&mut self,
 		on: TypeId,
 		property: TypeId,
-		checking_data: &mut CheckingData<U, V>,
+		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
 	) -> TypeId {
 		match self.get_property(on, property, &mut checking_data.types, None) {
@@ -481,11 +481,11 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn get_variable_or_error<U: crate::FSResolver, V>(
+	pub fn get_variable_or_error<U: crate::ReadFromFS, M: SynthesisableModule>(
 		&mut self,
 		name: &str,
 		position: SpanWithSource,
-		checking_data: &mut CheckingData<U, V>,
+		checking_data: &mut CheckingData<U, M>,
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
@@ -609,7 +609,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T: crate::FSResolver, U, M>(
+	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, U, M>(
 		&mut self,
 		condition: TypeId,
 		then_evaluate: U,
@@ -707,12 +707,12 @@ impl<'a> Environment<'a> {
 	}
 
 	/// Initializing
-	pub fn create_property<U: crate::FSResolver, V>(
+	pub fn create_property<T: crate::ReadFromFS, M: SynthesisableModule>(
 		&mut self,
 		on: TypeId,
 		under: TypeId,
 		new: Property,
-		checking_data: &mut CheckingData<U, V>,
+		checking_data: &mut CheckingData<T, M>,
 	) {
 		self.facts.current_properties.entry(on).or_default().push((under, new));
 	}

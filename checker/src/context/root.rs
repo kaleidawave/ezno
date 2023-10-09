@@ -1,5 +1,5 @@
-use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
-use crate::{types::TypeId, CheckingData, Environment, GeneralContext};
+use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
+use crate::{types::TypeId, CheckingData, Environment, GeneralContext, SynthesisedModule};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
@@ -75,80 +75,29 @@ impl RootContext {
 		}
 	}
 
-	pub fn new_module_context<T: crate::FSResolver, M: crate::SynthesisableModule>(
+	pub fn new_module_context<T: crate::ReadFromFS, M: crate::SynthesisableModule>(
 		&self,
 		source: SourceId,
+		module: M,
 		checking_data: &mut CheckingData<T, M>,
-		mut cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<T, M>),
+		mut cb: impl for<'a> FnOnce(&'a M, &'a mut Environment, &'a mut CheckingData<T, M>),
 	) {
 		let mut environment = self.new_lexical_environment(crate::Scope::Module { source });
+		cb(&module, &mut environment, checking_data);
+		let module = SynthesisedModule {
+			content: module,
+			// TODO
+			exported_variables: Default::default(),
+			facts: environment.facts,
+		};
 
-		cb(&mut environment, checking_data);
-
-		// environment.facts
+		checking_data.modules.synthesised_modules.insert(source, module);
 	}
 
 	/// TODO working things out:
 	/// - strings could reference a big string
 	pub(crate) fn serialize(self) -> Vec<u8> {
-		// types
-		// subtyping
-		// getters & setters
-		// variables
-		// properties
-		// functions
-		// jsx tag names
 		todo!()
-
-		// let mut buf = HEADER.to_owned();
-
-		// let Self {
-		// 	variables,
-		// 	named_types,
-		// 	types,
-		// 	functions_on_type,
-		// 	context_type,
-		// 	object_count,
-		// 	proofs,
-		// 	this_bindings,
-		// 	modified_constraints: _,
-		// 	dependent_dependencies,
-		// 	context_id: _,
-		// 	deferred_function_constraints: _,
-		// 	tasks_to_run: _,
-		// 	open_poly_types,
-		// 	getters,
-		// 	setters,
-		// 	variable_names,
-		// 	proxies,
-		// 	specializations,
-		// 	can_use_this,
-		// 	subtyping_constant_proofs,
-		// 	terms_reverse,
-		// 	class_constructors,
-		// } = self;
-
-		// buf.extend_from_slice(
-		// 	&TryInto::<u16>::try_into(types.len() - TypeId::INTERNAL_TYPE_COUNT)
-		// 		.unwrap()
-		// 		.to_le_bytes(),
-		// );
-
-		// for ty in types.into_iter().skip(TypeId::INTERNAL_TYPE_COUNT) {
-		// 	ty.serialize(&mut buf);
-		// }
-
-		// variables.serialize(&mut buf);
-		// variable_names.serialize(&mut buf);
-
-		// proofs.serialize(&mut buf);
-		// functions_on_type.serialize(&mut buf);
-		// subtyping_constant_proofs.serialize(&mut buf);
-		// terms_reverse.serialize(&mut buf);
-		// proxies.serialize(&mut buf);
-		// can_use_this.serialize(&mut buf);
-
-		// buf
 	}
 
 	pub(crate) fn deserialize(source: Vec<u8>, backing_source: SourceId) -> Result<Self, String> {

@@ -13,10 +13,6 @@ use crate::{
 	utilities::print_to_cli,
 };
 use argh::FromArgs;
-// use checker::{
-// 	BuildOutput, Plugin, Project, TypeCheckSettings, TypeCheckingVisitorGenerators,
-// 	TypeDefinitionModulePath,
-// };
 
 /// Ezno Compiler
 #[derive(FromArgs, Debug)]
@@ -56,6 +52,7 @@ struct Info {}
 // 	output: PathBuf,
 // }
 
+// TODO definition file as list
 /// Build project
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "build")]
@@ -66,18 +63,30 @@ pub(crate) struct BuildArguments {
 	/// path to output
 	#[argh(positional)]
 	pub output: Option<PathBuf>,
-	/// whether to minify build output
-	#[argh(switch, short = 'm')]
-	pub minify: bool,
 	/// paths to definition files
 	#[argh(option, short = 'd')]
 	pub definition_file: Option<PathBuf>,
+
+	/// whether to minify build output
+	#[argh(switch, short = 'm')]
+	pub minify: bool,
 	/// whether to include comments in the output
 	#[argh(switch)]
 	pub no_comments: bool,
 	/// build source maps
 	#[argh(switch)]
 	pub source_maps: bool,
+
+	/// enable non standard syntax
+	#[argh(switch)]
+	pub non_standard_syntax: bool,
+	/// enable non standard library
+	#[argh(switch)]
+	pub non_standard_library: bool,
+	/// enable optimising transforms (warning can break code)
+	#[argh(switch)]
+	pub optimise: bool,
+
 	#[cfg(not(target_family = "wasm"))]
 	/// whether to display compile times
 	#[argh(switch)]
@@ -131,10 +140,11 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 	}
 }
 
-pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
 	cli_arguments: &[&str],
-	fs_resolver: T,
-	cli_input_resolver: U,
+	read_file: T,
+	write_file: U,
+	cli_input_resolver: V,
 ) {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
@@ -151,16 +161,17 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 		CompilerSubCommand::Build(build_config) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 			let output = crate::commands::build(
-				&fs_resolver,
+				&read_file,
 				&build_config.input,
 				build_config.definition_file.as_deref(),
 				&output_path,
-				build_config.minify,
+				crate::commands::BuildConfig { strip_whitespace: build_config.minify },
+				None,
 			);
 			match output {
 				Ok(BuildOutput { diagnostics, fs, outputs }) => {
 					for output in outputs {
-						std::fs::write(output.output_path, output.content).unwrap();
+						write_file(output.output_path.as_path(), output.content);
 					}
 					for diagnostic in diagnostics.into_iter() {
 						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
@@ -173,11 +184,11 @@ pub fn run_cli<T: crate::FSResolver, U: crate::CLIInputResolver>(
 				}
 			}
 		}
-		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(fs_resolver, cli_input_resolver),
+		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(read_file, cli_input_resolver),
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file } = check_arguments;
 			let (diagnostics, _others) =
-				crate::commands::check(&fs_resolver, &input, definition_file.as_deref());
+				crate::commands::check(&read_file, &input, definition_file.as_deref());
 
 			let fs = match _others {
 				Ok(data) => data.module_contents,

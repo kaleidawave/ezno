@@ -6,7 +6,7 @@ const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [TypeDefinitionModule]
 /// TODO remove unwraps here and add to the existing error handler
-pub(super) fn type_definition_file<T: crate::FSResolver>(
+pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	mut definition: parser::TypeDefinitionModule,
 	checking_data: &mut crate::CheckingData<T, parser::Module>,
 	root: &mut RootContext,
@@ -202,7 +202,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 				//             checking_data,
 				//             &crate::root::GetTypeFromReferenceSettings::Default,
 				//         )
-				//         .expect("Class should have been initialized");
+				//         .expect("Class should have been initialised");
 				//     todo!();
 				//     // match existing_type {
 				//     //     TypeDeclaration::NonGenericType(ngt) => {
@@ -222,7 +222,7 @@ pub(super) fn type_definition_file<T: crate::FSResolver>(
 }
 
 #[cfg(feature = "declaration-synthesis")]
-pub fn definition_file_to_buffer<T: crate::FSResolver>(
+pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 	handler: &T,
 	cwd: &std::path::Path,
 	file: &std::path::Path,

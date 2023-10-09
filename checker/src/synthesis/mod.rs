@@ -13,7 +13,6 @@ mod extensions;
 pub mod functions;
 pub mod hoisting;
 pub mod interfaces;
-pub mod module;
 pub mod statements;
 pub mod type_annotations;
 pub mod variables;
@@ -77,14 +76,17 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 }
 
 impl crate::SynthesisableModule for parser::Module {
-	fn from_string(source_id: SourceId, string: String) -> Result<Self, Diagnostic> {
-		// TODO
-		let options = Default::default();
-		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
+	fn from_string(
+		source_id: SourceId,
+		string: String,
+		options: &parser::ParseOptions,
+	) -> Result<Self, Diagnostic> {
+		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
 			.map_err(|err| Diagnostic::from((err, source_id)))
 	}
 
 	type DefinitionFile = parser::TypeDefinitionModule;
+	type ParseOptions = parser::ParseOptions;
 
 	fn definition_module_from_string(
 		source_id: SourceId,
@@ -95,7 +97,7 @@ impl crate::SynthesisableModule for parser::Module {
 			.map_err(|err| Diagnostic::from((err, source_id)))
 	}
 
-	fn synthesize_module<T: crate::FSResolver>(
+	fn synthesize_module<T: crate::ReadFromFS>(
 		&self,
 		source_id: SourceId,
 		module_environment: &mut Environment,
@@ -104,7 +106,7 @@ impl crate::SynthesisableModule for parser::Module {
 		synthesise_block(&self.items, module_environment, checking_data);
 	}
 
-	fn type_definition_file<T: crate::FSResolver>(
+	fn type_definition_file<T: crate::ReadFromFS>(
 		tdm: parser::TypeDefinitionModule,
 		root: &mut crate::RootContext,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -129,20 +131,25 @@ pub mod interactive {
 		statements::synthesise_statement,
 	};
 
-	pub struct State<'a, T: crate::FSResolver> {
+	pub struct State<'a, T: crate::ReadFromFS> {
 		checking_data: CheckingData<'a, T, parser::Module>,
 		root: RootContext,
 	}
 
-	impl<'a, T: crate::FSResolver> State<'a, T> {
+	impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		pub fn new(
 			resolver: &'a T,
 			type_definition_files: HashSet<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let entry_point = PathBuf::from("CLI");
-			let mut checking_data =
-				CheckingData::new(Default::default(), resolver, entry_point, None);
+			let mut checking_data = CheckingData::new(
+				Default::default(),
+				resolver,
+				entry_point,
+				Default::default(),
+				None,
+			);
 
 			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 

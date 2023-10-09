@@ -34,7 +34,7 @@ use super::{
 	type_annotations::synthesise_type_annotation,
 };
 
-pub(super) fn synthesise_multiple_expression<T: crate::FSResolver>(
+pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
 	expression: &MultipleExpression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -50,7 +50,7 @@ pub(super) fn synthesise_multiple_expression<T: crate::FSResolver>(
 	}
 }
 
-pub(super) fn synthesise_expression<T: crate::FSResolver>(
+pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 	expression: &Expression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -72,7 +72,7 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		Expression::ArrayLiteral(elements, _) => {
-			fn synthesise_array_item<T: crate::FSResolver>(
+			fn synthesise_array_item<T: crate::ReadFromFS>(
 				idx: usize,
 				element: &SpreadExpression,
 				environment: &mut Environment,
@@ -404,13 +404,13 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 								property,
 								&environment.as_general_context(),
 								&checking_data.types,
-								checking_data.settings.debug_types,
+								checking_data.options.debug_types,
 							),
 							on: TypeStringRepresentation::from_type_id(
 								on,
 								&environment.as_general_context(),
 								&checking_data.types,
-								checking_data.settings.debug_types,
+								checking_data.options.debug_types,
 							),
 							site: position.clone().with_source(environment.get_source()),
 						},
@@ -533,13 +533,13 @@ pub(super) fn synthesise_expression<T: crate::FSResolver>(
 								indexer,
 								&environment.as_general_context(),
 								&checking_data.types,
-								checking_data.settings.debug_types,
+								checking_data.options.debug_types,
 							),
 							on: TypeStringRepresentation::from_type_id(
 								indexee,
 								&environment.as_general_context(),
 								&checking_data.types,
-								checking_data.settings.debug_types,
+								checking_data.options.debug_types,
 							),
 							site: position.clone().with_source(environment.get_source()),
 						},
@@ -715,7 +715,7 @@ fn operator_to_assignment_kind(
 /// Generic for functions + constructor calls
 ///
 /// TODO error with function_type_id should be handled earlier
-fn call_function<T: crate::FSResolver>(
+fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
@@ -764,7 +764,7 @@ fn call_function<T: crate::FSResolver>(
 	)
 }
 
-fn synthesise_arguments<T: crate::FSResolver>(
+fn synthesise_arguments<T: crate::ReadFromFS>(
 	arguments: &Vec<SpreadExpression>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -804,7 +804,7 @@ fn synthesise_arguments<T: crate::FSResolver>(
 		.collect::<Vec<SynthesisedArgument>>()
 }
 
-pub(super) fn synthesise_class_fields<T: crate::FSResolver>(
+pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 	fields: Vec<(TypeId, Expression)>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -825,7 +825,7 @@ pub(super) fn synthesise_class_fields<T: crate::FSResolver>(
 }
 
 impl SynthesisableExpression<parser::Module> for Expression {
-	fn synthesise_expression<U: crate::FSResolver>(
+	fn synthesise_expression<U: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U, parser::Module>,
@@ -842,7 +842,7 @@ use parser::expressions::object_literal::{ObjectLiteral, ObjectLiteralMember};
 
 use crate::{structures::variables::VariableWithValue, synthesis::property_key_as_type};
 
-pub(super) fn synthesise_object_literal<T: crate::FSResolver>(
+pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,
 	checking_data: &mut CheckingData<T, parser::Module>,
 	environment: &mut Environment,

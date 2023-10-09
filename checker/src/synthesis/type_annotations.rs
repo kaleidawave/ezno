@@ -47,7 +47,7 @@ use crate::context::{Context, ContextType};
 /// - Reference to non generic with generic types
 ///
 /// Use [Context::get_type] instead
-pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
+pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 	annotation: &TypeAnnotation,
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -353,7 +353,7 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::FSResolver>(
 	ty
 }
 
-fn synthesise_type_condition<S: ContextType, T: crate::FSResolver>(
+fn synthesise_type_condition<S: ContextType, T: crate::ReadFromFS>(
 	condition: &TypeCondition,
 	environment: &mut Context<S>,
 	checking_data: &mut CheckingData<T, parser::Module>,

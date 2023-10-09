@@ -45,7 +45,7 @@ impl Reference {
 
 // TODO
 pub trait SynthesisableExpression<M: crate::SynthesisableModule> {
-	fn synthesise_expression<U: crate::FSResolver>(
+	fn synthesise_expression<U: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U, M>,

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 pub type ExportedItems = HashMap<String, Variable>;
 pub type ReturnResult = Option<TypeId>;
 
-pub(super) fn synthesise_statement<T: crate::FSResolver>(
+pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 	statement: &Statement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -105,7 +105,7 @@ pub(super) fn synthesise_statement<T: crate::FSResolver>(
 			impl<'a> SynthesisableConditional<parser::Module> for IfStatementBranch<'a> {
 				type ExpressionResult = ();
 
-				fn synthesise_condition<T: crate::FSResolver>(
+				fn synthesise_condition<T: crate::ReadFromFS>(
 					self,
 					environment: &mut Environment,
 					checking_data: &mut CheckingData<T, parser::Module>,
@@ -315,7 +315,7 @@ pub(super) fn synthesise_statement<T: crate::FSResolver>(
 	}
 }
 
-fn synthesise_block_or_single_statement<T: crate::FSResolver>(
+fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,

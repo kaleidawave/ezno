@@ -20,12 +20,12 @@ pub fn synthesise_template_literal<'a, T, M, TExpr>(
 	checking_data: &mut CheckingData<T, M>,
 ) -> Instance
 where
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	M: crate::SynthesisableModule,
 	TExpr: SynthesisableExpression<M> + 'a,
 {
 	fn part_to_type<
-		T: crate::FSResolver,
+		T: crate::ReadFromFS,
 		M: crate::SynthesisableModule,
 		TExpr: SynthesisableExpression<M>,
 	>(
@@ -45,7 +45,7 @@ where
 					checking_data,
 				);
 				if let Type::Constant(cst) = checking_data.types.get_type_by_id(value) {
-					let value = cast_as_string(cst, checking_data.settings.strict_casts).unwrap();
+					let value = cast_as_string(cst, checking_data.options.strict_casts).unwrap();
 					checking_data.types.new_constant_type(Constant::String(value))
 				} else {
 					crate::utils::notify!("Need to cast to string...");

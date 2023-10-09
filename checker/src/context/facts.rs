@@ -52,6 +52,10 @@ impl Facts {
 		self.events.push(Event::Throw(value));
 	}
 
+	pub fn get_events(&self) -> &[Event] {
+		&self.events
+	}
+
 	pub(crate) fn new_object(
 		&mut self,
 		prototype: Option<TypeId>,
@@ -59,7 +63,7 @@ impl Facts {
 		is_under_dyn: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-		crate::utils::notify!("New object created under {:?}", ty);
+		// crate::utils::notify!("New object created under {:?}", ty);
 
 		if let Some(prototype) = prototype {
 			self.prototypes.insert(ty, prototype);
@@ -77,5 +81,9 @@ impl Facts {
 		}
 
 		ty
+	}
+
+	pub fn get_properties_on_type(&self, ty: TypeId) -> Option<&Vec<(TypeId, Property)>> {
+		self.current_properties.get(&ty)
 	}
 }

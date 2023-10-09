@@ -17,7 +17,7 @@ deno run -A dist/cli.mjs info
 For a environment that supports `node:fs`, you can use a version that initializes the WASM for you
 
 ```js
-import { build } from "ezno/initialized";
+import { build } from "ezno/initialised";
 
 // Just use a local string. Could use readFileSync for FS access
 const fs_handler = (_path) => "const x = !t ? 4 : 5;";

@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use parser::{
-	declarations::DeclareVariableDeclaration, ASTNode, Declaration, Statement,
-	StatementOrDeclaration, VariableIdentifier, WithComment,
+	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
+	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
+	WithComment,
 };
 
 use crate::{
 	behavior::functions::RegisterOnExisting, context::Environment,
-	structures::variables::VariableMutability, CheckingData, TypeId,
+	structures::variables::VariableMutability, CheckingData, ReadFromFS, TypeId,
 };
 
 use super::{
@@ -16,7 +17,7 @@ use super::{
 };
 
 /// TODO imports and exports
-pub(crate) fn hoist_statements<T: crate::FSResolver>(
+pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -36,7 +37,15 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					"enum",
 					r#enum.on.position.clone().with_source(environment.get_source()),
 				),
-				parser::Declaration::DeclareInterface(_interface) => todo!(),
+				parser::Declaration::DeclareInterface(interface) => {
+					// TODO any difference bc declare?
+					let ty = environment.new_interface(
+						&interface.name,
+						interface.position.clone().with_source(environment.get_source()),
+						&mut checking_data.types,
+					);
+					idx_to_types.insert(interface.position.start, ty);
+				}
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.new_interface(
 						&interface.on.name,
@@ -47,7 +56,10 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				}
 				parser::Declaration::TypeAlias(alias) => {
 					if alias.type_name.type_parameters.is_some() {
-						todo!()
+						checking_data.raise_unimplemented_error(
+							"type alias with generic type parameters",
+							alias.get_position().clone().with_source(environment.get_source()),
+						)
 					}
 					let to = synthesise_type_annotation(
 						&alias.type_expression,
@@ -58,14 +70,12 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
-					checking_data.raise_unimplemented_error(
-						"imports",
-						import.position.clone().with_source(environment.get_source()),
-					);
-
 					// TODO get types from checking_data.modules.exported
 					if let Some(ref default) = import.default {
-						todo!()
+						checking_data.raise_unimplemented_error(
+							"default imports",
+							import.position.clone().with_source(environment.get_source()),
+						);
 					}
 
 					match &import.kind {
@@ -101,9 +111,23 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 									}
 								}
 							}
+							checking_data.raise_unimplemented_error(
+								"imports",
+								import.position.clone().with_source(environment.get_source()),
+							);
 						}
-						parser::declarations::import::ImportKind::All { under } => todo!(),
-						parser::declarations::import::ImportKind::SideEffect => todo!(),
+						parser::declarations::import::ImportKind::All { under } => {
+							checking_data.raise_unimplemented_error(
+								"import * as",
+								import.position.clone().with_source(environment.get_source()),
+							);
+						}
+						parser::declarations::import::ImportKind::SideEffect => {
+							checking_data.raise_unimplemented_error(
+								"import side effect",
+								import.position.clone().with_source(environment.get_source()),
+							);
+						}
 					}
 				}
 				// TODO I don't think anything needs to happen here
@@ -124,62 +148,11 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				}
 			}
 			StatementOrDeclaration::Declaration(dec) => match dec {
-				parser::Declaration::Variable(declaration) => match declaration {
-					parser::declarations::VariableDeclaration::ConstDeclaration {
-						keyword,
-						declarations,
-						position,
-					} => {
-						for declaration in declarations.iter() {
-							let constraint = get_annotation_from_declaration(
-								declaration,
-								environment,
-								checking_data,
-							);
-
-							let behavior = crate::context::VariableRegisterBehavior::Register {
-								mutability: VariableMutability::Constant,
-							};
-
-							register_variable(
-								declaration.name.get_ast_ref(),
-								environment,
-								checking_data,
-								behavior,
-								constraint,
-							);
-						}
-					}
-					parser::declarations::VariableDeclaration::LetDeclaration {
-						keyword,
-						declarations,
-						position,
-					} => {
-						for declaration in declarations.iter() {
-							let constraint = get_annotation_from_declaration(
-								declaration,
-								environment,
-								checking_data,
-							);
-
-							let behavior = crate::context::VariableRegisterBehavior::Register {
-								mutability: VariableMutability::Mutable {
-									reassignment_constraint: constraint,
-								},
-							};
-
-							register_variable(
-								declaration.name.get_ast_ref(),
-								environment,
-								checking_data,
-								behavior,
-								constraint,
-							);
-						}
-					}
-				},
+				parser::Declaration::Variable(declaration) => {
+					hoist_variable_declaration(declaration, environment, checking_data)
+				}
 				parser::Declaration::Function(func) => {
-					// TODO unsynthesised function? ...
+					// TODO unsynthesized function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
 						mutability: crate::structures::variables::VariableMutability::Constant,
@@ -226,7 +199,12 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				parser::Declaration::Class(_) => {
 					// TODO hoist type...
 				}
-				parser::Declaration::Enum(_) => todo!(),
+				parser::Declaration::Enum(r#enum) => {
+					checking_data.raise_unimplemented_error(
+						"enum",
+						r#enum.position.clone().with_source(environment.get_source()),
+					);
+				}
 				parser::Declaration::Interface(interface) => {
 					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 					super::interfaces::synthesise_signatures(
@@ -275,25 +253,141 @@ pub(crate) fn hoist_statements<T: crate::FSResolver>(
 				}
 				parser::Declaration::DeclareInterface(_) => {}
 				parser::Declaration::Import(_) => {}
-				parser::Declaration::Export(_) => {}
+				parser::Declaration::Export(exported) => match &exported.on {
+					parser::declarations::ExportDeclaration::Variable { exported, position } => {
+						match exported {
+							parser::declarations::export::Exportable::Class(_) => {}
+							parser::declarations::export::Exportable::Function(func) => {
+								// TODO unsynthesized function? ...
+								let behavior = crate::context::VariableRegisterBehavior::Register {
+									// TODO
+									mutability:
+										crate::structures::variables::VariableMutability::Constant,
+								};
+								environment.register_variable_handle_error(
+									func.name.as_str(),
+									func.get_position()
+										.clone()
+										.with_source(environment.get_source()),
+									behavior,
+									checking_data,
+								);
+							}
+							parser::declarations::export::Exportable::Variable(declaration) => {
+								// TODO mark exported
+								hoist_variable_declaration(&declaration, environment, checking_data)
+							}
+							parser::declarations::export::Exportable::Interface(interface) => {
+								let ty = idx_to_types.remove(&interface.position.start).unwrap();
+								super::interfaces::synthesise_signatures(
+									&interface.members,
+									super::interfaces::OnToType(ty),
+									environment,
+									checking_data,
+								);
+							}
+							parser::declarations::export::Exportable::TypeAlias(_) => {}
+							parser::declarations::export::Exportable::Parts(parts) => {
+								checking_data.raise_unimplemented_error(
+									"export parts",
+									position.clone().with_source(environment.get_source()),
+								);
+							}
+						}
+					}
+					parser::declarations::ExportDeclaration::Default { expression, position } => {
+						checking_data.raise_unimplemented_error(
+							"default export",
+							position.clone().with_source(environment.get_source()),
+						);
+					}
+				},
 			},
 		}
 	}
 
-	// Third stage
+	// Third stage: functions
 	for item in items {
-		if let StatementOrDeclaration::Declaration(Declaration::Function(func)) = item {
-			environment.new_function(
-				checking_data,
-				&func.on,
-				RegisterOnExisting(func.on.name.as_str().to_owned()),
-			);
+		match item {
+			StatementOrDeclaration::Declaration(Declaration::Function(func)) => {
+				environment.new_function(
+					checking_data,
+					&func.on,
+					RegisterOnExisting(func.on.name.as_str().to_owned()),
+				);
+			}
+			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
+				on:
+					ExportDeclaration::Variable { exported: Exportable::Function(func), position: _ },
+				..
+			})) => {
+				// TODO does it need to be exportable marked
+				environment.new_function(
+					checking_data,
+					func,
+					RegisterOnExisting(func.name.as_str().to_owned()),
+				);
+			}
+			_ => (),
+		}
+	}
+}
+
+fn hoist_variable_declaration<T: ReadFromFS>(
+	declaration: &parser::declarations::VariableDeclaration,
+	environment: &mut crate::context::Context<crate::context::environment::Syntax<'_>>,
+	checking_data: &mut CheckingData<'_, T, parser::Module>,
+) {
+	match declaration {
+		parser::declarations::VariableDeclaration::ConstDeclaration {
+			keyword,
+			declarations,
+			position,
+		} => {
+			for declaration in declarations.iter() {
+				let constraint =
+					get_annotation_from_declaration(declaration, environment, checking_data);
+
+				let behavior = crate::context::VariableRegisterBehavior::Register {
+					mutability: VariableMutability::Constant,
+				};
+
+				register_variable(
+					declaration.name.get_ast_ref(),
+					environment,
+					checking_data,
+					behavior,
+					constraint,
+				);
+			}
+		}
+		parser::declarations::VariableDeclaration::LetDeclaration {
+			keyword,
+			declarations,
+			position,
+		} => {
+			for declaration in declarations.iter() {
+				let constraint =
+					get_annotation_from_declaration(declaration, environment, checking_data);
+
+				let behavior = crate::context::VariableRegisterBehavior::Register {
+					mutability: VariableMutability::Mutable { reassignment_constraint: constraint },
+				};
+
+				register_variable(
+					declaration.name.get_ast_ref(),
+					environment,
+					checking_data,
+					behavior,
+					constraint,
+				);
+			}
 		}
 	}
 }
 
 fn get_annotation_from_declaration<
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	U: parser::declarations::variable::DeclarationExpression + 'static,
 >(
 	declaration: &parser::declarations::VariableDeclarationItem<U>,
@@ -331,7 +425,7 @@ fn get_annotation_from_declaration<
 	result.map(|(value, _span)| value)
 }
 
-pub(crate) fn string_comment_to_type<T: crate::FSResolver>(
+pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
 	possible_declaration: &String,
 	position: source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,

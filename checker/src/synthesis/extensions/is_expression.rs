@@ -7,7 +7,7 @@ use crate::{
 	CheckingData, TypeId,
 };
 
-pub(crate) fn synthesise_is_expression<T: crate::FSResolver>(
+pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 	is_expression: &parser::is_expression::IsExpression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,

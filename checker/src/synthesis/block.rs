@@ -8,7 +8,7 @@ use super::{
 };
 
 /// Note that this expects the environment to be new lexically
-pub(super) fn synthesise_block<T: crate::FSResolver>(
+pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 	statements: &[StatementOrDeclaration],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -51,7 +51,7 @@ pub(super) fn synthesise_block<T: crate::FSResolver>(
 	}
 }
 
-pub(crate) fn synthesize_declaration<T: crate::FSResolver>(
+pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 	declaration: &Declaration,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
 	checking_data: &mut CheckingData<'_, T, parser::Module>,
@@ -97,7 +97,10 @@ pub(crate) fn synthesize_declaration<T: crate::FSResolver>(
 					}
 					parser::declarations::export::Exportable::Variable(variable) => {
 						// TODO mark as exported
-						crate::utils::notify!("Export variable {:?}", environment.context_type);
+						crate::utils::notify!(
+							"Export variable {:?}",
+							environment.context_type.kind
+						);
 						synthesise_variable_declaration(variable, environment, checking_data);
 					}
 					parser::declarations::export::Exportable::Parts(_) => todo!(),

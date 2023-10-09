@@ -78,7 +78,7 @@ impl Quoted {
 
 /// Settings to customize parsing
 #[allow(unused)]
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
@@ -87,6 +87,7 @@ pub struct ParseOptions {
 	pub generator_keyword: bool,
 	pub include_comments: bool,
 
+	pub is_expressions: bool,
 	pub server_blocks: bool,
 	pub module_blocks: bool,
 	/// For LSP allows incomplete AST for completions. TODO tidy up
@@ -114,6 +115,7 @@ impl Default for ParseOptions {
 			generator_keyword: true,
 			server_blocks: false,
 			module_blocks: false,
+			is_expressions: true,
 		}
 	}
 }

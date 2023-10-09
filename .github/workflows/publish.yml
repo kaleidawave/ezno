@@ -106,7 +106,8 @@ jobs:
           npm ci
           npm version $VERSION
           npm run build-release
-          # TODO temp here:
+
+          # TODO temp check
           ls dist
         working-directory: src/js-cli-and-library
         env:
@@ -139,6 +140,7 @@ jobs:
         run: |
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
+          
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"

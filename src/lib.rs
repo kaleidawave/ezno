@@ -22,11 +22,11 @@ pub fn prettifier(input: String) -> Result<String, ParseError> {
 	Ok(module.to_string(&ToStringOptions::default()))
 }
 
-pub trait FSResolver {
+pub trait ReadFromFS {
 	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
 }
 
-impl<T> FSResolver for T
+impl<T> ReadFromFS for T
 where
 	T: Fn(&std::path::Path) -> Option<String>,
 {
@@ -39,6 +39,10 @@ where
 pub trait CLIInputResolver: Fn(&str) -> Option<String> {}
 
 impl<T> CLIInputResolver for T where T: Fn(&str) -> Option<String> {}
+
+pub trait WriteToFS: Fn(&std::path::Path, String) {}
+
+impl<T> WriteToFS for T where T: Fn(&std::path::Path, String) {}
 
 #[cfg(target_family = "wasm")]
 mod wasm_bindings;

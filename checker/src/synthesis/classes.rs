@@ -18,7 +18,7 @@ use crate::{
 ///
 /// Returns the constructor
 pub(super) fn synthesise_class_declaration<
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	S: ContextType,
 	P: parser::ExpressionOrStatementPosition,
 >(
@@ -61,7 +61,7 @@ pub(super) fn synthesise_class_declaration<
 			};
 
 			let extends = if let Some(ref extends) = class.extends {
-				fn build_extends_type<'a, T: crate::FSResolver>(
+				fn build_extends_type<'a, T: crate::ReadFromFS>(
 					mut extends: impl Iterator<Item = &'a TypeAnnotation>,
 					environment: &mut Environment,
 					checking_data: &mut CheckingData<T, parser::Module>,
@@ -212,7 +212,7 @@ pub(super) fn synthesise_class_declaration<
 	constructor
 }
 
-pub(super) fn type_generic_type_constraints<T: crate::FSResolver>(
+pub(super) fn type_generic_type_constraints<T: crate::ReadFromFS>(
 	unwrap: &[GenericTypeConstraint],
 	environment: &mut Context<crate::context::Syntax>,
 	checking_data: &mut CheckingData<T, parser::Module>,

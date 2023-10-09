@@ -6,17 +6,13 @@
 	"repository": "https://github.com/kaleidawave/ezno",
 	"main": "./dist/index.mjs",
 	"module": "./dist/index.mjs",
-	"types": "./build/ezno.d.ts",
 	"type": "module",
 	"exports": {
 		".": {
 			"import": "./dist/index.mjs"
 		},
-		"./initialized": {
-			"import": "./dist/initialized.mjs"
-		},
-		"./node": {
-			"import": "./dist/remote.mjs"
+		"./initialised": {
+			"import": "./dist/initialised.mjs"
 		}
 	},
 	"scripts": {
@@ -59,7 +55,7 @@
 			},
 			{
 				"builder": "rollup",
-				"input": "./src/initialized"
+				"input": "./src/initialised"
 			},
 			{
 				"builder": "rollup",

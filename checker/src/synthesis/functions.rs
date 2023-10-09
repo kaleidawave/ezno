@@ -135,7 +135,7 @@ where
 		false
 	}
 
-	fn type_parameters<T: crate::FSResolver>(
+	fn type_parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -149,7 +149,7 @@ where
 		FunctionId(source_id, self.get_position().start)
 	}
 
-	fn this_constraint<T: crate::FSResolver>(
+	fn this_constraint<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -158,7 +158,7 @@ where
 		None
 	}
 
-	fn parameters<T: crate::FSResolver>(
+	fn parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -166,7 +166,7 @@ where
 		synthesise_function_parameters(&self.parameters, environment, checking_data)
 	}
 
-	fn body<T: crate::FSResolver>(
+	fn body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -174,7 +174,7 @@ where
 		self.body.synthesise_function_body(environment, checking_data)
 	}
 
-	fn return_type_annotation<T: crate::FSResolver>(
+	fn return_type_annotation<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -199,7 +199,7 @@ where
 pub(super) trait SynthesisableFunctionBody {
 	// Return type is the return type of the body, if it doesn't use
 	/// any returns it is equal to [Type::Undefined]
-	fn synthesise_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -207,7 +207,7 @@ pub(super) trait SynthesisableFunctionBody {
 }
 
 impl SynthesisableFunctionBody for Block {
-	fn synthesise_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -217,7 +217,7 @@ impl SynthesisableFunctionBody for Block {
 }
 
 impl SynthesisableFunctionBody for ExpressionOrBlock {
-	fn synthesise_function_body<T: crate::FSResolver>(
+	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, parser::Module>,
@@ -234,7 +234,7 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	}
 }
 
-pub(crate) fn synthesise_type_parameters<T: crate::FSResolver>(
+pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 	type_parameters: &[GenericTypeConstraint],
 	environment: &mut crate::Environment,
 	checking_data: &mut crate::CheckingData<T, parser::Module>,
@@ -276,7 +276,7 @@ pub(crate) fn synthesise_type_parameters<T: crate::FSResolver>(
 /// Expected parameter types will be in the same order as the parameters
 ///
 /// TODO reduce with other
-pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
+pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 	reference_parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -351,7 +351,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::FSResolver>(
 	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn synthesise_function_parameters<T: crate::FSResolver>(
+fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	ast_parameters: &parser::FunctionParameters,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -439,7 +439,7 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 /// This synthesises is for function types, references and interfaces.
 ///
 /// TODO should always take effect annotations (right?)
-pub(super) fn type_function_reference<T: crate::FSResolver, S: ContextType>(
+pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 	type_parameters: &Option<Vec<GenericTypeConstraint>>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some

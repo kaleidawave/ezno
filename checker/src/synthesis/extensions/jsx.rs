@@ -15,7 +15,7 @@ use crate::{
 	CheckingData, Constant, Environment, TypeId,
 };
 
-pub(crate) fn synthesise_jsx_root<T: crate::FSResolver>(
+pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 	jsx_root: &JSXRoot,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -26,7 +26,7 @@ pub(crate) fn synthesise_jsx_root<T: crate::FSResolver>(
 	}
 }
 
-pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
+pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	element: &JSXElement,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -115,7 +115,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 	// 	);
 	// }
 
-	if let parser::JSXElementChildren::Children(ref children) = element.children {
+	let child_nodes = if let parser::JSXElementChildren::Children(ref children) = element.children {
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
@@ -134,7 +134,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(environment, property, crate::Property::Value(child));
 		}
-	}
+
+		Some(synthesised_child_nodes.build_object())
+	} else {
+		None
+	};
 
 	// TODO cache or something?
 	// TODO temp, to be worked out
@@ -148,18 +152,29 @@ pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 			}
 		};
 
-	let arg1 = SynthesisedArgument::NonSpread {
+	let tag_name_argument = SynthesisedArgument::NonSpread {
 		ty: tag_name_as_cst_ty,
 		// TODO use tag name position
 		position: position.clone(),
 	};
+	let attributes_argument = SynthesisedArgument::NonSpread {
+		ty: attributes_object.build_object(),
+		// TODO use arguments position
+		position: position.clone(),
+	};
+
+	let mut args = vec![tag_name_argument, attributes_argument];
+	if let Some(child_nodes) = child_nodes {
+		// TODO position here
+		args.push(SynthesisedArgument::NonSpread { ty: child_nodes, position: position.clone() })
+	}
 
 	call_type_handle_errors(
 		jsx_function,
 		crate::types::calling::CalledWithNew::None,
 		crate::behavior::functions::ThisValue::UseParent,
 		None,
-		vec![],
+		args,
 		position.clone(),
 		environment,
 		checking_data,
@@ -324,7 +339,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::FSResolver>(
 	// 	}
 }
 
-fn synthesise_jsx_child<T: crate::FSResolver>(
+fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	child: &JSXNode,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
@@ -380,7 +395,7 @@ fn synthesise_jsx_child<T: crate::FSResolver>(
 	}
 }
 
-fn synthesise_attribute<T: crate::FSResolver>(
+fn synthesise_attribute<T: crate::ReadFromFS>(
 	attribute: &JSXAttribute,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,

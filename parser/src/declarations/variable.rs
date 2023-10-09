@@ -292,10 +292,16 @@ impl ASTNode for VariableDeclaration {
 	) {
 		match self {
 			VariableDeclaration::LetDeclaration { declarations, .. } => {
+				if declarations.is_empty() {
+					return;
+				}
 				buf.push_str("let ");
 				declarations_to_string(declarations, buf, settings, depth);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
+				if declarations.is_empty() {
+					return;
+				}
 				buf.push_str("const ");
 				declarations_to_string(declarations, buf, settings, depth);
 			}

@@ -2,13 +2,15 @@ use std::{collections::HashMap, path::PathBuf};
 
 use derive_enum_from_into::EnumFrom;
 
-use crate::{Diagnostic, Variable};
+use crate::{context::facts::Facts, Diagnostic, Variable};
 
 pub struct SynthesisedModule<M> {
 	pub content: M,
 	// TODO this should not be on unchecked module
 	// TODO export default
-	pub(crate) exported_variables: HashMap<String, Variable>,
+	pub exported_variables: HashMap<String, Variable>,
+	/// TODO ...
+	pub facts: Facts,
 }
 
 #[derive(Debug, EnumFrom)]

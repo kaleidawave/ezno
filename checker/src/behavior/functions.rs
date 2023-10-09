@@ -9,7 +9,7 @@ use crate::{
 		functions::SynthesisedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionType, TypeStore,
 	},
-	CheckingData, Environment, FSResolver, FunctionId, Type, TypeId, VariableId,
+	CheckingData, Environment, FunctionId, ReadFromFS, Type, TypeId, VariableId,
 };
 
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -131,34 +131,34 @@ pub trait SynthesisableFunction<M: crate::SynthesisableModule> {
 	fn id(&self, source_id: SourceId) -> FunctionId;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
-	fn type_parameters<T: FSResolver>(
+	fn type_parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> Option<GenericTypeParameters>;
 
 	/// Has to be the first parameter
-	fn this_constraint<T: FSResolver>(
+	fn this_constraint<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> Option<TypeId>;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
-	fn parameters<T: FSResolver>(
+	fn parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> SynthesisedParameters;
 
 	/// Returned type is extracted from events, thus doesn't expect anything in return
-	fn body<T: FSResolver>(
+	fn body<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	);
 
-	fn return_type_annotation<T: FSResolver>(
+	fn return_type_annotation<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,

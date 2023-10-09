@@ -1,17 +1,18 @@
-use checker::DiagnosticsContainer;
+use checker::{DiagnosticsContainer, PostCheckData};
 use parser::{
 	source_map::{MapFileStore, WithPathMap},
-	ASTNode, ToStringOptions,
+	ASTNode, ParseOptions, ToStringOptions,
 };
+use serde::Deserialize;
 use std::{
 	collections::HashSet,
 	path::{Path, PathBuf},
 };
 
-type EznoCheckerData = checker::PostCheckData<parser::Module>;
+pub type EznoCheckerData = PostCheckData<parser::Module>;
 
-pub fn check<T: crate::FSResolver>(
-	fs_resolver: &T,
+pub fn check<T: crate::ReadFromFS>(
+	read_from_filesystem: &T,
 	input: &Path,
 	type_definition_module: Option<&Path>,
 ) -> (checker::DiagnosticsContainer, Result<EznoCheckerData, MapFileStore<WithPathMap>>) {
@@ -21,15 +22,24 @@ pub fn check<T: crate::FSResolver>(
 		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
 	};
 
-	let (diagnostics, data) = checker::check_project(input.to_path_buf(), definitions, |path| {
+	let read_from_fs = |path: &Path| {
 		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 		} else {
-			fs_resolver.get_content_at_path(path)
+			read_from_filesystem.get_content_at_path(path)
 		}
-	});
+	};
 
-	(diagnostics, data)
+	let type_check_options = None;
+	let parsing_options = ParseOptions::default();
+
+	checker::check_project(
+		input.to_path_buf(),
+		definitions,
+		read_from_fs,
+		type_check_options,
+		parsing_options,
+	)
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
@@ -58,45 +68,48 @@ pub struct FailedBuildOutput {
 	pub fs: MapFileStore<WithPathMap>,
 }
 
-pub fn build<T: crate::FSResolver>(
+#[derive(Deserialize)]
+pub struct BuildConfig {
+	#[serde(default)]
+	pub strip_whitespace: bool,
+}
+
+pub type EznoParsePostCheckVisitors = parser::visiting::VisitorsMut<EznoCheckerData>;
+
+pub fn build<T: crate::ReadFromFS>(
 	fs_resolver: &T,
 	input_path: &Path,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
-	minify_output: bool,
+	config: BuildConfig,
+	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
+	// TODO parse settings + non_standard_library & non_standard_syntax
 	let (diagnostics, data_and_module) = check(fs_resolver, input_path, type_definition_module);
 
 	match data_and_module {
-		Ok(mut data) if !diagnostics.has_error() => {
+		Ok(mut data) => {
 			// TODO For all modules
+			let main_module = data.modules.get_mut(&data.entry_source).unwrap();
 
-			let main_module = data.modules.remove(&data.entry_source).unwrap();
-			let to_string_options = if minify_output {
+			// TODO bundle using main_module.imports
+
+			// TODO !!! DON'T CLONE !!! THE MODULE !!! BUT DON'T WANT TO REMOVE FROM ABOVE !!!
+			let mut module = main_module.content.clone();
+
+			let mut transformers = transformers.unwrap_or_default();
+
+			module.visit_mut::<EznoCheckerData>(
+				&mut transformers,
+				&mut data,
+				&parser::visiting::VisitSettings::default(),
+			);
+
+			let to_string_options = if config.strip_whitespace {
 				ToStringOptions::minified()
 			} else {
 				ToStringOptions::default()
 			};
-
-			// TODO bundle using main_module.imports
-
-			let mut module = main_module.content;
-
-			// pass through transformers
-			let expression_visitors_mut: Vec<
-				Box<(dyn parser::visiting::VisitorMut<parser::Expression, _> + 'static)>,
-			> = Default::default();
-
-			//  = vec![Box::new(crate::transformers::type_to_js::RuntimeTypeCompiler)];
-
-			module.visit_mut::<EznoCheckerData>(
-				&mut parser::visiting::VisitorsMut {
-					expression_visitors_mut,
-					..Default::default()
-				},
-				&mut data,
-				&parser::visiting::VisitSettings::default(),
-			);
 
 			let content = module.to_string(&to_string_options);
 			let main_output = Output {
@@ -108,7 +121,6 @@ pub fn build<T: crate::FSResolver>(
 
 			Ok(BuildOutput { outputs: vec![main_output], diagnostics, fs: data.module_contents })
 		}
-		Ok(data) => Err(FailedBuildOutput { diagnostics, fs: data.module_contents }),
 		Err(err) => Err(FailedBuildOutput { diagnostics, fs: err }),
 	}
 }

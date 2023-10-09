@@ -1,39 +1,11 @@
-import { build, check, parse_expression } from "./dist/initialized.mjs";
-import { deepStrictEqual } from "node:assert";
+import { build, check, parse_expression } from "./dist/initialised.mjs";
+import assert, { deepStrictEqual, equal } from "node:assert";
 
-// TODO temp
-// function buildTest() {
-// 	const content = `
-// 	export function setupCounter(element) {
-// 		let counter = 0;
-// 		const setCounter = count => {
-// 			counter = count;
-// 			element.innerHTML = \`count is \${counter}\`
-// 		};
-// 		element.addEventListener('click', () => setCounter(counter + 1));
-// 		setCounter(0)
-// 	};`;
+function buildTest() {
+	// TODO
+}
 
-// 	const output = build((_path) => content, "input.js");
-
-// 	deepStrictEqual(output, {
-// 		Ok: {
-// 			outputs: [
-// 				{
-// 					output_path: "out.js",
-// 					content:
-// 						"export function setupCounter(element){let counter=0;const setCounter=count=>{counter=count;element.innerHTML=`count is ${counter}`};element.addEventListener('click',()=>setCounter(counter+1));setCounter(0)}",
-// 					mappings: "",
-// 				},
-// 			],
-// 			temp_diagnostics: [],
-// 		},
-// 	});
-
-// 	console.log("WASM: build test passed")
-// }
-
-// buildTest()
+buildTest()
 
 function checkTest() {
 	const example = "const x: 4 = 2;"

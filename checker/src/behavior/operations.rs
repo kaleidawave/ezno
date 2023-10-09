@@ -9,7 +9,7 @@ use crate::{
 		StructureGenerics, TypeStore,
 	},
 	CheckingData, Constant, Environment, SynthesisableConditional, SynthesisableExpression,
-	TruthyFalsy, Type, TypeId,
+	SynthesisableModule, TruthyFalsy, Type, TypeId,
 };
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -39,11 +39,14 @@ pub enum PureBinaryOperation {
 	TypePropertyOperator(TypePropertyOperator),
 }
 
-pub fn evaluate_pure_binary_operation_handle_errors<T: crate::FSResolver, V>(
+pub fn evaluate_pure_binary_operation_handle_errors<
+	T: crate::ReadFromFS,
+	M: SynthesisableModule,
+>(
 	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
 	(rhs, rhs_pos): (TypeId, SpanWithSource),
-	checking_data: &mut CheckingData<T, V>,
+	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
 ) -> TypeId {
 	// environment,
@@ -328,7 +331,7 @@ pub enum Logical {
 
 /// TODO strict casts!
 pub fn evaluate_logical_operation_with_expression<
-	T: crate::FSResolver,
+	T: crate::ReadFromFS,
 	M: crate::SynthesisableModule,
 	TExpr: SynthesisableExpression<M>,
 >(
@@ -348,7 +351,7 @@ pub fn evaluate_logical_operation_with_expression<
 	{
 		type ExpressionResult = TypeId;
 
-		fn synthesise_condition<T: crate::FSResolver>(
+		fn synthesise_condition<T: crate::ReadFromFS>(
 			self,
 			environment: &mut Environment,
 			checking_data: &mut CheckingData<T, M>,
