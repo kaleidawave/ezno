@@ -21,6 +21,7 @@ use crate::{
 		},
 		template_literal::synthesise_template_literal,
 	},
+	context::facts::PublicityKind,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	events::Event,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
@@ -125,7 +126,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			for (idx, value) in elements.iter().enumerate() {
 				let (key, value) = synthesise_array_item(idx, value, environment, checking_data);
 
-				basis.append(environment, key, crate::types::properties::Property::Value(value));
+				basis.append(
+					environment,
+					key,
+					crate::types::properties::Property::Value(value),
+					PublicityKind::Public,
+				);
 			}
 			let len = checking_data
 				.types
@@ -135,6 +141,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment,
 				TypeId::LENGTH_AS_STRING,
 				crate::types::properties::Property::Value(len),
+				PublicityKind::Public,
 			);
 
 			Instance::RValue(basis.build_object())
@@ -229,8 +236,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				| BinaryOperator::NullCoalescing => {
 					unreachable!()
 				}
-				BinaryOperator::InstanceOf => todo!(),
-				BinaryOperator::In => todo!(),
 				BinaryOperator::Divides => todo!(),
 				BinaryOperator::Pipe => todo!(),
 				BinaryOperator::Compose => todo!(),
@@ -244,11 +249,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			))
 		}
 		Expression::UnaryOperation { operand, operator, position } => {
-			let operand_type = synthesise_expression(&*operand, environment, checking_data);
-
 			match operator {
-				UnaryOperator::Plus => todo!(),
+				UnaryOperator::Plus => {
+					todo!("cast to number")
+				}
 				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
+					let operand_type = synthesise_expression(&*operand, environment, checking_data);
 					let operator = match operator {
 						UnaryOperator::Negation => PureUnary::Negation,
 						UnaryOperator::BitwiseNot => PureUnary::BitwiseNot,
@@ -266,8 +272,35 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 				UnaryOperator::Await => todo!(),
 				UnaryOperator::TypeOf => todo!(),
-				UnaryOperator::Void => todo!(),
-				UnaryOperator::Delete => todo!(),
+				UnaryOperator::Void => {
+					let _operand_type =
+						synthesise_expression(&*operand, environment, checking_data);
+					return TypeId::UNDEFINED_TYPE;
+				}
+				UnaryOperator::Delete => {
+					// TODO synthesize anyway? and use mappings
+					// TODO more expressions
+					match &**operand {
+						Expression::PropertyAccess { parent, property, is_optional, position } => {
+							let on = synthesise_expression(parent, environment, checking_data);
+							match property {
+								parser::PropertyReference::Standard { property, is_private: _ } => {
+									let property = checking_data
+										.types
+										.new_constant_type(Constant::String(property.clone()));
+									let result = environment.remove_property(on, property);
+									return if result { TypeId::TRUE } else { TypeId::FALSE };
+								}
+								parser::PropertyReference::Cursor(_) => todo!(),
+							}
+						}
+						_ => {
+							let _operand_type =
+								synthesise_expression(&*operand, environment, checking_data);
+							return TypeId::FALSE;
+						}
+					}
+				}
 				UnaryOperator::Yield => todo!(),
 				UnaryOperator::DelegatedYield => todo!(),
 			}
@@ -382,13 +415,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::PropertyAccess { parent, position, property, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data);
-			let property = if let parser::PropertyReference::Standard(name) = property {
-				checking_data.types.new_constant_type(Constant::String(name.clone()))
-			} else {
-				todo!()
-			};
+			let property =
+				if let parser::PropertyReference::Standard { property, is_private } = property {
+					checking_data.types.new_constant_type(Constant::String(property.clone()))
+				} else {
+					todo!()
+				};
+
+			// TODO
+			let publicity = PublicityKind::Public;
+
 			let get_property =
-				environment.get_property(on, property, &mut checking_data.types, None);
+				environment.get_property(on, property, publicity, &mut checking_data.types, None);
 
 			match get_property {
 				Some((kind, result)) => match kind {
@@ -493,7 +531,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				position,
 			);
 			if let Some(special) = special {
-				crate::utils::notify!("Special! {:?}", special);
 				checking_data.type_mappings.special_expressions.push(position.clone(), special);
 			}
 			Instance::RValue(result)
@@ -516,8 +553,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let indexee = synthesise_expression(indexee, environment, checking_data);
 			let indexer = synthesise_multiple_expression(indexer, environment, checking_data);
 
-			let get_property =
-				environment.get_property(indexee, indexer, &mut checking_data.types, None);
+			let get_property = environment.get_property(
+				indexee,
+				indexer,
+				PublicityKind::Public,
+				&mut checking_data.types,
+				None,
+			);
 
 			match get_property {
 				Some((kind, result)) => match kind {
@@ -642,6 +684,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return value;
 			}
+			SpecialOperators::InExpression { lhs, rhs } => todo!(),
+			SpecialOperators::InstanceOfExpression { lhs, rhs } => todo!(),
 		},
 		Expression::DynamicImport { path, position } => todo!(),
 		Expression::IsExpression(is_expr) => {
@@ -730,15 +774,15 @@ fn call_function<T: crate::ReadFromFS>(
 				.iter()
 				.map(|generic_type_argument| {
 					(
-						generic_type_argument
-							.get_position()
-							.clone()
-							.with_source(environment.get_source()),
 						synthesise_type_annotation(
 							generic_type_argument,
 							environment,
 							checking_data,
 						),
+						generic_type_argument
+							.get_position()
+							.clone()
+							.with_source(environment.get_source()),
 					)
 				})
 				.collect::<Vec<_>>(),
@@ -805,12 +849,12 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 }
 
 pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
-	fields: Vec<(TypeId, Expression)>,
+	fields: Vec<(TypeId, PublicityKind, Expression)>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
 ) {
 	let this = environment.get_value_of_this(&mut checking_data.types);
-	for (under, mut expression) in fields {
+	for (under, publicity, mut expression) in fields {
 		let new = synthesise_expression(&expression, environment, checking_data);
 		environment.facts.events.push(Event::Setter {
 			on: this,
@@ -818,6 +862,7 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 			under,
 			reflects_dependency: None,
 			initialization: true,
+			publicity,
 		});
 		todo!()
 		// environment.new_property(this, under, new, false);
@@ -883,6 +928,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					environment,
 					key,
 					crate::types::properties::Property::Value(value),
+					PublicityKind::Public,
 				);
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
@@ -891,7 +937,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let value = synthesise_expression(expression, environment, checking_data);
 				let value = crate::types::properties::Property::Value(value);
-				object_builder.append(environment, key, value);
+				object_builder.append(environment, key, value, PublicityKind::Public);
 
 				// let property_name: PropertyName<'static> = property_key.into();
 
@@ -920,7 +966,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let property =
 					environment.new_function(checking_data, method, RegisterOnExistingObject);
-				object_builder.append(environment, key, property)
+
+				object_builder.append(environment, key, property, PublicityKind::Public)
 			}
 		}
 	}

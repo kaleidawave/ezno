@@ -33,23 +33,27 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let mut types = vec![
-			Type::NamedRooted { name: "error".to_owned(), parameters: None },
-			Type::NamedRooted { name: "never".to_owned(), parameters: None },
-			Type::NamedRooted { name: "any".to_owned(), parameters: None },
-			Type::NamedRooted { name: "boolean".to_owned(), parameters: None },
-			Type::NamedRooted { name: "number".to_owned(), parameters: None },
-			Type::NamedRooted { name: "string".to_owned(), parameters: None },
-			Type::NamedRooted { name: "undefined".to_owned(), parameters: None },
-			Type::NamedRooted { name: "null".to_owned(), parameters: None },
-			Type::NamedRooted { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::NamedRooted { name: "error".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "never".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "any".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "boolean".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "number".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "string".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "undefined".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "null".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted {
+				name: "Array".to_owned(),
+				parameters: Some(vec![TypeId::T_TYPE]),
+				nominal: true,
+			},
 			// Array T
 			Type::RootPolyType(PolyNature::Generic {
 				name: "T".to_owned(),
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			Type::NamedRooted { name: "object".to_owned(), parameters: None },
-			Type::NamedRooted { name: "Function".to_owned(), parameters: None },
-			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None },
+			Type::NamedRooted { name: "object".to_owned(), parameters: None, nominal: false },
+			Type::NamedRooted { name: "Function".to_owned(), parameters: None, nominal: false },
+			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None, nominal: true },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -78,9 +82,6 @@ impl Default for TypeStore {
 				name: "SymbolToPrimitive".into(),
 				parameters: None,
 			},
-			Type::NamedRooted { name: "HTMLElementTagNameMap".to_owned(), parameters: None },
-			// Internal
-			Type::NamedRooted { name: "Operators".to_owned(), parameters: None },
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -176,7 +177,7 @@ impl TypeStore {
 			return_type,
 			effects,
 			// TODO
-			used_parent_references: Default::default(),
+			free_variables: Default::default(),
 			closed_over_variables: Default::default(),
 			// TODO
 			kind: crate::types::FunctionKind::Arrow,

@@ -17,7 +17,6 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::Synthesisab
 	let type_is_subtype = type_is_subtype(
 		variable_declared_type,
 		expression_type,
-		None,
 		&mut basic_subtyping,
 		environment,
 		&checking_data.types,

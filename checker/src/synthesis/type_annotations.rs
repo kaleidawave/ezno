@@ -22,16 +22,20 @@ use std::{convert::TryInto, iter::FromIterator};
 
 use indexmap::IndexSet;
 use parser::{type_annotations::*, ASTNode};
-use source_map::SourceId;
+use source_map::{SourceId, SpanWithSource};
 
 use crate::{
+	behavior::objects::ObjectBuilder,
+	context::facts::PublicityKind,
+	diagnostics::{TypeCheckError, TypeCheckWarning},
+	subtyping::{self, type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::type_function_reference,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments, properties::Property,
 		Constant, StructureGenerics, Type,
 	},
 	types::{Constructor, TypeId},
-	CheckingData,
+	CheckingData, Environment,
 };
 
 use crate::context::{Context, ContextType};
@@ -45,11 +49,9 @@ use crate::context::{Context, ContextType};
 /// Example errors:
 /// - Reference to generic without generic types
 /// - Reference to non generic with generic types
-///
-/// Use [Context::get_type] instead
-pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
+pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	annotation: &TypeAnnotation,
-	environment: &mut Context<S>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	let ty = match annotation {
@@ -127,24 +129,78 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 			if let Some(parameters) =
 				checking_data.types.get_type_by_id(inner_type).get_parameters()
 			{
-				// TODO check restrictions + deferred
-				let with = parameters.iter().copied().collect::<Vec<_>>().into_iter().zip(
-					arguments.iter().map(|type_annotation| {
-						synthesise_type_annotation(type_annotation, environment, checking_data)
-					}),
-				);
+				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
+					map_vec::Map::new();
+				for (parameter, argument_type_annotation) in
+					parameters.clone().into_iter().zip(arguments.iter())
+				{
+					let argument = synthesise_type_annotation(
+						argument_type_annotation,
+						environment,
+						checking_data,
+					);
+
+					// Only check in environments preserving TS compat here.
+					let mut basic_equality = BasicEquality {
+						add_property_restrictions: true,
+						position: argument_type_annotation
+							.get_position()
+							.clone()
+							.with_source(environment.get_source()),
+					};
+
+					// TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
+					// Definition files don't necessary need to check ...
+					let result = type_is_subtype(
+						parameter,
+						argument,
+						&mut basic_equality,
+						environment,
+						&checking_data.types,
+					);
+
+					if let SubTypeResult::IsNotSubType(matches) = result {
+						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
+								parameter,
+								&environment.as_general_context(),
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							argument: crate::diagnostics::TypeStringRepresentation::from_type_id(
+								argument,
+								&environment.as_general_context(),
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							position: argument_type_annotation.get_position().clone().with_source(environment.get_source()),
+						};
+
+						checking_data.diagnostics_container.add_error(error);
+					}
+
+					let with_source = argument_type_annotation
+						.get_position()
+						.clone()
+						.with_source(environment.get_source());
+					type_arguments.insert(parameter, (argument, with_source));
+				}
+
 				let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 					on: inner_type,
-					arguments: todo!(),
+					arguments: StructureGenericArguments {
+						type_arguments,
+						closures: Default::default(),
+					},
 				}));
 
 				checking_data.types.register_type(ty)
 			} else {
-				todo!(
-					"Parameters on non parameter type {:?} {} {:?}",
-					inner_type,
-					name,
-					checking_data.types.get_type_by_id(inner_type)
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::TypeHasNoGenericParameters(
+						name.clone(),
+						position.clone().with_source(environment.get_source()),
+					),
 				);
 				TypeId::ERROR_TYPE
 			}
@@ -196,12 +252,18 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 			// ty_to_be_readonly)
 		}
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
-		TypeAnnotation::ArrayLiteral(item_type, _) => {
-			let item_type = synthesise_type_annotation(&*item_type, environment, checking_data);
+		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
+			let item_type =
+				synthesise_type_annotation(&*item_annotation, environment, checking_data);
+			let with_source =
+				item_annotation.get_position().clone().with_source(environment.get_source());
 			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: TypeId::ARRAY_TYPE,
 				arguments: StructureGenericArguments {
-					type_arguments: FromIterator::from_iter([(TypeId::T_TYPE, item_type)]),
+					type_arguments: FromIterator::from_iter([(
+						TypeId::T_TYPE,
+						(item_type, with_source),
+					)]),
 					closures: Default::default(),
 				},
 			}));
@@ -223,6 +285,7 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 				.register_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
 
 			super::interfaces::synthesise_signatures(
+				None,
 				&members,
 				super::interfaces::OnToType(onto),
 				environment,
@@ -230,33 +293,36 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 			)
 			.0
 		}
-		// TODO little temp
 		TypeAnnotation::TupleLiteral(members, _) => {
-			let obj = todo!(); // environment.new_object(Some(TypeId::ARRAY_TYPE));
+			// TODO maybe should be special type
+			let mut obj = ObjectBuilder::new(
+				Some(TypeId::ARRAY_TYPE),
+				&mut checking_data.types,
+				&mut environment.facts,
+			);
 
-			let mut keys = IndexSet::new();
 			for (idx, (spread, member)) in members.iter().enumerate() {
-				// TODO use name...?
+				// TODO binder name under data...?
 				match spread {
 					SpreadKind::NonSpread => {
 						let idx_ty = checking_data
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
-						let ty = match member {
+						let type_annotation = match member {
 							AnnotationWithBinder::Annotated { ty, .. }
 							| AnnotationWithBinder::NoAnnotation(ty) => ty,
 						};
 
-						let item_ty = synthesise_type_annotation(ty, environment, checking_data);
+						let item_ty =
+							synthesise_type_annotation(type_annotation, environment, checking_data);
 
-						keys.insert(idx_ty);
-						environment
-							.facts
-							.current_properties
-							.entry(obj)
-							.or_default()
-							.push((idx_ty, Property::Value(item_ty)));
+						obj.append(
+							environment,
+							idx_ty,
+							Property::Value(item_ty),
+							PublicityKind::Public,
+						);
 					}
 					SpreadKind::Spread => {
 						todo!();
@@ -267,18 +333,14 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 			let constant = Constant::Number((members.len() as f64).try_into().unwrap());
 			let length_value = checking_data.types.new_constant_type(constant);
 
-			environment
-				.facts
-				.current_properties
-				.entry(obj)
-				.or_default()
-				.push((TypeId::LENGTH_AS_STRING, Property::Value(length_value)));
+			obj.append(
+				environment,
+				TypeId::LENGTH_AS_STRING,
+				Property::Value(length_value),
+				PublicityKind::Public,
+			);
 
-			keys.insert(TypeId::LENGTH_AS_STRING);
-			todo!();
-			// environment.pro.insert(obj, keys);
-
-			obj
+			obj.build_object()
 		}
 		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
 			synthesise_type_annotation(reference, environment, checking_data)
@@ -286,9 +348,12 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 		TypeAnnotation::Index(indexee, indexer, _) => {
 			let indexee = synthesise_type_annotation(indexee, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
-			if let Some(prop) =
-				environment.get_property_unbound(indexee, indexer, &checking_data.types)
-			{
+			if let Some(prop) = environment.get_property_unbound(
+				indexee,
+				indexer,
+				PublicityKind::Public,
+				&checking_data.types,
+			) {
 				match prop {
 					crate::context::Logical::Pure(ty) => ty.as_get_type(),
 					crate::context::Logical::Or(_) => todo!(),
@@ -353,9 +418,9 @@ pub(super) fn synthesise_type_annotation<S: ContextType, T: crate::ReadFromFS>(
 	ty
 }
 
-fn synthesise_type_condition<S: ContextType, T: crate::ReadFromFS>(
+fn synthesise_type_condition<T: crate::ReadFromFS>(
 	condition: &TypeCondition,
-	environment: &mut Context<S>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, parser::Module>,
 ) -> TypeId {
 	match condition {

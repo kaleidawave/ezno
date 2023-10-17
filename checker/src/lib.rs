@@ -28,7 +28,7 @@ pub const INTERNAL_DEFINITION_FILE: &str = include_str!("../definitions/internal
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use context::environment;
+use context::{environment, Names};
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
@@ -51,7 +51,7 @@ pub use behavior::{
 		SynthesisableExpression,
 	},
 	functions::{
-		GetterSetterGeneratorOrNone, RegisterAsType, RegisterOnExisting, RegisterOnExistingObject,
+		MethodKind, RegisterAsType, RegisterOnExisting, RegisterOnExistingObject,
 		SynthesisableFunction,
 	},
 	variables::check_variable_initialization,
@@ -123,9 +123,9 @@ pub trait SynthesisableModule: Sized {
 
 	fn type_definition_file<T: crate::ReadFromFS>(
 		file: Self::DefinitionFile,
-		root: &mut RootContext,
+		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
-	);
+	) -> (Names, Facts);
 }
 
 impl<'a, T: crate::ReadFromFS, ModuleAST: SynthesisableModule> ModuleData<'a, T, ModuleAST> {
@@ -418,10 +418,12 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, M: crate::Synth
 
 		match result {
 			Ok(tdm) => {
-				// TODO bad!!
-				root.context_type.on = source_id;
+				let (names, facts) = M::type_definition_file(tdm, root, checking_data);
+				root.variables.extend(names.variables);
+				root.named_types.extend(names.named_types);
+				root.variable_names.extend(names.variable_names);
 
-				M::type_definition_file(tdm, root, checking_data)
+				root.facts.extend(facts, None);
 			}
 			Err(err) => {
 				checking_data.diagnostics_container.add_error(err);

@@ -9,7 +9,7 @@ use parser::{
 use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::{GetterSetterGeneratorOrNone, SynthesisableFunction},
+	behavior::functions::{MethodKind, SynthesisableFunction},
 	context::{CanUseThis, Context, ContextType, Scope},
 	types::poly_types::GenericTypeParameters,
 	types::{
@@ -29,63 +29,58 @@ use super::{
 trait FunctionBasedItem: FunctionBased {
 	type ObjectTypeId;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone;
-
-	fn is_async(func: &FunctionBase<Self>) -> bool;
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind;
 }
 
+// TODO generic for these two
 impl FunctionBasedItem for parser::functions::bases::StatementFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		if func.header.is_generator() {
-			GetterSetterGeneratorOrNone::Generator
-		} else {
-			GetterSetterGeneratorOrNone::None
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		match (func.header.is_async(), func.header.is_generator()) {
+			(is_async, true) => MethodKind::Generator { is_async },
+			(true, false) => MethodKind::Async,
+			(false, false) => MethodKind::Plain,
 		}
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_async()
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		if func.header.is_generator() {
-			GetterSetterGeneratorOrNone::Generator
-		} else {
-			GetterSetterGeneratorOrNone::None
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		match (func.header.is_async(), func.header.is_generator()) {
+			(is_async, true) => MethodKind::Generator { is_async },
+			(true, false) => MethodKind::Async,
+			(false, false) => MethodKind::Plain,
 		}
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_async()
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ArrowFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		GetterSetterGeneratorOrNone::None
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_some()
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		let is_async = func.header.is_some();
+		if is_async {
+			MethodKind::Async
+		} else {
+			MethodKind::Plain
+		}
 	}
 }
 
-impl<'a> From<&'a parser::GetSetGeneratorOrNone> for crate::GetterSetterGeneratorOrNone {
-	fn from(value: &'a parser::GetSetGeneratorOrNone) -> Self {
+// TODO don't use From
+impl<'a> From<&'a Option<parser::MethodHeader>> for MethodKind {
+	fn from(value: &'a Option<parser::MethodHeader>) -> Self {
 		match value {
-			parser::GetSetGeneratorOrNone::Get(_) => GetterSetterGeneratorOrNone::Getter,
-			parser::GetSetGeneratorOrNone::Set(_) => GetterSetterGeneratorOrNone::Setter,
-			parser::GetSetGeneratorOrNone::Generator(_)
-			| parser::GetSetGeneratorOrNone::GeneratorStar(_) => GetterSetterGeneratorOrNone::Generator,
-			parser::GetSetGeneratorOrNone::None => GetterSetterGeneratorOrNone::None,
+			Some(parser::MethodHeader::Get(_)) => MethodKind::Get,
+			Some(parser::MethodHeader::Set(_)) => MethodKind::Set,
+			Some(
+				parser::MethodHeader::Generator(a, _) | parser::MethodHeader::GeneratorStar(a, _),
+			) => MethodKind::Generator { is_async: a.is_some() },
+			Some(parser::MethodHeader::Async(_)) => MethodKind::Async,
+			None => MethodKind::Plain,
 		}
 	}
 }
@@ -93,36 +88,24 @@ impl<'a> From<&'a parser::GetSetGeneratorOrNone> for crate::GetterSetterGenerato
 impl FunctionBasedItem for parser::functions::bases::ObjectLiteralMethodBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		From::from(&func.header.1)
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.0.is_some()
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		From::from(&func.header)
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassFunctionBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		From::from(&func.header.1)
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.0.is_some()
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		From::from(&func.header)
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassConstructorBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		GetterSetterGeneratorOrNone::None
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		false
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		MethodKind::Plain
 	}
 }
 
@@ -187,12 +170,8 @@ where
 		})
 	}
 
-	fn is_async(&self) -> bool {
-		U::is_async(self)
-	}
-
-	fn get_set_generator_or_none(&self) -> GetterSetterGeneratorOrNone {
-		U::get_set_generator_or_none(self)
+	fn get_kind(&self) -> MethodKind {
+		U::get_kind(self)
 	}
 }
 
@@ -333,7 +312,11 @@ pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 			arguments,
 		})) = checking_data.types.get_type_by_id(ty)
 		{
-			arguments.get_argument(TypeId::T_TYPE).unwrap()
+			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
 		} else {
 			todo!();
 			// checking_data.diagnostics_container.add_error(
@@ -495,7 +478,7 @@ pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 					return_type,
 					type_parameters,
 					effects,
-					used_parent_references: Default::default(),
+					free_variables: Default::default(),
 					closed_over_variables: Default::default(),
 					kind,
 					constant_id,

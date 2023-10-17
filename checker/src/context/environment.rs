@@ -23,9 +23,10 @@ use crate::{
 };
 
 use super::{
-	calling::CheckThings, facts::Facts, get_value_of_variable, AssignmentError,
-	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
-	SetPropertyError,
+	calling::CheckThings,
+	facts::{Facts, PublicityKind},
+	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
+	Environment, GeneralContext, SetPropertyError,
 };
 
 #[derive(Debug)]
@@ -91,6 +92,9 @@ pub enum Scope {
 	Module {
 		source: SourceId,
 	},
+	DefinitionModule {
+		source: SourceId,
+	},
 	/// For repl only
 	PassThrough {
 		source: SourceId,
@@ -130,9 +134,14 @@ impl<'a> Environment<'a> {
 								.unwrap()
 								.1
 						}
-						Reference::Property { on, with, span } => {
-							env.get_property_handle_errors(on, with, checking_data, span.clone())
-						}
+						Reference::Property { on, with, publicity, span } => env
+							.get_property_handle_errors(
+								on,
+								with,
+								publicity,
+								checking_data,
+								span.clone(),
+							),
 					}
 				}
 
@@ -150,8 +159,8 @@ impl<'a> Environment<'a> {
 								new,
 								checking_data,
 							)),
-						Reference::Property { on, with, span } => Ok(env
-							.set_property(on, with, new, &mut checking_data.types)?
+						Reference::Property { on, with, publicity, span } => Ok(env
+							.set_property(on, with, publicity, new, &mut checking_data.types)?
 							.unwrap_or(new)),
 					}
 				}
@@ -368,7 +377,6 @@ impl<'a> Environment<'a> {
 						let result = type_is_subtype(
 							reassignment_constraint,
 							new_type,
-							None,
 							&mut basic_subtyping,
 							self,
 							store,
@@ -427,6 +435,16 @@ impl<'a> Environment<'a> {
 		&self.context_type.kind
 	}
 
+	pub fn remove_property(&mut self, on: TypeId, property: TypeId) -> bool {
+		self.facts.current_properties.entry(on).or_default().push((
+			property,
+			PublicityKind::Public,
+			Property::Deleted,
+		));
+		// TODO if deleted
+		true
+	}
+
 	pub(crate) fn get_environment_type_mut(&mut self) -> &mut Scope {
 		&mut self.context_type.kind
 	}
@@ -443,20 +461,30 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		property: TypeId,
+		kind: PublicityKind,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 	) -> Option<(PropertyKind, TypeId)> {
-		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
+		crate::types::properties::get_property(
+			on,
+			property,
+			kind,
+			with,
+			self,
+			&mut CheckThings,
+			types,
+		)
 	}
 
 	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: SynthesisableModule>(
 		&mut self,
 		on: TypeId,
 		property: TypeId,
+		kind: PublicityKind,
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
 	) -> TypeId {
-		match self.get_property(on, property, &mut checking_data.types, None) {
+		match self.get_property(on, property, kind, &mut checking_data.types, None) {
 			Some((_, ty)) => ty,
 			None => {
 				checking_data.diagnostics_container.add_error(
@@ -693,28 +721,19 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		under: TypeId,
+		kind: PublicityKind,
 		new: TypeId,
 		types: &mut TypeStore,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
 			under,
+			kind,
 			Property::Value(new),
 			self,
 			&mut CheckThings,
 			types,
 		)
-	}
-
-	/// Initializing
-	pub fn create_property<T: crate::ReadFromFS, M: SynthesisableModule>(
-		&mut self,
-		on: TypeId,
-		under: TypeId,
-		new: Property,
-		checking_data: &mut CheckingData<T, M>,
-	) {
-		self.facts.current_properties.entry(on).or_default().push((under, new));
 	}
 
 	pub(crate) fn create_this(&mut self, over: TypeId, store: &mut TypeStore) -> TypeId {

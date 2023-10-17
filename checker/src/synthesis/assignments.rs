@@ -6,7 +6,7 @@ use parser::{
 
 use crate::{
 	behavior::assignments::{Assignable, Reference},
-	context::Environment,
+	context::{facts::PublicityKind, Environment},
 	synthesis::expressions::synthesise_expression,
 	types::Constant,
 	CheckingData, TypeId,
@@ -121,16 +121,20 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		),
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
 			let parent_ty = synthesise_expression(&parent, environment, checking_data);
-			let key_ty = match property {
-				parser::PropertyReference::Standard(prop) => {
-					checking_data.types.new_constant_type(Constant::String(prop.clone()))
+			match property {
+				parser::PropertyReference::Standard { property, is_private } => {
+					let publicity =
+						if *is_private { PublicityKind::Private } else { PublicityKind::Public };
+					Reference::Property {
+						on: parent_ty,
+						with: checking_data
+							.types
+							.new_constant_type(Constant::String(property.clone())),
+						span: position.clone().with_source(environment.get_source()),
+						publicity,
+					}
 				}
 				parser::PropertyReference::Cursor(_) => todo!(),
-			};
-			Reference::Property {
-				on: parent_ty,
-				with: key_ty,
-				span: position.clone().with_source(environment.get_source()),
 			}
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {
@@ -140,6 +144,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 				on: parent_ty,
 				with: key_ty,
 				span: position.clone().with_source(environment.get_source()),
+				publicity: crate::context::facts::PublicityKind::Public,
 			}
 		}
 	}

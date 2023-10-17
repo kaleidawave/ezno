@@ -31,7 +31,6 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::Synthes
 				let result = crate::subtyping::type_is_subtype(
 					expected_return_type,
 					*returned,
-					None,
 					&mut behavior,
 					environment,
 					&checking_data.types,

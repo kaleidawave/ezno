@@ -22,9 +22,9 @@ use parser::PropertyKey;
 use source_map::SourceId;
 
 use crate::{
-	context::{environment, Context, ContextType},
+	context::{environment, Context, ContextType, Names},
 	types::TypeStore,
-	Constant, Diagnostic, Environment, RootContext, TypeId,
+	Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
 
 pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
@@ -108,10 +108,10 @@ impl crate::SynthesisableModule for parser::Module {
 
 	fn type_definition_file<T: crate::ReadFromFS>(
 		tdm: parser::TypeDefinitionModule,
-		root: &mut crate::RootContext,
+		root: &crate::RootContext,
 		checking_data: &mut crate::CheckingData<T, Self>,
-	) {
-		definitions::type_definition_file(tdm, checking_data, root);
+	) -> (Names, Facts) {
+		definitions::type_definition_file(tdm, checking_data, root)
 	}
 }
 

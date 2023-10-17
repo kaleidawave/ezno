@@ -41,7 +41,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	for attribute in element.attributes.iter() {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
-		attributes_object.append(environment, name, crate::Property::Value(attribute_value));
+		attributes_object.append(
+			environment,
+			name,
+			crate::Property::Value(attribute_value),
+			crate::context::facts::PublicityKind::Public,
+		);
 
 		// let constraint = environment
 		// 	.get_property_unbound(element_type, name, &checking_data.types)
@@ -132,7 +137,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
 			let child = synthesise_jsx_child(child, environment, checking_data);
-			synthesised_child_nodes.append(environment, property, crate::Property::Value(child));
+			synthesised_child_nodes.append(
+				environment,
+				property,
+				crate::Property::Value(child),
+				crate::context::facts::PublicityKind::Public,
+			);
 		}
 
 		Some(synthesised_child_nodes.build_object())

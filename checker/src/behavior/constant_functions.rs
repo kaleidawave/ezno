@@ -22,7 +22,7 @@ pub(crate) enum ConstantResult {
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
-	call_site_type_args: &Option<Vec<(SpanWithSource, TypeId)>>,
+	call_site_type_args: &Option<Vec<(TypeId, SpanWithSource)>>,
 	arguments: &[SynthesisedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
@@ -79,16 +79,17 @@ pub(crate) fn call_constant_function(
 				Err(_) => Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
 			}
 		}
-		"uppercase" | "lowercase" => {
+		"uppercase" | "lowercase" | "string_length" => {
 			crate::utils::notify!("this_argument = {:?}", this_argument);
 			if let Type::Constant(Constant::String(s)) =
 				types.get_type_by_id(this_argument.unwrap())
 			{
-				let result = types.new_constant_type(Constant::String(match id {
-					"uppercase" => s.to_uppercase(),
-					"lowercase" => s.to_lowercase(),
+				let result = types.new_constant_type(match id {
+					"uppercase" => Constant::String(s.to_uppercase()),
+					"lowercase" => Constant::String(s.to_lowercase()),
+					"string_length" => Constant::Number((s.len() as f64).try_into().unwrap()),
 					_ => unreachable!(),
-				}));
+				});
 				Ok(ConstantResult::Value(result))
 			} else {
 				Err(())
@@ -118,7 +119,7 @@ pub(crate) fn call_constant_function(
 		"satisfies" => {
 			let ty = arguments.first().unwrap().into_type().unwrap();
 			// TODO temp!!!
-			let arg = call_site_type_args.iter().flatten().next().unwrap().1;
+			let arg = call_site_type_args.iter().flatten().next().unwrap().0;
 			if check_satisfies(arg, ty, types, environment) {
 				Ok(ConstantResult::Value(ty))
 			} else {
@@ -146,7 +147,7 @@ pub(crate) fn call_constant_function(
 		"compile_type_to_object" => {
 			if let Some(value) = call_site_type_args {
 				let value = crate::types::others::create_object_for_type(
-					value.first().unwrap().1,
+					value.first().unwrap().0,
 					environment,
 					types,
 				);

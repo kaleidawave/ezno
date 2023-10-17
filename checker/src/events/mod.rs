@@ -4,7 +4,7 @@
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{calling::Target, get_on_ctx, CallCheckingBehavior},
+	context::{calling::Target, facts::PublicityKind, get_on_ctx, CallCheckingBehavior},
 	types::{calling::CalledWithNew, properties::Property},
 	FunctionId, GeneralContext, VariableId,
 };
@@ -46,20 +46,16 @@ pub enum Event {
 	/// Reads variable
 	///
 	/// Can be used for DCE reasons, or finding variables in context
-	ReadsReference {
-		reference: RootReference,
-		reflects_dependency: Option<TypeId>,
-	},
+	ReadsReference { reference: RootReference, reflects_dependency: Option<TypeId> },
 	/// Also used for DCE
 	SetsVariable(VariableId, TypeId),
-
 	/// Mostly trivial, sometimes can call a function :(
 	Getter {
 		on: TypeId,
 		under: TypeId,
 		reflects_dependency: Option<TypeId>,
+		publicity: PublicityKind,
 	},
-
 	/// All changes to the value of a property
 	Setter {
 		on: TypeId,
@@ -71,6 +67,7 @@ pub enum Event {
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
+		publicity: PublicityKind,
 	},
 
 	/// This includes closed over variables, anything dependent
@@ -81,26 +78,12 @@ pub enum Event {
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
 	},
-
 	/// From a `throw ***` statement (or expression)
 	Throw(TypeId),
-
-	Conditionally {
-		condition: TypeId,
-		events_if_truthy: Box<[Event]>,
-		else_events: Box<[Event]>,
-	},
-
-	Repeatedly {
-		n: TypeId,
-		with: Box<[Event]>,
-	},
-
+	/// Run events conditionally
+	Conditionally { condition: TypeId, events_if_truthy: Box<[Event]>, else_events: Box<[Event]> },
 	/// TODO not sure but whatever
-	Return {
-		returned: TypeId,
-	},
-
+	Return { returned: TypeId },
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:

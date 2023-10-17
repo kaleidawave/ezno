@@ -7,6 +7,7 @@ use parser::{
 
 use crate::{
 	context::{
+		facts::PublicityKind,
 		Environment, {Context, ContextType},
 	},
 	synthesis::{property_key_as_type, type_annotations::synthesise_type_annotation},
@@ -33,8 +34,9 @@ pub(super) fn synthesise_class_declaration<
 	// TODO what about no name
 	let name = P::as_option_str(&class.name).unwrap().to_owned();
 
-	// TODO
-	let ty = Type::NamedRooted { name, parameters };
+	let nominal = true;
+	let ty = Type::NamedRooted { name, parameters, nominal };
+
 	let class_type = checking_data.types.register_type(ty);
 	if let Some(ref extends) = class.extends {
 		todo!();
@@ -60,7 +62,8 @@ pub(super) fn synthesise_class_declaration<
 				);
 			};
 
-			let extends = if let Some(ref extends) = class.extends {
+			// TODO
+			let extends: Option<()> = if let Some(ref extends) = class.extends {
 				fn build_extends_type<'a, T: crate::ReadFromFS>(
 					mut extends: impl Iterator<Item = &'a TypeAnnotation>,
 					environment: &mut Environment,
@@ -84,17 +87,19 @@ pub(super) fn synthesise_class_declaration<
 					ty
 				}
 
-				let result =
-					build_extends_type(iter::once(extends), environment, checking_data, class_type);
+				todo!();
 
-				Some(result)
+			// let result =
+			// 	build_extends_type(iter::once(extends), environment, checking_data, class_type);
+
+			// Some(result)
 			} else {
 				None
 			};
 
 			let mut class_constructor = None;
 			let mut properties = Vec::<(TypeId, Expression)>::new();
-			let mut static_properties = Vec::<(TypeId, Property)>::new();
+			let mut static_properties = Vec::<(TypeId, PublicityKind, Property)>::new();
 
 			for member in class.members.iter() {
 				match &member.on {
@@ -109,8 +114,12 @@ pub(super) fn synthesise_class_declaration<
 					}
 					ClassMember::Method(static_kw, function) => {
 						let property_key = function.name.get_ast_ref();
-						let private =
-							matches!(property_key, parser::PropertyKey::Ident(_, _, true));
+						let publicity =
+							if matches!(property_key, parser::PropertyKey::Ident(_, _, true)) {
+								PublicityKind::Private
+							} else {
+								PublicityKind::Public
+							};
 						let key = property_key_as_type(
 							property_key,
 							environment,
@@ -123,9 +132,11 @@ pub(super) fn synthesise_class_declaration<
 						);
 
 						if static_kw.is_some() {
-							static_properties.push((key, property));
+							static_properties.push((key, publicity, property));
 						} else {
-							environment.facts.register_property(class_type, key, property, true);
+							environment
+								.facts
+								.register_property(class_type, key, property, true, publicity);
 							// TODO check not already exists
 
 							// if let Some(existing_property) = existing_property {

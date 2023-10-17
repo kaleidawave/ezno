@@ -8,6 +8,7 @@ use parser::{
 
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
+	context::facts::PublicityKind,
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::property_key_as_type,
 	types::Constant,
@@ -85,6 +86,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							let property_constraint = environment.get_property_unbound(
 								constraint,
 								under,
+								PublicityKind::Public,
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -172,6 +174,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							let property_constraint = environment.get_property_unbound(
 								constraint,
 								under,
+								PublicityKind::Public,
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -283,8 +286,14 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						let idx = checking_data
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
-						let value =
-							environment.get_property(value, idx, &mut checking_data.types, None);
+
+						let value = environment.get_property(
+							value,
+							idx,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 
 						if let Some((_, value)) = value {
 							assign_to_fields(
@@ -319,8 +328,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
-						let property =
-							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let property = environment.get_property(
+							value,
+							key_ty,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 						let value = match property {
 							Some((_, value)) => value,
 							None => {
@@ -349,8 +363,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
-						let property_value =
-							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let property_value = environment.get_property(
+							value,
+							key_ty,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 
 						let value = match property_value {
 							Some((_, value)) => value,

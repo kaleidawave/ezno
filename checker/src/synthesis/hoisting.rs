@@ -41,6 +41,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO any difference bc declare?
 					let ty = environment.new_interface(
 						&interface.name,
+						interface.nominal_keyword.is_some(),
+						interface.type_parameters.as_deref(),
+						interface.extends.as_deref(),
 						interface.position.clone().with_source(environment.get_source()),
 						&mut checking_data.types,
 					);
@@ -49,6 +52,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.new_interface(
 						&interface.on.name,
+						interface.on.nominal_keyword.is_some(),
+						interface.on.type_parameters.as_deref(),
+						interface.on.extends.as_deref(),
 						interface.on.position.clone().with_source(environment.get_source()),
 						&mut checking_data.types,
 					);
@@ -208,6 +214,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Interface(interface) => {
 					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 					super::interfaces::synthesise_signatures(
+						interface.on.type_parameters.as_deref(),
 						&interface.on.members,
 						super::interfaces::OnToType(ty),
 						environment,
@@ -280,6 +287,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							parser::declarations::export::Exportable::Interface(interface) => {
 								let ty = idx_to_types.remove(&interface.position.start).unwrap();
 								super::interfaces::synthesise_signatures(
+									interface.type_parameters.as_deref(),
 									&interface.members,
 									super::interfaces::OnToType(ty),
 									environment,

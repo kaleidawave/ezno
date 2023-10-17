@@ -1,6 +1,10 @@
 use parser::ASTNode;
 
-use crate::{context::RootContext, synthesis::functions::type_function_reference};
+use crate::{
+	context::{Names, RootContext},
+	synthesis::functions::type_function_reference,
+	Environment, Facts,
+};
 
 const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
@@ -9,8 +13,8 @@ const DEFINITION_VAR_IS_CONSTANT: bool = true;
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	mut definition: parser::TypeDefinitionModule,
 	checking_data: &mut crate::CheckingData<T, parser::Module>,
-	root: &mut RootContext,
-) {
+	root: &RootContext,
+) -> (Names, Facts) {
 	use std::collections::HashMap;
 
 	use parser::{
@@ -24,14 +28,18 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 	let mut idx_to_types = HashMap::new();
 	let source = definition.source;
+	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
 	// At some point with binaries could remove this pass
 	for statement in definition.declarations.iter() {
 		match statement {
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = root.new_interface(
+				let ty = env.new_interface(
 					&interface.on.name,
+					interface.on.nominal_keyword.is_some(),
+					interface.on.type_parameters.as_deref(),
+					interface.on.extends.as_deref(),
 					interface.on.position.clone().with_source(source).clone(),
 					&mut checking_data.types,
 				);
@@ -41,22 +49,25 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				todo!();
 				// (
 				// 	class.type_id,
-				// 	// root.register_type(&class.name, class.type_parameters.is_some(), None),
-				// 	root.register_type(Type::NamedRooted { name class.name.clone())),
+				// 	// env.register_type(&class.name, class.type_parameters.is_some(), None),
+				// 	env.register_type(Type::NamedRooted { name class.name.clone())),
 				// ),
 			}
 			TypeDefinitionModuleDeclaration::TypeAlias(type_alias) => {
 				if type_alias.type_name.type_parameters.is_some() {
 					todo!()
 				}
-				let to =
-					synthesise_type_annotation(&type_alias.type_expression, root, checking_data);
+				let to = synthesise_type_annotation(
+					&type_alias.type_expression,
+					&mut env,
+					checking_data,
+				);
 
 				// idx_to_types.insert(
 				// 	interface.on.position.start,
-				// 	(&interface.on, root, checking_data),
+				// 	(&interface.on, &mut env, checking_data),
 				// );
-				root.new_alias(&type_alias.type_name.name, to, &mut checking_data.types);
+				env.new_alias(&type_alias.type_name.name, to, &mut checking_data.types);
 				// checking_data
 				// 	.raise_unimplemented_error("type alias", type_alias.type_name.position.clone());
 			}
@@ -73,7 +84,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					&func.type_parameters,
 					&func.parameters,
 					func.return_type.as_ref(),
-					root,
+					&mut env,
 					checking_data,
 					func.performs.as_ref().into(),
 					declared_at.clone(),
@@ -93,7 +104,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 				let behavior = crate::context::VariableRegisterBehavior::Declare { base };
 
-				let res = root.register_variable_handle_error(
+				let res = env.register_variable_handle_error(
 					func.name.as_str(),
 					// TODO
 					func.get_position().clone().with_source(source),
@@ -109,15 +120,15 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}) => {
 				// TODO tidy up
 				let variable_ty =
-					synthesise_type_annotation(&type_restriction, root, checking_data);
+					synthesise_type_annotation(&type_restriction, &mut env, checking_data);
 
 				// // TODO not sure...
-				// if let Some(frozen) = root.is_frozen(variable_ty) {
-				// 	root.frozen.insert(var_type, frozen);
+				// if let Some(frozen) = env.is_frozen(variable_ty) {
+				// 	env.frozen.insert(var_type, frozen);
 				// }
 
 				let position = position.clone().with_source(source);
-				let declare_variable = root.declare_variable(
+				let declare_variable = env.declare_variable(
 					&name,
 					position.clone(),
 					variable_ty,
@@ -142,9 +153,10 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 				super::interfaces::synthesise_signatures(
+					interface.on.type_parameters.as_deref(),
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
-					root,
+					&mut env,
 					checking_data,
 				);
 			}
@@ -164,26 +176,26 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				if let Some(_) = type_parameters {
 					todo!()
 				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut root = root.new_lexical_root();
+				//     let mut root = env.new_lexical_root();
 				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
 				//         type_parameters,
-				//         root,
+				//         &mut env,
 				//         error_handler,
 				//         type_mappings,
 				//     );
 				//     let borrow = type_parameters.0.borrow();
 				//     for parameter in borrow.iter().cloned() {
-				//         root.declare_generic_type_parameter(parameter);
+				//         env.declare_generic_type_parameter(parameter);
 				//     }
-				//     root.get_type(&type_expression, error_handler, type_mappings).unwrap()
+				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
 				// } else {
-				//     root.get_type(&type_expression, error_handler, type_mappings).unwrap()
+				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
 				// };
 				// todo!("This should have two passes with a empty type");
 				} else {
 					// todo!("Modify alias")
-					// let ty = root.get_type_handle_errors(&type_expression, checking_data);
-					// root.register_type(ty);
+					// let ty = env.get_type_handle_errors(&type_expression, checking_data);
+					// env.register_type(ty);
 				}
 			}
 			TypeDefinitionModuleDeclaration::Namespace(_) => unimplemented!(),
@@ -219,6 +231,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}
 		}
 	}
+
+	let Environment { named_types, facts, variable_names, variables, .. } = env;
+	(Names { named_types, variable_names, variables }, facts)
 }
 
 #[cfg(feature = "declaration-synthesis")]
@@ -265,10 +280,9 @@ pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 }
 
 // TODO temp
-
-pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
-	let now = std::time::Instant::now();
-	let ctx = RootContext::deserialize(file, source_map::SourceId::NULL).unwrap();
-	println!("From binary {:?}", now.elapsed());
-	ctx
-}
+// pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
+// 	let now = std::time::Instant::now();
+// 	let ctx = RootContext::deserialize(file, source_map::SourceId::NULL).unwrap();
+// 	println!("From binary {:?}", now.elapsed());
+// 	ctx
+// }
