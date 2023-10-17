@@ -59,7 +59,10 @@ impl ASTNode for VariableOrPropertyAccess {
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
 				parent.to_string_from_buffer(buf, settings, depth);
 				buf.push('.');
-				if let PropertyReference::Standard(property) = property {
+				if let PropertyReference::Standard { property, is_private } = property {
+					if *is_private {
+						buf.push('#');
+					}
 					buf.push_str(property);
 				} else if !settings.expect_cursors {
 					panic!("found cursor");

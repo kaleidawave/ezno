@@ -34,7 +34,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// The body of the function
 	type Body: ASTNode;
 
-	fn header_left(header: &Self::Header) -> Option<&Span>;
+	fn header_left(header: &Self::Header) -> Option<source_map::Start>;
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -240,8 +240,8 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		}
 	}
 
-	fn header_left(header: &Self::Header) -> Option<&Span> {
-		Some(header.get_position())
+	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
+		Some(header.get_position().get_start())
 	}
 }
 

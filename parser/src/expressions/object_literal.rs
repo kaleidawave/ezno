@@ -6,9 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, property_key::AlwaysPublic,
-	throw_unexpected_token_with_token, ASTNode, Block, Expression, FunctionBase,
-	GetSetGeneratorOrNone, Keyword, ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token,
-	TokenReader, WithComment,
+	throw_unexpected_token_with_token, ASTNode, Block, Expression, FunctionBase, MethodHeader,
+	ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
@@ -71,7 +70,7 @@ pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
-	type Header = (Option<Keyword<crate::tsx_keywords::Async>>, GetSetGeneratorOrNone);
+	type Header = Option<MethodHeader>;
 	type Body = Block;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
@@ -83,9 +82,8 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let async_keyword = crate::Keyword::optionally_from_reader(reader);
 		Ok((
-			(async_keyword, GetSetGeneratorOrNone::from_reader(reader)),
+			MethodHeader::optional_from_reader(reader),
 			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?,
 		))
 	}
@@ -97,19 +95,14 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if header.0.is_some() {
-			buf.push_str("async ");
+		if let Some(ref header) = header {
+			header.to_string_from_buffer(buf);
 		}
-		header.1.to_string_from_buffer(buf);
 		name.to_string_from_buffer(buf, settings, depth);
 	}
 
-	fn header_left(header: &Self::Header) -> Option<&Span> {
-		if let Some(ref async_kw) = header.0 {
-			Some(&async_kw.1)
-		} else {
-			header.1.get_position()
-		}
+	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
+		header.as_ref().map(|header| header.get_start())
 	}
 }
 
@@ -179,23 +172,22 @@ impl ASTNode for ObjectLiteralMember {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
-		let async_kw = Keyword::optionally_from_reader(reader);
 		// TODO this probably needs with comment here:
-		let mut get_set_generator_or_none = GetSetGeneratorOrNone::from_reader(reader);
+		let mut header = MethodHeader::optional_from_reader(reader);
 		// Catch for named get or set :(
 		let is_named_get_or_set = matches!(
-			(reader.peek(), &get_set_generator_or_none),
+			(reader.peek(), &header),
 			(
 				Some(Token(TSXToken::OpenParentheses | TSXToken::Colon, _)),
-				GetSetGeneratorOrNone::Get(..) | GetSetGeneratorOrNone::Set(..)
+				Some(MethodHeader::Get(..) | MethodHeader::Set(..))
 			)
 		);
 
 		let key = if is_named_get_or_set {
 			// Backtrack allowing `get` to be a key
-			let (name, position) = match mem::take(&mut get_set_generator_or_none) {
-				GetSetGeneratorOrNone::Get(kw) => ("get", kw.1),
-				GetSetGeneratorOrNone::Set(kw) => ("set", kw.1),
+			let (name, position) = match mem::take(&mut header) {
+				Some(MethodHeader::Get(kw)) => ("get", kw.1),
+				Some(MethodHeader::Set(kw)) => ("set", kw.1),
 				_ => unreachable!(),
 			};
 			WithComment::None(PropertyKey::Ident(name.to_owned(), position, ()))
@@ -207,17 +199,13 @@ impl ASTNode for ObjectLiteralMember {
 			// Functions, (OpenChevron is for generic parameters)
 			TSXToken::OpenParentheses | TSXToken::OpenChevron => {
 				let method: ObjectLiteralMethod = FunctionBase::from_reader_with_header_and_name(
-					reader,
-					state,
-					settings,
-					(async_kw, get_set_generator_or_none),
-					key,
+					reader, state, settings, header, key,
 				)?;
 
 				Ok(Self::Method(method))
 			}
 			_ => {
-				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
+				if header.is_some() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if matches!(reader.peek(), Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _))) {

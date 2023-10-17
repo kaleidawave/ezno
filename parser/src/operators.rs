@@ -8,6 +8,8 @@ use std::convert::TryFrom;
 use crate::{TSXKeyword, TSXToken};
 
 /// Comma operator is on [crate::MultipleExpression]
+/// 
+/// InstanceOf, In are special operators
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -23,8 +25,6 @@ pub enum BinaryOperator {
 
     LogicalAnd, LogicalOr,
     NullCoalescing, 
-
-    InstanceOf, In,
 
     /// Non standard
     Divides,
@@ -139,8 +139,6 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => "&",
 			BinaryOperator::BitwiseOr => "|",
 			BinaryOperator::BitwiseXOr => "^",
-			BinaryOperator::InstanceOf => "instanceof",
-			BinaryOperator::In => "in",
 			BinaryOperator::Divides => "/%",  // ∣
 			BinaryOperator::Compose => "<@>", // ∘
 			BinaryOperator::Pipe => "|>",
@@ -162,8 +160,6 @@ impl Operator for BinaryOperator {
 			BinaryOperator::LessThanEqual => 10,
 			BinaryOperator::GreaterThan => 10,
 			BinaryOperator::GreaterThanEqual => 10,
-			BinaryOperator::In => 10,
-			BinaryOperator::InstanceOf => 10,
 			BinaryOperator::Equal
 			| BinaryOperator::NotEqual
 			| BinaryOperator::StrictEqual
@@ -394,8 +390,6 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 			TSXToken::LessThanEqual => Ok(BinaryOperator::LessThanEqual),
 			TSXToken::CloseChevron => Ok(BinaryOperator::GreaterThan),
 			TSXToken::GreaterThanEqual => Ok(BinaryOperator::GreaterThanEqual),
-			TSXToken::Keyword(TSXKeyword::In) => Ok(BinaryOperator::In),
-			TSXToken::Keyword(TSXKeyword::InstanceOf) => Ok(BinaryOperator::InstanceOf),
 			TSXToken::BitwiseAnd => Ok(BinaryOperator::BitwiseAnd),
 			TSXToken::BitwiseOr => Ok(BinaryOperator::BitwiseOr),
 			TSXToken::BitwiseXOr => Ok(BinaryOperator::BitwiseXOr),
@@ -486,6 +480,8 @@ pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;
 pub(crate) const CONSTRUCTOR_PRECEDENCE: u8 = 18;
 pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
+pub(crate) const IN_PRECEDENCE: u8 = 10;
+pub(crate) const INSTANCE_OF_PRECEDENCE: u8 = 10;
 pub(crate) const PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE: u8 = 19;
 pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
 pub(crate) const AS_PRECEDENCE: u8 = 2;
