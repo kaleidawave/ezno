@@ -6,7 +6,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use checker::diagnostics;
+use checker::{diagnostics, synthesis::EznoParser};
 use parser::ASTNode;
 
 mod specification {
@@ -50,7 +50,7 @@ fn check_errors(
 	let parse_options = Default::default();
 
 	// let result = panic::catch_unwind(|| {
-	let result = checker::check_project::<_, parser::Module>(
+	let result = checker::check_project::<_, EznoParser>(
 		PathBuf::from("TEST_CODE"),
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path| {

@@ -32,7 +32,7 @@ use crate::{
 		Constructor, FunctionKind, FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
 	utils::EnforcedOr,
-	CheckingData, FunctionId, Variable, VariableId,
+	CheckingData, FunctionId, Variable, VariableId, ASTImplementation,
 };
 
 use map_vec::Map;
@@ -106,7 +106,7 @@ macro_rules! get_on_ctx {
 
 pub(crate) use get_on_ctx;
 
-use self::{environment::get_this_type_from_constraint, facts::Facts};
+use self::{environment::get_this_type_from_constraint, facts::{Facts, PublicityKind}};
 
 pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
@@ -132,6 +132,14 @@ impl<'a> From<&'a Environment<'a>> for GeneralContext<'a> {
 	fn from(env: &'a Environment<'a>) -> Self {
 		GeneralContext::Syntax(env)
 	}
+}
+
+pub struct Names {
+	pub(crate) variables: HashMap<String, Variable>,
+	pub(crate) named_types: HashMap<String, TypeId>,
+
+	/// For debugging only
+	pub(crate) variable_names: HashMap<VariableId, String>,
 }
 
 #[derive(Debug)]
@@ -210,7 +218,7 @@ impl<T: ContextType> Context<T> {
 		// 		}
 		// 		Type::RootPolyType { aliases, nature } => {
 		// 			match nature {
-		// 				PolyNature::ParentScope { reference } => {
+		// 				PolyNature::FreeVariable { reference } => {
 		// 					self.context_type
 		// 						.get_closed_over_references_mut()
 		// 						.insert(*reference, new_constraint);
@@ -350,7 +358,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
+	pub fn register_variable_handle_error<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		declared_at: SpanWithSource,
@@ -394,6 +402,7 @@ impl<T: ContextType> Context<T> {
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
+					Scope::DefinitionModule { .. } => "definition module",
 					Scope::PassThrough { .. } => "pass through",
 				}
 			} else {
@@ -434,7 +443,7 @@ impl<T: ContextType> Context<T> {
 					PolyNature::Parameter { fixed_to } => fixed_to,
 					PolyNature::Generic { name, eager_fixed } => eager_fixed,
 					PolyNature::Open(ty) => ty,
-					PolyNature::ParentScope { reference, based_on } => based_on,
+					PolyNature::FreeVariable { reference, based_on } => based_on,
 					PolyNature::RecursiveFunction(_, return_ty) => return_ty,
 				};
 
@@ -582,10 +591,11 @@ impl<T: ContextType> Context<T> {
 
 					// TODO temp
 					let result = self
-						.get_property_unbound(on_base, property_base, types)
+						.get_property_unbound(on_base, property_base, PublicityKind::Public, types)
 						.map(|property| match property {
 							Logical::Pure(Property::Value(v)) => v,
-							_ => todo!(),
+							Logical::Pure(Property::Getter(g)) => g.return_type,
+							result => todo!("{:?}", result),
 						})
 						.expect("Inference did not change type");
 
@@ -636,6 +646,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::TryBlock { .. }
 				| Scope::Block {}
 				| Scope::PassThrough { .. }
+				| Scope::DefinitionModule { .. }
 				| Scope::Module { .. } => None,
 			},
 			GeneralContext::Root(root) => None,
@@ -684,7 +695,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO make aware of ands and aliases
-	pub fn get_properties_on_type(&self, base: TypeId) -> Vec<(TypeId, TypeId)> {
+	pub fn get_properties_on_type(&self, base: TypeId) -> Vec<(TypeId, PublicityKind, TypeId)> {
 		self.parents_iter()
 			.flat_map(|ctx| {
 				let id = get_on_ctx!(ctx.context_id);
@@ -692,7 +703,8 @@ impl<T: ContextType> Context<T> {
 				properties.map(|v| v.iter())
 			})
 			.flatten()
-			.map(|(key, prop)| (*key, prop.as_get_type()))
+			.filter(|item| !matches!(item.2, Property::Deleted))
+			.map(|(key, publicity, prop)| (*key, *publicity, prop.as_get_type()))
 			.collect()
 	}
 
@@ -700,19 +712,24 @@ impl<T: ContextType> Context<T> {
 		&self,
 		on: TypeId,
 		under: TypeId,
+		publicity: PublicityKind,
 		types: &TypeStore,
 	) -> Option<Logical<Property>> {
 		fn get_property(
 			env: GeneralContext,
 			types: &TypeStore,
 			on: TypeId,
-			expecting: TypeId,
+			under: (TypeId, PublicityKind),
 		) -> Option<Property> {
 			get_on_ctx!(env.facts.current_properties.get(&on)).and_then(|properties| {
 				// TODO rev is important
-				properties.iter().rev().find_map(|(key, value)| {
-					let a = types.get_type_by_id(expecting);
-					if *key == expecting {
+				properties.iter().rev().find_map(move |(key, publicity, value)| {
+					if *publicity != under.1 {
+						return None
+					}
+
+					let a = types.get_type_by_id(under.0);
+					if *key == under.0 {
 						Some(value.clone())
 					} else if let (Type::Constant(key_cst), Type::Constant(key_cst2)) =
 						(types.get_type_by_id(*key), a)
@@ -733,7 +750,7 @@ impl<T: ContextType> Context<T> {
 
 		// TODO need actual method for these, aka lowest
 		let under = self.get_poly_base(under, types).unwrap_or(under);
-		types.get_fact_about_type(self, on, &get_property, under)
+		types.get_fact_about_type(self, on, &get_property, (under, publicity))
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -776,7 +793,8 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Returns a new lexical environment with self as a parent
-	fn new_lexical_environment(&self, new_scope: Scope) -> Context<Syntax<'_>> {
+	/// Use with caution!!1
+	pub(crate) fn new_lexical_environment(&self, new_scope: Scope) -> Context<Syntax<'_>> {
 		let can_use_this =
 			if let Scope::Function { constructor_on: Some(constructor), this_extends, .. } =
 				&new_scope
@@ -827,7 +845,7 @@ impl<T: ContextType> Context<T> {
 	where
 		U: crate::ReadFromFS,
 		V: crate::behavior::functions::FunctionRegisterBehavior<M>,
-		M: crate::SynthesisableModule,
+		M: crate::ASTImplementation,
 		F: behavior::functions::SynthesisableFunction<M>,
 	{
 		let mut func_env = self.new_lexical_environment(Scope::Function {
@@ -838,14 +856,20 @@ impl<T: ContextType> Context<T> {
 			constructor_on: None,
 		});
 
-		if function.is_async() {
-			todo!()
+		match function.get_kind() {
+			crate::MethodKind::Get |
+			crate::MethodKind::Set => {
+				// TODO assert parameter length?
+			}
+			crate::MethodKind::Generator { is_async } => todo!(),
+			crate::MethodKind::Async => todo!(),
+			crate::MethodKind::Plain => {}
 		}
 
 		let type_parameters = function.type_parameters(&mut func_env, checking_data);
 
 		if function.this_constraint(&mut func_env, checking_data).is_some() {
-			todo!();
+			todo!("update function scope this");
 		} else {
 			// TODO inferred
 		}
@@ -942,7 +966,7 @@ impl<T: ContextType> Context<T> {
 		// TODO should references used in the function be counted in this scope
 		// might break the checking though
 
-		let used_parent_references = used_parent_references
+		let free_variables = used_parent_references
 			.into_iter()
 			.map(|reference| {
 				// TODO get the restriction from the context type
@@ -955,7 +979,7 @@ impl<T: ContextType> Context<T> {
 			type_parameters,
 			return_type: returned,
 			effects: facts.events,
-			used_parent_references,
+			free_variables,
 			closed_over_variables: function_closed,
 			parameters: synthesised_parameters,
 			constant_id: None,
@@ -966,7 +990,7 @@ impl<T: ContextType> Context<T> {
 		register_behavior.function(function, func_ty, self, &mut checking_data.types)
 	}
 
-	pub fn new_try_context<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
+	pub fn new_try_context<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&mut self,
 		checking_data: &mut CheckingData<U, M>,
 		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>),
@@ -1003,7 +1027,7 @@ impl<T: ContextType> Context<T> {
 	pub fn new_lexical_environment_fold_into_parent<
 		U: crate::ReadFromFS,
 		Res,
-		M: crate::SynthesisableModule,
+		M: crate::ASTImplementation,
 	>(
 		&mut self,
 		scope: Scope,
@@ -1079,7 +1103,9 @@ impl<T: ContextType> Context<T> {
 			| Scope::TryBlock {}
 			| Scope::PassThrough { .. }
 			// TODO Scope::Module ??
-			| Scope::Module { .. } => {
+			| Scope::Module { .. } 
+			| Scope::DefinitionModule { .. } 
+			=> {
 				// TODO also lift vars, regardless of scope
 				if matches!(scope, Scope::PassThrough { .. }) {
 					self.variables.extend(variables);
@@ -1177,7 +1203,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U, M: crate::SynthesisableModule>(
+	pub fn get_type_by_name_handle_errors<U, M: crate::ASTImplementation>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
@@ -1196,14 +1222,26 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends + parameters
-	pub fn new_interface(
+	pub fn new_interface<U: ASTImplementation>(
 		&mut self,
 		name: &str,
+		nominal: bool,
+		parameters: Option<&[U::TypeParameter]>, 
+		extends: Option<&[U::TypeAnnotation]>,
 		position: SpanWithSource,
 		types: &mut TypeStore,
 	) -> TypeId {
-		// TODO temp
-		let ty = Type::NamedRooted { name: name.to_owned(), parameters: None };
+		// TODO declare here
+		let parameters = parameters.map(|parameters| {
+			parameters.iter().map(|parameter| { let ty = Type::RootPolyType(PolyNature::Generic { name: U::type_parameter_name(&parameter).to_owned(), eager_fixed: TypeId::ANY_TYPE }); types.register_type(ty) }).collect()
+		});
+
+		if let Some(extends) = extends {
+			todo!("synthesize, fold into Type::And and create alias type")
+		}
+
+		let ty = Type::NamedRooted { nominal, name: name.to_owned(), parameters };
+
 		let interface_ty = types.register_type(ty);
 
 		// Interface merging!
@@ -1294,18 +1332,12 @@ impl<T: ContextType> Context<T> {
 				if let GeneralContext::Syntax(Context {
 					context_type:
 						Syntax {
-							kind: Scope::Module { source } | Scope::PassThrough { source }, ..
+							kind: Scope::Module { source } | Scope::DefinitionModule { source } | Scope::PassThrough { source }, ..
 						},
 					..
 				}) = ctx
 				{
 					Some(*source)
-				} else if let GeneralContext::Root(Context {
-					context_type: root::Root { on },
-					..
-				}) = ctx
-				{
-					Some(*on)
 				} else {
 					None
 				}
@@ -1398,6 +1430,7 @@ pub(crate) fn get_value_of_variable<'a>(
 	for fact in facts {
 		let res = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
+				crate::utils::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
 			})
 		} else {

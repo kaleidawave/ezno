@@ -18,7 +18,7 @@ use crate::{
 pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 	jsx_root: &JSXRoot,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
 	match jsx_root {
 		JSXRoot::Element(element) => synthesise_jsx_element(element, environment, checking_data),
@@ -29,7 +29,7 @@ pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	element: &JSXElement,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
 	let tag_name = element.tag_name.as_str();
 
@@ -41,7 +41,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	for attribute in element.attributes.iter() {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
-		attributes_object.append(environment, name, crate::Property::Value(attribute_value));
+		attributes_object.append(
+			environment,
+			name,
+			crate::Property::Value(attribute_value),
+			crate::context::facts::PublicityKind::Public,
+		);
 
 		// let constraint = environment
 		// 	.get_property_unbound(element_type, name, &checking_data.types)
@@ -132,7 +137,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
 			let child = synthesise_jsx_child(child, environment, checking_data);
-			synthesised_child_nodes.append(environment, property, crate::Property::Value(child));
+			synthesised_child_nodes.append(
+				environment,
+				property,
+				crate::Property::Value(child),
+				crate::context::facts::PublicityKind::Public,
+			);
 		}
 
 		Some(synthesised_child_nodes.build_object())
@@ -342,7 +352,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	child: &JSXNode,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
@@ -398,7 +408,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 fn synthesise_attribute<T: crate::ReadFromFS>(
 	attribute: &JSXAttribute,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> (TypeId, TypeId) {
 	let (key, value) = match attribute {
 		// TODO check property exists ...?

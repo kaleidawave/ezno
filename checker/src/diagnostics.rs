@@ -193,8 +193,6 @@ mod defined_errors_and_warnings {
 			site: SpanWithSource,
 		},
 		RestParameterAnnotationShouldBeArrayType(SpanWithSource),
-		/// TODO better name
-		NonExistentType(String),
 		CouldNotFindVariable {
 			variable: &'a str,
 			possibles: Vec<&'a str>,
@@ -259,6 +257,12 @@ mod defined_errors_and_warnings {
 			name: String,
 			position: SpanWithSource,
 		},
+		// TODO parameter position
+		GenericArgumentDoesNotMeetRestriction {
+			parameter_restriction: TypeStringRepresentation,
+			argument: TypeStringRepresentation,
+			position: SpanWithSource,
+		},
 		NotDefinedOperator(&'static str, SpanWithSource),
 		PropertyNotWriteable(SpanWithSource),
 	}
@@ -306,7 +310,7 @@ mod defined_errors_and_warnings {
 								position: argument_position,
 								labels: vec![(
 									format!(
-										"Parameter {} was substituted with type {}",
+										"{} was specialized with type {}",
 										parameter_type, restriction
 									),
 									Some(restriction_pos),
@@ -433,22 +437,18 @@ mod defined_errors_and_warnings {
 					returned_type,
 				} => Diagnostic::Position {
 					reason: format!(
-						"Function is expected to return {} but returned {}",
-						expected_return_type, returned_type
+						"Function is expected to return {expected_return_type} but returned {returned_type}",
 					),
 					position,
 					kind: super::DiagnosticKind::Error,
 				},
-				// TypeCheckError::MissingArguments { function, parameter_pos, call_site } => {
-				// Diagnostic::PositionWithAdditionLabels {
-				// 		reason: format!("Calling {}, found missing arguments", function),
-				// 		position: call_site,
-				// 		labels: vec![("Parameter defined here".to_owned(), Some(parameter_pos))],
-				// 		kind: super::DiagnosticKind::Error,
-				// 	}
-				// }
-				TypeCheckError::NonExistentType(_) => todo!(),
-				TypeCheckError::TypeHasNoGenericParameters(_, _) => todo!(),
+				TypeCheckError::TypeHasNoGenericParameters(name, position) => {
+					Diagnostic::Position {
+						reason: format!("Type '{name}' has no generic parameters",),
+						position,
+						kind: super::DiagnosticKind::Error,
+					}
+				}
 				// TypeCheckError::CannotAssignToConstant {
 				// 	variable_name,
 				// 	variable_position,
@@ -537,7 +537,7 @@ mod defined_errors_and_warnings {
 					kind: super::DiagnosticKind::Error,
 				},
 				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
-					reason: format!("Expected {}, found {}", expected, found),
+					reason: format!("Expected {expected}, found {found}"),
 					position: at,
 					kind: super::DiagnosticKind::Error,
 				},
@@ -555,6 +555,17 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
 					reason: "property not writeable".into(),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+					argument,
+					parameter_restriction,
+					position,
+				} => Diagnostic::Position {
+					reason: format!(
+						"Generic argument {argument} does not match {parameter_restriction}"
+					),
 					position,
 					kind: super::DiagnosticKind::Error,
 				},

@@ -14,7 +14,7 @@ pub(crate) enum ReturnedTypeFromBlock {
 }
 
 /// TODO will cover move, like yield events and stuff
-pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::SynthesisableModule>(
+pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImplementation>(
 	iter: &mut (impl Iterator<Item = &'a Event> + ExactSizeIterator),
 	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
@@ -31,7 +31,6 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::Synthes
 				let result = crate::subtyping::type_is_subtype(
 					expected_return_type,
 					*returned,
-					None,
 					&mut behavior,
 					environment,
 					&checking_data.types,

@@ -1,6 +1,6 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::{CheckingData, Environment, TypeId};
+use crate::{context::facts::PublicityKind, CheckingData, Environment, TypeId};
 
 use super::operations::{Logical, MathematicalAndBitwise};
 
@@ -14,7 +14,7 @@ pub enum Assignable {
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
-	Property { on: TypeId, with: TypeId, span: SpanWithSource },
+	Property { on: TypeId, with: TypeId, publicity: PublicityKind, span: SpanWithSource },
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number
@@ -44,7 +44,7 @@ impl Reference {
 }
 
 // TODO
-pub trait SynthesisableExpression<M: crate::SynthesisableModule> {
+pub trait SynthesisableExpression<M: crate::ASTImplementation> {
 	fn synthesise_expression<U: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,

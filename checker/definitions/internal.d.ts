@@ -1,3 +1,4 @@
+// ↓↓ Ezno Functions ↓↓
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
 declare function debug_type(t: any): void performs const debug_type;
@@ -11,15 +12,28 @@ declare function context_id_chain(): void performs const context_id_chain;
 declare function satisfies<T>(t: T): T performs const satisfies;
 
 declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
+// ↑↑ Ezno Functions ↑↑
 
-interface Array<T> {
+declare var undefined: undefined;
+
+interface nominal Array<T> {
+    [index: number]: T;
+    
     length: number;
 
-    [index: number]: T;
-
-    push(item: any) performs {
+    push(item: T) performs {
         this[this.length] = item;
         return ++this.length
+    }
+
+    pop(): T | undefined performs {
+        if (this.length === 0) {
+            return undefined
+        } else {
+            const value = this[--this.length];
+            delete this[this.length];
+            return value
+        }
     }
 
     last() performs {
@@ -36,9 +50,11 @@ interface Math {
     cbrt(x: number): number performs const cbrt;
 }
 
-interface string {
+interface nominal string {
     toUpperCase(): string performs const uppercase;
     toLowerCase(): string performs const lowercase;
+
+    get length(): number performs const string_length;
 }
 
 interface Console {

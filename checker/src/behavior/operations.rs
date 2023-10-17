@@ -8,8 +8,8 @@ use crate::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
 		StructureGenerics, TypeStore,
 	},
-	CheckingData, Constant, Environment, SynthesisableConditional, SynthesisableExpression,
-	SynthesisableModule, TruthyFalsy, Type, TypeId,
+	ASTImplementation, CheckingData, Constant, Environment, SynthesisableConditional,
+	SynthesisableExpression, TruthyFalsy, Type, TypeId,
 };
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -39,10 +39,7 @@ pub enum PureBinaryOperation {
 	TypePropertyOperator(TypePropertyOperator),
 }
 
-pub fn evaluate_pure_binary_operation_handle_errors<
-	T: crate::ReadFromFS,
-	M: SynthesisableModule,
->(
+pub fn evaluate_pure_binary_operation_handle_errors<T: crate::ReadFromFS, M: ASTImplementation>(
 	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
 	(rhs, rhs_pos): (TypeId, SpanWithSource),
@@ -332,7 +329,7 @@ pub enum Logical {
 /// TODO strict casts!
 pub fn evaluate_logical_operation_with_expression<
 	T: crate::ReadFromFS,
-	M: crate::SynthesisableModule,
+	M: crate::ASTImplementation,
 	TExpr: SynthesisableExpression<M>,
 >(
 	lhs: TypeId,
@@ -341,12 +338,12 @@ pub fn evaluate_logical_operation_with_expression<
 	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
-	enum TypeOrSynthesisable<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>> {
+	enum TypeOrSynthesisable<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>> {
 		Type(TypeId),
 		Expression(&'a TExpr, PhantomData<M>),
 	}
 
-	impl<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>>
+	impl<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>>
 		SynthesisableConditional<M> for TypeOrSynthesisable<'a, M, TExpr>
 	{
 		type ExpressionResult = TypeId;

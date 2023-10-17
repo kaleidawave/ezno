@@ -27,19 +27,22 @@ pub(crate) fn apply_event(
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
+						crate::utils::notify!("Type arguments {:?}", &type_arguments);
 						get_value_of_variable(environment.facts_chain(), id, Some(&*type_arguments))
-							.expect("variable has no value")
+							.unwrap_or_else(|| {
+								panic!("{:?} has not value, when reading event", reference)
+							})
 					}
 					RootReference::This => this_value.get(environment, types),
 				};
-				type_arguments.set_id(id, value, types);
+				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
 		Event::SetsVariable(variable, value) => {
 			let new_value = substitute(value, type_arguments, environment, types);
 
 			// if not closed over!!
-			// TODO temp, might need to set something else. Doesn't work deep
+			// TODO temp assigns to many contexts, which is bad
 			let facts = target.get_top_level_facts(environment);
 			for closure_id in type_arguments
 				.closure_id
@@ -54,18 +57,18 @@ pub(crate) fn apply_event(
 			facts.events.push(Event::SetsVariable(variable, new_value));
 			facts.variable_current_value.insert(variable, new_value);
 		}
-		Event::Getter { on, under, reflects_dependency } => {
+		Event::Getter { on, under, reflects_dependency, publicity } => {
 			let on = substitute(on, type_arguments, environment, types);
 			let property = substitute(under, type_arguments, environment, types);
 
-			let (_, value) = get_property(on, under, None, environment, target, types)
+			let (_, value) = get_property(on, under, publicity, None, environment, target, types)
 				.expect("Inferred constraints and checking failed");
 
 			if let Some(id) = reflects_dependency {
-				type_arguments.set_id(id, value, types);
+				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::Setter { on, under, new, reflects_dependency, initialization } => {
+		Event::Setter { on, under, new, reflects_dependency, initialization, publicity } => {
 			let on = substitute(on, type_arguments, environment, types);
 			let under = substitute(under, type_arguments, environment, types);
 
@@ -77,6 +80,7 @@ pub(crate) fn apply_event(
 				Property::Getter(_) => todo!(),
 				Property::Setter(_) => todo!(),
 				Property::GetterAndSetter(_, _) => todo!(),
+				Property::Deleted => todo!(),
 			};
 
 			let gc = environment.as_general_context();
@@ -104,12 +108,19 @@ pub(crate) fn apply_event(
 					} else {
 						on
 					};
-				target.get_top_level_facts(environment).register_property(on, under, new, true);
+				target
+					.get_top_level_facts(environment)
+					.register_property(on, under, new, true, publicity);
 			} else {
-				let returned = set_property(on, under, new, environment, target, types).unwrap();
+				let returned =
+					set_property(on, under, publicity, new, environment, target, types).unwrap();
 
 				if let Some(id) = reflects_dependency {
-					type_arguments.set_id(id, returned.unwrap_or(TypeId::UNDEFINED_TYPE), types);
+					type_arguments.set_id_from_reference(
+						id,
+						returned.unwrap_or(TypeId::UNDEFINED_TYPE),
+						types,
+					);
 				}
 			}
 		}
@@ -143,7 +154,7 @@ pub(crate) fn apply_event(
 					match result {
 						Ok(result) => {
 							if let Some(reflects_dependency) = reflects_dependency {
-								type_arguments.set_id(
+								type_arguments.set_id_from_reference(
 									reflects_dependency,
 									result.returned_type,
 									types,
@@ -271,14 +282,11 @@ pub(crate) fn apply_event(
 			let new_object_id_with_curried_arguments =
 				curry_arguments(type_arguments, types, new_object_id);
 
-			type_arguments.set_id(
+			type_arguments.set_id_from_reference(
 				referenced_in_scope_as,
 				new_object_id_with_curried_arguments,
 				types,
 			);
-		}
-		Event::Repeatedly { n, with } => {
-			todo!()
 		}
 	}
 	None

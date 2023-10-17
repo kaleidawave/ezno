@@ -52,6 +52,28 @@ const a = c
 
 - Could not find variable c in scope
 
+### Generic types
+
+#### Generic interface
+
+```ts
+interface Wrapper<T> {
+	internal: T
+}
+
+const my_wrapped: Wrapper<number> = { internal: "hi" }
+```
+
+- Type {"internal": "hi", } is not assignable to type Wrapper<number, >
+
+#### Array
+
+```ts
+const numbers: Array<number> = [1, 2, "3"]
+```
+
+- Type [Array] {0: 1, 1: 2, 2: "3", "length": 3, } is not assignable to type Array<number, >
+
 ### Functions
 
 #### Type of parameter
@@ -94,6 +116,28 @@ func("not a number")
 
 - Argument of type "not a number" is not assignable to number
 
+#### Generic type argument parameter
+
+```ts
+function func<T>(a: T) {}
+func<number>("not a number")
+```
+
+- Argument of type "not a number" is not assignable to number
+
+#### Generic type argument restriction
+
+```ts
+function map<T, U>(a: T, b: T => U): U {
+	return b(a)
+}
+
+map(2, Math.sin)
+map("string", Math.sin)
+```
+
+- Argument of type "string" is not assignable to number
+
 #### Parameters are always considered generic
 
 ```ts
@@ -106,7 +150,7 @@ const d: 3 = id(2)
 
 - Type 2 is not assignable to type 3
 
-#### Type checking function types
+#### Type checking basic function types
 
 ```ts
 function func(a: string, b: number): boolean {
@@ -120,6 +164,21 @@ const c: (a: number, b: number) => boolean = func
 - Type (a: string, b: number, ) => true is not assignable to type (a: string, b: number, ) => string
 - Type (a: string, b: number, ) => true is not assignable to type (a: number, b: number, ) => boolean
 
+#### Return generics mismatch
+
+```ts
+function getSecond1<T, U>(p1: T, p2: U): U {
+    return p1
+}
+
+function getSecond2<T, U>(p1: T, p2: U): U {
+    return p2
+}
+
+```
+
+- Function is expected to return T but returned U
+
 #### Get value of property on parameter
 
 ```ts
@@ -131,49 +190,6 @@ const d: 3 = getA({ a: "hi" })
 ```
 
 - Type "hi" is not assignable to type 3
-
-#### Assignment to variable in function
-
-```ts
-let a: number = 0
-function func() {
-	a = 4
-}
-
-func()
-let b: 2 = a
-```
-
-- Type 4 is not assignable to type 2
-
-#### Assignment from parameter
-
-```ts
-let a: number = 0
-function func(c: number) {
-	a = c
-}
-
-func(4)
-let b: 2 = a
-```
-
-- Type 4 is not assignable to type 2
-
-#### Property updates object outside of function
-
-```ts
-const obj: { a: number } = { a: 2 }
-function func(value: number) {
-	obj.a = value
-}
-
-const a: 2 = obj.a
-func(4)
-const b: 2 = obj.a
-```
-
-- Type 4 is not assignable to type 2
 
 #### Missing argument
 
@@ -284,6 +300,49 @@ value.getValue() satisfies 6
 - Expected 6, found 10
 
 ### Effects
+
+#### Assignment to variable in function
+
+```ts
+let a: number = 0
+function func() {
+	a = 4
+}
+
+func()
+let b: 2 = a
+```
+
+- Type 4 is not assignable to type 2
+
+#### Assignment from parameter
+
+```ts
+let a: number = 0
+function func(c: number) {
+	a = c
+}
+
+func(4)
+let b: 2 = a
+```
+
+- Type 4 is not assignable to type 2
+
+#### Property updates object outside of function
+
+```ts
+const obj: { a: number } = { a: 2 }
+function func(value: number) {
+	obj.a = value
+}
+
+const a: 2 = obj.a
+func(4)
+const b: 2 = obj.a
+```
+
+- Type 4 is not assignable to type 2
 
 #### Calling and operations with parameter
 
