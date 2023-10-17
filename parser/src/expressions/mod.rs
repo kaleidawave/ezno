@@ -5,7 +5,7 @@ use crate::{
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
-		FUNCTION_CALL_PRECEDENCE,
+		FUNCTION_CALL_PRECEDENCE, INSTANCE_OF_PRECEDENCE, IN_PRECEDENCE,
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
@@ -185,7 +185,10 @@ impl Eq for Expression {}
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyReference {
-	Standard(String),
+	Standard {
+		property: String,
+		is_private: bool,
+	},
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Cursor(CursorId<PropertyReference>),
 }
@@ -607,6 +610,27 @@ impl Expression {
 					));
 				}
 			}
+			Token(TSXToken::HashTag, start) => {
+				let (property_name, _) = token_as_identifier(
+					reader.next().ok_or_else(parse_lexing_error)?,
+					"private in expression",
+				)?;
+				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
+				let rhs = Expression::from_reader_with_precedence(
+					reader,
+					state,
+					settings,
+					IN_PRECEDENCE,
+				)?;
+				let position = start.union(rhs.get_position());
+				Self::SpecialOperators(
+					SpecialOperators::InExpression {
+						lhs: InExpressionLHS::PrivateProperty(property_name),
+						rhs: Box::new(rhs),
+					},
+					position,
+				)
+			}
 			token => {
 				if let Ok(unary_operator) = UnaryOperator::try_from(&token.0) {
 					let precedence = unary_operator.precedence();
@@ -788,9 +812,12 @@ impl Expression {
 										start.with_length(1),
 									)
 								} else {
+									let is_private = reader
+										.conditional_next(|t| matches!(t, TSXToken::HashTag))
+										.is_some();
 									let (property, position) =
 										token_as_identifier(token, "variable reference")?;
-									(PropertyReference::Standard(property), position)
+									(PropertyReference::Standard { property, is_private }, position)
 								};
 							let position = top.get_position().union(&position);
 							Expression::PropertyAccess {
@@ -815,9 +842,11 @@ impl Expression {
 					{
 						(PropertyReference::Cursor(cursor_id.into_cursor()), start.with_length(1))
 					} else {
+						let is_private =
+							reader.conditional_next(|t| matches!(t, TSXToken::HashTag)).is_some();
 						let (property, position) =
 							token_as_identifier(token, "variable reference")?;
-						(PropertyReference::Standard(property), position)
+						(PropertyReference::Standard { property, is_private }, position)
 					};
 					let position = top.get_position().union(&position);
 					top = Expression::PropertyAccess {
@@ -897,6 +926,52 @@ impl Expression {
 						_ => unreachable!(),
 					};
 					top = Self::SpecialOperators(special_operators, position);
+				}
+				TSXToken::Keyword(TSXKeyword::In) => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, IN_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+
+					let _token = reader.next().unwrap();
+					let rhs = Expression::from_reader_with_precedence(
+						reader,
+						state,
+						settings,
+						IN_PRECEDENCE,
+					)?;
+					let position = top.get_position().union(rhs.get_position());
+					top = Self::SpecialOperators(
+						SpecialOperators::InExpression {
+							lhs: InExpressionLHS::Expression(Box::new(top)),
+							rhs: Box::new(rhs),
+						},
+						position,
+					);
+				}
+				TSXToken::Keyword(TSXKeyword::InstanceOf) => {
+					if AssociativityDirection::LeftToRight
+						.should_return(parent_precedence, IN_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+
+					let _token = reader.next().unwrap();
+					let rhs = Expression::from_reader_with_precedence(
+						reader,
+						state,
+						settings,
+						INSTANCE_OF_PRECEDENCE,
+					)?;
+					let position = top.get_position().union(rhs.get_position());
+					top = Self::SpecialOperators(
+						SpecialOperators::InstanceOfExpression {
+							lhs: Box::new(top),
+							rhs: Box::new(rhs),
+						},
+						position,
+					);
 				}
 				token => {
 					let token = if *token == TSXToken::OpenChevron {
@@ -1041,6 +1116,8 @@ impl Expression {
 				 // TODO not sure about this
                 SpecialOperators::AsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
                 SpecialOperators::SatisfiesExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+                SpecialOperators::InExpression { .. } => IN_PRECEDENCE,
+                SpecialOperators::InstanceOfExpression { .. } => INSTANCE_OF_PRECEDENCE,
 				#[cfg(feature = "extras")]
                 SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             },
@@ -1099,6 +1176,26 @@ impl Expression {
 						type_annotation.to_string_from_buffer(buf, settings, depth);
 					}
 				}
+				SpecialOperators::InExpression { lhs, rhs } => {
+					match lhs {
+						InExpressionLHS::PrivateProperty(property) => {
+							buf.push('#');
+							buf.push_str(property);
+						}
+						InExpressionLHS::Expression(lhs) => {
+							lhs.to_string_using_precedence(buf, settings, depth, IN_PRECEDENCE)
+						}
+					}
+					// TODO whitespace can be dropped depending on LHS and RHS
+					buf.push_str(" in ");
+					rhs.to_string_using_precedence(buf, settings, depth, IN_PRECEDENCE)
+				}
+				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
+					lhs.to_string_using_precedence(buf, settings, depth, INSTANCE_OF_PRECEDENCE);
+					// TODO whitespace can be dropped depending on LHS and RHS
+					buf.push_str(" instanceof ");
+					rhs.to_string_using_precedence(buf, settings, depth, INSTANCE_OF_PRECEDENCE)
+				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, settings, depth);
@@ -1149,7 +1246,10 @@ impl Expression {
 					buf.push('?');
 				}
 				buf.push('.');
-				if let PropertyReference::Standard(property) = property {
+				if let PropertyReference::Standard { property, is_private } = property {
+					if *is_private {
+						buf.push('#');
+					}
 					buf.push_str(property);
 				} else if !settings.expect_cursors {
 					panic!("found cursor");
@@ -1193,7 +1293,7 @@ impl Expression {
 				if let (true, Some(type_arguments)) = (settings.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, settings, depth);
 				}
-				to_string_bracketed(arguments, ('(', ')'), buf, settings, depth);
+				arguments_to_string(arguments, buf, settings, depth);
 			}
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
@@ -1204,7 +1304,7 @@ impl Expression {
 				if let Some(arguments) = arguments {
 					// Constructor calls can drop arguments if none
 					if !arguments.is_empty() {
-						to_string_bracketed(arguments, ('(', ')'), buf, settings, depth);
+						arguments_to_string(arguments, buf, settings, depth);
 					}
 				}
 			}
@@ -1279,7 +1379,7 @@ impl Expression {
 				buf.push_str("super");
 				match super_expr {
 					SuperReference::Call { arguments } => {
-						to_string_bracketed(arguments, ('(', ')'), buf, settings, depth);
+						arguments_to_string(arguments, buf, settings, depth);
 					}
 					SuperReference::PropertyAccess { property } => {
 						buf.push('.');
@@ -1420,6 +1520,43 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStar
 	}
 }
 
+pub(crate) fn arguments_to_string<T: source_map::ToString>(
+	nodes: &[SpreadExpression],
+	buf: &mut T,
+	settings: &crate::ToStringOptions,
+	depth: u8,
+) {
+	buf.push('(');
+	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
+		// Hack for arrays, this is just easier for generators
+		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
+			for (at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter()) {
+				item.to_string_from_buffer(buf, settings, depth);
+				if !at_end {
+					buf.push(',');
+					settings.add_gap(buf);
+				}
+			}
+		} else {
+			node.to_string_from_buffer(buf, settings, depth);
+		}
+		if !at_end {
+			buf.push(',');
+			settings.add_gap(buf);
+		}
+	}
+	buf.push(')');
+}
+
+#[derive(PartialEqExtras, Debug, Clone, Visitable)]
+#[partial_eq_ignore_types(Span)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum InExpressionLHS {
+	PrivateProperty(String),
+	Expression(Box<Expression>),
+}
+
 /// Binary operations whose RHS are types rather than [Expression]s
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
@@ -1437,6 +1574,14 @@ pub enum SpecialOperators {
 		value: Box<Expression>,
 		satisfies_keyword: Keyword<Satisfies>,
 		type_annotation: Box<TypeAnnotation>,
+	},
+	InExpression {
+		lhs: InExpressionLHS,
+		rhs: Box<Expression>,
+	},
+	InstanceOfExpression {
+		lhs: Box<Expression>,
+		rhs: Box<Expression>,
 	},
 	#[cfg(feature = "extras")]
 	IsExpression {
@@ -1497,7 +1642,7 @@ impl ASTNode for SpreadExpression {
 		match self {
 			SpreadExpression::Spread(_, pos) => pos,
 			SpreadExpression::NonSpread(expr) => expr.get_position(),
-			SpreadExpression::Empty => todo!(),
+			SpreadExpression::Empty => &Span::NULL_SPAN,
 		}
 	}
 }

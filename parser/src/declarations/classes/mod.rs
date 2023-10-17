@@ -2,7 +2,7 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{throw_unexpected_token_with_token, to_string_bracketed, tsx_keywords};
+use crate::{throw_unexpected_token_with_token, to_string_bracketed, tsx_keywords, Expression};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -21,8 +21,7 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub class_keyword: Keyword<tsx_keywords::Class>,
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
-	/// TODO shouldn't be type reference
-	pub extends: Option<TypeAnnotation>,
+	pub extends: Option<Box<Expression>>,
 	pub implements: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<Decorated<ClassMember>>,
 	pub position: Span,
@@ -74,7 +73,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		let extends = match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
-				Some(TypeAnnotation::from_reader(reader, state, settings)?)
+				Some(Expression::from_reader(reader, state, settings)?.into())
 			}
 			_ => None,
 		};
