@@ -32,11 +32,28 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - name: Run hyperfine
+      - name: Run parser (and stringer) performance
         run: |
-          curl -O https://gist.githubusercontent.com/kaleidawave/9554eb0ec0a2efc5727a3227fe997c8d/raw/6445ec1b802b52081e6dbb9c3a99e6de3f33dcfa/example.js
-          hyperfine './target/release/ezno build example.js'
+          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
 
+          echo "### Hyperfine">> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY
+          hyperfine './target/release/ezno ast-explorer --file react.js uglifier' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Run checker performance
+        run: |
+          curl -O https://gist.githubusercontent.com/kaleidawave/5dcb9ec03deef1161ebf0c9d6e4b88d8/raw/26c26e908a7c6b79a2e93627f1fefa7ffccbd389/demo.ts > demo.ts
+
+          echo "### Output">> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY
+          ./target/release/ezno check demo.ts >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Hyperfine">> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY
+          hyperfine './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
       - name: Print (linux) binary size
         run: |
-          echo "Binary is $(stat -c %s ./target/release/ezno) bytes"
+          echo "Binary is $(stat -c %s ./target/release/ezno) bytes" >> $GITHUB_STEP_SUMMARY

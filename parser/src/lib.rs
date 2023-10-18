@@ -9,7 +9,7 @@ mod errors;
 pub mod expressions;
 mod extensions;
 pub mod functions;
-mod generator_helpers;
+pub mod generator_helpers;
 mod lexer;
 mod modules;
 pub mod operators;
@@ -56,7 +56,7 @@ use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
-use std::{ops::Neg, str::FromStr};
+use std::{borrow::Cow, ops::Neg, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -505,6 +505,8 @@ impl FromStr for NumberRepresentation {
 			(NumberSign::Positive, s)
 		};
 
+		let s = if s.contains("_") { Cow::Owned(s.replace('_', "")) } else { Cow::Borrowed(s) };
+
 		if let Some(s) = s.strip_suffix('n') {
 			Ok(NumberRepresentation::BigInt(sign, s.to_owned()))
 		} else if let Some(s) = s.strip_prefix('0') {
@@ -559,7 +561,8 @@ impl FromStr for NumberRepresentation {
 				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
-					let start = if matches!(c, 'o' | 'O') { 2 } else { 1 };
+					let uses_character = matches!(c, 'o' | 'O');
+					let start = if uses_character { 2 } else { 1 };
 					let mut number = 0u64;
 					for c in s[start..].as_bytes().iter() {
 						number <<= 3; // 8=2^3
@@ -663,61 +666,86 @@ impl NumberRepresentation {
 	}
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Default)]
+/// This structure removes possible invalid combinations with async
+#[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum GetSetGeneratorOrNone {
+pub enum MethodHeader {
 	Get(Keyword<tsx_keywords::Get>),
 	Set(Keyword<tsx_keywords::Set>),
+	GeneratorStar(Option<Keyword<tsx_keywords::Async>>, Span),
 	#[cfg(feature = "extras")]
-	Generator(Keyword<tsx_keywords::Generator>),
-	GeneratorStar(Span),
-	#[default]
-	None,
+	Generator(Option<Keyword<tsx_keywords::Async>>, Keyword<tsx_keywords::Generator>),
+	Async(Keyword<tsx_keywords::Async>),
 }
 
-impl GetSetGeneratorOrNone {
+impl MethodHeader {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		buf.push_str(match self {
-			GetSetGeneratorOrNone::Get(_) => "get ",
-			GetSetGeneratorOrNone::Set(_) => "set ",
-			GetSetGeneratorOrNone::GeneratorStar(_) => "*",
+			MethodHeader::Get(_) => "get ",
+			MethodHeader::Set(_) => "set ",
+			MethodHeader::GeneratorStar(None, _) => "*",
+			MethodHeader::GeneratorStar(Some(_), _) => "async *",
+			MethodHeader::Async(_) => "async ",
 			// Use default
 			#[cfg(feature = "extras")]
-			GetSetGeneratorOrNone::Generator(_) => "*",
-			GetSetGeneratorOrNone::None => "",
+			MethodHeader::Generator(None, _) => "*",
+			#[cfg(feature = "extras")]
+			MethodHeader::Generator(Some(_), _) => "async *",
 		})
 	}
 
-	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
+	pub(crate) fn optional_from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+	) -> Option<Self> {
+		let async_kw = reader
+			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
+			.map(|tok| Keyword::new(tok.get_span()));
+
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				GetSetGeneratorOrNone::Get(Keyword::new(reader.next().unwrap().get_span()))
+				Some(MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span())))
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				GetSetGeneratorOrNone::Set(Keyword::new(reader.next().unwrap().get_span()))
-			}
-			#[cfg(feature = "extras")]
-			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
-				GetSetGeneratorOrNone::Generator(Keyword::new(reader.next().unwrap().get_span()))
+				Some(MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span())))
 			}
 			Some(Token(TSXToken::Multiply, _)) => {
-				GetSetGeneratorOrNone::GeneratorStar(reader.next().unwrap().get_span())
+				Some(MethodHeader::GeneratorStar(async_kw, reader.next().unwrap().get_span()))
 			}
-			_ => GetSetGeneratorOrNone::None,
+			#[cfg(feature = "extras")]
+			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => Some(MethodHeader::Generator(
+				async_kw,
+				Keyword::new(reader.next().unwrap().get_span()),
+			)),
+			_ => None,
 		}
 	}
 
-	pub(crate) fn get_position(&self) -> Option<&Span> {
+	pub(crate) fn get_start(&self) -> source_map::Start {
 		match self {
-			GetSetGeneratorOrNone::Get(kw) => Some(&kw.1),
-			GetSetGeneratorOrNone::Set(kw) => Some(&kw.1),
-			GetSetGeneratorOrNone::GeneratorStar(span) => Some(span),
-			GetSetGeneratorOrNone::None => None,
+			MethodHeader::Get(kw) => kw.1.get_start(),
+			MethodHeader::Set(kw) => kw.1.get_start(),
+			MethodHeader::Async(kw) => kw.1.get_start(),
+			MethodHeader::GeneratorStar(async_kw, a) => {
+				async_kw.as_ref().map_or(a.get_start(), |kw| kw.1.get_start())
+			}
 			#[cfg(feature = "extras")]
-			GetSetGeneratorOrNone::Generator(kw) => Some(&kw.1),
+			MethodHeader::Generator(async_kw, a) => {
+				async_kw.as_ref().map_or(a.1.get_start(), |kw| kw.1.get_start())
+			}
 		}
 	}
+
+	// pub(crate) fn get_end(&self) -> source_map::End {
+	// 	match self {
+	// 		MethodHeader::Get(kw) => kw.1.get_end(),
+	// 		MethodHeader::Set(kw) => kw.1.get_end(),
+	// 		MethodHeader::Async(kw) => kw.1.get_end(),
+	// 		MethodHeader::GeneratorStar(_, a) => a.get_end(),
+	// 		#[cfg(feature = "extras")]
+	// 		MethodHeader::Generator(_, a) => a.1.get_end(),
+	// 	}
+	// }
 }
 
 /// Classes and `function` functions have two variants depending whether in statement position
@@ -891,6 +919,8 @@ fn receiver_to_tokens(
 }
 
 /// *to_strings* items surrounded in `{`, `[`, `(`, etc
+///
+/// TODO delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),
@@ -935,12 +965,20 @@ pub(crate) fn expect_semi_colon(
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
-		declarations::*, expressions::*, extensions::jsx::*, statements::*, Keyword,
-		NumberRepresentation, StatementOrDeclaration, VariableField, VariableIdentifier,
-		WithComment,
+		declarations::classes::*,
+		declarations::*,
+		expressions::*,
+		extensions::jsx::*,
+		functions::{
+			FunctionBase, FunctionHeader, FunctionParameters, Parameter, ParameterData,
+			SpreadParameter,
+		},
+		statements::*,
+		Block, Decorated, Keyword, MethodHeader, NumberRepresentation, PropertyKey,
+		StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
 	};
 
-	pub use source_map::BaseSpan;
+	pub use source_map::{BaseSpan, SourceId};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};
 }

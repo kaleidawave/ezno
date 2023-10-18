@@ -334,17 +334,18 @@ pub(crate) fn parse_declare_item(
 	start: TokenStart,
 ) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
 	match reader.peek() {
-		Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) => {
-			Ok(TypeDefinitionModuleDeclaration::Variable(
-				DeclareVariableDeclaration::from_reader_sub_declare(
-					reader,
-					state,
-					settings,
-					Some(start),
-					decorators,
-				)?,
-			))
-		}
+		Some(Token(
+			TSXToken::Keyword(TSXKeyword::Var | TSXKeyword::Const | TSXKeyword::Let),
+			_,
+		)) => Ok(TypeDefinitionModuleDeclaration::Variable(
+			DeclareVariableDeclaration::from_reader_sub_declare(
+				reader,
+				state,
+				settings,
+				Some(start),
+				decorators,
+			)?,
+		)),
 		Some(Token(TSXToken::Keyword(TSXKeyword::Class), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Class(
 				DeclareClassDeclaration::from_reader_sub_declare(reader, state, settings)?,

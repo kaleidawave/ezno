@@ -60,37 +60,37 @@ pub(super) fn synthesise_class_declaration<
 				);
 			};
 
-			let extends = if let Some(ref extends) = class.extends {
-				fn build_extends_type<'a, T: crate::ReadFromFS>(
-					mut extends: impl Iterator<Item = &'a TypeAnnotation>,
-					environment: &mut Environment,
-					checking_data: &mut CheckingData<T, parser::Module>,
-					on: TypeId,
-				) -> TypeId {
-					let mut ty = synthesise_type_annotation(
-						extends.next().unwrap(),
-						environment,
-						checking_data,
-					);
+			// let extends = if let Some(ref extends) = class.extends {
+			// 	fn build_extends_type<'a, T: crate::ReadFromFS>(
+			// 		mut extends: impl Iterator<Item = &'a TypeAnnotation>,
+			// 		environment: &mut Environment,
+			// 		checking_data: &mut CheckingData<T, parser::Module>,
+			// 		on: TypeId,
+			// 	) -> TypeId {
+			// 		let mut ty = synthesise_type_annotation(
+			// 			extends.next().unwrap(),
+			// 			environment,
+			// 			checking_data,
+			// 		);
 
-					for reference in extends {
-						let rhs = synthesise_type_annotation(reference, environment, checking_data);
-						// TODOsynthesise_type_annotation
-						ty = checking_data.types.register_type(Type::And(ty, rhs));
-					}
+			// 		for reference in extends {
+			// 			let rhs = synthesise_type_annotation(reference, environment, checking_data);
+			// 			// TODOsynthesise_type_annotation
+			// 			ty = checking_data.types.register_type(Type::And(ty, rhs));
+			// 		}
 
-					environment.bases.connect_extends(on, ty);
+			// 		environment.bases.connect_extends(on, ty);
 
-					ty
-				}
+			// 		ty
+			// 	}
 
-				let result =
-					build_extends_type(iter::once(extends), environment, checking_data, class_type);
+			// 	let result =
+			// 		build_extends_type(iter::once(extends), environment, checking_data, class_type);
 
-				Some(result)
-			} else {
-				None
-			};
+			// 	Some(result)
+			// } else {
+			// 	None
+			// };
 
 			let mut class_constructor = None;
 			let mut properties = Vec::<(TypeId, Expression)>::new();

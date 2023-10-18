@@ -229,8 +229,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				| BinaryOperator::NullCoalescing => {
 					unreachable!()
 				}
-				BinaryOperator::InstanceOf => todo!(),
-				BinaryOperator::In => todo!(),
 				BinaryOperator::Divides => todo!(),
 				BinaryOperator::Pipe => todo!(),
 				BinaryOperator::Compose => todo!(),
@@ -382,11 +380,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::PropertyAccess { parent, position, property, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data);
-			let property = if let parser::PropertyReference::Standard(name) = property {
-				checking_data.types.new_constant_type(Constant::String(name.clone()))
-			} else {
-				todo!()
-			};
+			let property =
+				if let parser::PropertyReference::Standard { property, is_private: _ } = property {
+					checking_data.types.new_constant_type(Constant::String(property.clone()))
+				} else {
+					todo!()
+				};
 			let get_property =
 				environment.get_property(on, property, &mut checking_data.types, None);
 
@@ -642,6 +641,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return value;
 			}
+			SpecialOperators::InExpression { .. } => todo!(),
+			SpecialOperators::InstanceOfExpression { .. } => todo!(),
 		},
 		Expression::DynamicImport { path, position } => todo!(),
 		Expression::IsExpression(is_expr) => {

@@ -46,6 +46,8 @@ jobs:
               - 'parser/**'
             checker:
               - 'checker/**'
+            src:
+              - 'src/**'
 
       - name: Check source is valid
         run: cargo check --workspace
@@ -54,9 +56,11 @@ jobs:
         run: cargo check --bin ezno
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        if: steps.changes.outputs.src == 'true'
         with:
           packages: wasm-bindgen-cli@0.2.87
       - name: Check WASM
+        if: steps.changes.outputs.src == 'true'
         run: |
           rustup target add wasm32-unknown-unknown
           # Need to build to check that the JS builds

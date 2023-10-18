@@ -98,8 +98,8 @@ impl FunctionBased for ArrowFunctionBase {
 		buf.push_str(if settings.pretty { " => " } else { "=>" });
 	}
 
-	fn header_left(header: &Self::Header) -> Option<&Span> {
-		header.as_ref().map(|kw| kw.get_position())
+	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
+		header.as_ref().map(|kw| kw.get_position().get_start())
 	}
 }
 

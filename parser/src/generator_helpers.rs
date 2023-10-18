@@ -31,7 +31,7 @@ impl<'a> IntoAST<Expression> for &'a str {
 
 impl<'a> IntoAST<PropertyReference> for &'a str {
 	fn into_ast(self) -> PropertyReference {
-		PropertyReference::Standard(self.to_owned())
+		PropertyReference::Standard { property: self.to_owned(), is_private: false }
 	}
 }
 

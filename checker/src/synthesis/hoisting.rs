@@ -216,39 +216,29 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				parser::Declaration::TypeAlias(_) => {}
 				parser::Declaration::DeclareVariable(DeclareVariableDeclaration {
-					name,
-					type_restriction,
-					decorators,
+					keyword: _,
+					declarations,
 					position,
 				}) => {
-					// TODO tidy up
-					let variable_ty =
-						synthesise_type_annotation(&type_restriction, environment, checking_data);
+					for declaration in declarations.iter() {
+						let constraint = get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
 
-					// // TODO not sure...
-					// if let Some(frozen) = environment.is_frozen(variable_ty) {
-					// 	environment.frozen.insert(var_type, frozen);
-					// }
+						// TODO warning here
+						let behavior = crate::context::VariableRegisterBehavior::Declare {
+							base: constraint.unwrap_or(TypeId::ANY_TYPE),
+						};
 
-					let declare_variable = environment.declare_variable(
-						&name,
-						position.clone().with_source(environment.get_source()),
-						variable_ty,
-						&mut checking_data.types,
-					);
-
-					checking_data.type_mappings.variables_to_constraints.0.insert(
-						crate::VariableId(environment.get_source(), position.start),
-						variable_ty,
-					);
-
-					if let Err(error) = declare_variable {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::CannotRedeclareVariable {
-								name: error.name.to_owned(),
-								position: position.clone().with_source(environment.get_source()),
-							},
-						)
+						register_variable(
+							declaration.name.get_ast_ref(),
+							environment,
+							checking_data,
+							behavior,
+							constraint,
+						);
 					}
 				}
 				parser::Declaration::DeclareInterface(_) => {}

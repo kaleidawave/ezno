@@ -6,9 +6,8 @@ use tokenizer_lib::{Token, TokenReader};
 use visitable_derive::Visitable;
 
 use crate::{
-	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, GetSetGeneratorOrNone,
-	Keyword, ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation,
-	WithComment,
+	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, Keyword, MethodHeader,
+	ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
 /// The variable id's of these is handled by their [PropertyKey]
@@ -69,30 +68,22 @@ impl ASTNode for ClassMember {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, settings)?));
 		}
 
-		let async_keyword = reader
-			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Async))
-			.map(|token| Keyword::new(token.get_span()));
 		let readonly_keyword = reader
-			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Async))
+			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Readonly))
 			.map(|token| Keyword::new(token.get_span()));
-		let get_set_generator_or_none = GetSetGeneratorOrNone::from_reader(reader);
+
+		let header = MethodHeader::optional_from_reader(reader);
 
 		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?;
 
 		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses, _)) => {
-				let function = ClassFunction::from_reader_with_config(
-					reader,
-					state,
-					settings,
-					async_keyword,
-					get_set_generator_or_none,
-					key,
-				)?;
+			Some(Token(TSXToken::OpenParentheses, _)) if readonly_keyword.is_none() => {
+				let function =
+					ClassFunction::from_reader_with_config(reader, state, settings, header, key)?;
 				Ok(ClassMember::Method(is_static, function))
 			}
 			Some(Token(token, _)) => {
-				if get_set_generator_or_none != GetSetGeneratorOrNone::None {
+				if header.is_some() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				let member_type: Option<TypeAnnotation> = match token {
@@ -119,7 +110,6 @@ impl ASTNode for ClassMember {
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
-						// TODO
 					},
 				))
 			}
@@ -186,15 +176,14 @@ impl ClassFunction {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
-		is_async: Option<Keyword<tsx_keywords::Async>>,
-		get_set_generator_or_none: GetSetGeneratorOrNone,
+		get_set_generator: Option<MethodHeader>,
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
 		FunctionBase::from_reader_with_header_and_name(
 			reader,
 			state,
 			settings,
-			(is_async, get_set_generator_or_none),
+			get_set_generator,
 			key,
 		)
 	}
@@ -202,7 +191,7 @@ impl ClassFunction {
 
 impl FunctionBased for ClassFunctionBase {
 	type Body = Block;
-	type Header = (Option<Keyword<tsx_keywords::Async>>, GetSetGeneratorOrNone);
+	type Header = Option<MethodHeader>;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
@@ -214,12 +203,9 @@ impl FunctionBased for ClassFunctionBase {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let async_keyword = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-			.map(|token| Keyword::new(token.get_span()));
-		let header = GetSetGeneratorOrNone::from_reader(reader);
+		let header = MethodHeader::optional_from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?;
-		Ok(((async_keyword, header), name))
+		Ok((header, name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -229,15 +215,14 @@ impl FunctionBased for ClassFunctionBase {
 		settings: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if let Some(_header) = &header.0 {
-			buf.push_str("async ");
+		if let Some(header) = header {
+			header.to_string_from_buffer(buf);
 		}
-		header.1.to_string_from_buffer(buf);
 		name.to_string_from_buffer(buf, settings, depth);
 	}
 
-	fn header_left(header: &Self::Header) -> Option<&Span> {
-		header.0.as_ref().map(|async_kw| async_kw.get_position()).xor(header.1.get_position())
+	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
+		header.as_ref().map(|header| header.get_start())
 	}
 }
 
@@ -268,7 +253,7 @@ impl FunctionBased for ClassConstructorBase {
 		buf.push_str("constructor")
 	}
 
-	fn header_left(header: &Self::Header) -> Option<&Span> {
-		Some(header.get_position())
+	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
+		Some(header.get_position().get_start())
 	}
 }

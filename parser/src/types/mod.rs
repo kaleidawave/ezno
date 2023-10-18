@@ -1,3 +1,5 @@
+//! Includes type annotations + syntax added by TypeScript (and Ezno) such as `declare` declarations
+
 pub mod declares;
 pub mod enum_declaration;
 pub mod interface;

@@ -2,19 +2,19 @@ use proc_macro::{token_stream, Delimiter, Spacing, TokenStream, TokenTree};
 use proc_macro2::Span;
 use quote::{format_ident, quote};
 
-/// Used for generating parser::ASTNodes using proc macros
+/// Used for generating ezno_parser::ASTNodes using proc macros
 ///
 /// Turns token stream into string.
 /// - Finds expressions and registers cursor locations
 /// - Parses structure from string and turns it into Rust tokens
 #[proc_macro]
 pub fn expr(item: TokenStream) -> TokenStream {
-	token_stream_to_ast_node::<parser::Expression>(item)
+	token_stream_to_ast_node::<ezno_parser::Expression>(item)
 }
 
 #[proc_macro]
 pub fn stmt(item: TokenStream) -> TokenStream {
-	token_stream_to_ast_node::<parser::StatementOrDeclaration>(item)
+	token_stream_to_ast_node::<ezno_parser::StatementOrDeclaration>(item)
 }
 
 struct InterpolationPoint {
@@ -22,7 +22,7 @@ struct InterpolationPoint {
 	expr_name: String,
 }
 
-fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTokenize>(
+fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRustTokenize>(
 	item: TokenStream,
 ) -> TokenStream {
 	let mut cursor_locations = Vec::new();
@@ -35,7 +35,7 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 		.map(|(idx, InterpolationPoint { position, expr_name: _ })| {
 			(
 				*position,
-				parser::CursorId(idx.try_into().unwrap(), std::marker::PhantomData::default()),
+				ezno_parser::CursorId(idx.try_into().unwrap(), std::marker::PhantomData::default()),
 			)
 		})
 		.collect();
@@ -43,11 +43,11 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 	// eprintln!("string input: {string:?}");
 
 	// TODO can you get new lines in macro?
-	let line_starts = parser::source_map::LineStarts::new("");
-	let options = parser::ParseOptions::default();
-	let source = parser::SourceId::NULL;
+	let line_starts = ezno_parser::source_map::LineStarts::new("");
+	let options = ezno_parser::ParseOptions::default();
+	let source = ezno_parser::SourceId::NULL;
 	let parse_result =
-		parser::lex_and_parse_script::<T>(line_starts, options, string, source, None, cursors);
+		ezno_parser::lex_and_parse_script::<T>(line_starts, options, string, source, None, cursors);
 
 	let node = match parse_result {
 		Ok(node) => node,
@@ -69,7 +69,9 @@ fn token_stream_to_ast_node<T: parser::ASTNode + self_rust_tokenize::SelfRustTok
 
 	let tokens = quote! {
 		{
-			use parser::{ast::*, Span, SourceId};
+			use ezno_parser::ast::*;
+			use ezno_parser::generator_helpers::IntoAST;
+
 			#(#interpolation_tokens;)*
 			const CURRENT_SOURCE_ID: SourceId = SourceId::NULL;
 			#node_as_tokens
