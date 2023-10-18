@@ -221,13 +221,17 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					position,
 				}) => {
 					for declaration in declarations.iter() {
-						let constraint =
-							get_annotation_from_declaration(declaration, environment, checking_data);
-		
-						let behavior = crate::context::VariableRegisterBehavior::Register {
-							mutability: VariableMutability::Constant,
+						let constraint = get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
+
+						// TODO warning here
+						let behavior = crate::context::VariableRegisterBehavior::Declare {
+							base: constraint.unwrap_or(TypeId::ANY_TYPE),
 						};
-		
+
 						register_variable(
 							declaration.name.get_ast_ref(),
 							environment,

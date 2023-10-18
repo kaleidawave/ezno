@@ -107,9 +107,8 @@ impl DeclareVariableDeclaration {
 				break;
 			}
 		}
-		let position = start
-			.unwrap_or(kw_position.into())
-			.union(declarations.last().unwrap().get_position());
+		let position =
+			start.unwrap_or(kw_position.into()).union(declarations.last().unwrap().get_position());
 		Ok(DeclareVariableDeclaration { keyword, declarations, position })
 	}
 }

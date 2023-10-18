@@ -1,6 +1,6 @@
 use parser::ASTNode;
 
-use crate::{context::RootContext, synthesis::functions::type_function_reference};
+use crate::{context::RootContext, synthesis::functions::type_function_reference, TypeId};
 
 const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
@@ -107,15 +107,13 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				position,
 			}) => {
 				for declaration in declarations.iter() {
-					let constraint = if let Some(ref constraint) = declaration.type_annotation {
-						Some(synthesise_type_annotation(constraint, root, checking_data))
-					} else {
-						None
-					};
+					let constraint = declaration.type_annotation.as_ref().map(|annotation| {
+						synthesise_type_annotation(annotation, root, checking_data)
+					});
 
-					// TODO
-					let behavior = crate::context::VariableRegisterBehavior::Register {
-						mutability: crate::structures::variables::VariableMutability::Constant,
+					// TODO warning here
+					let behavior = crate::context::VariableRegisterBehavior::Declare {
+						base: constraint.unwrap_or(TypeId::ANY_TYPE),
 					};
 
 					crate::synthesis::variables::register_variable(
