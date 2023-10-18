@@ -8,6 +8,7 @@ use parser::{
 
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
+	context::{Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::property_key_as_type,
 	types::Constant,
@@ -17,16 +18,20 @@ use crate::{
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
 ///
 /// TODO shouldn't return type, for performs...
-pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKind>(
+pub(crate) fn register_variable<
+	T: crate::ReadFromFS,
+	U: parser::VariableFieldKind,
+	V: ContextType,
+>(
 	name: &parser::VariableField<U>,
-	environment: &mut Environment,
+	environment: &mut Context<V>,
 	checking_data: &mut CheckingData<'_, T, parser::Module>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,
 ) -> TypeId {
-	fn register_variable_identifier<T: crate::ReadFromFS>(
+	fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
 		name: &VariableIdentifier,
-		environment: &mut Environment,
+		environment: &mut Context<V>,
 		checking_data: &mut CheckingData<T, parser::Module>,
 		behavior: crate::context::VariableRegisterBehavior,
 		constraint: Option<TypeId>,

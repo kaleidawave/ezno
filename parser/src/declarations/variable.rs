@@ -169,7 +169,6 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 	}
 }
 
-/// TODO smallvec the declarations
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]

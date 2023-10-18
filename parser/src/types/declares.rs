@@ -1,21 +1,31 @@
 use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
+	declarations::VariableDeclarationItem, errors::parse_lexing_error, parse_bracketed,
+	to_string_bracketed, tokens::token_as_identifier, tsx_keywords,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Decorator,
-	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader,
-	TypeAnnotation,
+	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
+	TokenReader, TypeAnnotation,
 };
 
-/// A `declare var` thingy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum DeclareVariableKeyword {
+	Const(Keyword<tsx_keywords::Const>),
+	Let(Keyword<tsx_keywords::Let>),
+	Var(Keyword<tsx_keywords::Var>),
+}
+
+/// A `declare var/let/const` thingy.
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DeclareVariableDeclaration {
-	pub name: String,
-	pub type_restriction: TypeAnnotation,
-	pub decorators: Vec<Decorator>,
+	pub keyword: DeclareVariableKeyword,
+	/// TODO expressions advised against, but still parse
+	pub declarations: Vec<VariableDeclarationItem<Option<crate::Expression>>>,
 	pub position: Span,
 }
 
@@ -40,10 +50,18 @@ impl ASTNode for DeclareVariableDeclaration {
 		depth: u8,
 	) {
 		if settings.include_types {
-			buf.push_str("declare var ");
-			buf.push_str(&self.name);
-			buf.push_str(": ");
-			self.type_restriction.to_string_from_buffer(buf, settings, depth);
+			buf.push_str("declare ");
+			buf.push_str(match self.keyword {
+				DeclareVariableKeyword::Const(_) => "const ",
+				DeclareVariableKeyword::Let(_) => "let ",
+				DeclareVariableKeyword::Var(_) => "var ",
+			});
+			crate::declarations::variable::declarations_to_string(
+				&self.declarations,
+				buf,
+				settings,
+				depth,
+			);
 		}
 	}
 }
@@ -54,14 +72,45 @@ impl DeclareVariableDeclaration {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 		start: Option<TokenStart>,
-		decorators: Vec<Decorator>,
+		_decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
-		let var_start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Var))?;
-		let (name, _) = token_as_identifier(reader.next().unwrap(), "declare variable name")?;
-		reader.expect_next(TSXToken::Colon)?;
-		let type_restriction = TypeAnnotation::from_reader(reader, state, settings)?;
-		let position = start.unwrap_or(var_start).union(type_restriction.get_position());
-		Ok(Self { name, type_restriction, position, decorators })
+		let token = reader.next().ok_or_else(parse_lexing_error)?;
+		let kw_position = token.get_span();
+		let keyword = match token {
+			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
+				DeclareVariableKeyword::Const(Keyword::new(kw_position.clone()))
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Let), _) => {
+				DeclareVariableKeyword::Let(Keyword::new(kw_position.clone()))
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
+				DeclareVariableKeyword::Var(Keyword::new(kw_position.clone()))
+			}
+			token => {
+				return crate::throw_unexpected_token_with_token(
+					token,
+					&[
+						TSXToken::Keyword(TSXKeyword::Const),
+						TSXToken::Keyword(TSXKeyword::Let),
+						TSXToken::Keyword(TSXKeyword::Var),
+					],
+				)
+			}
+		};
+		let mut declarations = Vec::new();
+		loop {
+			let value = VariableDeclarationItem::from_reader(reader, state, settings)?;
+			declarations.push(value);
+			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+				reader.next();
+			} else {
+				break;
+			}
+		}
+		let position = start
+			.unwrap_or(kw_position.into())
+			.union(declarations.last().unwrap().get_position());
+		Ok(DeclareVariableDeclaration { keyword, declarations, position })
 	}
 }
 

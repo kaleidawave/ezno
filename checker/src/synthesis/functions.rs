@@ -78,14 +78,16 @@ impl FunctionBasedItem for parser::functions::bases::ArrowFunctionBase {
 	}
 }
 
-impl<'a> From<&'a parser::GetSetGeneratorOrNone> for crate::GetterSetterGeneratorOrNone {
-	fn from(value: &'a parser::GetSetGeneratorOrNone) -> Self {
+impl<'a> From<&'a Option<parser::MethodHeader>> for GetterSetterGeneratorOrNone {
+	fn from(value: &'a Option<parser::MethodHeader>) -> Self {
 		match value {
-			parser::GetSetGeneratorOrNone::Get(_) => GetterSetterGeneratorOrNone::Getter,
-			parser::GetSetGeneratorOrNone::Set(_) => GetterSetterGeneratorOrNone::Setter,
-			parser::GetSetGeneratorOrNone::Generator(_)
-			| parser::GetSetGeneratorOrNone::GeneratorStar(_) => GetterSetterGeneratorOrNone::Generator,
-			parser::GetSetGeneratorOrNone::None => GetterSetterGeneratorOrNone::None,
+			Some(parser::MethodHeader::Get(_)) => GetterSetterGeneratorOrNone::Getter,
+			Some(parser::MethodHeader::Set(_)) => GetterSetterGeneratorOrNone::Setter,
+			Some(
+				parser::MethodHeader::Generator(a, _) | parser::MethodHeader::GeneratorStar(a, _),
+			) => GetterSetterGeneratorOrNone::Generator,
+			// TODO temp
+			Some(parser::MethodHeader::Async(_)) | None => GetterSetterGeneratorOrNone::None,
 		}
 	}
 }
@@ -94,11 +96,12 @@ impl FunctionBasedItem for parser::functions::bases::ObjectLiteralMethodBase {
 	type ObjectTypeId = Option<TypeId>;
 
 	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		From::from(&func.header.1)
+		From::from(&func.header)
 	}
 
 	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.0.is_some()
+		// TODO temp
+		false
 	}
 }
 
@@ -106,11 +109,12 @@ impl FunctionBasedItem for parser::functions::bases::ClassFunctionBase {
 	type ObjectTypeId = Option<TypeId>;
 
 	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		From::from(&func.header.1)
+		From::from(&func.header)
 	}
 
 	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.0.is_some()
+		// TODO temp
+		false
 	}
 }
 

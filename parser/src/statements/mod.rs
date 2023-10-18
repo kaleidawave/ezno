@@ -92,34 +92,6 @@ impl ASTNode for Statement {
 	fn get_position(&self) -> &Span {
 		get_field_by_type::GetFieldByType::get(self)
 	}
-	// 	match self {
-	// 		Statement::Expression(val) => val.get_position(),
-	// 		Statement::VarVariable(val) => val.get_position(),
-	// 		Statement::Debugger(pos)
-	// 		| Statement::Continue(_, pos)
-	// 		| Statement::Break(_, pos)
-	// 		| Statement::Cursor(_, pos)
-	// 		| Statement::Comment(_, pos)
-	// 		| Statement::Empty(pos)
-	// 		| Statement::Labelled { position: pos, .. }
-	// 		| Statement::MultiLineComment(_, pos) => pos,
-	// 		Statement::Return(kw, expr) => {
-	// 			if let Some(expr) = expr {
-	// 				Cow::Owned(kw.1.union(&expr.get_position()))
-	// 			} else {
-	// 				&kw.1
-	// 			}
-	// 		}
-	// 		Statement::Throw(kw, expr) => Cow::Owned(kw.1.union(&expr.get_position())),
-	// 		Statement::IfStatement(is) => is.get_position(),
-	// 		Statement::ForLoopStatement(fl) => fl.get_position(),
-	// 		Statement::SwitchStatement(ss) => ss.get_position(),
-	// 		Statement::WhileStatement(ws) => ws.get_position(),
-	// 		Statement::DoWhileStatement(dws) => dws.get_position(),
-	// 		Statement::TryCatchStatement(tcs) => tcs.get_position(),
-	// 		Statement::Block(blk) => blk.get_position(),
-	// 	}
-	// }
 
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,

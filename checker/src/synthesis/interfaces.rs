@@ -178,6 +178,7 @@ pub(super) fn synthesise_signatures<
 		match &signature.on {
 			InterfaceMember::Method {
 				name,
+				kind,
 				type_parameters,
 				parameters,
 				return_type,

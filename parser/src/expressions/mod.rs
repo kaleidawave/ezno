@@ -1170,7 +1170,6 @@ impl Expression {
 						buf.push_str(match special {
 							SpecialOperators::AsExpression { .. } => " as ",
 							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
-							#[cfg(feature = "extras")]
 							_ => unreachable!(),
 						});
 						type_annotation.to_string_from_buffer(buf, settings, depth);

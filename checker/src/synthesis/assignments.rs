@@ -122,8 +122,8 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
 			let parent_ty = synthesise_expression(&parent, environment, checking_data);
 			let key_ty = match property {
-				parser::PropertyReference::Standard(prop) => {
-					checking_data.types.new_constant_type(Constant::String(prop.clone()))
+				parser::PropertyReference::Standard { property, is_private: _ } => {
+					checking_data.types.new_constant_type(Constant::String(property.clone()))
 				}
 				parser::PropertyReference::Cursor(_) => todo!(),
 			};

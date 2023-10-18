@@ -102,41 +102,29 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 			}
 			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
-				name,
-				type_restriction,
-				decorators,
+				keyword,
+				declarations,
 				position,
 			}) => {
-				// TODO tidy up
-				let variable_ty =
-					synthesise_type_annotation(&type_restriction, root, checking_data);
+				for declaration in declarations.iter() {
+					let constraint = if let Some(ref constraint) = declaration.type_annotation {
+						Some(synthesise_type_annotation(constraint, root, checking_data))
+					} else {
+						None
+					};
 
-				// // TODO not sure...
-				// if let Some(frozen) = root.is_frozen(variable_ty) {
-				// 	root.frozen.insert(var_type, frozen);
-				// }
+					// TODO
+					let behavior = crate::context::VariableRegisterBehavior::Register {
+						mutability: crate::structures::variables::VariableMutability::Constant,
+					};
 
-				let position = position.clone().with_source(source);
-				let declare_variable = root.declare_variable(
-					&name,
-					position.clone(),
-					variable_ty,
-					&mut checking_data.types,
-				);
-
-				checking_data
-					.type_mappings
-					.variables_to_constraints
-					.0
-					.insert(crate::VariableId(source, position.start), variable_ty);
-
-				if let Err(error) = declare_variable {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::CannotRedeclareVariable {
-							name: error.name.to_owned(),
-							position,
-						},
-					)
+					crate::synthesis::variables::register_variable(
+						declaration.name.get_ast_ref(),
+						root,
+						checking_data,
+						behavior,
+						constraint,
+					);
 				}
 			}
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
