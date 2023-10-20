@@ -5,10 +5,13 @@ use source_map::{BaseSpan, SourceId, Span, SpanWithSource};
 use crate::{
 	context::{Environment, GeneralContext, Logical},
 	types::{printing::print_type, FunctionType, TypeStore},
-	FunctionId, TypeId,
+	FunctionId, Property, TypeId,
 };
 
-use super::{poly_types::SeedingContext, Constructor, PolyNature, StructureGenerics, Type};
+use super::{
+	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
+	Constructor, PolyNature, StructureGenerics, Type,
+};
 
 pub use super::{BasicEquality, NonEqualityReason, PropertyError, SubTypeResult, SubtypeBehavior};
 
@@ -24,7 +27,79 @@ pub fn type_is_subtype<T: SubtypeBehavior>(
 	environment: &mut Environment,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	type_is_subtype2(base_type, ty, None, None, behavior, environment, types, false)
+	let result = type_is_subtype2(base_type, ty, None, None, behavior, environment, types, false);
+	if let SubTypeResult::IsSubType = result {
+		if behavior.add_property_restrictions() {
+			set_object_restriction(environment, ty, base_type);
+		}
+	}
+	result
+}
+
+fn set_object_restriction(environment: &mut Environment, object: TypeId, restriction: TypeId) {
+	match environment.object_constraints.entry(object) {
+		std::collections::hash_map::Entry::Occupied(entry) => {
+			todo!()
+			// let new = types.new_and_type(lhs, rhs);
+			// entry.insert(new);
+		}
+		std::collections::hash_map::Entry::Vacant(vacant) => {
+			vacant.insert(restriction);
+		}
+	}
+}
+
+/// TODO integrate set_restriction, but it can't create a type ? maybe object restriction should be logically.
+/// maybe sub function
+pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
+	property: Logical<Property>,
+	// TODO chain with annex
+	property_generics: Option<&StructureGenericArguments>,
+	ty: TypeId,
+	behavior: &mut T,
+	environment: &mut Environment,
+	types: &TypeStore,
+) -> SubTypeResult {
+	match property {
+		Logical::Pure(prop) => type_is_subtype2(
+			prop.as_set_type(),
+			ty,
+			None,
+			None,
+			behavior,
+			environment,
+			types,
+			false,
+		),
+		Logical::Or { left, right } => {
+			let left_result = type_is_subtype_of_property(
+				*left,
+				property_generics,
+				ty,
+				behavior,
+				environment,
+				types,
+			);
+			if let SubTypeResult::IsSubType = left_result {
+				left_result
+			} else {
+				type_is_subtype_of_property(
+					*right,
+					property_generics,
+					ty,
+					behavior,
+					environment,
+					types,
+				)
+			}
+		}
+		Logical::Implies { on, antecedent } => {
+			if property_generics.is_some() {
+				todo!("nesting of generics");
+			}
+			type_is_subtype_of_property(*on, Some(&antecedent), ty, behavior, environment, types)
+		}
+	}
 }
 
 fn type_is_subtype2<T: SubtypeBehavior>(
@@ -53,64 +128,34 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 	let left_ty = types.get_type_by_id(base_type);
 	let right_ty = types.get_type_by_id(ty);
 
-	match right_ty {
-		// This is the reverse of Type::And
-		Type::Or(left, right) => {
-			let right = *right;
-			let left_result = type_is_subtype2(
+	// TODO
+	if let Type::Or(left, right) = right_ty {
+		let right = *right;
+		let left_result = type_is_subtype2(
+			base_type,
+			*left,
+			base_type_arguments,
+			right_type_arguments,
+			behavior,
+			environment,
+			types,
+			restriction_mode,
+		);
+
+		return if let SubTypeResult::IsSubType = left_result {
+			type_is_subtype2(
 				base_type,
-				*left,
+				right,
 				base_type_arguments,
 				right_type_arguments,
 				behavior,
 				environment,
 				types,
 				restriction_mode,
-			);
-
-			return if let SubTypeResult::IsSubType = left_result {
-				type_is_subtype2(
-					base_type,
-					right,
-					base_type_arguments,
-					right_type_arguments,
-					behavior,
-					environment,
-					types,
-					restriction_mode,
-				)
-			} else {
-				left_result
-			};
-		}
-		// TODO this causes problems when the LHS has a parameters that are substituted
-		// Type::Constructor(..) | Type::RootPolyType(..) => {
-		// 	if let Some(argument) = ty_arguments.and_then(|ty_args| ty_args.get(&base_type)) {
-		// 		return type_is_subtype2(
-		// 			base_type,
-		// 			*argument,
-		// 			ty_arguments.as_deref(),
-		// 			behavior,
-		// 			environment,
-		// 			types,
-		// 		);
-		// 	} else {
-		// 		let constraint = environment.get_poly_base(ty, types).unwrap();
-
-		// 		crate::utils::notify!(
-		// 			"Checking via constraint {:?}... think this is okay in function bodies",
-		// 			constraint
-		// 		);
-
-		// 		return match constraint {
-		// 			crate::context::PolyBase::Fixed { to, .. } => {
-		// 				type_is_subtype2(base_type, to, ty_arguments, behavior, environment, types)
-		// 			}
-		// 			_ => todo!(),
-		// 		};
-		// 	}
-		// }
-		_ => {}
+			)
+		} else {
+			left_result
+		};
 	}
 
 	match left_ty {
@@ -182,31 +227,21 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 		}
 		Type::Object(..) => {
 			let result = check_properties(
-				environment,
 				base_type,
 				ty,
 				types,
 				base_type_arguments,
 				right_type_arguments,
 				behavior,
+				environment,
 				restriction_mode,
 			);
-			if matches!(result, SubTypeResult::IsNotSubType(..)) {
+			let left = print_type(base_type, types, &environment.as_general_context(), true);
+			crate::utils::notify!("Left {}", left);
+
+			if let SubTypeResult::IsNotSubType(..) = result {
 				result
 			} else {
-				if behavior.add_property_restrictions() {
-					match environment.object_constraints.entry(ty) {
-						std::collections::hash_map::Entry::Occupied(entry) => {
-							todo!()
-							// let new = types.new_and_type(lhs, rhs);
-							// entry.insert(new);
-						}
-						std::collections::hash_map::Entry::Vacant(vacant) => {
-							vacant.insert(base_type);
-						}
-					};
-				}
-
 				SubTypeResult::IsSubType
 			}
 		}
@@ -282,7 +317,16 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					restriction_mode,
 				)
 			} else {
-				if !restriction_mode && !T::INFER_GENERICS {
+				if !T::INFER_GENERICS && base_type_arguments.is_none() {
+					// TODO temp fix
+					if let Type::Constructor(c) = right_ty {
+						crate::utils::notify!("TODO right hand side maybe okay");
+						if let Some(to) = c.get_base() {
+							if to == base_type {
+								return SubTypeResult::IsSubType;
+							}
+						}
+					}
 					if let PolyNature::Generic { .. } = nature {
 						// Already eliminated == case above, so always invalid here
 						return SubTypeResult::IsNotSubType(
@@ -315,110 +359,110 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				}
 			}
 		}
-		Type::Constructor(constructor) => {
-			if let super::Constructor::StructureGenerics(StructureGenerics { on, arguments }) =
-				constructor
-			{
-				// Overwrites for special types with proofs
-				match *on {
-					// TODO is nominal
-					TypeId::ARRAY_TYPE => {
-						// TODO maybe need a marker (named characteristic) rather than just picking first
-						let get_properties_on_type = environment.get_properties_on_type(*on);
-						let (base_property, publicity, base_value) =
-							get_properties_on_type.first().unwrap();
+		Type::Constructor(super::Constructor::StructureGenerics(StructureGenerics {
+			on,
+			arguments,
+		})) => {
+			// Overwrites for special types with proofs
+			match *on {
+				// TODO is nominal
+				TypeId::ARRAY_TYPE => {
+					// TODO maybe need a marker (named characteristic) rather than just picking first
+					let get_properties_on_type = environment.get_properties_on_type(*on);
+					let (base_property, publicity, base_value) =
+						get_properties_on_type.first().unwrap();
 
-						crate::utils::notify!(
-							"{} : {} = {}",
-							print_type(
+					crate::utils::notify!(
+						"{} : {} = {}",
+						print_type(*base_property, types, &environment.as_general_context(), true),
+						print_type(*base_value, types, &environment.as_general_context(), true),
+						print_type(ty, types, &environment.as_general_context(), true)
+					);
+
+					// TODO temp fix for general parameters
+					if !matches!(types.get_type_by_id(*base_property), Type::Constant(_)) {
+						for (property, publicity, value) in environment.get_properties_on_type(ty) {
+							// TODO cheaper subtype checker
+							if let SubTypeResult::IsSubType = type_is_subtype2(
 								*base_property,
+								property,
+								Some(&arguments.type_arguments),
+								right_type_arguments,
+								behavior,
+								environment,
 								types,
-								&environment.as_general_context(),
-								true
-							),
-							print_type(*base_value, types, &environment.as_general_context(), true),
-							print_type(ty, types, &environment.as_general_context(), true)
-						);
-
-						// TODO temp fix for general parameters
-						if !matches!(types.get_type_by_id(*base_property), Type::Constant(_)) {
-							for (property, publicity, value) in
-								environment.get_properties_on_type(ty)
-							{
-								// TODO cheaper subtype checker
-								if let SubTypeResult::IsSubType = type_is_subtype2(
-									*base_property,
-									property,
+								false,
+							) {
+								let result = type_is_subtype2(
+									*base_value,
+									value,
 									Some(&arguments.type_arguments),
 									right_type_arguments,
 									behavior,
 									environment,
 									types,
-									false,
-								) {
-									let result = type_is_subtype2(
-										*base_value,
-										value,
-										Some(&arguments.type_arguments),
-										right_type_arguments,
-										behavior,
-										environment,
-										types,
-										// !!!
-										true,
-									);
-									// TODO collect
-									if !matches!(result, SubTypeResult::IsSubType) {
-										return result;
-									}
+									restriction_mode,
+								);
+								// TODO collect
+								if !matches!(result, SubTypeResult::IsSubType) {
+									return result;
 								}
 							}
+						}
 
-							SubTypeResult::IsSubType
-						} else {
-							let ty = environment.get_property_unbound(
-								ty,
-								*base_property,
-								*publicity,
+						SubTypeResult::IsSubType
+					} else {
+						let ty =
+							environment.get_property_unbound(ty, *base_property, *publicity, types);
+						if let Some(ty) = ty {
+							type_is_subtype2(
+								base_type,
+								ty.prop_to_type(),
+								Some(&arguments.type_arguments),
+								right_type_arguments,
+								behavior,
+								environment,
 								types,
-							);
-							if let Some(ty) = ty {
-								type_is_subtype2(
-									base_type,
-									ty.prop_to_type(),
-									Some(&arguments.type_arguments),
-									right_type_arguments,
-									behavior,
-									environment,
-									types,
-									// !!!
-									true,
-								)
-							} else {
-								todo!()
-							}
+								restriction_mode,
+							)
+						} else {
+							todo!()
 						}
-					}
-					_ => {
-						if base_type_arguments.is_some() {
-							todo!("need chain to do nesting")
-						}
-						type_is_subtype2(
-							*on,
-							ty,
-							Some(&arguments.type_arguments),
-							right_type_arguments,
-							behavior,
-							environment,
-							types,
-							restriction_mode,
-						)
 					}
 				}
-			} else {
-				unreachable!("left constructor")
+				_ => {
+					if base_type_arguments.is_some() {
+						todo!("need chain to do nesting")
+					}
+					type_is_subtype2(
+						*on,
+						ty,
+						Some(&arguments.type_arguments),
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						restriction_mode,
+					)
+				}
 			}
 		}
+		Type::Constructor(cst) => match cst {
+			Constructor::BinaryOperator { .. }
+			| Constructor::CanonicalRelationOperator { .. }
+			| Constructor::UnaryOperator { .. } => unreachable!("invalid constructor on LHS"),
+			Constructor::TypeOperator(_) => todo!(),
+			Constructor::TypeRelationOperator(_) => todo!(),
+			Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				else_result,
+				result_union,
+			} => todo!(),
+			Constructor::FunctionResult { on, with, result } => todo!(),
+			Constructor::Property { on, under } => todo!(),
+			Constructor::StructureGenerics(_) => unreachable!(),
+		},
 		// TODO aliasing might work differently
 		Type::AliasTo { to, parameters, name: _ } => {
 			if parameters.is_some() {
@@ -465,13 +509,13 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					}
 				}
 				Type::Object(..) => check_properties(
-					environment,
 					base_type,
 					ty,
 					types,
 					base_type_arguments,
 					right_type_arguments,
 					behavior,
+					environment,
 					restriction_mode,
 				),
 				Type::Function(..) => {
@@ -558,13 +602,13 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 
 /// TODO temp
 fn check_properties<T: SubtypeBehavior>(
-	environment: &mut Environment,
 	base_type: TypeId,
 	ty: TypeId,
 	types: &TypeStore,
 	base_type_arguments: Option<&TypeArguments>,
 	right_type_arguments: Option<&TypeArguments>,
 	behavior: &mut T,
+	environment: &mut Environment,
 	restriction_mode: bool,
 ) -> SubTypeResult {
 	let mut property_errors = Vec::new();
@@ -575,7 +619,7 @@ fn check_properties<T: SubtypeBehavior>(
 			Some(rhs_property) => {
 				match rhs_property {
 					Logical::Pure(rhs_property) => {
-						let rhs_type = rhs_property.as_get_type();
+						let rhs_type = rhs_property.as_set_type();
 						// crate::utils::notify!(
 						// 	"Checking {} with {}, against {}, left={:?}",
 						// 	print_type(key, types, &environment.as_general_context(), true),
@@ -595,18 +639,25 @@ fn check_properties<T: SubtypeBehavior>(
 							restriction_mode,
 						);
 						// TODO add to property errors
-						if let SubTypeResult::IsNotSubType(mismatch) = result {
-							property_errors.push((
-								key,
-								PropertyError::Invalid {
-									expected: property,
-									found: rhs_type,
-									mismatch,
-								},
-							));
+						match result {
+							SubTypeResult::IsSubType => {
+								if behavior.add_property_restrictions() {
+									set_object_restriction(environment, rhs_type, property)
+								}
+							}
+							SubTypeResult::IsNotSubType(mismatch) => {
+								property_errors.push((
+									key,
+									PropertyError::Invalid {
+										expected: property,
+										found: rhs_type,
+										mismatch,
+									},
+								));
+							}
 						}
 					}
-					Logical::Or(_) => todo!(),
+					Logical::Or { .. } => todo!(),
 					Logical::Implies { .. } => todo!(),
 				}
 			}

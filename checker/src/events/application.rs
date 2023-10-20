@@ -27,11 +27,18 @@ pub(crate) fn apply_event(
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
-						crate::utils::notify!("Type arguments {:?}", &type_arguments);
-						get_value_of_variable(environment.facts_chain(), id, Some(&*type_arguments))
-							.unwrap_or_else(|| {
-								panic!("{:?} has not value, when reading event", reference)
-							})
+						let value = get_value_of_variable(
+							environment.facts_chain(),
+							id,
+							Some(&*type_arguments),
+						);
+						match value {
+							Some(ty) => ty,
+							None => {
+								todo!("tdz error");
+								TypeId::ERROR_TYPE
+							}
+						}
 					}
 					RootReference::This => this_value.get(environment, types),
 				};

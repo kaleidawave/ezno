@@ -240,6 +240,22 @@ pub enum Constructor {
 	StructureGenerics(StructureGenerics),
 }
 
+impl Constructor {
+	fn get_base(&self) -> Option<TypeId> {
+		match self {
+			Constructor::ConditionalResult { result_union: result, .. }
+			| Constructor::FunctionResult { result, .. } => Some(*result),
+			Constructor::BinaryOperator { .. }
+			| Constructor::CanonicalRelationOperator { .. }
+			| Constructor::UnaryOperator { .. }
+			| Constructor::TypeOperator(_)
+			| Constructor::TypeRelationOperator(_)
+			| Constructor::Property { .. }
+			| Constructor::StructureGenerics(_) => None,
+		}
+	}
+}
+
 /// Closed over arguments
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenerics {

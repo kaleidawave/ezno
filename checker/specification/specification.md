@@ -44,13 +44,38 @@ let b: number = a
 
 - Type "not a number" is not assignable to type number
 
-#### Variable exists
+#### Variable references does not exist
 
 ```ts
 const a = c
 ```
 
 - Could not find variable c in scope
+
+#### Variable declared twice
+
+```ts
+const a = 2
+{
+	const a = 3;
+	a satisfies 3;
+}
+a satisfies 2;
+const a = 3;
+```
+
+- Cannot redeclare variable a
+
+#### Un-intialised variables are undefined
+
+> Might be a usage warning at some point
+
+```ts
+let b;
+b satisfies string;
+```
+
+- Expected string, found undefined
 
 ### Generic types
 
@@ -72,9 +97,11 @@ const my_wrapped: Wrapper<number> = { internal: "hi" }
 const numbers: Array<number> = [1, 2, "3"]
 ```
 
+> Printing is a bit wack here
+
 - Type [Array] {0: 1, 1: 2, 2: "3", "length": 3, } is not assignable to type Array<number, >
 
-### Functions
+### Function checking
 
 #### Type of parameter
 
@@ -107,28 +134,10 @@ func satisfies () => string
 
 - Expected () => string, found () => 2
 
-#### Argument type against parameter
-
-```ts
-function func(a: number) {}
-func("not a number")
-```
-
-- Argument of type "not a number" is not assignable to number
-
-#### Generic type argument parameter
-
-```ts
-function func<T>(a: T) {}
-func<number>("not a number")
-```
-
-- Argument of type "not a number" is not assignable to number
-
 #### Generic type argument restriction
 
 ```ts
-function map<T, U>(a: T, b: T => U): U {
+function map<T, U>(a: T, b: T => U) {
 	return b(a)
 }
 
@@ -137,6 +146,8 @@ map("string", Math.sin)
 ```
 
 - Argument of type "string" is not assignable to number
+
+> Because `Math.sin` set T to number
 
 #### Parameters are always considered generic
 
@@ -156,13 +167,25 @@ const d: 3 = id(2)
 function func(a: string, b: number): boolean {
 	return true
 }
-const a: (a: string, b: number) => boolean = func
-const b: (a: string, b: number) => string = func
-const c: (a: number, b: number) => boolean = func
+func satisfies (a: string, b: number) => boolean;
+func satisfies (a: string, b: number) => string;
+func satisfies (a: number, b: number) => boolean;
 ```
 
-- Type (a: string, b: number, ) => true is not assignable to type (a: string, b: number, ) => string
-- Type (a: string, b: number, ) => true is not assignable to type (a: number, b: number, ) => boolean
+- Expected (a: string, b: number, ) => string, found (a: string, b: number, ) => true
+- Expected (a: number, b: number, ) => boolean, found (a: string, b: number, ) => true
+
+#### Function that throws returns never
+
+```ts
+function myThrow() {
+	throw "error!"
+}
+
+myThrow satisfies string;
+```
+
+- Expected string, found () => never
 
 #### Return generics mismatch
 
@@ -174,10 +197,57 @@ function getSecond1<T, U>(p1: T, p2: U): U {
 function getSecond2<T, U>(p1: T, p2: U): U {
     return p2
 }
-
 ```
 
-- Function is expected to return T but returned U
+- Function is expected to return U but returned T
+
+#### Use of generics in function body
+
+```ts
+function setFirst1<T, U>(a: T, b: U) {
+	const a2: T = a;
+}
+
+function setFirst2<T, U>(a: T, b: U) {
+	const a2: U = a;
+}
+```
+
+- Type T is not assignable to type U
+
+#### Generics compound
+
+```ts
+function createObject1<T, U>(a: T, b: U): { a: T, b: U } {
+	return { a, b }
+}
+
+function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
+	return { a, b }
+}
+```
+
+- Function is expected to return {"a": U, "b": U, } but returned {"a": T, "b": U, }
+
+### Function calling
+
+#### Argument type against parameter
+
+```ts
+function func(a: number) {}
+func("not a number")
+```
+
+- Argument of type "not a number" is not assignable to number
+
+#### Generic type argument parameter
+
+```ts
+function func<T>(a: T) {}
+func<number>("not a number")
+```
+
+- Argument of type "not a number" is not assignable to number
 
 #### Get value of property on parameter
 
@@ -220,21 +290,29 @@ x()
 
 - Cannot call type "hi"
 
-#### Throw effects carry through
+#### Calling higher order function
 
 ```ts
-function throwType(a) {
-	throw a
+function addTwoToResult(func: number => number) {
+	return func(4) + 2
 }
 
-try {
-	throwType(3)
-} catch (err) {
-	err satisfies string
-}
+addTwoToResult((a: number) => a * 4) satisfies 5
 ```
 
-- Expected string, found 3
+- Expected 5, found 18
+
+#### Calling higher order function that is constant
+
+```ts
+function call(func: number => number) {
+	return func(9)
+}
+
+call(Math.sqrt) satisfies 2
+```
+
+- Expected 2, found 3
 
 ### Closures
 
@@ -301,7 +379,9 @@ value.getValue() satisfies 6
 
 ### Effects
 
-#### Assignment to variable in function
+> Side effects of functions. Registered internally as `Event`s
+
+#### Assignment to free variable
 
 ```ts
 let a: number = 0
@@ -329,22 +409,9 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Property updates object outside of function
+#### Constant call and operation with a parameter
 
-```ts
-const obj: { a: number } = { a: 2 }
-function func(value: number) {
-	obj.a = value
-}
-
-const a: 2 = obj.a
-func(4)
-const b: 2 = obj.a
-```
-
-- Type 4 is not assignable to type 2
-
-#### Calling and operations with parameter
+> An example of the generic constructor type  (namely call and operation)
 
 ```ts
 function sinPlusB(a: number, b: number) {
@@ -355,30 +422,6 @@ sinPlusB(100.22, 5) satisfies 8
 ```
 
 - Expected 8, found 105
-
-#### Calling higher order function
-
-```ts
-function addTwoToResult(func: number => number) {
-	return func(4) + 2
-}
-
-addTwoToResult((a: number) => a * 4) satisfies 5
-```
-
-- Expected 5, found 18
-
-#### Calling constant higher order function
-
-```ts
-function call(func: number => number) {
-	return func(9)
-}
-
-call(Math.sqrt) satisfies 2
-```
-
-- Expected 2, found 3
 
 #### Effects carry through dependent calls
 
@@ -396,18 +439,24 @@ a satisfies string
 
 - Expected string, found 4
 
-#### Updating property
+#### Updates recognised inside of events
 
 ```ts
-const x = { a: 2 }
-function updateA(obj: { a: string | number }) {
-    obj.a = "hi"
+let a: number = 2
+function runFunctionTwice(func: () => void): number {
+	func()
+	const b = a
+	func()
+	return b;
 }
-updateA(x)
-const y: number = x.a
+
+a satisfies 2
+const out = runFunctionTwice(() => { a++ });
+a satisfies 4
+out satisfies string
 ```
 
-- Type "hi" is not assignable to type number
+- Expected string, found 3
 
 ### Constant evaluation
 
@@ -509,7 +558,7 @@ const a = my_obj.a
 const b = my_obj.b
 ```
 
-- No property with "b" on {"a": 3, }
+- No property "b" on {"a": 3, }
 
 #### Property updates registered
 
@@ -625,7 +674,8 @@ a satisfies 3
 
 ```ts
 declare var value: string;
-let a: string | number = 0
+let a: string | number = 0;
+
 function conditional(v: string) {
 	if (v === "value") {
 		a = "hi"
@@ -637,7 +687,7 @@ a satisfies string
 
 - Expected string, found "hi" | 0
 
-#### If else if nesting
+#### If else
 
 ```ts
 function print_number(value: number) {
@@ -719,24 +769,6 @@ const x: X = { a: 2, b: false }
 
 - Type {"a": 2, "b": false, } is not assignable to type X
 
-#### Interface merging
-
-```ts
-interface X {
-	a: string,
-	b: boolean
-}
-
-interface X {
-	c: number
-}
-
-const x: X = { a: "field", b: false, c: false }
-const y: X = { a: "field", b: false, c: 2 }
-```
-
-- Type {"a": "field", "b": false, "c": false, } is not assignable to type X
-
 #### Type aliases
 
 ```ts
@@ -788,8 +820,7 @@ declare var x: number;
 #### Type of logical operators
 
 ```ts
-declare var x: number;
-declare var y: boolean;
+declare var x: number, y: boolean;
 (x && y) satisfies string;
 ```
 
@@ -804,18 +835,6 @@ y.x satisfies 3
 ```
 
 - Expected 3, found 2
-
-#### Try-catch and throw
-
-```ts
-try {
-	throw 2
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 2
 
 #### Array destructuring
 
@@ -846,3 +865,31 @@ d satisfies 1;
 ```
 
 - Expected 1, found 2
+
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 2
+
+#### Throw effects carry through
+
+```ts
+function throwType(a) {
+	throw a
+}
+
+try {
+	throwType(3)
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 3

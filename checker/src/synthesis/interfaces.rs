@@ -190,6 +190,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
+					crate::utils::notify!("Indexer {:?}", key);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
 					behavior.register(
 						PropertyOrType::Type(key),

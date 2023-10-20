@@ -9,7 +9,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-pub type EznoCheckerData = PostCheckData<parser::Module>;
+pub type EznoCheckerData = PostCheckData<checker::synthesis::EznoParser>;
 
 pub fn check<T: crate::ReadFromFS>(
 	read_from_filesystem: &T,

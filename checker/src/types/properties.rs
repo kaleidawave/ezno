@@ -3,7 +3,7 @@ use crate::{
 	context::{facts::PublicityKind, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{substitute, FunctionType},
+	types::{printing::print_type, substitute, FunctionType},
 	Environment, TypeId,
 };
 
@@ -35,10 +35,18 @@ impl Property {
 	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			Property::Value(value) => *value,
-			Property::Getter(func) => func.return_type,
 			Property::Setter(_) => TypeId::UNDEFINED_TYPE,
-			Property::GetterAndSetter(getter, _) => getter.return_type,
-			Property::Deleted => todo!(),
+			Property::Getter(getter) | Property::GetterAndSetter(getter, _) => getter.return_type,
+			Property::Deleted => unreachable!(),
+		}
+	}
+
+	pub fn as_set_type(&self) -> TypeId {
+		match self {
+			Property::Value(value) => *value,
+			Property::Getter(_) => TypeId::UNDEFINED_TYPE,
+			Property::Setter(setter) | Property::GetterAndSetter(_, setter) => setter.return_type,
+			Property::Deleted => unreachable!(),
 		}
 	}
 }
@@ -236,7 +244,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 					Property::Deleted => None,
 				}
 			}
-			Logical::Or(_) => todo!(),
+			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: log_on, mut antecedent } => {
 				let (kind, ty) =
 					resolve_property_on_logical(*log_on, types, on, environment, behavior)?;
@@ -314,7 +322,7 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 				Property::Deleted => None,
 			}
 		}
-		Logical::Or(_) => todo!(),
+		Logical::Or { .. } => todo!(),
 		Logical::Implies { .. } => todo!(),
 	}
 	// }
@@ -385,37 +393,45 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// }
 
 	// if E::CHECK_PARAMETERS {
-	let property_constraint = {
-		let constraint = environment.get_object_constraint(on);
+	let object_constraint = environment.get_object_constraint(on);
 
-		match constraint {
-			Some(constraint) => {
-				let result = environment.get_property_unbound(constraint, under, publicity, types);
-				if result.is_none() {
-					// TODO does not exist
-					return Err(SetPropertyError::DoesNotMeetConstraint(
-						new.as_get_type(),
-						todo!("no property"),
-					));
-				}
-				result
+	if let Some(object) = object_constraint {
+		let property_constraint = environment.get_property_unbound(object, under, publicity, types);
+		crate::utils::notify!(
+			"Re-assignment constraint {}, prop={} {:?}",
+			print_type(object, types, &environment.as_general_context(), true),
+			print_type(under, types, &environment.as_general_context(), true),
+			property_constraint
+		);
+
+		if let Some(property) = property_constraint {
+			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
+				// This is important for free variables, sometimes ?
+				add_property_restrictions: true,
+				// TODO position here
+				position: source_map::SpanWithSource::NULL_SPAN,
+			};
+			let property = property.prop_to_type();
+			crate::utils::notify!(
+				"{}",
+				print_type(property, types, &environment.as_general_context(), true)
+			);
+			if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
+				property,
+				new.as_get_type(),
+				&mut basic_subtyping,
+				environment,
+				types,
+			) {
+				// TODO don't short circuit
+				return Err(SetPropertyError::DoesNotMeetConstraint(property, sub_type_error));
 			}
-			None => None,
-		}
-	};
-
-	if let Some(constraint) = property_constraint {
-		let mut basic_subtyping = crate::types::subtyping::BasicEquality {
-			add_property_restrictions: true,
-			// TODO position here
-			position: source_map::SpanWithSource::NULL_SPAN,
-		};
-		let base_type = constraint.prop_to_type();
-		if let SubTypeResult::IsNotSubType(sub_type_error) =
-			type_is_subtype(base_type, new.as_get_type(), &mut basic_subtyping, environment, types)
-		{
-			// TODO don't short circuit
-			return Err(SetPropertyError::DoesNotMeetConstraint(base_type, sub_type_error));
+		} else {
+			// TODO does not exist warning
+			// return Err(SetPropertyError::DoesNotMeetConstraint(
+			// 	new.as_get_type(),
+			// 	todo!("no property"),
+			// ));
 		}
 	}
 	// }
@@ -459,7 +475,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 				Property::Getter(_) => todo!(),
 				Property::GetterAndSetter(_, _setter) | Property::Setter(_setter) => todo!(),
 			},
-			Logical::Or(_) => todo!(),
+			Logical::Or { .. } => todo!(),
 			Logical::Implies { .. } => todo!(),
 		}
 	} else {

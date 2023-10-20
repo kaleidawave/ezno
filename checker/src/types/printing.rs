@@ -166,13 +166,18 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 				}
 			},
 			Type::NamedRooted { name, parameters, nominal } => {
-				if parameters.is_some() {
-					crate::utils::notify!("TODO print parameters");
-				}
 				if debug {
 					write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
 				} else {
 					buf.push_str(name)
+				}
+				if let (true, Some(parameters)) = (debug, parameters) {
+					buf.push('<');
+					for param in parameters {
+						print_type_into_buf(*param, buf, cycles, types, ctx, debug);
+						buf.push_str(", ");
+					}
+					buf.push('>')
 				}
 			}
 			Type::Constant(cst) => {

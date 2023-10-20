@@ -5,7 +5,6 @@ use crate::{
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	utils::EnforcedOrExt,
 	FunctionId, GeneralContext, TypeId,
 };
 
@@ -265,31 +264,39 @@ impl TypeStore {
 				.or_else(|| self.get_fact_about_type(ctx, *right, resolver, data)),
 			Type::Or(left, right) => {
 				// TODO temp
-				let left = self.get_fact_about_type(ctx, *left, resolver, data).map(Box::new);
-				let right = self.get_fact_about_type(ctx, *right, resolver, data).map(Box::new);
-				left.and_enforced(right).map(Logical::Or)
+				let left = self.get_fact_about_type(ctx, *left, resolver, data);
+				let right = self.get_fact_about_type(ctx, *right, resolver, data);
+
+				match (left, right) {
+					(None, None) => None,
+					(Some(value), None) | (None, Some(value)) => Some(value),
+					(Some(left), Some(right)) => {
+						Some(Logical::Or { left: Box::new(left), right: Box::new(right) })
+					}
+				}
 			}
 			Type::RootPolyType(_nature) => {
 				let aliases = ctx.get_poly_base(on, self).unwrap();
 				// Don't think any properties exist on this poly type
 				self.get_fact_about_type(ctx, aliases, resolver, data)
 			}
+			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on,
+				arguments,
+			})) => {
+				crate::utils::notify!("Here StructureGenerics");
+				// TODO could drop some of with here
+				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
+				fact_opt.map(|fact| Logical::Implies {
+					on: Box::new(fact),
+					antecedent: arguments.clone(),
+				})
+			}
 			Type::Constructor(constructor) => {
-				if let Constructor::StructureGenerics(StructureGenerics { on, arguments }) =
-					constructor
-				{
-					// TODO could drop some of with here
-					let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
-					fact_opt.map(|fact| Logical::Implies {
-						on: Box::new(fact),
-						antecedent: arguments.clone(),
-					})
-				} else {
-					// Don't think any properties exist on this poly type
-					let constraint = ctx.get_poly_base(on, self).unwrap();
-					// TODO might need to send more information here, rather than forgetting via .get_type
-					self.get_fact_about_type(ctx, constraint, resolver, data)
-				}
+				// Don't think any properties exist on this poly type
+				let constraint = ctx.get_poly_base(on, self).unwrap();
+				// TODO might need to send more information here, rather than forgetting via .get_type
+				self.get_fact_about_type(ctx, constraint, resolver, data)
 			}
 			Type::Object(..) | Type::NamedRooted { .. } => ctx
 				.parents_iter()

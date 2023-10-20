@@ -32,7 +32,7 @@ use crate::{
 	synthesis::functions::type_function_reference,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments, properties::Property,
-		Constant, StructureGenerics, Type,
+		Constant, PolyNature, StructureGenerics, Type,
 	},
 	types::{Constructor, TypeId},
 	CheckingData, Environment,
@@ -131,6 +131,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			{
 				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
 					map_vec::Map::new();
+
 				for (parameter, argument_type_annotation) in
 					parameters.clone().into_iter().zip(arguments.iter())
 				{
@@ -140,7 +141,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						checking_data,
 					);
 
-					// Only check in environments preserving TS compat here.
 					let mut basic_equality = BasicEquality {
 						add_property_restrictions: true,
 						position: argument_type_annotation
@@ -149,10 +149,18 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							.with_source(environment.get_source()),
 					};
 
+					let Type::RootPolyType(PolyNature::Generic {
+						name: _,
+						eager_fixed: parameter_restriction,
+					}) = checking_data.types.get_type_by_id(parameter)
+					else {
+						unreachable!()
+					};
+
 					// TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
 					// Definition files don't necessary need to check ...
 					let result = type_is_subtype(
-						parameter,
+						*parameter_restriction,
 						argument,
 						&mut basic_equality,
 						environment,
@@ -162,7 +170,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					if let SubTypeResult::IsNotSubType(matches) = result {
 						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
 							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
-								parameter,
+								*parameter_restriction,
 								&environment.as_general_context(),
 								&checking_data.types,
 								checking_data.options.debug_types,
@@ -183,6 +191,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						.get_position()
 						.clone()
 						.with_source(environment.get_source());
+
 					type_arguments.insert(parameter, (argument, with_source));
 				}
 
@@ -356,7 +365,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			) {
 				match prop {
 					crate::context::Logical::Pure(ty) => ty.as_get_type(),
-					crate::context::Logical::Or(_) => todo!(),
+					crate::context::Logical::Or { .. } => todo!(),
 					crate::context::Logical::Implies { .. } => todo!(),
 				}
 			} else {

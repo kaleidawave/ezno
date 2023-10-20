@@ -288,7 +288,7 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
 					Diagnostic::Position {
-						reason: format!("No property with {} on {}", property, on),
+						reason: format!("No property {} on {}", property, on),
 						position: site,
 						kind: super::DiagnosticKind::Error,
 					}
