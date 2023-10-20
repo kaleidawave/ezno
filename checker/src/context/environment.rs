@@ -19,13 +19,14 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	CheckingData, RootContext, SynthesisableModule, TruthyFalsy, TypeId, VariableId,
+	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
 };
 
 use super::{
-	calling::CheckThings, facts::Facts, get_value_of_variable, AssignmentError,
-	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
-	SetPropertyError,
+	calling::CheckThings,
+	facts::{Facts, PublicityKind},
+	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
+	Environment, GeneralContext, SetPropertyError,
 };
 
 #[derive(Debug)]
@@ -91,6 +92,9 @@ pub enum Scope {
 	Module {
 		source: SourceId,
 	},
+	DefinitionModule {
+		source: SourceId,
+	},
 	/// For repl only
 	PassThrough {
 		source: SourceId,
@@ -105,7 +109,7 @@ impl<'a> Environment<'a> {
 	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
 	pub fn assign_to_assignable_handle_errors<
 		U: crate::ReadFromFS,
-		M: crate::SynthesisableModule,
+		M: crate::ASTImplementation,
 		T: SynthesisableExpression<M>,
 	>(
 		&mut self,
@@ -119,7 +123,7 @@ impl<'a> Environment<'a> {
 		match lhs {
 			Assignable::Reference(reference) => {
 				/// Returns
-				fn get_reference<U: crate::ReadFromFS, M: crate::SynthesisableModule>(
+				fn get_reference<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 					env: &mut Environment,
 					reference: Reference,
 					checking_data: &mut CheckingData<U, M>,
@@ -130,13 +134,18 @@ impl<'a> Environment<'a> {
 								.unwrap()
 								.1
 						}
-						Reference::Property { on, with, span } => {
-							env.get_property_handle_errors(on, with, checking_data, span.clone())
-						}
+						Reference::Property { on, with, publicity, span } => env
+							.get_property_handle_errors(
+								on,
+								with,
+								publicity,
+								checking_data,
+								span.clone(),
+							),
 					}
 				}
 
-				fn set_reference<U: crate::ReadFromFS, M: SynthesisableModule>(
+				fn set_reference<U: crate::ReadFromFS, M: ASTImplementation>(
 					env: &mut Environment,
 					reference: Reference,
 					new: TypeId,
@@ -150,8 +159,8 @@ impl<'a> Environment<'a> {
 								new,
 								checking_data,
 							)),
-						Reference::Property { on, with, span } => Ok(env
-							.set_property(on, with, new, &mut checking_data.types)?
+						Reference::Property { on, with, publicity, span } => Ok(env
+							.set_property(on, with, publicity, new, &mut checking_data.types)?
 							.unwrap_or(new)),
 					}
 				}
@@ -316,7 +325,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, M: SynthesisableModule>(
+	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		variable_name: &str,
 		assignment_position: SpanWithSource,
@@ -368,7 +377,6 @@ impl<'a> Environment<'a> {
 						let result = type_is_subtype(
 							reassignment_constraint,
 							new_type,
-							None,
 							&mut basic_subtyping,
 							self,
 							store,
@@ -427,6 +435,16 @@ impl<'a> Environment<'a> {
 		&self.context_type.kind
 	}
 
+	pub fn remove_property(&mut self, on: TypeId, property: TypeId) -> bool {
+		self.facts.current_properties.entry(on).or_default().push((
+			property,
+			PublicityKind::Public,
+			Property::Deleted,
+		));
+		// TODO if deleted
+		true
+	}
+
 	pub(crate) fn get_environment_type_mut(&mut self) -> &mut Scope {
 		&mut self.context_type.kind
 	}
@@ -443,20 +461,30 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		property: TypeId,
+		kind: PublicityKind,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 	) -> Option<(PropertyKind, TypeId)> {
-		crate::types::properties::get_property(on, property, with, self, &mut CheckThings, types)
+		crate::types::properties::get_property(
+			on,
+			property,
+			kind,
+			with,
+			self,
+			&mut CheckThings,
+			types,
+		)
 	}
 
-	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: SynthesisableModule>(
+	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		on: TypeId,
 		property: TypeId,
+		kind: PublicityKind,
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
 	) -> TypeId {
-		match self.get_property(on, property, &mut checking_data.types, None) {
+		match self.get_property(on, property, kind, &mut checking_data.types, None) {
 			Some((_, ty)) => ty,
 			None => {
 				checking_data.diagnostics_container.add_error(
@@ -481,7 +509,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn get_variable_or_error<U: crate::ReadFromFS, M: SynthesisableModule>(
+	pub fn get_variable_or_error<U: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		name: &str,
 		position: SpanWithSource,
@@ -576,7 +604,7 @@ impl<'a> Environment<'a> {
 				*value
 			} else {
 				// TODO dynamic ?
-				let ty = Type::RootPolyType(crate::types::PolyNature::ParentScope {
+				let ty = Type::RootPolyType(crate::types::PolyNature::FreeVariable {
 					reference: reference.clone(),
 					based_on,
 				});
@@ -590,7 +618,7 @@ impl<'a> Environment<'a> {
 				// }
 
 				self.facts.events.push(Event::ReadsReference {
-					reference: crate::events::RootReference::Variable(og_var.get_id()),
+					reference: RootReference::Variable(og_var.get_id()),
 					reflects_dependency: Some(ty),
 				});
 
@@ -618,7 +646,7 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<T, M>,
 	) -> U::ExpressionResult
 	where
-		M: crate::SynthesisableModule,
+		M: crate::ASTImplementation,
 		U: crate::SynthesisableConditional<M>,
 	{
 		if let TruthyFalsy::Decidable(result) =
@@ -693,28 +721,19 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		under: TypeId,
+		kind: PublicityKind,
 		new: TypeId,
 		types: &mut TypeStore,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
 			under,
+			kind,
 			Property::Value(new),
 			self,
 			&mut CheckThings,
 			types,
 		)
-	}
-
-	/// Initializing
-	pub fn create_property<T: crate::ReadFromFS, M: SynthesisableModule>(
-		&mut self,
-		on: TypeId,
-		under: TypeId,
-		new: Property,
-		checking_data: &mut CheckingData<T, M>,
-	) {
-		self.facts.current_properties.entry(on).or_default().push((under, new));
 	}
 
 	pub(crate) fn create_this(&mut self, over: TypeId, store: &mut TypeStore) -> TypeId {
@@ -774,7 +793,7 @@ pub(crate) fn get_this_type_from_constraint(
 	// 		Some(ty) => PolyPointer::Fixed(ty),
 	// 		None => PolyPointer::Inferred(boundary),
 	// 	};
-	// 	let poly_nature = PolyNature::ParentScope { reference, based_on };
+	// 	let poly_nature = PolyNature::FreeVariable { reference, based_on };
 	// 	let ty = types.register_type(Type::RootPolyType(poly_nature));
 	// 	(ty, Some(ty))
 	// } else {
@@ -796,7 +815,7 @@ pub(crate) fn get_this_type_from_constraint(
 	}
 
 	// TODO temp
-	let poly_nature = PolyNature::ParentScope { reference, based_on: this_ty };
+	let poly_nature = PolyNature::FreeVariable { reference, based_on: this_ty };
 	let ty = types.register_type(Type::RootPolyType(poly_nature));
 
 	facts.events.push(Event::ReadsReference {

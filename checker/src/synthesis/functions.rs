@@ -9,7 +9,7 @@ use parser::{
 use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::{GetterSetterGeneratorOrNone, SynthesisableFunction},
+	behavior::functions::{MethodKind, SynthesisableFunction},
 	context::{CanUseThis, Context, ContextType, Scope},
 	types::poly_types::GenericTypeParameters,
 	types::{
@@ -29,65 +29,58 @@ use super::{
 trait FunctionBasedItem: FunctionBased {
 	type ObjectTypeId;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone;
-
-	fn is_async(func: &FunctionBase<Self>) -> bool;
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind;
 }
 
+// TODO generic for these two
 impl FunctionBasedItem for parser::functions::bases::StatementFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		if func.header.is_generator() {
-			GetterSetterGeneratorOrNone::Generator
-		} else {
-			GetterSetterGeneratorOrNone::None
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		match (func.header.is_async(), func.header.is_generator()) {
+			(is_async, true) => MethodKind::Generator { is_async },
+			(true, false) => MethodKind::Async,
+			(false, false) => MethodKind::Plain,
 		}
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_async()
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		if func.header.is_generator() {
-			GetterSetterGeneratorOrNone::Generator
-		} else {
-			GetterSetterGeneratorOrNone::None
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		match (func.header.is_async(), func.header.is_generator()) {
+			(is_async, true) => MethodKind::Generator { is_async },
+			(true, false) => MethodKind::Async,
+			(false, false) => MethodKind::Plain,
 		}
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_async()
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ArrowFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		GetterSetterGeneratorOrNone::None
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		func.header.is_some()
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		let is_async = func.header.is_some();
+		if is_async {
+			MethodKind::Async
+		} else {
+			MethodKind::Plain
+		}
 	}
 }
 
-impl<'a> From<&'a Option<parser::MethodHeader>> for GetterSetterGeneratorOrNone {
+// TODO don't use From
+impl<'a> From<&'a Option<parser::MethodHeader>> for MethodKind {
 	fn from(value: &'a Option<parser::MethodHeader>) -> Self {
 		match value {
-			Some(parser::MethodHeader::Get(_)) => GetterSetterGeneratorOrNone::Getter,
-			Some(parser::MethodHeader::Set(_)) => GetterSetterGeneratorOrNone::Setter,
+			Some(parser::MethodHeader::Get(_)) => MethodKind::Get,
+			Some(parser::MethodHeader::Set(_)) => MethodKind::Set,
 			Some(
 				parser::MethodHeader::Generator(a, _) | parser::MethodHeader::GeneratorStar(a, _),
-			) => GetterSetterGeneratorOrNone::Generator,
-			// TODO temp
-			Some(parser::MethodHeader::Async(_)) | None => GetterSetterGeneratorOrNone::None,
+			) => MethodKind::Generator { is_async: a.is_some() },
+			Some(parser::MethodHeader::Async(_)) => MethodKind::Async,
+			None => MethodKind::Plain,
 		}
 	}
 }
@@ -95,42 +88,29 @@ impl<'a> From<&'a Option<parser::MethodHeader>> for GetterSetterGeneratorOrNone 
 impl FunctionBasedItem for parser::functions::bases::ObjectLiteralMethodBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
 		From::from(&func.header)
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		// TODO temp
-		false
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassFunctionBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
 		From::from(&func.header)
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		// TODO temp
-		false
 	}
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassConstructorBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_set_generator_or_none(func: &FunctionBase<Self>) -> GetterSetterGeneratorOrNone {
-		GetterSetterGeneratorOrNone::None
-	}
-
-	fn is_async(func: &FunctionBase<Self>) -> bool {
-		false
+	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
+		MethodKind::Plain
 	}
 }
 
-impl<U: FunctionBased + 'static> SynthesisableFunction<parser::Module> for parser::FunctionBase<U>
+impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
+	for parser::FunctionBase<U>
 where
 	U: FunctionBasedItem,
 	U::Body: SynthesisableFunctionBody,
@@ -142,7 +122,7 @@ where
 	fn type_parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<GenericTypeParameters> {
 		self.type_parameters
 			.as_ref()
@@ -156,7 +136,7 @@ where
 	fn this_constraint<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
 		// TODO
 		None
@@ -165,7 +145,7 @@ where
 	fn parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> SynthesisedParameters {
 		synthesise_function_parameters(&self.parameters, environment, checking_data)
 	}
@@ -173,7 +153,7 @@ where
 	fn body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) {
 		self.body.synthesise_function_body(environment, checking_data)
 	}
@@ -181,7 +161,7 @@ where
 	fn return_type_annotation<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<(TypeId, SpanWithSource)> {
 		self.return_type.as_ref().map(|reference| {
 			(
@@ -191,12 +171,8 @@ where
 		})
 	}
 
-	fn is_async(&self) -> bool {
-		U::is_async(self)
-	}
-
-	fn get_set_generator_or_none(&self) -> GetterSetterGeneratorOrNone {
-		U::get_set_generator_or_none(self)
+	fn get_kind(&self) -> MethodKind {
+		U::get_kind(self)
 	}
 }
 
@@ -206,7 +182,7 @@ pub(super) trait SynthesisableFunctionBody {
 	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	);
 }
 
@@ -214,7 +190,7 @@ impl SynthesisableFunctionBody for Block {
 	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) {
 		synthesise_block(&self.0, environment, checking_data);
 	}
@@ -224,7 +200,7 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
@@ -241,7 +217,7 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 	type_parameters: &[GenericTypeConstraint],
 	environment: &mut crate::Environment,
-	checking_data: &mut crate::CheckingData<T, parser::Module>,
+	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 ) -> GenericTypeParameters {
 	type_parameters
 		.iter()
@@ -283,7 +259,7 @@ pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 	reference_parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> SynthesisedParameters {
 	let parameters = reference_parameters
 		.parameters
@@ -337,7 +313,11 @@ pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 			arguments,
 		})) = checking_data.types.get_type_by_id(ty)
 		{
-			arguments.get_argument(TypeId::T_TYPE).unwrap()
+			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
 		} else {
 			todo!();
 			// checking_data.diagnostics_container.add_error(
@@ -358,7 +338,7 @@ pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
 fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	ast_parameters: &parser::FunctionParameters,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> SynthesisedParameters {
 	let parameters: Vec<_> = ast_parameters
 		.parameters
@@ -449,7 +429,7 @@ pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 	// This Option rather than Option because function type references are always some
 	return_type: Option<&TypeAnnotation>,
 	environment: &mut Context<S>,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 	performs: super::Performs,
 	position: source_map::SpanWithSource,
 	kind: FunctionKind,
@@ -499,7 +479,7 @@ pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 					return_type,
 					type_parameters,
 					effects,
-					used_parent_references: Default::default(),
+					free_variables: Default::default(),
 					closed_over_variables: Default::default(),
 					kind,
 					constant_id,

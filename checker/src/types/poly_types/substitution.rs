@@ -175,7 +175,9 @@ pub(crate) fn substitute(
 				let type_arguments = structure_arguments
 					.type_arguments
 					.into_iter()
-					.map(|(lhs, with)| (lhs, substitute(with, arguments, environment, types)))
+					.map(|(lhs, (with, pos))| {
+						(lhs, (substitute(with, arguments, environment, types), pos))
+					})
 					.collect();
 
 				types.register_type(Type::Constructor(Constructor::StructureGenerics(

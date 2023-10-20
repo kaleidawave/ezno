@@ -10,7 +10,7 @@ use crate::{
 pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 	is_expression: &parser::is_expression::IsExpression,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
 	let matcher =
 		synthesise_multiple_expression(&is_expression.matcher, environment, checking_data);

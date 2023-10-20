@@ -8,7 +8,7 @@ use crate::{
 	CheckingData, Constant, Environment, Instance, SynthesisableExpression, Type, TypeId,
 };
 
-pub enum TemplateLiteralPart<'a, M: crate::SynthesisableModule, TExpr: SynthesisableExpression<M>> {
+pub enum TemplateLiteralPart<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>> {
 	Static(&'a str),
 	Dynamic(&'a TExpr, PhantomData<M>),
 }
@@ -21,12 +21,12 @@ pub fn synthesise_template_literal<'a, T, M, TExpr>(
 ) -> Instance
 where
 	T: crate::ReadFromFS,
-	M: crate::SynthesisableModule,
+	M: crate::ASTImplementation,
 	TExpr: SynthesisableExpression<M> + 'a,
 {
 	fn part_to_type<
 		T: crate::ReadFromFS,
-		M: crate::SynthesisableModule,
+		M: crate::ASTImplementation,
 		TExpr: SynthesisableExpression<M>,
 	>(
 		first: TemplateLiteralPart<M, TExpr>,

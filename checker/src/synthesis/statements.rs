@@ -19,7 +19,7 @@ pub type ReturnResult = Option<TypeId>;
 pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 	statement: &Statement,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	match statement {
 		Statement::Expression(expression) => {
@@ -102,13 +102,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			}
 
 			// TODO tidy
-			impl<'a> SynthesisableConditional<parser::Module> for IfStatementBranch<'a> {
+			impl<'a> SynthesisableConditional<super::EznoParser> for IfStatementBranch<'a> {
 				type ExpressionResult = ();
 
 				fn synthesise_condition<T: crate::ReadFromFS>(
 					self,
 					environment: &mut Environment,
-					checking_data: &mut CheckingData<T, parser::Module>,
+					checking_data: &mut CheckingData<T, super::EznoParser>,
 				) -> Self::ExpressionResult {
 					match self {
 						IfStatementBranch::Branch(branch) => match branch {
@@ -318,7 +318,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 	scope: Scope,
 ) -> ((), Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 	environment.new_lexical_environment_fold_into_parent(

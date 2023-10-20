@@ -25,7 +25,7 @@ pub fn get_type_handle_errors<U: crate::FSResolver>(
 pub(super) fn type_generic_type_constraints<T: crate::FSResolver, S: ContextType>(
 	generic_constraints: &Vec<GenericTypeConstraint>,
 	environment: &Context<S>,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 	existing_ids: Option<Vec<TypeId>>,
 ) -> GenericTypeParameters {
 	GenericTypeParameters(

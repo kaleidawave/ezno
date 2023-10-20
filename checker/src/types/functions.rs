@@ -18,7 +18,7 @@ pub struct FunctionType {
 
 	/// Things that this function pulls in. Converse of closed over which is where results below use
 	/// variables in this scope.
-	pub used_parent_references: HashMap<RootReference, TypeId>,
+	pub free_variables: HashMap<RootReference, TypeId>,
 
 	/// References it needs to retain for returning / other effects where things go out.
 	///
@@ -32,6 +32,13 @@ pub struct FunctionType {
 	pub kind: FunctionKind,
 }
 
+/// TODO temp
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum GetSet {
+	Get,
+	Set,
+}
+
 /// TODO as generics
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionKind {
@@ -42,7 +49,10 @@ pub enum FunctionKind {
 	ClassConstructor {
 		// TODO constructor event
 	},
-	Method,
+	Method {
+		/// TODO this should be generically rather than at runtime
+		get_set: Option<GetSet>,
+	},
 }
 
 // /// TODO needs improvement

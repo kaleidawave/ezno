@@ -22,9 +22,9 @@ use parser::PropertyKey;
 use source_map::SourceId;
 
 use crate::{
-	context::{environment, Context, ContextType},
+	context::{environment, Context, ContextType, Names},
 	types::TypeStore,
-	Constant, Diagnostic, Environment, RootContext, TypeId,
+	Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
 
 pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
@@ -59,6 +59,12 @@ pub enum Performs<'a> {
 	None,
 }
 
+impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
+	fn get_name(&self) -> &str {
+		self.name()
+	}
+}
+
 impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
 		match value {
@@ -75,16 +81,9 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	}
 }
 
-impl crate::SynthesisableModule for parser::Module {
-	fn from_string(
-		source_id: SourceId,
-		string: String,
-		options: &parser::ParseOptions,
-	) -> Result<Self, Diagnostic> {
-		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
-			.map_err(|err| Diagnostic::from((err, source_id)))
-	}
+pub struct EznoParser;
 
+impl crate::ASTImplementation for EznoParser {
 	type DefinitionFile = parser::TypeDefinitionModule;
 	type ParseOptions = parser::ParseOptions;
 
@@ -98,20 +97,39 @@ impl crate::SynthesisableModule for parser::Module {
 	}
 
 	fn synthesize_module<T: crate::ReadFromFS>(
-		&self,
+		module: &Self::Module,
 		source_id: SourceId,
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
-		synthesise_block(&self.items, module_environment, checking_data);
+		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
 	fn type_definition_file<T: crate::ReadFromFS>(
 		tdm: parser::TypeDefinitionModule,
-		root: &mut crate::RootContext,
+		root: &crate::RootContext,
 		checking_data: &mut crate::CheckingData<T, Self>,
-	) {
-		definitions::type_definition_file(tdm, checking_data, root);
+	) -> (Names, Facts) {
+		definitions::type_definition_file(tdm, checking_data, root)
+	}
+
+	type Module = parser::Module;
+
+	type TypeAnnotation = parser::TypeAnnotation;
+
+	type TypeParameter = parser::GenericTypeConstraint;
+
+	fn module_from_string(
+		source_id: SourceId,
+		string: String,
+		options: &Self::ParseOptions,
+	) -> Result<Self::Module, Diagnostic> {
+		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
+			.map_err(|err| Diagnostic::from((err, source_id)))
+	}
+
+	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str {
+		parameter.name()
 	}
 }
 
@@ -132,7 +150,7 @@ pub mod interactive {
 	};
 
 	pub struct State<'a, T: crate::ReadFromFS> {
-		checking_data: CheckingData<'a, T, parser::Module>,
+		checking_data: CheckingData<'a, T, super::EznoParser>,
 		root: RootContext,
 	}
 

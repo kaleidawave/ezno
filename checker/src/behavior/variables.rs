@@ -3,7 +3,7 @@ use source_map::{Span, SpanWithSource};
 use crate::context::AssignmentError;
 use crate::{CheckingData, TypeId};
 
-pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::SynthesisableModule>(
+pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::ASTImplementation>(
 	(variable_declared_type, variable_declared_pos): (TypeId, SpanWithSource),
 	(expression_type, expression_declared_pos): (TypeId, SpanWithSource),
 	environment: &mut crate::context::Environment,
@@ -17,7 +17,6 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::Synthesisab
 	let type_is_subtype = type_is_subtype(
 		variable_declared_type,
 		expression_type,
-		None,
 		&mut basic_subtyping,
 		environment,
 		&checking_data.types,

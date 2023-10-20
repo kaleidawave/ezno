@@ -1,5 +1,8 @@
 use crate::{
-	context::{facts::Facts, Environment},
+	context::{
+		facts::{Facts, PublicityKind},
+		Environment,
+	},
 	types::{properties::Property, TypeStore},
 	TypeId,
 };
@@ -16,8 +19,14 @@ impl ObjectBuilder {
 		Self { object: facts.new_object(prototype, types, is_under_dyn) }
 	}
 
-	pub fn append(&mut self, environment: &mut Environment, under: TypeId, value: Property) {
-		environment.facts.register_property(self.object, under, value, true)
+	pub fn append(
+		&mut self,
+		environment: &mut Environment,
+		under: TypeId,
+		value: Property,
+		property: PublicityKind,
+	) {
+		environment.facts.register_property(self.object, under, value, true, property)
 	}
 
 	pub fn build_object(self) -> TypeId {

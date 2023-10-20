@@ -57,20 +57,23 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 // 	}
 // }
 
-#[derive(Debug, Clone)]
-pub(crate) struct FunctionTypeArgument {
-	pub value: Option<TypeId>,
-	/// Via <> at call site. Note that backing types are held separately
-	pub restriction: Option<(SpanWithSource, TypeId)>,
-}
-
 /// TODO working out environment thingy
 #[derive(Debug)]
 pub(crate) struct FunctionTypeArguments {
 	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
-	pub local_arguments: SmallMap<TypeId, FunctionTypeArgument>,
+	pub local_arguments: SmallMap<TypeId, (TypeId, SpanWithSource)>,
 	pub closure_id: Option<ClosureId>,
+}
+impl FunctionTypeArguments {
+	pub(crate) fn set_id_from_reference(
+		&mut self,
+		id: TypeId,
+		value: TypeId,
+		types: &mut TypeStore,
+	) {
+		self.local_arguments.insert(id, (value, SpanWithSource::NULL_SPAN));
+	}
 }
 
 pub(crate) trait TypeArgumentStore {
@@ -116,14 +119,10 @@ impl ClosureChain for FunctionTypeArguments {
 impl TypeArgumentStore for FunctionTypeArguments {
 	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
 		self.structure_arguments.as_ref().and_then(|args| args.get_structure_argument(id))
-		// self.structure_arguments
-		// 	.as_ref()
-		// 	.and_then(|structure_arguments| structure_arguments.0.get(id).map(|v| v.as_type()))
-		// 	.or_else(|| self.local_arguments.get(id).and_then(|v| v.value.as_ref()))
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.local_arguments.get(&id).and_then(|arg| arg.value)
+		self.local_arguments.get(&id).map(|(ty, _)| *ty)
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
@@ -135,20 +134,17 @@ impl TypeArgumentStore for FunctionTypeArguments {
 		match self.structure_arguments {
 			Some(ref parent) => {
 				let mut merged = parent.type_arguments.clone();
-				merged
-					.extend(self.local_arguments.iter().map(|(ty, arg)| (*ty, arg.value.unwrap())));
+				let iter = self.local_arguments.clone();
+				merged.extend(iter);
+
 				StructureGenericArguments {
 					type_arguments: merged,
 					closures: parent.closures.iter().cloned().chain(self.closure_id).collect(),
 				}
 			}
 			None => StructureGenericArguments {
-				type_arguments: self
-					.local_arguments
-					.iter()
-					.map(|(ty, arg)| (*ty, arg.value.unwrap()))
-					.collect(),
-				closures: self.closure_id.into_iter().collect(),
+				type_arguments: self.local_arguments.clone(),
+				closures: self.closure_id.clone().into_iter().collect(),
 			},
 		}
 	}
@@ -161,13 +157,13 @@ impl TypeArgumentStore for FunctionTypeArguments {
 /// These are curried between structures
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenericArguments {
-	pub type_arguments: map_vec::Map<TypeId, TypeId>,
+	pub type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)>,
 	pub closures: Vec<ClosureId>,
 }
 
 impl TypeArgumentStore for StructureGenericArguments {
 	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.type_arguments.get(&id).copied()
+		self.type_arguments.get(&id).map(|(ty, _)| *ty)
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
@@ -184,48 +180,5 @@ impl TypeArgumentStore for StructureGenericArguments {
 
 	fn is_empty(&self) -> bool {
 		self.closures.is_empty() && self.type_arguments.len() == 0
-	}
-}
-
-impl FunctionTypeArguments {
-	/// This is from <T>
-	pub(crate) fn get_restriction_for_id(&self, id: TypeId) -> Option<(SpanWithSource, TypeId)> {
-		self.local_arguments.get(&id).and_then(|arg| arg.restriction.clone())
-		// self.structure_arguments
-		// 	.as_ref()
-		// 	.and_then(|structure_arguments| structure_arguments.0.get(&id).map(|v| v.as_type()))
-		// 	.or_else(|| self.local_arguments.get(&id).map(|v| v.restriction))
-	}
-
-	/// TODO check restriction here!
-	/// TODO remove `Environment`
-	pub(crate) fn set_id(&mut self, on: TypeId, arg: TypeId, _ts: &TypeStore) {
-		// crate::utils::notify!(
-		// 	"Setting argument {:?} to {:?}",
-		// 	_ts.debug_type(on),
-		// 	_ts.debug_type(arg)
-		// );
-
-		match self.local_arguments.entry(on) {
-			map_vec::map::Entry::Occupied(mut exists) => {
-				if let Some(value) = exists.get().value {
-					todo!("check existing entry")
-				} else {
-					exists.get_mut().value = Some(arg);
-				}
-			}
-			map_vec::map::Entry::Vacant(vacant) => {
-				vacant.insert(FunctionTypeArgument {
-					value: Some(arg),
-					// TODO::
-					restriction: None,
-				});
-			}
-		}
-	}
-
-	pub(crate) fn set_this(&mut self, arg: TypeId) {
-		self.local_arguments
-			.insert(TypeId::THIS_ARG, FunctionTypeArgument { value: Some(arg), restriction: None });
 	}
 }

@@ -2,7 +2,7 @@
 
 Consider checking out [current standing issues](https://github.com/kaleidawave/ezno/issues) before contributing. In general, leave an issue before putting in a PR.
 
-*If any problems come up following the steps. Leave an issue*
+If any problems come up in the following steps, please leave an issue :)
 
 #### Setting up
 
@@ -14,21 +14,28 @@ then clone the repo with `git`:
 
 ```shell
 git clone https://github.com/kaleidawave/ezno.git
-```
-
-or using the GH CLI
-
-```shell
+# or using the GH CLI
 gh repo clone kaleidawave/ezno
 ```
 
-Now in the `ezno` directory, `cargo run` should show the CLI
+Now in the `ezno` directory, `cargo run` should show the CLI.
 
-### Rules
+## Development
 
-- Won't merge PRs that introduce new errors. However will merge PRs which pick up or find existing issues
-- Code **must** be formatted with `cargo format` inline with the current format configuration
-- Use `cargo clippy` as guidance but lints are not a blocker
+If you don't want to run the whole Ezno CLI. You can run just the checker with
+
+```shell
+cargo run -p ezno-checker -F ezno-parser --example check path/to/file.ts
+```
+
+If you want to test the lexing and parsing in Ezno's parser
+
+```shell
+# Parsing, prints parse errors or the debug view of the AST
+cargo run -p ezno-parser --example parse path/to/file.ts
+# Lexing, prints lex errors or the tokens
+cargo run -p ezno-parser --example lex path/to/file.ts
+```
 
 ### Useful commands
 
@@ -39,7 +46,12 @@ Now in the `ezno` directory, `cargo run` should show the CLI
 ### The notify! macro
 
 The checker crate has the `crate::utils::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
+## *Rules* for contributions
 
-### Oxc
+- Won't merge PRs that introduce new errors. However will merge PRs which pick up or find existing issues
+- Code **must** be formatted with `cargo format` inline with the current format configuration
+- Use `cargo clippy` as guidance for design but warning lints are not a blocker
 
-If working on [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis). You can (git) clone [oxc](https://github.com/web-infra-dev/oxc) alongside Ezno and then use path dependencies to work on them simultaneously.
+## Oxc
+
+If working on [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis) **and Ezno simultaneously**. You can (git) clone [oxc](https://github.com/web-infra-dev/oxc) alongside Ezno and then use path dependencies to work on them simultaneously.

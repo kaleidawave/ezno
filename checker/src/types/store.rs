@@ -5,7 +5,6 @@ use crate::{
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	utils::EnforcedOrExt,
 	FunctionId, GeneralContext, TypeId,
 };
 
@@ -33,23 +32,27 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let mut types = vec![
-			Type::NamedRooted { name: "error".to_owned(), parameters: None },
-			Type::NamedRooted { name: "never".to_owned(), parameters: None },
-			Type::NamedRooted { name: "any".to_owned(), parameters: None },
-			Type::NamedRooted { name: "boolean".to_owned(), parameters: None },
-			Type::NamedRooted { name: "number".to_owned(), parameters: None },
-			Type::NamedRooted { name: "string".to_owned(), parameters: None },
-			Type::NamedRooted { name: "undefined".to_owned(), parameters: None },
-			Type::NamedRooted { name: "null".to_owned(), parameters: None },
-			Type::NamedRooted { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::NamedRooted { name: "error".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "never".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "any".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "boolean".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "number".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "string".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "undefined".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted { name: "null".to_owned(), parameters: None, nominal: true },
+			Type::NamedRooted {
+				name: "Array".to_owned(),
+				parameters: Some(vec![TypeId::T_TYPE]),
+				nominal: true,
+			},
 			// Array T
 			Type::RootPolyType(PolyNature::Generic {
 				name: "T".to_owned(),
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			Type::NamedRooted { name: "object".to_owned(), parameters: None },
-			Type::NamedRooted { name: "Function".to_owned(), parameters: None },
-			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None },
+			Type::NamedRooted { name: "object".to_owned(), parameters: None, nominal: false },
+			Type::NamedRooted { name: "Function".to_owned(), parameters: None, nominal: false },
+			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None, nominal: true },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -59,11 +62,11 @@ impl Default for TypeStore {
 			Type::Constant(crate::Constant::Number(0.into())),
 			// one
 			Type::Constant(crate::Constant::Number(1.into())),
-			// NaN
+			// NaNFreeVariable
 			Type::Constant(crate::Constant::NaN),
 			Type::Constant(crate::Constant::String("length".into())),
 			// this arg shortcut
-			Type::RootPolyType(PolyNature::ParentScope {
+			Type::RootPolyType(PolyNature::FreeVariable {
 				reference: crate::events::RootReference::This,
 				based_on: TypeId::ANY_TYPE,
 			}),
@@ -78,9 +81,6 @@ impl Default for TypeStore {
 				name: "SymbolToPrimitive".into(),
 				parameters: None,
 			},
-			Type::NamedRooted { name: "HTMLElementTagNameMap".to_owned(), parameters: None },
-			// Internal
-			Type::NamedRooted { name: "Operators".to_owned(), parameters: None },
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -176,7 +176,7 @@ impl TypeStore {
 			return_type,
 			effects,
 			// TODO
-			used_parent_references: Default::default(),
+			free_variables: Default::default(),
 			closed_over_variables: Default::default(),
 			// TODO
 			kind: crate::types::FunctionKind::Arrow,
@@ -264,31 +264,39 @@ impl TypeStore {
 				.or_else(|| self.get_fact_about_type(ctx, *right, resolver, data)),
 			Type::Or(left, right) => {
 				// TODO temp
-				let left = self.get_fact_about_type(ctx, *left, resolver, data).map(Box::new);
-				let right = self.get_fact_about_type(ctx, *right, resolver, data).map(Box::new);
-				left.and_enforced(right).map(Logical::Or)
+				let left = self.get_fact_about_type(ctx, *left, resolver, data);
+				let right = self.get_fact_about_type(ctx, *right, resolver, data);
+
+				match (left, right) {
+					(None, None) => None,
+					(Some(value), None) | (None, Some(value)) => Some(value),
+					(Some(left), Some(right)) => {
+						Some(Logical::Or { left: Box::new(left), right: Box::new(right) })
+					}
+				}
 			}
 			Type::RootPolyType(_nature) => {
 				let aliases = ctx.get_poly_base(on, self).unwrap();
 				// Don't think any properties exist on this poly type
 				self.get_fact_about_type(ctx, aliases, resolver, data)
 			}
+			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on,
+				arguments,
+			})) => {
+				crate::utils::notify!("Here StructureGenerics");
+				// TODO could drop some of with here
+				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
+				fact_opt.map(|fact| Logical::Implies {
+					on: Box::new(fact),
+					antecedent: arguments.clone(),
+				})
+			}
 			Type::Constructor(constructor) => {
-				if let Constructor::StructureGenerics(StructureGenerics { on, arguments }) =
-					constructor
-				{
-					// TODO could drop some of with here
-					let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
-					fact_opt.map(|fact| Logical::Implies {
-						on: Box::new(fact),
-						antecedent: arguments.clone(),
-					})
-				} else {
-					// Don't think any properties exist on this poly type
-					let constraint = ctx.get_poly_base(on, self).unwrap();
-					// TODO might need to send more information here, rather than forgetting via .get_type
-					self.get_fact_about_type(ctx, constraint, resolver, data)
-				}
+				// Don't think any properties exist on this poly type
+				let constraint = ctx.get_poly_base(on, self).unwrap();
+				// TODO might need to send more information here, rather than forgetting via .get_type
+				self.get_fact_about_type(ctx, constraint, resolver, data)
 			}
 			Type::Object(..) | Type::NamedRooted { .. } => ctx
 				.parents_iter()

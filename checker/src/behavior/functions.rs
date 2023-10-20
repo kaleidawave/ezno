@@ -12,23 +12,24 @@ use crate::{
 	CheckingData, Environment, FunctionId, ReadFromFS, Type, TypeId, VariableId,
 };
 
-#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum GetterSetterGeneratorOrNone {
-	Setter,
-	Getter,
-	Generator,
-	None,
+/// This is just as an API layer
+pub enum MethodKind {
+	Get,
+	Set,
+	Generator { is_async: bool },
+	Async,
+	Plain,
 }
 
-pub enum FunctionKind2 {
-	ArrowFunction { is_async: bool },
-	StatementFunction { is_async: bool, generator: bool },
-	ClassConstructor,
-	Method { getter_setter_or_generator: GetterSetterGeneratorOrNone },
-}
+// pub enum FunctionKind2 {
+// 	ArrowFunction { is_async: bool },
+// 	StatementFunction { is_async: bool, generator: bool },
+// 	ClassConstructor,
+// 	Method { getter_setter_or_generator: MethodKind },
+// }
 
-/// TODO generalize for property registration...
-pub trait FunctionRegisterBehavior<M: crate::SynthesisableModule> {
+/// TODO generalize for property registration
+pub trait FunctionRegisterBehavior<M: crate::ASTImplementation> {
 	type Return;
 
 	/// TODO lift T
@@ -43,7 +44,7 @@ pub trait FunctionRegisterBehavior<M: crate::SynthesisableModule> {
 
 pub struct RegisterAsType;
 
-impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterAsType {
+impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterAsType {
 	type Return = TypeId;
 
 	fn function<T: SynthesisableFunction<M>, U: ContextType>(
@@ -67,7 +68,7 @@ impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterAsTy
 /// Because of hoisting
 pub struct RegisterOnExisting(pub String);
 
-impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnExisting {
+impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExisting {
 	type Return = ();
 
 	fn function<T: SynthesisableFunction<M>, U: ContextType>(
@@ -92,7 +93,7 @@ impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnEx
 
 pub struct RegisterOnExistingObject;
 
-impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnExistingObject {
+impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExistingObject {
 	type Return = Property;
 
 	fn function<T: SynthesisableFunction<M>, U: ContextType>(
@@ -102,12 +103,12 @@ impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnEx
 		environment: &mut Context<U>,
 		types: &mut TypeStore,
 	) -> Self::Return {
-		match func.get_set_generator_or_none() {
-			crate::GetterSetterGeneratorOrNone::Getter => Property::Getter(Box::new(func_ty)),
-			crate::GetterSetterGeneratorOrNone::Setter => Property::Setter(Box::new(func_ty)),
-			// TODO Generator
-			crate::GetterSetterGeneratorOrNone::Generator
-			| crate::GetterSetterGeneratorOrNone::None => {
+		match func.get_kind() {
+			crate::MethodKind::Get => Property::Getter(Box::new(func_ty)),
+			crate::MethodKind::Set => Property::Setter(Box::new(func_ty)),
+			crate::MethodKind::Async
+			| crate::MethodKind::Generator { .. }
+			| crate::MethodKind::Plain => {
 				let id = func_ty.id;
 				types.functions.insert(id, func_ty);
 				let ty = types.register_type(Type::Function(id, Default::default()));
@@ -121,12 +122,11 @@ impl<M: crate::SynthesisableModule> FunctionRegisterBehavior<M> for RegisterOnEx
 	}
 }
 
-pub trait SynthesisableFunction<M: crate::SynthesisableModule> {
+pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 	fn is_declare(&self) -> bool;
 
-	fn is_async(&self) -> bool;
-
-	fn get_set_generator_or_none(&self) -> GetterSetterGeneratorOrNone;
+	/// TODO vector for badness
+	fn get_kind(&self) -> MethodKind;
 
 	fn id(&self, source_id: SourceId) -> FunctionId;
 

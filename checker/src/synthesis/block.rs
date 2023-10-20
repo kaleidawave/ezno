@@ -11,7 +11,7 @@ use super::{
 pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 	statements: &[StatementOrDeclaration],
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	hoist_statements(statements, environment, checking_data);
 
@@ -54,7 +54,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 	declaration: &Declaration,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	match declaration {
 		Declaration::Variable(declaration) => {

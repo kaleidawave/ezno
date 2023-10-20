@@ -4,6 +4,9 @@ use std::io::Write;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
+	println!("cargo:rerun-if-changed=specification.md");
+	println!("cargo:rerun-if-changed=TODO.md");
+
 	let out_path = Path::new(&std::env::var("OUT_DIR")?).join("specification.rs");
 	let mut out = File::create(out_path)?;
 
@@ -19,14 +22,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	markdown_lines_append_test_to_rust(lines, &mut out)?;
 
 	if cfg!(feature = "all") {
-		let not_yet_implemented = read_to_string("./not_yet_implemented.md")?;
-		let mut lines = not_yet_implemented.lines().enumerate();
-
-		while let Some((_, line)) = lines.next() {
-			if line == "## TODO" {
-				break;
-			}
-		}
+		let not_yet_implemented = read_to_string("./to_implement.md")?;
+		let lines = not_yet_implemented.lines().enumerate();
 
 		writeln!(&mut out, "mod todo {{ use super::check_errors; ").unwrap();
 		markdown_lines_append_test_to_rust(lines, &mut out)?;

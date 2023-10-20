@@ -6,10 +6,7 @@ use std::{collections::HashMap, iter::FromIterator};
 pub type RootContext = Context<Root>;
 
 #[derive(Debug)]
-pub struct Root {
-	/// TODO a little out of place
-	pub(crate) on: SourceId,
-}
+pub struct Root;
 
 impl ContextType for Root {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
@@ -58,10 +55,7 @@ impl RootContext {
 		let named_types = HashMap::from_iter(named_types);
 
 		Self {
-			context_type: Root {
-				// This is reassigned, so should be okay 🤞
-				on: SourceId::NULL,
-			},
+			context_type: Root,
 			context_id: ContextId::ROOT,
 			named_types,
 			variables: Default::default(),
@@ -75,12 +69,12 @@ impl RootContext {
 		}
 	}
 
-	pub fn new_module_context<T: crate::ReadFromFS, M: crate::SynthesisableModule>(
+	pub fn new_module_context<T: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&self,
 		source: SourceId,
-		module: M,
+		module: M::Module,
 		checking_data: &mut CheckingData<T, M>,
-		mut cb: impl for<'a> FnOnce(&'a M, &'a mut Environment, &'a mut CheckingData<T, M>),
+		mut cb: impl for<'a> FnOnce(&'a M::Module, &'a mut Environment, &'a mut CheckingData<T, M>),
 	) {
 		let mut environment = self.new_lexical_environment(crate::Scope::Module { source });
 		cb(&module, &mut environment, checking_data);

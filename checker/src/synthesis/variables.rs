@@ -8,6 +8,7 @@ use parser::{
 
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
+	context::facts::PublicityKind,
 	context::{Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::property_key_as_type,
@@ -25,14 +26,14 @@ pub(crate) fn register_variable<
 >(
 	name: &parser::VariableField<U>,
 	environment: &mut Context<V>,
-	checking_data: &mut CheckingData<'_, T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,
 ) -> TypeId {
 	fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
 		name: &VariableIdentifier,
 		environment: &mut Context<V>,
-		checking_data: &mut CheckingData<T, parser::Module>,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
 		behavior: crate::context::VariableRegisterBehavior,
 		constraint: Option<TypeId>,
 	) -> TypeId {
@@ -90,6 +91,7 @@ pub(crate) fn register_variable<
 							let property_constraint = environment.get_property_unbound(
 								constraint,
 								under,
+								PublicityKind::Public,
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -177,6 +179,7 @@ pub(crate) fn register_variable<
 							let property_constraint = environment.get_property_unbound(
 								constraint,
 								under,
+								PublicityKind::Public,
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -233,7 +236,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
 	is_constant: bool,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) where
 	for<'a> Option<&'a parser::Expression>: From<&'a U>,
 {
@@ -271,7 +274,7 @@ pub(super) fn synthesise_variable_declaration_item<
 fn assign_to_fields<T: crate::ReadFromFS>(
 	item: &VariableField<parser::VariableFieldInSourceCode>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 	value: TypeId,
 ) {
 	match item {
@@ -288,8 +291,14 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						let idx = checking_data
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
-						let value =
-							environment.get_property(value, idx, &mut checking_data.types, None);
+
+						let value = environment.get_property(
+							value,
+							idx,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 
 						if let Some((_, value)) = value {
 							assign_to_fields(
@@ -324,8 +333,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
-						let property =
-							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let property = environment.get_property(
+							value,
+							key_ty,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 						let value = match property {
 							Some((_, value)) => value,
 							None => {
@@ -354,8 +368,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
-						let property_value =
-							environment.get_property(value, key_ty, &mut checking_data.types, None);
+						let property_value = environment.get_property(
+							value,
+							key_ty,
+							PublicityKind::Public,
+							&mut checking_data.types,
+							None,
+						);
 
 						let value = match property_value {
 							Some((_, value)) => value,

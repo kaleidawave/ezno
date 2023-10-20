@@ -87,7 +87,7 @@ impl TypeId {
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(22);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 25;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 23;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -111,6 +111,8 @@ pub enum Type {
 	/// Although they all alias Object
 	NamedRooted {
 		name: String,
+		// Whether only values under this type can be matched
+		nominal: bool,
 		parameters: Option<Vec<TypeId>>,
 	},
 	/// *Dependent equality types*
@@ -134,13 +136,12 @@ pub enum PolyNature {
 	},
 	Generic {
 		name: String,
-		/// This can be `Dynamic` for interface hoisting
 		eager_fixed: TypeId,
 	},
 	Open(TypeId),
 	/// For functions and for loops where something in the scope can mutate (so not constant)
 	/// between runs.
-	ParentScope {
+	FreeVariable {
 		reference: RootReference,
 		based_on: TypeId,
 	},
@@ -239,7 +240,23 @@ pub enum Constructor {
 	StructureGenerics(StructureGenerics),
 }
 
-/// Curries arguments
+impl Constructor {
+	fn get_base(&self) -> Option<TypeId> {
+		match self {
+			Constructor::ConditionalResult { result_union: result, .. }
+			| Constructor::FunctionResult { result, .. } => Some(*result),
+			Constructor::BinaryOperator { .. }
+			| Constructor::CanonicalRelationOperator { .. }
+			| Constructor::UnaryOperator { .. }
+			| Constructor::TypeOperator(_)
+			| Constructor::TypeRelationOperator(_)
+			| Constructor::Property { .. }
+			| Constructor::StructureGenerics(_) => None,
+		}
+	}
+}
+
+/// Closed over arguments
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenerics {
 	pub on: TypeId,
@@ -297,12 +314,14 @@ pub struct BasicEquality {
 
 /// For subtyping
 pub trait SubtypeBehavior {
+	/// If false will error out if T >: U
+	const INFER_GENERICS: bool;
+
 	fn set_type_argument(
 		&mut self,
 		parameter: TypeId,
 		value: TypeId,
-		environment: &mut Environment,
-		types: &TypeStore,
+		restriction_mode: bool,
 	) -> Result<(), NonEqualityReason>;
 
 	fn add_property_restrictions(&self) -> bool;
@@ -320,31 +339,19 @@ pub trait SubtypeBehavior {
 }
 
 impl SubtypeBehavior for SeedingContext {
+	// Want to match/infer, so false here
+	const INFER_GENERICS: bool = true;
+
 	/// Does not check thingy
 	fn set_type_argument(
 		&mut self,
-		type_id: TypeId,
+		parameter: TypeId,
 		value: TypeId,
-		environment: &mut Environment,
-		types: &TypeStore,
+		restriction_mode: bool,
 	) -> Result<(), NonEqualityReason> {
-		let restriction = self.type_arguments.get_restriction_for_id(type_id);
-
-		// Check restriction from call site type argument
-		if let Some((pos, restriction)) = restriction {
-			if let SubTypeResult::IsNotSubType(reason) =
-				type_is_subtype(restriction, value, None, self, environment, types)
-			{
-				return Err(NonEqualityReason::GenericRestrictionMismatch {
-					restriction,
-					reason: Box::new(reason),
-					pos,
-				});
-			}
-		}
-
-		self.type_arguments.set_id(type_id, value, types);
-
+		// TODO
+		let (parameter_pos, parameter_idx) = self.argument_position_and_parameter_idx.clone();
+		self.set_id(parameter, (value, parameter_pos, parameter_idx), restriction_mode);
 		Ok(())
 	}
 
@@ -363,12 +370,13 @@ impl SubtypeBehavior for SeedingContext {
 }
 
 impl SubtypeBehavior for BasicEquality {
+	const INFER_GENERICS: bool = false;
+
 	fn set_type_argument(
 		&mut self,
-		parameter: TypeId,
-		value: TypeId,
-		environment: &mut Environment,
-		types: &TypeStore,
+		_parameter: TypeId,
+		_value: TypeId,
+		_restriction_mode: bool,
 	) -> Result<(), NonEqualityReason> {
 		Ok(())
 	}
@@ -412,15 +420,10 @@ pub enum NonEqualityReason {
 	PropertiesInvalid {
 		errors: Vec<(TypeId, PropertyError)>,
 	},
-	// For function call-site type arguments
-	GenericRestrictionMismatch {
-		restriction: TypeId,
-		reason: Box<NonEqualityReason>,
-		pos: SpanWithSource,
-	},
 	TooStrict,
 	/// TODO more information
 	MissingParameter,
+	GenericParameterMismatch,
 }
 
 #[derive(Debug)]

@@ -1,9 +1,9 @@
 use crate::{
 	behavior::functions::ThisValue,
-	context::{CallCheckingBehavior, Logical, SetPropertyError},
+	context::{facts::PublicityKind, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{substitute, FunctionType},
+	types::{printing::print_type, substitute, FunctionType},
 	Environment, TypeId,
 };
 
@@ -27,6 +27,7 @@ pub enum Property {
 	Getter(Box<FunctionType>),
 	Setter(Box<FunctionType>),
 	GetterAndSetter(Box<FunctionType>, Box<FunctionType>),
+	Deleted,
 }
 
 impl Property {
@@ -34,9 +35,18 @@ impl Property {
 	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			Property::Value(value) => *value,
-			Property::Getter(func) => func.return_type,
 			Property::Setter(_) => TypeId::UNDEFINED_TYPE,
-			Property::GetterAndSetter(getter, _) => getter.return_type,
+			Property::Getter(getter) | Property::GetterAndSetter(getter, _) => getter.return_type,
+			Property::Deleted => unreachable!(),
+		}
+	}
+
+	pub fn as_set_type(&self) -> TypeId {
+		match self {
+			Property::Value(value) => *value,
+			Property::Getter(_) => TypeId::UNDEFINED_TYPE,
+			Property::Setter(setter) | Property::GetterAndSetter(_, setter) => setter.return_type,
+			Property::Deleted => unreachable!(),
 		}
 	}
 }
@@ -48,6 +58,7 @@ impl Property {
 pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
+	publicity: PublicityKind,
 	with: Option<TypeId>,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -68,6 +79,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 			constraint,
 			under,
 			on,
+			publicity,
 			with,
 			environment,
 			behavior,
@@ -77,7 +89,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 		todo!()
 	} else {
 		// TODO
-		return get_from_an_object(on, under, environment, behavior, types);
+		return get_from_an_object(on, under, publicity, environment, behavior, types);
 	};
 
 	let reflects_dependency = match value {
@@ -89,6 +101,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 		on,
 		under,
 		reflects_dependency,
+		publicity,
 	});
 
 	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value
@@ -108,19 +121,17 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
+	publicity: PublicityKind,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {
-	return property_on_logical(
-		environment.get_property_unbound(on, under, types)?,
-		types,
-		on,
-		environment,
-		behavior,
-	);
+	let result = environment.get_property_unbound(on, under, publicity, types)?;
 
-	fn property_on_logical<E: CallCheckingBehavior>(
+	return resolve_property_on_logical(result, types, on, environment, behavior);
+
+	/// Generates closure arguments, values of this and more. Runs getters
+	fn resolve_property_on_logical<E: CallCheckingBehavior>(
 		logical: Logical<Property>,
 		types: &mut TypeStore,
 		on: TypeId,
@@ -230,11 +241,13 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 						}
 					}
 					Property::Setter(_) => todo!(),
+					Property::Deleted => None,
 				}
 			}
-			Logical::Or(_) => todo!(),
+			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: log_on, mut antecedent } => {
-				let (kind, ty) = property_on_logical(*log_on, types, on, environment, behavior)?;
+				let (kind, ty) =
+					resolve_property_on_logical(*log_on, types, on, environment, behavior)?;
 				let ty = substitute(ty, &mut antecedent, environment, types);
 				Some((kind, ty))
 			}
@@ -246,6 +259,7 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 	constraint: TypeId,
 	under: TypeId,
 	on: TypeId,
+	kind: PublicityKind,
 	with: Option<TypeId>,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -259,7 +273,7 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 	// 	is_open_poly
 	// );
 
-	let fact = environment.get_property_unbound(constraint, under, types)?;
+	let fact = environment.get_property_unbound(constraint, under, kind, types)?;
 
 	match fact {
 		Logical::Pure(og) => {
@@ -292,18 +306,23 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 						Type::Constant(_) => Some(og),
 					}
 				}
-				Property::GetterAndSetter(_getter, _) | Property::Getter(_getter) => {
+				Property::GetterAndSetter(getter, _) | Property::Getter(getter) => {
 					// if is_open_poly {
 					// 	crate::utils::notify!("TODO evaluate getter...");
 					// } else {
 					// 	crate::utils::notify!("TODO don't evaluate getter");
 					// }
-					todo!()
+					// TODO : getter.return_type
+					Some(
+						types.register_type(Type::Constructor(Constructor::Property { on, under })),
+					)
 				}
 				Property::Setter(_) => todo!("error"),
+				// Very important
+				Property::Deleted => None,
 			}
 		}
-		Logical::Or(_) => todo!(),
+		Logical::Or { .. } => todo!(),
 		Logical::Implies { .. } => todo!(),
 	}
 	// }
@@ -362,6 +381,7 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
 	under: TypeId,
+	publicity: PublicityKind,
 	new: Property,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -373,43 +393,45 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// }
 
 	// if E::CHECK_PARAMETERS {
-	let property_constraint = {
-		let constraint = environment.get_object_constraint(on);
+	let object_constraint = environment.get_object_constraint(on);
 
-		match constraint {
-			Some(constraint) => {
-				let result = environment.get_property_unbound(constraint, under, types);
-				if result.is_none() {
-					// TODO does not exist
-					return Err(SetPropertyError::DoesNotMeetConstraint(
-						new.as_get_type(),
-						todo!("no property"),
-					));
-				}
-				result
+	if let Some(object) = object_constraint {
+		let property_constraint = environment.get_property_unbound(object, under, publicity, types);
+		crate::utils::notify!(
+			"Re-assignment constraint {}, prop={} {:?}",
+			print_type(object, types, &environment.as_general_context(), true),
+			print_type(under, types, &environment.as_general_context(), true),
+			property_constraint
+		);
+
+		if let Some(property) = property_constraint {
+			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
+				// This is important for free variables, sometimes ?
+				add_property_restrictions: true,
+				// TODO position here
+				position: source_map::SpanWithSource::NULL_SPAN,
+			};
+			let property = property.prop_to_type();
+			crate::utils::notify!(
+				"{}",
+				print_type(property, types, &environment.as_general_context(), true)
+			);
+			if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
+				property,
+				new.as_get_type(),
+				&mut basic_subtyping,
+				environment,
+				types,
+			) {
+				// TODO don't short circuit
+				return Err(SetPropertyError::DoesNotMeetConstraint(property, sub_type_error));
 			}
-			None => None,
-		}
-	};
-
-	if let Some(constraint) = property_constraint {
-		let mut basic_subtyping = crate::types::subtyping::BasicEquality {
-			add_property_restrictions: true,
-			position: source_map::SpanWithSource { start: 0, end: 0, source: SourceId::NULL },
-		};
-		let base_type = constraint.prop_to_type();
-		if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
-			base_type,
-			new.as_get_type(),
-			None,
-			// TODO undecided here
-			// TODO position here
-			&mut basic_subtyping,
-			environment,
-			types,
-		) {
-			// TODO don't short circuit
-			return Err(SetPropertyError::DoesNotMeetConstraint(base_type, sub_type_error));
+		} else {
+			// TODO does not exist warning
+			// return Err(SetPropertyError::DoesNotMeetConstraint(
+			// 	new.as_get_type(),
+			// 	todo!("no property"),
+			// ));
 		}
 	}
 	// }
@@ -426,20 +448,25 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// 	)
 	// );
 
-	let current_property = environment.get_property_unbound(on, under, types);
+	let current_property = environment.get_property_unbound(on, under, publicity, types);
 
 	let new = Property::Value(new.as_get_type());
 
 	if let Some(fact) = current_property {
 		match fact {
 			Logical::Pure(og) => match og {
-				Property::Value(og) => {
+				Property::Deleted | Property::Value(..) => {
 					let facts = behavior.get_top_level_facts(environment);
-					facts.current_properties.entry(on).or_default().push((under, new.clone()));
+					facts.current_properties.entry(on).or_default().push((
+						under,
+						publicity,
+						new.clone(),
+					));
 					facts.events.push(Event::Setter {
 						on,
 						new,
 						under,
+						publicity,
 						// TODO
 						reflects_dependency: None,
 						initialization: false,
@@ -448,12 +475,14 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 				Property::Getter(_) => todo!(),
 				Property::GetterAndSetter(_, _setter) | Property::Setter(_setter) => todo!(),
 			},
-			Logical::Or(_) => todo!(),
+			Logical::Or { .. } => todo!(),
 			Logical::Implies { .. } => todo!(),
 		}
 	} else {
 		// TODO abstract
-		behavior.get_top_level_facts(environment).register_property(on, under, new, false);
+		behavior
+			.get_top_level_facts(environment)
+			.register_property(on, under, new, false, publicity);
 	}
 	Ok(None)
 }

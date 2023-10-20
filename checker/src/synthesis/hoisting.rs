@@ -20,7 +20,7 @@ use super::{
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	let mut idx_to_types = HashMap::new();
 
@@ -39,16 +39,22 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				),
 				parser::Declaration::DeclareInterface(interface) => {
 					// TODO any difference bc declare?
-					let ty = environment.new_interface(
+					let ty = environment.new_interface::<super::EznoParser>(
 						&interface.name,
+						interface.nominal_keyword.is_some(),
+						interface.type_parameters.as_deref(),
+						interface.extends.as_deref(),
 						interface.position.clone().with_source(environment.get_source()),
 						&mut checking_data.types,
 					);
 					idx_to_types.insert(interface.position.start, ty);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = environment.new_interface(
+					let ty = environment.new_interface::<super::EznoParser>(
 						&interface.on.name,
+						interface.on.nominal_keyword.is_some(),
+						interface.on.type_parameters.as_deref(),
+						interface.on.extends.as_deref(),
 						interface.on.position.clone().with_source(environment.get_source()),
 						&mut checking_data.types,
 					);
@@ -208,6 +214,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Interface(interface) => {
 					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 					super::interfaces::synthesise_signatures(
+						interface.on.type_parameters.as_deref(),
 						&interface.on.members,
 						super::interfaces::OnToType(ty),
 						environment,
@@ -270,6 +277,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							parser::declarations::export::Exportable::Interface(interface) => {
 								let ty = idx_to_types.remove(&interface.position.start).unwrap();
 								super::interfaces::synthesise_signatures(
+									interface.type_parameters.as_deref(),
 									&interface.members,
 									super::interfaces::OnToType(ty),
 									environment,
@@ -326,7 +334,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 fn hoist_variable_declaration<T: ReadFromFS>(
 	declaration: &parser::declarations::VariableDeclaration,
 	environment: &mut crate::context::Context<crate::context::environment::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	match declaration {
 		parser::declarations::VariableDeclaration::ConstDeclaration {
@@ -382,7 +390,7 @@ fn get_annotation_from_declaration<
 >(
 	declaration: &parser::declarations::VariableDeclarationItem<U>,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
@@ -419,7 +427,7 @@ pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
 	possible_declaration: &String,
 	position: source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<'_, T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
 	use parser::ASTNode;

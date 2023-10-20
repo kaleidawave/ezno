@@ -7,7 +7,7 @@ use super::variables::synthesise_variable_declaration_item;
 pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 	declaration: &VariableDeclaration,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, parser::Module>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	match declaration {
 		VariableDeclaration::ConstDeclaration { declarations, .. } => {

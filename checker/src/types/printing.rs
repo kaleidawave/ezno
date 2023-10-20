@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{PolyNature, Type, TypeId, TypeStore};
 use crate::{
-	context::get_on_ctx,
+	context::{facts::PublicityKind, get_on_ctx},
 	types::{Constructor, StructureGenerics},
 	GeneralContext,
 };
@@ -46,14 +46,21 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 				print_type_into_buf(*b, buf, cycles, types, ctx, debug);
 			}
 			Type::RootPolyType(nature) => match nature {
-				PolyNature::Generic { name, .. } => {
-					buf.push_str(name);
+				PolyNature::Generic { name, eager_fixed } => {
+					if debug {
+						// TODO restriction
+						write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
+						print_type_into_buf(*eager_fixed, buf, cycles, types, ctx, debug);
+						buf.push(']');
+					} else {
+						buf.push_str(name);
+					}
 				}
-				PolyNature::ParentScope { based_on: to, reference, .. } => {
+				PolyNature::FreeVariable { based_on: to, reference, .. } => {
 					if debug {
 						let name = reference.get_name(ctx);
-						// in parent scope
-						write!(buf, "[ips {} {}]", name, id.0).unwrap();
+						// FV = free variable
+						write!(buf, "[FV {} {}]", name, id.0).unwrap();
 					}
 					print_type_into_buf(*to, buf, cycles, types, ctx, debug);
 				}
@@ -96,14 +103,20 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 					print_type_into_buf(*false_result, buf, cycles, types, ctx, debug);
 				}
 				Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
-					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					if debug {
+						buf.push('(');
+						print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+						buf.push(')');
+					} else {
+						print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					}
 					if debug && !arguments.closures.is_empty() {
 						write!(buf, " [closures {:?}]", arguments.closures).unwrap();
 					}
 					if !arguments.type_arguments.is_empty() {
 						// TODO might be out of order ...
 						buf.push('<');
-						for arg in arguments.type_arguments.values() {
+						for (arg, _) in arguments.type_arguments.values() {
 							print_type_into_buf(*arg, buf, cycles, types, ctx, debug);
 							buf.push_str(", ");
 						}
@@ -152,14 +165,19 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 					print_type_into_buf(base, buf, cycles, types, ctx, debug)
 				}
 			},
-			Type::NamedRooted { name, parameters } => {
-				if parameters.is_some() {
-					crate::utils::notify!("TODO print parameters");
-				}
+			Type::NamedRooted { name, parameters, nominal } => {
 				if debug {
-					write!(buf, "(r{}) {name}", id.0).unwrap();
+					write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
 				} else {
 					buf.push_str(name)
+				}
+				if let (true, Some(parameters)) = (debug, parameters) {
+					buf.push('<');
+					for param in parameters {
+						print_type_into_buf(*param, buf, cycles, types, ctx, debug);
+						buf.push_str(", ");
+					}
+					buf.push('>')
 				}
 			}
 			Type::Constant(cst) => {
@@ -178,7 +196,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 						"[func {}/{:?}, uses {:?}, closes over {:?}, this {:?}, const {:?}]",
 						id.0,
 						func_id,
-						func.used_parent_references,
+						func.free_variables,
 						func.closed_over_variables,
 						this_ty,
 						func.constant_id
@@ -222,7 +240,10 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 					buf.push_str("] ");
 				}
 				buf.push('{');
-				for (key, value) in get_on_ctx!(ctx.get_properties_on_type(id)) {
+				for (key, publicity, value) in get_on_ctx!(ctx.get_properties_on_type(id)) {
+					if let PublicityKind::Private = publicity {
+						buf.push('#');
+					}
 					print_type_into_buf(key, buf, cycles, types, ctx, debug);
 					buf.push_str(": ");
 					print_type_into_buf(value, buf, cycles, types, ctx, debug);
