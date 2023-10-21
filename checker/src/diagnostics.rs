@@ -446,8 +446,7 @@ mod defined_errors_and_warnings {
 					returned_type,
 				} => Diagnostic::PositionWithAdditionLabels {
 					reason: format!(
-						"Function is expected to return {expected_return_type} but returned {returned_type} {:?}",
-						returned_position.clone()
+						"Function is expected to return {expected_return_type} but returned {returned_type}",
 					),
 					labels: vec![(
 						format!("The returned {returned_type} came from here."),
