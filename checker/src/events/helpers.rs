@@ -22,7 +22,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 ) -> ReturnedTypeFromBlock {
 	while let Some(event) = iter.next() {
 		match event {
-			Event::Return { returned } => {
+			Event::Return { returned, position } => {
 				if let Some((expected_return_type, annotation_span)) = expected_return_type.clone()
 				{
 					let mut behavior = crate::subtyping::BasicEquality {
@@ -55,8 +55,9 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 										&checking_data.types,
 										false,
 									),
-								position: annotation_span,
-								// TODO event position here #37
+								position: annotation_span.clone(),
+								// TODO test with return_position
+								returned_position: position.clone(), // TODO event position here #37
 							},
 						);
 					}

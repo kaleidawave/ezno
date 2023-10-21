@@ -209,6 +209,7 @@ mod defined_errors_and_warnings {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,
 			position: SpanWithSource,
+			returned_position: SpanWithSource,
 		},
 		// TODO are these the same errors?
 		TypeIsNotIndexable(TypeStringRepresentation),
@@ -440,12 +441,18 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::ReturnedTypeDoesNotMatch {
 					position,
+					returned_position,
 					expected_return_type,
 					returned_type,
-				} => Diagnostic::Position {
+				} => Diagnostic::PositionWithAdditionLabels {
 					reason: format!(
-						"Function is expected to return {expected_return_type} but returned {returned_type}",
+						"Function is expected to return {expected_return_type} but returned {returned_type} {:?}",
+						returned_position.clone()
 					),
+					labels: vec![(
+						format!("The returned {returned_type} came from here."),
+						Some(returned_position.clone()),
+					)],
 					position,
 					kind: super::DiagnosticKind::Error,
 				},

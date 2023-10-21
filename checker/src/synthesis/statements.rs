@@ -71,7 +71,10 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			} else {
 				TypeId::UNDEFINED_TYPE
 			};
-			environment.return_value(returned);
+
+			let position = return_statement.2.clone().with_source(environment.get_source());
+
+			environment.return_value(returned, position);
 		}
 		Statement::IfStatement(if_statement) => {
 			let condition =

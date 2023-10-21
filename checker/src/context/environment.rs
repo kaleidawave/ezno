@@ -746,8 +746,8 @@ impl<'a> Environment<'a> {
 		self.facts.events.push(Event::Throw(value));
 	}
 
-	pub fn return_value(&mut self, returned: TypeId) {
-		self.facts.events.push(Event::Return { returned })
+	pub fn return_value(&mut self, returned: TypeId, position: SpanWithSource) {
+		self.facts.events.push(Event::Return { returned, position })
 	}
 
 	/// Updates **a existing property**

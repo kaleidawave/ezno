@@ -6,7 +6,7 @@ use crate::{
 	behavior::functions::ThisValue,
 	context::{calling::Target, facts::PublicityKind, get_on_ctx, CallCheckingBehavior},
 	types::{calling::CalledWithNew, properties::Property},
-	FunctionId, GeneralContext, VariableId,
+	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
 pub(crate) mod application;
@@ -83,7 +83,7 @@ pub enum Event {
 	/// Run events conditionally
 	Conditionally { condition: TypeId, events_if_truthy: Box<[Event]>, else_events: Box<[Event]> },
 	/// TODO not sure but whatever
-	Return { returned: TypeId },
+	Return { returned: TypeId, position: SpanWithSource },
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
