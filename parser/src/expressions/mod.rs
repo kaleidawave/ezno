@@ -1,7 +1,7 @@
 use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
-	functions::{parse_function_location, FunctionLocationModifier, GeneralFunctionBase},
+	functions,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
@@ -34,7 +34,6 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
-use enum_variants_strings::EnumVariantsStrings;
 use get_field_by_type::GetFieldByType;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -47,7 +46,7 @@ pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
 pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
 
-pub type ExpressionFunctionBase = GeneralFunctionBase<ExpressionPosition>;
+pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
 
 use std::convert::{TryFrom, TryInto};
@@ -523,6 +522,7 @@ impl Expression {
 					async_keyword: None,
 					function_keyword: Keyword::new(span.clone()),
 					generator_star_token_position,
+					#[cfg(feature = "extras")]
 					location: None,
 					position: span,
 				};
@@ -562,16 +562,19 @@ impl Expression {
 				),
 				start,
 			) => {
+				// TODO bad way of doing this
+				use enum_variants_strings::EnumVariantsStrings;
 				let pos = start.with_length(kw.to_str().len());
+
 				let (generator_keyword, location) = match kw {
 					TSXKeyword::Generator => {
-						(Some(Keyword::new(pos)), parse_function_location(reader))
+						(Some(Keyword::new(pos)), functions::parse_function_location(reader))
 					}
 					TSXKeyword::Module => {
-						(None, Some(FunctionLocationModifier::Module(Keyword::new(pos))))
+						(None, Some(functions::FunctionLocationModifier::Module(Keyword::new(pos))))
 					}
 					TSXKeyword::Server => {
-						(None, Some(FunctionLocationModifier::Server(Keyword::new(pos))))
+						(None, Some(functions::FunctionLocationModifier::Server(Keyword::new(pos))))
 					}
 					_ => unreachable!(),
 				};

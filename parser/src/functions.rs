@@ -1,14 +1,14 @@
 use std::{fmt::Debug, marker::PhantomData};
 
+use crate::tsx_keywords;
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
 	ExpressionPosition, GenericTypeConstraint, Keyword, ParseOptions, ParseResult, TSXToken,
 	TypeAnnotation, VisitSettings, Visitable,
 };
-use crate::{tsx_keywords, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::TokenReader;
 
 pub use crate::parameters::*;
 
@@ -350,9 +350,12 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 	parse_regular_header(reader, async_keyword)
 }
 
+#[cfg(feature = "extras")]
 pub(crate) fn parse_function_location(
 	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
 ) -> Option<FunctionLocationModifier> {
+	use crate::{TSXKeyword, Token};
+
 	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Module), _)) =
 		reader.peek()
 	{
