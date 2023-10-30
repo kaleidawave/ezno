@@ -11,6 +11,7 @@ use crate::{
 	context::facts::PublicityKind,
 	context::{Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	structures::variables::VariableMutability,
 	synthesis::property_key_as_type,
 	types::Constant,
 	CheckingData, Environment, TypeId,
@@ -237,6 +238,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	environment: &mut Environment,
 	is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
+	exported: Option<VariableMutability>,
 ) where
 	for<'a> Option<&'a parser::Expression>: From<&'a U>,
 {
@@ -268,7 +270,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	};
 
 	let item = variable_declaration.name.get_ast_ref();
-	assign_to_fields(item, environment, checking_data, value_ty);
+	assign_to_fields(item, environment, checking_data, value_ty, exported);
 }
 
 fn assign_to_fields<T: crate::ReadFromFS>(
@@ -276,12 +278,22 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	value: TypeId,
+	exported: Option<VariableMutability>,
 ) {
 	match item {
 		VariableField::Name(name) => {
 			let get_position = name.get_position();
 			let id = crate::VariableId(environment.get_source(), get_position.start);
-			environment.register_initial_variable_declaration_value(id, value)
+			environment.register_initial_variable_declaration_value(id, value);
+			if let Some(mutability) = exported {
+				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				{
+					let existing =
+						exported.named.insert(name.as_str().to_owned(), (id, mutability));
+				} else {
+					todo!("emit error here")
+				}
+			}
 		}
 		VariableField::Array(items, _) => {
 			for (idx, item) in items.iter().enumerate() {
@@ -306,6 +318,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 								environment,
 								checking_data,
 								value,
+								exported,
 							)
 						}
 
@@ -389,7 +402,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							}
 						};
 
-						assign_to_fields(name.get_ast_ref(), environment, checking_data, value)
+						assign_to_fields(
+							name.get_ast_ref(),
+							environment,
+							checking_data,
+							value,
+							exported,
+						)
 					}
 				}
 			}

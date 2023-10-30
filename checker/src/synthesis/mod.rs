@@ -23,6 +23,7 @@ use source_map::SourceId;
 
 use crate::{
 	context::{environment, Context, ContextType, Names},
+	structures::modules::Exported,
 	types::TypeStore,
 	Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
@@ -84,16 +85,29 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 pub struct EznoParser;
 
 impl crate::ASTImplementation for EznoParser {
-	type DefinitionFile = parser::TypeDefinitionModule;
 	type ParseOptions = parser::ParseOptions;
+	type ParseError = (parser::ParseError, SourceId);
+	type Module = parser::Module;
+	type DefinitionFile = parser::TypeDefinitionModule;
+	type TypeAnnotation = parser::TypeAnnotation;
+	type TypeParameter = parser::GenericTypeConstraint;
+
+	fn module_from_string(
+		source_id: SourceId,
+		string: String,
+		options: &Self::ParseOptions,
+	) -> Result<Self::Module, Self::ParseError> {
+		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
+			.map_err(|err| (err, source_id))
+	}
 
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
-	) -> Result<Self::DefinitionFile, Diagnostic> {
+	) -> Result<Self::DefinitionFile, Self::ParseError> {
 		let options = Default::default();
 		parser::TypeDefinitionModule::from_string(string, options, source_id)
-			.map_err(|err| Diagnostic::from((err, source_id)))
+			.map_err(|err| (err, source_id))
 	}
 
 	fn synthesize_module<T: crate::ReadFromFS>(
@@ -102,7 +116,7 @@ impl crate::ASTImplementation for EznoParser {
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
-		synthesise_block(&module.items, module_environment, checking_data);
+		synthesise_block(&module.items, module_environment, checking_data)
 	}
 
 	fn type_definition_file<T: crate::ReadFromFS>(
@@ -111,21 +125,6 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> (Names, Facts) {
 		definitions::type_definition_file(tdm, checking_data, root)
-	}
-
-	type Module = parser::Module;
-
-	type TypeAnnotation = parser::TypeAnnotation;
-
-	type TypeParameter = parser::GenericTypeConstraint;
-
-	fn module_from_string(
-		source_id: SourceId,
-		string: String,
-		options: &Self::ParseOptions,
-	) -> Result<Self::Module, Diagnostic> {
-		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
-			.map_err(|err| Diagnostic::from((err, source_id)))
 	}
 
 	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str {

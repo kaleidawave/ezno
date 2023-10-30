@@ -38,7 +38,7 @@ use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 };
-use structures::functions::AutoConstructorId;
+use structures::{functions::AutoConstructorId, modules::Exported};
 
 use types::{
 	subtyping::{check_satisfies, type_is_subtype, BasicEquality, SubTypeResult},
@@ -63,7 +63,7 @@ pub use structures::{
 	functions::{FunctionPointer, InternalFunctionId},
 	jsx::*,
 	modules::SynthesisedModule,
-	variables::Variable,
+	variables::VariableOrImport,
 };
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
 
@@ -83,8 +83,8 @@ pub use source_map::{SourceId, Span};
 /// Contains all the modules and mappings for import statements
 ///
 /// TODO could files and synthesized_modules be merged? (with a change to )
-pub struct ModuleData<'a, FSResolver, ModuleAST: ASTImplementation> {
-	pub(crate) file_resolver: &'a FSResolver,
+pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
+	pub(crate) file_reader: &'a FileReader,
 	pub(crate) current_working_directory: PathBuf,
 	// TODO
 	pub(crate) entry_point: SourceId,
@@ -101,6 +101,7 @@ pub struct ModuleData<'a, FSResolver, ModuleAST: ASTImplementation> {
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
+	type ParseError: Into<Diagnostic>;
 
 	type Module;
 	type DefinitionFile;
@@ -112,12 +113,12 @@ pub trait ASTImplementation: Sized {
 		source_id: SourceId,
 		string: String,
 		options: &Self::ParseOptions,
-	) -> Result<Self::Module, Diagnostic>;
+	) -> Result<Self::Module, Self::ParseError>;
 
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
-	) -> Result<Self::DefinitionFile, Diagnostic>;
+	) -> Result<Self::DefinitionFile, Self::ParseError>;
 
 	fn synthesize_module<T: crate::ReadFromFS>(
 		module: &Self::Module,
@@ -154,7 +155,7 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 			synthesised_modules: Default::default(),
 			currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
-			file_resolver,
+			file_reader: file_resolver,
 			current_working_directory,
 			parsing_options,
 		}
@@ -164,7 +165,7 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 		if let Some(source) = self.files.get_source_at_path(path) {
 			Some((source, self.files.get_file_content(source)))
 		} else {
-			let content = (self.file_resolver)(path)?;
+			let content = (self.file_reader)(path)?;
 			let source_id = self.files.new_source_id(path.to_path_buf(), content.clone());
 			Some((source_id, content))
 		}
@@ -215,6 +216,11 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	unimplemented_items: HashSet<&'static str>,
 }
 
+pub enum FromFileError<M: ASTImplementation> {
+	SyntaxError(M::ParseError),
+	CouldNotOpen(PathBuf),
+}
+
 impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 	// TODO improve on this function
 	pub fn new(
@@ -244,41 +250,84 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 		}
 	}
 
-	/// TODO method is a bit junky
-	/// Returns the exports of the module
-	pub(crate) fn load_and_check_module(
+	pub fn import_file(
 		&mut self,
-		path: PathBuf,
-		base_environment: &mut RootContext,
-	) -> Result<
-		(&HashMap<String, Variable>, &mut DiagnosticsContainer, &mut TypeMappings),
-		ModuleFromPathError,
-	> {
-		todo!()
-		// if let Some(ref _synthesised_modules) = self.modules.synthesised_modules.get(&path) {
-		// 	todo!()
-		// }
+		from: SourceId,
+		importing_path: &str,
+		environment: &mut Environment,
+	) -> Result<Exported, FromFileError<M>> {
+		if importing_path.starts_with('.') {
+			let from_path = self.modules.files.get_file_path(from);
+			let from = PathBuf::from(importing_path);
+			let mut full_importer =
+				path_absolutize::Absolutize::absolutize_from(&from, from_path.parent().unwrap())
+					.unwrap()
+					.to_path_buf();
 
-		// // TODO check module is not already loaded or checked.
-		// // TODO paths maybe different to what is in map here here .... :(
-		// let (module_result, _) = Module::from_path(
-		// 	path.clone(),
-		// 	&self.modules.custom_module_resolvers,
-		// 	&self.modules.fs_resolver,
-		// 	todo!("parse settings"),
-		// )?;
+			fn get_module<'a, T: crate::ReadFromFS, M: ASTImplementation>(
+				full_importer: PathBuf,
+				environment: &mut Environment,
+				checking_data: &'a mut CheckingData<T, M>,
+			) -> Option<Result<&'a SynthesisedModule<M::Module>, M::ParseError>> {
+				let existing = checking_data.modules.files.get_source_at_path(&full_importer);
+				if let Some(existing) = existing {
+					Some(Ok(checking_data.modules.synthesised_modules.get(&existing).unwrap()))
+				} else {
+					let content = (checking_data.modules.file_reader)(full_importer.as_ref());
+					if let Some(content) = content {
+						let source = checking_data
+							.modules
+							.files
+							.new_source_id(full_importer.to_path_buf(), content.clone());
 
-		// self.modules.currently_checking_modules.insert(path.clone());
-		// let synthesised_module = module_result.synthesise(base_environment, self);
-		// self.modules.currently_checking_modules.remove(&path);
+						match M::module_from_string(
+							source,
+							content,
+							&checking_data.modules.parsing_options,
+						) {
+							Ok(module) => Some(Ok(environment.get_root().new_module_context(
+								source,
+								module,
+								checking_data,
+							))),
+							Err(err) => Some(Err(err)),
+						}
+					} else {
+						None
+					}
+				}
+			}
 
-		// self.modules
-		// 	.synthesised_modules
-		// 	.insert(synthesised_module.module.path.clone(), synthesised_module)
-		// 	.unwrap();
+			let synthesised_module = if full_importer.extension().is_some() {
+				let result = get_module(full_importer.clone(), environment, self);
+				match result {
+					Some(Ok(result)) => result,
+					Some(Err(err)) => return Err(FromFileError::SyntaxError(err)),
+					None => return Err(FromFileError::CouldNotOpen(full_importer)),
+				}
+			} else {
+				let mut result = None;
+				for ext in ["ts", "tsx", "js"] {
+					full_importer.set_extension(ext);
+					// TODO change settings based on extension
+					result = get_module(full_importer.clone(), environment, self);
+					if result.is_some() {
+						break;
+					}
+				}
+				if let Some(result) = result {
+					result.map_err(FromFileError::SyntaxError)?
+				} else {
+					// TODO some message about extensions?
+					return Err(FromFileError::CouldNotOpen(full_importer));
+				}
+			};
 
-		// // module.get_exports()
-		// Ok((todo!(), &mut self.diagnostics_container, &mut self.type_mappings))
+			environment.facts.extend_ref(&synthesised_module.facts);
+			Ok(synthesised_module.exported.clone())
+		} else {
+			todo!()
+		}
 	}
 
 	/// TODO temp, needs better place
@@ -377,14 +426,7 @@ pub fn check_project<T: crate::ReadFromFS, M: ASTImplementation>(
 		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
 	}
 
-	root.new_module_context(
-		entry_point_source_id,
-		module,
-		&mut checking_data,
-		|module, environment, checking_data| {
-			M::synthesize_module(module, entry_point_source_id, environment, checking_data);
-		},
-	);
+	root.new_module_context(entry_point_source_id, module, &mut checking_data);
 
 	let CheckingData {
 		diagnostics_container,

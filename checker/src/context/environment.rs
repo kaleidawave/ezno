@@ -11,7 +11,10 @@ use crate::{
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::variables::{VariableMutability, VariableWithValue},
+	structures::{
+		modules::Exported,
+		variables::{VariableMutability, VariableWithValue},
+	},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -20,6 +23,7 @@ use crate::{
 		PolyNature, Type, TypeStore,
 	},
 	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
+	VariableOrImport,
 };
 
 use super::{
@@ -59,6 +63,14 @@ impl<'a> ContextType for Syntax<'a> {
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		Some(&mut self.closed_over_references)
 	}
+
+	fn get_exports(&mut self) -> Option<&mut Exported> {
+		if let Scope::Module { ref mut exported, .. } = self.kind {
+			Some(exported)
+		} else {
+			None
+		}
+	}
 }
 
 /// TODO name of structure
@@ -91,6 +103,7 @@ pub enum Scope {
 	Block {},
 	Module {
 		source: SourceId,
+		exported: Exported,
 	},
 	DefinitionModule {
 		source: SourceId,
@@ -361,54 +374,61 @@ impl<'a> Environment<'a> {
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
 		if let Some((_, _, variable)) = variable_in_map {
-			match variable.mutability {
-				VariableMutability::Constant => {
-					Err(AssignmentError::Constant(variable.declared_at.clone()))
-				}
-				VariableMutability::Mutable { reassignment_constraint } => {
-					let variable = variable.clone();
+			match variable {
+				crate::VariableOrImport::Variable { mutability, declared_at } => {
+					match mutability {
+						VariableMutability::Constant => {
+							Err(AssignmentError::Constant(declared_at.clone()))
+						}
+						VariableMutability::Mutable { reassignment_constraint } => {
+							let variable = variable.clone();
 
-					if let Some(reassignment_constraint) = reassignment_constraint {
-						// TODO tuple with position:
-						let mut basic_subtyping = BasicEquality {
-							add_property_restrictions: false,
-							position: variable.declared_at.clone(),
-						};
-						let result = type_is_subtype(
-							reassignment_constraint,
-							new_type,
-							&mut basic_subtyping,
-							self,
-							store,
-						);
-
-						if let SubTypeResult::IsNotSubType(mismatches) = result {
-							return Err(AssignmentError::DoesNotMeetConstraint {
-								variable_type: TypeStringRepresentation::from_type_id(
+							if let Some(reassignment_constraint) = reassignment_constraint.clone() {
+								// TODO tuple with position:
+								let mut basic_subtyping = BasicEquality {
+									add_property_restrictions: false,
+									position: declared_at.clone(),
+								};
+								let result = type_is_subtype(
 									reassignment_constraint,
-									&self.as_general_context(),
-									store,
-									false,
-								),
-								value_type: TypeStringRepresentation::from_type_id(
 									new_type,
-									&self.as_general_context(),
+									&mut basic_subtyping,
+									self,
 									store,
-									false,
-								),
-								// TODO split
-								variable_site: assignment_position.clone(),
-								value_site: assignment_position.clone(),
-							});
+								);
+
+								if let SubTypeResult::IsNotSubType(mismatches) = result {
+									return Err(AssignmentError::DoesNotMeetConstraint {
+										variable_type: TypeStringRepresentation::from_type_id(
+											reassignment_constraint,
+											&self.as_general_context(),
+											store,
+											false,
+										),
+										value_type: TypeStringRepresentation::from_type_id(
+											new_type,
+											&self.as_general_context(),
+											store,
+											false,
+										),
+										// TODO split
+										variable_site: assignment_position.clone(),
+										value_site: assignment_position.clone(),
+									});
+								}
+							}
+
+							let variable_id = variable.get_id();
+
+							self.facts.events.push(Event::SetsVariable(variable_id, new_type));
+							self.facts.variable_current_value.insert(variable_id, new_type);
+
+							Ok(new_type)
 						}
 					}
-
-					let variable_id = variable.get_id();
-
-					self.facts.events.push(Event::SetsVariable(variable_id, new_type));
-					self.facts.variable_current_value.insert(variable_id, new_type);
-
-					Ok(new_type)
+				}
+				crate::VariableOrImport::Import { of, constant, import_specified_at } => {
+					todo!("error assign to import")
 				}
 			}
 		} else {
@@ -536,31 +556,34 @@ impl<'a> Environment<'a> {
 		};
 
 		let reference = RootReference::Variable(og_var.get_id());
-		// TODO
+
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		// TODO in_root temp fix
 		if let (Some(boundary), false) = (crossed_boundary, in_root) {
-			let based_on = match og_var.mutability {
+			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
-					let variable_id =
-						VariableId(og_var.declared_at.source, og_var.declared_at.start);
+					let constraint = checking_data
+						.type_mappings
+						.variables_to_constraints
+						.0
+						.get(&og_var.get_origin_variable_id());
 
-					let constraint =
-						checking_data.type_mappings.variables_to_constraints.0.get(&variable_id);
+					// TODO temp
+					{
+						let current_value = get_value_of_variable(
+							self.facts_chain(),
+							og_var.get_id(),
+							None::<&crate::types::poly_types::FunctionTypeArguments>,
+						);
 
-					let current_value = get_value_of_variable(
-						self.facts_chain(),
-						og_var.get_id(),
-						None::<&crate::types::poly_types::FunctionTypeArguments>,
-					);
+						if let Some(current_value) = current_value {
+							let ty = checking_data.types.get_type_by_id(current_value);
 
-					if let Some(current_value) = current_value {
-						let ty = checking_data.types.get_type_by_id(current_value);
-
-						// TODO temp
-						if matches!(ty, Type::Function(..)) {
-							return Ok(VariableWithValue(og_var.clone(), current_value));
+							// TODO temp
+							if matches!(ty, Type::Function(..)) {
+								return Ok(VariableWithValue(og_var.clone(), current_value));
+							}
 						}
 					}
 
@@ -627,6 +650,19 @@ impl<'a> Environment<'a> {
 
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
+			// TODO recursively in
+			if let VariableOrImport::Import { of, constant: false, import_specified_at } =
+				og_var.clone()
+			{
+				let current_value = get_value_of_variable(
+					self.facts_chain(),
+					of,
+					None::<&crate::types::poly_types::FunctionTypeArguments>,
+				)
+				.expect("variable not assigned yet");
+				return Ok(VariableWithValue(og_var.clone(), current_value));
+			}
+
 			let current_value = get_value_of_variable(
 				self.facts_chain(),
 				og_var.get_id(),

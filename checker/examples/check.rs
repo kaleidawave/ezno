@@ -17,7 +17,7 @@ fn main() {
 			if path == &PathBuf::from(ezno_checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(ezno_checker::INTERNAL_DEFINITION_FILE.to_owned())
 			} else {
-				Some(fs::read_to_string(path).unwrap())
+				fs::read_to_string(path).ok()
 			}
 		},
 		None,

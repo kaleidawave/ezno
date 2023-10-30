@@ -5,10 +5,14 @@ use parser::{
 	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
 	WithComment,
 };
+use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::RegisterOnExisting, context::Environment,
-	structures::variables::VariableMutability, CheckingData, ReadFromFS, TypeId,
+	behavior::functions::RegisterOnExisting,
+	context::Environment,
+	diagnostics::TypeCheckError,
+	structures::{modules::Exported, variables::VariableMutability},
+	CheckingData, Constant, ReadFromFS, TypeId,
 };
 
 use super::{
@@ -16,7 +20,6 @@ use super::{
 	variables::register_variable,
 };
 
-/// TODO imports and exports
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
@@ -76,6 +79,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
+					if !matches!(environment.context_type.kind, crate::Scope::Module { .. }) {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::NotTopLevelImport(
+								import.get_position().clone().with_source(environment.get_source()),
+							),
+						);
+						continue;
+					}
+
 					// TODO get types from checking_data.modules.exported
 					if let Some(ref default) = import.default {
 						checking_data.raise_unimplemented_error(
@@ -84,6 +96,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 					}
 
+					let from = environment.get_source();
+					let exports = checking_data.import_file(from, &import.from, environment);
+
 					match &import.kind {
 						parser::declarations::import::ImportKind::Parts(parts) => {
 							for part in parts {
@@ -91,14 +106,65 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									parser::declarations::ImportExportPart::Name(identifier) => {
 										if let VariableIdentifier::Standard(name, pos) = identifier
 										{
-											environment.register_variable_handle_error(
-												name,
-												pos.clone().with_source(environment.get_source()),
-												crate::context::VariableRegisterBehavior::Declare {
-													base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-												},
-												checking_data,
-											);
+											if let Ok(exports) = &exports {
+												if let Some((variable, mutability)) =
+													exports.named.get(name)
+												{
+													let constant = match mutability {
+														VariableMutability::Constant => {
+															environment
+																.facts
+																.variable_current_value
+																.insert(
+																	crate::VariableId(
+																		environment.get_source(),
+																		pos.start,
+																	),
+																	environment
+																		.get_value_of_constant_import_variable(
+																			*variable,
+																		),
+																);
+															true
+														}
+														VariableMutability::Mutable {
+															reassignment_constraint,
+														} => false,
+													};
+													environment.variables.insert(
+														name.clone(),
+														crate::VariableOrImport::Import {
+															of: *variable,
+															constant,
+															import_specified_at: pos
+																.clone()
+																.with_source(
+																	environment.get_source(),
+																),
+														},
+													);
+												} else {
+													// TODO emit error
+													environment.register_variable_handle_error(
+														name,
+														pos.clone().with_source(environment.get_source()),
+														crate::context::VariableRegisterBehavior::Declare {
+															base: TypeId::ERROR_TYPE,
+														},
+														checking_data,
+													);
+												}
+											} else {
+												// TODO emit error
+												environment.register_variable_handle_error(
+													name,
+													pos.clone().with_source(environment.get_source()),
+													crate::context::VariableRegisterBehavior::Declare {
+														base: TypeId::ERROR_TYPE,
+													},
+													checking_data,
+												);
+											}
 										}
 									}
 									parser::declarations::ImportExportPart::NameWithAlias {
@@ -117,10 +183,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									}
 								}
 							}
-							checking_data.raise_unimplemented_error(
-								"imports",
-								import.position.clone().with_source(environment.get_source()),
-							);
 						}
 						parser::declarations::import::ImportKind::All { under } => {
 							checking_data.raise_unimplemented_error(
@@ -256,16 +318,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							parser::declarations::export::Exportable::Class(_) => {}
 							parser::declarations::export::Exportable::Function(func) => {
 								// TODO unsynthesized function? ...
+								let mutability =
+									crate::structures::variables::VariableMutability::Constant;
 								let behavior = crate::context::VariableRegisterBehavior::Register {
-									// TODO
-									mutability:
-										crate::structures::variables::VariableMutability::Constant,
+									mutability,
 								};
+								let declared_at = func
+									.get_position()
+									.clone()
+									.with_source(environment.get_source());
+
 								environment.register_variable_handle_error(
 									func.name.as_str(),
-									func.get_position()
-										.clone()
-										.with_source(environment.get_source()),
+									declared_at,
 									behavior,
 									checking_data,
 								);
@@ -293,12 +358,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 						}
 					}
-					parser::declarations::ExportDeclaration::Default { expression, position } => {
-						checking_data.raise_unimplemented_error(
-							"default export",
-							position.clone().with_source(environment.get_source()),
-						);
-					}
+					parser::declarations::ExportDeclaration::Default { .. } => {}
 				},
 			},
 		}
@@ -311,7 +371,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				environment.new_function(
 					checking_data,
 					&func.on,
-					RegisterOnExisting(func.on.name.as_str().to_owned()),
+					RegisterOnExisting(crate::VariableId(
+						environment.get_source(),
+						item.get_position().start,
+					)),
 				);
 			}
 			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
@@ -319,12 +382,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					ExportDeclaration::Variable { exported: Exportable::Function(func), position: _ },
 				..
 			})) => {
-				// TODO does it need to be exportable marked
-				environment.new_function(
-					checking_data,
-					func,
-					RegisterOnExisting(func.name.as_str().to_owned()),
-				);
+				let variable_id =
+					crate::VariableId(environment.get_source(), item.get_position().start);
+				environment.new_function(checking_data, func, RegisterOnExisting(variable_id));
+				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				{
+					exported.named.insert(
+						func.name.as_str().to_owned(),
+						(variable_id, VariableMutability::Constant),
+					);
+				}
 			}
 			_ => (),
 		}

@@ -5,6 +5,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use crate::{
 	context::{facts::Facts, Context, ContextType},
 	events::Event,
+	structures::variables::VariableMutability,
 	types::{
 		functions::SynthesisedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionType, TypeStore,
@@ -65,8 +66,8 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterAsType
 	}
 }
 
-/// Because of hoisting
-pub struct RegisterOnExisting(pub String);
+/// Because of hoisting. On existing name
+pub struct RegisterOnExisting(pub VariableId);
 
 impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExisting {
 	type Return = ();
@@ -75,16 +76,14 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExis
 		&self,
 		func: &T,
 		func_ty: FunctionType,
-		environment: &mut Context<U>,
+		context: &mut Context<U>,
 		types: &mut TypeStore,
 	) -> Self::Return {
 		let id = func_ty.id;
 		types.functions.insert(id, func_ty);
 		let ty = types.register_type(crate::Type::Function(id, Default::default()));
-		let variable_id = environment.variables.get(&self.0).unwrap().declared_at.clone();
-		let variable_id = VariableId(variable_id.source, variable_id.start);
-		environment.facts.variable_current_value.insert(variable_id, ty);
-		environment.facts.events.push(Event::CreateObject {
+		context.facts.variable_current_value.insert(self.0, ty);
+		context.facts.events.push(Event::CreateObject {
 			prototype: crate::events::PrototypeArgument::Function(id),
 			referenced_in_scope_as: ty,
 		});

@@ -5,7 +5,7 @@ use crate::{
 	context::{ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
 	events::Event,
-	CheckingData, Environment, SynthesisableConditional, TypeId, Variable,
+	CheckingData, Environment, SynthesisableConditional, TypeId, VariableOrImport,
 };
 use parser::{
 	statements::{ConditionalElseStatement, UnconditionalElseStatement},
@@ -13,7 +13,7 @@ use parser::{
 };
 use std::collections::HashMap;
 
-pub type ExportedItems = HashMap<String, Variable>;
+pub type ExportedItems = HashMap<String, VariableOrImport>;
 pub type ReturnResult = Option<TypeId>;
 
 pub(super) fn synthesise_statement<T: crate::ReadFromFS>(

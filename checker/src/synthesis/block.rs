@@ -1,10 +1,14 @@
-use parser::{Declaration, Statement, StatementOrDeclaration};
+use parser::{declarations::VariableDeclaration, Declaration, Statement, StatementOrDeclaration};
 
-use crate::{context::Environment, diagnostics::TypeCheckError, CheckingData};
+use crate::{
+	context::Environment, diagnostics::TypeCheckError, structures::modules::Exported, CheckingData,
+	Scope,
+};
 
 use super::{
 	classes::synthesise_class_declaration, declarations::synthesise_variable_declaration,
-	hoisting::hoist_statements, statements::synthesise_statement,
+	expressions::synthesise_expression, hoisting::hoist_statements,
+	statements::synthesise_statement,
 };
 
 /// Note that this expects the environment to be new lexically
@@ -58,7 +62,7 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 ) {
 	match declaration {
 		Declaration::Variable(declaration) => {
-			synthesise_variable_declaration(declaration, environment, checking_data)
+			synthesise_variable_declaration(declaration, environment, checking_data, false)
 		}
 		Declaration::Class(class) => {
 			let constructor = synthesise_class_declaration(&class.on, environment, checking_data);
@@ -83,7 +87,8 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 		| Declaration::Enum(_)
 		| Declaration::Interface(_)
 		| Declaration::TypeAlias(_) => {}
-		Declaration::Import(_) => todo!(),
+		// Imports are hoisted
+		Declaration::Import(_) => {}
 		Declaration::Export(exported) => match &exported.on {
 			parser::declarations::ExportDeclaration::Variable { exported, position } => {
 				match exported {
@@ -96,17 +101,31 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 						synthesise_class_declaration(class, environment, checking_data);
 					}
 					parser::declarations::export::Exportable::Variable(variable) => {
-						// TODO mark as exported
-						crate::utils::notify!(
-							"Export variable {:?}",
-							environment.context_type.kind
-						);
-						synthesise_variable_declaration(variable, environment, checking_data);
+						synthesise_variable_declaration(variable, environment, checking_data, true);
 					}
 					parser::declarations::export::Exportable::Parts(_) => todo!(),
 				}
 			}
-			parser::declarations::ExportDeclaration::Default { expression, position } => todo!(),
+			parser::declarations::ExportDeclaration::Default { expression, position } => {
+				let result = synthesise_expression(expression, environment, checking_data);
+				if let Scope::Module { ref mut exported, .. } = environment.context_type.kind {
+					if exported.default.is_some() {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::DoubleDefaultExport(
+								position.clone().with_source(environment.get_source()),
+							),
+						);
+					} else {
+						exported.default = Some(result);
+					}
+				} else {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::NonTopLevelExport(
+							position.clone().with_source(environment.get_source()),
+						),
+					);
+				}
+			}
 		},
 	}
 }

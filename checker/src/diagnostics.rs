@@ -214,7 +214,7 @@ mod defined_errors_and_warnings {
 		TypeIsNotIndexable(TypeStringRepresentation),
 		TypeIsNotIterable(TypeStringRepresentation),
 		// This could be a syntax error but that is difficult to type...
-		NonTopLevelExport,
+		NonTopLevelExport(SpanWithSource),
 		// TODO implies the presence of, which isn't always true
 		FieldNotExported(&'a str, &'a path::Path, SpanWithSource),
 		InvalidJSXAttribute {
@@ -265,6 +265,8 @@ mod defined_errors_and_warnings {
 		},
 		NotDefinedOperator(&'static str, SpanWithSource),
 		PropertyNotWriteable(SpanWithSource),
+		NotTopLevelImport(SpanWithSource),
+		DoubleDefaultExport(source_map::BaseSpan<source_map::SourceId>),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -481,7 +483,7 @@ mod defined_errors_and_warnings {
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
 				TypeCheckError::TypeIsNotIterable(_) => todo!(),
-				TypeCheckError::NonTopLevelExport => todo!(),
+				TypeCheckError::NonTopLevelExport(pos) => todo!(),
 				TypeCheckError::FieldNotExported(_, _, _) => todo!(),
 				TypeCheckError::InvalidJSXInterpolatedValue {
 					interpolation_site,
@@ -569,6 +571,12 @@ mod defined_errors_and_warnings {
 					position,
 					kind: super::DiagnosticKind::Error,
 				},
+				TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
+					reason: "Import must be in the top of the scope".to_owned(),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::DoubleDefaultExport(_) => todo!(),
 			}
 		}
 	}

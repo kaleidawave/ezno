@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
 	behavior::functions::ClosureId,
@@ -100,6 +100,9 @@ impl Facts {
 	}
 
 	pub(crate) fn extend(&mut self, other: Facts, condition: Option<TypeId>) {
+		if condition.is_some() {
+			todo!()
+		}
 		self.events.extend(other.events);
 		self.queued_events.extend(other.queued_events);
 		self.variable_current_value.extend(other.variable_current_value);
@@ -110,5 +113,20 @@ impl Facts {
 		self.enumerable.extend(other.enumerable);
 		self.writable.extend(other.writable);
 		self.frozen.extend(other.frozen);
+	}
+
+	pub(crate) fn extend_ref(&mut self, other: &Facts) {
+		self.events.extend(other.events.iter().cloned());
+		self.queued_events.extend(other.queued_events.iter().cloned());
+		self.variable_current_value.extend(other.variable_current_value.iter().to_owned());
+		self.prototypes.extend(other.prototypes.iter().to_owned());
+		self.current_properties
+			.extend(other.current_properties.iter().map(|(l, r)| (l.clone(), r.clone())));
+		self.closure_current_values
+			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), r.clone())));
+		self.configurable.extend(other.configurable.iter().to_owned());
+		self.enumerable.extend(other.enumerable.iter().to_owned());
+		self.writable.extend(other.writable.iter().to_owned());
+		self.frozen.extend(other.frozen.iter().to_owned());
 	}
 }

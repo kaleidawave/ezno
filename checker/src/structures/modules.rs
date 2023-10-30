@@ -1,16 +1,22 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, default, path::PathBuf};
 
 use derive_enum_from_into::EnumFrom;
 
-use crate::{context::facts::Facts, Diagnostic, Variable};
+use crate::{context::facts::Facts, Diagnostic, TypeId, VariableId, VariableOrImport};
+
+use super::variables::VariableMutability;
 
 pub struct SynthesisedModule<M> {
 	pub content: M,
-	// TODO this should not be on unchecked module
-	// TODO export default
-	pub exported_variables: HashMap<String, Variable>,
+	pub exported: Exported,
 	/// TODO ...
 	pub facts: Facts,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Exported {
+	pub default: Option<TypeId>,
+	pub named: HashMap<String, (VariableId, VariableMutability)>,
 }
 
 #[derive(Debug, EnumFrom)]
@@ -24,11 +30,5 @@ pub enum ModuleFromPathError {
 impl From<ModuleFromPathError> for Diagnostic {
 	fn from(err: ModuleFromPathError) -> Self {
 		todo!()
-	}
-}
-
-impl<U> SynthesisedModule<U> {
-	pub fn get_exports(&self) -> &HashMap<String, Variable> {
-		&self.exported_variables
 	}
 }
