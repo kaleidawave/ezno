@@ -1,7 +1,7 @@
 use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
-	functions::GeneralFunctionBase,
+	functions::{parse_function_location, FunctionLocationModifier, GeneralFunctionBase},
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
@@ -34,6 +34,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
+use enum_variants_strings::EnumVariantsStrings;
 use get_field_by_type::GetFieldByType;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -515,11 +516,14 @@ impl Expression {
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
 				let span = t.get_span();
+				let generator_star_token_position = reader
+					.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+					.map(|token| token.get_span());
 				let header = FunctionHeader::VirginFunctionHeader {
 					async_keyword: None,
 					function_keyword: Keyword::new(span.clone()),
-					// TODO
-					generator_star_token_position: None,
+					generator_star_token_position,
+					location: None,
 					position: span,
 				};
 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
@@ -534,7 +538,6 @@ impl Expression {
 				)?;
 				Expression::ExpressionFunction(function)
 			}
-			// TODO this should be extracted to a function that allows it to also work for leading `generator`
 			t @ Token(TSXToken::Keyword(TSXKeyword::Async), _) => {
 				let async_keyword = Some(Keyword::new(t.get_span()));
 				let header = crate::functions::function_header_from_reader_with_async_keyword(
@@ -553,13 +556,31 @@ impl Expression {
 				)?)
 			}
 			#[cfg(feature = "extras")]
-			t @ Token(TSXToken::Keyword(TSXKeyword::Generator), _) => {
-				let get_span = t.get_span();
+			Token(
+				TSXToken::Keyword(
+					kw @ TSXKeyword::Generator | kw @ TSXKeyword::Module | kw @ TSXKeyword::Server,
+				),
+				start,
+			) => {
+				let pos = start.with_length(kw.to_str().len());
+				let (generator_keyword, location) = match kw {
+					TSXKeyword::Generator => {
+						(Some(Keyword::new(pos)), parse_function_location(reader))
+					}
+					TSXKeyword::Module => {
+						(None, Some(FunctionLocationModifier::Module(Keyword::new(pos))))
+					}
+					TSXKeyword::Server => {
+						(None, Some(FunctionLocationModifier::Server(Keyword::new(pos))))
+					}
+					_ => unreachable!(),
+				};
 				let function_keyword = Keyword::from_reader(reader)?;
-				let position = get_span.union(function_keyword.get_position());
+				let position = start.union(function_keyword.get_position());
 				let header = FunctionHeader::ChadFunctionHeader {
 					async_keyword: None,
-					generator_keyword: Some(Keyword::new(get_span)),
+					location,
+					generator_keyword,
 					function_keyword,
 					position,
 				};
@@ -1760,7 +1781,8 @@ pub enum SuperReference {
 mod tests {
 	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
 	use crate::{
-		assert_matches_ast, operators::BinaryOperator, span, NumberRepresentation, Quoted, SourceId,
+		assert_matches_ast, ast::SpreadExpression, operators::BinaryOperator, span,
+		NumberRepresentation, Quoted, SourceId,
 	};
 
 	#[test]
@@ -1822,6 +1844,14 @@ mod tests {
 				},
 				span!(0, 6),
 			)
+		);
+	}
+
+	#[test]
+	fn spread_function_argument() {
+		assert_matches_ast!(
+			"console.table(...a)",
+			FunctionCall { arguments: Deref @ [SpreadExpression::Spread(VariableReference(..), span!(14, 18))], .. }
 		);
 	}
 

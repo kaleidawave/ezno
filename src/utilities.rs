@@ -22,7 +22,7 @@ pub(crate) fn print_info() {
 	if let Some(sponsors) = SPONSORS {
 		print_to_cli(format_args!("Supported by: {sponsors}. Join them @ {SPONSORS_PATH}"));
 	} else {
-		print_to_cli(format_args!("Sponsor the project @ {SPONSORS_PATH}"));
+		print_to_cli(format_args!("Support the project @ {SPONSORS_PATH}"));
 	}
 	print_to_cli(format_args!("For help run --help"));
 }

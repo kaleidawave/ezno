@@ -290,9 +290,28 @@ pub fn lex_script(
 							if script[..idx].ends_with('_') {
 								return_err!(LexingErrors::InvalidUnderscore)
 							} else if *fractional {
-								return_err!(LexingErrors::SecondDecimalPoint);
+								// Catch for spread token `...`
+								if start + 1 == idx {
+									let automaton = TSXToken::new_automaton();
+									let derive_finite_automaton::GetNextResult::NewState(
+										dot_state_one,
+									) = automaton.get_next('.')
+									else {
+										unreachable!()
+									};
+									let derive_finite_automaton::GetNextResult::NewState(
+										dot_state_two,
+									) = dot_state_one.get_next('.')
+									else {
+										unreachable!()
+									};
+									state = LexingState::Symbol(dot_state_two);
+								} else {
+									return_err!(LexingErrors::SecondDecimalPoint);
+								}
+							} else {
+								*fractional = true;
 							}
-							*fractional = true;
 						} else {
 							return_err!(LexingErrors::NumberLiteralCannotHaveDecimalPoint);
 						}

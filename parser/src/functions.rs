@@ -1,14 +1,14 @@
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::tsx_keywords;
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
 	ExpressionPosition, GenericTypeConstraint, Keyword, ParseOptions, ParseResult, TSXToken,
 	TypeAnnotation, VisitSettings, Visitable,
 };
+use crate::{tsx_keywords, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
-use tokenizer_lib::TokenReader;
+use tokenizer_lib::{Token, TokenReader};
 
 pub use crate::parameters::*;
 
@@ -207,6 +207,7 @@ where
 	}
 }
 
+/// Base for all functions with the `function` keyword
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
@@ -245,12 +246,23 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	}
 }
 
+#[cfg(feature = "extras")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum FunctionLocationModifier {
+	Server(Keyword<tsx_keywords::Server>),
+	Module(Keyword<tsx_keywords::Module>),
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,
+		#[cfg(feature = "extras")]
+		location: Option<FunctionLocationModifier>,
 		function_keyword: Keyword<tsx_keywords::Function>,
 		generator_star_token_position: Option<Span>,
 		position: Span,
@@ -259,6 +271,7 @@ pub enum FunctionHeader {
 	ChadFunctionHeader {
 		async_keyword: Option<Keyword<tsx_keywords::Async>>,
 		generator_keyword: Option<Keyword<tsx_keywords::Generator>>,
+		location: Option<FunctionLocationModifier>,
 		function_keyword: Keyword<tsx_keywords::Function>,
 		position: Span,
 	},
@@ -313,6 +326,8 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 		if let Some(token) = next_generator {
 			let span = token.get_span();
 			let generator_keyword = Some(Keyword::new(span.clone()));
+			let location = parse_function_location(reader);
+
 			let function_keyword = Keyword::from_reader(reader)?;
 			let position = async_keyword
 				.as_ref()
@@ -321,6 +336,7 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 
 			Ok(FunctionHeader::ChadFunctionHeader {
 				async_keyword,
+				location,
 				generator_keyword,
 				function_keyword,
 				position,
@@ -329,14 +345,38 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 			parse_regular_header(reader, async_keyword)
 		}
 	}
+
 	#[cfg(not(feature = "extras"))]
 	parse_regular_header(reader, async_keyword)
+}
+
+pub(crate) fn parse_function_location(
+	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+) -> Option<FunctionLocationModifier> {
+	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Module), _)) =
+		reader.peek()
+	{
+		Some(match reader.next().unwrap() {
+			t @ Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
+				FunctionLocationModifier::Server(Keyword::new(t.get_span()))
+			}
+			t @ Token(TSXToken::Keyword(TSXKeyword::Module), _) => {
+				FunctionLocationModifier::Module(Keyword::new(t.get_span()))
+			}
+			_ => unreachable!(),
+		})
+	} else {
+		None
+	}
 }
 
 fn parse_regular_header(
 	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
 	async_keyword: Option<Keyword<tsx_keywords::Async>>,
 ) -> Result<FunctionHeader, crate::ParseError> {
+	#[cfg(feature = "extras")]
+	let location = parse_function_location(reader);
+
 	let function_keyword = Keyword::from_reader(reader)?;
 	let generator_star_token_position = reader
 		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
@@ -356,6 +396,8 @@ fn parse_regular_header(
 		function_keyword,
 		generator_star_token_position,
 		position,
+		#[cfg(feature = "extras")]
+		location,
 	})
 }
 
