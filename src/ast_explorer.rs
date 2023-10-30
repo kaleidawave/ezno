@@ -124,7 +124,12 @@ impl ExplorerSubCommand {
 				let mut fs =
 					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
-				let res = Expression::from_string(input, Default::default(), source_id, None);
+				let res = Expression::from_string(
+					input,
+					parser::ParseOptions::all_features(),
+					source_id,
+					None,
+				);
 				match res {
 					Ok(res) => {
 						if cfg.json {
@@ -144,7 +149,12 @@ impl ExplorerSubCommand {
 				let mut fs =
 					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
-				let res = Module::from_string(input, Default::default(), source_id, None);
+				let res = Module::from_string(
+					input,
+					parser::ParseOptions::all_features(),
+					source_id,
+					None,
+				);
 				match res {
 					Ok(res) => {
 						if cfg.json {

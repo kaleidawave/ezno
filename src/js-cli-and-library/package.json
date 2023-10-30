@@ -13,6 +13,9 @@
 		},
 		"./initialised": {
 			"import": "./dist/initialised.mjs"
+		},
+		"./cli": {
+			"import": "./dist/cli.mjs"
 		}
 	},
 	"scripts": {

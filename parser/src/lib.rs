@@ -82,23 +82,43 @@ impl Quoted {
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
+	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
+	/// Parses decorators on items
 	pub decorators: bool,
 	pub generator_keyword: bool,
+	/// Skip **all** comments from the AST
 	pub include_comments: bool,
-
+	/// See [crate::extensions::is_expression::IsExpression]
 	pub is_expressions: bool,
-	pub server_blocks: bool,
-	pub module_blocks: bool,
+	/// Allows functions to be prefixed with 'server'
+	pub server_functions: bool,
+	/// Allows functions to be prefixed with 'module'
+	pub module_functions: bool,
 	/// For LSP allows incomplete AST for completions. TODO tidy up
 	pub slots: bool,
 }
+
 impl ParseOptions {
 	fn get_lex_options(&self) -> LexerOptions {
 		LexerOptions {
 			include_comments: self.include_comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
+		}
+	}
+
+	pub fn all_features() -> Self {
+		Self {
+			jsx: true,
+			special_jsx_attributes: true,
+			include_comments: true,
+			decorators: true,
+			slots: true,
+			generator_keyword: true,
+			server_functions: true,
+			module_functions: true,
+			is_expressions: true,
 		}
 	}
 }
@@ -113,8 +133,8 @@ impl Default for ParseOptions {
 			decorators: true,
 			slots: false,
 			generator_keyword: true,
-			server_blocks: false,
-			module_blocks: false,
+			server_functions: false,
+			module_functions: false,
 			is_expressions: true,
 		}
 	}

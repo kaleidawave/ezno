@@ -107,7 +107,7 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 	}
 }
 
-#[wasm_bindgen(js_name = just_imports)]
+#[wasm_bindgen]
 pub fn just_imports(input: String) -> JsValue {
 	use parser::{ASTNode, Module, SourceId};
 
@@ -123,4 +123,9 @@ pub fn just_imports(input: String) -> JsValue {
 			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
 		}
 	}
+}
+
+#[wasm_bindgen]
+pub fn get_version() -> JsValue {
+	serde_wasm_bindgen::to_value(&env!("CARGO_PKG_VERSION")).unwrap()
 }
