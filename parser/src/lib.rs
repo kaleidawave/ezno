@@ -59,7 +59,7 @@ pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 use std::{borrow::Cow, ops::Neg, str::FromStr};
 
 /// The notation of a string
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Quoted {
@@ -843,7 +843,9 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	}
 }
 
-/// Parses items surrounded in `{`, `[`, `(`, etc
+/// Parses items surrounded in `{`, `[`, `(`, etc.
+///
+/// Supports trailing commas
 pub(crate) fn parse_bracketed<T: ASTNode>(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
