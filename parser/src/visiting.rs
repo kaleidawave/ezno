@@ -238,6 +238,7 @@ mod ast {
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
+		crate::declarations::ImportExportName,
 		crate::PropertyKey<crate::property_key::AlwaysPublic>,
 		crate::PropertyKey<crate::property_key::PublicOrPrivate>
 	];
