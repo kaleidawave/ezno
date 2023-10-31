@@ -5,7 +5,9 @@ use visitable_derive::Visitable;
 
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
-	expect_semi_colon, Declaration, ParseOptions, ParseResult, Statement, VisitSettings, Visitable,
+	declarations::{export::Exportable, ExportDeclaration},
+	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, VisitSettings,
+	Visitable,
 };
 
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
@@ -23,7 +25,16 @@ impl StatementOrDeclaration {
 			StatementOrDeclaration::Statement(stmt) => stmt.requires_semi_colon(),
 			StatementOrDeclaration::Declaration(dec) => matches!(
 				dec,
-				Declaration::Variable(..) | Declaration::Export(..) | Declaration::Import(..)
+				Declaration::Variable(..)
+					| Declaration::Export(Decorated {
+						on: ExportDeclaration::Default { .. }
+							| ExportDeclaration::Variable {
+								exported: Exportable::ImportAll { .. }
+									| Exportable::ImportParts { .. } | Exportable::Parts { .. },
+								..
+							},
+						..
+					}) | Declaration::Import(..)
 			),
 		}
 	}

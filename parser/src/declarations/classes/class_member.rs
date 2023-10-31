@@ -19,6 +19,7 @@ pub enum ClassMember {
 	Method(Option<Keyword<tsx_keywords::Static>>, ClassFunction),
 	Property(Option<Keyword<tsx_keywords::Static>>, ClassProperty),
 	StaticBlock(Block),
+	Comment(String, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -47,6 +48,7 @@ impl ASTNode for ClassMember {
 			Self::Method(_, mtd) => mtd.get_position(),
 			Self::Property(_, prop) => &prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
+			Self::Comment(_, pos) => pos,
 		}
 	}
 
@@ -55,6 +57,14 @@ impl ASTNode for ClassMember {
 		state: &mut crate::ParsingState,
 		settings: &ParseOptions,
 	) -> ParseResult<Self> {
+		if let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
+			let Some(Token(TSXToken::MultiLineComment(c), start)) = reader.next() else {
+				unreachable!()
+			};
+			let with_length = start.with_length(c.len() + 2);
+			return Ok(Self::Comment(c, with_length));
+		}
+
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
 			let constructor = ClassConstructor::from_reader(reader, state, settings)?;
 			return Ok(ClassMember::Constructor(constructor));
@@ -73,7 +83,6 @@ impl ASTNode for ClassMember {
 			.map(|token| Keyword::new(token.get_span()));
 
 		let header = MethodHeader::optional_from_reader(reader);
-
 		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?;
 
 		match reader.peek() {
@@ -156,6 +165,13 @@ impl ASTNode for ClassMember {
 			Self::StaticBlock(block) => {
 				buf.push_str("static ");
 				block.to_string_from_buffer(buf, settings, depth + 1);
+			}
+			Self::Comment(c, _) => {
+				if settings.include_comments {
+					buf.push_str("/*");
+					buf.push_str(c);
+					buf.push_str("*/")
+				}
 			}
 		}
 	}

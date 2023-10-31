@@ -104,6 +104,10 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 						synthesise_variable_declaration(variable, environment, checking_data, true);
 					}
 					parser::declarations::export::Exportable::Parts(_) => todo!(),
+					parser::declarations::export::Exportable::ImportAll { r#as, from } => todo!(),
+					parser::declarations::export::Exportable::ImportParts { parts, from } => {
+						todo!()
+					}
 				}
 			}
 			parser::declarations::ExportDeclaration::Default { expression, position } => {

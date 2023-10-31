@@ -143,6 +143,7 @@ pub(super) fn synthesise_class_declaration<
 					}
 					ClassMember::StaticBlock(..) => {}
 					ClassMember::Property(_, _) => todo!(),
+					ClassMember::Comment(_, _) => {}
 				}
 
 				// match member {
