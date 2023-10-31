@@ -215,8 +215,7 @@ mod defined_errors_and_warnings {
 		TypeIsNotIterable(TypeStringRepresentation),
 		// This could be a syntax error but that is difficult to type...
 		NonTopLevelExport(SpanWithSource),
-		// TODO implies the presence of, which isn't always true
-		FieldNotExported(&'a str, &'a path::Path, SpanWithSource),
+		FieldNotExported(&'a str, &'a str, SpanWithSource),
 		InvalidJSXAttribute {
 			attribute_name: String,
 			attribute_type: TypeStringRepresentation,
@@ -267,11 +266,12 @@ mod defined_errors_and_warnings {
 		PropertyNotWriteable(SpanWithSource),
 		NotTopLevelImport(SpanWithSource),
 		DoubleDefaultExport(source_map::BaseSpan<source_map::SourceId>),
+		CannotOpenFile(crate::CouldNotOpenFile, source_map::BaseSpan<source_map::SourceId>),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
 		fn from(error: TypeCheckError<'_>) -> Self {
-			match error {
+			let diagnostic = match error {
 				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
@@ -295,6 +295,7 @@ mod defined_errors_and_warnings {
 						kind: super::DiagnosticKind::Error,
 					}
 				}
+
 				TypeCheckError::FunctionCallingError(error) => match error {
 					FunctionCallingError::InvalidArgumentType {
 						parameter_type,
@@ -577,7 +578,13 @@ mod defined_errors_and_warnings {
 					kind: super::DiagnosticKind::Error,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-			}
+				TypeCheckError::CannotOpenFile(_, position) => Diagnostic::Position {
+					reason: "Cannot find file".to_owned(),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+			};
+			diagnostic
 		}
 	}
 

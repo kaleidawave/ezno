@@ -1,6 +1,6 @@
 use parser::declarations::VariableDeclaration;
 
-use crate::{context::Environment, structures::variables::VariableMutability, CheckingData};
+use crate::{behavior::variables::VariableMutability, context::Environment, CheckingData};
 
 use super::variables::synthesise_variable_declaration_item;
 

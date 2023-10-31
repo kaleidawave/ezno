@@ -5,13 +5,16 @@ use parser::{
 	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
 	WithComment,
 };
-use source_map::SpanWithSource;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::RegisterOnExisting,
+	behavior::{
+		functions::RegisterOnExisting,
+		modules::{Exported, NamePair},
+		variables::VariableMutability,
+	},
 	context::Environment,
 	diagnostics::TypeCheckError,
-	structures::{modules::Exported, variables::VariableMutability},
 	CheckingData, Constant, ReadFromFS, TypeId,
 };
 
@@ -79,127 +82,41 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
-					if !matches!(environment.context_type.kind, crate::Scope::Module { .. }) {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::NotTopLevelImport(
-								import.get_position().clone().with_source(environment.get_source()),
-							),
-						);
-						continue;
-					}
-
-					// TODO get types from checking_data.modules.exported
-					if let Some(ref default) = import.default {
-						checking_data.raise_unimplemented_error(
-							"default imports",
-							import.position.clone().with_source(environment.get_source()),
-						);
-					}
-
-					let from = environment.get_source();
-					let exports = checking_data.import_file(from, &import.from, environment);
-
-					match &import.kind {
+					let kind = match &import.kind {
 						parser::declarations::import::ImportKind::Parts(parts) => {
-							for part in parts {
-								match part {
-									parser::declarations::ImportExportPart::Name(identifier) => {
-										if let VariableIdentifier::Standard(name, pos) = identifier
-										{
-											if let Ok(exports) = &exports {
-												if let Some((variable, mutability)) =
-													exports.named.get(name)
-												{
-													let constant = match mutability {
-														VariableMutability::Constant => {
-															environment
-																.facts
-																.variable_current_value
-																.insert(
-																	crate::VariableId(
-																		environment.get_source(),
-																		pos.start,
-																	),
-																	environment
-																		.get_value_of_constant_import_variable(
-																			*variable,
-																		),
-																);
-															true
-														}
-														VariableMutability::Mutable {
-															reassignment_constraint,
-														} => false,
-													};
-													environment.variables.insert(
-														name.clone(),
-														crate::VariableOrImport::Import {
-															of: *variable,
-															constant,
-															import_specified_at: pos
-																.clone()
-																.with_source(
-																	environment.get_source(),
-																),
-														},
-													);
-												} else {
-													// TODO emit error
-													environment.register_variable_handle_error(
-														name,
-														pos.clone().with_source(environment.get_source()),
-														crate::context::VariableRegisterBehavior::Declare {
-															base: TypeId::ERROR_TYPE,
-														},
-														checking_data,
-													);
-												}
-											} else {
-												// TODO emit error
-												environment.register_variable_handle_error(
-													name,
-													pos.clone().with_source(environment.get_source()),
-													crate::context::VariableRegisterBehavior::Declare {
-														base: TypeId::ERROR_TYPE,
-													},
-													checking_data,
-												);
-											}
-										}
-									}
-									parser::declarations::ImportExportPart::NameWithAlias {
-										name,
-										alias,
-										position,
-									} => {
-										environment.register_variable_handle_error(
-											name,
-											position.clone().with_source(environment.get_source()),
-											crate::context::VariableRegisterBehavior::Declare {
-												base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-											},
-											checking_data,
-										);
-									}
-								}
-							}
+							crate::behavior::modules::ImportKind::Parts(
+								parts.iter().filter_map(|item| import_part_to_name_pair(item)),
+							)
 						}
 						parser::declarations::import::ImportKind::All { under } => {
-							checking_data.raise_unimplemented_error(
-								"import * as",
-								import.position.clone().with_source(environment.get_source()),
-							);
+							crate::behavior::modules::ImportKind::All {
+								under: &under,
+								// TODO parser fix needed
+								position: Span::NULL_SPAN,
+							}
 						}
 						parser::declarations::import::ImportKind::SideEffect => {
-							checking_data.raise_unimplemented_error(
-								"import side effect",
-								import.position.clone().with_source(environment.get_source()),
-							);
+							crate::behavior::modules::ImportKind::SideEffect
 						}
-					}
+					};
+					environment.import_items(
+						&import.from,
+						import.position.clone(),
+						import.default.as_ref().and_then(|default_identifier| {
+							match default_identifier {
+								VariableIdentifier::Standard(name, pos) => {
+									Some((name.as_str(), pos.clone()))
+								}
+								VariableIdentifier::Cursor(..) => None,
+							}
+						}),
+						kind,
+						checking_data,
+					);
 				}
-				// TODO I don't think anything needs to happen here
-				parser::Declaration::Export(_export) => {}
+				parser::Declaration::Export(export) => {
+					// TODO export from
+				}
 			}
 		}
 	}
@@ -223,7 +140,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO unsynthesized function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
-						mutability: crate::structures::variables::VariableMutability::Constant,
+						mutability: crate::behavior::variables::VariableMutability::Constant,
 					};
 					environment.register_variable_handle_error(
 						func.on.name.as_str(),
@@ -315,11 +232,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Export(exported) => match &exported.on {
 					parser::declarations::ExportDeclaration::Variable { exported, position } => {
 						match exported {
-							parser::declarations::export::Exportable::Class(_) => {}
-							parser::declarations::export::Exportable::Function(func) => {
+							Exportable::Class(_) => {}
+							Exportable::Function(func) => {
 								// TODO unsynthesized function? ...
 								let mutability =
-									crate::structures::variables::VariableMutability::Constant;
+									crate::behavior::variables::VariableMutability::Constant;
 								let behavior = crate::context::VariableRegisterBehavior::Register {
 									mutability,
 								};
@@ -335,11 +252,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									checking_data,
 								);
 							}
-							parser::declarations::export::Exportable::Variable(declaration) => {
+							Exportable::Variable(declaration) => {
 								// TODO mark exported
 								hoist_variable_declaration(&declaration, environment, checking_data)
 							}
-							parser::declarations::export::Exportable::Interface(interface) => {
+							Exportable::Interface(interface) => {
 								let ty = idx_to_types.remove(&interface.position.start).unwrap();
 								super::interfaces::synthesise_signatures(
 									interface.type_parameters.as_deref(),
@@ -349,13 +266,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									checking_data,
 								);
 							}
-							parser::declarations::export::Exportable::TypeAlias(_) => {}
-							parser::declarations::export::Exportable::Parts(parts) => {
+							Exportable::TypeAlias(_) => {}
+							Exportable::Parts(parts) => {
 								checking_data.raise_unimplemented_error(
 									"export parts",
 									position.clone().with_source(environment.get_source()),
 								);
 							}
+							Exportable::ImportAll { r#as, from } => todo!(),
+							Exportable::ImportParts { parts, from } => todo!(),
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
@@ -394,6 +313,34 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 			}
 			_ => (),
+		}
+	}
+}
+
+fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<NamePair<'_>> {
+	match item {
+		parser::declarations::ImportPart::Name(name) => {
+			if let VariableIdentifier::Standard(name, position) = name {
+				Some(NamePair { value: &name, r#as: &name, position: position.clone() })
+			} else {
+				None
+			}
+		}
+		parser::declarations::ImportPart::NameWithAlias { name, alias, position } => {
+			Some(NamePair {
+				value: &name,
+				r#as: match alias {
+					parser::declarations::ImportExportName::Reference(item)
+					| parser::declarations::ImportExportName::Quoted(item, _) => item,
+				},
+				position: position.clone(),
+			})
+		}
+		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
+			item.as_deref().map(import_part_to_name_pair).flatten()
+		}
+		parser::declarations::ImportPart::PostfixComment(item, _, _) => {
+			import_part_to_name_pair(item)
 		}
 	}
 }

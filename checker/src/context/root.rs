@@ -1,6 +1,6 @@
 use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
-	structures::modules::Exported, types::TypeId, CheckingData, Environment, GeneralContext,
+	behavior::modules::Exported, types::TypeId, CheckingData, Environment, GeneralContext,
 	SynthesisedModule,
 };
 use source_map::SourceId;

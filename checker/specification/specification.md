@@ -893,3 +893,62 @@ try {
 ```
 
 - Expected string, found 3
+
+### Imports and exports
+
+#### Import named
+
+```ts
+import { PI } from "./constants";
+PI satisfies string;
+
+// in constants.ts
+export const PI = 4;
+```
+
+- Expected string, found 4
+
+#### Imports are constant
+
+```ts
+import { PI } from "./constants";
+PI += 2;
+
+// in constants.ts
+export let PI = 4;
+```
+
+- Cannot assign to constant
+
+#### Import default
+
+```ts
+import PI from "./pi";
+PI satisfies string;
+
+// in pi.ts
+export default 4;
+```
+
+- Expected string, found 4
+
+#### Export let
+
+```ts
+import { counter, incrementCounter } from "./mutable";
+
+counter satisfies string;
+incrementCounter();
+counter satisfies 3;
+incrementCounter();
+counter satisfies string;
+
+// in mutable.ts
+export let counter = 2;
+export function incrementCounter() {
+	counter++
+}
+```
+
+- Expected string, found 2
+- Expected string, found 4

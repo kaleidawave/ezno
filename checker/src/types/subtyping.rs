@@ -595,8 +595,10 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				}
 				Type::FunctionReference(_, _) => todo!(),
 				Type::Class(_) => todo!(),
+				Type::SpecialObject(_) => todo!(),
 			}
 		}
+		Type::SpecialObject(_) => todo!(),
 	}
 }
 

@@ -252,6 +252,12 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 				buf.push('}');
 			}
 			Type::Class(..) => todo!("name"),
+			Type::SpecialObject(special_object) => match special_object {
+				crate::behavior::objects::SpecialObjects::Promise { events } => todo!(),
+				crate::behavior::objects::SpecialObjects::Generator { position } => todo!(),
+				crate::behavior::objects::SpecialObjects::Proxy { handler, over } => todo!(),
+				crate::behavior::objects::SpecialObjects::Import(_) => todo!(),
+			},
 		}
 
 		cycles.remove(&id);

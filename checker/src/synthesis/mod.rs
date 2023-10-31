@@ -22,8 +22,8 @@ use parser::PropertyKey;
 use source_map::SourceId;
 
 use crate::{
+	behavior::modules::Exported,
 	context::{environment, Context, ContextType, Names},
-	structures::modules::Exported,
 	types::TypeStore,
 	Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };

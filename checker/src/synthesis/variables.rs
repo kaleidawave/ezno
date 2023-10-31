@@ -8,10 +8,9 @@ use parser::{
 
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
-	context::facts::PublicityKind,
-	context::{Context, ContextType},
+	behavior::variables::VariableMutability,
+	context::{facts::PublicityKind, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	structures::variables::VariableMutability,
 	synthesis::property_key_as_type,
 	types::Constant,
 	CheckingData, Environment, TypeId,
@@ -239,9 +238,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
-) where
-	for<'a> Option<&'a parser::Expression>: From<&'a U>,
-{
+) {
 	// This is only added if there is an annotation, so can be None
 	let get_position = variable_declaration.get_position();
 	let var_ty_and_pos = checking_data
@@ -250,9 +247,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, pos.clone()));
 
-	let value_ty = if let Some(value) =
-		Option::<&parser::Expression>::from(&variable_declaration.expression)
-	{
+	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
 		let value_ty = super::expressions::synthesise_expression(value, environment, checking_data);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {

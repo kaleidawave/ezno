@@ -27,7 +27,8 @@ mod specification {
 fn check_errors(
 	heading: &'static str,
 	line: usize,
-	code: &'static str,
+	// (Path, Content)
+	code: &[(&'static str, &'static str)],
 	expected_diagnostics: &[&'static str],
 ) {
 	// let global_buffer = Arc::new(Mutex::new(String::new()));
@@ -49,15 +50,24 @@ fn check_errors(
 	let type_check_options = None;
 	let parse_options = Default::default();
 
+	// eprintln!("{:?}", code);
+
 	// let result = panic::catch_unwind(|| {
 	let result = checker::check_project::<_, EznoParser>(
-		PathBuf::from("TEST_CODE"),
+		PathBuf::from("main.ts"),
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path| {
 			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 			} else {
-				Some(code.to_owned())
+				if code.len() == 1 {
+					Some(code[0].1.to_owned())
+				} else {
+					code.iter().find_map(|(code_path, content)| {
+						(std::path::Path::new(code_path) == path)
+							.then_some(content.to_owned().to_owned())
+					})
+				}
 			}
 		},
 		type_check_options,

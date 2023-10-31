@@ -321,6 +321,7 @@ impl TypeStore {
 				}),
 			Type::FunctionReference(_, _) => todo!(),
 			Type::Class(_) => todo!(),
+			Type::SpecialObject(_) => todo!(),
 		}
 	}
 

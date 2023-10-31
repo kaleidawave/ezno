@@ -161,9 +161,10 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 								Some((PropertyKind::Direct, func))
 							}
 							Type::Class(..) => todo!(),
-							Type::Object(..) | Type::RootPolyType { .. } | Type::Constant(..) => {
-								Some((PropertyKind::Direct, value))
-							}
+							Type::SpecialObject(..)
+							| Type::Object(..)
+							| Type::RootPolyType { .. }
+							| Type::Constant(..) => Some((PropertyKind::Direct, value)),
 							Type::NamedRooted { .. } | Type::And(_, _) | Type::Or(_, _) => {
 								crate::utils::notify!(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
@@ -289,6 +290,7 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 						Type::Class(..) | Type::Function(..) => todo!(),
 						Type::And(_, _)
 						| Type::Object(..)
+						| Type::SpecialObject(..)
 						| Type::RootPolyType(_)
 						| Type::Constructor(_)
 						| Type::Or(_, _)

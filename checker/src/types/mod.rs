@@ -21,6 +21,7 @@ pub use terms::Constant;
 use crate::{
 	behavior::{
 		functions::{ClosureId, ThisValue},
+		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
 	events::RootReference,
@@ -125,7 +126,8 @@ pub enum Type {
 
 	/// Technically could be just a function but...
 	Class(FunctionId),
-	Object(ObjectNature), // TODO Proxy,
+	Object(ObjectNature),
+	SpecialObject(SpecialObjects),
 }
 
 /// TODO difference between untyped and typed parameters and what about parameter based for any
@@ -193,6 +195,7 @@ impl Type {
 			| Type::FunctionReference(..)
 			| Type::Class(..)
 			| Type::Object(_) => false,
+			Type::SpecialObject(_) => todo!(),
 		}
 	}
 }
@@ -297,6 +300,7 @@ pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
 			Type::Function(..)
 			| Type::FunctionReference(..)
 			| Type::Class(..)
+			| Type::SpecialObject(_)
 			| Type::Object(_) => TruthyFalsy::Decidable(true),
 			Type::Constant(cst) => {
 				// TODO strict casts

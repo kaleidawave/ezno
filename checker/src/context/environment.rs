@@ -1,20 +1,19 @@
-use source_map::{SourceId, SpanWithSource};
+use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
 	behavior::{
 		assignments::{Assignable, AssignmentKind, Reference, SynthesisableExpression},
+		modules::{Exported, ImportKind, NamePair},
+		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
+		variables::{VariableMutability, VariableWithValue},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::{
-		modules::Exported,
-		variables::{VariableMutability, VariableWithValue},
-	},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -427,8 +426,9 @@ impl<'a> Environment<'a> {
 						}
 					}
 				}
-				crate::VariableOrImport::Import { of, constant, import_specified_at } => {
-					todo!("error assign to import")
+				crate::VariableOrImport::MutableImport { .. }
+				| crate::VariableOrImport::ConstantImport { .. } => {
+					Err(AssignmentError::Constant(assignment_position))
 				}
 			}
 		} else {
@@ -651,7 +651,7 @@ impl<'a> Environment<'a> {
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
 			// TODO recursively in
-			if let VariableOrImport::Import { of, constant: false, import_specified_at } =
+			if let VariableOrImport::MutableImport { of, constant: false, import_specified_at } =
 				og_var.clone()
 			{
 				let current_value = get_value_of_variable(
@@ -800,6 +800,153 @@ impl<'a> Environment<'a> {
 
 		self.can_use_this = crate::context::CanUseThis::ConstructorCalled { this_ty: ty };
 		ty
+	}
+
+	pub(crate) fn import_items<
+		'b,
+		P: Iterator<Item = NamePair<'b>>,
+		T: crate::ReadFromFS,
+		M: ASTImplementation,
+	>(
+		&mut self,
+		partial_import_path: &str,
+		import_position: Span,
+		default_import: Option<(&str, Span)>,
+		kind: ImportKind<'b, P>,
+		checking_data: &mut CheckingData<T, M>,
+	) {
+		let current_source = self.get_source();
+		if !matches!(self.context_type.kind, crate::Scope::Module { .. }) {
+			checking_data.diagnostics_container.add_error(TypeCheckError::NotTopLevelImport(
+				import_position.with_source(current_source),
+			));
+			return;
+		}
+
+		let exports = checking_data.import_file(current_source, &partial_import_path, self);
+
+		if let Err(ref err) = exports {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile(
+				err.clone(),
+				import_position.with_source(self.get_source()),
+			));
+		}
+
+		if let Some((default_name, position)) = default_import {
+			if let Ok(Ok(ref exports)) = exports {
+				if let Some(item) = &exports.default {
+					let id = crate::VariableId(current_source, position.start);
+					let v = crate::VariableOrImport::ConstantImport {
+						to: None,
+						import_specified_at: position.clone().with_source(current_source),
+					};
+					self.facts.variable_current_value.insert(id, *item);
+					let existing = self.variables.insert(default_name.to_owned(), v);
+					if let Some(existing) = existing {
+						todo!("diagnostic")
+					}
+				} else {
+					todo!("emit 'no default export' diagnostic")
+				}
+			} else {
+				let behavior =
+					crate::context::VariableRegisterBehavior::Declare { base: TypeId::ERROR_TYPE };
+
+				self.register_variable_handle_error(
+					default_name,
+					position.with_source(current_source),
+					behavior,
+					checking_data,
+				);
+			}
+		}
+
+		match kind {
+			ImportKind::Parts(parts) => {
+				for part in parts {
+					if let Ok(Ok(ref exports)) = exports {
+						if let Some((variable, mutability)) = exports.named.get(part.value) {
+							let constant = match mutability {
+								VariableMutability::Constant => {
+									let k = crate::VariableId(current_source, part.position.start);
+									let v = self.get_value_of_constant_import_variable(*variable);
+									self.facts.variable_current_value.insert(k, v);
+									true
+								}
+								VariableMutability::Mutable { reassignment_constraint } => false,
+							};
+
+							let v = crate::VariableOrImport::MutableImport {
+								of: *variable,
+								constant,
+								import_specified_at: part
+									.position
+									.clone()
+									.with_source(self.get_source()),
+							};
+							let existing = self.variables.insert(part.r#as.to_owned(), v);
+							if let Some(existing) = existing {
+								todo!("diagnostic")
+							}
+							continue;
+						} else {
+							let position = part.position.with_source(current_source);
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::FieldNotExported(
+									part.value,
+									partial_import_path,
+									position.clone(),
+								),
+							);
+							let behavior = crate::context::VariableRegisterBehavior::Declare {
+								base: TypeId::ERROR_TYPE,
+							};
+							self.register_variable_handle_error(
+								part.r#as,
+								position,
+								behavior,
+								checking_data,
+							);
+						}
+					} else {
+						let behavior = crate::context::VariableRegisterBehavior::Declare {
+							base: TypeId::ERROR_TYPE,
+						};
+						self.register_variable_handle_error(
+							part.r#as,
+							part.position.with_source(current_source),
+							behavior,
+							checking_data,
+						);
+					}
+				}
+			}
+			ImportKind::All { under, position } => {
+				if let Ok(Ok(ref exports)) = exports {
+					let value = checking_data.types.register_type(Type::SpecialObject(
+						crate::behavior::objects::SpecialObjects::Import(exports.clone()),
+					));
+
+					self.register_variable_handle_error(
+						under,
+						position.with_source(current_source),
+						crate::context::VariableRegisterBehavior::ConstantImport { value },
+						checking_data,
+					);
+				} else {
+					let behavior = crate::context::VariableRegisterBehavior::Declare {
+						base: TypeId::ERROR_TYPE,
+					};
+					self.register_variable_handle_error(
+						under,
+						position.with_source(current_source),
+						behavior,
+						checking_data,
+					);
+				}
+			}
+			ImportKind::SideEffect => todo!(),
+		}
 	}
 }
 

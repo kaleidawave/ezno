@@ -1,7 +1,7 @@
 use parser::{declarations::VariableDeclaration, Declaration, Statement, StatementOrDeclaration};
 
 use crate::{
-	context::Environment, diagnostics::TypeCheckError, structures::modules::Exported, CheckingData,
+	behavior::modules::Exported, context::Environment, diagnostics::TypeCheckError, CheckingData,
 	Scope,
 };
 

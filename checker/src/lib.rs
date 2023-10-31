@@ -32,19 +32,20 @@ use context::{environment, Names};
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
+use behavior::modules::{Exported, InvalidModule};
 use indexmap::IndexMap;
 use source_map::{FileSystem, MapFileStore, SpanWithSource, WithPathMap};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 };
-use structures::{functions::AutoConstructorId, modules::Exported};
 
 use types::{
 	subtyping::{check_satisfies, type_is_subtype, BasicEquality, SubTypeResult},
 	TypeStore,
 };
 
+pub(crate) use behavior::modules::ModuleFromPathError;
 pub use behavior::{
 	assignments::{
 		Assignable, AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
@@ -56,22 +57,17 @@ pub use behavior::{
 	},
 	variables::check_variable_initialization,
 };
+pub use behavior::{modules::SynthesisedModule, variables::VariableOrImport};
 pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
-pub use structures::{
-	functions::{FunctionPointer, InternalFunctionId},
-	jsx::*,
-	modules::SynthesisedModule,
-	variables::VariableOrImport,
-};
+pub use structures::jsx::*;
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
 
 pub use type_mappings::*;
 pub use types::{properties::Property, Constant, Type, TypeId};
 
 pub use context::{facts::Facts, Environment, Scope};
-pub(crate) use structures::modules::ModuleFromPathError;
 
 pub trait ReadFromFS: Fn(&std::path::Path) -> Option<String> {}
 
@@ -147,7 +143,8 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 	) -> Self {
 		let mut files = files.unwrap_or_default();
 		// TODO get from files sometimes, abstract below
-		let content = (file_resolver)(&entry_point).expect("TODO ahhh");
+		let content =
+			(file_resolver)(&entry_point).expect("TODO error, could not find entry point");
 		let entry_point = files.new_source_id(entry_point, content);
 		Self {
 			files,
@@ -216,10 +213,8 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	unimplemented_items: HashSet<&'static str>,
 }
 
-pub enum FromFileError<M: ASTImplementation> {
-	SyntaxError(M::ParseError),
-	CouldNotOpen(PathBuf),
-}
+#[derive(Debug, Clone)]
+pub struct CouldNotOpenFile(pub PathBuf);
 
 impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 	// TODO improve on this function
@@ -255,7 +250,7 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 		from: SourceId,
 		importing_path: &str,
 		environment: &mut Environment,
-	) -> Result<Exported, FromFileError<M>> {
+	) -> Result<Result<Exported, InvalidModule>, CouldNotOpenFile> {
 		if importing_path.starts_with('.') {
 			let from_path = self.modules.files.get_file_path(from);
 			let from = PathBuf::from(importing_path);
@@ -271,7 +266,11 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 			) -> Option<Result<&'a SynthesisedModule<M::Module>, M::ParseError>> {
 				let existing = checking_data.modules.files.get_source_at_path(&full_importer);
 				if let Some(existing) = existing {
-					Some(Ok(checking_data.modules.synthesised_modules.get(&existing).unwrap()))
+					Some(Ok(checking_data
+						.modules
+						.synthesised_modules
+						.get(&existing)
+						.expect("existing file, but not synthesised")))
 				} else {
 					let content = (checking_data.modules.file_reader)(full_importer.as_ref());
 					if let Some(content) = content {
@@ -298,33 +297,29 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 				}
 			}
 
-			let synthesised_module = if full_importer.extension().is_some() {
-				let result = get_module(full_importer.clone(), environment, self);
-				match result {
-					Some(Ok(result)) => result,
-					Some(Err(err)) => return Err(FromFileError::SyntaxError(err)),
-					None => return Err(FromFileError::CouldNotOpen(full_importer)),
-				}
+			let result = if full_importer.extension().is_some() {
+				get_module(full_importer.clone(), environment, self)
 			} else {
 				let mut result = None;
 				for ext in ["ts", "tsx", "js"] {
 					full_importer.set_extension(ext);
-					// TODO change settings based on extension
+					// TODO change parse options based on extension
 					result = get_module(full_importer.clone(), environment, self);
 					if result.is_some() {
 						break;
 					}
 				}
-				if let Some(result) = result {
-					result.map_err(FromFileError::SyntaxError)?
-				} else {
-					// TODO some message about extensions?
-					return Err(FromFileError::CouldNotOpen(full_importer));
-				}
+				result
 			};
 
-			environment.facts.extend_ref(&synthesised_module.facts);
-			Ok(synthesised_module.exported.clone())
+			match result {
+				Some(Ok(synthesised_module)) => {
+					environment.facts.extend_ref(&synthesised_module.facts);
+					Ok(Ok(synthesised_module.exported.clone()))
+				}
+				Some(Err(err)) => Ok(Err(InvalidModule)),
+				None => Err(CouldNotOpenFile(full_importer)),
+			}
 		} else {
 			todo!()
 		}

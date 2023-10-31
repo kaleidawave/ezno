@@ -20,18 +20,20 @@ use crate::{
 	behavior::{
 		self,
 		functions::{ClosureChain, ClosureId},
+		modules::Exported,
 		operations::MathematicalAndBitwise,
+		variables::VariableMutability,
 	},
 	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::{modules::Exported, variables::VariableMutability},
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
 		poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
 		properties::Property,
 		Constructor, FunctionKind, FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, FunctionId, VariableId, VariableOrImport,
+	ASTImplementation, CheckingData, Constant, FunctionId, ReadFromFS, VariableId,
+	VariableOrImport,
 };
 
 use self::{

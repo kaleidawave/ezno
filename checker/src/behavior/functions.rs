@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use source_map::{SourceId, Span, SpanWithSource};
 
+use super::variables::VariableMutability;
 use crate::{
 	context::{facts::Facts, Context, ContextType},
 	events::Event,
-	structures::variables::VariableMutability,
 	types::{
 		functions::SynthesisedParameters, poly_types::GenericTypeParameters, properties::Property,
 		FunctionType, TypeStore,
