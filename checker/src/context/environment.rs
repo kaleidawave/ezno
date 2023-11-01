@@ -979,6 +979,18 @@ impl<'a> Environment<'a> {
 				}
 			}
 			ImportKind::SideEffect => {}
+			ImportKind::Everything => {
+				if let Ok(Ok(ref exports)) = exports {
+					for (name, (variable, mutability)) in exports.named.iter() {
+						// TODO are variables put into scope?
+						if let Scope::Module { ref mut exported, .. } = self.context_type.kind {
+							exported.named.push((name.clone(), (*variable, mutability.clone())));
+						}
+					}
+				} else {
+					// TODO ??
+				}
+			}
 		}
 	}
 }

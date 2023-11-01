@@ -126,10 +126,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									position.clone(),
 									None,
 									match r#as {
-										VariableIdentifier::Standard(name, pos) => {
+										Some(VariableIdentifier::Standard(name, pos)) => {
 											ImportKind::All { under: name, position: pos.clone() }
 										}
-										VariableIdentifier::Cursor(_, _) => todo!(),
+										Some(VariableIdentifier::Cursor(_, _)) => todo!(),
+										None => ImportKind::Everything,
 									},
 									checking_data,
 									true,

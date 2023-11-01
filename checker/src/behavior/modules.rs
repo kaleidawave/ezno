@@ -13,8 +13,13 @@ pub struct NamePair<'a> {
 
 pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 	Parts(T),
-	All { under: &'a str, position: Span },
+	All {
+		under: &'a str,
+		position: Span,
+	},
 	SideEffect,
+	/// From `export * from ...`
+	Everything,
 }
 
 pub struct SynthesisedModule<M> {
