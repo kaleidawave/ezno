@@ -332,6 +332,21 @@ pub enum TSXKeyword {
     Generator,
 }
 
+impl TSXKeyword {
+	#[cfg(feature = "extras")]
+	pub(crate) fn is_function_heading(&self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Function | TSXKeyword::Async | TSXKeyword::Module | TSXKeyword::Server
+		)
+	}
+
+	#[cfg(not(feature = "extras"))]
+	pub(crate) fn is_function_heading(&self) -> bool {
+		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
+	}
+}
+
 impl std::fmt::Display for TSXKeyword {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		std::fmt::Debug::fmt(&self, f)

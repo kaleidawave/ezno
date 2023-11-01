@@ -106,22 +106,6 @@ impl ASTNode for ExportDeclaration {
 				let position = start.union(class_declaration.get_position());
 				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 			}
-			Token(
-				TSXToken::Keyword(
-					TSXKeyword::Function
-					| TSXKeyword::Async
-					| TSXKeyword::Module
-					| TSXKeyword::Server,
-				),
-				_,
-			) => {
-				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
-				let position = start.union(function_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Function(function_declaration),
-					position,
-				})
-			}
 			Token(TSXToken::Keyword(TSXKeyword::Const) | TSXToken::Keyword(TSXKeyword::Let), _) => {
 				let variable_declaration =
 					VariableDeclaration::from_reader(reader, state, options)?;
@@ -210,6 +194,14 @@ impl ASTNode for ExportDeclaration {
 						start.with_length(1),
 					));
 				}
+			}
+			Token(TSXToken::Keyword(kw), _) if kw.is_function_heading() => {
+				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
+				let position = start.union(function_declaration.get_position());
+				Ok(Self::Variable {
+					exported: Exportable::Function(function_declaration),
+					position,
+				})
 			}
 			_ => throw_unexpected_token(
 				reader,

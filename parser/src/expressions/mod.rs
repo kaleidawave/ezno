@@ -1,7 +1,7 @@
 use crate::{
 	declarations::ClassDeclaration,
 	errors::parse_lexing_error,
-	functions,
+	functions::{self},
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
@@ -35,7 +35,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -513,90 +513,180 @@ impl Expression {
 				)?;
 				Expression::TemplateLiteral(template_literal)
 			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
-				let span = t.get_span();
-				let generator_star_token_position = reader
-					.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-					.map(|token| token.get_span());
-				let header = FunctionHeader::VirginFunctionHeader {
-					async_keyword: None,
-					function_keyword: Keyword::new(span.clone()),
-					generator_star_token_position,
-					#[cfg(feature = "extras")]
-					location: None,
-					position: span,
-				};
-				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-					None
-				} else {
-					let (token, span) =
-						token_as_identifier(reader.next().unwrap(), "function name")?;
-					Some(crate::VariableIdentifier::Standard(token, span))
-				};
-				let function: ExpressionFunction = FunctionBase::from_reader_with_header_and_name(
-					reader, state, options, header, name,
-				)?;
-				Expression::ExpressionFunction(function)
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Async), _) => {
-				let async_keyword = Some(Keyword::new(t.get_span()));
-				let header = crate::functions::function_header_from_reader_with_async_keyword(
-					reader,
-					async_keyword,
-				)?;
-				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-					None
-				} else {
-					let (token, span) =
-						token_as_identifier(reader.next().unwrap(), "function name")?;
-					Some(crate::VariableIdentifier::Standard(token, span))
-				};
-				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
-					reader, state, options, header, name,
-				)?)
-			}
-			#[cfg(feature = "extras")]
-			Token(
-				TSXToken::Keyword(
-					kw @ TSXKeyword::Generator | kw @ TSXKeyword::Module | kw @ TSXKeyword::Server,
-				),
-				start,
-			) => {
-				// TODO bad way of doing this
-				use enum_variants_strings::EnumVariantsStrings;
-				let pos = start.with_length(kw.to_str().len());
+			Token(TSXToken::Keyword(kw), start) if kw.is_function_heading() => {
+				let token = Token(TSXToken::Keyword(kw), start);
+				let (async_keyword, token) =
+					if let Token(TSXToken::Keyword(TSXKeyword::Async), _) = token {
+						(Some(Keyword::new(token.get_span())), reader.next().unwrap())
+					} else {
+						(None, token)
+					};
 
-				let (generator_keyword, location) = match kw {
-					TSXKeyword::Generator => {
-						(Some(Keyword::new(pos)), functions::parse_function_location(reader))
+				if async_keyword.is_some()
+					&& !matches!(token, Token(TSXToken::Keyword(ref kw), _) if kw.is_function_heading())
+				{
+					if let Token(TSXToken::OpenParentheses, start) = token {
+						let function = ArrowFunction::from_reader_sub_open_paren(
+							reader,
+							state,
+							options,
+							async_keyword,
+							start,
+						)?;
+						return Ok(Expression::ArrowFunction(function));
+					} else {
+						let (name, position) = token_as_identifier(token, "function parameter")?;
+						let function = ArrowFunction::from_reader_with_first_parameter(
+							reader,
+							state,
+							options,
+							(name, position),
+						)?;
+						return Ok(Expression::ArrowFunction(function));
 					}
-					TSXKeyword::Module => {
-						(None, Some(functions::FunctionLocationModifier::Module(Keyword::new(pos))))
+				}
+
+				#[cfg(feature = "extras")]
+				{
+					use crate::functions::FunctionLocationModifier;
+					let (generator_keyword, token) =
+						if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
+							(Some(Keyword::new(token.get_span())), reader.next().unwrap())
+						} else {
+							(None, token)
+						};
+
+					let (location, token) = match token {
+						t @ Token(TSXToken::Keyword(TSXKeyword::Server), _) => (
+							Some(FunctionLocationModifier::Server(Keyword::new(t.get_span()))),
+							reader.next().unwrap(),
+						),
+						t @ Token(TSXToken::Keyword(TSXKeyword::Module), _) => (
+							Some(FunctionLocationModifier::Module(Keyword::new(t.get_span()))),
+							reader.next().unwrap(),
+						),
+						t => (None, t),
+					};
+
+					let Token(f @ TSXToken::Keyword(TSXKeyword::Function), function_start) = token
+					else {
+						return throw_unexpected_token_with_token(
+							token,
+							&[TSXToken::Keyword(TSXKeyword::Function)],
+						);
+					};
+
+					let function_keyword =
+						Keyword::new(function_start.with_length(f.length() as usize));
+
+					if let Some(generator_keyword) = generator_keyword {
+						let position = async_keyword
+							.as_ref()
+							.map_or(&generator_keyword.1, |kw| kw.get_position())
+							.union(function_keyword.get_position().get_end());
+
+						let header = FunctionHeader::ChadFunctionHeader {
+							async_keyword,
+							generator_keyword: Some(generator_keyword),
+							location,
+							function_keyword,
+							position,
+						};
+						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
+						{
+							None
+						} else {
+							let (token, span) =
+								token_as_identifier(reader.next().unwrap(), "function name")?;
+							Some(crate::VariableIdentifier::Standard(token, span))
+						};
+						let function: ExpressionFunction =
+							FunctionBase::from_reader_with_header_and_name(
+								reader, state, options, header, name,
+							)?;
+
+						Expression::ExpressionFunction(function)
+					} else {
+						let generator_star_token_position = reader
+							.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+							.map(|token| token.get_span());
+
+						let position = async_keyword
+							.as_ref()
+							.map_or(function_keyword.get_position(), |kw| kw.get_position())
+							.union(
+								generator_star_token_position
+									.as_ref()
+									.unwrap_or(function_keyword.get_position()),
+							);
+						let header = FunctionHeader::VirginFunctionHeader {
+							position,
+							async_keyword,
+							location,
+							function_keyword,
+							generator_star_token_position,
+						};
+						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
+						{
+							None
+						} else {
+							let (token, span) =
+								token_as_identifier(reader.next().unwrap(), "function name")?;
+							Some(crate::VariableIdentifier::Standard(token, span))
+						};
+						let function: ExpressionFunction =
+							FunctionBase::from_reader_with_header_and_name(
+								reader, state, options, header, name,
+							)?;
+
+						Expression::ExpressionFunction(function)
 					}
-					TSXKeyword::Server => {
-						(None, Some(functions::FunctionLocationModifier::Server(Keyword::new(pos))))
-					}
-					_ => unreachable!(),
-				};
-				let function_keyword = Keyword::from_reader(reader)?;
-				let position = start.union(function_keyword.get_position());
-				let header = FunctionHeader::ChadFunctionHeader {
-					async_keyword: None,
-					location,
-					generator_keyword,
-					function_keyword,
-					position,
-				};
-				let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-					None
-				} else {
-					let (token, span) =
-						token_as_identifier(reader.next().unwrap(), "function name")?;
-					Some(crate::VariableIdentifier::Standard(token, span))
-				};
-				Expression::ExpressionFunction(FunctionBase::from_reader_with_header_and_name(
-					reader, state, options, header, name,
-				)?)
+				}
+
+				#[cfg(not(feature = "extras"))]
+				{
+					let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
+						return throw_unexpected_token_with_token(
+							token,
+							&[TSXToken::Keyword(TSXKeyword::Function)],
+						);
+					};
+
+					let function_keyword = Keyword::new(token.get_span());
+
+					let generator_star_token_position = reader
+						.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+						.map(|token| token.get_span());
+
+					let position = async_keyword
+						.as_ref()
+						.map_or(function_keyword.get_position(), |kw| kw.get_position())
+						.union(
+							generator_star_token_position
+								.as_ref()
+								.unwrap_or(function_keyword.get_position()),
+						);
+
+					let header = FunctionHeader::VirginFunctionHeader {
+						position,
+						async_keyword,
+						function_keyword,
+						generator_star_token_position,
+					};
+					let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+						None
+					} else {
+						let (token, span) =
+							token_as_identifier(reader.next().unwrap(), "function name")?;
+						Some(crate::VariableIdentifier::Standard(token, span))
+					};
+					let function: ExpressionFunction =
+						FunctionBase::from_reader_with_header_and_name(
+							reader, state, options, header, name,
+						)?;
+
+					Expression::ExpressionFunction(function)
+				}
 			}
 			#[cfg(feature = "extras")]
 			t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) if options.is_expressions => {
