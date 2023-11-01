@@ -116,6 +116,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				keyword,
 				declarations,
 				position,
+				decorators,
 			}) => {
 				for declaration in declarations.iter() {
 					let constraint = declaration.type_annotation.as_ref().map(|annotation| {

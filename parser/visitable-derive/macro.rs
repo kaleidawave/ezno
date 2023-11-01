@@ -28,7 +28,7 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 		vec![
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
-			parse_quote!(settings: &crate::VisitSettings),
+			parse_quote!(options: &crate::VisitSettings),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -42,7 +42,7 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 		vec![
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
-			parse_quote!(settings: &crate::VisitSettings),
+			parse_quote!(options: &crate::VisitSettings),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -135,10 +135,10 @@ fn generated_visit_item(
 					let reference = field.get_reference();
 					Some(match visit_type {
 						VisitType::Immutable => parse_quote! {
-							crate::Visitable::visit(#reference, visitors, data, settings, #chain);
+							crate::Visitable::visit(#reference, visitors, data, options, #chain);
 						},
 						VisitType::Mutable => parse_quote! {
-							crate::Visitable::visit_mut(#reference, visitors, data, settings, #chain);
+							crate::Visitable::visit_mut(#reference, visitors, data, options, #chain);
 						},
 					})
 				} else {

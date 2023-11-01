@@ -33,19 +33,19 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let class_keyword = Keyword::from_reader(reader)?;
-		Self::from_reader_sub_class_keyword(reader, state, settings, class_keyword)
+		Self::from_reader_sub_class_keyword(reader, state, options, class_keyword)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		self.to_string_from_buffer(buf, settings, depth)
+		self.to_string_from_buffer(buf, options, depth)
 	}
 
 	fn get_position(&self) -> &Span {
@@ -57,15 +57,15 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn from_reader_sub_class_keyword(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		class_keyword: Keyword<tsx_keywords::Class>,
 	) -> ParseResult<Self> {
-		let name = U::from_reader(reader, state, settings)?;
+		let name = U::from_reader(reader, state, options)?;
 		let type_parameters = reader
 			.conditional_next(|token| *token == TSXToken::OpenChevron)
 			.is_some()
 			.then(|| {
-				crate::parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
 					.map(|(params, _)| params)
 			})
 			.transpose()?;
@@ -73,7 +73,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		let extends = match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
-				Some(Expression::from_reader(reader, state, settings)?.into())
+				Some(Expression::from_reader(reader, state, options)?.into())
 			}
 			_ => None,
 		};
@@ -82,7 +82,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 				reader.next();
 				let mut implements = Vec::new();
 				loop {
-					implements.push(TypeAnnotation::from_reader(reader, state, settings)?);
+					implements.push(TypeAnnotation::from_reader(reader, state, options)?);
 					match reader.next().ok_or_else(crate::errors::parse_lexing_error)? {
 						Token(TSXToken::Comma, _) => {}
 						Token(TSXToken::OpenBrace, _pos) => break,
@@ -104,7 +104,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
 				break;
 			}
-			let value = Decorated::<ClassMember>::from_reader(reader, state, settings)?;
+			let value = Decorated::<ClassMember>::from_reader(reader, state, options)?;
 			members.push(value);
 
 			if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
@@ -127,31 +127,31 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("class ");
 		buf.push_str(U::as_option_str(&self.name).unwrap_or_default());
 		if let Some(type_parameters) = &self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, settings, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
 		}
 		if let Some(extends) = &self.extends {
 			buf.push_str(" extends ");
-			extends.to_string_from_buffer(buf, settings, depth);
+			extends.to_string_from_buffer(buf, options, depth);
 		}
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
-			if settings.pretty {
+			if options.pretty {
 				buf.push_new_line();
-				settings.add_indent(depth + 1, buf);
+				options.add_indent(depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, settings, depth);
-			if !settings.pretty && !at_end {
+			member.to_string_from_buffer(buf, options, depth);
+			if !options.pretty && !at_end {
 				buf.push(';');
 			}
 		}
-		if settings.pretty && !self.members.is_empty() {
+		if options.pretty && !self.members.is_empty() {
 			buf.push_new_line();
 		}
 		buf.push('}');
@@ -163,7 +163,7 @@ impl<T: ExpressionOrStatementPosition> Visitable for ClassDeclaration<T> {
 		&self,
 		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		_data: &mut TData,
-		_settings: &VisitSettings,
+		_options: &VisitSettings,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 	}
@@ -172,7 +172,7 @@ impl<T: ExpressionOrStatementPosition> Visitable for ClassDeclaration<T> {
 		&mut self,
 		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
-		_settings: &VisitSettings,
+		_options: &VisitSettings,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 	}

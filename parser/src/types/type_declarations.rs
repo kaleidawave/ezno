@@ -19,7 +19,7 @@ impl ASTNode for TypeDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		// Get initial name
 		let (name, position) = token_as_identifier(
@@ -31,7 +31,7 @@ impl ASTNode for TypeDeclaration {
 			.conditional_next(|token| *token == TSXToken::OpenChevron)
 			.is_some()
 			.then(|| {
-				parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+				parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
 					.map(|(params, _)| params)
 			})
 			.transpose()?;
@@ -41,12 +41,12 @@ impl ASTNode for TypeDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str(&self.name);
 		if let Some(ref type_parameters) = self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, settings, depth)
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth)
 		}
 	}
 
@@ -84,7 +84,7 @@ impl ASTNode for GenericTypeConstraint {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		// Get name:
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
@@ -96,7 +96,7 @@ impl ASTNode for GenericTypeConstraint {
 					.conditional_next(|token| *token == TSXToken::Keyword(TSXKeyword::KeyOf))
 					.is_some();
 				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, settings, false, false)?;
+					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
 				if key_of {
 					Ok(Self::ExtendsKeyOf(name, extends_type))
 				} else {
@@ -106,7 +106,7 @@ impl ASTNode for GenericTypeConstraint {
 			Some(Token(TSXToken::Assign, _)) => {
 				reader.next();
 				let default_type =
-					TypeAnnotation::from_reader_with_config(reader, state, settings, false, false)?;
+					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
 				Ok(Self::Parameter { name, default: Some(default_type) })
 			}
 			_ => Ok(Self::Parameter { name, default: None }),
@@ -116,7 +116,7 @@ impl ASTNode for GenericTypeConstraint {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -124,25 +124,25 @@ impl ASTNode for GenericTypeConstraint {
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, settings, depth);
+					default.to_string_from_buffer(buf, options, depth);
 				}
 			}
 			GenericTypeConstraint::Extends(name, extends) => {
 				buf.push_str(name);
 				buf.push_str(" extends ");
-				extends.to_string_from_buffer(buf, settings, depth);
+				extends.to_string_from_buffer(buf, options, depth);
 			}
 			GenericTypeConstraint::ExtendsKeyOf(name, extends_key_of) => {
 				buf.push_str(name);
 				buf.push_str(" extends keyof ");
-				extends_key_of.to_string_from_buffer(buf, settings, depth);
+				extends_key_of.to_string_from_buffer(buf, options, depth);
 			}
 			GenericTypeConstraint::Spread { name, default } => {
 				buf.push_str("...");
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, settings, depth);
+					default.to_string_from_buffer(buf, options, depth);
 				}
 			}
 		}

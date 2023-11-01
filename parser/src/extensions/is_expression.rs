@@ -24,25 +24,25 @@ impl ASTNode for IsExpression {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		let is = Keyword::from_reader(reader)?;
-		is_expression_from_reader_sub_is_keyword(reader, state, settings, is)
+		is_expression_from_reader_sub_is_keyword(reader, state, options, is)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("is (");
-		self.matcher.to_string_from_buffer(buf, settings, depth);
+		self.matcher.to_string_from_buffer(buf, options, depth);
 		buf.push_str(") {");
 		for (at_end, (l, r)) in self.branches.iter().endiate() {
-			l.to_string_from_buffer(buf, settings, depth);
+			l.to_string_from_buffer(buf, options, depth);
 			buf.push_str(" => ");
-			r.to_string_from_buffer(buf, settings, depth);
+			r.to_string_from_buffer(buf, options, depth);
 			if !at_end {
 				buf.push_str(", ");
 			}
@@ -58,19 +58,19 @@ impl ASTNode for IsExpression {
 pub(crate) fn is_expression_from_reader_sub_is_keyword(
 	reader: &mut impl TokenReader<crate::TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &crate::ParseOptions,
+	options: &crate::ParseOptions,
 	is: Keyword<Is>,
 ) -> Result<IsExpression, crate::ParseError> {
 	reader.expect_next(TSXToken::OpenParentheses)?;
-	let matcher = MultipleExpression::from_reader(reader, state, settings)?;
+	let matcher = MultipleExpression::from_reader(reader, state, options)?;
 	reader.expect_next(TSXToken::CloseParentheses)?;
 	reader.expect_next(TSXToken::OpenBrace)?;
 	let mut branches = Vec::new();
 	loop {
 		let type_annotation =
-			TypeAnnotation::from_reader_with_config(reader, state, settings, false, true)?;
+			TypeAnnotation::from_reader_with_config(reader, state, options, false, true)?;
 		reader.expect_next(TSXToken::Arrow)?;
-		let body = ExpressionOrBlock::from_reader(reader, state, settings)?;
+		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		if let Some(token) = reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace)) {
 			branches.push((type_annotation, body));
 			return Ok(IsExpression {

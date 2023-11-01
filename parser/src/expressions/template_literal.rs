@@ -28,11 +28,11 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit(visitors, data, settings, chain)
+			dynamic.visit(visitors, data, options, chain)
 		}
 	}
 
@@ -40,11 +40,11 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit_mut(visitors, data, settings, chain)
+			dynamic.visit_mut(visitors, data, options, chain)
 		}
 	}
 }
@@ -57,20 +57,20 @@ impl ASTNode for TemplateLiteral {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::TemplateLiteralStart)?;
-		Self::from_reader_sub_start_with_tag(reader, state, settings, None, start)
+		Self::from_reader_sub_start_with_tag(reader, state, options, None, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		if let Some(tag) = &self.tag {
-			tag.to_string_from_buffer(buf, settings, depth);
+			tag.to_string_from_buffer(buf, options, depth);
 		}
 		buf.push('`');
 		for part in self.parts.iter() {
@@ -80,7 +80,7 @@ impl ASTNode for TemplateLiteral {
 				}
 				TemplateLiteralPart::Dynamic(expression) => {
 					buf.push_str("${");
-					expression.to_string_from_buffer(buf, settings, depth);
+					expression.to_string_from_buffer(buf, options, depth);
 					buf.push('}');
 				}
 			}
@@ -93,7 +93,7 @@ impl TemplateLiteral {
 	pub(crate) fn from_reader_sub_start_with_tag(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		tag: Option<Box<Expression>>,
 		start: TokenStart,
 	) -> ParseResult<Self> {
@@ -104,7 +104,7 @@ impl TemplateLiteral {
 					parts.push(TemplateLiteralPart::Static(chunk));
 				}
 				Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-					let expression = Expression::from_reader(reader, state, settings)?;
+					let expression = Expression::from_reader(reader, state, options)?;
 					reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
 					parts.push(TemplateLiteralPart::Dynamic(Box::new(expression)));
 				}

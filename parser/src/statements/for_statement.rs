@@ -28,11 +28,11 @@ impl ASTNode for ForLoopStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::For))?;
-		let condition = ForLoopCondition::from_reader(reader, state, settings)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
+		let condition = ForLoopCondition::from_reader(reader, state, options)?;
+		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let position = start_pos.union(inner.get_position());
 		Ok(ForLoopStatement { condition, inner, position })
 	}
@@ -40,14 +40,14 @@ impl ASTNode for ForLoopStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("for");
-		settings.add_gap(buf);
-		self.condition.to_string_from_buffer(buf, settings, depth);
-		settings.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, settings, depth + 1);
+		options.add_gap(buf);
+		self.condition.to_string_from_buffer(buf, options, depth);
+		options.add_gap(buf);
+		self.inner.to_string_from_buffer(buf, options, depth + 1);
 	}
 }
 
@@ -168,7 +168,7 @@ impl ASTNode for ForLoopCondition {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		// Figure out if after variable declaration there exists a "=", "in" or a "of"
@@ -195,10 +195,10 @@ impl ASTNode for ForLoopCondition {
 					.map(|token| ForLoopVariableKeyword::from_reader(token).unwrap());
 
 				let variable =
-					WithComment::<VariableField<_>>::from_reader(reader, state, settings)?;
+					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::Of))?;
-				let of = Expression::from_reader(reader, state, settings)?;
+				let of = Expression::from_reader(reader, state, options)?;
 				let position = keyword
 					.as_ref()
 					.map_or(variable.get_position(), |kw| kw.get_position())
@@ -211,10 +211,10 @@ impl ASTNode for ForLoopCondition {
 					.map(|token| ForLoopVariableKeyword::from_reader(token).unwrap());
 
 				let variable =
-					WithComment::<VariableField<_>>::from_reader(reader, state, settings)?;
+					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
-				let r#in = MultipleExpression::from_reader(reader, state, settings)?;
+				let r#in = MultipleExpression::from_reader(reader, state, options)?;
 				let position = keyword
 					.as_ref()
 					.map_or(variable.get_position(), |kw| kw.get_position())
@@ -227,16 +227,15 @@ impl ASTNode for ForLoopCondition {
 					if let Some(Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _)) =
 						peek
 					{
-						let declaration =
-							VariableDeclaration::from_reader(reader, state, settings)?;
+						let declaration = VariableDeclaration::from_reader(reader, state, options)?;
 						Some(ForLoopStatementInitializer::VariableDeclaration(declaration))
 					} else if let Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) = peek {
-						let stmt = VarVariableStatement::from_reader(reader, state, settings)?;
+						let stmt = VarVariableStatement::from_reader(reader, state, options)?;
 						Some(ForLoopStatementInitializer::VarStatement(stmt))
 					} else if let Some(Token(TSXToken::SemiColon, _)) = peek {
 						None
 					} else {
-						let expr = MultipleExpression::from_reader(reader, state, settings)?;
+						let expr = MultipleExpression::from_reader(reader, state, options)?;
 						Some(ForLoopStatementInitializer::Expression(expr))
 					};
 
@@ -254,14 +253,14 @@ impl ASTNode for ForLoopCondition {
 				});
 
 				let condition = if !matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
-					Some(MultipleExpression::from_reader(reader, state, settings)?)
+					Some(MultipleExpression::from_reader(reader, state, options)?)
 				} else {
 					None
 				};
 				let semi_colon_two = reader.expect_next_get_end(TSXToken::SemiColon)?;
 				let afterthought =
 					if !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-						Some(MultipleExpression::from_reader(reader, state, settings)?)
+						Some(MultipleExpression::from_reader(reader, state, options)?)
 					} else {
 						None
 					};
@@ -279,7 +278,7 @@ impl ASTNode for ForLoopCondition {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('(');
@@ -288,43 +287,43 @@ impl ASTNode for ForLoopCondition {
 				if let Some(keyword) = keyword {
 					buf.push_str(keyword.as_str());
 				}
-				variable.to_string_from_buffer(buf, settings, depth);
+				variable.to_string_from_buffer(buf, options, depth);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" of ");
-				of.to_string_from_buffer(buf, settings, depth);
+				of.to_string_from_buffer(buf, options, depth);
 			}
 			Self::ForIn { keyword, variable, r#in, position: _ } => {
 				if let Some(keyword) = keyword {
 					buf.push_str(keyword.as_str());
 				}
-				variable.to_string_from_buffer(buf, settings, depth);
+				variable.to_string_from_buffer(buf, options, depth);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" in ");
-				r#in.to_string_from_buffer(buf, settings, depth);
+				r#in.to_string_from_buffer(buf, options, depth);
 			}
 			Self::Statements { initializer, condition, afterthought, position: _ } => {
 				if let Some(initializer) = initializer {
 					match initializer {
 						ForLoopStatementInitializer::VariableDeclaration(stmt) => {
-							stmt.to_string_from_buffer(buf, settings, depth)
+							stmt.to_string_from_buffer(buf, options, depth)
 						}
 						ForLoopStatementInitializer::Expression(expr) => {
-							expr.to_string_from_buffer(buf, settings, depth);
+							expr.to_string_from_buffer(buf, options, depth);
 						}
 						ForLoopStatementInitializer::VarStatement(stmt) => {
-							stmt.to_string_from_buffer(buf, settings, depth)
+							stmt.to_string_from_buffer(buf, options, depth)
 						}
 					}
 				}
 				buf.push(';');
 				if let Some(condition) = condition {
-					settings.add_gap(buf);
-					condition.to_string_from_buffer(buf, settings, depth);
+					options.add_gap(buf);
+					condition.to_string_from_buffer(buf, options, depth);
 				}
 				buf.push(';');
 				if let Some(afterthought) = afterthought {
-					settings.add_gap(buf);
-					afterthought.to_string_from_buffer(buf, settings, depth);
+					options.add_gap(buf);
+					afterthought.to_string_from_buffer(buf, options, depth);
 				}
 			}
 		}

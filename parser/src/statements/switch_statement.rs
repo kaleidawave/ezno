@@ -34,11 +34,11 @@ impl ASTNode for SwitchStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
-		let case = MultipleExpression::from_reader(reader, state, settings)?;
+		let case = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;
 		reader.expect_next(crate::TSXToken::OpenBrace)?;
 		let mut branches = Vec::new();
@@ -50,7 +50,7 @@ impl ASTNode for SwitchStatement {
 					None
 				}
 				Token(TSXToken::Keyword(TSXKeyword::Case), _) => {
-					let case = Expression::from_reader(reader, state, settings)?;
+					let case = Expression::from_reader(reader, state, options)?;
 					reader.expect_next(TSXToken::Colon)?;
 					Some(case)
 				}
@@ -81,7 +81,7 @@ impl ASTNode for SwitchStatement {
 				{
 					break;
 				}
-				statements.push(Statement::from_reader(reader, state, settings)?);
+				statements.push(Statement::from_reader(reader, state, options)?);
 				if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
 					reader.next();
 				}
@@ -98,61 +98,61 @@ impl ASTNode for SwitchStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("switch");
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('(');
-		self.case.to_string_from_buffer(buf, settings, depth);
+		self.case.to_string_from_buffer(buf, options, depth);
 		buf.push(')');
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('{');
 		for branch in self.branches.iter() {
-			if settings.pretty {
+			if options.pretty {
 				buf.push_new_line();
-				settings.add_indent(depth + 1, buf);
+				options.add_indent(depth + 1, buf);
 			}
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
 					for (at_end, stmt) in statements.iter().endiate() {
-						if settings.pretty {
+						if options.pretty {
 							buf.push_new_line();
-							settings.add_indent(depth + 2, buf);
+							options.add_indent(depth + 2, buf);
 						}
-						stmt.to_string_from_buffer(buf, settings, depth + 2);
+						stmt.to_string_from_buffer(buf, options, depth + 2);
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.pretty && !at_end {
+						if options.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}
 				}
 				SwitchBranch::Case(case, statements) => {
 					buf.push_str("case ");
-					case.to_string_from_buffer(buf, settings, depth);
+					case.to_string_from_buffer(buf, options, depth);
 					buf.push(':');
 					for (at_end, stmt) in statements.iter().endiate() {
-						if settings.pretty {
+						if options.pretty {
 							buf.push_new_line();
-							settings.add_indent(depth + 2, buf);
+							options.add_indent(depth + 2, buf);
 						}
-						stmt.to_string_from_buffer(buf, settings, depth + 2);
+						stmt.to_string_from_buffer(buf, options, depth + 2);
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
-						if settings.pretty && !at_end {
+						if options.pretty && !at_end {
 							buf.push_new_line();
 						}
 					}
 				}
 			}
 		}
-		if settings.pretty {
+		if options.pretty {
 			buf.push_new_line();
-			settings.add_indent(depth, buf);
+			options.add_indent(depth, buf);
 		}
 		buf.push('}');
 	}

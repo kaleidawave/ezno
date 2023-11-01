@@ -89,39 +89,39 @@ impl crate::ASTNode for Declaration {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		// TODO assert decorators are used. If they exist but item is not `Decorated`
 		// then need to throw a parse error
-		let decorators = decorators::decorators_from_reader(reader, state, settings)?;
+		let decorators = decorators::decorators_from_reader(reader, state, options)?;
 
 		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			// Const can be either variable declaration or const enum
 			TSXToken::Keyword(TSXKeyword::Const) => {
 				let after_const = reader.peek_n(2);
 				if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum), _)) = after_const {
-					EnumDeclaration::from_reader(reader, state, settings)
+					EnumDeclaration::from_reader(reader, state, options)
 						.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 				} else {
-					let declaration = VariableDeclaration::from_reader(reader, state, settings)?;
+					let declaration = VariableDeclaration::from_reader(reader, state, options)?;
 					Ok(Declaration::Variable(declaration))
 				}
 			}
 			TSXToken::Keyword(TSXKeyword::Let) => {
-				let declaration = VariableDeclaration::from_reader(reader, state, settings)?;
+				let declaration = VariableDeclaration::from_reader(reader, state, options)?;
 				Ok(Declaration::Variable(declaration))
 			}
 			TSXToken::Keyword(TSXKeyword::Enum) => {
-				EnumDeclaration::from_reader(reader, state, settings)
+				EnumDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			}
 			#[cfg(feature = "extras")]
-			TSXToken::Keyword(TSXKeyword::Generator) if settings.generator_keyword => {
-				let function = StatementFunction::from_reader(reader, state, settings)?;
+			TSXToken::Keyword(TSXKeyword::Generator) if options.generator_keyword => {
+				let function = StatementFunction::from_reader(reader, state, options)?;
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
 			TSXToken::Keyword(TSXKeyword::Function | TSXKeyword::Async) => {
-				let function = StatementFunction::from_reader(reader, state, settings)?;
+				let function = StatementFunction::from_reader(reader, state, options)?;
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
 			TSXToken::Keyword(TSXKeyword::Class) => {
@@ -129,28 +129,28 @@ impl crate::ASTNode for Declaration {
 				ClassDeclaration::from_reader_sub_class_keyword(
 					reader,
 					state,
-					settings,
+					options,
 					class_keyword,
 				)
 				.map(|on| Declaration::Class(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Export) => {
-				ExportDeclaration::from_reader(reader, state, settings)
+				ExportDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Export(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Import) => {
-				ImportDeclaration::from_reader(reader, state, settings).map(Into::into)
+				ImportDeclaration::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Interface) => {
-				InterfaceDeclaration::from_reader(reader, state, settings)
+				InterfaceDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Type) => {
-				TypeAlias::from_reader(reader, state, settings).map(Into::into)
+				TypeAlias::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Declare) => {
 				let Token(_, start) = reader.next().unwrap();
-				crate::modules::parse_declare_item(reader, state, settings, decorators, start)
+				crate::modules::parse_declare_item(reader, state, options, decorators, start)
 					.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
 						TypeDefinitionModuleDeclaration::Variable(declare_var) => {
 							Ok(Declaration::DeclareVariable(declare_var))
@@ -202,24 +202,24 @@ impl crate::ASTNode for Declaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			Declaration::Function(f) => f.to_string_from_buffer(buf, settings, depth),
-			Declaration::Variable(var) => var.to_string_from_buffer(buf, settings, depth),
-			Declaration::Class(cls) => cls.to_string_from_buffer(buf, settings, depth),
-			Declaration::Import(is) => is.to_string_from_buffer(buf, settings, depth),
-			Declaration::Export(es) => es.to_string_from_buffer(buf, settings, depth),
-			Declaration::Interface(id) => id.to_string_from_buffer(buf, settings, depth),
-			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, settings, depth),
-			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, settings, depth),
+			Declaration::Function(f) => f.to_string_from_buffer(buf, options, depth),
+			Declaration::Variable(var) => var.to_string_from_buffer(buf, options, depth),
+			Declaration::Class(cls) => cls.to_string_from_buffer(buf, options, depth),
+			Declaration::Import(is) => is.to_string_from_buffer(buf, options, depth),
+			Declaration::Export(es) => es.to_string_from_buffer(buf, options, depth),
+			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, depth),
+			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, depth),
+			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, depth),
 			// TODO should skip these under no types
-			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, settings, depth),
-			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, settings, depth),
+			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, depth),
+			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, depth),
 			Declaration::DeclareInterface(did) => {
 				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, settings, depth)
+				did.to_string_from_buffer(buf, options, depth)
 			}
 		}
 	}

@@ -54,13 +54,13 @@ impl ASTNode for ExportDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Export))?;
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
 				reader.next();
-				let expression = Expression::from_reader(reader, state, settings)?;
+				let expression = Expression::from_reader(reader, state, options)?;
 				let position = start.union(expression.get_position());
 				Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
 			}
@@ -69,7 +69,7 @@ impl ASTNode for ExportDeclaration {
 				let r#as = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
 				{
 					reader.next();
-					Some(VariableIdentifier::from_reader(reader, state, settings)?)
+					Some(VariableIdentifier::from_reader(reader, state, options)?)
 				} else {
 					None
 				};
@@ -101,13 +101,21 @@ impl ASTNode for ExportDeclaration {
 				let token = reader.next().unwrap();
 				let keyword = Keyword::new(token.get_span());
 				let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
-					reader, state, settings, keyword,
+					reader, state, options, keyword,
 				)?;
 				let position = start.union(class_declaration.get_position());
 				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Function), _) => {
-				let function_declaration = StatementFunction::from_reader(reader, state, settings)?;
+			Token(
+				TSXToken::Keyword(
+					TSXKeyword::Function
+					| TSXKeyword::Async
+					| TSXKeyword::Module
+					| TSXKeyword::Server,
+				),
+				_,
+			) => {
+				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
 				let position = start.union(function_declaration.get_position());
 				Ok(Self::Variable {
 					exported: Exportable::Function(function_declaration),
@@ -116,7 +124,7 @@ impl ASTNode for ExportDeclaration {
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Const) | TSXToken::Keyword(TSXKeyword::Let), _) => {
 				let variable_declaration =
-					VariableDeclaration::from_reader(reader, state, settings)?;
+					VariableDeclaration::from_reader(reader, state, options)?;
 				let position = start.union(variable_declaration.get_position());
 				Ok(Self::Variable {
 					exported: Exportable::Variable(variable_declaration),
@@ -125,7 +133,7 @@ impl ASTNode for ExportDeclaration {
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
 				let interface_declaration =
-					InterfaceDeclaration::from_reader(reader, state, settings)?;
+					InterfaceDeclaration::from_reader(reader, state, options)?;
 				let position = start.union(interface_declaration.get_position());
 				Ok(Self::Variable {
 					exported: Exportable::Interface(interface_declaration),
@@ -133,7 +141,7 @@ impl ASTNode for ExportDeclaration {
 				})
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-				let type_alias = TypeAlias::from_reader(reader, state, settings)?;
+				let type_alias = TypeAlias::from_reader(reader, state, options)?;
 				let position = start.union(type_alias.get_position());
 				Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
 			}
@@ -156,7 +164,7 @@ impl ASTNode for ExportDeclaration {
 						let (parts, _end) = crate::parse_bracketed::<ExportPart>(
 							reader,
 							state,
-							settings,
+							options,
 							None,
 							TSXToken::CloseBrace,
 						)?;
@@ -187,7 +195,7 @@ impl ASTNode for ExportDeclaration {
 						let (parts, end) = crate::parse_bracketed::<ExportPart>(
 							reader,
 							state,
-							settings,
+							options,
 							None,
 							TSXToken::CloseBrace,
 						)?;
@@ -221,7 +229,7 @@ impl ASTNode for ExportDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -229,38 +237,38 @@ impl ASTNode for ExportDeclaration {
 				buf.push_str("export ");
 				match exported {
 					Exportable::Class(class_declaration) => {
-						class_declaration.to_string_from_buffer(buf, settings, depth);
+						class_declaration.to_string_from_buffer(buf, options, depth);
 					}
 					Exportable::Function(function_declaration) => {
-						function_declaration.to_string_from_buffer(buf, settings, depth);
+						function_declaration.to_string_from_buffer(buf, options, depth);
 					}
 					Exportable::Interface(interface_declaration) => {
-						interface_declaration.to_string_from_buffer(buf, settings, depth);
+						interface_declaration.to_string_from_buffer(buf, options, depth);
 					}
 					Exportable::Variable(variable_dec_stmt) => {
-						variable_dec_stmt.to_string_from_buffer(buf, settings, depth);
+						variable_dec_stmt.to_string_from_buffer(buf, options, depth);
 					}
 					Exportable::TypeAlias(type_alias) => {
-						type_alias.to_string_from_buffer(buf, settings, depth);
+						type_alias.to_string_from_buffer(buf, options, depth);
 					}
 					Exportable::Parts(parts) => {
 						buf.push('{');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, settings, depth);
+							part.to_string_from_buffer(buf, options, depth);
 							if !at_end {
 								buf.push(',');
-								settings.add_gap(buf);
+								options.add_gap(buf);
 							}
 						}
-						settings.add_gap(buf);
+						options.add_gap(buf);
 						buf.push('}');
 					}
 					Exportable::ImportAll { r#as, from } => {
 						buf.push_str("* ");
 						if let Some(r#as) = r#as {
 							buf.push_str("as ");
-							r#as.to_string_from_buffer(buf, settings, depth);
+							r#as.to_string_from_buffer(buf, options, depth);
 							buf.push(' ');
 						}
 						buf.push_str("from \"");
@@ -269,17 +277,17 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::ImportParts { parts, from } => {
 						buf.push('{');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, settings, depth);
+							part.to_string_from_buffer(buf, options, depth);
 							if !at_end {
 								buf.push(',');
-								settings.add_gap(buf);
+								options.add_gap(buf);
 							}
 						}
-						settings.add_gap(buf);
+						options.add_gap(buf);
 						buf.push('}');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 						buf.push_str("from \"");
 						buf.push_str(from);
 						buf.push('"');
@@ -288,7 +296,7 @@ impl ASTNode for ExportDeclaration {
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");
-				expression.to_string_from_buffer(buf, settings, depth);
+				expression.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}
@@ -317,7 +325,7 @@ impl ASTNode for ExportPart {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
 		if let Token(TSXToken::MultiLineComment(comment), start) = token {
@@ -325,7 +333,7 @@ impl ASTNode for ExportPart {
 				if let Some(Token(TSXToken::CloseBrace | TSXToken::Comma, _)) = reader.peek() {
 					(start.with_length(comment.len() + 2), None)
 				} else {
-					let part = Self::from_reader(reader, state, settings)?;
+					let part = Self::from_reader(reader, state, options)?;
 					(start.union(part.get_position()), Some(Box::new(part)))
 				};
 			Ok(Self::PrefixComment(comment, under, position))
@@ -356,7 +364,7 @@ impl ASTNode for ExportPart {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -374,7 +382,7 @@ impl ASTNode for ExportPart {
 				}
 			}
 			ExportPart::PrefixComment(comment, inner, _) => {
-				if settings.include_comments {
+				if options.include_comments {
 					buf.push_str("/*");
 					buf.push_str(&comment);
 					buf.push_str("*/");
@@ -383,12 +391,12 @@ impl ASTNode for ExportPart {
 					}
 				}
 				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, settings, depth);
+					inner.to_string_from_buffer(buf, options, depth);
 				}
 			}
 			ExportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, settings, depth);
-				if settings.include_comments {
+				inner.to_string_from_buffer(buf, options, depth);
+				if options.include_comments {
 					buf.push_str("/*");
 					buf.push_str(&comment);
 					buf.push_str("*/ ");

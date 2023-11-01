@@ -101,7 +101,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::DoubleQuotedStringLiteral(content), start)
@@ -114,7 +114,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 				Ok(Self::NumberLiteral(value.parse().unwrap(), position))
 			}
 			Token(TSXToken::OpenBracket, start) => {
-				let expression = Expression::from_reader(reader, state, settings)?;
+				let expression = Expression::from_reader(reader, state, options)?;
 				let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 				Ok(Self::Computed(Box::new(expression), start.union(end)))
 			}
@@ -128,7 +128,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -141,7 +141,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');
-				expression.to_string_from_buffer(buf, settings, depth);
+				expression.to_string_from_buffer(buf, options, depth);
 				buf.push(']');
 			}
 		}

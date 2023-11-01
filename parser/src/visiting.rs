@@ -65,7 +65,7 @@ mod ast {
 			&self,
 			visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 			data: &mut TData,
-			settings: &VisitSettings,
+			options: &VisitSettings,
 			chain: &mut Annex<Chain>,
 		);
 
@@ -73,7 +73,7 @@ mod ast {
 			&mut self,
 			visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			data: &mut TData,
-			settings: &VisitSettings,
+			options: &VisitSettings,
 			chain: &mut Annex<Chain>,
 		);
 	}
@@ -181,7 +181,7 @@ mod ast {
                         &self,
                         _visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
                         _data: &mut TData,
-                        _settings: &VisitSettings,
+                        _options: &VisitSettings,
                         _chain: &mut Annex<Chain>,
                     ) {}
 
@@ -189,7 +189,7 @@ mod ast {
                         &mut self,
                         _visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
                         _data: &mut TData,
-                        _settings: &VisitSettings,
+                        _options: &VisitSettings,
                         _chain: &mut Annex<Chain>,
                     ) {}
                 }

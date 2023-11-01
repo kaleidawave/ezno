@@ -39,14 +39,14 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	);
 
@@ -59,27 +59,27 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	fn parameters_from_reader<T: ToString>(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<FunctionParameters> {
-		FunctionParameters::from_reader(reader, state, settings)
+		FunctionParameters::from_reader(reader, state, options)
 	}
 
 	/// For [crate::ArrowFunction]
 	fn parameters_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		parameters: &FunctionParameters,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		parameters.to_string_from_buffer(buf, settings, depth);
+		parameters.to_string_from_buffer(buf, options, depth);
 	}
 
 	/// For [crate::ArrowFunction]
 	fn parameter_body_boundary_token_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 	) {
-		settings.add_gap(buf);
+		options.add_gap(buf);
 	}
 }
 
@@ -106,29 +106,29 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let (header, name) = T::header_and_name_from_reader(reader, state, settings)?;
-		Self::from_reader_with_header_and_name(reader, state, settings, header, name)
+		let (header, name) = T::header_and_name_from_reader(reader, state, options)?;
+		Self::from_reader_with_header_and_name(reader, state, options, header, name)
 	}
 
 	fn to_string_from_buffer<TS: source_map::ToString>(
 		&self,
 		buf: &mut TS,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, settings, depth);
-		if let (true, Some(type_parameters)) = (settings.include_types, &self.type_parameters) {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, settings, depth);
+		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, depth);
+		if let (true, Some(type_parameters)) = (options.include_types, &self.type_parameters) {
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
 		}
-		T::parameters_to_string_from_buffer(buf, &self.parameters, settings, depth);
-		if let (true, Some(return_type)) = (settings.include_types, &self.return_type) {
+		T::parameters_to_string_from_buffer(buf, &self.parameters, options, depth);
+		if let (true, Some(return_type)) = (options.include_types, &self.return_type) {
 			buf.push_str(": ");
-			return_type.to_string_from_buffer(buf, settings, depth);
+			return_type.to_string_from_buffer(buf, options, depth);
 		}
-		T::parameter_body_boundary_token_to_string_from_buffer(buf, settings);
-		self.body.to_string_from_buffer(buf, settings, depth + 1);
+		T::parameter_body_boundary_token_to_string_from_buffer(buf, options);
+		self.body.to_string_from_buffer(buf, options, depth + 1);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -140,7 +140,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
@@ -148,21 +148,21 @@ impl<T: FunctionBased> FunctionBase<T> {
 			.conditional_next(|token| *token == TSXToken::OpenChevron)
 			.is_some()
 			.then(|| {
-				parse_bracketed(reader, state, settings, None, TSXToken::CloseChevron)
+				parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
 					.map(|(params, _)| params)
 			})
 			.transpose()?;
-		let parameters = FunctionParameters::from_reader(reader, state, settings)?;
+		let parameters = FunctionParameters::from_reader(reader, state, options)?;
 		let return_type = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
 			.is_some()
-			.then(|| TypeAnnotation::from_reader(reader, state, settings))
+			.then(|| TypeAnnotation::from_reader(reader, state, options))
 			.transpose()?;
 
 		if let Some(token) = T::get_parameter_body_boundary_token() {
 			reader.expect_next(token)?;
 		}
-		let body = T::Body::from_reader(reader, state, settings)?;
+		let body = T::Body::from_reader(reader, state, options)?;
 		let body_pos = body.get_position();
 		let position = if let Some(header_pos) = T::header_left(&header) {
 			header_pos.union(body_pos)
@@ -182,13 +182,13 @@ where
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.parameters.visit(visitors, data, settings, chain);
-		if settings.visit_function_bodies {
-			self.body.visit(visitors, data, settings, chain);
+		self.parameters.visit(visitors, data, options, chain);
+		if options.visit_function_bodies {
+			self.body.visit(visitors, data, options, chain);
 		}
 	}
 
@@ -196,13 +196,13 @@ where
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.parameters.visit_mut(visitors, data, settings, chain);
-		if settings.visit_function_bodies {
-			self.body.visit_mut(visitors, data, settings, chain);
+		self.parameters.visit_mut(visitors, data, options, chain);
+		if options.visit_function_bodies {
+			self.body.visit_mut(visitors, data, options, chain);
 		}
 	}
 }
@@ -221,10 +221,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let header = FunctionHeader::from_reader(reader, state, settings)?;
-		let name = T::from_reader(reader, state, settings)?;
+		let header = FunctionHeader::from_reader(reader, state, options)?;
+		let name = T::from_reader(reader, state, options)?;
 		Ok((header, name))
 	}
 
@@ -232,10 +232,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		buf: &mut U,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		header.to_string_from_buffer(buf, settings, depth);
+		header.to_string_from_buffer(buf, options, depth);
 		if let Some(name) = T::as_option_str(name) {
 			buf.push_str(name);
 		}
@@ -289,7 +289,7 @@ impl ASTNode for FunctionHeader {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseOptions,
+		_options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let async_keyword = Keyword::optionally_from_reader(reader);
 
@@ -299,7 +299,7 @@ impl ASTNode for FunctionHeader {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		if self.is_async() {

@@ -28,10 +28,10 @@ impl ASTNode for TryCatchStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Try))?;
-		let try_inner = Block::from_reader(reader, state, settings)?;
+		let try_inner = Block::from_reader(reader, state, options)?;
 
 		let mut catch_inner: Option<Block> = None;
 		let mut exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)> = None;
@@ -45,29 +45,28 @@ impl ASTNode for TryCatchStatement {
 				reader.expect_next(TSXToken::OpenParentheses)?;
 				let variable_field =
 					WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-						reader, state, settings,
+						reader, state, options,
 					)?;
 
 				// Optional type reference `catch (e: type)`
 				let mut exception_var_type: Option<TypeAnnotation> = None;
 				if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
 					reader.expect_next(TSXToken::Colon)?;
-					exception_var_type =
-						Some(TypeAnnotation::from_reader(reader, state, settings)?);
+					exception_var_type = Some(TypeAnnotation::from_reader(reader, state, options)?);
 				}
 				exception_var = Some((variable_field, exception_var_type));
 
 				reader.expect_next(TSXToken::CloseParentheses)?;
 			}
 
-			catch_inner = Some(Block::from_reader(reader, state, settings)?);
+			catch_inner = Some(Block::from_reader(reader, state, options)?);
 		}
 
 		// Optional `finally` clause
 		let mut finally_inner: Option<Block> = None;
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Finally), _)) = reader.peek() {
 			reader.expect_next(TSXToken::Keyword(TSXKeyword::Finally))?;
-			finally_inner = Some(Block::from_reader(reader, state, settings)?);
+			finally_inner = Some(Block::from_reader(reader, state, options)?);
 		}
 
 		// Determine span based on which clauses are present
@@ -89,43 +88,43 @@ impl ASTNode for TryCatchStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		// Required `try` block
 		buf.push_str("try");
-		settings.add_gap(buf);
-		self.try_inner.to_string_from_buffer(buf, settings, depth + 1);
+		options.add_gap(buf);
+		self.try_inner.to_string_from_buffer(buf, options, depth + 1);
 
 		// Optional `catch` block
 		if let Some(catch) = &self.catch_inner {
-			settings.add_gap(buf);
+			options.add_gap(buf);
 			buf.push_str("catch");
-			settings.add_gap(buf);
+			options.add_gap(buf);
 
 			// Optional exception variable: `catch (e)`
 			if let Some((exception_var, exception_var_type)) = &self.exception_var {
 				buf.push('(');
-				exception_var.to_string_from_buffer(buf, settings, depth);
+				exception_var.to_string_from_buffer(buf, options, depth);
 
 				// Optional type annotation: `catch (e: any)`
 				if let Some(exception_var_type) = exception_var_type {
 					buf.push_str(": ");
-					exception_var_type.to_string_from_buffer(buf, settings, depth);
+					exception_var_type.to_string_from_buffer(buf, options, depth);
 				}
 				buf.push(')');
-				settings.add_gap(buf);
+				options.add_gap(buf);
 			}
 
-			catch.to_string_from_buffer(buf, settings, depth + 1);
+			catch.to_string_from_buffer(buf, options, depth + 1);
 		}
 
 		// Optional `finally` block
 		if let Some(finally) = &self.finally_inner {
-			settings.add_gap(buf);
+			options.add_gap(buf);
 			buf.push_str("finally");
-			settings.add_gap(buf);
-			finally.to_string_from_buffer(buf, settings, depth + 1);
+			options.add_gap(buf);
+			finally.to_string_from_buffer(buf, options, depth + 1);
 		}
 	}
 }

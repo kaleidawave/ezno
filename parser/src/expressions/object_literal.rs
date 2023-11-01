@@ -35,14 +35,14 @@ impl crate::Visitable for ObjectLiteralMember {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
 			ObjectLiteralMember::SpreadExpression(_, _) => {}
 			ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
-			ObjectLiteralMember::Method(method) => method.visit(visitors, data, settings, chain),
+			ObjectLiteralMember::Method(method) => method.visit(visitors, data, options, chain),
 		}
 	}
 
@@ -50,16 +50,14 @@ impl crate::Visitable for ObjectLiteralMember {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
 			ObjectLiteralMember::SpreadExpression(_, _) => {}
 			ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
-			ObjectLiteralMember::Method(method) => {
-				method.visit_mut(visitors, data, settings, chain)
-			}
+			ObjectLiteralMember::Method(method) => method.visit_mut(visitors, data, options, chain),
 		}
 	}
 }
@@ -80,11 +78,11 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		Ok((
 			MethodHeader::optional_from_reader(reader),
-			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?,
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?,
 		))
 	}
 
@@ -92,13 +90,13 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		if let Some(ref header) = header {
 			header.to_string_from_buffer(buf);
 		}
-		name.to_string_from_buffer(buf, settings, depth);
+		name.to_string_from_buffer(buf, options, depth);
 	}
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
@@ -116,28 +114,28 @@ impl ASTNode for ObjectLiteral {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::OpenBrace)?;
-		Self::from_reader_sub_open_curly(reader, state, settings, start)
+		Self::from_reader_sub_open_curly(reader, state, options, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('{');
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		for (at_end, member) in self.members.iter().endiate() {
-			member.to_string_from_buffer(buf, settings, depth + 1);
+			member.to_string_from_buffer(buf, options, depth + 1);
 			if !at_end {
 				buf.push(',');
-				settings.add_gap(buf);
+				options.add_gap(buf);
 			}
 		}
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('}');
 	}
 }
@@ -146,7 +144,7 @@ impl ObjectLiteral {
 	pub(crate) fn from_reader_sub_open_curly(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		let mut members: Vec<ObjectLiteralMember> = Vec::new();
@@ -154,7 +152,7 @@ impl ObjectLiteral {
 			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
 				break;
 			}
-			members.push(ObjectLiteralMember::from_reader(reader, state, settings)?);
+			members.push(ObjectLiteralMember::from_reader(reader, state, options)?);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
 			} else {
@@ -170,7 +168,7 @@ impl ASTNode for ObjectLiteralMember {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		// TODO this probably needs with comment here:
 		let mut header = MethodHeader::optional_from_reader(reader);
@@ -192,14 +190,14 @@ impl ASTNode for ObjectLiteralMember {
 			};
 			WithComment::None(PropertyKey::Ident(name.to_owned(), position, ()))
 		} else {
-			WithComment::<PropertyKey<_>>::from_reader(reader, state, settings)?
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?
 		};
 		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
 		match token {
 			// Functions, (OpenChevron is for generic parameters)
 			TSXToken::OpenParentheses | TSXToken::OpenChevron => {
 				let method: ObjectLiteralMethod = FunctionBase::from_reader_with_header_and_name(
-					reader, state, settings, header, key,
+					reader, state, options, header, key,
 				)?;
 
 				Ok(Self::Method(method))
@@ -218,7 +216,7 @@ impl ASTNode for ObjectLiteralMember {
 					}
 				} else {
 					reader.expect_next(TSXToken::Colon)?;
-					let expression = Expression::from_reader(reader, state, settings)?;
+					let expression = Expression::from_reader(reader, state, options)?;
 					let position = key.get_position().union(expression.get_position());
 					Ok(Self::Property(key, expression, position))
 				}
@@ -229,25 +227,25 @@ impl ASTNode for ObjectLiteralMember {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
 			Self::Property(name, expression, _) => {
-				name.to_string_from_buffer(buf, settings, depth);
+				name.to_string_from_buffer(buf, options, depth);
 				buf.push(':');
-				settings.add_gap(buf);
-				expression.to_string_from_buffer(buf, settings, depth);
+				options.add_gap(buf);
+				expression.to_string_from_buffer(buf, options, depth);
 			}
 			Self::Shorthand(name, ..) => {
 				buf.push_str(name.as_str());
 			}
 			Self::Method(func) => {
-				func.to_string_from_buffer(buf, settings, depth);
+				func.to_string_from_buffer(buf, options, depth);
 			}
 			Self::SpreadExpression(spread_expr, _) => {
 				buf.push_str("...");
-				spread_expr.to_string_from_buffer(buf, settings, depth);
+				spread_expr.to_string_from_buffer(buf, options, depth);
 			}
 		};
 	}

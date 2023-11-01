@@ -46,29 +46,29 @@ impl ASTNode for JSXElement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
-		Self::from_reader_sub_start(reader, state, settings, start_position)
+		Self::from_reader_sub_start(reader, state, options, start_position)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('<');
 		buf.push_str(&self.tag_name);
 		for attribute in self.attributes.iter() {
 			buf.push(' ');
-			attribute.to_string_from_buffer(buf, settings, depth);
+			attribute.to_string_from_buffer(buf, options, depth);
 		}
 
 		match self.children {
 			JSXElementChildren::Children(ref children) => {
 				buf.push('>');
-				jsx_children_to_string(children, buf, settings, depth);
+				jsx_children_to_string(children, buf, options, depth);
 				buf.push_str("</");
 				buf.push_str(&self.tag_name);
 				buf.push('>');
@@ -101,20 +101,20 @@ impl ASTNode for JSXFragment {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::JSXFragmentStart)?;
-		Self::from_reader_sub_start(reader, state, settings, start)
+		Self::from_reader_sub_start(reader, state, options, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("<>");
-		jsx_children_to_string(&self.children, buf, settings, depth);
+		jsx_children_to_string(&self.children, buf, options, depth);
 		buf.push_str("</>");
 	}
 }
@@ -123,10 +123,10 @@ impl JSXFragment {
 	fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		start: TokenStart,
 	) -> ParseResult<Self> {
-		let children = parse_jsx_children(reader, state, settings)?;
+		let children = parse_jsx_children(reader, state, options)?;
 		let end = reader.expect_next_get_end(TSXToken::JSXFragmentEnd)?;
 		Ok(Self { children, position: start.union(end) })
 	}
@@ -136,25 +136,25 @@ impl ASTNode for JSXRoot {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let (is_fragment, span) = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::JSXOpeningTagStart, span) => (false, span),
 			Token(TSXToken::JSXFragmentStart, span) => (true, span),
 			_ => panic!(),
 		};
-		Self::from_reader_sub_start(reader, state, settings, is_fragment, span)
+		Self::from_reader_sub_start(reader, state, options, is_fragment, span)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			JSXRoot::Element(element) => element.to_string_from_buffer(buf, settings, depth),
-			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, settings, depth),
+			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, depth),
+			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, depth),
 		}
 	}
 
@@ -169,7 +169,7 @@ impl ASTNode for JSXRoot {
 fn parse_jsx_children(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &ParseOptions,
+	options: &ParseOptions,
 ) -> Result<Vec<JSXNode>, ParseError> {
 	let mut children = Vec::new();
 	loop {
@@ -179,27 +179,27 @@ fn parse_jsx_children(
 		) {
 			return Ok(children);
 		}
-		children.push(JSXNode::from_reader(reader, state, settings)?);
+		children.push(JSXNode::from_reader(reader, state, options)?);
 	}
 }
 
 fn jsx_children_to_string<T: source_map::ToString>(
 	children: &[JSXNode],
 	buf: &mut T,
-	settings: &crate::ToStringOptions,
+	options: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	let indent =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
 	for node in children.iter() {
 		if indent {
-			settings.add_indent(depth + 1, buf);
+			options.add_indent(depth + 1, buf);
 		}
-		node.to_string_from_buffer(buf, settings, depth);
+		node.to_string_from_buffer(buf, options, depth);
 	}
 
-	if settings.pretty && depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
-		settings.add_indent(depth, buf);
+	if options.pretty && depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
+		options.add_indent(depth, buf);
 	}
 }
 
@@ -207,14 +207,14 @@ impl JSXRoot {
 	pub(crate) fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		is_fragment: bool,
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		if is_fragment {
-			Ok(Self::Fragment(JSXFragment::from_reader_sub_start(reader, state, settings, start)?))
+			Ok(Self::Fragment(JSXFragment::from_reader_sub_start(reader, state, options, start)?))
 		} else {
-			Ok(Self::Element(JSXElement::from_reader_sub_start(reader, state, settings, start)?))
+			Ok(Self::Element(JSXElement::from_reader_sub_start(reader, state, options, start)?))
 		}
 	}
 }
@@ -242,7 +242,7 @@ impl ASTNode for JSXNode {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
 		match token {
@@ -251,13 +251,12 @@ impl ASTNode for JSXNode {
 				Ok(JSXNode::TextNode(content, position))
 			}
 			Token(TSXToken::JSXExpressionStart, pos) => {
-				let expression = Expression::from_reader(reader, state, settings)?;
+				let expression = Expression::from_reader(reader, state, options)?;
 				let end_pos = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), pos.union(end_pos)))
 			}
 			Token(TSXToken::JSXOpeningTagStart, pos) => {
-				JSXElement::from_reader_sub_start(reader, state, settings, pos)
-					.map(JSXNode::Element)
+				JSXElement::from_reader_sub_start(reader, state, options, pos).map(JSXNode::Element)
 			}
 			Token(TSXToken::JSXContentLineBreak, _) => Ok(JSXNode::LineBreak),
 			_token => Err(parse_lexing_error()),
@@ -267,24 +266,23 @@ impl ASTNode for JSXNode {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			JSXNode::Element(element) => element.to_string_from_buffer(buf, settings, depth + 1),
+			JSXNode::Element(element) => element.to_string_from_buffer(buf, options, depth + 1),
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
-				if !settings.should_add_comment()
-					&& matches!(&**expression, Expression::Comment(..))
+				if !options.should_add_comment() && matches!(&**expression, Expression::Comment(..))
 				{
 					return;
 				}
 				buf.push('{');
-				expression.to_string_from_buffer(buf, settings, depth + 1);
+				expression.to_string_from_buffer(buf, options, depth + 1);
 				buf.push('}');
 			}
 			JSXNode::LineBreak => {
-				if settings.pretty {
+				if options.pretty {
 					buf.push_new_line();
 				}
 			}
@@ -320,7 +318,7 @@ impl ASTNode for JSXAttribute {
 	fn from_reader(
 		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseOptions,
+		_options: &ParseOptions,
 	) -> ParseResult<Self> {
 		todo!("this is currently done in JSXElement::from_reader")
 	}
@@ -328,7 +326,7 @@ impl ASTNode for JSXAttribute {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -343,7 +341,7 @@ impl ASTNode for JSXAttribute {
 				buf.push_str(key.as_str());
 				buf.push('=');
 				buf.push('{');
-				expression.to_string_from_buffer(buf, settings, depth);
+				expression.to_string_from_buffer(buf, options, depth);
 				buf.push('}');
 			}
 			JSXAttribute::BooleanAttribute(key, _) => {
@@ -351,10 +349,10 @@ impl ASTNode for JSXAttribute {
 			}
 			JSXAttribute::Spread(expr, _) => {
 				buf.push_str("...");
-				expr.to_string_from_buffer(buf, settings, depth);
+				expr.to_string_from_buffer(buf, options, depth);
 			}
 			JSXAttribute::Shorthand(expr) => {
-				expr.to_string_from_buffer(buf, settings, depth);
+				expr.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}
@@ -364,7 +362,7 @@ impl JSXElement {
 	pub(crate) fn from_reader_sub_start(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		let tag_name = if let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() {
@@ -391,11 +389,11 @@ impl JSXElement {
 				Token(TSXToken::JSXExpressionStart, _pos) => {
 					let attribute = if let Some(Token(TSXToken::Spread, _)) = reader.peek() {
 						let spread_token = reader.next().unwrap();
-						let expr = Expression::from_reader(reader, state, settings)?;
+						let expr = Expression::from_reader(reader, state, options)?;
 						reader.expect_next(TSXToken::CloseBrace)?;
 						JSXAttribute::Spread(expr, spread_token.get_span())
 					} else {
-						let expr = Expression::from_reader(reader, state, settings)?;
+						let expr = Expression::from_reader(reader, state, options)?;
 						JSXAttribute::Shorthand(expr)
 					};
 					attributes.push(attribute);
@@ -413,7 +411,7 @@ impl JSXElement {
 						JSXAttribute::Static(key, expression, position)
 					}
 					Token(TSXToken::JSXExpressionStart, _) => {
-						let expression = Expression::from_reader(reader, state, settings)?;
+						let expression = Expression::from_reader(reader, state, options)?;
 						let close = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
 						JSXAttribute::Dynamic(key, Box::new(expression), span.union(close))
 					}
@@ -426,7 +424,7 @@ impl JSXElement {
 			}
 		}
 
-		let children = parse_jsx_children(reader, state, settings)?;
+		let children = parse_jsx_children(reader, state, options)?;
 		if let Token(TSXToken::JSXClosingTagStart, _) =
 			reader.next().ok_or_else(parse_lexing_error)?
 		{
