@@ -39,7 +39,7 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	Parts(Vec<ExportPart>),
-	ImportAll { r#as: Option<VariableIdentifier>, from: String },
+	ImportAll { r#as: VariableIdentifier, from: String },
 	ImportParts { parts: Vec<ExportPart>, from: String },
 }
 
@@ -66,13 +66,9 @@ impl ASTNode for ExportDeclaration {
 			}
 			Token(TSXToken::Multiply, _) => {
 				reader.next();
-				let r#as = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
-				{
-					reader.next();
-					Some(VariableIdentifier::from_reader(reader, state, settings)?)
-				} else {
-					None
-				};
+				// Have to be always to prevent conflicts
+				reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+				let r#as = VariableIdentifier::from_reader(reader, state, settings)?;
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
 				let token = reader.next().ok_or_else(parse_lexing_error)?;
 				let (end, from) = match token {
@@ -257,13 +253,9 @@ impl ASTNode for ExportDeclaration {
 						buf.push('}');
 					}
 					Exportable::ImportAll { r#as, from } => {
-						buf.push_str("* ");
-						if let Some(r#as) = r#as {
-							buf.push_str("as ");
-							r#as.to_string_from_buffer(buf, settings, depth);
-							buf.push(' ');
-						}
-						buf.push_str("from \"");
+						buf.push_str("* as ");
+						r#as.to_string_from_buffer(buf, settings, depth);
+						buf.push_str(" from \"");
 						buf.push_str(from);
 						buf.push('"');
 					}

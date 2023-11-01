@@ -103,11 +103,31 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 					parser::declarations::export::Exportable::Variable(variable) => {
 						synthesise_variable_declaration(variable, environment, checking_data, true);
 					}
-					parser::declarations::export::Exportable::Parts(_) => todo!(),
-					parser::declarations::export::Exportable::ImportAll { r#as, from } => todo!(),
-					parser::declarations::export::Exportable::ImportParts { parts, from } => {
-						todo!()
+					parser::declarations::export::Exportable::Parts(parts) => {
+						for part in parts.iter() {
+							let pair = super::hoisting::export_part_to_name_pair(part);
+							if let Some(pair) = pair {
+								let position = pair.position.with_source(environment.get_source());
+								let value = environment.get_variable_or_error(
+									pair.value,
+									position,
+									checking_data,
+								);
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.kind
+								{
+									if let Ok(value) = value {
+										exported.named.push((
+											pair.r#as.to_owned(),
+											(value.0.get_id(), value.0.get_mutability()),
+										));
+									}
+								}
+							}
+						}
 					}
+					parser::declarations::export::Exportable::ImportAll { .. }
+					| parser::declarations::export::Exportable::ImportParts { .. } => {}
 				}
 			}
 			parser::declarations::ExportDeclaration::Default { expression, position } => {

@@ -482,9 +482,15 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 		}
 	} else {
 		// TODO abstract
-		behavior
-			.get_top_level_facts(environment)
-			.register_property(on, under, new, false, publicity);
+		// TODO only if dependent?
+		let register_setter_event = true;
+		behavior.get_top_level_facts(environment).register_property(
+			on,
+			under,
+			new,
+			register_setter_event,
+			publicity,
+		);
 	}
 	Ok(None)
 }

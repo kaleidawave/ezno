@@ -4,6 +4,7 @@ use derive_enum_from_into::EnumFrom;
 use source_map::Span;
 use std::{collections::HashMap, default, path::PathBuf};
 
+#[derive(Debug)]
 pub struct NamePair<'a> {
 	pub value: &'a str,
 	pub r#as: &'a str,
@@ -23,23 +24,32 @@ pub struct SynthesisedModule<M> {
 	pub facts: Facts,
 }
 
+/// TODO tidy
 #[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
 pub struct Exported {
 	pub default: Option<TypeId>,
-	pub named: HashMap<String, (VariableId, VariableMutability)>,
+	pub named: Vec<(String, (VariableId, VariableMutability))>,
+	pub named_types: Vec<(String, TypeId)>,
 }
 
-#[derive(Debug, EnumFrom)]
-pub enum ModuleFromPathError {
-	// ParseError
-	ParseError(()),
-	PathDoesNotExist(PathBuf),
-	NoResolverForExtension(String),
+pub enum TypeOrVariable {
+	ExportedVariable((VariableId, VariableMutability)),
+	Type(TypeId),
 }
 
-impl From<ModuleFromPathError> for Diagnostic {
-	fn from(err: ModuleFromPathError) -> Self {
-		todo!()
+impl Exported {
+	pub(crate) fn get_export(&self, want: &str) -> Option<TypeOrVariable> {
+		self.named
+			.iter()
+			.find_map(|(export, value)| {
+				(export == want)
+					.then_some(TypeOrVariable::ExportedVariable((value.0, value.1.clone())))
+			})
+			.or_else(|| {
+				self.named_types.iter().find_map(|(export, value)| {
+					(export == want).then_some(TypeOrVariable::Type(*value))
+				})
+			})
 	}
 }
 

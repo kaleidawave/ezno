@@ -814,6 +814,7 @@ impl<'a> Environment<'a> {
 		default_import: Option<(&str, Span)>,
 		kind: ImportKind<'b, P>,
 		checking_data: &mut CheckingData<T, M>,
+		also_export: bool,
 	) {
 		let current_source = self.get_source();
 		if !matches!(self.context_type.kind, crate::Scope::Module { .. }) {
@@ -849,8 +850,9 @@ impl<'a> Environment<'a> {
 					todo!("emit 'no default export' diagnostic")
 				}
 			} else {
-				let behavior =
-					crate::context::VariableRegisterBehavior::Declare { base: TypeId::ERROR_TYPE };
+				let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
+					value: TypeId::ERROR_TYPE,
+				};
 
 				self.register_variable_handle_error(
 					default_name,
@@ -865,42 +867,72 @@ impl<'a> Environment<'a> {
 			ImportKind::Parts(parts) => {
 				for part in parts {
 					if let Ok(Ok(ref exports)) = exports {
-						if let Some((variable, mutability)) = exports.named.get(part.value) {
-							let constant = match mutability {
-								VariableMutability::Constant => {
-									let k = crate::VariableId(current_source, part.position.start);
-									let v = self.get_value_of_constant_import_variable(*variable);
-									self.facts.variable_current_value.insert(k, v);
-									true
-								}
-								VariableMutability::Mutable { reassignment_constraint } => false,
-							};
+						if let Some(export) = exports.get_export(part.value) {
+							match export {
+								crate::behavior::modules::TypeOrVariable::ExportedVariable((
+									variable,
+									mutability,
+								)) => {
+									let constant = match mutability {
+										VariableMutability::Constant => {
+											let k = crate::VariableId(
+												current_source,
+												part.position.start,
+											);
+											let v = self
+												.get_value_of_constant_import_variable(variable);
+											self.facts.variable_current_value.insert(k, v);
+											true
+										}
+										VariableMutability::Mutable { reassignment_constraint } => {
+											false
+										}
+									};
 
-							let v = crate::VariableOrImport::MutableImport {
-								of: *variable,
-								constant,
-								import_specified_at: part
-									.position
-									.clone()
-									.with_source(self.get_source()),
-							};
-							let existing = self.variables.insert(part.r#as.to_owned(), v);
-							if let Some(existing) = existing {
-								todo!("diagnostic")
+									let v = crate::VariableOrImport::MutableImport {
+										of: variable,
+										constant,
+										import_specified_at: part
+											.position
+											.clone()
+											.with_source(self.get_source()),
+									};
+									let existing = self.variables.insert(part.r#as.to_owned(), v);
+									if let Some(existing) = existing {
+										todo!("diagnostic")
+									}
+									if also_export {
+										if let Scope::Module { ref mut exported, .. } =
+											self.context_type.kind
+										{
+											exported.named.push((
+												part.r#as.to_owned(),
+												(variable, mutability.clone()),
+											));
+										}
+									}
+								}
+								crate::behavior::modules::TypeOrVariable::Type(ty) => {
+									let existing =
+										self.named_types.insert(part.r#as.to_owned(), ty);
+									assert!(existing.is_none(), "TODO exception");
+								}
 							}
-							continue;
 						} else {
 							let position = part.position.with_source(current_source);
 							checking_data.diagnostics_container.add_error(
-								TypeCheckError::FieldNotExported(
-									part.value,
-									partial_import_path,
-									position.clone(),
-								),
+								TypeCheckError::FieldNotExported {
+									file: partial_import_path,
+									position: position.clone(),
+									importing: part.value,
+								},
 							);
-							let behavior = crate::context::VariableRegisterBehavior::Declare {
-								base: TypeId::ERROR_TYPE,
-							};
+
+							let behavior =
+								crate::context::VariableRegisterBehavior::ConstantImport {
+									value: TypeId::ERROR_TYPE,
+								};
+
 							self.register_variable_handle_error(
 								part.r#as,
 								position,
@@ -909,9 +941,10 @@ impl<'a> Environment<'a> {
 							);
 						}
 					} else {
-						let behavior = crate::context::VariableRegisterBehavior::Declare {
-							base: TypeId::ERROR_TYPE,
+						let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
+							value: TypeId::ERROR_TYPE,
 						};
+
 						self.register_variable_handle_error(
 							part.r#as,
 							part.position.with_source(current_source),
@@ -945,7 +978,7 @@ impl<'a> Environment<'a> {
 					);
 				}
 			}
-			ImportKind::SideEffect => todo!(),
+			ImportKind::SideEffect => {}
 		}
 	}
 }

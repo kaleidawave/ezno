@@ -329,18 +329,3 @@ myArray.push("hi")
 ```
 
 - Type "hi" is not assignable to type number
-
-### Imports
-
-#### Export star
-
-```ts
-import * as the from "./many";
-
-the satisfies string;
-
-// in many.ts
-export const a = 2, b = 3, c = 4;
-```
-
-- Expected string, found {"a": 2, "b": 3, "c": 4 }

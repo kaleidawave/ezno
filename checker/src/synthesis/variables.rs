@@ -284,7 +284,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
 				{
 					let existing =
-						exported.named.insert(name.as_str().to_owned(), (id, mutability));
+						exported.named.push((name.as_str().to_owned(), (id, mutability)));
 				} else {
 					todo!("emit error here")
 				}

@@ -94,7 +94,7 @@ fn check_errors(
 	if &diagnostics != expected_diagnostics {
 		panic!(
 			"{}",
-			pretty_assertions::Comparison::new(&diagnostics, expected_diagnostics).to_string()
+			pretty_assertions::Comparison::new(expected_diagnostics, &diagnostics).to_string()
 		)
 	}
 

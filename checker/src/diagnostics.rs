@@ -215,7 +215,11 @@ mod defined_errors_and_warnings {
 		TypeIsNotIterable(TypeStringRepresentation),
 		// This could be a syntax error but that is difficult to type...
 		NonTopLevelExport(SpanWithSource),
-		FieldNotExported(&'a str, &'a str, SpanWithSource),
+		FieldNotExported {
+			file: &'a str,
+			importing: &'a str,
+			position: SpanWithSource,
+		},
 		InvalidJSXAttribute {
 			attribute_name: String,
 			attribute_type: TypeStringRepresentation,
@@ -485,7 +489,13 @@ mod defined_errors_and_warnings {
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
 				TypeCheckError::TypeIsNotIterable(_) => todo!(),
 				TypeCheckError::NonTopLevelExport(pos) => todo!(),
-				TypeCheckError::FieldNotExported(_, _, _) => todo!(),
+				TypeCheckError::FieldNotExported { file, importing, position } => {
+					Diagnostic::Position {
+						reason: format!("{importing} not exported from {file}"),
+						position,
+						kind: super::DiagnosticKind::Error,
+					}
+				}
 				TypeCheckError::InvalidJSXInterpolatedValue {
 					interpolation_site,
 					expected,

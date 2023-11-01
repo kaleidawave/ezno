@@ -45,7 +45,6 @@ use types::{
 	TypeStore,
 };
 
-pub(crate) use behavior::modules::ModuleFromPathError;
 pub use behavior::{
 	assignments::{
 		Assignable, AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
@@ -317,7 +316,10 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 					environment.facts.extend_ref(&synthesised_module.facts);
 					Ok(Ok(synthesised_module.exported.clone()))
 				}
-				Some(Err(err)) => Ok(Err(InvalidModule)),
+				Some(Err(error)) => {
+					self.diagnostics_container.add_error(error);
+					Ok(Err(InvalidModule))
+				}
 				None => Err(CouldNotOpenFile(full_importer)),
 			}
 		} else {
