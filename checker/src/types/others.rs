@@ -117,6 +117,7 @@ pub(crate) fn create_object_for_type(
 				PublicityKind::Public,
 			);
 		}
+		Type::SpecialObject(_) => todo!(),
 	}
 	obj.build_object()
 }

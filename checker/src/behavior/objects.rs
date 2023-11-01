@@ -34,8 +34,18 @@ impl ObjectBuilder {
 	}
 }
 
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum SpecialObjects {
-	Promise { events: () },
-	Generator { position: () },
-	Proxy { handler: (), over: () },
+	Promise {
+		events: (),
+	},
+	Generator {
+		position: (),
+	},
+	Proxy {
+		handler: (),
+		over: (),
+	},
+	/// This cannot be a regular object because of is because of let mutations
+	Import(super::modules::Exported),
 }

@@ -214,9 +214,12 @@ mod defined_errors_and_warnings {
 		TypeIsNotIndexable(TypeStringRepresentation),
 		TypeIsNotIterable(TypeStringRepresentation),
 		// This could be a syntax error but that is difficult to type...
-		NonTopLevelExport,
-		// TODO implies the presence of, which isn't always true
-		FieldNotExported(&'a str, &'a path::Path, SpanWithSource),
+		NonTopLevelExport(SpanWithSource),
+		FieldNotExported {
+			file: &'a str,
+			importing: &'a str,
+			position: SpanWithSource,
+		},
 		InvalidJSXAttribute {
 			attribute_name: String,
 			attribute_type: TypeStringRepresentation,
@@ -265,11 +268,14 @@ mod defined_errors_and_warnings {
 		},
 		NotDefinedOperator(&'static str, SpanWithSource),
 		PropertyNotWriteable(SpanWithSource),
+		NotTopLevelImport(SpanWithSource),
+		DoubleDefaultExport(source_map::BaseSpan<source_map::SourceId>),
+		CannotOpenFile(crate::CouldNotOpenFile, source_map::BaseSpan<source_map::SourceId>),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
 		fn from(error: TypeCheckError<'_>) -> Self {
-			match error {
+			let diagnostic = match error {
 				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
@@ -293,6 +299,7 @@ mod defined_errors_and_warnings {
 						kind: super::DiagnosticKind::Error,
 					}
 				}
+
 				TypeCheckError::FunctionCallingError(error) => match error {
 					FunctionCallingError::InvalidArgumentType {
 						parameter_type,
@@ -481,8 +488,14 @@ mod defined_errors_and_warnings {
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
 				TypeCheckError::TypeIsNotIterable(_) => todo!(),
-				TypeCheckError::NonTopLevelExport => todo!(),
-				TypeCheckError::FieldNotExported(_, _, _) => todo!(),
+				TypeCheckError::NonTopLevelExport(pos) => todo!(),
+				TypeCheckError::FieldNotExported { file, importing, position } => {
+					Diagnostic::Position {
+						reason: format!("{importing} not exported from {file}"),
+						position,
+						kind: super::DiagnosticKind::Error,
+					}
+				}
 				TypeCheckError::InvalidJSXInterpolatedValue {
 					interpolation_site,
 					expected,
@@ -569,7 +582,19 @@ mod defined_errors_and_warnings {
 					position,
 					kind: super::DiagnosticKind::Error,
 				},
-			}
+				TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
+					reason: "Import must be in the top of the scope".to_owned(),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::DoubleDefaultExport(_) => todo!(),
+				TypeCheckError::CannotOpenFile(_, position) => Diagnostic::Position {
+					reason: "Cannot find file".to_owned(),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+			};
+			diagnostic
 		}
 	}
 

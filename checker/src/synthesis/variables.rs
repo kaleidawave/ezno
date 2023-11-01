@@ -8,8 +8,8 @@ use parser::{
 
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
-	context::facts::PublicityKind,
-	context::{Context, ContextType},
+	behavior::variables::VariableMutability,
+	context::{facts::PublicityKind, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::property_key_as_type,
 	types::Constant,
@@ -237,9 +237,8 @@ pub(super) fn synthesise_variable_declaration_item<
 	environment: &mut Environment,
 	is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) where
-	for<'a> Option<&'a parser::Expression>: From<&'a U>,
-{
+	exported: Option<VariableMutability>,
+) {
 	// This is only added if there is an annotation, so can be None
 	let get_position = variable_declaration.get_position();
 	let var_ty_and_pos = checking_data
@@ -248,9 +247,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, pos.clone()));
 
-	let value_ty = if let Some(value) =
-		Option::<&parser::Expression>::from(&variable_declaration.expression)
-	{
+	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
 		let value_ty = super::expressions::synthesise_expression(value, environment, checking_data);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
@@ -268,7 +265,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	};
 
 	let item = variable_declaration.name.get_ast_ref();
-	assign_to_fields(item, environment, checking_data, value_ty);
+	assign_to_fields(item, environment, checking_data, value_ty, exported);
 }
 
 fn assign_to_fields<T: crate::ReadFromFS>(
@@ -276,12 +273,22 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	value: TypeId,
+	exported: Option<VariableMutability>,
 ) {
 	match item {
 		VariableField::Name(name) => {
 			let get_position = name.get_position();
 			let id = crate::VariableId(environment.get_source(), get_position.start);
-			environment.register_initial_variable_declaration_value(id, value)
+			environment.register_initial_variable_declaration_value(id, value);
+			if let Some(mutability) = exported {
+				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				{
+					let existing =
+						exported.named.push((name.as_str().to_owned(), (id, mutability)));
+				} else {
+					todo!("emit error here")
+				}
+			}
 		}
 		VariableField::Array(items, _) => {
 			for (idx, item) in items.iter().enumerate() {
@@ -306,6 +313,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 								environment,
 								checking_data,
 								value,
+								exported,
 							)
 						}
 
@@ -389,7 +397,13 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							}
 						};
 
-						assign_to_fields(name.get_ast_ref(), environment, checking_data, value)
+						assign_to_fields(
+							name.get_ast_ref(),
+							environment,
+							checking_data,
+							value,
+							exported,
+						)
 					}
 				}
 			}

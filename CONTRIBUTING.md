@@ -28,6 +28,12 @@ If you don't want to run the whole Ezno CLI. You can run just the checker with
 cargo run -p ezno-checker -F ezno-parser --example check path/to/file.ts
 ```
 
+If you want to check all the checker tests
+
+```shell
+cargo test -p ezno-checker-specification
+```
+
 If you want to test the lexing and parsing in Ezno's parser
 
 ```shell

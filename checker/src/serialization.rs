@@ -29,6 +29,15 @@ impl BinarySerializable for String {
 	}
 }
 
+// TODO temp
+impl BinarySerializable for () {
+	fn serialize(self, _buf: &mut Vec<u8>) {}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		()
+	}
+}
+
 impl<T: BinarySerializable> BinarySerializable for Option<T> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		if let Some(item) = self {
@@ -223,26 +232,6 @@ impl BinarySerializable for u32 {
 impl BinarySerializable for crate::TypeId {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&self.0.to_le_bytes());
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		Self(u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]))
-	}
-}
-
-impl BinarySerializable for crate::InternalFunctionId {
-	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&self.get_id().to_le_bytes());
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		Self::new_from_id(u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]))
-	}
-}
-
-impl BinarySerializable for crate::AutoConstructorId {
-	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&self.get_id().to_le_bytes());
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {

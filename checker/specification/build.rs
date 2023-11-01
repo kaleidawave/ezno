@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::fs::{read_to_string, File};
 use std::io::Write;
+use std::mem;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	println!("cargo:rerun-if-changed=specification.md");
-	println!("cargo:rerun-if-changed=TODO.md");
+	println!("cargo:rerun-if-changed=to_implement.md");
 
 	let out_path = Path::new(&std::env::var("OUT_DIR")?).join("specification.rs");
 	let mut out = File::create(out_path)?;
@@ -33,6 +34,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
+const DEFAULT_FILE_PATH: &str = "main.ts";
+
 fn markdown_lines_append_test_to_rust(
 	mut lines: std::iter::Enumerate<std::str::Lines<'_>>,
 	out: &mut File,
@@ -56,7 +59,9 @@ fn markdown_lines_append_test_to_rust(
 		let heading = line.strip_prefix("####").unwrap().trim_start();
 		let test_title = heading_to_rust_name(heading);
 
-		let code = {
+		let blocks = {
+			let mut blocks = Vec::new();
+			let mut current_filename = None;
 			while let Some((_, line)) = lines.next() {
 				if line == "```ts" {
 					break;
@@ -64,6 +69,16 @@ fn markdown_lines_append_test_to_rust(
 			}
 			let mut code = String::new();
 			while let Some((_, line)) = lines.next() {
+				if let Some(path) = line.strip_prefix("// in ") {
+					if !code.trim().is_empty() {
+						blocks.push((
+							current_filename.unwrap_or(DEFAULT_FILE_PATH),
+							mem::take(&mut code).replace('"', "\\\""),
+						));
+					}
+					current_filename = Some(path);
+					continue;
+				}
 				if line == "```" {
 					break;
 				}
@@ -71,7 +86,9 @@ fn markdown_lines_append_test_to_rust(
 				code.push('\n')
 			}
 			// Escape "
-			code.replace('"', "\\\"")
+			let code = code.replace('"', "\\\"");
+			blocks.push((current_filename.unwrap_or(DEFAULT_FILE_PATH), code));
+			blocks
 		};
 		let errors = {
 			let mut errors = Vec::new();
@@ -90,11 +107,18 @@ fn markdown_lines_append_test_to_rust(
 
 		let errors = errors.join(", ");
 		let heading_idx = heading_idx + 1;
+		let code = blocks
+			.into_iter()
+			.map(|(path, content)| format!("(\"{path}\",\"{content}\"),"))
+			.fold(String::new(), |mut acc, cur| {
+				acc.push_str(&cur);
+				acc
+			});
 
 		writeln!(
 			out,
 			"#[test] fn {test_title}() {{ 
-                super::check_errors(\"{heading}\", {heading_idx}, \"{code}\", &[{errors}])
+                super::check_errors(\"{heading}\", {heading_idx}, &[{code}], &[{errors}])
             }}",
 		)?;
 	}

@@ -10,7 +10,7 @@ use crate::{ASTNode, TSXToken, TypeAnnotation, TypeDeclaration};
 pub struct TypeAlias {
 	pub type_name: TypeDeclaration,
 	pub type_expression: TypeAnnotation,
-	position: Span,
+	pub position: Span,
 }
 
 impl ASTNode for TypeAlias {
@@ -42,6 +42,6 @@ impl ASTNode for TypeAlias {
 	}
 
 	fn get_position(&self) -> &Span {
-		todo!()
+		&self.position
 	}
 }

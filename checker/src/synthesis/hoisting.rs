@@ -1,14 +1,21 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter};
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
 	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
 	WithComment,
 };
+use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::RegisterOnExisting, context::Environment,
-	structures::variables::VariableMutability, CheckingData, ReadFromFS, TypeId,
+	behavior::{
+		functions::RegisterOnExisting,
+		modules::{Exported, ImportKind, NamePair},
+		variables::VariableMutability,
+	},
+	context::Environment,
+	diagnostics::TypeCheckError,
+	CheckingData, Constant, ReadFromFS, TypeId,
 };
 
 use super::{
@@ -16,7 +23,6 @@ use super::{
 	variables::register_variable,
 };
 
-/// TODO imports and exports
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
@@ -76,69 +82,96 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
-					// TODO get types from checking_data.modules.exported
-					if let Some(ref default) = import.default {
-						checking_data.raise_unimplemented_error(
-							"default imports",
-							import.position.clone().with_source(environment.get_source()),
-						);
-					}
-
-					match &import.kind {
+					let kind = match &import.kind {
 						parser::declarations::import::ImportKind::Parts(parts) => {
-							todo!();
-							// for part in parts {
-							// 	match part {
-							// 		parser::declarations::ImportExportPart::Name(identifier) => {
-							// 			if let VariableIdentifier::Standard(name, pos) = identifier
-							// 			{
-							// 				environment.register_variable_handle_error(
-							// 					name,
-							// 					pos.clone().with_source(environment.get_source()),
-							// 					crate::context::VariableRegisterBehavior::Declare {
-							// 						base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-							// 					},
-							// 					checking_data,
-							// 				);
-							// 			}
-							// 		}
-							// 		parser::declarations::ImportExportPart::NameWithAlias {
-							// 			name,
-							// 			alias,
-							// 			position,
-							// 		} => {
-							// 			environment.register_variable_handle_error(
-							// 				name,
-							// 				position.clone().with_source(environment.get_source()),
-							// 				crate::context::VariableRegisterBehavior::Declare {
-							// 					base: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-							// 				},
-							// 				checking_data,
-							// 			);
-							// 		}
-							// 	}
-							// }
-							// checking_data.raise_unimplemented_error(
-							// 	"imports",
-							// 	import.position.clone().with_source(environment.get_source()),
-							// );
+							crate::behavior::modules::ImportKind::Parts(
+								parts.iter().filter_map(|item| import_part_to_name_pair(item)),
+							)
 						}
 						parser::declarations::import::ImportKind::All { under } => {
-							checking_data.raise_unimplemented_error(
-								"import * as",
-								import.position.clone().with_source(environment.get_source()),
-							);
+							crate::behavior::modules::ImportKind::All {
+								under: &under,
+								// TODO parser fix needed
+								position: Span::NULL_SPAN,
+							}
 						}
 						parser::declarations::import::ImportKind::SideEffect => {
-							checking_data.raise_unimplemented_error(
-								"import side effect",
-								import.position.clone().with_source(environment.get_source()),
-							);
+							crate::behavior::modules::ImportKind::SideEffect
+						}
+					};
+					let default_import = import.default.as_ref().and_then(|default_identifier| {
+						match default_identifier {
+							VariableIdentifier::Standard(name, pos) => {
+								Some((name.as_str(), pos.clone()))
+							}
+							VariableIdentifier::Cursor(..) => None,
+						}
+					});
+					environment.import_items(
+						&import.from,
+						import.position.clone(),
+						default_import,
+						kind,
+						checking_data,
+						false,
+					);
+				}
+				parser::Declaration::Export(export) => {
+					if let ExportDeclaration::Variable { exported, position } = &export.on {
+						// Imports & types
+						match exported {
+							Exportable::ImportAll { r#as, from } => {
+								environment.import_items::<iter::Empty<_>, _, _>(
+									from,
+									position.clone(),
+									None,
+									match r#as {
+										Some(VariableIdentifier::Standard(name, pos)) => {
+											ImportKind::All { under: name, position: pos.clone() }
+										}
+										Some(VariableIdentifier::Cursor(_, _)) => todo!(),
+										None => ImportKind::Everything,
+									},
+									checking_data,
+									true,
+								);
+							}
+							Exportable::ImportParts { parts, from } => {
+								let parts =
+									parts.iter().filter_map(|item| export_part_to_name_pair(item));
+
+								environment.import_items(
+									from,
+									position.clone(),
+									None,
+									crate::behavior::modules::ImportKind::Parts(parts),
+									checking_data,
+									true,
+								);
+							}
+							Exportable::TypeAlias(alias) => {
+								let to = synthesise_type_annotation(
+									&alias.type_expression,
+									environment,
+									checking_data,
+								);
+
+								environment.new_alias(
+									&alias.type_name.name,
+									to,
+									&mut checking_data.types,
+								);
+
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.kind
+								{
+									exported.named_types.push((alias.type_name.name.clone(), to));
+								}
+							}
+							_ => {}
 						}
 					}
 				}
-				// TODO I don't think anything needs to happen here
-				parser::Declaration::Export(_export) => {}
 			}
 		}
 	}
@@ -162,7 +195,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO unsynthesized function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
-						mutability: crate::structures::variables::VariableMutability::Constant,
+						mutability: crate::behavior::variables::VariableMutability::Constant,
 					};
 					environment.register_variable_handle_error(
 						func.on.name.as_str(),
@@ -251,57 +284,51 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				parser::Declaration::DeclareInterface(_) => {}
 				parser::Declaration::Import(_) => {}
-				parser::Declaration::Export(exported) => todo!()
-				// match &exported.on {
-				// 	parser::declarations::ExportDeclaration::Variable { exported, position } => {
-				// 		match exported {
-				// 			parser::declarations::export::Exportable::Class(_) => {}
-				// 			parser::declarations::export::Exportable::Function(func) => {
-				// 				// TODO unsynthesized function? ...
-				// 				let behavior = crate::context::VariableRegisterBehavior::Register {
-				// 					// TODO
-				// 					mutability:
-				// 						crate::structures::variables::VariableMutability::Constant,
-				// 				};
-				// 				environment.register_variable_handle_error(
-				// 					func.name.as_str(),
-				// 					func.get_position()
-				// 						.clone()
-				// 						.with_source(environment.get_source()),
-				// 					behavior,
-				// 					checking_data,
-				// 				);
-				// 			}
-				// 			parser::declarations::export::Exportable::Variable(declaration) => {
-				// 				// TODO mark exported
-				// 				hoist_variable_declaration(&declaration, environment, checking_data)
-				// 			}
-				// 			parser::declarations::export::Exportable::Interface(interface) => {
-				// 				let ty = idx_to_types.remove(&interface.position.start).unwrap();
-				// 				super::interfaces::synthesise_signatures(
-				// 					interface.type_parameters.as_deref(),
-				// 					&interface.members,
-				// 					super::interfaces::OnToType(ty),
-				// 					environment,
-				// 					checking_data,
-				// 				);
-				// 			}
-				// 			parser::declarations::export::Exportable::TypeAlias(_) => {}
-				// 			parser::declarations::export::Exportable::Parts(parts) => {
-				// 				checking_data.raise_unimplemented_error(
-				// 					"export parts",
-				// 					position.clone().with_source(environment.get_source()),
-				// 				);
-				// 			}
-				// 		}
-				// 	}
-				// 	parser::declarations::ExportDeclaration::Default { expression, position } => {
-				// 		checking_data.raise_unimplemented_error(
-				// 			"default export",
-				// 			position.clone().with_source(environment.get_source()),
-				// 		);
-				// 	}
-				// },
+				parser::Declaration::Export(exported) => match &exported.on {
+					parser::declarations::ExportDeclaration::Variable { exported, position } => {
+						match exported {
+							Exportable::Class(_) => {}
+							Exportable::Function(func) => {
+								// TODO unsynthesized function? ...
+								let mutability =
+									crate::behavior::variables::VariableMutability::Constant;
+								let behavior = crate::context::VariableRegisterBehavior::Register {
+									mutability,
+								};
+								let declared_at = func
+									.get_position()
+									.clone()
+									.with_source(environment.get_source());
+
+								environment.register_variable_handle_error(
+									func.name.as_str(),
+									declared_at,
+									behavior,
+									checking_data,
+								);
+							}
+							Exportable::Variable(declaration) => {
+								// TODO mark exported
+								hoist_variable_declaration(&declaration, environment, checking_data)
+							}
+							Exportable::Interface(interface) => {
+								let ty = idx_to_types.remove(&interface.position.start).unwrap();
+								super::interfaces::synthesise_signatures(
+									interface.type_parameters.as_deref(),
+									&interface.members,
+									super::interfaces::OnToType(ty),
+									environment,
+									checking_data,
+								);
+							}
+							Exportable::TypeAlias(_)
+							| Exportable::Parts(..)
+							| Exportable::ImportAll { .. }
+							| Exportable::ImportParts { .. } => {}
+						}
+					}
+					parser::declarations::ExportDeclaration::Default { .. } => {}
+				},
 			},
 		}
 	}
@@ -313,7 +340,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				environment.new_function(
 					checking_data,
 					&func.on,
-					RegisterOnExisting(func.on.name.as_str().to_owned()),
+					RegisterOnExisting(crate::VariableId(
+						environment.get_source(),
+						item.get_position().start,
+					)),
 				);
 			}
 			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
@@ -321,14 +351,78 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					ExportDeclaration::Variable { exported: Exportable::Function(func), position: _ },
 				..
 			})) => {
-				// TODO does it need to be exportable marked
-				environment.new_function(
-					checking_data,
-					func,
-					RegisterOnExisting(func.name.as_str().to_owned()),
-				);
+				let variable_id =
+					crate::VariableId(environment.get_source(), item.get_position().start);
+				environment.new_function(checking_data, func, RegisterOnExisting(variable_id));
+
+				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				{
+					// TODO check existing?
+					exported.named.push((
+						func.name.as_str().to_owned(),
+						(variable_id, VariableMutability::Constant),
+					));
+				}
 			}
 			_ => (),
+		}
+	}
+}
+
+fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<NamePair<'_>> {
+	match item {
+		parser::declarations::ImportPart::Name(name) => {
+			if let VariableIdentifier::Standard(name, position) = name {
+				Some(NamePair { value: &name, r#as: &name, position: position.clone() })
+			} else {
+				None
+			}
+		}
+		parser::declarations::ImportPart::NameWithAlias { name, alias, position } => {
+			Some(NamePair {
+				value: match alias {
+					parser::declarations::ImportExportName::Reference(item)
+					| parser::declarations::ImportExportName::Quoted(item, _) => item,
+				},
+				r#as: &name,
+				position: position.clone(),
+			})
+		}
+		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
+			item.as_deref().map(import_part_to_name_pair).flatten()
+		}
+		parser::declarations::ImportPart::PostfixComment(item, _, _) => {
+			import_part_to_name_pair(item)
+		}
+	}
+}
+
+pub(super) fn export_part_to_name_pair(
+	item: &parser::declarations::export::ExportPart,
+) -> Option<NamePair<'_>> {
+	match item {
+		parser::declarations::export::ExportPart::Name(name) => {
+			if let VariableIdentifier::Standard(name, position) = name {
+				Some(NamePair { value: &name, r#as: &name, position: position.clone() })
+			} else {
+				None
+			}
+		}
+		parser::declarations::export::ExportPart::NameWithAlias { name, alias, position } => {
+			Some(NamePair {
+				value: &name,
+				r#as: match alias {
+					parser::declarations::ImportExportName::Reference(item)
+					| parser::declarations::ImportExportName::Quoted(item, _) => item,
+				},
+				position: position.clone(),
+			})
+		}
+		parser::declarations::export::ExportPart::PrefixComment(_, item, _) => {
+			item.as_deref().map(export_part_to_name_pair).flatten()
+		}
+		parser::declarations::export::ExportPart::PostfixComment(item, _, _) => {
+			export_part_to_name_pair(item)
 		}
 	}
 }

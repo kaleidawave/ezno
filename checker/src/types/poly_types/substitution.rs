@@ -45,6 +45,7 @@ pub(crate) fn substitute(
 				id
 			}
 		}
+
 		// TODO environment should hold what dependents on what to reduce excess here
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs, .. } => {
@@ -256,6 +257,7 @@ pub(crate) fn substitute(
 				}
 			},
 		},
+		Type::SpecialObject(_) => todo!(),
 	}
 }
 

@@ -252,6 +252,32 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 				buf.push('}');
 			}
 			Type::Class(..) => todo!("name"),
+			Type::SpecialObject(special_object) => match special_object {
+				crate::behavior::objects::SpecialObjects::Promise { events } => todo!(),
+				crate::behavior::objects::SpecialObjects::Generator { position } => todo!(),
+				crate::behavior::objects::SpecialObjects::Proxy { handler, over } => todo!(),
+				crate::behavior::objects::SpecialObjects::Import(exports) => {
+					buf.push('{');
+					for (key, (variable, mutability)) in exports.named.iter() {
+						buf.push('"');
+						buf.push_str(key);
+						buf.push_str("\": ");
+						match mutability {
+							crate::behavior::variables::VariableMutability::Constant => {
+								let value = get_on_ctx!(
+									ctx.get_value_of_constant_import_variable(*variable)
+								);
+								print_type_into_buf(value, buf, cycles, types, ctx, debug);
+							}
+							crate::behavior::variables::VariableMutability::Mutable {
+								reassignment_constraint,
+							} => todo!(),
+						};
+						buf.push_str(", ");
+					}
+					buf.push('}');
+				}
+			},
 		}
 
 		cycles.remove(&id);

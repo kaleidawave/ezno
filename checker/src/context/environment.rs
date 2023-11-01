@@ -1,17 +1,19 @@
-use source_map::{SourceId, SpanWithSource};
+use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
 	behavior::{
 		assignments::{Assignable, AssignmentKind, Reference, SynthesisableExpression},
+		modules::{Exported, ImportKind, NamePair},
+		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
+		variables::{VariableMutability, VariableWithValue},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::variables::{VariableMutability, VariableWithValue},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -20,6 +22,7 @@ use crate::{
 		PolyNature, Type, TypeStore,
 	},
 	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
+	VariableOrImport,
 };
 
 use super::{
@@ -59,6 +62,14 @@ impl<'a> ContextType for Syntax<'a> {
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		Some(&mut self.closed_over_references)
 	}
+
+	fn get_exports(&mut self) -> Option<&mut Exported> {
+		if let Scope::Module { ref mut exported, .. } = self.kind {
+			Some(exported)
+		} else {
+			None
+		}
+	}
 }
 
 /// TODO name of structure
@@ -91,6 +102,7 @@ pub enum Scope {
 	Block {},
 	Module {
 		source: SourceId,
+		exported: Exported,
 	},
 	DefinitionModule {
 		source: SourceId,
@@ -361,54 +373,62 @@ impl<'a> Environment<'a> {
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
 		if let Some((_, _, variable)) = variable_in_map {
-			match variable.mutability {
-				VariableMutability::Constant => {
-					Err(AssignmentError::Constant(variable.declared_at.clone()))
-				}
-				VariableMutability::Mutable { reassignment_constraint } => {
-					let variable = variable.clone();
+			match variable {
+				crate::VariableOrImport::Variable { mutability, declared_at } => {
+					match mutability {
+						VariableMutability::Constant => {
+							Err(AssignmentError::Constant(declared_at.clone()))
+						}
+						VariableMutability::Mutable { reassignment_constraint } => {
+							let variable = variable.clone();
 
-					if let Some(reassignment_constraint) = reassignment_constraint {
-						// TODO tuple with position:
-						let mut basic_subtyping = BasicEquality {
-							add_property_restrictions: false,
-							position: variable.declared_at.clone(),
-						};
-						let result = type_is_subtype(
-							reassignment_constraint,
-							new_type,
-							&mut basic_subtyping,
-							self,
-							store,
-						);
-
-						if let SubTypeResult::IsNotSubType(mismatches) = result {
-							return Err(AssignmentError::DoesNotMeetConstraint {
-								variable_type: TypeStringRepresentation::from_type_id(
+							if let Some(reassignment_constraint) = reassignment_constraint.clone() {
+								// TODO tuple with position:
+								let mut basic_subtyping = BasicEquality {
+									add_property_restrictions: false,
+									position: declared_at.clone(),
+								};
+								let result = type_is_subtype(
 									reassignment_constraint,
-									&self.as_general_context(),
-									store,
-									false,
-								),
-								value_type: TypeStringRepresentation::from_type_id(
 									new_type,
-									&self.as_general_context(),
+									&mut basic_subtyping,
+									self,
 									store,
-									false,
-								),
-								// TODO split
-								variable_site: assignment_position.clone(),
-								value_site: assignment_position.clone(),
-							});
+								);
+
+								if let SubTypeResult::IsNotSubType(mismatches) = result {
+									return Err(AssignmentError::DoesNotMeetConstraint {
+										variable_type: TypeStringRepresentation::from_type_id(
+											reassignment_constraint,
+											&self.as_general_context(),
+											store,
+											false,
+										),
+										value_type: TypeStringRepresentation::from_type_id(
+											new_type,
+											&self.as_general_context(),
+											store,
+											false,
+										),
+										// TODO split
+										variable_site: assignment_position.clone(),
+										value_site: assignment_position.clone(),
+									});
+								}
+							}
+
+							let variable_id = variable.get_id();
+
+							self.facts.events.push(Event::SetsVariable(variable_id, new_type));
+							self.facts.variable_current_value.insert(variable_id, new_type);
+
+							Ok(new_type)
 						}
 					}
-
-					let variable_id = variable.get_id();
-
-					self.facts.events.push(Event::SetsVariable(variable_id, new_type));
-					self.facts.variable_current_value.insert(variable_id, new_type);
-
-					Ok(new_type)
+				}
+				crate::VariableOrImport::MutableImport { .. }
+				| crate::VariableOrImport::ConstantImport { .. } => {
+					Err(AssignmentError::Constant(assignment_position))
 				}
 			}
 		} else {
@@ -536,31 +556,34 @@ impl<'a> Environment<'a> {
 		};
 
 		let reference = RootReference::Variable(og_var.get_id());
-		// TODO
+
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		// TODO in_root temp fix
 		if let (Some(boundary), false) = (crossed_boundary, in_root) {
-			let based_on = match og_var.mutability {
+			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
-					let variable_id =
-						VariableId(og_var.declared_at.source, og_var.declared_at.start);
+					let constraint = checking_data
+						.type_mappings
+						.variables_to_constraints
+						.0
+						.get(&og_var.get_origin_variable_id());
 
-					let constraint =
-						checking_data.type_mappings.variables_to_constraints.0.get(&variable_id);
+					// TODO temp
+					{
+						let current_value = get_value_of_variable(
+							self.facts_chain(),
+							og_var.get_id(),
+							None::<&crate::types::poly_types::FunctionTypeArguments>,
+						);
 
-					let current_value = get_value_of_variable(
-						self.facts_chain(),
-						og_var.get_id(),
-						None::<&crate::types::poly_types::FunctionTypeArguments>,
-					);
+						if let Some(current_value) = current_value {
+							let ty = checking_data.types.get_type_by_id(current_value);
 
-					if let Some(current_value) = current_value {
-						let ty = checking_data.types.get_type_by_id(current_value);
-
-						// TODO temp
-						if matches!(ty, Type::Function(..)) {
-							return Ok(VariableWithValue(og_var.clone(), current_value));
+							// TODO temp
+							if matches!(ty, Type::Function(..)) {
+								return Ok(VariableWithValue(og_var.clone(), current_value));
+							}
 						}
 					}
 
@@ -627,6 +650,19 @@ impl<'a> Environment<'a> {
 
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
+			// TODO recursively in
+			if let VariableOrImport::MutableImport { of, constant: false, import_specified_at } =
+				og_var.clone()
+			{
+				let current_value = get_value_of_variable(
+					self.facts_chain(),
+					of,
+					None::<&crate::types::poly_types::FunctionTypeArguments>,
+				)
+				.expect("variable not assigned yet");
+				return Ok(VariableWithValue(og_var.clone(), current_value));
+			}
+
 			let current_value = get_value_of_variable(
 				self.facts_chain(),
 				og_var.get_id(),
@@ -764,6 +800,198 @@ impl<'a> Environment<'a> {
 
 		self.can_use_this = crate::context::CanUseThis::ConstructorCalled { this_ty: ty };
 		ty
+	}
+
+	pub(crate) fn import_items<
+		'b,
+		P: Iterator<Item = NamePair<'b>>,
+		T: crate::ReadFromFS,
+		M: ASTImplementation,
+	>(
+		&mut self,
+		partial_import_path: &str,
+		import_position: Span,
+		default_import: Option<(&str, Span)>,
+		kind: ImportKind<'b, P>,
+		checking_data: &mut CheckingData<T, M>,
+		also_export: bool,
+	) {
+		let current_source = self.get_source();
+		if !matches!(self.context_type.kind, crate::Scope::Module { .. }) {
+			checking_data.diagnostics_container.add_error(TypeCheckError::NotTopLevelImport(
+				import_position.with_source(current_source),
+			));
+			return;
+		}
+
+		let exports = checking_data.import_file(current_source, &partial_import_path, self);
+
+		if let Err(ref err) = exports {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile(
+				err.clone(),
+				import_position.with_source(self.get_source()),
+			));
+		}
+
+		if let Some((default_name, position)) = default_import {
+			if let Ok(Ok(ref exports)) = exports {
+				if let Some(item) = &exports.default {
+					let id = crate::VariableId(current_source, position.start);
+					let v = crate::VariableOrImport::ConstantImport {
+						to: None,
+						import_specified_at: position.clone().with_source(current_source),
+					};
+					self.facts.variable_current_value.insert(id, *item);
+					let existing = self.variables.insert(default_name.to_owned(), v);
+					if let Some(existing) = existing {
+						todo!("diagnostic")
+					}
+				} else {
+					todo!("emit 'no default export' diagnostic")
+				}
+			} else {
+				let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
+					value: TypeId::ERROR_TYPE,
+				};
+
+				self.register_variable_handle_error(
+					default_name,
+					position.with_source(current_source),
+					behavior,
+					checking_data,
+				);
+			}
+		}
+
+		match kind {
+			ImportKind::Parts(parts) => {
+				for part in parts {
+					if let Ok(Ok(ref exports)) = exports {
+						if let Some(export) = exports.get_export(part.value) {
+							match export {
+								crate::behavior::modules::TypeOrVariable::ExportedVariable((
+									variable,
+									mutability,
+								)) => {
+									let constant = match mutability {
+										VariableMutability::Constant => {
+											let k = crate::VariableId(
+												current_source,
+												part.position.start,
+											);
+											let v = self
+												.get_value_of_constant_import_variable(variable);
+											self.facts.variable_current_value.insert(k, v);
+											true
+										}
+										VariableMutability::Mutable { reassignment_constraint } => {
+											false
+										}
+									};
+
+									let v = crate::VariableOrImport::MutableImport {
+										of: variable,
+										constant,
+										import_specified_at: part
+											.position
+											.clone()
+											.with_source(self.get_source()),
+									};
+									let existing = self.variables.insert(part.r#as.to_owned(), v);
+									if let Some(existing) = existing {
+										todo!("diagnostic")
+									}
+									if also_export {
+										if let Scope::Module { ref mut exported, .. } =
+											self.context_type.kind
+										{
+											exported.named.push((
+												part.r#as.to_owned(),
+												(variable, mutability.clone()),
+											));
+										}
+									}
+								}
+								crate::behavior::modules::TypeOrVariable::Type(ty) => {
+									let existing =
+										self.named_types.insert(part.r#as.to_owned(), ty);
+									assert!(existing.is_none(), "TODO exception");
+								}
+							}
+						} else {
+							let position = part.position.with_source(current_source);
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::FieldNotExported {
+									file: partial_import_path,
+									position: position.clone(),
+									importing: part.value,
+								},
+							);
+
+							let behavior =
+								crate::context::VariableRegisterBehavior::ConstantImport {
+									value: TypeId::ERROR_TYPE,
+								};
+
+							self.register_variable_handle_error(
+								part.r#as,
+								position,
+								behavior,
+								checking_data,
+							);
+						}
+					} else {
+						let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
+							value: TypeId::ERROR_TYPE,
+						};
+
+						self.register_variable_handle_error(
+							part.r#as,
+							part.position.with_source(current_source),
+							behavior,
+							checking_data,
+						);
+					}
+				}
+			}
+			ImportKind::All { under, position } => {
+				if let Ok(Ok(ref exports)) = exports {
+					let value = checking_data.types.register_type(Type::SpecialObject(
+						crate::behavior::objects::SpecialObjects::Import(exports.clone()),
+					));
+
+					self.register_variable_handle_error(
+						under,
+						position.with_source(current_source),
+						crate::context::VariableRegisterBehavior::ConstantImport { value },
+						checking_data,
+					);
+				} else {
+					let behavior = crate::context::VariableRegisterBehavior::Declare {
+						base: TypeId::ERROR_TYPE,
+					};
+					self.register_variable_handle_error(
+						under,
+						position.with_source(current_source),
+						behavior,
+						checking_data,
+					);
+				}
+			}
+			ImportKind::SideEffect => {}
+			ImportKind::Everything => {
+				if let Ok(Ok(ref exports)) = exports {
+					for (name, (variable, mutability)) in exports.named.iter() {
+						// TODO are variables put into scope?
+						if let Scope::Module { ref mut exported, .. } = self.context_type.kind {
+							exported.named.push((name.clone(), (*variable, mutability.clone())));
+						}
+					}
+				} else {
+					// TODO ??
+				}
+			}
+		}
 	}
 }
 

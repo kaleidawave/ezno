@@ -1,5 +1,8 @@
 use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
-use crate::{types::TypeId, CheckingData, Environment, GeneralContext, SynthesisedModule};
+use crate::{
+	behavior::modules::Exported, types::TypeId, CheckingData, Environment, GeneralContext,
+	SynthesisedModule,
+};
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
@@ -22,6 +25,10 @@ impl ContextType for Root {
 	}
 
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
+		None
+	}
+
+	fn get_exports(&mut self) -> Option<&mut Exported> {
 		None
 	}
 }
@@ -69,23 +76,26 @@ impl RootContext {
 		}
 	}
 
-	pub fn new_module_context<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+	pub fn new_module_context<'a, T: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&self,
 		source: SourceId,
 		module: M::Module,
-		checking_data: &mut CheckingData<T, M>,
-		mut cb: impl for<'a> FnOnce(&'a M::Module, &'a mut Environment, &'a mut CheckingData<T, M>),
-	) {
-		let mut environment = self.new_lexical_environment(crate::Scope::Module { source });
-		cb(&module, &mut environment, checking_data);
-		let module = SynthesisedModule {
-			content: module,
-			// TODO
-			exported_variables: Default::default(),
-			facts: environment.facts,
-		};
+		checking_data: &'a mut CheckingData<T, M>,
+	) -> &'a SynthesisedModule<M::Module> {
+		let mut environment = self.new_lexical_environment(crate::Scope::Module {
+			source,
+			exported: Exported::default(),
+		});
+		M::synthesize_module(&module, source, &mut environment, checking_data);
 
+		let crate::Scope::Module { exported, .. } = environment.context_type.kind else {
+			unreachable!()
+		};
+		let module = SynthesisedModule { content: module, exported, facts: environment.facts };
+
+		// TODO better way to do this?
 		checking_data.modules.synthesised_modules.insert(source, module);
+		checking_data.modules.synthesised_modules.get(&source).unwrap()
 	}
 
 	/// TODO working things out:

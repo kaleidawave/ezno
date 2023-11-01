@@ -2,12 +2,15 @@ use std::{convert::TryInto, marker::PhantomData};
 
 use parser::{
 	expressions::{
-		assignments::LHSOfAssignment, MultipleExpression, SpecialOperators, SpreadExpression,
-		SuperReference, TemplateLiteral,
+		assignments::LHSOfAssignment,
+		object_literal::{ObjectLiteral, ObjectLiteralMember},
+		MultipleExpression, SpecialOperators, SpreadExpression, SuperReference, TemplateLiteral,
 	},
 	operators::{BinaryAssignmentOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 	ASTNode, Expression,
 };
+
+use crate::{behavior::variables::VariableWithValue, synthesis::property_key_as_type};
 
 use crate::{
 	behavior::{
@@ -882,10 +885,6 @@ impl SynthesisableExpression<super::EznoParser> for Expression {
 		ASTNode::get_position(self)
 	}
 }
-
-use parser::expressions::object_literal::{ObjectLiteral, ObjectLiteralMember};
-
-use crate::{structures::variables::VariableWithValue, synthesis::property_key_as_type};
 
 pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,

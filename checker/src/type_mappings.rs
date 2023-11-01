@@ -8,7 +8,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use super::range_map::RangeMap;
 
 use crate::{
-	structures::variables::VariableWithValue,
+	behavior::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
 	FunctionId, GeneralContext, VariableId,
 };

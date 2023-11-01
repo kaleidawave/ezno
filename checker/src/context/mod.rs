@@ -20,20 +20,28 @@ use crate::{
 	behavior::{
 		self,
 		functions::{ClosureChain, ClosureId},
+		modules::Exported,
 		operations::MathematicalAndBitwise,
+		variables::VariableMutability,
 	},
 	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
-	structures::variables::VariableMutability,
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
 		poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
 		properties::Property,
 		Constructor, FunctionKind, FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, FunctionId, Variable, VariableId,
+	ASTImplementation, CheckingData, Constant, FunctionId, ReadFromFS, VariableId,
+	VariableOrImport,
 };
 
+use self::{
+	environment::get_this_type_from_constraint,
+	facts::{Facts, PublicityKind},
+};
+pub use environment::Scope;
+pub(crate) use environment::Syntax;
 use map_vec::Map;
 use std::{
 	collections::{
@@ -47,9 +55,6 @@ use std::{
 };
 
 pub type Environment<'a> = Context<environment::Syntax<'a>>;
-pub use environment::Scope;
-
-pub(crate) use environment::Syntax;
 
 static ENVIRONMENT_ID_COUNTER: AtomicU16 = AtomicU16::new(1);
 
@@ -105,12 +110,9 @@ macro_rules! get_on_ctx {
 
 pub(crate) use get_on_ctx;
 
-use self::{
-	environment::get_this_type_from_constraint,
-	facts::{Facts, PublicityKind},
-};
-
 pub type ClosedOverReferencesInScope = HashSet<RootReference>;
+
+pub type MutableRewrites = Vec<(VariableId, VariableId)>;
 
 pub trait ContextType: Sized {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_>;
@@ -121,6 +123,8 @@ pub trait ContextType: Sized {
 	fn is_dynamic_boundary(&self) -> bool;
 
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
+
+	fn get_exports(&mut self) -> Option<&mut Exported>;
 }
 
 // TODO enum_from
@@ -137,7 +141,7 @@ impl<'a> From<&'a Environment<'a>> for GeneralContext<'a> {
 }
 
 pub struct Names {
-	pub(crate) variables: HashMap<String, Variable>,
+	pub(crate) variables: HashMap<String, VariableOrImport>,
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
@@ -150,7 +154,7 @@ pub struct Context<T: ContextType> {
 	pub context_id: ContextId,
 	pub(crate) context_type: T,
 
-	pub(crate) variables: HashMap<String, Variable>,
+	pub(crate) variables: HashMap<String, VariableOrImport>,
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
@@ -194,6 +198,9 @@ pub enum VariableRegisterBehavior {
 	// TODO document behavior
 	CatchVariable {
 		ty: TypeId,
+	},
+	ConstantImport {
+		value: TypeId,
 	},
 }
 
@@ -308,13 +315,13 @@ impl<T: ContextType> Context<T> {
 			VariableRegisterBehavior::CatchVariable { ty } => {
 				// TODO
 				let kind = VariableMutability::Constant;
-				let variable = Variable { declared_at, mutability: kind };
+				let variable = VariableOrImport::Variable { declared_at, mutability: kind };
 				self.variables.insert(name.to_owned(), variable);
 				self.facts.variable_current_value.insert(id, ty);
 				(false, ty)
 			}
 			VariableRegisterBehavior::Register { mutability } => {
-				let variable = Variable { mutability, declared_at };
+				let variable = VariableOrImport::Variable { mutability, declared_at };
 				let entry = self.variables.entry(name.to_owned());
 				if let Entry::Vacant(empty) = entry {
 					empty.insert(variable);
@@ -333,7 +340,7 @@ impl<T: ContextType> Context<T> {
 				} else {
 					VariableMutability::Constant
 				};
-				let variable = Variable { mutability, declared_at };
+				let variable = VariableOrImport::Variable { mutability, declared_at };
 				let entry = self.variables.entry(name.to_owned());
 				if let Entry::Vacant(empty) = entry {
 					let existing_variable = self.variables.insert(name.to_owned(), variable);
@@ -358,6 +365,20 @@ impl<T: ContextType> Context<T> {
 					(false, parameter_ty)
 				} else {
 					(true, TypeId::ERROR_TYPE)
+				}
+			}
+			VariableRegisterBehavior::ConstantImport { value } => {
+				let variable = VariableOrImport::Variable {
+					mutability: VariableMutability::Constant,
+					declared_at,
+				};
+				let entry = self.variables.entry(name.to_owned());
+				self.facts.variable_current_value.insert(id, value);
+				if let Entry::Vacant(empty) = entry {
+					empty.insert(variable);
+					(false, TypeId::ANY_TYPE)
+				} else {
+					(true, TypeId::ANY_TYPE)
 				}
 			}
 		};
@@ -681,7 +702,7 @@ impl<T: ContextType> Context<T> {
 	fn get_variable_unbound(
 		&self,
 		variable_name: &str,
-	) -> Option<(bool, Option<Boundary>, &Variable)> {
+	) -> Option<(bool, Option<Boundary>, &VariableOrImport)> {
 		// crate::utils::notify!(
 		// 	"Looking for {:?}, self.variables = {:?}",
 		// 	variable_name,
@@ -696,6 +717,7 @@ impl<T: ContextType> Context<T> {
 			let parent = self.context_type.get_parent()?;
 			let (is_root, parent_boundary, var) =
 				get_on_ctx!(parent.get_variable_unbound(variable_name))?;
+
 			/* Sometimes the top might not be dynamic (example below) so adding that here.
 			```
 			let x = 2
@@ -1351,7 +1373,7 @@ impl<T: ContextType> Context<T> {
 		let id = crate::VariableId(declared_at.source, declared_at.start);
 
 		let kind = VariableMutability::Constant;
-		let variable = Variable { declared_at, mutability: kind };
+		let variable = VariableOrImport::Variable { declared_at, mutability: kind };
 		let entry = self.variables.entry(name.to_owned());
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);
@@ -1395,7 +1417,7 @@ impl<T: ContextType> Context<T> {
 					context_type:
 						Syntax {
 							kind:
-								Scope::Module { source }
+								Scope::Module { source, .. }
 								| Scope::DefinitionModule { source }
 								| Scope::PassThrough { source },
 							..
@@ -1411,6 +1433,13 @@ impl<T: ContextType> Context<T> {
 			.unwrap_or_else(|| {
 				panic!("no module {:?}", self.context_id);
 			})
+	}
+
+	pub(crate) fn get_value_of_constant_import_variable(&self, variable: VariableId) -> TypeId {
+		self.parents_iter()
+			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
+			.unwrap()
+			.clone()
 	}
 }
 
@@ -1498,6 +1527,7 @@ pub enum SetPropertyError {
 	DoesNotMeetConstraint(TypeId, crate::types::subtyping::NonEqualityReason),
 }
 
+/// TODO mutable let imports
 pub(crate) fn get_value_of_variable<'a>(
 	mut facts: impl Iterator<Item = &'a Facts>,
 	on: VariableId,

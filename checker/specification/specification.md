@@ -1,5 +1,7 @@
 - This is (automatically) tested against the checker
-- Sections at level 3 (`###`), tests at level 4 (`####`), tested code in a `ts` block and errors in a bullet list after in order
+- Each block contains errors, the list afterwards is the expected errors
+- Sections are at level 3 (`###`), tests are at level 4 (`####`), the tested code goes a `ts` code block and errors in a bullet list after in order
+    - Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.ts`
 
 ## Specification
 
@@ -179,7 +181,7 @@ func satisfies (a: number, b: number) => boolean;
 
 ```ts
 function myThrow() {
-	throw "error!"
+	throw "err!"
 }
 
 myThrow satisfies string;
@@ -215,7 +217,7 @@ function setFirst2<T, U>(a: T, b: U) {
 
 - Type T is not assignable to type U
 
-#### Generics compound
+#### Generics as property
 
 ```ts
 function createObject1<T, U>(a: T, b: U): { a: T, b: U } {
@@ -893,3 +895,208 @@ try {
 ```
 
 - Expected string, found 3
+
+### Imports and exports
+
+#### Import and export named
+
+also *imports work with and without extensions*
+
+```ts
+import { PI } from "./constants.ts";
+import { PI as otherPI, "non identifier" as a } from "./other";
+
+PI satisfies string;
+otherPI satisfies boolean;
+a satisfies 8;
+
+// in constants.ts
+export const PI = 4;
+
+// in other.ts
+export const PI = 22 / 7;
+const private = 2;
+export { private as "non identifier" }
+```
+
+- Expected string, found 4
+- Expected boolean, found 3.142857142857143
+- Expected 8, found 2
+
+#### Imports are constant
+
+```ts
+import { PI } from "./constants";
+PI += 2;
+
+// in constants.ts
+export let PI = 4;
+```
+
+- Cannot assign to constant
+
+#### Import default
+
+```ts
+import PI from "./pi";
+PI satisfies string;
+
+// in pi.ts
+export default 4;
+```
+
+- Expected string, found 4
+
+#### Import type
+
+```ts
+import { MyNumber } from "./types";
+2 satisfies MyNumber;
+
+// in types.ts
+export type MyNumber = string;
+```
+
+- Expected string, found 2
+
+#### Export let
+
+```ts
+import { counter, incrementCounter } from "./mutable";
+
+counter satisfies string;
+incrementCounter();
+counter satisfies 3;
+incrementCounter();
+counter satisfies string;
+
+// in mutable.ts
+export let counter = 2;
+export function incrementCounter() {
+	counter++
+}
+```
+
+- Expected string, found 2
+- Expected string, found 4
+
+#### Import star
+
+```ts
+import * as the from "./many";
+
+the satisfies string;
+
+// in many.ts
+export const a = 2, b = 3, c = 4;
+```
+
+- Expected string, found {"a": 2, "b": 3, "c": 4, }
+
+#### Import from non existent file
+
+```ts
+import { a } from "./two";
+
+console.log(a.prop);
+
+// in one.ts
+export const a = 2;
+```
+
+- Cannot find file
+
+#### Import where export does not exist
+
+```ts
+import { a } from "./export";
+
+console.log(a.prop);
+
+// in export.ts
+export const b = 2;
+```
+
+- a not exported from ./export
+
+#### Import from invalid file
+
+```ts
+import { a } from "./export";
+
+console.log(a.prop);
+
+// in export.ts
+export default const x = 2;
+```
+
+- Expected SemiColon found x
+
+#### Only synthesis module once
+
+```ts
+import { a } from "./export1";
+import { b } from "./export2";
+
+(a === b) satisfies string;
+
+// in export1.ts
+export { the as a } from "./base"
+
+// in export2.ts
+export { the as b } from "./base"
+
+// in base.ts
+export const the = ((4 satisfies 1),3);
+```
+
+- Expected 1, found 4
+- Expected string, found true
+
+> The fact the `Expected 1, found 4` only occurs once means that the module was only synthesised once
+
+#### Use export in scope
+
+```ts
+export const x = 2;
+x satisfies 3;
+```
+
+- Expected 3, found 2
+
+#### Imports don't leak non exports
+
+```ts
+import { x } from "./exports"
+console.log(y)
+
+// in exports.ts
+export const x = 2;
+const y = "122LH"
+```
+
+- Could not find variable y in scope
+
+#### Import side effect
+
+> Don't rely on this
+
+```ts
+import { x } from "./export";
+import "./side_effect";
+
+x satisfies number;
+
+// in side_effect.ts
+import { x } from "./export";
+
+x satisfies string;
+
+x.b = x.a + 2;
+
+// in export.ts
+export const x = { a: 2 };
+```
+
+- Expected string, found {"a": 2, }
+- Expected number, found {"a": 2, "b": 4, }
