@@ -29,19 +29,19 @@ impl ASTNode for Decorator {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let at_pos = reader.expect_next(TSXToken::At)?;
-		Self::from_reader_sub_at_symbol(reader, state, settings, at_pos)
+		Self::from_reader_sub_at_symbol(reader, state, options, at_pos)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if settings.include_decorators {
+		if options.include_decorators {
 			buf.push('@');
 			for (not_at_end, value) in self.name.iter().nendiate() {
 				buf.push_str(value);
@@ -52,10 +52,10 @@ impl ASTNode for Decorator {
 			if let Some(arguments) = &self.arguments {
 				buf.push('(');
 				for (at_end, argument) in arguments.iter().endiate() {
-					argument.to_string_from_buffer(buf, settings, depth);
+					argument.to_string_from_buffer(buf, options, depth);
 					if !at_end {
 						buf.push(',');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 					}
 				}
 				buf.push(')');
@@ -68,7 +68,7 @@ impl Decorator {
 	pub(crate) fn from_reader_sub_at_symbol(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 		at_pos: TokenStart,
 	) -> ParseResult<Self> {
 		let (name, mut last_position) =
@@ -90,7 +90,7 @@ impl Decorator {
 				if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
 					break;
 				}
-				arguments.push(Expression::from_reader(reader, state, settings)?);
+				arguments.push(Expression::from_reader(reader, state, options)?);
 				match reader.peek() {
 					Some(Token(TSXToken::Comma, _)) => {
 						reader.next();
@@ -127,20 +127,20 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let decorators = decorators_from_reader(reader, state, settings)?;
-		N::from_reader(reader, state, settings).map(|on| Self::new(decorators, on))
+		let decorators = decorators_from_reader(reader, state, options)?;
+		N::from_reader(reader, state, options).map(|on| Self::new(decorators, on))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		self.to_string_from_buffer_just_decorators(buf, settings, depth);
-		self.on.to_string_from_buffer(buf, settings, depth);
+		self.to_string_from_buffer_just_decorators(buf, options, depth);
+		self.on.to_string_from_buffer(buf, options, depth);
 	}
 }
 
@@ -158,13 +158,13 @@ impl<U: ASTNode> Decorated<U> {
 	pub(crate) fn to_string_from_buffer_just_decorators<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if settings.include_decorators {
+		if options.include_decorators {
 			for decorator in self.decorators.iter() {
-				decorator.to_string_from_buffer(buf, settings, depth);
-				if settings.pretty {
+				decorator.to_string_from_buffer(buf, options, depth);
+				if options.pretty {
 					buf.push_new_line();
 				} else {
 					buf.push(' ');
@@ -177,11 +177,11 @@ impl<U: ASTNode> Decorated<U> {
 pub(crate) fn decorators_from_reader(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &ParseOptions,
+	options: &ParseOptions,
 ) -> ParseResult<Vec<Decorator>> {
 	let mut decorators = Vec::new();
 	while let Some(Token(TSXToken::At, _)) = reader.peek() {
-		decorators.push(Decorator::from_reader(reader, state, settings)?);
+		decorators.push(Decorator::from_reader(reader, state, options)?);
 	}
 	Ok(decorators)
 }
@@ -191,21 +191,21 @@ impl<T: Visitable> Visitable for Decorated<T> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.on.visit(visitors, data, settings, chain);
+		self.on.visit(visitors, data, options, chain);
 	}
 
 	fn visit_mut<TData>(
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.on.visit_mut(visitors, data, settings, chain);
+		self.on.visit_mut(visitors, data, options, chain);
 	}
 }

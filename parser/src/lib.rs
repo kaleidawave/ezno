@@ -204,7 +204,7 @@ impl ToStringOptions {
 }
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
-/// serializing to string from settings.
+/// serializing to string from options.
 ///
 /// TODO remove partial eq
 pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
@@ -229,20 +229,20 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	);
 
 	/// Returns structure as valid string
-	fn to_string(&self, settings: &crate::ToStringOptions) -> String {
+	fn to_string(&self, options: &crate::ToStringOptions) -> String {
 		let mut buf = String::new();
-		self.to_string_from_buffer(&mut buf, settings, 0);
+		self.to_string_from_buffer(&mut buf, options, 0);
 		buf
 	}
 }
@@ -405,7 +405,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&self,
 		visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_settings: &VisitSettings,
+		_options: &VisitSettings,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_keyword(&(self.0.into(), &self.1), data, chain);
@@ -415,7 +415,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&mut self,
 		_visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
-		_settings: &VisitSettings,
+		_options: &VisitSettings,
 		_chain: &mut Annex<Chain>,
 	) {
 		// TODO should this have a implementation?
@@ -778,7 +778,7 @@ pub trait ExpressionOrStatementPosition:
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self::Name>;
 
 	fn as_option_str(name: &Self::Name) -> Option<&str>;
@@ -794,9 +794,9 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self::Name> {
-		VariableIdentifier::from_reader(reader, state, settings)
+		VariableIdentifier::from_reader(reader, state, options)
 	}
 
 	fn as_option_str(name: &Self::Name) -> Option<&str> {
@@ -825,12 +825,12 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self::Name> {
 		if let Some(Token(TSXToken::OpenBrace, _)) | None = reader.peek() {
 			Ok(None)
 		} else {
-			StatementPosition::from_reader(reader, state, settings).map(Some)
+			StatementPosition::from_reader(reader, state, options).map(Some)
 		}
 	}
 
@@ -849,7 +849,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 pub(crate) fn parse_bracketed<T: ASTNode>(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &ParseOptions,
+	options: &ParseOptions,
 	start: Option<TSXToken>,
 	end: TSXToken,
 ) -> ParseResult<(Vec<T>, TokenEnd)> {
@@ -861,7 +861,7 @@ pub(crate) fn parse_bracketed<T: ASTNode>(
 		if let Some(token) = reader.conditional_next(|token| *token == end) {
 			return Ok((nodes, token.get_end()));
 		}
-		nodes.push(T::from_reader(reader, state, settings)?);
+		nodes.push(T::from_reader(reader, state, options)?);
 		match reader.next().ok_or_else(errors::parse_lexing_error)? {
 			Token(TSXToken::Comma, _) => {}
 			token => {
@@ -947,15 +947,15 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),
 	buf: &mut T,
-	settings: &crate::ToStringOptions,
+	options: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	buf.push(brackets.0);
 	for (at_end, node) in nodes.iter().endiate() {
-		node.to_string_from_buffer(buf, settings, depth);
+		node.to_string_from_buffer(buf, options, depth);
 		if !at_end {
 			buf.push(',');
-			settings.add_gap(buf);
+			options.add_gap(buf);
 		}
 	}
 	buf.push(brackets.1);

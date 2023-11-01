@@ -51,14 +51,14 @@ impl ASTNode for StatementOrDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		if Declaration::is_declaration_start(reader) {
-			let dec = Declaration::from_reader(reader, state, settings)?;
+			let dec = Declaration::from_reader(reader, state, options)?;
 			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
 		} else {
-			let stmt = Statement::from_reader(reader, state, settings)?;
+			let stmt = Statement::from_reader(reader, state, options)?;
 			Ok(StatementOrDeclaration::Statement(stmt))
 		}
 	}
@@ -66,15 +66,15 @@ impl ASTNode for StatementOrDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
 			StatementOrDeclaration::Statement(item) => {
-				item.to_string_from_buffer(buf, settings, depth)
+				item.to_string_from_buffer(buf, options, depth)
 			}
 			StatementOrDeclaration::Declaration(item) => {
-				item.to_string_from_buffer(buf, settings, depth)
+				item.to_string_from_buffer(buf, options, depth)
 			}
 		}
 	}
@@ -119,10 +119,10 @@ impl ASTNode for Block {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::OpenBrace)?;
-		let items = parse_statements_and_declarations(reader, state, settings)?;
+		let items = parse_statements_and_declarations(reader, state, options)?;
 		let end_span = reader.expect_next_get_end(TSXToken::CloseBrace)?;
 		Ok(Self(items, start.union(end_span)))
 	}
@@ -130,19 +130,19 @@ impl ASTNode for Block {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push('{');
-		if depth > 0 && settings.pretty {
+		if depth > 0 && options.pretty {
 			buf.push_new_line();
 		}
-		statements_and_declarations_to_string(&self.0, buf, settings, depth);
-		if settings.pretty && !self.0.is_empty() {
+		statements_and_declarations_to_string(&self.0, buf, options, depth);
+		if options.pretty && !self.0.is_empty() {
 			buf.push_new_line();
 		}
 		if depth > 1 {
-			settings.add_indent(depth - 1, buf);
+			options.add_indent(depth - 1, buf);
 		}
 		buf.push('}');
 	}
@@ -167,7 +167,7 @@ impl Visitable for Block {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
@@ -175,10 +175,10 @@ impl Visitable for Block {
 			visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
 		}
 		let iter = self.iter();
-		if settings.reverse_statements {
-			iter.rev().for_each(|item| item.visit(visitors, data, settings, chain));
+		if options.reverse_statements {
+			iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
 		} else {
-			iter.for_each(|item| item.visit(visitors, data, settings, chain));
+			iter.for_each(|item| item.visit(visitors, data, options, chain));
 		}
 	}
 
@@ -186,7 +186,7 @@ impl Visitable for Block {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
@@ -198,12 +198,12 @@ impl Visitable for Block {
 			);
 		}
 		let iter_mut = self.iter_mut();
-		if settings.reverse_statements {
-			iter_mut.for_each(|statement| statement.visit_mut(visitors, data, settings, chain));
+		if options.reverse_statements {
+			iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
 		} else {
 			iter_mut
 				.rev()
-				.for_each(|statement| statement.visit_mut(visitors, data, settings, chain));
+				.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
 		}
 	}
 }
@@ -234,9 +234,9 @@ impl ASTNode for BlockOrSingleStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let stmt = Statement::from_reader(reader, state, settings)?;
+		let stmt = Statement::from_reader(reader, state, options)?;
 		Ok(match stmt {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
@@ -251,20 +251,20 @@ impl ASTNode for BlockOrSingleStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
 			BlockOrSingleStatement::Braced(block) => {
-				block.to_string_from_buffer(buf, settings, depth)
+				block.to_string_from_buffer(buf, options, depth)
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if settings.pretty {
+				if options.pretty {
 					buf.push_new_line();
-					settings.add_gap(buf);
-					stmt.to_string_from_buffer(buf, settings, depth + 1);
+					options.add_gap(buf);
+					stmt.to_string_from_buffer(buf, options, depth + 1);
 				} else {
-					stmt.to_string_from_buffer(buf, settings, depth);
+					stmt.to_string_from_buffer(buf, options, depth);
 				}
 			}
 		}
@@ -275,7 +275,7 @@ impl ASTNode for BlockOrSingleStatement {
 pub(crate) fn parse_statements_and_declarations(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &ParseOptions,
+	options: &ParseOptions,
 ) -> ParseResult<Vec<StatementOrDeclaration>> {
 	let mut items = Vec::new();
 	while let Some(Token(token_type, _)) = reader.peek() {
@@ -283,7 +283,7 @@ pub(crate) fn parse_statements_and_declarations(
 			break;
 		}
 
-		let value = StatementOrDeclaration::from_reader(reader, state, settings)?;
+		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
 		if value.requires_semi_colon() {
 			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
 		}
@@ -295,7 +295,7 @@ pub(crate) fn parse_statements_and_declarations(
 pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	items: &[StatementOrDeclaration],
 	buf: &mut T,
-	settings: &crate::ToStringOptions,
+	options: &crate::ToStringOptions,
 	depth: u8,
 ) {
 	for (at_end, item) in items.iter().endiate() {
@@ -306,13 +306,13 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			continue;
 		}
 
-		settings.add_indent(depth, buf);
-		item.to_string_from_buffer(buf, settings, depth);
-		if (!at_end || settings.trailing_semicolon) && item.requires_semi_colon() {
+		options.add_indent(depth, buf);
+		item.to_string_from_buffer(buf, options, depth);
+		if (!at_end || options.trailing_semicolon) && item.requires_semi_colon() {
 			buf.push(';');
 		}
 		// TODO only append new line if something added
-		if !at_end && settings.pretty {
+		if !at_end && options.pretty {
 			buf.push_new_line();
 		}
 	}

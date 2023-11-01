@@ -63,16 +63,16 @@ impl ASTNode for FunctionParameters {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> ParseResult<Self> {
 		let open_paren_span = reader.expect_next(TSXToken::OpenParentheses)?;
-		Self::from_reader_sub_open_parenthesis(reader, state, settings, open_paren_span)
+		Self::from_reader_sub_open_parenthesis(reader, state, options, open_paren_span)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
@@ -80,22 +80,22 @@ impl ASTNode for FunctionParameters {
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()
 		{
-			// decorators_to_string_from_buffer(decorators, buf, settings, depth);
-			name.to_string_from_buffer(buf, settings, depth);
-			if let (true, Some(ref type_annotation)) = (settings.include_types, type_annotation) {
+			// decorators_to_string_from_buffer(decorators, buf, options, depth);
+			name.to_string_from_buffer(buf, options, depth);
+			if let (true, Some(ref type_annotation)) = (options.include_types, type_annotation) {
 				if let Some(ParameterData::Optional) = additionally {
 					buf.push('?');
 				}
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, settings, depth);
+				type_annotation.to_string_from_buffer(buf, options, depth);
 			}
 			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
-				buf.push_str(if settings.pretty { " = " } else { "=" });
-				value.to_string_from_buffer(buf, settings, depth);
+				buf.push_str(if options.pretty { " = " } else { "=" });
+				value.to_string_from_buffer(buf, options, depth);
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
-				settings.add_gap(buf);
+				options.add_gap(buf);
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {
@@ -103,7 +103,7 @@ impl ASTNode for FunctionParameters {
 			buf.push_str(rest_parameter.name.as_str());
 			if let Some(ref type_annotation) = rest_parameter.type_annotation {
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, settings, depth);
+				type_annotation.to_string_from_buffer(buf, options, depth);
 			}
 		}
 		buf.push(')');
@@ -114,7 +114,7 @@ impl FunctionParameters {
 	pub(crate) fn from_reader_sub_open_parenthesis(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 		start: TokenStart,
 	) -> Result<FunctionParameters, ParseError> {
 		let mut parameters = Vec::new();
@@ -136,7 +136,7 @@ impl FunctionParameters {
 				)?;
 				let type_annotation =
 					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, settings)?)
+						Some(TypeAnnotation::from_reader(reader, state, options)?)
 					} else {
 						None
 					};
@@ -147,18 +147,18 @@ impl FunctionParameters {
 				break;
 			} else {
 				let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-					reader, state, settings,
+					reader, state, options,
 				)?;
 
 				let (is_optional, type_annotation) = match reader.peek() {
 					Some(Token(TSXToken::Colon, _)) => {
 						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
+						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(false, Some(type_annotation))
 					}
 					Some(Token(TSXToken::OptionalMember, _)) => {
 						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, settings)?;
+						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(true, Some(type_annotation))
 					}
 					Some(Token(TSXToken::QuestionMark, _)) => {
@@ -177,7 +177,7 @@ impl FunctionParameters {
 							token.get_span(),
 						));
 					}
-					Some(Box::new(Expression::from_reader(reader, state, settings)?))
+					Some(Box::new(Expression::from_reader(reader, state, options)?))
 				} else {
 					None
 				};

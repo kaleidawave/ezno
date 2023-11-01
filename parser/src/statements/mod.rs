@@ -96,12 +96,12 @@ impl ASTNode for Statement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
-			let statement = Statement::from_reader(reader, state, settings).map(Box::new)?;
+			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
 			let position = label_name_pos.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });
 		}
@@ -117,36 +117,34 @@ impl ASTNode for Statement {
 				}
 			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
-				let stmt = VarVariableStatement::from_reader(reader, state, settings)?;
+				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
 				Ok(Statement::VarVariable(stmt))
 			}
 			TSXToken::Keyword(TSXKeyword::Throw) => {
 				let throw_pos = Keyword::new(reader.next().unwrap().get_span());
-				let expression = MultipleExpression::from_reader(reader, state, settings)?;
+				let expression = MultipleExpression::from_reader(reader, state, options)?;
 				let position = throw_pos.get_position().union(expression.get_position());
 				Ok(Statement::Throw(ThrowStatement(throw_pos, Box::new(expression), position)))
 			}
 			TSXToken::Keyword(TSXKeyword::If) => {
-				IfStatement::from_reader(reader, state, settings).map(Into::into)
+				IfStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::For) => {
-				ForLoopStatement::from_reader(reader, state, settings).map(Into::into)
+				ForLoopStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Switch) => {
-				SwitchStatement::from_reader(reader, state, settings).map(Into::into)
+				SwitchStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::While) => {
-				WhileStatement::from_reader(reader, state, settings).map(Into::into)
+				WhileStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Do) => {
-				DoWhileStatement::from_reader(reader, state, settings).map(Into::into)
+				DoWhileStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Try) => {
-				TryCatchStatement::from_reader(reader, state, settings).map(Into::into)
+				TryCatchStatement::from_reader(reader, state, options).map(Into::into)
 			}
-			TSXToken::OpenBrace => {
-				Block::from_reader(reader, state, settings).map(Statement::Block)
-			}
+			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
 			TSXToken::Keyword(TSXKeyword::Return) => Ok({
 				let return_keyword = Keyword::new(reader.next().unwrap().get_span());
 				if matches!(
@@ -157,7 +155,7 @@ impl ASTNode for Statement {
 					Statement::Return(ReturnStatement(return_keyword, None, position))
 				} else {
 					let multiple_expression =
-						MultipleExpression::from_reader(reader, state, settings)?;
+						MultipleExpression::from_reader(reader, state, options)?;
 					let position =
 						return_keyword.get_position().union(multiple_expression.get_position());
 					Statement::Return(ReturnStatement(
@@ -215,7 +213,7 @@ impl ASTNode for Statement {
 			TSXToken::SemiColon => Ok(Statement::Empty(reader.next().unwrap().get_span())),
 			// Finally ...!
 			_ => {
-				let expr = MultipleExpression::from_reader(reader, state, settings)?;
+				let expr = MultipleExpression::from_reader(reader, state, options)?;
 				Ok(Statement::Expression(expr))
 			}
 		}
@@ -224,12 +222,12 @@ impl ASTNode for Statement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
 			Statement::Cursor(..) => {
-				if !settings.expect_cursors {
+				if !options.expect_cursors {
 					panic!("tried to to-string cursor")
 				}
 			}
@@ -240,30 +238,30 @@ impl ASTNode for Statement {
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
-					expression.to_string_from_buffer(buf, settings, depth);
+					expression.to_string_from_buffer(buf, options, depth);
 				}
 			}
-			Statement::IfStatement(is) => is.to_string_from_buffer(buf, settings, depth),
-			Statement::ForLoopStatement(fl) => fl.to_string_from_buffer(buf, settings, depth),
-			Statement::SwitchStatement(ss) => ss.to_string_from_buffer(buf, settings, depth),
-			Statement::WhileStatement(ws) => ws.to_string_from_buffer(buf, settings, depth),
-			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, settings, depth),
-			Statement::TryCatchStatement(tcs) => tcs.to_string_from_buffer(buf, settings, depth),
+			Statement::IfStatement(is) => is.to_string_from_buffer(buf, options, depth),
+			Statement::ForLoopStatement(fl) => fl.to_string_from_buffer(buf, options, depth),
+			Statement::SwitchStatement(ss) => ss.to_string_from_buffer(buf, options, depth),
+			Statement::WhileStatement(ws) => ws.to_string_from_buffer(buf, options, depth),
+			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, options, depth),
+			Statement::TryCatchStatement(tcs) => tcs.to_string_from_buffer(buf, options, depth),
 			Statement::Comment(comment, _) => {
-				if settings.should_add_comment() {
+				if options.should_add_comment() {
 					buf.push_str("//");
 					buf.push_str_contains_new_line(comment.as_str().trim_end());
 				}
 			}
 			Statement::MultiLineComment(comment, _) => {
-				if settings.should_add_comment() {
+				if options.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");
 				}
 			}
 			Statement::Block(block) => {
-				block.to_string_from_buffer(buf, settings, depth + 1);
+				block.to_string_from_buffer(buf, options, depth + 1);
 			}
 			Statement::Debugger(_) => buf.push_str("debugger"),
 			Statement::Continue(label, _) => {
@@ -281,20 +279,18 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				val.to_string_from_buffer(buf, settings, depth);
+				val.to_string_from_buffer(buf, options, depth);
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);
 				buf.push(':');
-				statement.to_string_from_buffer(buf, settings, depth);
+				statement.to_string_from_buffer(buf, options, depth);
 			}
 			Statement::Throw(ThrowStatement(_, thrown_expression, _)) => {
 				buf.push_str("throw ");
-				thrown_expression.to_string_from_buffer(buf, settings, depth);
+				thrown_expression.to_string_from_buffer(buf, options, depth);
 			}
-			Statement::VarVariable(var_stmt) => {
-				var_stmt.to_string_from_buffer(buf, settings, depth)
-			}
+			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, depth),
 		}
 	}
 }
@@ -337,14 +333,13 @@ impl ASTNode for VarVariableStatement {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let keyword = Keyword::from_reader(reader)?;
 		let mut declarations = Vec::new();
 		loop {
-			let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
-				reader, state, settings,
-			)?;
+			let value =
+				VariableDeclarationItem::<Option<Expression>>::from_reader(reader, state, options)?;
 			declarations.push(value);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
@@ -362,10 +357,10 @@ impl ASTNode for VarVariableStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("var ");
-		declarations_to_string(&self.declarations, buf, settings, depth);
+		declarations_to_string(&self.declarations, buf, options, depth);
 	}
 }

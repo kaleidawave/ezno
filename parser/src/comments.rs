@@ -49,20 +49,20 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.get_ast_ref().visit(visitors, data, settings, chain)
+		self.get_ast_ref().visit(visitors, data, options, chain)
 	}
 
 	fn visit_mut<TData>(
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &crate::VisitSettings,
+		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.get_ast_mut().visit_mut(visitors, data, settings, chain)
+		self.get_ast_mut().visit_mut(visitors, data, options, chain)
 	}
 }
 
@@ -120,7 +120,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> Result<WithComment<T>, ParseError> {
 		if let Some(token) =
 			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
@@ -128,11 +128,11 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			let Token(TSXToken::MultiLineComment(comment), position) = token else {
 				unreachable!();
 			};
-			let item = T::from_reader(reader, state, settings)?;
+			let item = T::from_reader(reader, state, options)?;
 			let position = position.union(item.get_position());
 			Ok(Self::PrefixComment(comment, item, position))
 		} else {
-			let item = T::from_reader(reader, state, settings)?;
+			let item = T::from_reader(reader, state, options)?;
 			if let Some(token) =
 				reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
 			{
@@ -158,22 +158,22 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn to_string_from_buffer<U: source_map::ToString>(
 		&self,
 		buf: &mut U,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
-			Self::None(ast) => ast.to_string_from_buffer(buf, settings, depth),
+			Self::None(ast) => ast.to_string_from_buffer(buf, options, depth),
 			Self::PrefixComment(comment, ast, _) => {
-				if settings.should_add_comment() {
+				if options.should_add_comment() {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
 				}
-				ast.to_string_from_buffer(buf, settings, depth);
+				ast.to_string_from_buffer(buf, options, depth);
 			}
 			Self::PostfixComment(ast, comment, _) => {
-				ast.to_string_from_buffer(buf, settings, depth);
-				if settings.should_add_comment() {
+				ast.to_string_from_buffer(buf, options, depth);
+				if options.should_add_comment() {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");

@@ -21,29 +21,29 @@ impl ASTNode for WhileStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = Expression::from_reader(reader, state, settings)?;
+		let condition = Expression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
+		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("while");
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, settings, depth);
+		self.condition.to_string_from_buffer(buf, options, depth);
 		buf.push(')');
-		settings.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, settings, depth + 1);
+		options.add_gap(buf);
+		self.inner.to_string_from_buffer(buf, options, depth + 1);
 	}
 }
 
@@ -67,13 +67,13 @@ impl ASTNode for DoWhileStatement {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Do))?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, settings)?;
+		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = Expression::from_reader(reader, state, settings)?;
+		let condition = Expression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
@@ -81,17 +81,17 @@ impl ASTNode for DoWhileStatement {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("do");
-		settings.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, settings, depth);
-		settings.add_gap(buf);
+		options.add_gap(buf);
+		self.inner.to_string_from_buffer(buf, options, depth);
+		options.add_gap(buf);
 		buf.push_str("while");
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, settings, depth);
+		self.condition.to_string_from_buffer(buf, options, depth);
 		buf.push(')');
 	}
 }

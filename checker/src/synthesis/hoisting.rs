@@ -88,13 +88,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								parts.iter().filter_map(|item| import_part_to_name_pair(item)),
 							)
 						}
-						parser::declarations::import::ImportKind::All { under } => {
-							crate::behavior::modules::ImportKind::All {
-								under: &under,
-								// TODO parser fix needed
-								position: Span::NULL_SPAN,
+						parser::declarations::import::ImportKind::All { under } => match under {
+							VariableIdentifier::Standard(under, position) => {
+								crate::behavior::modules::ImportKind::All {
+									under,
+									position: position.clone(),
+								}
 							}
-						}
+							VariableIdentifier::Cursor(_, _) => todo!(),
+						},
 						parser::declarations::import::ImportKind::SideEffect => {
 							crate::behavior::modules::ImportKind::SideEffect
 						}
@@ -260,6 +262,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					keyword: _,
 					declarations,
 					position,
+					decorators,
 				}) => {
 					for declaration in declarations.iter() {
 						let constraint = get_annotation_from_declaration(

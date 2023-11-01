@@ -41,15 +41,15 @@ impl ASTNode for VariableOrPropertyAccess {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> ParseResult<Self> {
-		Expression::from_reader(reader, state, settings)?.try_into()
+		Expression::from_reader(reader, state, options)?.try_into()
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -57,21 +57,21 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, settings, depth);
+				parent.to_string_from_buffer(buf, options, depth);
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
 						buf.push('#');
 					}
 					buf.push_str(property);
-				} else if !settings.expect_cursors {
+				} else if !options.expect_cursors {
 					panic!("found cursor");
 				}
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, .. } => {
-				indexee.to_string_from_buffer(buf, settings, depth);
+				indexee.to_string_from_buffer(buf, options, depth);
 				buf.push('[');
-				indexer.to_string_from_buffer(buf, settings, depth);
+				indexer.to_string_from_buffer(buf, options, depth);
 				buf.push(']');
 			}
 		}
@@ -82,10 +82,10 @@ impl VariableOrPropertyAccess {
 	pub(crate) fn from_reader_with_precedence(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		Expression::from_reader_with_precedence(reader, state, settings, return_precedence)?
+		Expression::from_reader_with_precedence(reader, state, options, return_precedence)?
 			.try_into()
 	}
 }
@@ -182,27 +182,27 @@ impl LHSOfAssignment {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(members, _) => {
 				buf.push('{');
-				settings.add_gap(buf);
+				options.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, settings, depth);
+					member.to_string_from_buffer(buf, options, depth);
 					if !at_end {
 						buf.push(',');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 					}
 				}
-				settings.add_gap(buf);
+				options.add_gap(buf);
 				buf.push('}');
 			}
 			LHSOfAssignment::ArrayDestructuring(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, settings, depth);
+					member.to_string_from_buffer(buf, options, depth);
 					if !at_end {
 						buf.push(',');
 					}
@@ -210,7 +210,7 @@ impl LHSOfAssignment {
 				buf.push(']');
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(variable_or_property_access) => {
-				variable_or_property_access.to_string_from_buffer(buf, settings, depth)
+				variable_or_property_access.to_string_from_buffer(buf, options, depth)
 			}
 		}
 	}

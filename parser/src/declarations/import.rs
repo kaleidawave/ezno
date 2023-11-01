@@ -4,8 +4,9 @@ use source_map::{End, Span};
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, tokens::token_as_identifier, ASTNode, ParseError,
-	ParseErrors, ParseOptions, ParseResult, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	errors::parse_lexing_error, parse_bracketed, tokens::token_as_identifier, tsx_keywords,
+	ASTNode, Keyword, ParseError, ParseErrors, ParseOptions, ParseResult, Quoted, TSXKeyword,
+	TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -14,7 +15,7 @@ use visitable_derive::Visitable;
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ImportKind {
 	Parts(Vec<ImportPart>),
-	All { under: String },
+	All { under: VariableIdentifier },
 	SideEffect,
 }
 
@@ -24,10 +25,10 @@ pub enum ImportKind {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
+	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
 	pub default: Option<VariableIdentifier>,
 	pub kind: ImportKind,
 	pub from: String,
-	pub only_type: bool,
 	pub position: Span,
 }
 
@@ -67,11 +68,12 @@ impl ASTNode for ImportDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
-		let only_type: bool =
-			reader.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type))).is_some();
+		let type_keyword = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type)))
+			.map(|tok| Keyword::new(tok.get_span()));
 
 		let peek = reader.peek();
 		let default = if let Some(Token(TSXToken::OpenBrace | TSXToken::Multiply, _)) = peek {
@@ -93,11 +95,11 @@ impl ASTNode for ImportDeclaration {
 				position: start_position.union(pos.get_end_after(from.len() + 2)),
 				default: None,
 				kind: ImportKind::SideEffect,
-				only_type: false,
+				type_keyword: None,
 				from,
 			});
 		} else {
-			let default_identifier = VariableIdentifier::from_reader(reader, state, settings)?;
+			let default_identifier = VariableIdentifier::from_reader(reader, state, options)?;
 			if !matches!(reader.peek(), Some(Token(TSXToken::Keyword(TSXKeyword::From), _))) {
 				reader.expect_next(TSXToken::Comma)?;
 			}
@@ -112,13 +114,13 @@ impl ASTNode for ImportDeclaration {
 		} else if let Some(Token(TSXToken::Multiply, _)) = reader.peek() {
 			reader.next();
 			let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
-			let under = token_as_identifier(reader.next().unwrap(), "import alias")?.0;
+			let under = VariableIdentifier::from_reader(reader, state, options)?;
 			ImportKind::All { under }
 		} else {
 			let parts = parse_bracketed::<ImportPart>(
 				reader,
 				state,
-				settings,
+				options,
 				Some(TSXToken::OpenBrace),
 				TSXToken::CloseBrace,
 			)?
@@ -149,7 +151,7 @@ impl ASTNode for ImportDeclaration {
 		Ok(ImportDeclaration {
 			default,
 			kind,
-			only_type,
+			type_keyword,
 			from,
 			position: start_position.union(end),
 		})
@@ -158,19 +160,19 @@ impl ASTNode for ImportDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		buf.push_str("import");
-		if self.only_type && settings.include_types {
+		if self.type_keyword.is_some() && options.include_types {
 			buf.push_str(" type");
 		}
 
 		if let Some(ref default) = self.default {
 			buf.push(' ');
-			default.to_string_from_buffer(buf, settings, depth)
+			default.to_string_from_buffer(buf, options, depth)
 		} else {
-			settings.add_gap(buf);
+			options.add_gap(buf);
 		}
 
 		match self.kind {
@@ -179,7 +181,7 @@ impl ASTNode for ImportDeclaration {
 					buf.push_str(", ");
 				}
 				buf.push_str("* as ");
-				buf.push_str(under);
+				under.to_string_from_buffer(buf, options, depth);
 				buf.push(' ');
 			}
 			ImportKind::SideEffect => {
@@ -194,24 +196,24 @@ impl ASTNode for ImportDeclaration {
 						buf.push_str(", ");
 					}
 					buf.push('{');
-					settings.add_gap(buf);
+					options.add_gap(buf);
 					for (at_end, part) in parts.iter().endiate() {
-						part.to_string_from_buffer(buf, settings, depth);
+						part.to_string_from_buffer(buf, options, depth);
 						if !at_end {
 							buf.push(',');
-							settings.add_gap(buf);
+							options.add_gap(buf);
 						}
 					}
-					settings.add_gap(buf);
+					options.add_gap(buf);
 					buf.push('}');
-					settings.add_gap(buf);
+					options.add_gap(buf);
 				} else if self.default.is_some() {
 					buf.push(' ');
 				}
 			}
 		}
 		buf.push_str("from");
-		settings.add_gap(buf);
+		options.add_gap(buf);
 		buf.push('"');
 		buf.push_str(&self.from);
 		buf.push('"');
@@ -243,7 +245,7 @@ impl ASTNode for ImportPart {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
 		if let Token(TSXToken::MultiLineComment(comment), start) = token {
@@ -251,7 +253,7 @@ impl ASTNode for ImportPart {
 				if let Some(Token(TSXToken::CloseBrace | TSXToken::Comma, _)) = reader.peek() {
 					(start.with_length(comment.len() + 2), None)
 				} else {
-					let part = Self::from_reader(reader, state, settings)?;
+					let part = Self::from_reader(reader, state, options)?;
 					(start.union(part.get_position()), Some(Box::new(part)))
 				};
 			Ok(Self::PrefixComment(comment, under, position))
@@ -316,7 +318,7 @@ impl ASTNode for ImportPart {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -334,7 +336,7 @@ impl ASTNode for ImportPart {
 				buf.push_str(name);
 			}
 			ImportPart::PrefixComment(comment, inner, _) => {
-				if settings.include_comments {
+				if options.include_comments {
 					buf.push_str("/*");
 					buf.push_str(&comment);
 					buf.push_str("*/");
@@ -343,12 +345,12 @@ impl ASTNode for ImportPart {
 					}
 				}
 				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, settings, depth);
+					inner.to_string_from_buffer(buf, options, depth);
 				}
 			}
 			ImportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, settings, depth);
-				if settings.include_comments {
+				inner.to_string_from_buffer(buf, options, depth);
+				if options.include_comments {
 					buf.push_str("/*");
 					buf.push_str(&comment);
 					buf.push_str("*/ ");

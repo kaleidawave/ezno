@@ -30,7 +30,7 @@ impl ASTNode for VariableIdentifier {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseOptions,
+		_options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
 		Ok(if let Token(TSXToken::Cursor(id), start) = token {
@@ -44,7 +44,7 @@ impl ASTNode for VariableIdentifier {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		buf.push_str(self.as_str());
@@ -163,13 +163,13 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 	fn optional_expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError>;
 
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	);
 
@@ -189,10 +189,10 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 	fn optional_expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
 		Ok(if reader.conditional_next(|tok| matches!(tok, TSXToken::Assign)).is_some() {
-			Some(Expression::from_reader(reader, state, settings)?)
+			Some(Expression::from_reader(reader, state, options)?)
 		} else {
 			None
 		})
@@ -201,12 +201,12 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		if let Some(optional_expression) = optional_expression {
-			buf.push_str(if settings.pretty { " = " } else { "=" });
-			optional_expression.to_string_from_buffer(buf, settings, depth)
+			buf.push_str(if options.pretty { " = " } else { "=" });
+			optional_expression.to_string_from_buffer(buf, options, depth)
 		}
 	}
 
@@ -229,7 +229,7 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 	fn optional_expression_from_reader(
 		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		_state: &mut crate::ParsingState,
-		_settings: &ParseOptions,
+		_options: &ParseOptions,
 	) -> Result<Self::OptionalExpression, ParseError> {
 		Ok(())
 	}
@@ -237,7 +237,7 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 	fn optional_expression_to_string_from_buffer<T: source_map::ToString>(
 		_optional_expression: &Self::OptionalExpression,
 		_buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 	}
@@ -253,29 +253,29 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			TSXToken::OpenBrace => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (members, last_pos) =
-					parse_bracketed(reader, state, settings, None, TSXToken::CloseBrace)?;
+					parse_bracketed(reader, state, options, None, TSXToken::CloseBrace)?;
 				Ok(Self::Object(members, start_pos.union(last_pos)))
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (items, end_pos) =
-					parse_bracketed(reader, state, settings, None, TSXToken::CloseBracket)?;
+					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
 				Ok(Self::Array(items, start_pos.union(end_pos)))
 			}
-			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, settings)?)),
+			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
 		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -283,25 +283,25 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			Self::Array(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, settings, depth);
+					member.to_string_from_buffer(buf, options, depth);
 					if !at_end {
 						buf.push(',');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 					}
 				}
 				buf.push(']');
 			}
 			Self::Object(members, _) => {
 				buf.push('{');
-				settings.add_gap(buf);
+				options.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, settings, depth);
+					member.to_string_from_buffer(buf, options, depth);
 					if !at_end {
 						buf.push(',');
-						settings.add_gap(buf);
+						options.add_gap(buf);
 					}
 				}
-				settings.add_gap(buf);
+				options.add_gap(buf);
 				buf.push('}');
 			}
 		}
@@ -338,23 +338,22 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Spread, _) => {
 				let token = reader.next().unwrap();
-				let identifier = VariableIdentifier::from_reader(reader, state, settings)?;
+				let identifier = VariableIdentifier::from_reader(reader, state, options)?;
 				let position = token.get_span().union(identifier.get_position());
 				Ok(Self::Spread(identifier, position))
 			}
 			_ => {
-				let key = PropertyKey::from_reader(reader, state, settings)?;
+				let key = PropertyKey::from_reader(reader, state, options)?;
 				if matches!(reader.peek(), Some(Token(TSXToken::Colon, _))) {
 					reader.next();
 					let variable_name =
-						WithComment::<VariableField<U>>::from_reader(reader, state, settings)?;
-					let default_value =
-						U::optional_expression_from_reader(reader, state, settings)?;
+						WithComment::<VariableField<U>>::from_reader(reader, state, options)?;
+					let default_value = U::optional_expression_from_reader(reader, state, options)?;
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
 							key.get_position().union(pos)
@@ -363,8 +362,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 						};
 					Ok(Self::Map { from: key, name: variable_name, default_value, position })
 				} else if let PropertyKey::Ident(name, key_pos, _) = key {
-					let default_value =
-						U::optional_expression_from_reader(reader, state, settings)?;
+					let default_value = U::optional_expression_from_reader(reader, state, options)?;
 					let standard = VariableIdentifier::Standard(name, key_pos);
 					let position =
 						if let Some(pos) = U::optional_expression_get_position(&default_value) {
@@ -384,7 +382,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -394,13 +392,13 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 			}
 			Self::Name(name, default_value, _) => {
 				buf.push_str(name.as_str());
-				U::optional_expression_to_string_from_buffer(default_value, buf, settings, depth)
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
 			}
 			Self::Map { from, name: variable_name, default_value, .. } => {
-				from.to_string_from_buffer(buf, settings, depth);
+				from.to_string_from_buffer(buf, options, depth);
 				buf.push(':');
-				variable_name.to_string_from_buffer(buf, settings, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, settings, depth)
+				variable_name.to_string_from_buffer(buf, options, depth);
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
 			}
 		}
 	}
@@ -436,20 +434,20 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			TSXToken::Spread => {
 				let token = reader.next().unwrap();
 				Ok(Self::Spread(
 					token.get_span(),
-					VariableIdentifier::from_reader(reader, state, settings)?,
+					VariableIdentifier::from_reader(reader, state, options)?,
 				))
 			}
 			TSXToken::Comma | TSXToken::CloseBracket => Ok(Self::None),
 			_ => {
-				let name = WithComment::<VariableField<U>>::from_reader(reader, state, settings)?;
-				let expression = U::optional_expression_from_reader(reader, state, settings)?;
+				let name = WithComment::<VariableField<U>>::from_reader(reader, state, options)?;
+				let expression = U::optional_expression_from_reader(reader, state, options)?;
 				Ok(Self::Name(name, expression))
 			}
 		}
@@ -458,7 +456,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
 		match self {
@@ -467,8 +465,8 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 				buf.push_str(name.as_str());
 			}
 			Self::Name(name, default_value) => {
-				name.to_string_from_buffer(buf, settings, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, settings, depth)
+				name.to_string_from_buffer(buf, options, depth);
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
 			}
 			Self::None => {}
 		}
@@ -485,7 +483,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		// TODO map
@@ -507,8 +505,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						ArrayDestructuringField::Spread(_, _id) => todo!(),
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, expression) => {
-							variable_field.visit(visitors, data, settings, chain);
-							expression.visit(visitors, data, settings, chain);
+							variable_field.visit(visitors, data, options, chain);
+							expression.visit(visitors, data, options, chain);
 						}
 					}
 				}
@@ -523,15 +521,15 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 					match field.get_ast_ref() {
 						ObjectDestructuringField::Spread(_name, _) => {}
 						ObjectDestructuringField::Name(_name, default_value, _) => {
-							default_value.visit(visitors, data, settings, chain);
+							default_value.visit(visitors, data, options, chain);
 						}
 						ObjectDestructuringField::Map {
 							name: variable_name,
 							default_value,
 							..
 						} => {
-							variable_name.visit(visitors, data, settings, chain);
-							default_value.visit(visitors, data, settings, chain);
+							variable_name.visit(visitors, data, options, chain);
+							default_value.visit(visitors, data, options, chain);
 						}
 					}
 				}
@@ -543,7 +541,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		match self {
@@ -567,8 +565,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						ArrayDestructuringField::Spread(_, _id) => todo!(),
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, default_value) => {
-							variable_field.visit_mut(visitors, data, settings, chain);
-							default_value.visit_mut(visitors, data, settings, chain);
+							variable_field.visit_mut(visitors, data, options, chain);
+							default_value.visit_mut(visitors, data, options, chain);
 						}
 					}
 				}
@@ -583,15 +581,15 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 					match field.get_ast_mut() {
 						ObjectDestructuringField::Spread(_id, _) => {}
 						ObjectDestructuringField::Name(_id, default_value, _) => {
-							default_value.visit_mut(visitors, data, settings, chain);
+							default_value.visit_mut(visitors, data, options, chain);
 						}
 						ObjectDestructuringField::Map {
 							name: variable_name,
 							default_value,
 							..
 						} => {
-							variable_name.visit_mut(visitors, data, settings, chain);
-							default_value.visit_mut(visitors, data, settings, chain);
+							variable_name.visit_mut(visitors, data, options, chain);
+							default_value.visit_mut(visitors, data, options, chain);
 						}
 					}
 				}

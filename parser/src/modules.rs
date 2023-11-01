@@ -48,10 +48,10 @@ impl ASTNode for Module {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		statements_and_declarations_to_string(&self.items, buf, settings, depth)
+		statements_and_declarations_to_string(&self.items, buf, options, depth)
 	}
 
 	fn get_position(&self) -> &Span {
@@ -61,10 +61,10 @@ impl ASTNode for Module {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let end = state.length;
-		parse_statements_and_declarations(reader, state, settings).map(|statements| Module {
+		parse_statements_and_declarations(reader, state, options).map(|statements| Module {
 			source: state.source,
 			items: statements,
 			span: Span { start: 0, source: (), end },
@@ -75,29 +75,29 @@ impl ASTNode for Module {
 impl Module {
 	pub fn to_string_with_source_map(
 		&self,
-		settings: &crate::ToStringOptions,
+		options: &crate::ToStringOptions,
 		fs: &impl source_map::FileSystem,
 	) -> (String, source_map::SourceMap) {
 		let mut buf = source_map::StringWithSourceMap::new();
-		self.to_string_from_buffer(&mut buf, settings, 0);
+		self.to_string_from_buffer(&mut buf, options, 0);
 		buf.build(fs)
 	}
 
-	pub fn length(&self, settings: &crate::ToStringOptions) -> usize {
+	pub fn length(&self, options: &crate::ToStringOptions) -> usize {
 		let mut buf = source_map::Counter::new();
-		self.to_string_from_buffer(&mut buf, settings, 0);
+		self.to_string_from_buffer(&mut buf, options, 0);
 		buf.get_count()
 	}
 
 	#[cfg(not(target_family = "wasm"))]
 	pub fn from_file(
 		path: impl AsRef<Path>,
-		settings: ParseOptions,
+		options: ParseOptions,
 		fs: &mut impl source_map::FileSystem,
 	) -> Result<Self, FromFileError> {
 		let source = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
 		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
-		Self::from_string(source, settings, source_id, None)
+		Self::from_string(source, options, source_id, None)
 			.map_err(|err| FromFileError::ParseError(err, source_id))
 	}
 }
@@ -107,7 +107,7 @@ impl Module {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
@@ -118,10 +118,10 @@ impl Module {
 		}
 
 		let iter = self.items.iter();
-		if settings.reverse_statements {
-			iter.for_each(|item| item.visit(visitors, data, settings, &mut chain));
+		if options.reverse_statements {
+			iter.for_each(|item| item.visit(visitors, data, options, &mut chain));
 		} else {
-			iter.rev().for_each(|item| item.visit(visitors, data, settings, &mut chain));
+			iter.rev().for_each(|item| item.visit(visitors, data, options, &mut chain));
 		}
 	}
 
@@ -129,7 +129,7 @@ impl Module {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		settings: &VisitSettings,
+		options: &VisitSettings,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
@@ -144,10 +144,10 @@ impl Module {
 		}
 
 		let iter_mut = self.items.iter_mut();
-		if settings.reverse_statements {
-			iter_mut.for_each(|item| item.visit_mut(visitors, data, settings, &mut chain));
+		if options.reverse_statements {
+			iter_mut.for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
 		} else {
-			iter_mut.rev().for_each(|item| item.visit_mut(visitors, data, settings, &mut chain));
+			iter_mut.rev().for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
 		}
 	}
 }
@@ -206,12 +206,12 @@ impl TypeDefinitionModule {
 	#[cfg(not(target_family = "wasm"))]
 	pub fn from_file(
 		path: impl AsRef<Path>,
-		settings: ParseOptions,
+		options: ParseOptions,
 		fs: &mut impl source_map::FileSystem,
 	) -> Result<Self, FromFileError> {
 		let script = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
 		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
-		Self::from_string(script, settings, source)
+		Self::from_string(script, options, source)
 			.map_err(|err| FromFileError::ParseError(err, source))
 	}
 }
@@ -224,12 +224,12 @@ impl ASTNode for TypeDefinitionModule {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let mut declarations = Vec::new();
 		loop {
 			declarations
-				.push(TypeDefinitionModuleDeclaration::from_reader(reader, state, settings)?);
+				.push(TypeDefinitionModuleDeclaration::from_reader(reader, state, options)?);
 			match reader.peek() {
 				Some(Token(TSXToken::SemiColon, _)) => {
 					reader.next();
@@ -256,7 +256,7 @@ impl ASTNode for TypeDefinitionModule {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		todo!()
@@ -267,27 +267,27 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &ParseOptions,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let decorators = decorators_from_reader(reader, state, settings)?;
+		let decorators = decorators_from_reader(reader, state, options)?;
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Declare), _) => {
 				let declare_span = reader.next().unwrap().1;
-				parse_declare_item(reader, state, settings, decorators, declare_span)
+				parse_declare_item(reader, state, options, decorators, declare_span)
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
-				let on = InterfaceDeclaration::from_reader(reader, state, settings)?;
+				let on = InterfaceDeclaration::from_reader(reader, state, options)?;
 				Ok(TypeDefinitionModuleDeclaration::Interface(Decorated::new(decorators, on)))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
 				Ok(TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias::from_reader(
-					reader, state, settings,
+					reader, state, options,
 				)?))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
 				Ok(TypeDefinitionModuleDeclaration::LocalVariableDeclaration(
 					DeclareVariableDeclaration::from_reader_sub_declare(
-						reader, state, settings, None, decorators,
+						reader, state, options, None, decorators,
 					)?,
 				))
 			}
@@ -315,7 +315,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		todo!("tdms to_string_from_buffer");
@@ -329,7 +329,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 pub(crate) fn parse_declare_item(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
-	settings: &ParseOptions,
+	options: &ParseOptions,
 	decorators: Vec<Decorator>,
 	start: TokenStart,
 ) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
@@ -341,31 +341,31 @@ pub(crate) fn parse_declare_item(
 			DeclareVariableDeclaration::from_reader_sub_declare(
 				reader,
 				state,
-				settings,
+				options,
 				Some(start),
 				decorators,
 			)?,
 		)),
 		Some(Token(TSXToken::Keyword(TSXKeyword::Class), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Class(
-				DeclareClassDeclaration::from_reader_sub_declare(reader, state, settings)?,
+				DeclareClassDeclaration::from_reader_sub_declare(reader, state, options)?,
 			))
 		}
 		Some(Token(TSXToken::Keyword(TSXKeyword::Function), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Function(
 				DeclareFunctionDeclaration::from_reader_sub_declare_with_decorators(
-					reader, state, settings, decorators,
+					reader, state, options, decorators,
 				)?,
 			))
 		}
 		Some(Token(TSXToken::Keyword(TSXKeyword::Type), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias::from_reader(
-				reader, state, settings,
+				reader, state, options,
 			)?))
 		}
 		Some(Token(TSXToken::Keyword(TSXKeyword::Namespace), _)) => {
 			Ok(TypeDefinitionModuleDeclaration::Namespace(Namespace::from_reader(
-				reader, state, settings,
+				reader, state, options,
 			)?))
 		}
 		_ => throw_unexpected_token_with_token(

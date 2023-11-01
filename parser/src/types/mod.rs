@@ -52,15 +52,15 @@ impl crate::ASTNode for AnnotationPerforms {
 	fn from_reader(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		settings: &crate::ParseOptions,
+		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		let performs_keyword = crate::Keyword::from_reader(reader)?;
 		if let Some(tokenizer_lib::Token(crate::TSXToken::OpenBrace, _)) = reader.peek() {
-			// let expression = Expression::from_reader(reader, state, settings)?;
+			// let expression = Expression::from_reader(reader, state, options)?;
 			// reader.expect_next(TSXToken::CloseParentheses)?;
 			// Some(Box::new(expression))
 
-			let body = crate::Block::from_reader(reader, state, settings)?;
+			let body = crate::Block::from_reader(reader, state, options)?;
 			Ok(AnnotationPerforms::PerformsStatements { performs_keyword, statements: body })
 		} else {
 			reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Const))?;
@@ -73,7 +73,7 @@ impl crate::ASTNode for AnnotationPerforms {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
-		_settings: &crate::ToStringOptions,
+		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
 		todo!()
