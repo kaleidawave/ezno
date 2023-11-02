@@ -199,10 +199,15 @@ pub enum ThisValue {
 }
 
 impl ThisValue {
-	pub(crate) fn get(&self, environment: &mut Environment, types: &mut TypeStore) -> TypeId {
+	pub(crate) fn get(
+		&self,
+		environment: &mut Environment,
+		types: &mut TypeStore,
+		position: SpanWithSource,
+	) -> TypeId {
 		match self {
 			ThisValue::Passed(value) => *value,
-			ThisValue::UseParent => environment.get_value_of_this(types),
+			ThisValue::UseParent => environment.get_value_of_this(types, position),
 		}
 	}
 

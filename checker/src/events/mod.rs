@@ -46,7 +46,11 @@ pub enum Event {
 	/// Reads variable
 	///
 	/// Can be used for DCE reasons, or finding variables in context
-	ReadsReference { reference: RootReference, reflects_dependency: Option<TypeId> },
+	ReadsReference {
+		reference: RootReference,
+		reflects_dependency: Option<TypeId>,
+		position: SpanWithSource,
+	},
 	/// Also used for DCE
 	SetsVariable(VariableId, TypeId),
 	/// Mostly trivial, sometimes can call a function :(

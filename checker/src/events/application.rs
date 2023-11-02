@@ -23,7 +23,7 @@ pub(crate) fn apply_event(
 	types: &mut TypeStore,
 ) -> EarlyReturn {
 	match event {
-		Event::ReadsReference { reference, reflects_dependency } => {
+		Event::ReadsReference { reference, reflects_dependency, position } => {
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
@@ -40,7 +40,7 @@ pub(crate) fn apply_event(
 							}
 						}
 					}
-					RootReference::This => this_value.get(environment, types),
+					RootReference::This => this_value.get(environment, types, position),
 				};
 				type_arguments.set_id_from_reference(id, value, types);
 			}

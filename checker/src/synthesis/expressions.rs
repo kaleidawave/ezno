@@ -462,7 +462,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::ThisReference(..) => {
-			Instance::RValue(environment.get_value_of_this(&mut checking_data.types))
+			let position = SynthesisableExpression::get_position(expression)
+				.clone()
+				.with_source(environment.get_source());
+			Instance::RValue(environment.get_value_of_this(&mut checking_data.types, position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
 			SuperReference::Call { arguments } => {
@@ -856,7 +859,12 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	let this = environment.get_value_of_this(&mut checking_data.types);
+	// TODO: Needs clarification. This only passes the position of the first field. Should we pass all fields positions?
+	let fields_position = SynthesisableExpression::get_position(&fields[0].2)
+		.clone()
+		.with_source(environment.get_source());
+
+	let this = environment.get_value_of_this(&mut checking_data.types, fields_position);
 	for (under, publicity, mut expression) in fields {
 		let new = synthesise_expression(&expression, environment, checking_data);
 		environment.facts.events.push(Event::Setter {

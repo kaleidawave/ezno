@@ -609,11 +609,13 @@ impl<'a> Environment<'a> {
 
 			// TODO temp position
 			let mut value = None;
+
 			for event in self.facts.events.iter() {
 				// TODO explain why don't need to detect sets
 				if let Event::ReadsReference {
 					reference: other_reference,
 					reflects_dependency: Some(dep),
+					position,
 				} = event
 				{
 					if reference == *other_reference {
@@ -643,6 +645,7 @@ impl<'a> Environment<'a> {
 				self.facts.events.push(Event::ReadsReference {
 					reference: RootReference::Variable(og_var.get_id()),
 					reflects_dependency: Some(ty),
+					position,
 				});
 
 				ty
@@ -999,6 +1002,7 @@ pub(crate) fn get_this_type_from_constraint(
 	facts: &mut Facts,
 	this_ty: TypeId,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> TypeId {
 	// TODO `this_ty` can be error here..?
 	if this_ty == TypeId::ERROR_TYPE {
@@ -1034,6 +1038,7 @@ pub(crate) fn get_this_type_from_constraint(
 		if let Event::ReadsReference {
 			reference: other_reference,
 			reflects_dependency: Some(dep),
+			position,
 		} = event
 		{
 			if reference == RootReference::This {
@@ -1049,6 +1054,7 @@ pub(crate) fn get_this_type_from_constraint(
 	facts.events.push(Event::ReadsReference {
 		reference: RootReference::This,
 		reflects_dependency: Some(ty),
+		position,
 	});
 
 	ty
