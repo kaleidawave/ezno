@@ -488,6 +488,7 @@ impl<'a> Environment<'a> {
 		kind: PublicityKind,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
+		position: SpanWithSource,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -497,6 +498,7 @@ impl<'a> Environment<'a> {
 			self,
 			&mut CheckThings,
 			types,
+			position,
 		)
 	}
 
@@ -508,7 +510,7 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
 	) -> TypeId {
-		match self.get_property(on, property, kind, &mut checking_data.types, None) {
+		match self.get_property(on, property, kind, &mut checking_data.types, None, site.clone()) {
 			Some((_, ty)) => ty,
 			None => {
 				checking_data.diagnostics_container.add_error(

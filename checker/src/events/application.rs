@@ -64,12 +64,13 @@ pub(crate) fn apply_event(
 			facts.events.push(Event::SetsVariable(variable, new_value, position));
 			facts.variable_current_value.insert(variable, new_value);
 		}
-		Event::Getter { on, under, reflects_dependency, publicity } => {
+		Event::Getter { on, under, reflects_dependency, publicity, position } => {
 			let on = substitute(on, type_arguments, environment, types);
 			let property = substitute(under, type_arguments, environment, types);
 
-			let (_, value) = get_property(on, under, publicity, None, environment, target, types)
-				.expect("Inferred constraints and checking failed");
+			let (_, value) =
+				get_property(on, under, publicity, None, environment, target, types, position)
+					.expect("Inferred constraints and checking failed");
 
 			if let Some(id) = reflects_dependency {
 				type_arguments.set_id_from_reference(id, value, types);

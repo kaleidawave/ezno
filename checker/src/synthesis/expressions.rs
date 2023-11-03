@@ -425,11 +425,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					todo!()
 				};
 
+			let access_position = position.clone().with_source(environment.get_source());
 			// TODO
 			let publicity = PublicityKind::Public;
 
-			let get_property =
-				environment.get_property(on, property, publicity, &mut checking_data.types, None);
+			let get_property = environment.get_property(
+				on,
+				property,
+				publicity,
+				&mut checking_data.types,
+				None,
+				access_position,
+			);
 
 			match get_property {
 				Some((kind, result)) => match kind {
@@ -559,12 +566,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let indexee = synthesise_expression(indexee, environment, checking_data);
 			let indexer = synthesise_multiple_expression(indexer, environment, checking_data);
 
+			let index_position = position.clone().with_source(environment.get_source());
 			let get_property = environment.get_property(
 				indexee,
 				indexer,
 				PublicityKind::Public,
 				&mut checking_data.types,
 				None,
+				index_position,
 			);
 
 			match get_property {

@@ -63,6 +63,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE || under == TypeId::ERROR_TYPE {
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
@@ -102,6 +103,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 		under,
 		reflects_dependency,
 		publicity,
+		position,
 	});
 
 	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value

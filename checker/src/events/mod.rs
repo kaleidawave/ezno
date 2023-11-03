@@ -59,6 +59,7 @@ pub enum Event {
 		under: TypeId,
 		reflects_dependency: Option<TypeId>,
 		publicity: PublicityKind,
+		position: SpanWithSource,
 	},
 	/// All changes to the value of a property
 	Setter {
