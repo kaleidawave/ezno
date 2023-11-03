@@ -419,7 +419,11 @@ impl<'a> Environment<'a> {
 
 							let variable_id = variable.get_id();
 
-							self.facts.events.push(Event::SetsVariable(variable_id, new_type));
+							self.facts.events.push(Event::SetsVariable(
+								variable_id,
+								new_type,
+								assignment_position,
+							));
 							self.facts.variable_current_value.insert(variable_id, new_type);
 
 							Ok(new_type)

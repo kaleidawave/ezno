@@ -45,7 +45,7 @@ pub(crate) fn apply_event(
 				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::SetsVariable(variable, value) => {
+		Event::SetsVariable(variable, value, position) => {
 			let new_value = substitute(value, type_arguments, environment, types);
 
 			// if not closed over!!
@@ -61,7 +61,7 @@ pub(crate) fn apply_event(
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
 
-			facts.events.push(Event::SetsVariable(variable, new_value));
+			facts.events.push(Event::SetsVariable(variable, new_value, position));
 			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency, publicity } => {

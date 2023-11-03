@@ -861,7 +861,7 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 ) {
 	todo!("get event position");
 	// TODO: Needs clarification. This only passes the position of the first field. Should we pass all fields positions?
-	// Placeholder implementation that passes the position of the first field in order to satisfy the compiler
+	// TODO: Placeholder. This placeholder implementation retrieves the position of the first field in order to satisfy the compiler
 	let fields_position = SynthesisableExpression::get_position(&fields[0].2)
 		.clone()
 		.with_source(environment.get_source());

@@ -52,7 +52,7 @@ pub enum Event {
 		position: SpanWithSource,
 	},
 	/// Also used for DCE
-	SetsVariable(VariableId, TypeId),
+	SetsVariable(VariableId, TypeId, SpanWithSource),
 	/// Mostly trivial, sometimes can call a function :(
 	Getter {
 		on: TypeId,
