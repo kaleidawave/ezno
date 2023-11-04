@@ -88,7 +88,7 @@ pub enum Event {
 	/// Run events conditionally
 	Conditionally { condition: TypeId, events_if_truthy: Box<[Event]>, else_events: Box<[Event]> },
 	/// TODO not sure but whatever
-	Return { returned: TypeId, position: SpanWithSource },
+	Return { returned: TypeId, returned_position: SpanWithSource },
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:

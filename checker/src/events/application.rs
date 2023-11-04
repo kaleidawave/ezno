@@ -253,7 +253,7 @@ pub(crate) fn apply_event(
 				});
 			}
 		}
-		Event::Return { returned, position } => {
+		Event::Return { returned, returned_position } => {
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
 
 			if substituted_returned != TypeId::ERROR_TYPE {
