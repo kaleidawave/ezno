@@ -56,8 +56,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 										false,
 									),
 								annotation_position: annotation_span.clone(),
-								// TODO test with return_position
-								returned_position: returned_position.clone(), // TODO event position here #37
+								returned_position: returned_position.clone(),
 							},
 						);
 					}
