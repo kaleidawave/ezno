@@ -73,6 +73,19 @@ declare var JSON: JSON;
 declare var Math: Math;
 declare var console: Console;
 
-declare function JSXH(tagname: string, attributes: any, children: any) performs {
+declare function JSXH(tagname: string, attributes: any, children?: any) performs {
     return tagname
 }
+
+interface Document {
+    title: string
+}
+
+interface FormData {
+}
+
+@client
+declare const document: Document;
+
+@server
+declare function createItem(a: any);

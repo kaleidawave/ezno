@@ -5,31 +5,27 @@ use source_map::{Span, SpanWithSource};
 use crate::{
 	behavior::objects::ObjectBuilder,
 	types::{cast_as_string, SynthesisedArgument},
-	CheckingData, Constant, Environment, Instance, SynthesisableExpression, Type, TypeId,
+	CheckingData, Constant, Environment, Instance, Type, TypeId,
 };
 
-pub enum TemplateLiteralPart<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>> {
+pub enum TemplateLiteralPart<'a, T> {
 	Static(&'a str),
-	Dynamic(&'a TExpr, PhantomData<M>),
+	Dynamic(&'a T),
 }
 
-pub fn synthesise_template_literal<'a, T, M, TExpr>(
+pub fn synthesise_template_literal<'a, T, M>(
 	tag: Option<TypeId>,
-	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M, TExpr>> + 'a,
+	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M::Expression>> + 'a,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, M>,
 ) -> Instance
 where
 	T: crate::ReadFromFS,
 	M: crate::ASTImplementation,
-	TExpr: SynthesisableExpression<M> + 'a,
+	M::Expression: 'a,
 {
-	fn part_to_type<
-		T: crate::ReadFromFS,
-		M: crate::ASTImplementation,
-		TExpr: SynthesisableExpression<M>,
-	>(
-		first: TemplateLiteralPart<M, TExpr>,
+	fn part_to_type<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+		first: TemplateLiteralPart<M::Expression>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> crate::TypeId {
@@ -37,10 +33,11 @@ where
 			TemplateLiteralPart::Static(static_part) => {
 				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()))
 			}
-			TemplateLiteralPart::Dynamic(expression, _) => {
+			TemplateLiteralPart::Dynamic(expression) => {
 				// TODO tidy
-				let value = SynthesisableExpression::synthesise_expression(
+				let value = M::synthesise_expression(
 					expression,
+					TypeId::ANY_TYPE,
 					environment,
 					checking_data,
 				);

@@ -3,14 +3,14 @@ use std::collections::HashSet;
 
 use crate::{
 	behavior::{
-		assignments::{Assignable, AssignmentKind, Reference, SynthesisableExpression},
+		assignments::{Assignable, AssignmentKind, Reference},
 		modules::{Exported, ImportKind, NamePair},
 		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
-		variables::{VariableMutability, VariableWithValue},
+		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
@@ -21,8 +21,7 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
-	VariableOrImport,
+	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeCombinable, TypeId, VariableId,
 };
 
 use super::{
@@ -31,6 +30,8 @@ use super::{
 	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
 	Environment, GeneralContext, SetPropertyError,
 };
+
+pub type ContextSpecifierTemp = Option<String>;
 
 #[derive(Debug)]
 pub struct Syntax<'a> {
@@ -44,6 +45,9 @@ pub struct Syntax<'a> {
 	/// Variables used in this scope which are closed over by functions. These need to be stored
 	/// Not to be confused with `used_parent_references`
 	pub closed_over_references: ClosedOverReferencesInScope,
+
+	/// TODO temp
+	pub context: ContextSpecifierTemp,
 }
 
 impl<'a> ContextType for Syntax<'a> {
@@ -111,6 +115,7 @@ pub enum Scope {
 	PassThrough {
 		source: SourceId,
 	},
+	TypeAlias,
 }
 
 impl<'a> Environment<'a> {
@@ -119,16 +124,12 @@ impl<'a> Environment<'a> {
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
 	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
-	pub fn assign_to_assignable_handle_errors<
-		U: crate::ReadFromFS,
-		M: crate::ASTImplementation,
-		T: SynthesisableExpression<M>,
-	>(
+	pub fn assign_to_assignable_handle_errors<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
-		expression: Option<&T>,
+		expression: Option<&M::Expression>,
 		assignment_span: SpanWithSource,
 		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId {
@@ -204,7 +205,12 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = expression.unwrap().synthesise_expression(self, checking_data);
+						let new = M::synthesise_expression(
+							expression.unwrap(),
+							TypeId::ANY_TYPE,
+							self,
+							checking_data,
+						);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
 							Ok(ty) => ty,
@@ -223,18 +229,24 @@ impl<'a> Environment<'a> {
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
-						let span = reference.get_position();
+						let reference_position = reference.get_position();
 						let existing = get_reference(self, reference.clone(), checking_data);
 
 						let expression = expression.unwrap();
-						let with_source =
-							expression.get_position().clone().with_source(self.get_source());
-						let rhs =
-							(expression.synthesise_expression(self, checking_data), with_source);
+						let expression_pos = M::expression_position(expression)
+							.clone()
+							.with_source(self.get_source());
+						let rhs = M::synthesise_expression(
+							expression,
+							TypeId::ANY_TYPE,
+							self,
+							checking_data,
+						);
+
 						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, span),
+							(existing, reference_position),
 							operator.into(),
-							rhs,
+							(rhs, expression_pos),
 							checking_data,
 							self,
 						);
@@ -374,7 +386,7 @@ impl<'a> Environment<'a> {
 
 		if let Some((_, _, variable)) = variable_in_map {
 			match variable {
-				crate::VariableOrImport::Variable { mutability, declared_at } => {
+				VariableOrImport::Variable { mutability, declared_at, context } => {
 					match mutability {
 						VariableMutability::Constant => {
 							Err(AssignmentError::Constant(declared_at.clone()))
@@ -426,8 +438,8 @@ impl<'a> Environment<'a> {
 						}
 					}
 				}
-				crate::VariableOrImport::MutableImport { .. }
-				| crate::VariableOrImport::ConstantImport { .. } => {
+				VariableOrImport::MutableImport { .. }
+				| VariableOrImport::ConstantImport { .. } => {
 					Err(AssignmentError::Constant(assignment_position))
 				}
 			}
@@ -557,6 +569,28 @@ impl<'a> Environment<'a> {
 
 		let reference = RootReference::Variable(og_var.get_id());
 
+		if let VariableOrImport::Variable { context: Some(ref context), .. } = og_var {
+			if let Some(ref current_context) = self.parents_iter().find_map(|a| {
+				if let GeneralContext::Syntax(syn) = a {
+					syn.context_type.context.clone()
+				} else {
+					None
+				}
+			}) {
+				if current_context != context {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::VariableNotDefinedInContext {
+							variable: name,
+							expected_context: context,
+							current_context: current_context.clone(),
+							position,
+						},
+					);
+					return Err(TypeId::ERROR_TYPE);
+				}
+			}
+		}
+
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		// TODO in_root temp fix
@@ -673,50 +707,51 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, U, M>(
+	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, M, R>(
 		&mut self,
 		condition: TypeId,
-		then_evaluate: U,
-		// TODO maybe V::Other
-		else_evaluate: Option<U>,
+		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R,
+		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R>,
 		checking_data: &mut CheckingData<T, M>,
-	) -> U::ExpressionResult
+	) -> R
 	where
 		M: crate::ASTImplementation,
-		U: crate::SynthesisableConditional<M>,
+		R: TypeCombinable,
 	{
 		if let TruthyFalsy::Decidable(result) =
 			is_type_truthy_falsy(condition, &checking_data.types)
 		{
 			// TODO emit warning
 			return if result {
-				then_evaluate.synthesise_condition(self, checking_data)
+				then_evaluate(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
-				else_evaluate.synthesise_condition(self, checking_data)
+				else_evaluate(self, checking_data)
 			} else {
-				U::default_result()
+				R::default()
 			};
 		}
 
 		let (truthy_result, truthy_events) = {
 			let mut truthy_environment =
 				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
-			let result = then_evaluate.synthesise_condition(&mut truthy_environment, checking_data);
+
+			let result = then_evaluate(&mut truthy_environment, checking_data);
+
 			(result, truthy_environment.facts.events)
 		};
+
 		if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 			});
-			let falsy_result =
-				else_evaluate.synthesise_condition(&mut falsy_environment, checking_data);
-			let combined_result = U::conditional_expression_result(
-				condition,
-				truthy_result,
-				falsy_result,
-				&mut checking_data.types,
-			);
+
+			let falsy_result = else_evaluate(&mut falsy_environment, checking_data);
+
+			let combined_result =
+				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
+
 			let falsy_events = falsy_environment.facts.events;
+
 			// TODO
 			self.facts.events.push(Event::Conditionally {
 				condition,
@@ -827,17 +862,17 @@ impl<'a> Environment<'a> {
 		let exports = checking_data.import_file(current_source, &partial_import_path, self);
 
 		if let Err(ref err) = exports {
-			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile(
-				err.clone(),
-				import_position.with_source(self.get_source()),
-			));
+			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
+				file: err.clone(),
+				position: Some(import_position.with_source(self.get_source())),
+			});
 		}
 
 		if let Some((default_name, position)) = default_import {
 			if let Ok(Ok(ref exports)) = exports {
 				if let Some(item) = &exports.default {
 					let id = crate::VariableId(current_source, position.start);
-					let v = crate::VariableOrImport::ConstantImport {
+					let v = VariableOrImport::ConstantImport {
 						to: None,
 						import_specified_at: position.clone().with_source(current_source),
 					};
@@ -889,7 +924,7 @@ impl<'a> Environment<'a> {
 										}
 									};
 
-									let v = crate::VariableOrImport::MutableImport {
+									let v = VariableOrImport::MutableImport {
 										of: variable,
 										constant,
 										import_specified_at: part
@@ -969,6 +1004,7 @@ impl<'a> Environment<'a> {
 				} else {
 					let behavior = crate::context::VariableRegisterBehavior::Declare {
 						base: TypeId::ERROR_TYPE,
+						context: None,
 					};
 					self.register_variable_handle_error(
 						under,

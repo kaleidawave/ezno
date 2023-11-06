@@ -4,12 +4,12 @@ use derive_enum_from_into::EnumFrom;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
+	synthesis::EznoParser,
 	types::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
 		StructureGenerics, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, Environment, SynthesisableConditional,
-	SynthesisableExpression, TruthyFalsy, Type, TypeId,
+	ASTImplementation, CheckingData, Constant, Environment, TruthyFalsy, Type, TypeId,
 };
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -330,62 +330,63 @@ pub enum Logical {
 pub fn evaluate_logical_operation_with_expression<
 	T: crate::ReadFromFS,
 	M: crate::ASTImplementation,
-	TExpr: SynthesisableExpression<M>,
 >(
 	lhs: TypeId,
 	operator: Logical,
-	rhs: &TExpr,
+	rhs: &M::Expression,
 	checking_data: &mut CheckingData<T, M>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
-	enum TypeOrSynthesisable<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>> {
+	enum TypeOrSynthesisable<'a, M: crate::ASTImplementation> {
 		Type(TypeId),
-		Expression(&'a TExpr, PhantomData<M>),
+		Expression(&'a M::Expression),
 	}
 
-	impl<'a, M: crate::ASTImplementation, TExpr: SynthesisableExpression<M>>
-		SynthesisableConditional<M> for TypeOrSynthesisable<'a, M, TExpr>
-	{
-		type ExpressionResult = TypeId;
+	// impl<'a, M: crate::ASTImplementation> SynthesisableConditional<M> for TypeOrSynthesisable<'a, M> {
+	// 	type ExpressionResult = TypeId;
 
-		fn synthesise_condition<T: crate::ReadFromFS>(
-			self,
-			environment: &mut Environment,
-			checking_data: &mut CheckingData<T, M>,
-		) -> Self::ExpressionResult {
-			match self {
-				TypeOrSynthesisable::Type(ty) => ty,
-				TypeOrSynthesisable::Expression(expr, _) => {
-					TExpr::synthesise_expression(expr, environment, checking_data)
-				}
-			}
-		}
+	// 	fn synthesise_condition<T: crate::ReadFromFS>(
+	// 		self,
+	// 		environment: &mut Environment,
+	// 		checking_data: &mut CheckingData<T, M>,
+	// 	) -> Self::ExpressionResult {
+	// 		match self {
+	// 			TypeOrSynthesisable::Type(ty) => ty,
+	// 			TypeOrSynthesisable::Expression(expr, _) => {
+	// 				M::synthesise_expression(expr, TypeId::ANY_TYPE, environment, checking_data)
+	// 			}
+	// 		}
+	// 	}
 
-		fn conditional_expression_result(
-			condition: TypeId,
-			truthy_result: Self::ExpressionResult,
-			falsy_result: Self::ExpressionResult,
-			types: &mut TypeStore,
-		) -> Self::ExpressionResult {
-			types.new_conditional_type(condition, truthy_result, falsy_result)
-		}
+	// 	fn conditional_expression_result(
+	// 		condition: TypeId,
+	// 		truthy_result: Self::ExpressionResult,
+	// 		falsy_result: Self::ExpressionResult,
+	// 		types: &mut TypeStore,
+	// 	) -> Self::ExpressionResult {
+	// 		types.new_conditional_type(condition, truthy_result, falsy_result)
+	// 	}
 
-		fn default_result() -> Self::ExpressionResult {
-			unreachable!()
-		}
-	}
+	// 	fn default_result() -> Self::ExpressionResult {
+	// 		unreachable!()
+	// 	}
+	// }
 
 	match operator {
 		Logical::And => Ok(environment.new_conditional_context(
 			lhs,
-			TypeOrSynthesisable::Expression(rhs, PhantomData::default()),
-			Some(TypeOrSynthesisable::Type(lhs)),
+			|env: &mut Environment, data: &mut CheckingData<T, M>| {
+				M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+			},
+			Some(|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs),
 			checking_data,
 		)),
 		Logical::Or => Ok(environment.new_conditional_context(
 			lhs,
-			TypeOrSynthesisable::Type(lhs),
-			Some(TypeOrSynthesisable::Expression(rhs, PhantomData::default())),
+			|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs,
+			Some(|env: &mut Environment, data: &mut CheckingData<T, M>| {
+				M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+			}),
 			checking_data,
 		)),
 		Logical::NullCoalescing => {
@@ -397,8 +398,10 @@ pub fn evaluate_logical_operation_with_expression<
 			)?;
 			Ok(environment.new_conditional_context(
 				is_lhs_null,
-				TypeOrSynthesisable::Expression(rhs, PhantomData::default()),
-				Some(TypeOrSynthesisable::Type(lhs)),
+				|env: &mut Environment, data: &mut CheckingData<T, M>| {
+					M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+				},
+				Some(|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs),
 				checking_data,
 			))
 		}

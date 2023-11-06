@@ -102,12 +102,11 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExis
 		environment: &mut Context<U>,
 		types: &mut TypeStore,
 	) -> Self::Return {
+		use crate::behavior::functions::MethodKind;
 		match func.get_kind() {
-			crate::MethodKind::Get => Property::Getter(Box::new(func_ty)),
-			crate::MethodKind::Set => Property::Setter(Box::new(func_ty)),
-			crate::MethodKind::Async
-			| crate::MethodKind::Generator { .. }
-			| crate::MethodKind::Plain => {
+			MethodKind::Get => Property::Getter(Box::new(func_ty)),
+			MethodKind::Set => Property::Setter(Box::new(func_ty)),
+			MethodKind::Async | MethodKind::Generator { .. } | MethodKind::Plain => {
 				let id = func_ty.id;
 				types.functions.insert(id, func_ty);
 				let ty = types.register_type(Type::Function(id, Default::default()));
@@ -129,7 +128,7 @@ pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 
 	fn id(&self, source_id: SourceId) -> FunctionId;
 
-	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
+	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
 	fn type_parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
@@ -143,7 +142,7 @@ pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 		checking_data: &mut CheckingData<T, M>,
 	) -> Option<TypeId>;
 
-	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESIZING THEM**
+	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
 	fn parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
@@ -162,6 +161,10 @@ pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> Option<(TypeId, SpanWithSource)>;
+
+	fn location(&self) -> Option<String> {
+		None
+	}
 }
 
 struct ArrowFunction {

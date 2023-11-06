@@ -130,19 +130,6 @@ impl TypeStore {
 		&self.types[id.0 as usize]
 	}
 
-	pub fn new_any_parameter<S: ContextType>(&mut self, environment: &mut Context<S>) -> TypeId {
-		// if let GeneralContext::Syntax(env) = environment.into_general_context() {
-		// 	// TODO not sure about this:
-		// 	if environment.context_type.is_dynamic_boundary() {
-		// 		crate::utils::notify!("TODO is context different in the param synthesis?");
-
-		// 		environment.bases.mutable_bases.insert(id, (inference_boundary, TypeId::ANY_TYPE));
-		// 		return id;
-		// 	}
-		// }
-		TypeId::ANY_TYPE
-	}
-
 	pub fn new_or_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)

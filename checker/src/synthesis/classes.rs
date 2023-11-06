@@ -104,7 +104,7 @@ pub(super) fn synthesise_class_declaration<
 						let ty = environment.new_function(
 							checking_data,
 							constructor,
-							crate::RegisterAsType,
+							crate::behavior::functions::RegisterAsType,
 						);
 
 						class_constructor = Some(ty);
@@ -125,7 +125,7 @@ pub(super) fn synthesise_class_declaration<
 						let property = environment.new_function(
 							checking_data,
 							function,
-							crate::RegisterOnExistingObject,
+							crate::behavior::functions::RegisterOnExistingObject,
 						);
 
 						if static_kw.is_some() {

@@ -18,15 +18,17 @@ pub mod type_annotations;
 pub mod variables;
 
 use block::synthesise_block;
-use parser::PropertyKey;
+use parser::{ASTNode, PropertyKey};
 use source_map::SourceId;
 
 use crate::{
 	behavior::modules::Exported,
 	context::{environment, Context, ContextType, Names},
 	types::TypeStore,
-	Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
+	CheckingData, Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
+
+use self::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 
 pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
 	property_key: &PropertyKey<P>,
@@ -91,6 +93,7 @@ impl crate::ASTImplementation for EznoParser {
 	type DefinitionFile = parser::TypeDefinitionModule;
 	type TypeAnnotation = parser::TypeAnnotation;
 	type TypeParameter = parser::GenericTypeConstraint;
+	type Expression = parser::Expression;
 
 	fn module_from_string(
 		source_id: SourceId,
@@ -110,13 +113,26 @@ impl crate::ASTImplementation for EznoParser {
 			.map_err(|err| (err, source_id))
 	}
 
-	fn synthesize_module<T: crate::ReadFromFS>(
+	fn synthesise_module<T: crate::ReadFromFS>(
 		module: &Self::Module,
 		source_id: SourceId,
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
 		synthesise_block(&module.items, module_environment, checking_data)
+	}
+
+	fn synthesise_expression<U: crate::ReadFromFS>(
+		expression: &Self::Expression,
+		expected: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<U, Self>,
+	) -> TypeId {
+		synthesise_expression(expression, environment, checking_data)
+	}
+
+	fn expression_position(expression: &Self::Expression) -> source_map::Span {
+		ASTNode::get_position(expression).clone()
 	}
 
 	fn type_definition_file<T: crate::ReadFromFS>(
@@ -129,6 +145,14 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str {
 		parameter.name()
+	}
+
+	fn synthesise_type_annotation<T: crate::ReadFromFS>(
+		annotation: &Self::TypeAnnotation,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		synthesise_type_annotation(annotation, environment, checking_data)
 	}
 }
 
@@ -143,7 +167,7 @@ pub mod interactive {
 	};
 
 	use super::{
-		block::{synthesise_block, synthesize_declaration},
+		block::{synthesise_block, synthesise_declaration},
 		expressions::{synthesise_expression, synthesise_multiple_expression},
 		statements::synthesise_statement,
 	};
@@ -160,13 +184,8 @@ pub mod interactive {
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let entry_point = PathBuf::from("CLI");
-			let mut checking_data = CheckingData::new(
-				Default::default(),
-				resolver,
-				entry_point,
-				Default::default(),
-				None,
-			);
+			let mut checking_data =
+				CheckingData::new(Default::default(), resolver, Default::default(), None);
 
 			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
@@ -181,7 +200,7 @@ pub mod interactive {
 			&mut self,
 			item: &parser::Module,
 		) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
-			let source = self.checking_data.modules.entry_point;
+			let source = self.checking_data.modules.entry_point.unwrap();
 			let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
 				crate::Scope::PassThrough { source },
 				&mut self.checking_data,
@@ -227,7 +246,7 @@ pub mod interactive {
 		}
 
 		pub fn get_source_id(&self) -> SourceId {
-			self.checking_data.modules.entry_point
+			self.checking_data.modules.entry_point.unwrap()
 		}
 	}
 }

@@ -36,7 +36,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 				}
 			}
 			StatementOrDeclaration::Declaration(declaration) => {
-				synthesize_declaration(declaration, environment, checking_data)
+				synthesise_declaration(declaration, environment, checking_data)
 			}
 		}
 	}
@@ -55,7 +55,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 	}
 }
 
-pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
+pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 	declaration: &Declaration,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -72,6 +72,7 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 				position.clone(),
 				constructor,
 				&mut checking_data.types,
+				None,
 			);
 			if let Err(err) = result {
 				checking_data.diagnostics_container.add_error(TypeCheckError::ReDeclaredVariable {

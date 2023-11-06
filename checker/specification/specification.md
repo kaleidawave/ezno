@@ -639,6 +639,21 @@ const c = b;
 - Expected false, found true
 - Expected string, found false
 
+#### Set property with key
+
+```ts
+const obj = { a: 2 }
+
+function setProperty(key: string, value) {
+	obj[key] = value;
+}
+
+setProperty("b", 6)
+obj satisfies string;
+```
+
+- Expected string, found {"a": 2, "b": 6, }
+
 ### Control flow
 
 #### Resolving conditional
@@ -896,6 +911,48 @@ try {
 
 - Expected string, found 3
 
+### Types
+
+#### Non existent type
+
+```ts
+type X = number;
+
+const a: Y = 2;
+```
+
+- Cannot find type Y
+
+#### Type has no generics
+
+```ts
+type X = number;
+
+const a: X<number> = 2;
+```
+
+- Type 'X' has no generic parameters
+
+#### Type alias with type parameters
+
+```ts
+type X<T> = T;
+
+(2 satisfies X<string>);
+```
+
+- Expected string, found 2
+
+#### Type annotation missing type arguments
+
+```ts
+type X<T> = T;
+
+(2 satisfies X);
+```
+
+- Type X requires type arguments
+
 ### Imports and exports
 
 #### Import and export named
@@ -957,7 +1014,7 @@ import { MyNumber } from "./types";
 export type MyNumber = string;
 ```
 
-- Expected string, found 2
+- Expected MyNumber, found 2
 
 #### Export let
 

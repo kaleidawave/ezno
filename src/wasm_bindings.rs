@@ -8,7 +8,7 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = build)]
-pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String, minify: bool) -> JsValue {
+pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify: bool) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
@@ -28,7 +28,7 @@ pub fn build_wasm(fs_resolver_js: &js_sys::Function, entry_path: String, minify:
 }
 
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm(fs_resolver_js: &js_sys::Function, entry_path: String) -> JsValue {
+pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {

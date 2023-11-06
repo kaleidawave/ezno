@@ -9,7 +9,7 @@ buildTest()
 
 function checkTest() {
 	const example = "const x: 4 = 2;"
-	const output = check((_path) => example, "input.js");
+	const output = check("input.js", (_path) => example);
 	deepStrictEqual(output, [
 		{
 			type: "PositionWithAdditionLabels",

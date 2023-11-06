@@ -14,7 +14,7 @@ use crate::{behavior::variables::VariableWithValue, synthesis::property_key_as_t
 
 use crate::{
 	behavior::{
-		assignments::{Assignable, SynthesisableExpression},
+		assignments::Assignable,
 		functions::{RegisterAsType, RegisterOnExistingObject},
 		objects::ObjectBuilder,
 		operations::{
@@ -29,13 +29,14 @@ use crate::{
 	events::Event,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
 	types::{properties::PropertyKind, Constant, TypeId},
-	AssignmentKind, CheckingData, Environment, Instance, SpecialExpressions,
+	CheckingData, Environment, Instance, SpecialExpressions,
 };
 
 use super::{
 	assignments::{synthesise_access_to_reference, synthesise_lhs_of_assignment_to_reference},
 	extensions::{is_expression::synthesise_is_expression, jsx::synthesise_jsx_root},
 	type_annotations::synthesise_type_annotation,
+	EznoParser,
 };
 
 pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
@@ -161,10 +162,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
 				}
 				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(
-						&**expr,
-						PhantomData::default(),
-					)
+					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
 				}
 			});
 			let tag =
@@ -281,7 +279,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					return TypeId::UNDEFINED_TYPE;
 				}
 				UnaryOperator::Delete => {
-					// TODO synthesize anyway? and use mappings
+					// TODO synthesise anyway? and use mappings
 					// TODO more expressions
 					match &**operand {
 						Expression::PropertyAccess { parent, property, is_optional, position } => {
@@ -390,7 +388,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					let operator =
 						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
 							direction,
-							crate::AssignmentReturnStatus::Previous,
+							crate::behavior::assignments::AssignmentReturnStatus::Previous,
 						);
 
 					let assignment_span = position.clone().with_source(environment.get_source());
@@ -601,43 +599,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			Instance::RValue(environment.new_conditional_context(
 				condition,
-				truthy_result.as_ref(),
-				Some(falsy_result.as_ref()),
+				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+					synthesise_expression(&truthy_result, env, data)
+				},
+				Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+					synthesise_expression(&falsy_result, env, data)
+				}),
 				checking_data,
 			))
-
-			// TODO narrowing here based on condition and conditional events
-			// let true_result = synthesise_expression(truthy_result, environment, checking_data);
-			// let false_result = synthesise_expression(falsy_result, environment, checking_data);
-
-			// let value = environment.is_type_truthy_falsy(condition, &checking_data.types);
-
-			// match value {
-			// 	crate::TruthyFalsy::Decidable(value) => {
-			// 		// TODO report issue about LHS RHS unnecessary
-			// 		Instance::RValue(match value {
-			// 			true => true_result,
-			// 			false => false_result,
-			// 		})
-			// 	}
-			// 	crate::TruthyFalsy::Unknown => {
-			// 		let constructor =
-			// 			crate::Type::Constructor(crate::types::Constructor::ConditionalResult {
-			// 				condition,
-			// 				truthy_result: true_result,
-			// 				else_result: false_result,
-			// 				result_union: TypeId::ERROR_TYPE,
-			// 			});
-			// 		crate::utils::notify!("Here TODO conditional events");
-			// 		Instance::RValue(checking_data.types.register_type(constructor))
-			// 	}
-			// }
-
-			// TypeId::build_union_from_type_iterator(IntoIterator::into_iter([
-			// 	truthy_instance,
-			// 	falsy_instance,
-			// ]))
-			// .into()
 		}
 		Expression::ExpressionFunction(function) => {
 			Instance::RValue(environment.new_function(checking_data, function, RegisterAsType))
@@ -706,8 +675,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 fn operator_to_assignment_kind(
 	operator: &parser::operators::BinaryAssignmentOperator,
-) -> crate::AssignmentKind {
-	use crate::AssignmentKind;
+) -> crate::behavior::assignments::AssignmentKind {
+	use crate::behavior::assignments::AssignmentKind;
 	use parser::operators::BinaryAssignmentOperator;
 
 	match operator {
@@ -869,20 +838,6 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 		});
 		todo!()
 		// environment.new_property(this, under, new, false);
-	}
-}
-
-impl SynthesisableExpression<super::EznoParser> for Expression {
-	fn synthesise_expression<U: crate::ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<U, super::EznoParser>,
-	) -> TypeId {
-		synthesise_expression(self, environment, checking_data)
-	}
-
-	fn get_position(&self) -> &source_map::Span {
-		ASTNode::get_position(self)
 	}
 }
 

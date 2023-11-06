@@ -32,7 +32,7 @@ use crate::{
 	synthesis::functions::type_function_reference,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments, properties::Property,
-		Constant, PolyNature, StructureGenerics, Type,
+		substitute, Constant, PolyNature, StructureGenerics, Type,
 	},
 	types::{Constructor, TypeId},
 	CheckingData, Environment,
@@ -70,22 +70,38 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::BooleanLiteral(value, _) => {
 			checking_data.types.new_constant_type(Constant::Boolean(value.clone()))
 		}
-		TypeAnnotation::Name(name, _) => match name.as_str() {
-			"any" => checking_data.types.new_any_parameter(environment),
+		TypeAnnotation::Name(name, pos) => match name.as_str() {
+			"any" => TypeId::ANY_TYPE,
 			"this" => todo!(), // environment.get_value_of_this(&mut checking_data.types),
 			"self" => TypeId::THIS_ARG,
 			name => {
 				match environment.get_type_from_name(name) {
 					Some(ty) => {
-						// TODO warn if it requires parameters. e.g. Array
-						// if let Type::AliasTo { parameters: Some(_), .. }
-						// | Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
-						// {
-						// 	todo!("Error");
-						// }
-						ty
+						// Warn if it requires parameters. e.g. Array
+						if let Type::AliasTo { parameters: Some(_), .. }
+						| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
+						{
+							// TODO check defaults...
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::TypeNeedsTypeArguments(
+									name,
+									pos.clone().with_source(environment.get_source()),
+								),
+							);
+							TypeId::ANY_TYPE
+						} else {
+							ty
+						}
 					}
-					None => TypeId::ERROR_TYPE,
+					None => {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::CannotFindType(
+								name,
+								pos.clone().with_source(environment.get_source()),
+							),
+						);
+						TypeId::ERROR_TYPE
+					}
 				}
 			}
 		},
@@ -124,11 +140,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				_ => {}
 			}
 
-			let inner_type = environment.get_type_from_name(name).unwrap();
+			let inner_type_id = environment.get_type_from_name(name).unwrap();
+			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
-			if let Some(parameters) =
-				checking_data.types.get_type_by_id(inner_type).get_parameters()
-			{
+			if let Some(parameters) = inner_type.get_parameters() {
+				let is_type_alias_to =
+					if let Type::AliasTo { to, .. } = inner_type { Some(*to) } else { None };
 				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
 					map_vec::Map::new();
 
@@ -195,15 +212,20 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					type_arguments.insert(parameter, (argument, with_source));
 				}
 
-				let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-					on: inner_type,
-					arguments: StructureGenericArguments {
-						type_arguments,
-						closures: Default::default(),
-					},
-				}));
+				// Eagerly specialise for type alias. TODO don't do for object types...
+				if let Some(on) = is_type_alias_to {
+					substitute(on, &mut type_arguments, environment, &mut checking_data.types)
+				} else {
+					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+						on: inner_type_id,
+						arguments: StructureGenericArguments {
+							type_arguments,
+							closures: Default::default(),
+						},
+					}));
 
-				checking_data.types.register_type(ty)
+					checking_data.types.register_type(ty)
+				}
 			} else {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::TypeHasNoGenericParameters(

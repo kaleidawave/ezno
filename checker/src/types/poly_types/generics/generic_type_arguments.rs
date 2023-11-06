@@ -65,6 +65,7 @@ pub(crate) struct FunctionTypeArguments {
 	pub local_arguments: SmallMap<TypeId, (TypeId, SpanWithSource)>,
 	pub closure_id: Option<ClosureId>,
 }
+
 impl FunctionTypeArguments {
 	pub(crate) fn set_id_from_reference(
 		&mut self,
@@ -151,6 +152,30 @@ impl TypeArgumentStore for FunctionTypeArguments {
 
 	fn is_empty(&self) -> bool {
 		self.closure_id.is_none() && self.local_arguments.len() == 0
+	}
+}
+
+// TODO temp: for type alias specialisation
+impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
+	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
+		self.get(&id).map(|(value, pos)| *value)
+	}
+
+	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
+		// ???
+		self.get_structure_argument(id)
+	}
+
+	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
+		None
+	}
+
+	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+		todo!("This shouldn't be needed");
+	}
+
+	fn is_empty(&self) -> bool {
+		false
 	}
 }
 

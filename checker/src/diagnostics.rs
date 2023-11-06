@@ -168,7 +168,7 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{behavior, context::AssignmentError, types::calling::FunctionCallingError};
-	use source_map::SpanWithSource;
+	use source_map::{Span, SpanWithSource};
 
 	use crate::Diagnostic;
 	use std::path;
@@ -269,8 +269,19 @@ mod defined_errors_and_warnings {
 		NotDefinedOperator(&'static str, SpanWithSource),
 		PropertyNotWriteable(SpanWithSource),
 		NotTopLevelImport(SpanWithSource),
-		DoubleDefaultExport(source_map::BaseSpan<source_map::SourceId>),
-		CannotOpenFile(crate::CouldNotOpenFile, source_map::BaseSpan<source_map::SourceId>),
+		DoubleDefaultExport(SpanWithSource),
+		CannotOpenFile {
+			file: crate::CouldNotOpenFile,
+			position: Option<SpanWithSource>,
+		},
+		VariableNotDefinedInContext {
+			variable: &'a str,
+			expected_context: &'a str,
+			current_context: String,
+			position: SpanWithSource,
+		},
+		TypeNeedsTypeArguments(&'a str, SpanWithSource),
+		CannotFindType(&'a str, SpanWithSource),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -456,26 +467,6 @@ mod defined_errors_and_warnings {
 						kind: super::DiagnosticKind::Error,
 					}
 				}
-				// TypeCheckError::CannotAssignToConstant {
-				// 	variable_name,
-				// 	variable_position,
-				// 	assignment_position,
-				// } => Diagnostic::PositionWithAdditionLabels {
-				// 	reason: format!("Cannot reassign to constant variable '{}'", variable_name),
-				// 	position: assignment_position,
-				// 	labels: vec![(
-				// 		"Constant variable defined here".to_owned(),
-				// 		Some(variable_position),
-				// 	)],
-				// 	kind: super::DiagnosticKind::Error,
-				// },
-				// TypeCheckError::CannotAssignToFrozen { variable_type, assignment_position } => {
-				// 	Diagnostic::Position {
-				// 		reason: format!("{} is frozen", variable_type),
-				// 		position: assignment_position,
-				// 		kind: super::DiagnosticKind::Error,
-				// 	}
-				// }
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
 				TypeCheckError::InvalidMathematicalOperation(
@@ -513,24 +504,6 @@ mod defined_errors_and_warnings {
 					position: at,
 					kind: super::DiagnosticKind::Error,
 				},
-				// TypeCheckError::NotWritable { pos } => Diagnostic::Position {
-				// 	reason: format!("Cannot assign to immutable property"),
-				// 	position: pos,
-				// 	kind: super::DiagnosticKind::Error,
-				// },
-				// TypeCheckError::CannotAssign { pos, value_pos, constraint, to } => {
-				// 	Diagnostic::PositionWithAdditionLabels {
-				// 		reason: format!("Cannot assign {} to property of type {}", to, constraint),
-				// 		position: pos,
-				// 		labels: vec![(format!("Expression has type {to}"), Some(value_pos))],
-				// 		kind: super::DiagnosticKind::Error,
-				// 	}
-				// }
-				// TypeCheckError::ReDeclaredVariable { name, pos } => Diagnostic::Position {
-				// 	reason: format!("Cannot redeclare {} in scope", name),
-				// 	position: pos,
-				// 	kind: super::DiagnosticKind::Error,
-				// },
 				TypeCheckError::ReDeclaredVariable { name, position: pos } => todo!(),
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
@@ -588,11 +561,35 @@ mod defined_errors_and_warnings {
 					kind: super::DiagnosticKind::Error,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile(_, position) => Diagnostic::Position {
-					reason: "Cannot find file".to_owned(),
+				TypeCheckError::CannotOpenFile { file, position } => if let Some(position) = position {
+					Diagnostic::Position {
+						reason: "Cannot find file".to_owned(),
+						position,
+						kind: super::DiagnosticKind::Error,
+					}
+				} else {
+					Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind: super::DiagnosticKind::Error }
+				},
+				TypeCheckError::VariableNotDefinedInContext {
+					variable,
+					expected_context,
+					current_context,
+					position,
+				} => Diagnostic::Position {
+					reason: format!("{variable} is only available on the {expected_context}, currently in {current_context}"),
 					position,
 					kind: super::DiagnosticKind::Error,
 				},
+				TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
+					reason: format!("Type {ty} requires type arguments"),
+					position,
+					kind: super::DiagnosticKind::Error,
+				},
+				TypeCheckError::CannotFindType(ty, position) => Diagnostic::Position {
+					reason: format!("Cannot find type {ty}"),
+					position,
+					kind: super::DiagnosticKind::Error,
+				}
 			};
 			diagnostic
 		}

@@ -120,7 +120,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> B {
 	/// TODO check members declared before
-	fn synthesize_members<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
+	fn synthesise_members<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
 		members: &[Decorated<InterfaceMember>],
 		environment: &mut Context<crate::context::environment::Syntax<'_>>,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -190,7 +190,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
-					crate::utils::notify!("Indexer {:?}", key);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
 					behavior.register(
 						PropertyOrType::Type(key),
@@ -250,13 +249,13 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					// TODO set constraint by modifying type
 					environment.named_types.insert(parameter.name().to_owned(), *ty);
 				}
-				synthesize_members(signatures, environment, checking_data, &mut behavior);
+				synthesise_members(signatures, environment, checking_data, &mut behavior);
 			},
 		);
 
 		behavior
 	} else {
-		synthesize_members(signatures, environment, checking_data, &mut behavior);
+		synthesise_members(signatures, environment, checking_data, &mut behavior);
 		behavior
 	}
 }

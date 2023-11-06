@@ -251,7 +251,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		let value_ty = super::expressions::synthesise_expression(value, environment, checking_data);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
-			crate::check_variable_initialization(
+			crate::behavior::variables::check_variable_initialization(
 				(var_ty, ta_pos),
 				(value_ty, value.get_position().clone().with_source(environment.get_source())),
 				environment,

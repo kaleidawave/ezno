@@ -4,7 +4,8 @@ use std::mem;
 
 use parser::{
 	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBase, FunctionBased,
-	GenericTypeConstraint, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
+	GenericTypeConstraint, Statement, StatementOrDeclaration, TypeAnnotation, VariableField,
+	VariableIdentifier, WithComment,
 };
 use source_map::{SourceId, Span, SpanWithSource};
 
@@ -30,6 +31,10 @@ trait FunctionBasedItem: FunctionBased {
 	type ObjectTypeId;
 
 	fn get_kind(func: &FunctionBase<Self>) -> MethodKind;
+
+	fn location(func: &FunctionBase<Self>) -> Option<String> {
+		None
+	}
 }
 
 // TODO generic for these two
@@ -53,6 +58,27 @@ impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
 			(is_async, true) => MethodKind::Generator { is_async },
 			(true, false) => MethodKind::Async,
 			(false, false) => MethodKind::Plain,
+		}
+	}
+
+	fn location(func: &FunctionBase<Self>) -> Option<String> {
+		match &func.header {
+			parser::FunctionHeader::VirginFunctionHeader { location, .. }
+			| parser::FunctionHeader::ChadFunctionHeader { location, .. } => {
+				if let Some(parser::functions::FunctionLocationModifier::Server(_)) = location {
+					Some("server".to_owned())
+				} else {
+					// if let Some(StatementOrDeclaration::Statement(Statement::Expression(expr))) =
+					// 	func.body.0.first()
+					// {
+					// 	if matches!(expr, parser::expressions::MultipleExpression::Single(parser::Expression::StringLiteral(s, _, _)) if s == "use server")
+					// 	{
+					// 		return Some("server".to_owned());
+					// 	}
+					// }
+					None
+				}
+			}
 		}
 	}
 }
@@ -173,6 +199,10 @@ where
 
 	fn get_kind(&self) -> MethodKind {
 		U::get_kind(self)
+	}
+
+	fn location(&self) -> Option<String> {
+		U::location(self)
 	}
 }
 

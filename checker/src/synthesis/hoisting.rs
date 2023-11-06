@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
 	functions::type_function_reference, type_annotations::synthesise_type_annotation,
-	variables::register_variable,
+	variables::register_variable, EznoParser,
 };
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
@@ -67,19 +67,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					idx_to_types.insert(interface.on.position.start, ty);
 				}
 				parser::Declaration::TypeAlias(alias) => {
-					if alias.type_name.type_parameters.is_some() {
-						checking_data.raise_unimplemented_error(
-							"type alias with generic type parameters",
-							alias.get_position().clone().with_source(environment.get_source()),
-						)
-					}
-					let to = synthesise_type_annotation(
+					environment.new_alias(
+						&alias.type_name.name,
+						alias.type_name.type_parameters.as_deref(),
 						&alias.type_expression,
-						environment,
 						checking_data,
 					);
-
-					environment.new_alias(&alias.type_name.name, to, &mut checking_data.types);
 				}
 				parser::Declaration::Import(import) => {
 					let kind = match &import.kind {
@@ -152,22 +145,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								);
 							}
 							Exportable::TypeAlias(alias) => {
-								let to = synthesise_type_annotation(
-									&alias.type_expression,
-									environment,
-									checking_data,
-								);
-
-								environment.new_alias(
+								let export = environment.new_alias::<_, EznoParser>(
 									&alias.type_name.name,
-									to,
-									&mut checking_data.types,
+									alias.type_name.type_parameters.as_deref(),
+									&alias.type_expression,
+									checking_data,
 								);
 
 								if let crate::Scope::Module { ref mut exported, .. } =
 									environment.context_type.kind
 								{
-									exported.named_types.push((alias.type_name.name.clone(), to));
+									exported
+										.named_types
+										.push((alias.type_name.name.clone(), export));
 								}
 							}
 							_ => {}
@@ -194,7 +184,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					hoist_variable_declaration(declaration, environment, checking_data)
 				}
 				parser::Declaration::Function(func) => {
-					// TODO unsynthesized function? ...
+					// TODO unsynthesised function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
 						mutability: crate::behavior::variables::VariableMutability::Constant,
@@ -230,7 +220,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						base.constant_id,
 					);
 
-					let behavior = crate::context::VariableRegisterBehavior::Declare { base };
+					let behavior =
+						crate::context::VariableRegisterBehavior::Declare { base, context: None };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
 						func.get_position().clone().with_source(environment.get_source()),
@@ -274,6 +265,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						// TODO warning here
 						let behavior = crate::context::VariableRegisterBehavior::Declare {
 							base: constraint.unwrap_or(TypeId::ANY_TYPE),
+							context: None,
 						};
 
 						register_variable(
@@ -292,7 +284,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						match exported {
 							Exportable::Class(_) => {}
 							Exportable::Function(func) => {
-								// TODO unsynthesized function? ...
+								// TODO unsynthesised function? ...
 								let mutability =
 									crate::behavior::variables::VariableMutability::Constant;
 								let behavior = crate::context::VariableRegisterBehavior::Register {

@@ -21,7 +21,7 @@ import { build } from "ezno/initialised";
 
 // Just use a local string. Could use readFileSync for FS access
 const fs_handler = (_path) => "const x = !t ? 4 : 5;";
-console.dir(build(fs_handler, "input.js"), { depth: 5 })
+console.dir(build("input.js", fs_handler), { depth: 5 })
 ```
 
 For the web, `init()` is needed to load the WASM before calling any functions.
@@ -31,7 +31,7 @@ import { init, build } from "ezno";
 
 await init();
 
-const res = build(() => "const x = 2 + 5;", "input.js");
+const res = build("input.js", () => "const x = 2 + 5;");
 
 document.querySelector('#app').innerHTML = `<pre>${JSON.stringify(res)}</pre>`;
 ```

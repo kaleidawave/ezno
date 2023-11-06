@@ -22,7 +22,7 @@ use crate::{
 		functions::{ClosureChain, ClosureId},
 		modules::Exported,
 		operations::MathematicalAndBitwise,
-		variables::VariableMutability,
+		variables::{VariableMutability, VariableOrImport},
 	},
 	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
@@ -33,7 +33,6 @@ use crate::{
 		Constructor, FunctionKind, FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
 	ASTImplementation, CheckingData, Constant, FunctionId, ReadFromFS, VariableId,
-	VariableOrImport,
 };
 
 use self::{
@@ -190,6 +189,7 @@ pub enum VariableRegisterBehavior {
 	Declare {
 		/// *wrapped in open poly type*
 		base: TypeId,
+		context: Option<String>,
 	},
 	FunctionParameter {
 		/// TODO what happens to it
@@ -309,19 +309,21 @@ impl<T: ContextType> Context<T> {
 		self.variable_names.insert(id, name.to_owned());
 
 		let (existing_variable, ty) = match behavior {
-			VariableRegisterBehavior::Declare { base } => {
-				return self.declare_variable(name, declared_at, base, types);
+			VariableRegisterBehavior::Declare { base, context } => {
+				return self.declare_variable(name, declared_at, base, types, context);
 			}
 			VariableRegisterBehavior::CatchVariable { ty } => {
 				// TODO
 				let kind = VariableMutability::Constant;
-				let variable = VariableOrImport::Variable { declared_at, mutability: kind };
+				let variable =
+					VariableOrImport::Variable { declared_at, mutability: kind, context: None };
 				self.variables.insert(name.to_owned(), variable);
 				self.facts.variable_current_value.insert(id, ty);
 				(false, ty)
 			}
 			VariableRegisterBehavior::Register { mutability } => {
-				let variable = VariableOrImport::Variable { mutability, declared_at };
+				let variable =
+					VariableOrImport::Variable { mutability, declared_at, context: None };
 				let entry = self.variables.entry(name.to_owned());
 				if let Entry::Vacant(empty) = entry {
 					empty.insert(variable);
@@ -340,7 +342,8 @@ impl<T: ContextType> Context<T> {
 				} else {
 					VariableMutability::Constant
 				};
-				let variable = VariableOrImport::Variable { mutability, declared_at };
+				let variable =
+					VariableOrImport::Variable { mutability, declared_at, context: None };
 				let entry = self.variables.entry(name.to_owned());
 				if let Entry::Vacant(empty) = entry {
 					let existing_variable = self.variables.insert(name.to_owned(), variable);
@@ -355,7 +358,7 @@ impl<T: ContextType> Context<T> {
 							))
 						}
 					} else {
-						let fixed_to = types.new_any_parameter(self);
+						let fixed_to = TypeId::ANY_TYPE;
 						types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::Parameter { fixed_to },
 						))
@@ -371,6 +374,7 @@ impl<T: ContextType> Context<T> {
 				let variable = VariableOrImport::Variable {
 					mutability: VariableMutability::Constant,
 					declared_at,
+					context: None,
 				};
 				let entry = self.variables.entry(name.to_owned());
 				self.facts.variable_current_value.insert(id, value);
@@ -438,6 +442,7 @@ impl<T: ContextType> Context<T> {
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
+					Scope::TypeAlias => "type alias",
 					Scope::DefinitionModule { .. } => "definition module",
 					Scope::PassThrough { .. } => "pass through",
 				}
@@ -689,6 +694,7 @@ impl<T: ContextType> Context<T> {
 				Scope::Conditional { .. }
 				| Scope::Looping { .. }
 				| Scope::TryBlock { .. }
+				| Scope::TypeAlias
 				| Scope::Block {}
 				| Scope::PassThrough { .. }
 				| Scope::DefinitionModule { .. }
@@ -900,6 +906,7 @@ impl<T: ContextType> Context<T> {
 				parent: T::as_general_context(self),
 				free_variables: Default::default(),
 				closed_over_references: Default::default(),
+				context: None,
 			},
 			can_use_this,
 			// TODO maybe based on something in the AST
@@ -934,13 +941,15 @@ impl<T: ContextType> Context<T> {
 			constructor_on: None,
 		});
 
+		use crate::behavior::functions::MethodKind;
+
 		match function.get_kind() {
-			crate::MethodKind::Get | crate::MethodKind::Set => {
+			MethodKind::Get | MethodKind::Set => {
 				// TODO assert parameter length?
 			}
-			crate::MethodKind::Generator { is_async } => todo!(),
-			crate::MethodKind::Async => todo!(),
-			crate::MethodKind::Plain => {}
+			MethodKind::Generator { is_async } => todo!(),
+			MethodKind::Async => todo!(),
+			MethodKind::Plain => {}
 		}
 
 		let type_parameters = function.type_parameters(&mut func_env, checking_data);
@@ -958,6 +967,8 @@ impl<T: ContextType> Context<T> {
 
 		// TODO temp
 		let returned = if !function.is_declare() {
+			func_env.context_type.context = F::location(function);
+
 			function.body(&mut func_env, checking_data);
 
 			let events = mem::take(&mut func_env.facts.events);
@@ -1130,6 +1141,7 @@ impl<T: ContextType> Context<T> {
 					parent: _,
 					free_variables: used_parent_references,
 					closed_over_references,
+					context: _,
 				},
 			can_use_this,
 			bases,
@@ -1176,6 +1188,7 @@ impl<T: ContextType> Context<T> {
 			}
 			// TODO Scope::Module ??
 			Scope::InterfaceEnvironment { .. }
+			| Scope::TypeAlias
 			| Scope::ClassEnvironment {}
 			| Scope::Block {}
 			| Scope::TryBlock {}
@@ -1296,13 +1309,13 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	/// TODO extends + parameters
-	pub fn new_interface<U: ASTImplementation>(
+	/// TODO extends
+	pub fn new_interface<M: ASTImplementation>(
 		&mut self,
 		name: &str,
 		nominal: bool,
-		parameters: Option<&[U::TypeParameter]>,
-		extends: Option<&[U::TypeAnnotation]>,
+		parameters: Option<&[M::TypeParameter]>,
+		extends: Option<&[M::TypeAnnotation]>,
 		position: SpanWithSource,
 		types: &mut TypeStore,
 	) -> TypeId {
@@ -1312,7 +1325,7 @@ impl<T: ContextType> Context<T> {
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
-						name: U::type_parameter_name(&parameter).to_owned(),
+						name: M::type_parameter_name(&parameter).to_owned(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
 					types.register_type(ty)
@@ -1321,7 +1334,7 @@ impl<T: ContextType> Context<T> {
 		});
 
 		if let Some(extends) = extends {
-			todo!("synthesize, fold into Type::And and create alias type")
+			todo!("synthesise, fold into Type::And and create alias type")
 		}
 
 		let ty = Type::NamedRooted { nominal, name: name.to_owned(), parameters };
@@ -1340,11 +1353,41 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	/// TODO parameters
-	pub fn new_alias(&mut self, name: &str, to: TypeId, types: &mut TypeStore) -> TypeId {
-		// TODO temp
-		let ty = Type::AliasTo { to, name: name.to_owned(), parameters: None };
-		let alias_ty = types.register_type(ty);
+	pub fn new_alias<U: crate::ReadFromFS, M: ASTImplementation>(
+		&mut self,
+		name: &str,
+		parameters: Option<&[M::TypeParameter]>,
+		to: &M::TypeAnnotation,
+		checking_data: &mut CheckingData<U, M>,
+	) -> TypeId {
+		let mut env = self.new_lexical_environment(Scope::TypeAlias);
+		let (parameters, to) = if let Some(parameters) = parameters {
+			let parameters = parameters
+				.iter()
+				.map(|parameter| {
+					let name = M::type_parameter_name(&parameter).to_owned();
+					let ty = Type::RootPolyType(PolyNature::Generic {
+						name: name.clone(),
+						eager_fixed: TypeId::ANY_TYPE,
+					});
+					let ty = checking_data.types.register_type(ty);
+					// TODO declare type
+					env.named_types.insert(name, ty);
+					ty
+				})
+				.collect();
+
+			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			(Some(parameters), to)
+		} else {
+			// TODO should just use self
+			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			(None, to)
+		};
+
+		// Works as an alias
+		let ty = Type::AliasTo { to, name: name.to_owned(), parameters };
+		let alias_ty = checking_data.types.register_type(ty);
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
 		if existing_type.is_some() {
@@ -1369,11 +1412,12 @@ impl<T: ContextType> Context<T> {
 		declared_at: SpanWithSource,
 		variable_ty: TypeId,
 		types: &mut TypeStore,
+		context: Option<String>,
 	) -> Result<TypeId, CannotRedeclareVariable<'a>> {
 		let id = crate::VariableId(declared_at.source, declared_at.start);
 
 		let kind = VariableMutability::Constant;
-		let variable = VariableOrImport::Variable { declared_at, mutability: kind };
+		let variable = VariableOrImport::Variable { declared_at, mutability: kind, context };
 		let entry = self.variables.entry(name.to_owned());
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);

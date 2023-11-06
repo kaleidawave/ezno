@@ -416,7 +416,11 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 			(name, checking_data.types.new_constant_type(crate::Constant::String(value.clone())))
 		}
 		JSXAttribute::Dynamic(name, expression, attribute_id) => {
-			// Do not care about the returned value at this point, just for synthesizing the type into the map
+			if let Expression::ExpressionFunction(_) = &**expression {
+				// TODO temp context
+				environment.context_type.context = Some("client".to_owned());
+			}
+			// Do not care about the returned value at this point, just for synthesising the type into the map
 			(name, synthesise_expression(expression, environment, checking_data))
 		}
 		JSXAttribute::BooleanAttribute(name, _) => (name, TypeId::TRUE),

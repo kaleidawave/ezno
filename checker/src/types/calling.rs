@@ -522,7 +522,7 @@ impl FunctionType {
 			mut type_restrictions,
 			mut locally_held_functions,
 			argument_position_and_parameter_idx: _,
-		} = self.synthesize_parameters::<E>(
+		} = self.synthesise_parameters::<E>(
 			arguments,
 			seeding_context,
 			environment,
@@ -775,7 +775,7 @@ impl FunctionType {
 		})
 	}
 
-	fn synthesize_parameters<E: CallCheckingBehavior>(
+	fn synthesise_parameters<E: CallCheckingBehavior>(
 		&self,
 		arguments: &[SynthesisedArgument],
 		mut seeding_context: SeedingContext,

@@ -1,7 +1,8 @@
 use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
-	behavior::modules::Exported, types::TypeId, CheckingData, Environment, GeneralContext,
-	SynthesisedModule,
+	behavior::modules::{Exported, SynthesisedModule},
+	types::TypeId,
+	CheckingData, Environment, GeneralContext,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
@@ -86,7 +87,7 @@ impl RootContext {
 			source,
 			exported: Exported::default(),
 		});
-		M::synthesize_module(&module, source, &mut environment, checking_data);
+		M::synthesise_module(&module, source, &mut environment, checking_data);
 
 		let crate::Scope::Module { exported, .. } = environment.context_type.kind else {
 			unreachable!()
