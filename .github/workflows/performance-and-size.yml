@@ -43,11 +43,11 @@ jobs:
 
       - name: Run checker performance
         run: |
-          curl -O https://gist.githubusercontent.com/kaleidawave/5dcb9ec03deef1161ebf0c9d6e4b88d8/raw/26c26e908a7c6b79a2e93627f1fefa7ffccbd389/demo.ts > demo.ts
+          curl -O https://gist.githubusercontent.com/kaleidawave/5dcb9ec03deef1161ebf0c9d6e4b88d8/raw/03156048e214af0ceee4005ba8b86f96690dcbb2/demo.ts > demo.ts
 
           echo "### Output">> $GITHUB_STEP_SUMMARY
           echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY
-          ./target/release/ezno check demo.ts >> $GITHUB_STEP_SUMMARY
+          ./target/release/ezno check demo.ts &>> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           
           echo "### Hyperfine">> $GITHUB_STEP_SUMMARY
