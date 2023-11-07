@@ -172,7 +172,14 @@ impl<'a> Environment<'a> {
 								checking_data,
 							)),
 						Reference::Property { on, with, publicity, span } => Ok(env
-							.set_property(on, with, publicity, new, &mut checking_data.types)?
+							.set_property(
+								on,
+								with,
+								publicity,
+								new,
+								&mut checking_data.types,
+								Some(span),
+							)?
 							.unwrap_or(new)),
 					}
 				}
@@ -769,6 +776,7 @@ impl<'a> Environment<'a> {
 		kind: PublicityKind,
 		new: TypeId,
 		types: &mut TypeStore,
+		setter_position: Option<SpanWithSource>,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
@@ -778,6 +786,7 @@ impl<'a> Environment<'a> {
 			self,
 			&mut CheckThings,
 			types,
+			setter_position,
 		)
 	}
 

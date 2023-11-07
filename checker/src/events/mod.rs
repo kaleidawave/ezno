@@ -73,6 +73,7 @@ pub enum Event {
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
 		publicity: PublicityKind,
+		position: Option<SpanWithSource>,
 	},
 
 	/// This includes closed over variables, anything dependent

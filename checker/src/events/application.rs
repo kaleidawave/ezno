@@ -76,7 +76,15 @@ pub(crate) fn apply_event(
 				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::Setter { on, under, new, reflects_dependency, initialization, publicity } => {
+		Event::Setter {
+			on,
+			under,
+			new,
+			reflects_dependency,
+			initialization,
+			publicity,
+			position,
+		} => {
 			let on = substitute(on, type_arguments, environment, types);
 			let under = substitute(under, type_arguments, environment, types);
 
@@ -118,10 +126,11 @@ pub(crate) fn apply_event(
 					};
 				target
 					.get_top_level_facts(environment)
-					.register_property(on, under, new, true, publicity);
+					.register_property(on, under, new, true, publicity, position);
 			} else {
 				let returned =
-					set_property(on, under, publicity, new, environment, target, types).unwrap();
+					set_property(on, under, publicity, new, environment, target, types, position)
+						.unwrap();
 
 				if let Some(id) = reflects_dependency {
 					type_arguments.set_id_from_reference(

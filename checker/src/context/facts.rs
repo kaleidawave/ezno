@@ -1,5 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use source_map::SpanWithSource;
+
 use crate::{
 	behavior::functions::ClosureId,
 	events::{Event, RootReference},
@@ -42,6 +44,7 @@ impl Facts {
 		to: Property,
 		register_setter_event: bool,
 		publicity: PublicityKind,
+		position: Option<SpanWithSource>,
 	) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.current_properties.entry(on).or_default().push((under, publicity, to.clone()));
@@ -53,6 +56,7 @@ impl Facts {
 				reflects_dependency: None,
 				initialization: true,
 				publicity,
+				position,
 			});
 		}
 	}
