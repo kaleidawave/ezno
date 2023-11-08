@@ -83,6 +83,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
+		position: SpanWithSource,
 	},
 	/// From a `throw ***` statement (or expression)
 	Throw(TypeId),

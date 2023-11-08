@@ -141,7 +141,7 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
+		Event::CallsType { on, with, reflects_dependency, timing, called_with_new, position } => {
 			let on = substitute(on, type_arguments, environment, types);
 
 			let with = with
