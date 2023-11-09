@@ -172,7 +172,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 					}
 				};
 			}
-			Event::Throw(_) => {
+			Event::Throw(_, _) => {
 				// TODO ReturnedTypeFromBlock::Thrown? however this does work
 				return ReturnedTypeFromBlock::Returned(TypeId::NEVER_TYPE);
 			}
@@ -188,7 +188,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
 	let mut new_events = Vec::new();
 	for event in events.into_iter() {
-		if let Event::Throw(value) = event {
+		if let Event::Throw(value, position) = event {
 			thrown.push(value);
 		} else {
 			// TODO nested grouping

@@ -61,8 +61,8 @@ impl Facts {
 		}
 	}
 
-	pub(crate) fn throw_value(&mut self, value: TypeId) {
-		self.events.push(Event::Throw(value));
+	pub(crate) fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
+		self.events.push(Event::Throw(value, position));
 	}
 
 	pub fn get_events(&self) -> &[Event] {

@@ -203,10 +203,10 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::Throw(thrown) => {
+		Event::Throw(thrown, position) => {
 			let substituted_thrown = substitute(thrown, type_arguments, environment, types);
 
-			target.get_top_level_facts(environment).throw_value(substituted_thrown);
+			target.get_top_level_facts(environment).throw_value(substituted_thrown, position);
 
 			if substituted_thrown != TypeId::ERROR_TYPE {
 				return None;

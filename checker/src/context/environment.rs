@@ -758,8 +758,8 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, value: TypeId) {
-		self.facts.events.push(Event::Throw(value));
+	pub fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
+		self.facts.events.push(Event::Throw(value, position));
 	}
 
 	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {

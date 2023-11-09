@@ -104,6 +104,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			InterfaceValue::Value(value) => Property::Value(value),
 		};
 
+		// TODO: `None` position passed
 		environment.facts.register_property(self.0, under, ty, false, publicity, None)
 	}
 

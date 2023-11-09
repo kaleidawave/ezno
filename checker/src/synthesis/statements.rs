@@ -269,7 +269,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::Throw(stmt) => {
 			let thrown_value = synthesise_multiple_expression(&stmt.1, environment, checking_data);
-			environment.throw_value(thrown_value)
+			let thrown_position = stmt.2.clone().with_source(environment.get_source());
+			environment.throw_value(thrown_value, thrown_position)
 		}
 		Statement::Labelled { position, name, statement } => {
 			checking_data.raise_unimplemented_error(
