@@ -213,7 +213,7 @@ pub(crate) fn apply_event(
 			}
 		}
 		// TODO extract
-		Event::Conditionally { condition, events_if_truthy, else_events } => {
+		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
 			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
@@ -259,6 +259,7 @@ pub(crate) fn apply_event(
 					condition,
 					events_if_truthy: truthy_facts.events.into_boxed_slice(),
 					else_events: else_facts.events.into_boxed_slice(),
+					position,
 				});
 			}
 		}

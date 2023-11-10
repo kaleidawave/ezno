@@ -733,11 +733,12 @@ impl<'a> Environment<'a> {
 				&mut checking_data.types,
 			);
 			let falsy_events = falsy_environment.facts.events;
-			// TODO
+			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
 			self.facts.events.push(Event::Conditionally {
 				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: falsy_events.into_boxed_slice(),
+				position: None,
 			});
 
 			// TODO all things that are
@@ -750,6 +751,7 @@ impl<'a> Environment<'a> {
 				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: Default::default(),
+				position: None,
 			});
 
 			// TODO above
@@ -805,6 +807,7 @@ impl<'a> Environment<'a> {
 		));
 
 		let prototype = crate::events::PrototypeArgument::Yeah(over);
+		// TODO Unknown position
 		let event = Event::Conditionally {
 			condition,
 			events_if_truthy: Box::new([Event::CreateObject {
@@ -812,6 +815,7 @@ impl<'a> Environment<'a> {
 				prototype,
 			}]),
 			else_events: Box::new([]),
+			position: None,
 		};
 
 		self.facts.events.push(event);

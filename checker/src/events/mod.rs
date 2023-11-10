@@ -88,7 +88,12 @@ pub enum Event {
 	/// From a `throw ***` statement (or expression)
 	Throw(TypeId, SpanWithSource),
 	/// Run events conditionally
-	Conditionally { condition: TypeId, events_if_truthy: Box<[Event]>, else_events: Box<[Event]> },
+	Conditionally {
+		condition: TypeId,
+		events_if_truthy: Box<[Event]>,
+		else_events: Box<[Event]>,
+		position: Option<SpanWithSource>,
+	},
 	/// TODO not sure but whatever
 	Return { returned: TypeId, returned_position: SpanWithSource },
 	/// *lil bit magic*, handles:

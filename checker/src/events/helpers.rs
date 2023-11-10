@@ -63,7 +63,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 				}
 				return ReturnedTypeFromBlock::Returned(*returned);
 			}
-			Event::Conditionally { condition: on, events_if_truthy, else_events } => {
+			Event::Conditionally { condition: on, events_if_truthy, else_events, position } => {
 				let return_if_truthy = get_return_from_events(
 					&mut events_if_truthy.iter(),
 					checking_data,
