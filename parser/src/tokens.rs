@@ -369,6 +369,20 @@ impl TSXToken {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
 
+	pub fn try_into_comment(
+		token: Token<TSXToken, TokenStart>,
+	) -> Result<(String, Span), Token<TSXToken, TokenStart>> {
+		if let Token(TSXToken::MultiLineComment(c), d) = token {
+			let len = c.len();
+			Ok((c, d.with_length(len + 4)))
+		} else if let Token(TSXToken::Comment(c), d) = token {
+			let len = c.len();
+			Ok((c, d.with_length(len + 2)))
+		} else {
+			Err(token)
+		}
+	}
+
 	pub fn is_string_literal(&self) -> bool {
 		matches!(
 			self,

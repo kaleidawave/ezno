@@ -465,7 +465,7 @@ impl Expression {
 					};
 
 					let (arguments, end) = if reader
-						.conditional_next(|token| *token == TSXToken::OpenChevron)
+						.conditional_next(|token| *token == TSXToken::OpenParentheses)
 						.is_some()
 					{
 						parse_bracketed(reader, state, options, None, TSXToken::CloseParentheses)
