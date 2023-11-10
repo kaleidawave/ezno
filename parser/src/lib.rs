@@ -462,7 +462,8 @@ pub enum NumberRepresentation {
 	NaN,
 	Hex(NumberSign, u64),
 	Bin(NumberSign, u64),
-	Octal(NumberSign, u64),
+	// Last one is whether it was specified with a leading zero (boo)
+	Octal(NumberSign, u64, bool),
 	Number {
 		elided_zero_before_point: bool,
 		trailing_point: bool,
@@ -487,7 +488,7 @@ impl From<NumberRepresentation> for f64 {
 			NumberRepresentation::Number { internal, .. } => internal,
 			NumberRepresentation::Hex(sign, nat)
 			| NumberRepresentation::Bin(sign, nat)
-			| NumberRepresentation::Octal(sign, nat) => sign.apply(nat as f64),
+			| NumberRepresentation::Octal(sign, nat, _) => sign.apply(nat as f64),
 			NumberRepresentation::BigInt(..) => todo!(),
 		}
 	}
@@ -592,7 +593,7 @@ impl FromStr for NumberRepresentation {
 							return Err(s.to_owned());
 						}
 					}
-					Ok(Self::Octal(sign, number))
+					Ok(Self::Octal(sign, number, !uses_character))
 				}
 				None => Ok(Self::Number {
 					internal: 0f64,
@@ -645,7 +646,7 @@ impl PartialEq for NumberRepresentation {
 			// TODO needs to do conversion
 			(Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
 			(Self::Bin(l0, l1), Self::Bin(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Octal(l0, l1), Self::Octal(r0, r1)) => l0 == r0 && l1 == r1,
+			(Self::Octal(l0, l1, _), Self::Octal(r0, r1, _)) => l0 == r0 && l1 == r1,
 			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
@@ -668,7 +669,10 @@ impl NumberRepresentation {
 			NumberRepresentation::Bin(sign, value) => {
 				format!("{sign}0b{value:#b}")
 			}
-			NumberRepresentation::Octal(sign, value) => {
+			NumberRepresentation::Octal(sign, value, true) => {
+				format!("{sign}0{value:o}")
+			}
+			NumberRepresentation::Octal(sign, value, false) => {
 				format!("{sign}0o{value:o}")
 			}
 			NumberRepresentation::Number { internal, elided_zero_before_point, trailing_point } => {

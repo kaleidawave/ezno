@@ -62,6 +62,8 @@ use crate::ParseError;
     "?" => TSXToken::QuestionMark,
     "?:" => TSXToken::OptionalMember,
     "?." => TSXToken::OptionalChain,
+    "?.(" => TSXToken::OptionalCall,
+    "?.[" => TSXToken::OptionalIndex,
     "-?:" => TSXToken::NonOptionalMember,
     "??" => TSXToken::NullishCoalescing,
     "??=" => TSXToken::NullishCoalescingAssign,
@@ -131,7 +133,7 @@ pub enum TSXToken {
     LogicalOrAssign, LogicalAndAssign,
     Equal, NotEqual, StrictEqual, StrictNotEqual,
     GreaterThanEqual, LessThanEqual,
-    OptionalChain, NullishCoalescing, NullishCoalescingAssign,
+    OptionalChain, OptionalCall, OptionalIndex, NullishCoalescing, NullishCoalescingAssign,
     /// `?:` 
     OptionalMember, 
     /// '!:` 
@@ -255,13 +257,15 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::LogicalAnd
 			| TSXToken::LogicalNot
 			| TSXToken::Arrow
+			| TSXToken::BitwiseShiftLeft
+			| TSXToken::BitwiseShiftRight
 			| TSXToken::TemplateLiteralExpressionStart
 			| TSXToken::JSXFragmentStart => 2,
 
-			TSXToken::BitwiseShiftLeft
-			| TSXToken::BitwiseShiftRight
-			| TSXToken::Spread
+			TSXToken::Spread
 			| TSXToken::StrictEqual
+			| TSXToken::OptionalCall
+			| TSXToken::OptionalIndex
 			| TSXToken::NullishCoalescingAssign
 			| TSXToken::LogicalOrAssign
 			| TSXToken::LogicalAndAssign
@@ -367,6 +371,20 @@ impl std::fmt::Display for TSXToken {
 impl TSXToken {
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
+	}
+
+	pub fn try_into_comment(
+		token: Token<TSXToken, TokenStart>,
+	) -> Result<(String, Span), Token<TSXToken, TokenStart>> {
+		if let Token(TSXToken::MultiLineComment(c), d) = token {
+			let len = c.len();
+			Ok((c, d.with_length(len + 4)))
+		} else if let Token(TSXToken::Comment(c), d) = token {
+			let len = c.len();
+			Ok((c, d.with_length(len + 2)))
+		} else {
+			Err(token)
+		}
 	}
 
 	pub fn is_string_literal(&self) -> bool {

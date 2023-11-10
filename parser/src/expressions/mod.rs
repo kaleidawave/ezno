@@ -465,7 +465,7 @@ impl Expression {
 					};
 
 					let (arguments, end) = if reader
-						.conditional_next(|token| *token == TSXToken::OpenChevron)
+						.conditional_next(|token| *token == TSXToken::OpenParentheses)
 						.is_some()
 					{
 						parse_bracketed(reader, state, options, None, TSXToken::CloseParentheses)
@@ -826,13 +826,14 @@ impl Expression {
 						falsy_result: Box::new(rhs),
 					};
 				}
-				TSXToken::OpenParentheses => {
+				TSXToken::OpenParentheses | TSXToken::OptionalCall => {
 					if AssociativityDirection::LeftToRight
 						.should_return(parent_precedence, FUNCTION_CALL_PRECEDENCE)
 					{
 						return Ok(top);
 					}
-					reader.next();
+					let next = reader.next().unwrap();
+					let is_optional = matches!(next.0, TSXToken::OptionalCall);
 					let (arguments, end) =
 						parse_bracketed(reader, state, options, None, TSXToken::CloseParentheses)?;
 					let position = top.get_position().union(end);
@@ -841,16 +842,18 @@ impl Expression {
 						type_arguments: None,
 						arguments,
 						position,
-						is_optional: false,
+						is_optional,
 					};
 				}
-				TSXToken::OpenBracket => {
+				TSXToken::OpenBracket | TSXToken::OptionalIndex => {
 					if AssociativityDirection::LeftToRight
 						.should_return(parent_precedence, INDEX_PRECEDENCE)
 					{
 						return Ok(top);
 					}
-					reader.next();
+					let next = reader.next().unwrap();
+					let is_optional = matches!(next.0, TSXToken::OptionalIndex);
+
 					let indexer = MultipleExpression::from_reader(reader, state, options)?;
 					let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 					let position = top.get_position().union(end);
@@ -858,7 +861,7 @@ impl Expression {
 						position,
 						indexee: Box::new(top),
 						indexer: Box::new(indexer),
-						is_optional: false,
+						is_optional,
 					};
 				}
 				TSXToken::TemplateLiteralStart => {
@@ -877,75 +880,15 @@ impl Expression {
 					);
 					top = template_lit.map(Expression::TemplateLiteral)?;
 				}
-				TSXToken::OptionalChain => {
+				TSXToken::Dot | TSXToken::OptionalChain => {
 					if AssociativityDirection::LeftToRight
 						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
 					{
 						return Ok(top);
 					}
-					let _ = reader.next().unwrap();
-					let token = reader.next().ok_or_else(parse_lexing_error)?;
-					top = match token {
-						Token(TSXToken::OpenBracket, _start) => {
-							let indexer = MultipleExpression::from_reader(reader, state, options)?;
-							let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-							let position = top.get_position().union(end);
-							Expression::Index {
-								position,
-								indexee: Box::new(top),
-								indexer: Box::new(indexer),
-								is_optional: false,
-							}
-						}
-						Token(TSXToken::OpenParentheses, _start) => {
-							let (arguments, end) = parse_bracketed(
-								reader,
-								state,
-								options,
-								Some(TSXToken::CloseParentheses),
-								TSXToken::CloseParentheses,
-							)?;
-							let position = top.get_position().union(end);
-							Expression::FunctionCall {
-								function: Box::new(top),
-								type_arguments: None,
-								arguments,
-								position,
-								is_optional: true,
-							}
-						}
-						token => {
-							let (property, position) =
-								if let Token(TSXToken::Cursor(cursor_id), start) = token {
-									(
-										PropertyReference::Cursor(cursor_id.into_cursor()),
-										start.with_length(1),
-									)
-								} else {
-									let is_private = reader
-										.conditional_next(|t| matches!(t, TSXToken::HashTag))
-										.is_some();
-									let (property, position) =
-										token_as_identifier(token, "variable reference")?;
-									(PropertyReference::Standard { property, is_private }, position)
-								};
-							let position = top.get_position().union(&position);
-							Expression::PropertyAccess {
-								parent: Box::new(top),
-								property,
-								position,
-								is_optional: true,
-							}
-						}
-					}
-				}
-				TSXToken::Dot => {
-					if AssociativityDirection::LeftToRight
-						.should_return(parent_precedence, MEMBER_ACCESS_PRECEDENCE)
-					{
-						return Ok(top);
-					}
-					let _ = reader.next().unwrap();
+					let next = reader.next().unwrap();
+					let is_optional = matches!(next.0, TSXToken::OptionalChain);
+
 					let token = reader.next().ok_or_else(parse_lexing_error)?;
 					let (property, position) = if let Token(TSXToken::Cursor(cursor_id), start) =
 						token
@@ -963,7 +906,7 @@ impl Expression {
 						parent: Box::new(top),
 						property,
 						position,
-						is_optional: false,
+						is_optional,
 					};
 				}
 				TSXToken::Assign => {
@@ -1376,13 +1319,16 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::Index { indexee: expression, indexer, .. } => {
+			Self::Index { indexee: expression, indexer, is_optional, .. } => {
 				expression.to_string_from_buffer(buf, options, depth);
+				if *is_optional {
+					buf.push_str("?.");
+				}
 				buf.push('[');
 				indexer.to_string_from_buffer(buf, options, depth);
 				buf.push(']');
 			}
-			Self::FunctionCall { function, type_arguments, arguments, .. } => {
+			Self::FunctionCall { function, type_arguments, arguments, is_optional, .. } => {
 				// TODO is this okay?
 				if let Some(ExpressionOrBlock::Expression(expression)) = self.is_iife() {
 					expression.to_string_from_buffer(buf, options, depth);
@@ -1392,6 +1338,7 @@ impl Expression {
 					&**function,
 					Expression::ArrowFunction(..) | Expression::ExpressionFunction(..)
 				);
+				// Fixes precedence from badly created ASTs
 				if is_raw_function {
 					buf.push('(');
 				}
@@ -1401,6 +1348,9 @@ impl Expression {
 				}
 				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, depth);
+				}
+				if *is_optional {
+					buf.push_str("?.");
 				}
 				arguments_to_string(arguments, buf, options, depth);
 			}
@@ -1597,7 +1547,6 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStar
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
 				| TSXToken::SemiColon
-				| TSXToken::QuestionMark
 		) {
 			true
 		} else {
