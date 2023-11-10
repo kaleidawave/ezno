@@ -62,6 +62,8 @@ use crate::ParseError;
     "?" => TSXToken::QuestionMark,
     "?:" => TSXToken::OptionalMember,
     "?." => TSXToken::OptionalChain,
+    "?.(" => TSXToken::OptionalCall,
+    "?.[" => TSXToken::OptionalIndex,
     "-?:" => TSXToken::NonOptionalMember,
     "??" => TSXToken::NullishCoalescing,
     "??=" => TSXToken::NullishCoalescingAssign,
@@ -131,7 +133,7 @@ pub enum TSXToken {
     LogicalOrAssign, LogicalAndAssign,
     Equal, NotEqual, StrictEqual, StrictNotEqual,
     GreaterThanEqual, LessThanEqual,
-    OptionalChain, NullishCoalescing, NullishCoalescingAssign,
+    OptionalChain, OptionalCall, OptionalIndex, NullishCoalescing, NullishCoalescingAssign,
     /// `?:` 
     OptionalMember, 
     /// '!:` 
@@ -255,13 +257,15 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::LogicalAnd
 			| TSXToken::LogicalNot
 			| TSXToken::Arrow
+			| TSXToken::BitwiseShiftLeft
+			| TSXToken::BitwiseShiftRight
 			| TSXToken::TemplateLiteralExpressionStart
 			| TSXToken::JSXFragmentStart => 2,
 
-			TSXToken::BitwiseShiftLeft
-			| TSXToken::BitwiseShiftRight
-			| TSXToken::Spread
+			TSXToken::Spread
 			| TSXToken::StrictEqual
+			| TSXToken::OptionalCall
+			| TSXToken::OptionalIndex
 			| TSXToken::NullishCoalescingAssign
 			| TSXToken::LogicalOrAssign
 			| TSXToken::LogicalAndAssign
