@@ -12,6 +12,7 @@ use crate::{
 pub(crate) mod application;
 pub(crate) mod helpers;
 pub(crate) use application::apply_event;
+use source_map::Span;
 
 use crate::{
 	types::functions::SynthesisedArgument,
@@ -117,6 +118,7 @@ pub enum Event {
 		///
 		/// This is also for the specialization (somehow)
 		referenced_in_scope_as: TypeId,
+		position: Option<SpanWithSource>,
 	},
 	// Registration(Registration),
 }

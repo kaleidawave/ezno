@@ -813,6 +813,7 @@ impl<'a> Environment<'a> {
 			events_if_truthy: Box::new([Event::CreateObject {
 				referenced_in_scope_as: ty,
 				prototype,
+				position: None,
 			}]),
 			else_events: Box::new([]),
 			position: None,

@@ -272,7 +272,9 @@ pub(crate) fn apply_event(
 				crate::utils::notify!("event returned error so skipped");
 			}
 		}
-		Event::CreateObject { referenced_in_scope_as, prototype } => {
+
+		// TODO Needs a position (or not?)
+		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
 			// TODO only if exposed via set
 
 			// TODO

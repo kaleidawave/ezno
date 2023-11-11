@@ -58,9 +58,13 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterAsType
 		let id = func_ty.id;
 		types.functions.insert(id, func_ty);
 		let ty = types.register_type(crate::Type::Function(id, ThisValue::UseParent));
+
+		// TODO: Needs a way to get position (perhaps from a method in `SynthesisableFunction`).
+		// Can `return_type_annotation` be used to get the position?
 		environment.facts.events.push(Event::CreateObject {
 			prototype: crate::events::PrototypeArgument::Function(id),
 			referenced_in_scope_as: ty,
+			position: None,
 		});
 		ty
 	}
@@ -83,9 +87,11 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExis
 		types.functions.insert(id, func_ty);
 		let ty = types.register_type(crate::Type::Function(id, Default::default()));
 		context.facts.variable_current_value.insert(self.0, ty);
+		// TODO Needs a position
 		context.facts.events.push(Event::CreateObject {
 			prototype: crate::events::PrototypeArgument::Function(id),
 			referenced_in_scope_as: ty,
+			position: None,
 		});
 	}
 }
@@ -111,9 +117,12 @@ impl<M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterOnExis
 				let id = func_ty.id;
 				types.functions.insert(id, func_ty);
 				let ty = types.register_type(Type::Function(id, Default::default()));
+
+				// TODO Needs a position
 				environment.facts.events.push(Event::CreateObject {
 					prototype: crate::events::PrototypeArgument::Function(id),
 					referenced_in_scope_as: ty,
+					position: None,
 				});
 				Property::Value(ty)
 			}

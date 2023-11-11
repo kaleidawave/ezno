@@ -89,7 +89,9 @@ impl Facts {
 			};
 			// TODO maybe register the environment if function ...
 			// TODO register properties
-			let value = Event::CreateObject { referenced_in_scope_as: ty, prototype };
+			// TODO Needs a position (or not?)
+			let value =
+				Event::CreateObject { referenced_in_scope_as: ty, prototype, position: None };
 			self.events.push(value);
 		}
 
