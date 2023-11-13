@@ -5,7 +5,7 @@
 use super::{Span, TSXToken};
 use crate::{
 	cursor::EmptyCursorId, errors::LexingErrors, html_tag_contains_literal_content,
-	html_tag_is_self_closing,
+	html_tag_is_self_closing, Quoted,
 };
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
@@ -396,8 +396,9 @@ pub fn lex_script(
 					return_err!(LexingErrors::NewLineInStringLiteral);
 				}
 				'\'' if !*double_quoted && !*escaped => {
-					push_token!(TSXToken::SingleQuotedStringLiteral(
-						script[(start + 1)..idx].to_owned()
+					push_token!(TSXToken::StringLiteral(
+						script[(start + 1)..idx].to_owned(),
+						Quoted::Single
 					));
 					state = LexingState::None;
 					start = idx + 1;
@@ -405,8 +406,9 @@ pub fn lex_script(
 					continue;
 				}
 				'"' if *double_quoted && !*escaped => {
-					push_token!(TSXToken::DoubleQuotedStringLiteral(
-						script[(start + 1)..idx].to_owned()
+					push_token!(TSXToken::StringLiteral(
+						script[(start + 1)..idx].to_owned(),
+						Quoted::Double
 					));
 					state = LexingState::None;
 					start = idx + 1;

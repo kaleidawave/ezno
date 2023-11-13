@@ -63,7 +63,7 @@ impl ASTNode for Module {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let end = state.length;
+		let end = state.length_of_source;
 		parse_statements_and_declarations(reader, state, options).map(|statements| Module {
 			source: state.source,
 			items: statements,
@@ -245,7 +245,7 @@ impl ASTNode for TypeDefinitionModule {
 				}
 			}
 		}
-		let end = state.length;
+		let end = state.length_of_source;
 		Ok(Self {
 			declarations,
 			source: state.source,

@@ -706,7 +706,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::InExpression { .. } => todo!(),
 			SpecialOperators::InstanceOfExpression { .. } => todo!(),
 		},
-		Expression::DynamicImport { path, position } => todo!(),
+		Expression::DynamicImport { .. } => todo!(),
 		Expression::IsExpression(is_expr) => {
 			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
 		}

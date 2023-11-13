@@ -107,6 +107,17 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
+			// Yah weird. Recursion is fine
+			Expression::ParenthesizedExpression(inner, _) => {
+				if let MultipleExpression::Single(expression) = *inner {
+					TryFrom::try_from(expression)
+				} else {
+					Err(ParseError::new(
+						crate::ParseErrors::InvalidLHSAssignment,
+						inner.get_position().clone(),
+					))
+				}
+			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
 				expression.get_position().clone(),

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode};
+use parser::{Expression, Module, Statement};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -72,7 +73,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 		}
 	};
 
-	let source_id = state.get_source_id();
+	let source = state.get_source_id();
 
 	loop {
 		let input = cli_input_resolver("");
@@ -92,17 +93,24 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 			continue;
 		};
 
-		let (from_index, _) = state.get_fs_mut().append_to_file(source_id, &input);
+		let (from_index, _) = state.get_fs_mut().append_to_file(source, &input);
 
-		let mut item = match parser::Module::from_string(
-			input,
-			Default::default(),
-			source_id,
-			Some(from_index as u32),
-		) {
+		let options = Default::default();
+		let offset = Some(from_index as u32);
+		let result = if input.trim_start().starts_with('{') {
+			Expression::from_string(input, options, source, offset).map(|expression| Module {
+				span: expression.get_position().clone(),
+				items: vec![Statement::Expression(expression.into()).into()],
+				source,
+			})
+		} else {
+			Module::from_string(input, options, source, offset)
+		};
+
+		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_ezno_diagnostic((err, source_id).into(), state.get_fs_ref()).unwrap();
+				emit_ezno_diagnostic((err, source).into(), state.get_fs_ref()).unwrap();
 				continue;
 			}
 		};

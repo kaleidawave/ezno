@@ -424,4 +424,12 @@ impl FunctionHeader {
 			FunctionHeader::ChadFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
 		}
 	}
+
+	#[cfg(feature = "extras")]
+	pub fn get_location(&self) -> Option<&FunctionLocationModifier> {
+		match self {
+			FunctionHeader::VirginFunctionHeader { location, .. }
+			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
+		}
+	}
 }

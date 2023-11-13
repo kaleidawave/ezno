@@ -4,19 +4,21 @@ use source_map::{End, Span};
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, tokens::token_as_identifier, tsx_keywords,
-	ASTNode, Keyword, ParseError, ParseErrors, ParseOptions, ParseResult, Quoted, TSXKeyword,
-	TSXToken, VariableIdentifier,
+	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
+	tokens::token_as_identifier, tsx_keywords, ASTNode, CursorId, Keyword, ParseOptions,
+	ParseResult, ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
+use super::ImportLocation;
+
+/// Side effects is represented under the Parts variant where the vector is empty
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum ImportKind {
-	Parts(Vec<ImportPart>),
+pub enum ImportedItems {
+	Parts(Option<Vec<ImportPart>>),
 	All { under: VariableIdentifier },
-	SideEffect,
 }
 
 /// TODO a few more thing needed here
@@ -25,11 +27,15 @@ pub enum ImportKind {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
+	#[cfg(feature = "extras")]
+	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
 	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
 	pub default: Option<VariableIdentifier>,
-	pub kind: ImportKind,
-	pub from: String,
+	pub items: ImportedItems,
+	pub from: ImportLocation,
 	pub position: Span,
+	#[cfg(feature = "extras")]
+	pub reversed: bool,
 }
 
 /// TODO default
@@ -39,24 +45,21 @@ pub struct ImportDeclaration {
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Cursor(CursorId<Self>),
 }
 
 impl ImportExportName {
-	pub(crate) fn from_token(token: Token<TSXToken, TokenStart>) -> ParseResult<(Self, End)> {
-		if let TSXToken::DoubleQuotedStringLiteral(_) | TSXToken::SingleQuotedStringLiteral(_) =
-			token.0
-		{
-			let (start, alias, quoted) = match token {
-				Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
-					(start, content, Quoted::Single)
-				}
-				Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
-					(start, content, Quoted::Double)
-				}
-				_ => unreachable!(),
-			};
+	pub(crate) fn from_token(
+		token: Token<TSXToken, TokenStart>,
+		state: &mut ParsingState,
+	) -> ParseResult<(Self, End)> {
+		if let Token(TSXToken::StringLiteral(alias, quoted), start) = token {
 			let with_length = start.get_end_after(alias.len() + 1);
+			state.constant_imports.push(alias.clone());
 			Ok((ImportExportName::Quoted(alias, quoted), with_length))
+		} else if let Token(TSXToken::Cursor(id), start) = token {
+			Ok((Self::Cursor(id.into_cursor()), End(start.0)))
 		} else {
 			let (ident, pos) = token_as_identifier(token, "import alias")?;
 			Ok((ImportExportName::Reference(ident), pos.get_end()))
@@ -70,90 +73,25 @@ impl ASTNode for ImportDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
-		let type_keyword = reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type)))
-			.map(|tok| Keyword::new(tok.get_span()));
+		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
-		let peek = reader.peek();
-		let default = if let Some(Token(TSXToken::OpenBrace | TSXToken::Multiply, _)) = peek {
-			None
-		} else if let Some(Token(
-			TSXToken::DoubleQuotedStringLiteral(_) | TSXToken::SingleQuotedStringLiteral(_),
-			_,
-		)) = peek
-		{
-			let Token(
-				TSXToken::SingleQuotedStringLiteral(from)
-				| TSXToken::DoubleQuotedStringLiteral(from),
-				pos,
-			) = reader.next().unwrap()
-			else {
-				unreachable!()
-			};
-			return Ok(ImportDeclaration {
-				position: start_position.union(pos.get_end_after(from.len() + 2)),
-				default: None,
-				kind: ImportKind::SideEffect,
-				type_keyword: None,
-				from,
-			});
-		} else {
-			let default_identifier = VariableIdentifier::from_reader(reader, state, options)?;
-			if !matches!(reader.peek(), Some(Token(TSXToken::Keyword(TSXKeyword::From), _))) {
-				reader.expect_next(TSXToken::Comma)?;
-			}
-			Some(default_identifier)
-		};
+		if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
+			reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+		}
 
-		let kind = if default.is_some()
-			&& matches!(reader.peek(), Some(Token(TSXToken::Keyword(TSXKeyword::From), _)))
-		{
-			// From default keyword
-			ImportKind::Parts(Vec::new())
-		} else if let Some(Token(TSXToken::Multiply, _)) = reader.peek() {
-			reader.next();
-			let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
-			let under = VariableIdentifier::from_reader(reader, state, options)?;
-			ImportKind::All { under }
-		} else {
-			let parts = parse_bracketed::<ImportPart>(
-				reader,
-				state,
-				options,
-				Some(TSXToken::OpenBrace),
-				TSXToken::CloseBrace,
-			)?
-			.0;
-			ImportKind::Parts(parts)
-		};
+		let (from, end) =
+			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
-
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let (end, from) = match token {
-			Token(
-				TSXToken::DoubleQuotedStringLiteral(from)
-				| TSXToken::SingleQuotedStringLiteral(from),
-				start,
-			) => {
-				let span = start.with_length(from.len() + 2);
-				(span, from)
-			}
-			token => {
-				let position = token.get_span();
-				return Err(ParseError::new(
-					ParseErrors::ExpectedStringLiteral { found: token.0 },
-					position,
-				));
-			}
-		};
 		Ok(ImportDeclaration {
-			default,
-			kind,
-			type_keyword,
+			default: out.default,
+			items: out.items,
+			type_keyword: out.type_keyword,
+			#[cfg(feature = "extras")]
+			deferred_keyword: out.deferred_keyword,
 			from,
-			position: start_position.union(end),
+			position: out.start.union(end),
+			#[cfg(feature = "extras")]
+			reversed: false,
 		})
 	}
 
@@ -170,13 +108,16 @@ impl ASTNode for ImportDeclaration {
 
 		if let Some(ref default) = self.default {
 			buf.push(' ');
-			default.to_string_from_buffer(buf, options, depth)
+			default.to_string_from_buffer(buf, options, depth);
+			if matches!(self.items, ImportedItems::Parts(None)) {
+				buf.push(' ');
+			}
 		} else {
 			options.add_gap(buf);
 		}
 
-		match self.kind {
-			ImportKind::All { ref under } => {
+		match self.items {
+			ImportedItems::All { ref under } => {
 				if self.default.is_some() {
 					buf.push_str(", ");
 				}
@@ -184,44 +125,153 @@ impl ASTNode for ImportDeclaration {
 				under.to_string_from_buffer(buf, options, depth);
 				buf.push(' ');
 			}
-			ImportKind::SideEffect => {
-				buf.push('"');
-				buf.push_str(&self.from);
-				buf.push('"');
-				return;
-			}
-			ImportKind::Parts(ref parts) => {
-				if !parts.is_empty() {
-					if self.default.is_some() {
-						buf.push_str(", ");
-					}
-					buf.push('{');
-					options.add_gap(buf);
-					for (at_end, part) in parts.iter().endiate() {
-						part.to_string_from_buffer(buf, options, depth);
-						if !at_end {
-							buf.push(',');
-							options.add_gap(buf);
+			ImportedItems::Parts(ref parts) => {
+				if let Some(parts) = parts {
+					if !parts.is_empty() {
+						if self.default.is_some() {
+							buf.push_str(", ");
 						}
+						buf.push('{');
+						options.add_gap(buf);
+						for (at_end, part) in parts.iter().endiate() {
+							part.to_string_from_buffer(buf, options, depth);
+							if !at_end {
+								buf.push(',');
+								options.add_gap(buf);
+							}
+						}
+						options.add_gap(buf);
+						buf.push('}');
+						options.add_gap(buf);
 					}
-					options.add_gap(buf);
-					buf.push('}');
-					options.add_gap(buf);
-				} else if self.default.is_some() {
-					buf.push(' ');
 				}
 			}
 		}
-		buf.push_str("from");
-		options.add_gap(buf);
-		buf.push('"');
-		buf.push_str(&self.from);
-		buf.push('"');
+		if !(matches!(self.items, ImportedItems::Parts(None)) && self.default.is_none()) {
+			buf.push_str("from");
+			options.add_gap(buf);
+		}
+		self.from.to_string_from_buffer(buf);
 	}
 
 	fn get_position(&self) -> &Span {
 		&self.position
 	}
+}
+
+impl ImportDeclaration {
+	#[cfg(feature = "extras")]
+	pub fn reversed_from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<Self> {
+		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+
+		let (from, _end) =
+			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+
+		let out = parse_import_specifier_and_parts(reader, state, options)?;
+
+		Ok(ImportDeclaration {
+			default: out.default,
+			items: out.items,
+			type_keyword: out.type_keyword,
+			#[cfg(feature = "extras")]
+			deferred_keyword: out.deferred_keyword,
+			from,
+			position: start.union(out.end),
+			reversed: true,
+		})
+	}
+}
+
+pub(crate) struct PartsResult {
+	pub start: source_map::Start,
+	#[cfg(feature = "extras")]
+	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
+	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
+	pub default: Option<VariableIdentifier>,
+	pub items: ImportedItems,
+	pub end: source_map::End,
+}
+
+pub(crate) fn parse_import_specifier_and_parts(
+	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	state: &mut ParsingState,
+	options: &ParseOptions,
+) -> Result<PartsResult, crate::ParseError> {
+	let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
+
+	#[cfg(feature = "extras")]
+	let deferred_keyword = reader
+		.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Deferred)))
+		.map(|tok| Keyword::new(tok.get_span()));
+
+	let type_keyword = reader
+		.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type)))
+		.map(|tok| Keyword::new(tok.get_span()));
+
+	let peek = reader.peek();
+
+	let default = if let Some(Token(
+		TSXToken::OpenBrace
+		| TSXToken::Multiply
+		| TSXToken::StringLiteral(..)
+		| TSXToken::Cursor(_),
+		_,
+	)) = peek
+	{
+		None
+	} else {
+		let default_identifier = VariableIdentifier::from_reader(reader, state, options)?;
+		if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
+			Some(default_identifier)
+		} else {
+			let end = default_identifier.get_position().get_end();
+			return Ok(PartsResult {
+				start,
+				#[cfg(feature = "extras")]
+				deferred_keyword,
+				type_keyword,
+				default: Some(default_identifier),
+				items: ImportedItems::Parts(None),
+				end,
+			});
+		}
+	};
+
+	let peek = reader.peek();
+	let (items, end) = if let Some(Token(TSXToken::Multiply, _)) = peek {
+		reader.next();
+		let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+		let under = VariableIdentifier::from_reader(reader, state, options)?;
+		let end = under.get_position().get_end();
+		(ImportedItems::All { under }, end)
+	} else if let Some(Token(TSXToken::OpenBrace, _)) = peek {
+		let (parts, end) = parse_bracketed::<ImportPart>(
+			reader,
+			state,
+			options,
+			Some(TSXToken::OpenBrace),
+			TSXToken::CloseBrace,
+		)?;
+		(ImportedItems::Parts(Some(parts)), end)
+	} else if let Some(Token(TSXToken::StringLiteral(..), _)) = peek {
+		(ImportedItems::Parts(None), start.get_end_after(6))
+	} else {
+		return throw_unexpected_token(reader, &[TSXToken::Multiply, TSXToken::OpenBrace]);
+	};
+
+	Ok(PartsResult {
+		start,
+		#[cfg(feature = "extras")]
+		deferred_keyword,
+		type_keyword,
+		default,
+		items,
+		end,
+	})
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
@@ -258,24 +308,14 @@ impl ASTNode for ImportPart {
 				};
 			Ok(Self::PrefixComment(comment, under, position))
 		} else {
-			let (alias, alias_pos) = if let TSXToken::DoubleQuotedStringLiteral(_)
-			| TSXToken::SingleQuotedStringLiteral(_) = token.0
-			{
-				let (start, alias, quoted) = match token {
-					Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
-						(start, content, Quoted::Single)
-					}
-					Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
-						(start, content, Quoted::Double)
-					}
-					_ => unreachable!(),
+			let (alias, alias_pos) =
+				if let Token(TSXToken::StringLiteral(alias, quoted), start) = token {
+					let with_length = start.with_length(alias.len() + 2);
+					(ImportExportName::Quoted(alias, quoted), with_length)
+				} else {
+					let (ident, pos) = token_as_identifier(token, "import alias")?;
+					(ImportExportName::Reference(ident), pos)
 				};
-				let with_length = start.with_length(alias.len() + 1);
-				(ImportExportName::Quoted(alias, quoted), with_length)
-			} else {
-				let (ident, pos) = token_as_identifier(token, "import alias")?;
-				(ImportExportName::Reference(ident), pos)
-			};
 			let mut value = match alias {
 				ImportExportName::Quoted(..) => {
 					reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
@@ -302,6 +342,10 @@ impl ASTNode for ImportPart {
 					} else {
 						Self::Name(VariableIdentifier::Standard(reference, alias_pos))
 					}
+				}
+				ImportExportName::Cursor(_id) => {
+					todo!("cursor id change")
+					// Self::Name(VariableIdentifier::Cursor(id, pos))
 				}
 			};
 			while let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
@@ -331,6 +375,7 @@ impl ASTNode for ImportPart {
 						buf.push_str(alias);
 						buf.push(q.as_char());
 					}
+					ImportExportName::Cursor(_) => {}
 				}
 				buf.push_str(" as ");
 				buf.push_str(name);

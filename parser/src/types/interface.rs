@@ -342,10 +342,9 @@ impl ASTNode for InterfaceMember {
 					// Non literal property names and index type
 					let Token(_, start) = reader.next().unwrap();
 					let name = match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::SingleQuotedStringLiteral(name), start)
-						| Token(TSXToken::DoubleQuotedStringLiteral(name), start) => {
+						Token(TSXToken::StringLiteral(name, quoted), start) => {
 							let position = start.with_length(name.len() + 2);
-							PropertyKey::StringLiteral(name, position)
+							PropertyKey::StringLiteral(name, quoted, position)
 						}
 						Token(TSXToken::NumberLiteral(value), start) => {
 							let position = start.with_length(value.len());

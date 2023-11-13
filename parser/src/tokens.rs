@@ -9,7 +9,7 @@ use enum_variants_strings::EnumVariantsStrings;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
-use crate::ParseError;
+use crate::{ParseError, Quoted};
 
 /// All JS Tokens with extensions including TypeScript, JSX and more
 #[derive(Debug, FiniteAutomataConstructor, PartialEqExtras)]
@@ -94,7 +94,7 @@ pub enum TSXToken {
     IdentLiteral(String),
     Keyword(TSXKeyword),
     NumberLiteral(String), 
-    SingleQuotedStringLiteral(String), DoubleQuotedStringLiteral(String),
+    StringLiteral(String, Quoted),
     MultiLineComment(String), Comment(String),
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
@@ -195,9 +195,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
 			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
-			TSXToken::SingleQuotedStringLiteral(comment)
-			| TSXToken::DoubleQuotedStringLiteral(comment)
-			| TSXToken::Comment(comment) => comment.len() as u32 + 2,
+			TSXToken::StringLiteral(comment, _) | TSXToken::Comment(comment) => {
+				comment.len() as u32 + 2
+			}
 			TSXToken::RegexLiteral(regex) => regex.len() as u32 + 2,
 
 			TSXToken::Comma
@@ -334,19 +334,26 @@ pub enum TSXKeyword {
     #[cfg(feature = "extras")]
     /// https://github.com/tc39/proposal-generator-arrow-functions#introduce-new-generator-keyword-for-both-function-and-arrow-function
     Generator,
+
+    #[cfg(feature = "extras")]
+    Deferred
 }
 
 impl TSXKeyword {
 	#[cfg(feature = "extras")]
-	pub(crate) fn is_function_heading(&self) -> bool {
+	pub(crate) fn is_in_function_header(&self) -> bool {
 		matches!(
 			self,
-			TSXKeyword::Function | TSXKeyword::Async | TSXKeyword::Module | TSXKeyword::Server
+			TSXKeyword::Function
+				| TSXKeyword::Async
+				| TSXKeyword::Module
+				| TSXKeyword::Server
+				| TSXKeyword::Generator
 		)
 	}
 
 	#[cfg(not(feature = "extras"))]
-	pub(crate) fn is_function_heading(&self) -> bool {
+	pub(crate) fn is_in_function_header(&self) -> bool {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 }
@@ -385,13 +392,6 @@ impl TSXToken {
 		} else {
 			Err(token)
 		}
-	}
-
-	pub fn is_string_literal(&self) -> bool {
-		matches!(
-			self,
-			TSXToken::SingleQuotedStringLiteral(_) | TSXToken::DoubleQuotedStringLiteral(_)
-		)
 	}
 
 	/// Used for lexing regular expression and JSX literals differently

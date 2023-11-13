@@ -6,8 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
-	Decorated, Keyword, ParseError, ParseErrors, StatementPosition, TSXKeyword, TSXToken,
-	TypeDefinitionModuleDeclaration,
+	CursorId, Decorated, Keyword, ParseError, ParseErrors, Quoted, StatementPosition, TSXKeyword,
+	TSXToken, TypeDefinitionModuleDeclaration,
 };
 
 pub use self::{
@@ -79,9 +79,60 @@ impl Declaration {
 		);
 
 		#[cfg(feature = "extras")]
-		return result || matches!(token, Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)));
+		return result
+			|| matches!(token, Some(Token(TSXToken::Keyword(kw), _)) if kw.is_in_function_header())
+			|| (matches!(token, Some(Token(TSXToken::Keyword(TSXKeyword::From), _)))
+				&& matches!(reader.peek_n(1), Some(Token(TSXToken::StringLiteral(..), _))));
+
 		#[cfg(not(feature = "extras"))]
 		return result;
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum ImportLocation {
+	Quoted(String, Quoted),
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Cursor(CursorId<Self>),
+}
+
+impl ImportLocation {
+	pub(crate) fn from_token(
+		token: Token<TSXToken, tokenizer_lib::sized_tokens::TokenStart>,
+	) -> crate::ParseResult<(Self, source_map::End)> {
+		if let Token(TSXToken::StringLiteral(content, quoted), start) = token {
+			let with_length = start.get_end_after(content.len() + 1);
+			Ok((ImportLocation::Quoted(content, quoted), with_length))
+		} else if let Token(TSXToken::Cursor(id), start) = token {
+			Ok((Self::Cursor(id.into_cursor()), source_map::End(start.0)))
+		} else {
+			Err(ParseError::new(
+				ParseErrors::ExpectedStringLiteral { found: token.0 },
+				token.1.with_length(0),
+			))
+		}
+	}
+
+	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
+		match self {
+			ImportLocation::Quoted(inner, quoted) => {
+				buf.push(quoted.as_char());
+				buf.push_str(inner);
+				buf.push(quoted.as_char());
+			}
+			ImportLocation::Cursor(_) => {}
+		}
+	}
+
+	/// Can be None if self is a cursor point
+	pub fn get_path(&self) -> Option<&str> {
+		if let Self::Quoted(name, _) = self {
+			Some(name)
+		} else {
+			None
+		}
 	}
 }
 
@@ -116,7 +167,7 @@ impl crate::ASTNode for Declaration {
 					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			}
 			#[cfg(feature = "extras")]
-			TSXToken::Keyword(TSXKeyword::Generator) if options.generator_keyword => {
+			TSXToken::Keyword(ref kw) if kw.is_in_function_header() => {
 				let function = StatementFunction::from_reader(reader, state, options)?;
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
@@ -140,6 +191,10 @@ impl crate::ASTNode for Declaration {
 			}
 			TSXToken::Keyword(TSXKeyword::Import) => {
 				ImportDeclaration::from_reader(reader, state, options).map(Into::into)
+			}
+			#[cfg(feature = "extras")]
+			TSXToken::Keyword(TSXKeyword::From) => {
+				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Interface) => {
 				InterfaceDeclaration::from_reader(reader, state, options)
