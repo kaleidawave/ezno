@@ -57,12 +57,11 @@ impl ASTNode for ClassMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
-			let Some(Token(TSXToken::MultiLineComment(c), start)) = reader.next() else {
+		if reader.peek().map_or(false, |t| t.0.is_comment()) {
+			let Ok((comment, span)) = TSXToken::try_into_comment(reader.next().unwrap()) else {
 				unreachable!()
 			};
-			let with_length = start.with_length(c.len() + 2);
-			return Ok(Self::Comment(c, with_length));
+			return Ok(Self::Comment(comment, span));
 		}
 
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
@@ -177,16 +176,6 @@ impl ASTNode for ClassMember {
 	}
 }
 
-impl ClassMember {
-	// pub fn get_property_id(&self) -> Option<PropertyId> {
-	// 	match self {
-	// 		ClassMember::Method(_, ClassMethod { key, .. })
-	// 		| ClassMember::Property(_, ClassProperty { key, .. }) => Some(key.get_ast().get_property_id()),
-	// 		ClassMember::Constructor { .. } => None,
-	// 	}
-	// }
-}
-
 impl ClassFunction {
 	fn from_reader_with_config(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -209,10 +198,6 @@ impl FunctionBased for ClassFunctionBase {
 	type Body = Block;
 	type Header = Option<MethodHeader>;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
-
-	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
-	// 	ChainVariable::UnderClassMethod(this.body.1)
-	// }
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,

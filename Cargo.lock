@@ -252,7 +252,7 @@ dependencies = [
 
 [[package]]
 name = "ezno"
-version = "0.0.15"
+version = "0.0.16"
 dependencies = [
  "argh",
  "base64",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-ast-generator"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "ezno-parser",
  "pretty_assertions",
@@ -284,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-checker"
-version = "0.0.10"
+version = "0.0.11"
 dependencies = [
  "bimap",
  "binary-serialize-derive",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",

@@ -10,9 +10,6 @@ publish = false
 [workspace]
 members = ["."]
 
-[features]
-all = []
-
 [[test]]
 name = "specification_test"
 path = "test.rs"
