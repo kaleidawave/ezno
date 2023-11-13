@@ -1,4 +1,4 @@
-use crate::TSXToken;
+use crate::{TSXKeyword, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -47,6 +47,8 @@ pub struct SpreadParameter {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct FunctionParameters {
+	pub this_type: Option<(TypeAnnotation, Span)>,
+	pub super_type: Option<(TypeAnnotation, Span)>,
 	pub parameters: Vec<Parameter>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,
 	#[partial_eq_ignore]
@@ -117,6 +119,8 @@ impl FunctionParameters {
 		options: &crate::ParseOptions,
 		start: TokenStart,
 	) -> Result<FunctionParameters, ParseError> {
+		let mut this_type = None;
+		let mut super_type = None;
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
 
@@ -145,6 +149,20 @@ impl FunctionParameters {
 					type_annotation,
 				}));
 				break;
+			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
+				parameters.len() == 0 && matches!(tok, TSXToken::Keyword(TSXKeyword::This))
+			}) {
+				reader.expect_next(TSXToken::Colon)?;
+				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+				let position = start.union(type_annotation.get_position());
+				this_type = Some((type_annotation, position));
+			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
+				parameters.len() == 0 && matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
+			}) {
+				reader.expect_next(TSXToken::Colon)?;
+				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+				let position = start.union(type_annotation.get_position());
+				super_type = Some((type_annotation, position));
 			} else {
 				let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
 					reader, state, options,
@@ -213,6 +231,12 @@ impl FunctionParameters {
 			}
 		}
 		let close = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter })
+		Ok(FunctionParameters {
+			position: start.union(close),
+			parameters,
+			rest_parameter,
+			this_type,
+			super_type,
+		})
 	}
 }

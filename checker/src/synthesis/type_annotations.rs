@@ -60,7 +60,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			CommonTypes::Number => TypeId::NUMBER_TYPE,
 			CommonTypes::Boolean => TypeId::BOOLEAN_TYPE,
 		},
-		TypeAnnotation::StringLiteral(value, _) => {
+		TypeAnnotation::StringLiteral(value, ..) => {
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {

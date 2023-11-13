@@ -5,8 +5,8 @@ use crate::{
 };
 
 use super::{
-	variable::VariableDeclaration, ClassDeclaration, ImportExportName, InterfaceDeclaration,
-	StatementFunction, TypeAlias,
+	variable::VariableDeclaration, ClassDeclaration, ImportExportName, ImportLocation,
+	InterfaceDeclaration, StatementFunction, TypeAlias,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -39,8 +39,8 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	Parts(Vec<ExportPart>),
-	ImportAll { r#as: Option<VariableIdentifier>, from: String },
-	ImportParts { parts: Vec<ExportPart>, from: String },
+	ImportAll { r#as: Option<VariableIdentifier>, from: ImportLocation },
+	ImportParts { parts: Vec<ExportPart>, from: ImportLocation },
 }
 
 impl ASTNode for ExportDeclaration {
@@ -74,24 +74,8 @@ impl ASTNode for ExportDeclaration {
 					None
 				};
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
-				let token = reader.next().ok_or_else(parse_lexing_error)?;
-				let (end, from) = match token {
-					Token(
-						TSXToken::DoubleQuotedStringLiteral(from)
-						| TSXToken::SingleQuotedStringLiteral(from),
-						start,
-					) => {
-						let span = start.with_length(from.len() + 2);
-						(span, from)
-					}
-					token => {
-						let position = token.get_span();
-						return Err(ParseError::new(
-							crate::ParseErrors::ExpectedStringLiteral { found: token.0 },
-							position,
-						));
-					}
-				};
+				let (from, end) =
+					ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 				Ok(ExportDeclaration::Variable {
 					exported: Exportable::ImportAll { r#as, from },
 					position: start.union(end),
@@ -154,23 +138,9 @@ impl ASTNode for ExportDeclaration {
 						)?;
 						// Know this is 'from' from above
 						let _ = reader.next().unwrap();
-						let (end, from) = match reader.next().ok_or_else(parse_lexing_error)? {
-							Token(
-								TSXToken::DoubleQuotedStringLiteral(from)
-								| TSXToken::SingleQuotedStringLiteral(from),
-								start,
-							) => {
-								let span = start.with_length(from.len() + 2);
-								(span, from)
-							}
-							token => {
-								let position = token.get_span();
-								return Err(ParseError::new(
-									crate::ParseErrors::ExpectedStringLiteral { found: token.0 },
-									position,
-								));
-							}
-						};
+						let (from, end) = ImportLocation::from_token(
+							reader.next().ok_or_else(parse_lexing_error)?,
+						)?;
 						Ok(Self::Variable {
 							exported: Exportable::ImportParts { parts, from },
 							position: start.union(end),
@@ -195,7 +165,7 @@ impl ASTNode for ExportDeclaration {
 					));
 				}
 			}
-			Token(TSXToken::Keyword(kw), _) if kw.is_function_heading() => {
+			Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
 				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
 				let position = start.union(function_declaration.get_position());
 				Ok(Self::Variable {
@@ -264,7 +234,7 @@ impl ASTNode for ExportDeclaration {
 							buf.push(' ');
 						}
 						buf.push_str("from \"");
-						buf.push_str(from);
+						from.to_string_from_buffer(buf);
 						buf.push('"');
 					}
 					Exportable::ImportParts { parts, from } => {
@@ -281,7 +251,7 @@ impl ASTNode for ExportDeclaration {
 						buf.push('}');
 						options.add_gap(buf);
 						buf.push_str("from \"");
-						buf.push_str(from);
+						from.to_string_from_buffer(buf);
 						buf.push('"');
 					}
 				}
@@ -335,7 +305,7 @@ impl ASTNode for ExportPart {
 			{
 				reader.next();
 				let token = reader.next().ok_or_else(parse_lexing_error)?;
-				let (alias, end) = ImportExportName::from_token(token)?;
+				let (alias, end) = ImportExportName::from_token(token, state)?;
 				let position = pos.union(end);
 				Self::NameWithAlias { name, alias, position }
 			} else {
@@ -371,6 +341,7 @@ impl ASTNode for ExportPart {
 						buf.push_str(alias);
 						buf.push(q.as_char());
 					}
+					ImportExportName::Cursor(_) => {}
 				}
 			}
 			ExportPart::PrefixComment(comment, inner, _) => {

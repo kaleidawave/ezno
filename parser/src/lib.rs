@@ -261,7 +261,12 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	let lex_options = options.get_lex_options();
 	let length = script.len() as u32;
 	let parsing_thread = std::thread::spawn(move || {
-		let mut state = ParsingState { line_starts, source, length };
+		let mut state = ParsingState {
+			line_starts,
+			source,
+			length_of_source: length,
+			constant_imports: Default::default(),
+		};
 		let res = T::from_reader(&mut reader, &mut state, &options);
 		if res.is_ok() {
 			reader.expect_next(TSXToken::EOS)?;
@@ -295,7 +300,12 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		return Err(ParseError::new(reason, pos));
 	}
 
-	let mut state = ParsingState { line_starts, length: script.len() as u32, source };
+	let mut state = ParsingState {
+		line_starts,
+		length_of_source: script.len() as u32,
+		source,
+		constant_imports: Default::default(),
+	};
 	let res = T::from_reader(&mut queue, &mut state, &options);
 	if res.is_ok() {
 		queue.expect_next(TSXToken::EOS)?;
@@ -322,7 +332,9 @@ pub(crate) fn throw_unexpected_token_with_token<T>(
 pub struct ParsingState {
 	pub(crate) line_starts: source_map::LineStarts,
 	pub(crate) source: source_map::SourceId,
-	pub(crate) length: u32,
+	pub(crate) length_of_source: u32,
+	/// TODO as multithreaded channel + record is dynamic exists
+	pub(crate) constant_imports: Vec<String>,
 }
 
 /// A keyword
@@ -757,6 +769,25 @@ impl MethodHeader {
 			MethodHeader::Generator(async_kw, a) => {
 				async_kw.as_ref().map_or(a.1.get_start(), |kw| kw.1.get_start())
 			}
+		}
+	}
+
+	pub fn is_async(&self) -> bool {
+		match self {
+			MethodHeader::GeneratorStar(async_kw, _) => async_kw.is_some(),
+			#[cfg(feature = "extras")]
+			MethodHeader::Generator(async_kw, _) => async_kw.is_some(),
+			MethodHeader::Async(_) => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_generator(&self) -> bool {
+		match self {
+			MethodHeader::GeneratorStar(..) => true,
+			#[cfg(feature = "extras")]
+			MethodHeader::Generator(..) => true,
+			_ => false,
 		}
 	}
 

@@ -239,6 +239,7 @@ mod ast {
 		crate::PropertyReference,
 		crate::Quoted,
 		crate::declarations::ImportExportName,
+		crate::declarations::ImportLocation,
 		crate::PropertyKey<crate::property_key::AlwaysPublic>,
 		crate::PropertyKey<crate::property_key::PublicOrPrivate>
 	];
@@ -358,17 +359,15 @@ mod structures {
 				ImmutableVariableOrPropertyPart::ClassName(name, _) => *name,
 				ImmutableVariableOrPropertyPart::ObjectPropertyKey(property) => {
 					match property.get_ast_ref() {
-						PropertyKey::Ident(ident, _, _) | PropertyKey::StringLiteral(ident, _) => {
-							Some(ident.as_str())
-						}
+						PropertyKey::Ident(ident, _, _)
+						| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					}
 				}
 				ImmutableVariableOrPropertyPart::ClassPropertyKey(property) => {
 					match property.get_ast_ref() {
-						PropertyKey::Ident(ident, _, _) | PropertyKey::StringLiteral(ident, _) => {
-							Some(ident.as_str())
-						}
+						PropertyKey::Ident(ident, _, _)
+						| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					}
 				}
