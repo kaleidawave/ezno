@@ -2,7 +2,7 @@ name: Performance and size
 
 on:
   push:
-    branches: [main, fixes453]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,6 +50,7 @@ jobs:
 
       - name: Run checker performance
         shell: bash
+        if: false
         run: |
           echo "### Output">> $GITHUB_STEP_SUMMARY
           echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY

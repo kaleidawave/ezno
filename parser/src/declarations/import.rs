@@ -27,8 +27,9 @@ pub enum ImportedItems {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
-	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
+	#[cfg(feature = "extras")]
 	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
+	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
@@ -72,10 +73,9 @@ impl ASTNode for ImportDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let (start_position, deferred_keyword, type_keyword, default, items, _end) =
-			parse_import_specifier_and_parts(reader, state, options)?;
+		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
-		if !(matches!(items, ImportedItems::Parts(None)) && default.is_none()) {
+		if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
 			reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
 		}
 
@@ -83,12 +83,13 @@ impl ASTNode for ImportDeclaration {
 			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 
 		Ok(ImportDeclaration {
-			default,
-			items,
-			type_keyword,
-			deferred_keyword,
+			default: out.default,
+			items: out.items,
+			type_keyword: out.type_keyword,
+			#[cfg(feature = "extras")]
+			deferred_keyword: out.deferred_keyword,
 			from,
-			position: start_position.union(end),
+			position: out.start.union(end),
 			#[cfg(feature = "extras")]
 			reversed: false,
 		})
@@ -170,38 +171,39 @@ impl ImportDeclaration {
 		let (from, _end) =
 			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 
-		let (_, deferred_keyword, type_keyword, default, items, end) =
-			parse_import_specifier_and_parts(reader, state, options)?;
+		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
 		Ok(ImportDeclaration {
-			default,
-			items,
-			type_keyword,
-			deferred_keyword,
+			default: out.default,
+			items: out.items,
+			type_keyword: out.type_keyword,
+			#[cfg(feature = "extras")]
+			deferred_keyword: out.deferred_keyword,
 			from,
-			position: start.union(end),
+			position: start.union(out.end),
 			reversed: true,
 		})
 	}
+}
+
+pub(crate) struct PartsResult {
+	pub start: source_map::Start,
+	#[cfg(feature = "extras")]
+	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
+	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
+	pub default: Option<VariableIdentifier>,
+	pub items: ImportedItems,
+	pub end: source_map::End,
 }
 
 pub(crate) fn parse_import_specifier_and_parts(
 	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
 	state: &mut ParsingState,
 	options: &ParseOptions,
-) -> Result<
-	(
-		source_map::Start,
-		Option<Keyword<tsx_keywords::Deferred>>,
-		Option<Keyword<tsx_keywords::Type>>,
-		Option<VariableIdentifier>,
-		ImportedItems,
-		source_map::End,
-	),
-	crate::ParseError,
-> {
-	let start_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
+) -> Result<PartsResult, crate::ParseError> {
+	let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
 
+	#[cfg(feature = "extras")]
 	let deferred_keyword = reader
 		.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Deferred)))
 		.map(|tok| Keyword::new(tok.get_span()));
@@ -227,19 +229,20 @@ pub(crate) fn parse_import_specifier_and_parts(
 			Some(default_identifier)
 		} else {
 			let end = default_identifier.get_position().get_end();
-			return Ok((
-				start_position,
+			return Ok(PartsResult {
+				start,
+				#[cfg(feature = "extras")]
 				deferred_keyword,
 				type_keyword,
-				Some(default_identifier),
-				ImportedItems::Parts(None),
+				default: Some(default_identifier),
+				items: ImportedItems::Parts(None),
 				end,
-			));
+			});
 		}
 	};
 
 	let peek = reader.peek();
-	let (items, end_position) = if let Some(Token(TSXToken::Multiply, _)) = peek {
+	let (items, end) = if let Some(Token(TSXToken::Multiply, _)) = peek {
 		reader.next();
 		let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
 		let under = VariableIdentifier::from_reader(reader, state, options)?;
@@ -255,12 +258,20 @@ pub(crate) fn parse_import_specifier_and_parts(
 		)?;
 		(ImportedItems::Parts(Some(parts)), end)
 	} else if let Some(Token(TSXToken::StringLiteral(..), _)) = peek {
-		(ImportedItems::Parts(None), start_position.get_end_after(6))
+		(ImportedItems::Parts(None), start.get_end_after(6))
 	} else {
 		return throw_unexpected_token(reader, &[TSXToken::Multiply, TSXToken::OpenBrace]);
 	};
 
-	Ok((start_position, deferred_keyword, type_keyword, default, items, end_position))
+	Ok(PartsResult {
+		start,
+		#[cfg(feature = "extras")]
+		deferred_keyword,
+		type_keyword,
+		default,
+		items,
+		end,
+	})
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
