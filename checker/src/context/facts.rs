@@ -1,5 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use source_map::SpanWithSource;
+
 use crate::{
 	behavior::functions::ClosureId,
 	events::{Event, RootReference},
@@ -42,6 +44,7 @@ impl Facts {
 		to: Property,
 		register_setter_event: bool,
 		publicity: PublicityKind,
+		position: Option<SpanWithSource>,
 	) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.current_properties.entry(on).or_default().push((under, publicity, to.clone()));
@@ -53,12 +56,13 @@ impl Facts {
 				reflects_dependency: None,
 				initialization: true,
 				publicity,
+				position,
 			});
 		}
 	}
 
-	pub(crate) fn throw_value(&mut self, value: TypeId) {
-		self.events.push(Event::Throw(value));
+	pub(crate) fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
+		self.events.push(Event::Throw(value, position));
 	}
 
 	pub fn get_events(&self) -> &[Event] {
@@ -85,7 +89,9 @@ impl Facts {
 			};
 			// TODO maybe register the environment if function ...
 			// TODO register properties
-			let value = Event::CreateObject { referenced_in_scope_as: ty, prototype };
+			// TODO Needs a position (or not?)
+			let value =
+				Event::CreateObject { referenced_in_scope_as: ty, prototype, position: None };
 			self.events.push(value);
 		}
 

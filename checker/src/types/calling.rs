@@ -189,7 +189,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 		call_site_type_arguments,
 		// TODO clone
 		arguments.clone(),
-		call_site,
+		call_site.clone(),
 		environment,
 		behavior,
 		types,
@@ -214,6 +214,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 				called_with_new,
 				// Don't care about output.
 				reflects_dependency: None,
+				position: call_site.clone(),
 			});
 
 			return Ok(result);
@@ -241,6 +242,7 @@ fn create_generic_function_call<'a, E: CallCheckingBehavior>(
 		timing: crate::events::CallingTiming::Synchronous,
 		called_with_new,
 		reflects_dependency,
+		position: call_site.clone(),
 	});
 
 	// TODO should wrap result in open poly
@@ -362,7 +364,7 @@ impl FunctionType {
 						call_site_type_arguments,
 						parent_type_arguments,
 						arguments,
-						call_site,
+						call_site.clone(),
 						environment,
 						behavior,
 						types,
@@ -387,6 +389,7 @@ impl FunctionType {
 					reflects_dependency: Some(ty),
 					timing: crate::events::CallingTiming::Synchronous,
 					called_with_new,
+					position: call_site.clone(),
 				});
 
 				return Ok(FunctionCallResult {

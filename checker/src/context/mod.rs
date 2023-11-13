@@ -1400,12 +1400,16 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
 	}
 
-	pub(crate) fn get_value_of_this(&mut self, types: &mut TypeStore) -> TypeId {
+	pub(crate) fn get_value_of_this(
+		&mut self,
+		types: &mut TypeStore,
+		position: SpanWithSource,
+	) -> TypeId {
 		match self.can_use_this {
 			CanUseThis::NotYetSuperToBeCalled { .. } => todo!("Cannot use super before call"),
 			CanUseThis::ConstructorCalled { this_ty } => this_ty,
 			CanUseThis::Yeah { this_ty } => {
-				get_this_type_from_constraint(&mut self.facts, this_ty, types)
+				get_this_type_from_constraint(&mut self.facts, this_ty, types, position)
 			}
 		}
 	}

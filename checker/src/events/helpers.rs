@@ -22,7 +22,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 ) -> ReturnedTypeFromBlock {
 	while let Some(event) = iter.next() {
 		match event {
-			Event::Return { returned } => {
+			Event::Return { returned, returned_position } => {
 				if let Some((expected_return_type, annotation_span)) = expected_return_type.clone()
 				{
 					let mut behavior = crate::subtyping::BasicEquality {
@@ -55,15 +55,15 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 										&checking_data.types,
 										false,
 									),
-								position: annotation_span,
-								// TODO event position here #37
+								annotation_position: annotation_span.clone(),
+								returned_position: returned_position.clone(),
 							},
 						);
 					}
 				}
 				return ReturnedTypeFromBlock::Returned(*returned);
 			}
-			Event::Conditionally { condition: on, events_if_truthy, else_events } => {
+			Event::Conditionally { condition: on, events_if_truthy, else_events, position } => {
 				let return_if_truthy = get_return_from_events(
 					&mut events_if_truthy.iter(),
 					checking_data,
@@ -172,7 +172,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 					}
 				};
 			}
-			Event::Throw(_) => {
+			Event::Throw(_, _) => {
 				// TODO ReturnedTypeFromBlock::Thrown? however this does work
 				return ReturnedTypeFromBlock::Returned(TypeId::NEVER_TYPE);
 			}
@@ -188,7 +188,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, M: crate::ASTImpl
 pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
 	let mut new_events = Vec::new();
 	for event in events.into_iter() {
-		if let Event::Throw(value) = event {
+		if let Event::Throw(value, position) = event {
 			thrown.push(value);
 		} else {
 			// TODO nested grouping

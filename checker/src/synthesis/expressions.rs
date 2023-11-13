@@ -127,24 +127,28 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 
 			for (idx, value) in elements.iter().enumerate() {
+				let spread_expression_position =
+					value.get_position().clone().with_source(environment.get_source());
 				let (key, value) = synthesise_array_item(idx, value, environment, checking_data);
-
 				basis.append(
 					environment,
 					key,
 					crate::types::properties::Property::Value(value),
 					PublicityKind::Public,
+					Some(spread_expression_position),
 				);
 			}
 			let len = checking_data
 				.types
 				.new_constant_type(Constant::Number((elements.len() as f64).try_into().unwrap()));
 
+			// TODO: Should there be a position here?
 			basis.append(
 				environment,
 				TypeId::LENGTH_AS_STRING,
 				crate::types::properties::Property::Value(len),
 				PublicityKind::Public,
+				None,
 			);
 
 			Instance::RValue(basis.build_object())
@@ -425,11 +429,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					todo!()
 				};
 
+			let access_position = position.clone().with_source(environment.get_source());
 			// TODO
 			let publicity = PublicityKind::Public;
 
-			let get_property =
-				environment.get_property(on, property, publicity, &mut checking_data.types, None);
+			let get_property = environment.get_property(
+				on,
+				property,
+				publicity,
+				&mut checking_data.types,
+				None,
+				access_position,
+			);
 
 			match get_property {
 				Some((kind, result)) => match kind {
@@ -462,7 +473,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::ThisReference(..) => {
-			Instance::RValue(environment.get_value_of_this(&mut checking_data.types))
+			let position = SynthesisableExpression::get_position(expression)
+				.clone()
+				.with_source(environment.get_source());
+			Instance::RValue(environment.get_value_of_this(&mut checking_data.types, position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
 			SuperReference::Call { arguments } => {
@@ -556,12 +570,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let indexee = synthesise_expression(indexee, environment, checking_data);
 			let indexer = synthesise_multiple_expression(indexer, environment, checking_data);
 
+			let index_position = position.clone().with_source(environment.get_source());
 			let get_property = environment.get_property(
 				indexee,
 				indexer,
 				PublicityKind::Public,
 				&mut checking_data.types,
 				None,
+				index_position,
 			);
 
 			match get_property {
@@ -856,7 +872,14 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	let this = environment.get_value_of_this(&mut checking_data.types);
+	todo!("get event position");
+	// TODO: Needs clarification. This only passes the position of the first field. Should we pass all fields positions?
+	// TODO: Placeholder. This placeholder implementation retrieves the position of the first field in order to satisfy the compiler
+	let fields_position = SynthesisableExpression::get_position(&fields[0].2)
+		.clone()
+		.with_source(environment.get_source());
+
+	let this = environment.get_value_of_this(&mut checking_data.types, fields_position);
 	for (under, publicity, mut expression) in fields {
 		let new = synthesise_expression(&expression, environment, checking_data);
 		environment.facts.events.push(Event::Setter {
@@ -866,6 +889,7 @@ pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
 			reflects_dependency: None,
 			initialization: true,
 			publicity,
+			position: Some(fields_position),
 		});
 		todo!()
 		// environment.new_property(this, under, new, false);
@@ -895,6 +919,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
 
 	for member in members.iter() {
+		let member_position = member.get_position().clone().with_source(environment.get_source());
 		match member {
 			ObjectLiteralMember::SpreadExpression(spread, pos) => {
 				checking_data.raise_unimplemented_error(
@@ -928,6 +953,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					key,
 					crate::types::properties::Property::Value(value),
 					PublicityKind::Public,
+					Some(member_position),
 				);
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
@@ -936,7 +962,13 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let value = synthesise_expression(expression, environment, checking_data);
 				let value = crate::types::properties::Property::Value(value);
-				object_builder.append(environment, key, value, PublicityKind::Public);
+				object_builder.append(
+					environment,
+					key,
+					value,
+					PublicityKind::Public,
+					Some(member_position),
+				);
 
 				// let property_name: PropertyName<'static> = property_key.into();
 
@@ -966,7 +998,13 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let property =
 					environment.new_function(checking_data, method, RegisterOnExistingObject);
 
-				object_builder.append(environment, key, property, PublicityKind::Public)
+				object_builder.append(
+					environment,
+					key,
+					property,
+					PublicityKind::Public,
+					Some(member_position),
+				)
 			}
 		}
 	}

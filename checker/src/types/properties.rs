@@ -63,6 +63,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE || under == TypeId::ERROR_TYPE {
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
@@ -102,6 +103,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 		under,
 		reflects_dependency,
 		publicity,
+		position,
 	});
 
 	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value
@@ -388,6 +390,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
+	setter_position: Option<SpanWithSource>,
 ) -> Result<Option<TypeId>, SetPropertyError> {
 	// TODO
 	// if environment.is_not_writeable(on, under) {
@@ -472,6 +475,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 						// TODO
 						reflects_dependency: None,
 						initialization: false,
+						position: setter_position,
 					});
 				}
 				Property::Getter(_) => todo!(),
@@ -490,6 +494,7 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 			new,
 			register_setter_event,
 			publicity,
+			setter_position,
 		);
 	}
 	Ok(None)

@@ -123,7 +123,7 @@ function func(): string {
 }
 ```
 
-- Function is expected to return string but returned 2
+- Cannot return 2 because the function is expected to return string
 
 #### *Inferred* return type
 
@@ -201,7 +201,7 @@ function getSecond2<T, U>(p1: T, p2: U): U {
 }
 ```
 
-- Function is expected to return U but returned T
+- Cannot return T because the function is expected to return U
 
 #### Use of generics in function body
 
@@ -229,7 +229,7 @@ function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
 }
 ```
 
-- Function is expected to return {"a": U, "b": U, } but returned {"a": T, "b": U, }
+- Cannot return {"a": T, "b": U, } because the function is expected to return {"a": U, "b": U, }
 
 ### Function calling
 
