@@ -446,7 +446,7 @@ mod defined_errors_and_warnings {
 					returned_type,
 				} => Diagnostic::PositionWithAdditionLabels {
 					reason: format!(
-						"Cannot return {returned_type} because function expected to return {expected_return_type}",
+						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
 					),
 					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
