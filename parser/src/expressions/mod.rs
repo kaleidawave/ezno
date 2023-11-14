@@ -118,6 +118,7 @@ pub enum Expression {
 	NewTarget(Span),
 	DynamicImport {
 		path: Box<Expression>,
+		options: Option<Box<Expression>>,
 		position: Span,
 	},
 	PropertyAccess {
@@ -230,13 +231,9 @@ impl Expression {
 					position: Span { start: position.0, end: position.0, source: () },
 				});
 			}
-			Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
+			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let position = start.with_length(content.len() + 2);
-				Expression::StringLiteral(content, Quoted::Single, position)
-			}
-			Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
-				let position = start.with_length(content.len() + 2);
-				Expression::StringLiteral(content, Quoted::Double, position)
+				Expression::StringLiteral(content, quoted, position)
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
@@ -267,6 +264,27 @@ impl Expression {
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => {
 				Expression::ThisReference(t.get_span())
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
+				let _ = reader.expect_next(TSXToken::OpenParentheses)?;
+				let path = Expression::from_reader(reader, state, options)?;
+				if let Expression::StringLiteral(path, ..) = &path {
+					state.constant_imports.push(path.clone());
+				} else {
+					// TODO warning dynamic
+				}
+				let options = if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some()
+				{
+					Some(Box::new(Expression::from_reader(reader, state, options)?))
+				} else {
+					None
+				};
+				let end = reader.expect_next(TSXToken::OpenParentheses)?;
+				Expression::DynamicImport {
+					path: Box::new(path),
+					options,
+					position: start.union(end.get_end_after(1)),
+				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Super), _) => {
 				let _super_position = t.get_span();
@@ -513,7 +531,7 @@ impl Expression {
 				)?;
 				Expression::TemplateLiteral(template_literal)
 			}
-			Token(TSXToken::Keyword(kw), start) if kw.is_function_heading() => {
+			Token(TSXToken::Keyword(kw), start) if kw.is_in_function_header() => {
 				let token = Token(TSXToken::Keyword(kw), start);
 				let (async_keyword, token) =
 					if let Token(TSXToken::Keyword(TSXKeyword::Async), _) = token {
@@ -523,7 +541,7 @@ impl Expression {
 					};
 
 				if async_keyword.is_some()
-					&& !matches!(token, Token(TSXToken::Keyword(ref kw), _) if kw.is_function_heading())
+					&& !matches!(token, Token(TSXToken::Keyword(ref kw), _) if kw.is_in_function_header())
 				{
 					if let Token(TSXToken::OpenParentheses, start) = token {
 						let function = ArrowFunction::from_reader_sub_open_paren(
@@ -1739,6 +1757,8 @@ impl Expression {
 							parameters: Default::default(),
 							rest_parameter: Default::default(),
 							position: position.clone(),
+							this_type: None,
+							super_type: None,
 						},
 						return_type: None,
 						type_parameters: None,

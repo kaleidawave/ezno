@@ -173,7 +173,14 @@ impl<'a> Environment<'a> {
 								checking_data,
 							)),
 						Reference::Property { on, with, publicity, span } => Ok(env
-							.set_property(on, with, publicity, new, &mut checking_data.types)?
+							.set_property(
+								on,
+								with,
+								publicity,
+								new,
+								&mut checking_data.types,
+								Some(span),
+							)?
 							.unwrap_or(new)),
 					}
 				}
@@ -431,7 +438,11 @@ impl<'a> Environment<'a> {
 
 							let variable_id = variable.get_id();
 
-							self.facts.events.push(Event::SetsVariable(variable_id, new_type));
+							self.facts.events.push(Event::SetsVariable(
+								variable_id,
+								new_type,
+								assignment_position,
+							));
 							self.facts.variable_current_value.insert(variable_id, new_type);
 
 							Ok(new_type)
@@ -496,6 +507,7 @@ impl<'a> Environment<'a> {
 		kind: PublicityKind,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
+		position: SpanWithSource,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -505,6 +517,7 @@ impl<'a> Environment<'a> {
 			self,
 			&mut CheckThings,
 			types,
+			position,
 		)
 	}
 
@@ -516,7 +529,7 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
 	) -> TypeId {
-		match self.get_property(on, property, kind, &mut checking_data.types, None) {
+		match self.get_property(on, property, kind, &mut checking_data.types, None, site.clone()) {
 			Some((_, ty)) => ty,
 			None => {
 				checking_data.diagnostics_container.add_error(
@@ -643,11 +656,13 @@ impl<'a> Environment<'a> {
 
 			// TODO temp position
 			let mut value = None;
+
 			for event in self.facts.events.iter() {
 				// TODO explain why don't need to detect sets
 				if let Event::ReadsReference {
 					reference: other_reference,
 					reflects_dependency: Some(dep),
+					position,
 				} = event
 				{
 					if reference == *other_reference {
@@ -677,6 +692,7 @@ impl<'a> Environment<'a> {
 				self.facts.events.push(Event::ReadsReference {
 					reference: RootReference::Variable(og_var.get_id()),
 					reflects_dependency: Some(ty),
+					position,
 				});
 
 				ty
@@ -751,12 +767,12 @@ impl<'a> Environment<'a> {
 				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
 
 			let falsy_events = falsy_environment.facts.events;
-
-			// TODO
+			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
 			self.facts.events.push(Event::Conditionally {
 				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: falsy_events.into_boxed_slice(),
+				position: None,
 			});
 
 			// TODO all things that are
@@ -769,6 +785,7 @@ impl<'a> Environment<'a> {
 				condition,
 				events_if_truthy: truthy_events.into_boxed_slice(),
 				else_events: Default::default(),
+				position: None,
 			});
 
 			// TODO above
@@ -777,12 +794,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, value: TypeId) {
-		self.facts.events.push(Event::Throw(value));
+	pub fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
+		self.facts.events.push(Event::Throw(value, position));
 	}
 
-	pub fn return_value(&mut self, returned: TypeId) {
-		self.facts.events.push(Event::Return { returned })
+	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
+		self.facts.events.push(Event::Return { returned, returned_position })
 	}
 
 	/// Updates **a existing property**
@@ -795,6 +812,7 @@ impl<'a> Environment<'a> {
 		kind: PublicityKind,
 		new: TypeId,
 		types: &mut TypeStore,
+		setter_position: Option<SpanWithSource>,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
@@ -804,6 +822,7 @@ impl<'a> Environment<'a> {
 			self,
 			&mut CheckThings,
 			types,
+			setter_position,
 		)
 	}
 
@@ -822,13 +841,16 @@ impl<'a> Environment<'a> {
 		));
 
 		let prototype = crate::events::PrototypeArgument::Yeah(over);
+		// TODO Unknown position
 		let event = Event::Conditionally {
 			condition,
 			events_if_truthy: Box::new([Event::CreateObject {
 				referenced_in_scope_as: ty,
 				prototype,
+				position: None,
 			}]),
 			else_events: Box::new([]),
+			position: None,
 		};
 
 		self.facts.events.push(event);
@@ -1035,6 +1057,7 @@ pub(crate) fn get_this_type_from_constraint(
 	facts: &mut Facts,
 	this_ty: TypeId,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> TypeId {
 	// TODO `this_ty` can be error here..?
 	if this_ty == TypeId::ERROR_TYPE {
@@ -1070,6 +1093,7 @@ pub(crate) fn get_this_type_from_constraint(
 		if let Event::ReadsReference {
 			reference: other_reference,
 			reflects_dependency: Some(dep),
+			position,
 		} = event
 		{
 			if reference == RootReference::This {
@@ -1085,6 +1109,7 @@ pub(crate) fn get_this_type_from_constraint(
 	facts.events.push(Event::ReadsReference {
 		reference: RootReference::This,
 		reflects_dependency: Some(ty),
+		position,
 	});
 
 	ty

@@ -4,7 +4,7 @@ use crate::{
 	extensions::decorators::Decorated, CursorId, Decorator, Keyword, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
 };
-use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed};
+use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, Quoted};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
@@ -40,7 +40,7 @@ pub enum TypeAnnotation {
 	/// Intersection e.g. `c & d`
 	Intersection(Vec<TypeAnnotation>, Span),
 	/// String literal e.g. `"foo"`
-	StringLiteral(String, Span),
+	StringLiteral(String, Quoted, Span),
 	/// Number literal e.g. `45`
 	NumberLiteral(NumberRepresentation, Span),
 	/// Boolean literal e.g. `true`
@@ -298,10 +298,10 @@ impl ASTNode for TypeAnnotation {
 			Self::NumberLiteral(value, _) => {
 				buf.push_str(&value.to_string());
 			}
-			Self::StringLiteral(expression, _) => {
-				buf.push('"');
+			Self::StringLiteral(expression, quoted, _) => {
+				buf.push(quoted.as_char());
 				buf.push_str(expression.as_str());
-				buf.push('"');
+				buf.push(quoted.as_char());
 			}
 			Self::Union(union_members, _) => {
 				for (at_end, member) in union_members.iter().endiate() {
@@ -431,10 +431,9 @@ impl TypeAnnotation {
 				let pos = start.with_length(num.len());
 				Self::NumberLiteral(num.parse::<NumberRepresentation>().unwrap(), pos)
 			}
-			Token(TSXToken::SingleQuotedStringLiteral(content), start)
-			| Token(TSXToken::DoubleQuotedStringLiteral(content), start) => {
+			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let pos = start.with_length(content.len() + 2);
-				Self::StringLiteral(content, pos)
+				Self::StringLiteral(content, quoted, pos)
 			}
 			Token(TSXToken::At, pos) => {
 				let decorator = Decorator::from_reader_sub_at_symbol(reader, state, options, pos)?;
@@ -983,7 +982,7 @@ mod tests {
 	fn literals() {
 		assert_matches_ast!(
 			"\"my_string\"",
-			TypeAnnotation::StringLiteral(Deref @ "my_string", span!(0, 11))
+			TypeAnnotation::StringLiteral(Deref @ "my_string", Quoted::Double, span!(0, 11))
 		);
 		assert_matches_ast!(
 			"45",

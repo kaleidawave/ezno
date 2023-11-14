@@ -41,11 +41,14 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	for attribute in element.attributes.iter() {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
+		let attribute_position =
+			attribute.get_position().clone().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
 			name,
 			crate::Property::Value(attribute_value),
 			crate::context::facts::PublicityKind::Public,
+			Some(attribute_position),
 		);
 
 		// let constraint = environment
@@ -136,12 +139,14 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				.types
 				.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
+			let child_position = child.get_position().clone().with_source(environment.get_source());
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
 				property,
 				crate::Property::Value(child),
 				crate::context::facts::PublicityKind::Public,
+				Some(child_position),
 			);
 		}
 

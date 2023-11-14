@@ -66,7 +66,13 @@ impl FunctionBased for ArrowFunctionBase {
 					additionally: None,
 					position: position.clone(),
 				}];
-				Ok(FunctionParameters { parameters, rest_parameter: None, position })
+				Ok(FunctionParameters {
+					parameters,
+					rest_parameter: None,
+					position,
+					this_type: None,
+					super_type: None,
+				})
 			}
 		}
 	}
@@ -128,6 +134,8 @@ impl ArrowFunction {
 				parameters,
 				rest_parameter: None,
 				position: first_parameter.1,
+				this_type: None,
+				super_type: None,
 			},
 			return_type: None,
 			type_parameters: None,

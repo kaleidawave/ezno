@@ -1,4 +1,4 @@
-use crate::TSXToken;
+use crate::{Quoted, TSXToken};
 use source_map::Span;
 use std::fmt::Debug;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
@@ -62,7 +62,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Ident(String, Span, T::Private),
-	StringLiteral(String, Span),
+	StringLiteral(String, Quoted, Span),
 	NumberLiteral(NumberRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
@@ -72,7 +72,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 	pub fn get_position(&self) -> &Span {
 		match self {
 			PropertyKey::Ident(_, pos, _)
-			| PropertyKey::StringLiteral(_, pos)
+			| PropertyKey::StringLiteral(_, _, pos)
 			| PropertyKey::NumberLiteral(_, pos)
 			| PropertyKey::Computed(_, pos) => pos,
 		}
@@ -82,7 +82,9 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
 		match self {
-			PropertyKey::Ident(name, _, _) | PropertyKey::StringLiteral(name, _) => name == other,
+			PropertyKey::Ident(name, _, _) | PropertyKey::StringLiteral(name, _, _) => {
+				name == other
+			}
 			PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => false,
 		}
 	}
@@ -92,7 +94,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	fn get_position(&self) -> &Span {
 		match self {
 			PropertyKey::Ident(_, pos, _)
-			| PropertyKey::StringLiteral(_, pos)
+			| PropertyKey::StringLiteral(_, _, pos)
 			| PropertyKey::NumberLiteral(_, pos)
 			| PropertyKey::Computed(_, pos) => pos,
 		}
@@ -104,10 +106,9 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::DoubleQuotedStringLiteral(content), start)
-			| Token(TSXToken::SingleQuotedStringLiteral(content), start) => {
+			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let position = start.with_length(content.len() + 2);
-				Ok(Self::StringLiteral(content, position))
+				Ok(Self::StringLiteral(content, quoted, position))
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
@@ -134,10 +135,10 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 		match self {
 			Self::Ident(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
-			Self::StringLiteral(string, _) => {
-				buf.push('"');
+			Self::StringLiteral(string, quoted, _) => {
+				buf.push(quoted.as_char());
 				buf.push_str(string.as_str());
-				buf.push('"');
+				buf.push(quoted.as_char());
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');

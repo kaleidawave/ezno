@@ -125,6 +125,24 @@ pub fn just_imports(input: String) -> JsValue {
 	}
 }
 
+/// Removes whitespace in module
+#[wasm_bindgen]
+pub fn minify_module(input: String) -> JsValue {
+	use parser::{ASTNode, Module, SourceId};
+
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	match item {
+		Ok(mut item) => {
+			serde_wasm_bindgen::to_value(&item.to_string(&parser::ToStringOptions::minified()))
+				.unwrap()
+		}
+		Err(parse_error) => {
+			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
+		}
+	}
+}
+
 #[wasm_bindgen]
 pub fn get_version() -> JsValue {
 	serde_wasm_bindgen::to_value(&env!("CARGO_PKG_VERSION")).unwrap()

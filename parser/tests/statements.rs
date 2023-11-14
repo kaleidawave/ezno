@@ -198,3 +198,47 @@ export { default as name1 } from "module-name""#
 	// let output = module.to_string(&ToStringOptions::typescript());
 	// assert_eq!(output, input);
 }
+
+#[cfg(feature = "extras")]
+#[test]
+fn reversed_imports() {
+	let input = r#"
+from "module-name" import defaultExport;
+from "module-name" import * as name;
+from "module-name" import { export1 };
+from "module-name" import { export1, export2 };
+from "module-name" import defaultExport, { export1, /* … */ };
+from "module-name" import defaultExport, * as name;
+    "#
+	.trim();
+
+	let module =
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+
+	eprintln!("Module: {:#?}", module);
+
+	// let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	// assert_eq!(output, input);
+}
+
+#[cfg(feature = "extras")]
+#[test]
+fn function_custom_headers() {
+	let input = r#"
+function a() {}
+generator function a() {}
+generator server function a() {}
+generator server function a() {}
+async server function a() {}
+module function a() {}
+    "#
+	.trim();
+
+	let module =
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+
+	eprintln!("Module: {:#?}", module);
+
+	// let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	// assert_eq!(output, input);
+}

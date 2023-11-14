@@ -131,9 +131,17 @@ pub(super) fn synthesise_class_declaration<
 						if static_kw.is_some() {
 							static_properties.push((key, publicity, property));
 						} else {
-							environment
-								.facts
-								.register_property(class_type, key, property, true, publicity);
+							let member_position =
+								member.position.clone().with_source(environment.get_source());
+
+							environment.facts.register_property(
+								class_type,
+								key,
+								property,
+								true,
+								publicity,
+								Some(member_position),
+							);
 							// TODO check not already exists
 
 							// if let Some(existing_property) = existing_property {

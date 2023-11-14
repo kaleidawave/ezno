@@ -299,12 +299,18 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							.types
 							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
 
+						let field_position = variable_field
+							.get_position()
+							.clone()
+							.with_source(environment.get_source());
+
 						let value = environment.get_property(
 							value,
 							idx,
 							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
+							field_position,
 						);
 
 						if let Some((_, value)) = value {
@@ -339,6 +345,9 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							VariableIdentifier::Cursor(..) => todo!(),
 						};
 
+						let get_position_with_source =
+							get_position.clone().with_source(environment.get_source());
+
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
 						let property = environment.get_property(
@@ -347,6 +356,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
+							get_position_with_source,
 						);
 						let value = match property {
 							Some((_, value)) => value,
@@ -382,6 +392,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
+							position.clone().with_source(environment.get_source()),
 						);
 
 						let value = match property_value {

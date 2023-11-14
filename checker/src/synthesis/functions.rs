@@ -235,7 +235,9 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
 				let returned = synthesise_expression(expression, environment, checking_data);
-				environment.return_value(returned);
+				let position =
+					expression.get_position().clone().with_source(environment.get_source());
+				environment.return_value(returned, position);
 			}
 			ExpressionOrBlock::Block(block) => {
 				block.synthesise_function_body(environment, checking_data)

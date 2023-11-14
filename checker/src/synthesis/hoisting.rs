@@ -75,13 +75,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				parser::Declaration::Import(import) => {
-					let kind = match &import.kind {
-						parser::declarations::import::ImportKind::Parts(parts) => {
+					let kind = match &import.items {
+						parser::declarations::import::ImportedItems::Parts(parts) => {
 							crate::behavior::modules::ImportKind::Parts(
-								parts.iter().filter_map(|item| import_part_to_name_pair(item)),
+								parts
+									.iter()
+									.flatten()
+									.filter_map(|item| import_part_to_name_pair(item)),
 							)
 						}
-						parser::declarations::import::ImportKind::All { under } => match under {
+						parser::declarations::import::ImportedItems::All { under } => match under {
 							VariableIdentifier::Standard(under, position) => {
 								crate::behavior::modules::ImportKind::All {
 									under,
@@ -90,9 +93,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 							VariableIdentifier::Cursor(_, _) => todo!(),
 						},
-						parser::declarations::import::ImportKind::SideEffect => {
-							crate::behavior::modules::ImportKind::SideEffect
-						}
 					};
 					let default_import = import.default.as_ref().and_then(|default_identifier| {
 						match default_identifier {
@@ -102,47 +102,54 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
-					environment.import_items(
-						&import.from,
-						import.position.clone(),
-						default_import,
-						kind,
-						checking_data,
-						false,
-					);
+					if let Some(path) = import.from.get_path() {
+						environment.import_items(
+							path,
+							import.position.clone(),
+							default_import,
+							kind,
+							checking_data,
+							false,
+						);
+					}
 				}
 				parser::Declaration::Export(export) => {
 					if let ExportDeclaration::Variable { exported, position } = &export.on {
 						// Imports & types
 						match exported {
 							Exportable::ImportAll { r#as, from } => {
-								environment.import_items::<iter::Empty<_>, _, _>(
-									from,
-									position.clone(),
-									None,
-									match r#as {
+								if let Some(path) = from.get_path() {
+									let kind = match r#as {
 										Some(VariableIdentifier::Standard(name, pos)) => {
 											ImportKind::All { under: name, position: pos.clone() }
 										}
 										Some(VariableIdentifier::Cursor(_, _)) => todo!(),
 										None => ImportKind::Everything,
-									},
-									checking_data,
-									true,
-								);
+									};
+									environment.import_items::<iter::Empty<_>, _, _>(
+										path,
+										position.clone(),
+										None,
+										kind,
+										checking_data,
+										true,
+									);
+								}
 							}
 							Exportable::ImportParts { parts, from } => {
 								let parts =
 									parts.iter().filter_map(|item| export_part_to_name_pair(item));
 
-								environment.import_items(
-									from,
-									position.clone(),
-									None,
-									crate::behavior::modules::ImportKind::Parts(parts),
-									checking_data,
-									true,
-								);
+								if let Some(path) = from.get_path() {
+									environment.import_items(
+										path,
+										position.clone(),
+										None,
+										crate::behavior::modules::ImportKind::Parts(parts),
+										checking_data,
+										true,
+									);
+								}
 							}
 							Exportable::TypeAlias(alias) => {
 								let export = environment.new_alias::<_, EznoParser>(
@@ -378,6 +385,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 				value: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
+					_ => todo!(),
 				},
 				r#as: &name,
 				position: position.clone(),
@@ -409,6 +417,7 @@ pub(super) fn export_part_to_name_pair(
 				r#as: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
+					_ => todo!(),
 				},
 				position: position.clone(),
 			})

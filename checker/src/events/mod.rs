@@ -6,12 +6,13 @@ use crate::{
 	behavior::functions::ThisValue,
 	context::{calling::Target, facts::PublicityKind, get_on_ctx, CallCheckingBehavior},
 	types::{calling::CalledWithNew, properties::Property},
-	FunctionId, GeneralContext, VariableId,
+	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
 pub(crate) mod application;
 pub(crate) mod helpers;
 pub(crate) use application::apply_event;
+use source_map::Span;
 
 use crate::{
 	types::functions::SynthesisedArgument,
@@ -46,15 +47,20 @@ pub enum Event {
 	/// Reads variable
 	///
 	/// Can be used for DCE reasons, or finding variables in context
-	ReadsReference { reference: RootReference, reflects_dependency: Option<TypeId> },
+	ReadsReference {
+		reference: RootReference,
+		reflects_dependency: Option<TypeId>,
+		position: SpanWithSource,
+	},
 	/// Also used for DCE
-	SetsVariable(VariableId, TypeId),
+	SetsVariable(VariableId, TypeId, SpanWithSource),
 	/// Mostly trivial, sometimes can call a function :(
 	Getter {
 		on: TypeId,
 		under: TypeId,
 		reflects_dependency: Option<TypeId>,
 		publicity: PublicityKind,
+		position: SpanWithSource,
 	},
 	/// All changes to the value of a property
 	Setter {
@@ -68,6 +74,7 @@ pub enum Event {
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
 		publicity: PublicityKind,
+		position: Option<SpanWithSource>,
 	},
 
 	/// This includes closed over variables, anything dependent
@@ -77,13 +84,19 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
+		position: SpanWithSource,
 	},
 	/// From a `throw ***` statement (or expression)
-	Throw(TypeId),
+	Throw(TypeId, SpanWithSource),
 	/// Run events conditionally
-	Conditionally { condition: TypeId, events_if_truthy: Box<[Event]>, else_events: Box<[Event]> },
+	Conditionally {
+		condition: TypeId,
+		events_if_truthy: Box<[Event]>,
+		else_events: Box<[Event]>,
+		position: Option<SpanWithSource>,
+	},
 	/// TODO not sure but whatever
-	Return { returned: TypeId },
+	Return { returned: TypeId, returned_position: SpanWithSource },
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -105,6 +118,7 @@ pub enum Event {
 		///
 		/// This is also for the specialization (somehow)
 		referenced_in_scope_as: TypeId,
+		position: Option<SpanWithSource>,
 	},
 	// Registration(Registration),
 }

@@ -1,3 +1,5 @@
+use source_map::SpanWithSource;
+
 use crate::{
 	context::{
 		facts::{Facts, PublicityKind},
@@ -25,8 +27,9 @@ impl ObjectBuilder {
 		under: TypeId,
 		value: Property,
 		property: PublicityKind,
+		position: Option<SpanWithSource>,
 	) {
-		environment.facts.register_property(self.object, under, value, true, property)
+		environment.facts.register_property(self.object, under, value, true, property, position)
 	}
 
 	pub fn build_object(self) -> TypeId {

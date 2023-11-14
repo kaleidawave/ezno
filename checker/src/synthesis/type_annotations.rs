@@ -60,7 +60,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			CommonTypes::Number => TypeId::NUMBER_TYPE,
 			CommonTypes::Boolean => TypeId::BOOLEAN_TYPE,
 		},
-		TypeAnnotation::StringLiteral(value, _) => {
+		TypeAnnotation::StringLiteral(value, ..) => {
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
@@ -347,12 +347,16 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 						let item_ty =
 							synthesise_type_annotation(type_annotation, environment, checking_data);
-
+						let ty_position = type_annotation
+							.get_position()
+							.clone()
+							.with_source(environment.get_source());
 						obj.append(
 							environment,
 							idx_ty,
 							Property::Value(item_ty),
 							PublicityKind::Public,
+							Some(ty_position),
 						);
 					}
 					SpreadKind::Spread => {
@@ -364,11 +368,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let constant = Constant::Number((members.len() as f64).try_into().unwrap());
 			let length_value = checking_data.types.new_constant_type(constant);
 
+			// TODO: Does `constant` have a position? Or should it have one?
 			obj.append(
 				environment,
 				TypeId::LENGTH_AS_STRING,
 				Property::Value(length_value),
 				PublicityKind::Public,
+				None,
 			);
 
 			obj.build_object()

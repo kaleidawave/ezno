@@ -36,7 +36,7 @@ pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::Prop
 	types: &mut TypeStore,
 ) -> TypeId {
 	match property_key {
-		PropertyKey::StringLiteral(value, _) | PropertyKey::Ident(value, _, _) => {
+		PropertyKey::StringLiteral(value, ..) | PropertyKey::Ident(value, _, _) => {
 			types.new_constant_type(Constant::String(value.clone()))
 		}
 		PropertyKey::NumberLiteral(number, _) => {

@@ -23,7 +23,7 @@ pub(crate) fn apply_event(
 	types: &mut TypeStore,
 ) -> EarlyReturn {
 	match event {
-		Event::ReadsReference { reference, reflects_dependency } => {
+		Event::ReadsReference { reference, reflects_dependency, position } => {
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
@@ -40,12 +40,12 @@ pub(crate) fn apply_event(
 							}
 						}
 					}
-					RootReference::This => this_value.get(environment, types),
+					RootReference::This => this_value.get(environment, types, position),
 				};
 				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::SetsVariable(variable, value) => {
+		Event::SetsVariable(variable, value, position) => {
 			let new_value = substitute(value, type_arguments, environment, types);
 
 			// if not closed over!!
@@ -61,21 +61,30 @@ pub(crate) fn apply_event(
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
 
-			facts.events.push(Event::SetsVariable(variable, new_value));
+			facts.events.push(Event::SetsVariable(variable, new_value, position));
 			facts.variable_current_value.insert(variable, new_value);
 		}
-		Event::Getter { on, under, reflects_dependency, publicity } => {
+		Event::Getter { on, under, reflects_dependency, publicity, position } => {
 			let on = substitute(on, type_arguments, environment, types);
 			let property = substitute(under, type_arguments, environment, types);
 
-			let (_, value) = get_property(on, under, publicity, None, environment, target, types)
-				.expect("Inferred constraints and checking failed");
+			let (_, value) =
+				get_property(on, under, publicity, None, environment, target, types, position)
+					.expect("Inferred constraints and checking failed");
 
 			if let Some(id) = reflects_dependency {
 				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::Setter { on, under, new, reflects_dependency, initialization, publicity } => {
+		Event::Setter {
+			on,
+			under,
+			new,
+			reflects_dependency,
+			initialization,
+			publicity,
+			position,
+		} => {
 			let on = substitute(on, type_arguments, environment, types);
 			let under = substitute(under, type_arguments, environment, types);
 
@@ -117,10 +126,11 @@ pub(crate) fn apply_event(
 					};
 				target
 					.get_top_level_facts(environment)
-					.register_property(on, under, new, true, publicity);
+					.register_property(on, under, new, true, publicity, position);
 			} else {
 				let returned =
-					set_property(on, under, publicity, new, environment, target, types).unwrap();
+					set_property(on, under, publicity, new, environment, target, types, position)
+						.unwrap();
 
 				if let Some(id) = reflects_dependency {
 					type_arguments.set_id_from_reference(
@@ -131,7 +141,7 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::CallsType { on, with, reflects_dependency, timing, called_with_new } => {
+		Event::CallsType { on, with, reflects_dependency, timing, called_with_new, position } => {
 			let on = substitute(on, type_arguments, environment, types);
 
 			let with = with
@@ -193,17 +203,17 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::Throw(thrown) => {
+		Event::Throw(thrown, position) => {
 			let substituted_thrown = substitute(thrown, type_arguments, environment, types);
 
-			target.get_top_level_facts(environment).throw_value(substituted_thrown);
+			target.get_top_level_facts(environment).throw_value(substituted_thrown, position);
 
 			if substituted_thrown != TypeId::ERROR_TYPE {
 				return None;
 			}
 		}
 		// TODO extract
-		Event::Conditionally { condition, events_if_truthy, else_events } => {
+		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
 			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
@@ -249,10 +259,11 @@ pub(crate) fn apply_event(
 					condition,
 					events_if_truthy: truthy_facts.events.into_boxed_slice(),
 					else_events: else_facts.events.into_boxed_slice(),
+					position,
 				});
 			}
 		}
-		Event::Return { returned } => {
+		Event::Return { returned, returned_position } => {
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
 
 			if substituted_returned != TypeId::ERROR_TYPE {
@@ -261,7 +272,9 @@ pub(crate) fn apply_event(
 				crate::utils::notify!("event returned error so skipped");
 			}
 		}
-		Event::CreateObject { referenced_in_scope_as, prototype } => {
+
+		// TODO Needs a position (or not?)
+		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
 			// TODO only if exposed via set
 
 			// TODO

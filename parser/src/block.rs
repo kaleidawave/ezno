@@ -10,7 +10,7 @@ use crate::{
 	Visitable,
 };
 
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
