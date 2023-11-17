@@ -150,7 +150,6 @@ pub(crate) fn synthesize_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			parser::declarations::ExportDeclaration::Type { .. } => {}
 		},
 	}
 }

@@ -143,7 +143,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									);
 								}
 							}
-							Exportable::ImportParts { parts, from } => {
+							Exportable::ImportParts { parts, from, .. } => {
 								let parts =
 									parts.iter().filter_map(|item| export_part_to_name_pair(item));
 
@@ -337,8 +337,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							| Exportable::ImportParts { .. } => {}
 						}
 					}
-					parser::declarations::ExportDeclaration::Type { .. }
-					| parser::declarations::ExportDeclaration::Default { .. } => {}
+					parser::declarations::ExportDeclaration::Default { .. } => {}
 				},
 			},
 		}
