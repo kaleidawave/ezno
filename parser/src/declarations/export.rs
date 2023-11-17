@@ -25,6 +25,8 @@ pub enum ExportDeclaration {
 	// TODO listed object thing
 	// TODO export *
 	Variable { exported: Exportable, position: Span },
+
+	Type { exported: Exportable, position: Span },
 	// `export default ...`
 	Default { expression: Box<Expression>, position: Span },
 }
@@ -47,7 +49,8 @@ impl ASTNode for ExportDeclaration {
 	fn get_position(&self) -> &Span {
 		match self {
 			ExportDeclaration::Variable { position, .. }
-			| ExportDeclaration::Default { position, .. } => position,
+			| ExportDeclaration::Default { position, .. }
+			| ExportDeclaration::Type { position, .. } => position,
 		}
 	}
 
@@ -57,6 +60,7 @@ impl ASTNode for ExportDeclaration {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Export))?;
+
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
 				reader.next();
@@ -109,9 +113,62 @@ impl ASTNode for ExportDeclaration {
 				})
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-				let type_alias = TypeAlias::from_reader(reader, state, options)?;
-				let position = start.union(type_alias.get_position());
-				Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
+				match reader.peek_n(1).ok_or_else(parse_lexing_error)? {
+					Token(TSXToken::OpenBrace, _) => {
+						let _ = reader.next().unwrap(); // type
+						let Token(_, start) = reader.next().unwrap(); // OpenBrace
+
+						let after_bracket =
+							reader.scan(|token, _| matches!(token, TSXToken::CloseBrace));
+
+						if let Some(Token(token_type, _)) = after_bracket {
+							match token_type {
+								TSXToken::Keyword(TSXKeyword::From) => {
+									let (parts, _end) = crate::parse_bracketed::<ExportPart>(
+										reader,
+										state,
+										options,
+										None,
+										TSXToken::CloseBrace,
+									)?;
+									// Know this is 'from' from above
+									let _ = reader.next().unwrap();
+									let (from, end) = ImportLocation::from_token(
+										reader.next().ok_or_else(parse_lexing_error)?,
+									)?;
+									Ok(Self::Type {
+										exported: Exportable::ImportParts { parts, from },
+										position: start.union(end),
+									})
+								}
+								_found => {
+									Err(ParseError::new(
+										crate::ParseErrors::LexingFailed,
+										start.with_length(1),
+									))
+
+									// Err(ParseError::new(
+									// crate::ParseErrors::UnexpectedToken {
+									// expected: &[TSXToken::Keyword(TSXKeyword::From)],
+									// found: found,
+									// },
+									// start.with_length(1),
+									// ))
+								}
+							}
+						} else {
+							Err(ParseError::new(
+								crate::ParseErrors::UnmatchedBrackets,
+								start.with_length(1),
+							))
+						}
+					}
+					_ => {
+						let type_alias = TypeAlias::from_reader(reader, state, options)?;
+						let position = start.union(type_alias.get_position());
+						Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
+					}
+				}
 			}
 			Token(TSXToken::OpenBrace, _) => {
 				let Token(_, start) = reader.next().unwrap();
@@ -260,6 +317,28 @@ impl ASTNode for ExportDeclaration {
 				buf.push_str("export default ");
 				expression.to_string_from_buffer(buf, options, depth);
 			}
+			ExportDeclaration::Type { exported, position: _ } => match exported {
+				Exportable::ImportParts { parts, from } => {
+					buf.push('{');
+					options.add_gap(buf);
+					for (at_end, part) in parts.iter().endiate() {
+						part.to_string_from_buffer(buf, options, depth);
+						if !at_end {
+							buf.push(',');
+							options.add_gap(buf);
+						}
+					}
+					options.add_gap(buf);
+					buf.push('}');
+					options.add_gap(buf);
+					buf.push_str("from \"");
+					from.to_string_from_buffer(buf);
+					buf.push('"');
+				}
+				_ => {
+					println!("Not supposed to happen");
+				}
+			},
 		}
 	}
 }

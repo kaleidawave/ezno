@@ -337,7 +337,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							| Exportable::ImportParts { .. } => {}
 						}
 					}
-					parser::declarations::ExportDeclaration::Default { .. } => {}
+					parser::declarations::ExportDeclaration::Type { .. }
+					| parser::declarations::ExportDeclaration::Default { .. } => {}
 				},
 			},
 		}
