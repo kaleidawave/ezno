@@ -189,7 +189,7 @@ export { name1, /* …, */ nameN } from "module-name";
 export { import1 as name1, import2 as name2, /* …, */ nameN } from "module-name";
 export { default, /* …, */ } from "module-name";
 export { default as name1 } from "module-name";
-export type { name1 } from "module-name";"#
+export type { name1, /* …, */ nameN } from "module-name";"#
 		.trim_start();
 
 	let _module =
