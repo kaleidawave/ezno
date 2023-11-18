@@ -18,31 +18,39 @@ pub mod type_annotations;
 pub mod variables;
 
 use block::synthesise_block;
-use parser::{ASTNode, PropertyKey};
+use parser::{ASTNode, PropertyKey as ParserPropertyKey};
 use source_map::SourceId;
 
 use crate::{
 	behavior::modules::Exported,
 	context::{environment, Context, ContextType, Names},
-	types::TypeStore,
+	types::{properties::PropertyKey, TypeStore},
 	CheckingData, Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
 
 use self::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 
-pub(super) fn property_key_as_type<S: ContextType, P: parser::property_key::PropertyKeyKind>(
-	property_key: &PropertyKey<P>,
-	environment: &mut Context<S>,
-	types: &mut TypeStore,
-) -> TypeId {
+pub(super) fn parser_property_key_to_checker_property_key<
+	P: parser::property_key::PropertyKeyKind,
+	T: crate::ReadFromFS,
+>(
+	property_key: &ParserPropertyKey<P>,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, EznoParser>,
+) -> PropertyKey<'static> {
 	match property_key {
-		PropertyKey::StringLiteral(value, ..) | PropertyKey::Ident(value, _, _) => {
-			types.new_constant_type(Constant::String(value.clone()))
+		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
+			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		PropertyKey::NumberLiteral(number, _) => {
-			types.new_constant_type(Constant::Number(f64::from(number.clone()).try_into().unwrap()))
+		ParserPropertyKey::NumberLiteral(number, _) => {
+			// TODO
+			PropertyKey::from_usize(f64::from(number.clone()) as usize)
 		}
-		PropertyKey::Computed(_, _) => todo!(),
+		ParserPropertyKey::Computed(expression, _) => {
+			let key_type =
+				synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
+			PropertyKey::from_type(key_type, &checking_data.types)
+		}
 	}
 }
 
@@ -94,6 +102,7 @@ impl crate::ASTImplementation for EznoParser {
 	type TypeAnnotation = parser::TypeAnnotation;
 	type TypeParameter = parser::GenericTypeConstraint;
 	type Expression = parser::Expression;
+	type ClassMethod = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
 	fn module_from_string(
 		source_id: SourceId,
@@ -124,11 +133,11 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn synthesise_expression<U: crate::ReadFromFS>(
 		expression: &Self::Expression,
-		expected: TypeId,
+		expecting: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U, Self>,
 	) -> TypeId {
-		synthesise_expression(expression, environment, checking_data)
+		synthesise_expression(expression, environment, checking_data, expecting)
 	}
 
 	fn expression_position(expression: &Self::Expression) -> source_map::Span {
@@ -163,7 +172,7 @@ pub mod interactive {
 
 	use crate::{
 		add_definition_files_to_root, types::printing::print_type, CheckingData,
-		DiagnosticsContainer, RootContext,
+		DiagnosticsContainer, RootContext, TypeId,
 	};
 
 	use super::{
@@ -214,8 +223,12 @@ pub mod interactive {
 							environment,
 							checking_data,
 						);
-						let result =
-							synthesise_multiple_expression(expression, environment, checking_data);
+						let result = synthesise_multiple_expression(
+							expression,
+							environment,
+							checking_data,
+							TypeId::ANY_TYPE,
+						);
 						Some(print_type(
 							result,
 							&checking_data.types,

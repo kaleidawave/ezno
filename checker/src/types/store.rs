@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	behavior::functions::ClosureId,
+	behavior::functions::{ClosureId, FunctionBehavior},
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
@@ -64,8 +64,7 @@ impl Default for TypeStore {
 			Type::Constant(crate::Constant::Number(1.into())),
 			// NaNFreeVariable
 			Type::Constant(crate::Constant::NaN),
-			Type::Constant(crate::Constant::String("length".into())),
-			// this arg shortcut
+			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
 				reference: crate::events::RootReference::This,
 				based_on: TypeId::ANY_TYPE,
@@ -154,7 +153,7 @@ impl TypeStore {
 		return_type: TypeId,
 		declared_at: source_map::SpanWithSource,
 		effects: Vec<crate::events::Event>,
-		constant_id: Option<String>,
+		constant_function: Option<String>,
 	) -> TypeId {
 		let id = crate::FunctionId(declared_at.source, declared_at.start);
 		let function_type = FunctionType {
@@ -166,8 +165,8 @@ impl TypeStore {
 			free_variables: Default::default(),
 			closed_over_variables: Default::default(),
 			// TODO
-			kind: crate::types::FunctionKind::Arrow,
-			constant_id,
+			behavior: FunctionBehavior::ArrowFunction { is_async: false },
+			constant_function,
 			id,
 		};
 		self.functions.insert(id, function_type);
@@ -236,7 +235,15 @@ impl TypeStore {
 	) -> Option<Logical<TResult>> {
 		match self.get_type_by_id(on) {
 			Type::Function(..) => {
-				ctx.parents_iter().find_map(|env| resolver(env, self, on, data)).map(Logical::Pure)
+				let on_function = ctx
+					.parents_iter()
+					.find_map(|env| resolver(env, self, on, data))
+					.map(Logical::Pure);
+
+				// TODO undecided on this
+				on_function.or_else(|| {
+					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
+				})
 			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = ctx
@@ -307,7 +314,6 @@ impl TypeStore {
 					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
 				}),
 			Type::FunctionReference(_, _) => todo!(),
-			Type::Class(_) => todo!(),
 			Type::SpecialObject(_) => todo!(),
 		}
 	}
@@ -319,5 +325,11 @@ impl TypeStore {
 
 	pub fn get_function_from_id(&self, id: FunctionId) -> &FunctionType {
 		self.functions.get(&id).unwrap()
+	}
+
+	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
+		let id = function_type.id;
+		self.functions.insert(id, function_type);
+		self.register_type(Type::Function(id, Default::default()))
 	}
 }

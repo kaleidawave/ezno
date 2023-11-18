@@ -13,9 +13,15 @@ use crate::{
 use super::functions::ThisValue;
 
 // TODO ...
-pub(crate) enum ConstantResult {
+pub(crate) enum ConstantOutput {
 	Value(TypeId),
 	Diagnostic(String),
+}
+
+pub enum ConstantFunctionError {
+	NoLogicForIdentifier(String),
+	/// This will get picked up by the main calling logic
+	BadCall,
 }
 
 /// Computes a constant value
@@ -27,19 +33,24 @@ pub(crate) fn call_constant_function(
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,
-) -> Result<ConstantResult, ()> {
+) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utils::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
 	match id {
 		// Single parameter number functions
 		"sin" | "cos" | "tan" | "atan" | "acos" | "asin" | "sinh" | "cosh" | "tanh" | "asinh"
 		| "acosh" | "atanh" | "exp" | "expm1" | "log" | "log10" | "log2" | "log1p" | "round"
-		| "trunc" | "sqrt" | "cbrt" | "abs" => {
-			let second_argument_type =
-				types.get_type_by_id(arguments.last().unwrap().into_type().unwrap());
+		| "floor" | "ceil" | "trunc" | "sqrt" | "cbrt" | "abs" => {
+			let second_argument_type = types.get_type_by_id(
+				arguments
+					.last()
+					.ok_or(ConstantFunctionError::BadCall)?
+					.into_type()
+					.map_err(|_| ConstantFunctionError::BadCall)?,
+			);
 
 			let Type::Constant(Constant::Number(num)) = second_argument_type else {
-				return Err(());
+				return Err(ConstantFunctionError::BadCall);
 			};
 
 			let result = match id {
@@ -63,6 +74,8 @@ pub(crate) fn call_constant_function(
 				"log1p" => num.ln_1p(),
 				"round" => num.round(),
 				"trunc" => num.trunc(),
+				"floor" => num.floor(),
+				"ceil" => num.ceil(),
 				"sqrt" => num.sqrt(),
 				"cbrt" => num.cbrt(),
 				"abs" => num.abs(),
@@ -73,89 +86,174 @@ pub(crate) fn call_constant_function(
 			match try_into {
 				Ok(try_into) => {
 					let ty = types.new_constant_type(Constant::Number(try_into));
-					crate::utils::notify!("{:?}", ty);
-					Ok(ConstantResult::Value(ty))
+					Ok(ConstantOutput::Value(ty))
 				}
-				Err(_) => Ok(ConstantResult::Value(TypeId::NAN_TYPE)),
+				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN_TYPE)),
 			}
 		}
 		"uppercase" | "lowercase" | "string_length" => {
-			crate::utils::notify!("this_argument = {:?}", this_argument);
-			if let Type::Constant(Constant::String(s)) =
-				types.get_type_by_id(this_argument.unwrap())
+			if let Some(Type::Constant(Constant::String(s))) =
+				this_argument.get_passed().map(|t| types.get_type_by_id(t))
 			{
 				let result = types.new_constant_type(match id {
 					"uppercase" => Constant::String(s.to_uppercase()),
 					"lowercase" => Constant::String(s.to_lowercase()),
-					"string_length" => Constant::Number((s.len() as f64).try_into().unwrap()),
+					"string_length" => Constant::Number(
+						(s.len() as f64).try_into().map_err(|_| ConstantFunctionError::BadCall)?,
+					),
 					_ => unreachable!(),
 				});
-				Ok(ConstantResult::Value(result))
+				Ok(ConstantOutput::Value(result))
 			} else {
-				Err(())
+				Err(ConstantFunctionError::BadCall)
 			}
 		}
 		// TODO second argument Rust
 		"print_type" | "debug_type" => {
 			let debug = id == "debug_type";
-			let ty = arguments.first().unwrap().into_type().unwrap();
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.into_type()
+				.map_err(|_| ConstantFunctionError::BadCall)?;
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
-			Ok(ConstantResult::Diagnostic(format!("Type is: {ty_as_string}")))
+			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
 		"debug_effects" => {
-			let ty = arguments.first().unwrap().into_type().unwrap();
-			if let Type::Function(func, _) = types.get_type_by_id(ty) {
-				// TODO print using debug
-				let effects = &types.functions.get(func).unwrap().effects;
-				Ok(ConstantResult::Diagnostic(format!("{:#?}", effects)))
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.into_type()
+				.map_err(|_| ConstantFunctionError::BadCall)?;
+			if let Type::Function(func, _) | Type::FunctionReference(func, _) =
+				types.get_type_by_id(ty)
+			{
+				let effects =
+					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
+				// TODO print using a different function
+				Ok(ConstantOutput::Diagnostic(format!("{:#?}", effects)))
 			} else {
-				Ok(ConstantResult::Diagnostic("not a function".to_owned()))
+				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
 			}
 		}
 		// For functions
 		"bind" => {
-			todo!()
+			let on = this_argument.get_passed().map(|t| types.get_type_by_id(t));
+			let first_argument = arguments.first();
+			if let (
+				Some(Type::Function(func, _) | Type::FunctionReference(func, _)),
+				Some(this_ty),
+			) = (on, first_argument)
+			{
+				let type_id = this_ty.into_type().map_err(|_| ConstantFunctionError::BadCall)?;
+				let value = types.register_type(Type::Function(*func, ThisValue::Passed(type_id)));
+				Ok(ConstantOutput::Value(value))
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
+		}
+		"set_prototype" => {
+			if let [first, second] = arguments {
+				let prototype = environment
+					.facts
+					.prototypes
+					.insert(first.into_type().unwrap(), second.into_type().unwrap());
+				// TODO
+				Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE))
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
+		}
+		"get_prototype" => {
+			if let Some(first) = arguments.first() {
+				crate::utils::notify!("TODO walk up chain");
+				let prototype = environment
+					.facts
+					.prototypes
+					.get(&first.into_type().unwrap())
+					.cloned()
+					.unwrap_or(TypeId::NULL_TYPE);
+				Ok(ConstantOutput::Value(prototype))
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
+		}
+		"create_proxy" => {
+			if let [object, trap] = arguments {
+				// TODO checking for both, what about spreading
+				let value = types.register_type(Type::SpecialObject(
+					crate::behavior::objects::SpecialObjects::Proxy {
+						handler: trap.into_type().expect("single type"),
+						over: object.into_type().expect("single type"),
+					},
+				));
+				Ok(ConstantOutput::Value(value))
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
 		}
 		"satisfies" => {
-			let ty = arguments.first().unwrap().into_type().unwrap();
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.into_type()
+				.map_err(|_| ConstantFunctionError::BadCall)?;
 			// TODO temp!!!
-			let arg = call_site_type_args.iter().flatten().next().unwrap().0;
+			let arg = call_site_type_args
+				.iter()
+				.flatten()
+				.next()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.0;
 			if check_satisfies(arg, ty, types, environment) {
-				Ok(ConstantResult::Value(ty))
+				Ok(ConstantOutput::Value(ty))
 			} else {
-				Ok(ConstantResult::Diagnostic(format!(
+				let output = format!(
 					"Expected {}, found {}",
 					print_type(ty, types, &environment.as_general_context(), false),
 					print_type(arg, types, &environment.as_general_context(), false)
-				)))
+				);
+				Ok(ConstantOutput::Diagnostic(output))
 			}
 		}
-		"debug_context" => Ok(ConstantResult::Diagnostic(environment.debug())),
-		"context_id" => Ok(ConstantResult::Diagnostic(format!("in {:?}", environment.context_id))),
-		"context_id_chain" => Ok(ConstantResult::Diagnostic({
+		"debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
+		"context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),
+		"context_id_chain" => Ok(ConstantOutput::Diagnostic({
 			use std::fmt::Write;
 			let mut buf = format!("{:?}", environment.context_id);
 			for ctx in environment.parents_iter().skip(1) {
-				write!(&mut buf, " <- {:?}", get_on_ctx!(ctx.context_id)).unwrap();
+				write!(&mut buf, " <- {:?}", get_on_ctx!(ctx.context_id))
+					.map_err(|_| ConstantFunctionError::BadCall)?;
 			}
 			buf
 		})),
-		"is_dependent" => Ok(ConstantResult::Diagnostic(format!(
+		"is_dependent" => Ok(ConstantOutput::Diagnostic(format!(
 			"is dependent {:?}",
-			types.get_type_by_id(arguments.first().unwrap().into_type().unwrap()).is_dependent()
+			types
+				.get_type_by_id(
+					arguments
+						.first()
+						.ok_or(ConstantFunctionError::BadCall)?
+						.into_type()
+						.map_err(|_| ConstantFunctionError::BadCall)?
+				)
+				.is_dependent()
 		))),
 		"compile_type_to_object" => {
 			if let Some(value) = call_site_type_args {
 				let value = crate::types::others::create_object_for_type(
-					value.first().unwrap().0,
+					value.first().ok_or(ConstantFunctionError::BadCall)?.0,
 					environment,
 					types,
 				);
-				Ok(ConstantResult::Value(value))
+				Ok(ConstantOutput::Value(value))
 			} else {
-				Err(())
+				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		func => panic!("Unknown/unimplemented const function {func}"),
+		func => {
+			// Sometimes a bad definition file could occur so...
+			Err(ConstantFunctionError::NoLogicForIdentifier(func.to_owned()))
+		}
 	}
 }

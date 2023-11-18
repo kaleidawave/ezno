@@ -1,9 +1,6 @@
-- This is (automatically) tested against the checker
-- Each block contains errors, the list afterwards is the expected errors
-- Sections are at level 3 (`###`), tests are at level 4 (`####`), the tested code goes a `ts` code block and errors in a bullet list after in order
-    - Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.ts`
-
 ## Specification
+
+See [./README.md](README.md) for details
 
 ### Variables
 
@@ -91,17 +88,18 @@ interface Wrapper<T> {
 const my_wrapped: Wrapper<number> = { internal: "hi" }
 ```
 
-- Type {"internal": "hi", } is not assignable to type Wrapper<number, >
+- Type { internal: "hi" } is not assignable to type Wrapper\<number>
 
-#### Array
+#### Array property checking
 
 ```ts
-const numbers: Array<number> = [1, 2, "3"]
+const numbers1: Array<number> = [1, 2, "3"]
+const numbers2: Array<string> = [ "hi", "3"]
 ```
 
 > Printing is a bit wack here
 
-- Type [Array] {0: 1, 1: 2, 2: "3", "length": 3, } is not assignable to type Array<number, >
+- Type [Array] { 0: 1, 1: 2, 2: "3", length: 3 } is not assignable to type Array\<number>
 
 ### Function checking
 
@@ -139,7 +137,7 @@ func satisfies () => string
 #### Generic type argument restriction
 
 ```ts
-function map<T, U>(a: T, b: T => U) {
+function map<T, U>(a: T, b: (t: T) => U) {
 	return b(a)
 }
 
@@ -147,7 +145,7 @@ map(2, Math.sin)
 map("string", Math.sin)
 ```
 
-- Argument of type "string" is not assignable to number
+- Argument of type "string" is not assignable to parameter of type number
 
 > Because `Math.sin` set T to number
 
@@ -174,8 +172,8 @@ func satisfies (a: string, b: number) => string;
 func satisfies (a: number, b: number) => boolean;
 ```
 
-- Expected (a: string, b: number, ) => string, found (a: string, b: number, ) => true
-- Expected (a: number, b: number, ) => boolean, found (a: string, b: number, ) => true
+- Expected (a: string, b: number) => string, found (a: string, b: number) => true
+- Expected (a: number, b: number) => boolean, found (a: string, b: number) => true
 
 #### Function that throws returns never
 
@@ -229,7 +227,7 @@ function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
 }
 ```
 
-- Cannot return {"a": T, "b": U, } because the function is expected to return {"a": U, "b": U, }
+- Cannot return { a: T, b: U } because the function is expected to return { a: U, b: U }
 
 ### Function calling
 
@@ -240,7 +238,7 @@ function func(a: number) {}
 func("not a number")
 ```
 
-- Argument of type "not a number" is not assignable to number
+- Argument of type "not a number" is not assignable to parameter of type number
 
 #### Generic type argument parameter
 
@@ -249,7 +247,7 @@ function func<T>(a: T) {}
 func<number>("not a number")
 ```
 
-- Argument of type "not a number" is not assignable to number
+- Argument of type "not a number" is not assignable to parameter of type number
 
 #### Get value of property on parameter
 
@@ -295,7 +293,7 @@ x()
 #### Calling higher order function
 
 ```ts
-function addTwoToResult(func: number => number) {
+function addTwoToResult(func: (n: number) => number) {
 	return func(4) + 2
 }
 
@@ -307,7 +305,7 @@ addTwoToResult((a: number) => a * 4) satisfies 5
 #### Calling higher order function that is constant
 
 ```ts
-function call(func: number => number) {
+function call(func: (n: number) => number) {
 	return func(9)
 }
 
@@ -315,6 +313,22 @@ call(Math.sqrt) satisfies 2
 ```
 
 - Expected 2, found 3
+
+#### This in object literal
+
+```ts
+const obj = {
+	a: 4,
+	getA(this: { a: any }) {
+		return this.a
+	}
+}
+
+obj.a = 5;
+obj.getA() satisfies 6;
+```
+
+- Expected 6, found 5
 
 ### Closures
 
@@ -411,13 +425,28 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
+#### Property updates object inside function
+
+```ts
+const obj: { a: number } = { a: 2 }
+function func(value: number) {
+	obj.a = value
+}
+
+obj.a satisfies 2
+func(4)
+obj.a satisfies 3
+```
+
+- Expected 3, found 4
+
 #### Constant call and operation with a parameter
 
 > An example of the generic constructor type  (namely call and operation)
 
 ```ts
 function sinPlusB(a: number, b: number) {
-	return Math.trunc(a) + b
+	return Math.floor(a) + b
 }
 
 sinPlusB(100.22, 5) satisfies 8
@@ -508,6 +537,7 @@ const z: false = true || 4
 #### Inequality
 
 ```ts
+(Math.PI > 3) satisfies true;
 (4 < 2) satisfies true;
 (4 > 2) satisfies number;
 (2 >= 2) satisfies string;
@@ -530,7 +560,7 @@ const z: false = true || 4
 ```ts
 Math.cos(0) satisfies 0;
 Math.sqrt(16) satisfies 1;
-Math.trunc(723.22) satisfies 2
+Math.floor(723.22) satisfies 2
 ```
 
 - Expected 0, found 1
@@ -560,7 +590,7 @@ const a = my_obj.a
 const b = my_obj.b
 ```
 
-- No property "b" on {"a": 3, }
+- No property 'b' on { a: 3 }
 
 #### Property updates registered
 
@@ -596,7 +626,7 @@ my_obj.a = "not a number"
 const my_obj: { b: 3 } = { a: 2 }
 ```
 
-- Type {"a": 2, } is not assignable to type {"b": 3, }
+- Type { a: 2 } is not assignable to type { b: 3 }
 
 #### Getters
 
@@ -611,13 +641,15 @@ b.c satisfies string
 
 - Expected string, found 2
 
-#### Arrays
+#### Array pushing and pop-ing
 
 ```ts
 const x = [1]
 x.push("hi")
 x[1] satisfies 3
-x.length satisfies 4
+x.length satisfies 4;
+x.pop() satisfies "hi";
+x.length satisfies 1;
 ```
 
 - Expected 3, found "hi"
@@ -627,13 +659,13 @@ x.length satisfies 4
 
 ```ts
 function newObject() {
-	return { a: 2 }
+	return { prop: 2 }
 }
 
-const b = newObject();
-const c = b;
-(b === c) satisfies false;
-(b === newObject) satisfies string;
+const a = newObject(), b = newObject();
+const c = a;
+(a === c) satisfies false;
+(a === b) satisfies string;
 ```
 
 - Expected false, found true
@@ -652,7 +684,17 @@ setProperty("b", 6)
 obj satisfies string;
 ```
 
-- Expected string, found {"a": 2, "b": 6, }
+- Expected string, found { a: 2, b: 6 }
+
+#### Delete properties
+
+```ts
+const x = { a: 2, b: 3 }
+delete x.b;
+const b = x.b;
+```
+
+- No property 'b' on { a: 2 }
 
 ### Control flow
 
@@ -717,6 +759,7 @@ function print_number(value: number) {
     }
 }
 
+print_number(0) satisfies "zero"
 print_number(0) satisfies "some number"
 print_number(1) satisfies "ONE"
 print_number(100) satisfies "100"
@@ -767,7 +810,7 @@ function func(a: boolean) {
 func satisfies (a: boolean) => 5;
 ```
 
-- Expected (a: boolean, ) => 5, found (a: boolean, ) => 2 | undefined
+- Expected (a: boolean) => 5, found (a: boolean) => 2 | undefined
 
 ### Statements, declarations and expressions
 
@@ -784,7 +827,7 @@ interface X {
 const x: X = { a: 2, b: false }
 ```
 
-- Type {"a": 2, "b": false, } is not assignable to type X
+- Type { a: 2, b: false } is not assignable to type X
 
 #### Type aliases
 
@@ -814,6 +857,17 @@ const name = "Ben";
 
 - Expected "Hi Ben", found "Hello Ben"
 
+#### In operator
+
+```ts
+const obj = { a: 2 };
+("a" in obj) satisfies string;
+("b" in obj) satisfies true;
+```
+
+- Expected string, found true
+- Expected true, found false
+
 #### Type of mathematical operator
 
 ```ts
@@ -842,6 +896,15 @@ declare var x: number, y: boolean;
 ```
 
 - Expected string, found boolean | number
+
+#### Object literal (constant) computed key
+
+```ts
+const y = { ["EZNO".toLowerCase()]: 7 }
+y.ezno satisfies 3
+```
+
+- Expected 3, found 7
 
 #### Shorthand object literal
 
@@ -911,13 +974,130 @@ try {
 
 - Expected string, found 3
 
+#### Interface merging
+
+```ts
+interface X {
+	a: string,
+	b: boolean
+}
+
+interface X {
+	c: number
+}
+
+const x: X = { a: "field", b: false, c: false }
+const y: X = { a: "field", b: false, c: 2 }
+```
+
+- Type { a: "field", b: false, c: false } is not assignable to type X
+
+### Classes
+
+> TODO privacy
+
+#### Constructor
+
+```ts
+class X {
+	constructor(value) {
+		this.value = value
+	}
+}
+
+const x = new X(4)
+x.value satisfies string
+```
+
+- Expected string, found 4
+
+#### Property keys
+
+> Property keys are synthesised once and their effects are once (as opposed to their value)
+
+```ts
+let global: number = 0;
+class X {
+	[global++] = "b";
+}
+global satisfies 0;
+(new X)[0] satisfies "a";
+(new X, new X);
+global satisfies string;
+```
+
+- Expected 0, found 1
+- Expected "a", found "b"
+- Expected string, found 1
+
+#### Properties
+
+> TODO check timing
+
+```ts
+let global: number = 0;
+
+class X {
+	property = ++global;
+}
+
+(new X()).property satisfies string;
+(new X()).property satisfies 2;
+(new X()).property satisfies boolean;
+```
+
+- Expected string, found 1
+- Expected boolean, found 3
+
+#### Class methods
+
+```ts
+class X {
+	constructor(value) {
+		this.value = value
+	}
+
+	getObject(this: { value: any }, b) {
+		return { a: this.value, b }
+	}
+}
+
+const x = new X(4)
+x.getObject(2) satisfies string
+```
+
+- Expected string, found { a: 4, b: 2 }
+
+#### Automatic class constructor
+
+```ts
+class X {
+	a = 2
+}
+
+(new X).a satisfies 3
+```
+
+- Expected 3, found 2
+
+#### Static class property
+
+```ts
+class X {
+	static a = 2
+}
+
+X.a satisfies 3
+```
+
+- Expected 3, found 2
+
 ### Types
 
 #### Non existent type
 
 ```ts
 type X = number;
-
 const a: Y = 2;
 ```
 
@@ -927,7 +1107,6 @@ const a: Y = 2;
 
 ```ts
 type X = number;
-
 const a: X<number> = 2;
 ```
 
@@ -952,6 +1131,44 @@ type X<T> = T;
 ```
 
 - Type X requires type arguments
+
+#### Property on an or type
+
+```ts
+function getProp(obj: { prop: 3 } | { prop: 2 }) {
+	return obj.prop
+}
+
+getProp satisfies string
+```
+
+- Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+
+### Prototypes
+
+#### Set prototype
+
+```ts
+const x = { a: 3 };
+Object.setPrototypeOf(x, { a: 5, b: 2 });
+x.a satisfies 3;
+x.b satisfies string;
+```
+
+- Expected string, found 2
+
+#### Get prototype
+
+```ts
+const x = { a: 3 };
+const p = { b: 2 }
+Object.setPrototypeOf(x, p);
+const p_of_x = Object.getPrototypeOf(x);
+// ('a' in p_of_x.a) satisfies false;
+p === p_of_x satisfies string;
+```
+
+- Expected string, found true
 
 ### Imports and exports
 
@@ -1048,7 +1265,7 @@ the satisfies string;
 export const a = 2, b = 3, c = 4;
 ```
 
-- Expected string, found {"a": 2, "b": 3, "c": 4, }
+- Expected string, found { a: 2, b: 3, c: 4 }
 
 #### Import from non existent file
 
@@ -1136,7 +1353,7 @@ const y = "122LH"
 
 #### Import side effect
 
-> Don't rely on this
+> Don't take this as permission to do this
 
 ```ts
 import { x } from "./export";
@@ -1155,5 +1372,5 @@ x.b = x.a + 2;
 export const x = { a: 2 };
 ```
 
-- Expected string, found {"a": 2, }
-- Expected number, found {"a": 2, "b": 4, }
+- Expected string, found { a: 2 }
+- Expected number, found { a: 2, b: 4 }

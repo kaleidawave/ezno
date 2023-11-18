@@ -31,7 +31,10 @@ use context::{environment, Names};
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
-use behavior::modules::{Exported, InvalidModule, SynthesisedModule};
+use behavior::{
+	functions::SynthesisableFunction,
+	modules::{Exported, InvalidModule, SynthesisedModule},
+};
 use indexmap::IndexMap;
 use source_map::{FileSystem, MapFileStore, SpanWithSource, WithPathMap};
 use std::{
@@ -51,7 +54,7 @@ pub use structures::jsx::*;
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
 
 pub use type_mappings::*;
-pub use types::{properties::Property, Constant, Type, TypeId};
+pub use types::{properties::PropertyValue, Constant, Type, TypeId};
 
 pub use context::{facts::Facts, Environment, Scope};
 
@@ -88,6 +91,8 @@ pub trait ASTImplementation: Sized {
 	type TypeAnnotation;
 	type TypeParameter;
 	type Expression;
+
+	type ClassMethod: SynthesisableFunction<Self>;
 
 	fn module_from_string(
 		source_id: SourceId,
@@ -165,8 +170,13 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct VariableId(pub SourceId, pub u32);
 
+/// TODO split for annotations based functions
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub SourceId, pub u32);
+
+impl FunctionId {
+	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
+}
 
 pub enum TruthyFalsy {
 	Decidable(bool),
@@ -482,53 +492,6 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, M: crate::ASTIm
 		}
 	}
 }
-
-// pub trait SynthesisableConditional<M: ASTImplementation> {
-// 	/// For conditional expressions (`a ? b : c`) as they return a type.
-// 	/// **Not for return in conditional if blocks**
-// 	type ExpressionResult;
-
-// 	fn synthesise_condition<T: crate::ReadFromFS>(
-// 		self,
-// 		environment: &mut Environment,
-// 		checking_data: &mut CheckingData<T, M>,
-// 	) -> Self::ExpressionResult;
-
-// 	fn conditional_expression_result(
-// 		condition: TypeId,
-// 		truthy_result: Self::ExpressionResult,
-// 		falsy_result: Self::ExpressionResult,
-// 		types: &mut TypeStore,
-// 	) -> Self::ExpressionResult;
-
-// 	fn default_result() -> Self::ExpressionResult;
-// }
-
-// impl<'a, M: ASTImplementation, T: behavior::assignments::SynthesisableExpression<M>>
-// 	crate::SynthesisableConditional<M> for &'a T
-// {
-// 	type ExpressionResult = TypeId;
-
-// 	fn synthesise_condition<U: crate::ReadFromFS>(
-// 		self,
-// 		environment: &mut crate::Environment,
-// 		checking_data: &mut crate::CheckingData<U, M>,
-// 	) -> Self::ExpressionResult {
-// 		self.synthesise_expression(environment, checking_data)
-// 	}
-
-// 	fn conditional_expression_result(
-// 		condition: TypeId,
-// 		truthy_result: Self::ExpressionResult,
-// 		else_result: Self::ExpressionResult,
-// 		types: &mut TypeStore,
-// 	) -> Self::ExpressionResult {
-// 	}
-
-// 	fn default_result() -> Self::ExpressionResult {
-// 		unreachable!("If was reachable it should be TypeID::Undefined")
-// 	}
-// }
 
 pub trait TypeCombinable {
 	fn combine(

@@ -4,6 +4,7 @@ use derive_enum_from_into::EnumFrom;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
+	diagnostics::TypeCheckError,
 	synthesis::EznoParser,
 	types::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
@@ -39,6 +40,7 @@ pub enum PureBinaryOperation {
 	TypePropertyOperator(TypePropertyOperator),
 }
 
+/// TODO report errors better here
 pub fn evaluate_pure_binary_operation_handle_errors<T: crate::ReadFromFS, M: ASTImplementation>(
 	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
@@ -48,29 +50,26 @@ pub fn evaluate_pure_binary_operation_handle_errors<T: crate::ReadFromFS, M: AST
 ) -> TypeId {
 	// environment,
 	// checking_data.settings.strict_casts,
-	let result = match operator {
+	match operator {
 		PureBinaryOperation::MathematicalAndBitwise(operator) => {
-			evaluate_mathematical_operation(lhs, operator, rhs, &mut checking_data.types)
+			let result =
+				evaluate_mathematical_operation(lhs, operator, rhs, &mut checking_data.types);
+			match result {
+				Ok(result) => result,
+				Err(_) => {
+					// TODO
+					// checking_data.diagnostics_container.add_error(TypeCheckError::InvalidMathematicalOperation(()))
+					TypeId::ERROR_TYPE
+				}
+			}
 		}
 		PureBinaryOperation::EqualityAndInequality(operator) => {
 			evaluate_equality_inequality_operation(lhs, operator, rhs, &mut checking_data.types)
+				.unwrap_or(TypeId::ERROR_TYPE)
 		}
-		PureBinaryOperation::TypePropertyOperator(_) => todo!(),
-	};
-	match result {
-		Ok(ok) => ok,
-		Err(error) => {
-			todo!();
-			// let error = match error {
-			// 	BinaryOperatorError::InvalidMathematicalOperation(error) => {
-			// 		TypeCheckError::InvalidMathematicalOperation(error)
-			// 	}
-			// 	BinaryOperatorError::NotDefined(op) => {
-			// 		TypeCheckError::NotDefinedOperator(op, lhs.1.union(&rhs.1))
-			// 	}
-			// };
-			// checking_data.diagnostics_container.add_error(error);
-			TypeId::ERROR_TYPE
+		PureBinaryOperation::TypePropertyOperator(operator) => {
+			evaluate_type_property_operator(lhs, operator, rhs, &checking_data.types, &environment)
+				.unwrap_or(TypeId::ERROR_TYPE)
 		}
 	}
 }
@@ -92,14 +91,12 @@ pub fn evaluate_mathematical_operation(
 				(Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) => {
 					Constant::Number(lhs + rhs)
 				}
-				(Type::Constant(c1), Type::Constant(c2)) => {
-					// TODO temp
-					let result = format!(
-						"{}{}",
-						cast_as_string(c1, STRICT_CASTS).unwrap(),
-						cast_as_string(c2, STRICT_CASTS).unwrap()
-					);
-					Constant::String(result)
+				(Type::Constant(lhs), Type::Constant(rhs)) => {
+					let mut first = cast_as_string(lhs, STRICT_CASTS)?;
+					let second = cast_as_string(rhs, STRICT_CASTS)?;
+					// Concatenate strings
+					first.push_str(&second);
+					Constant::String(first)
 				}
 				_ => return Err(()),
 			};
@@ -123,7 +120,9 @@ pub fn evaluate_mathematical_operation(
 						MathematicalAndBitwise::BitwiseShiftRight => {
 							f64::from((lhs as i32) >> (rhs as i32))
 						}
-						MathematicalAndBitwise::BitwiseShiftRightUnsigned => todo!(),
+						MathematicalAndBitwise::BitwiseShiftRightUnsigned => {
+							(lhs as i32).wrapping_shr(rhs as u32).into()
+						}
 						MathematicalAndBitwise::BitwiseAnd => {
 							f64::from((lhs as i32) & (rhs as i32))
 						}
@@ -153,12 +152,7 @@ pub fn evaluate_mathematical_operation(
 		return Ok(types.register_type(crate::Type::Constructor(constructor)));
 	}
 
-	match attempt_constant_math_operator(lhs, operator, rhs, types) {
-		Ok(ty) => Ok(ty),
-		Err(_) => {
-			todo!("operator error")
-		}
-	}
+	attempt_constant_math_operator(lhs, operator, rhs, types)
 }
 
 /// Not canonical / reducible
@@ -225,8 +219,8 @@ pub fn evaluate_equality_inequality_operation(
 							Type::Constant(Constant::String(b)),
 						) => Constant::Boolean(a < b),
 						(Type::Constant(c1), Type::Constant(c2)) => {
-							let lhs = cast_as_number(c1, STRICT_CASTS).unwrap();
-							let rhs = cast_as_number(c2, STRICT_CASTS).unwrap();
+							let lhs = cast_as_number(c1, STRICT_CASTS)?;
+							let rhs = cast_as_number(c2, STRICT_CASTS)?;
 							Constant::Boolean(lhs < rhs)
 						}
 						_ => return Err(()),
@@ -246,10 +240,7 @@ pub fn evaluate_equality_inequality_operation(
 				return Ok(types.register_type(crate::Type::Constructor(constructor)));
 			}
 
-			match attempt_less_than(lhs, rhs, types) {
-				Ok(ty) => Ok(ty),
-				Err(_) => todo!(),
-			}
+			attempt_less_than(lhs, rhs, types)
 		}
 		EqualityAndInequality::StrictNotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
@@ -260,8 +251,19 @@ pub fn evaluate_equality_inequality_operation(
 			)?;
 			evaluate_pure_unary_operator(PureUnary::LogicalNot, equality_result, types)
 		}
-		EqualityAndInequality::Equal => todo!(),
-		EqualityAndInequality::NotEqual => todo!(),
+		EqualityAndInequality::Equal => {
+			crate::utils::notify!("TODO equal operator");
+			Err(())
+		}
+		EqualityAndInequality::NotEqual => {
+			let equality_result = evaluate_equality_inequality_operation(
+				rhs,
+				EqualityAndInequality::Equal,
+				lhs,
+				types,
+			)?;
+			evaluate_pure_unary_operator(PureUnary::LogicalNot, equality_result, types)
+		}
 		EqualityAndInequality::GreaterThan => {
 			evaluate_equality_inequality_operation(rhs, EqualityAndInequality::LessThan, lhs, types)
 		}
@@ -311,12 +313,33 @@ pub fn evaluate_type_property_operator(
 	lhs: TypeId,
 	operator: TypePropertyOperator,
 	rhs: TypeId,
-	types: &mut TypeStore,
+	types: &TypeStore,
+	environment: &Environment,
 ) -> Result<TypeId, ()> {
-	match operator {
-		TypePropertyOperator::InstanceOf => todo!(),
-		TypePropertyOperator::In => todo!(),
-	}
+	todo!("bad function definition")
+	// match operator {
+	// 	TypePropertyOperator::InstanceOf => {
+	// 		crate::utils::notify!("instanceof operator");
+	// 		Err(())
+	// 	}
+	// 	TypePropertyOperator::In => {
+	// 		// TODO privacy
+	// 		// let result = environment.get_property_unbound(
+	// 		// 	rhs,
+	// 		// 	lhs,
+	// 		// 	crate::context::facts::PublicityKind::Public,
+	// 		// 	types,
+	// 		// );
+	// 		// match result {
+	// 		// 	Some(crate::context::Logical::Pure(..)) => Ok(TypeId::TRUE),
+	// 		// 	Some(_) => {
+	// 		// 		crate::utils::notify!("Unsure of property on 'in' operator implementation");
+	// 		// 		Err(())
+	// 		// 	}
+	// 		// 	None => Ok(TypeId::FALSE),
+	// 		// }
+	// 	}
+	// }
 }
 
 #[derive(Clone, Debug)]

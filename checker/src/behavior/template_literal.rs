@@ -16,9 +16,10 @@ pub enum TemplateLiteralPart<'a, T> {
 pub fn synthesise_template_literal<'a, T, M>(
 	tag: Option<TypeId>,
 	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M::Expression>> + 'a,
+	position: &Span,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, M>,
-) -> Instance
+) -> TypeId
 where
 	T: crate::ReadFromFS,
 	M: crate::ASTImplementation,
@@ -53,6 +54,7 @@ where
 	}
 
 	if let Some(tag) = tag {
+		// TODO use tuple type
 		let mut static_parts = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
@@ -61,43 +63,75 @@ where
 
 		// TODO position
 		let mut arguments = Vec::<SynthesisedArgument>::new();
+		let mut static_part_count = 0u16;
+		for part in parts_iter {
+			match part {
+				p @ TemplateLiteralPart::Static(_) => {
+					let value = part_to_type(p, environment, checking_data);
+					static_parts.append(
+						environment,
+						crate::context::facts::PublicityKind::Public,
+						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
+						crate::PropertyValue::Value(value),
+						// TODO should static parts should have position?
+						None,
+					);
+					static_part_count += 1;
+				}
+				p @ TemplateLiteralPart::Dynamic(_) => {
+					let ty = part_to_type(p, environment, checking_data);
+					arguments.push(SynthesisedArgument::NonSpread {
+						ty,
+						// TODO position
+						position: SpanWithSource::NULL_SPAN,
+					})
+				}
+			}
+		}
 
 		arguments.insert(
 			0,
 			SynthesisedArgument::NonSpread {
 				ty: static_parts.build_object(),
+				// TODO position
 				position: SpanWithSource::NULL_SPAN,
 			},
 		);
 
-		// TODO make static parts immutable
-
-		todo!();
-
-	// crate::types::calling::call_type(
-	// 	tag,
-	// 	crate::events::CalledWithNew::None,
-	// 	None,
-	// 	None,
-	// 	arguments,
-	// 	call_site,
-	// 	environment,
-	// 	&mut checking_data.types,
-	// );
-	} else if let Some(first) = parts_iter.next() {
-		let mut acc = part_to_type(first, environment, checking_data);
-		for rest in parts_iter {
-			let other = part_to_type(rest, environment, checking_data);
-			acc = super::operations::evaluate_mathematical_operation(
-				acc,
-				crate::behavior::operations::MathematicalAndBitwise::Add,
-				other,
-				&mut checking_data.types,
-			)
-			.unwrap()
-		}
-		Instance::RValue(acc)
+		let call_site = position.clone().with_source(environment.get_source());
+		crate::types::calling::call_type_handle_errors(
+			tag,
+			crate::types::calling::CalledWithNew::None,
+			crate::behavior::functions::ThisValue::UseParent,
+			None,
+			arguments,
+			call_site,
+			environment,
+			checking_data,
+		)
+		.0
 	} else {
-		Instance::RValue(checking_data.types.new_constant_type(Constant::String("".into())))
+		// Bit weird but makes Rust happy
+		if let Some(first) = parts_iter.next() {
+			let mut acc = part_to_type(first, environment, checking_data);
+			for rest in parts_iter {
+				let other = part_to_type(rest, environment, checking_data);
+				let result = super::operations::evaluate_mathematical_operation(
+					acc,
+					crate::behavior::operations::MathematicalAndBitwise::Add,
+					other,
+					&mut checking_data.types,
+				);
+				match result {
+					Ok(result) => acc = result,
+					Err(_) => {
+						crate::utils::notify!("Invalid template literal concatenation");
+					}
+				}
+			}
+			acc
+		} else {
+			checking_data.types.new_constant_type(Constant::String("".into()))
+		}
 	}
 }

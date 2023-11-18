@@ -72,7 +72,7 @@ impl RootContext {
 			bases: Default::default(),
 			object_constraints: Default::default(),
 			// TODO
-			can_use_this: crate::context::CanUseThis::Yeah { this_ty: TypeId::ERROR_TYPE },
+			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			facts: Default::default(),
 		}
 	}
@@ -89,7 +89,7 @@ impl RootContext {
 		});
 		M::synthesise_module(&module, source, &mut environment, checking_data);
 
-		let crate::Scope::Module { exported, .. } = environment.context_type.kind else {
+		let crate::Scope::Module { exported, .. } = environment.context_type.scope else {
 			unreachable!()
 		};
 		let module = SynthesisedModule { content: module, exported, facts: environment.facts };
@@ -138,7 +138,7 @@ impl RootContext {
 		// ctx.subtyping_constant_proofs = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// ctx.terms_reverse = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// ctx.proxies = BinarySerializable::deserialize(&mut bytes, backing_source);
-		// ctx.can_use_this = BinarySerializable::deserialize(&mut bytes, backing_source);
+		// ctx.can_reference_this = BinarySerializable::deserialize(&mut bytes, backing_source);
 
 		// Ok(ctx)
 	}

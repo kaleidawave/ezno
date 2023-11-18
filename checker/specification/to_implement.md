@@ -14,53 +14,22 @@ const b = 2;
 getB();
 ```
 
-### Classes
-
-#### Constructor
+#### Spread arguments
 
 ```ts
-class X {
-	constructor(value) {
-		this.value = value
+function spread(main, ...others) {
+	return {
+		main,
+		others,
 	}
 }
-
-const x = new X(4)
-x.value satisfies string
+spread(1, 2, 3) satisfies string
 ```
 
-- Expected string found 4
+#TODO spread array
+#TODO spread object
 
-#### Class methods
-
-```ts
-class X {
-	constructor(value) {
-		this.value = value
-	}
-
-	getObject(b) {
-		return { a: this.value, b }
-	}
-}
-
-const x = new X(4)
-x.getObject(2) satisfies string
-```
-
-- Expected string found {"a": 4, "b": 2, }
-
-#### Static class property
-
-```ts
-class X {
-	static a = 2
-}
-
-X.a satisfies 3
-```
-
-- Expected 3 found 2
+### Types
 
 #### Resolving value by property on dependent
 
@@ -75,6 +44,107 @@ getProperty("c") satisfies 2
 
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
+
+#### Calling on or type
+
+```ts
+type Func1 = () => 3;
+type Func2 = () => 2;
+function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
+	return func()
+}
+
+print_type(callFunc)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Symmetric or
+
+```ts
+function or<T, U>(obj: T | U): U | T {
+	return obj
+}
+
+print_type(or)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Symmetric and
+
+```ts
+function and<T, U>(obj: T & U): U & T {
+	return obj
+}
+
+print_type(and)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Distributivity
+
+```ts
+function distribute<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) {
+	return obj
+}
+
+print_type(distribute)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Or missing
+
+```ts
+function get(obj: {a: 2} | { b: 3 }) {
+	return obj.a
+}
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Calling or type
+
+```ts
+function callFunc<T, U>(func: (() => T) | (() => U)): T | U {
+	return func()
+}
+
+print_type(callFunc)
+```
+
+- Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+
+### Narrowing
+
+> TODO `typeof`, `instanceof`, conditional, across a function
+
+#### Equality
+
+```ts
+declare let a: string;
+if (a === "hi") {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+### Looping
+
+#### For loops
+
+```ts
+function func(array: Array<string>) {
+	for (const item of array) {
+		item satisfies number
+	}
+}
+```
+
+- Expected number found string
 
 #### Constant loops
 
@@ -92,32 +162,6 @@ join(["a", "b", "c"]) satisfies "cba"
 
 - Expected "cba" found "abc"
 
-#### Spread
-
-```ts
-function spread(main, ...others) {
-	return {
-		main,
-		others,
-	}
-}
-spread(1, 2, 3) satisfies string
-```
-
-### Looping
-
-#### For loops
-
-```ts
-function func(array: Array<string>) {
-	for (const item of array) {
-		item satisfies number
-	}
-}
-```
-
-- Expected number found string
-
 ### This
 
 #### Calling new on a function
@@ -130,19 +174,7 @@ function MyClass(value) {
 new MyClass("hi").value satisfies "hello"
 ```
 
-- Expected "hello" found "hi"
-
-#### Call function with this
-
-```ts
-function ChangeThis(this: { value: any }) {
-	return this.value
-}
-
-ChangeThis.call({ value: "hi" }) satisfies "hello"
-```
-
-- Expected "hello" found "hi"
+- Expected "hello", found "hi"
 
 #### Bind function
 
@@ -152,10 +184,10 @@ function ChangeThis(this: { value: any }) {
 }
 
 const x = ChangeThis.bind({ value: 2 })
-x().value satisfies 3
+x() satisfies 3
 ```
 
-- Expected 3 found 2
+- Expected 3, found 2
 
 ### Inference
 
@@ -171,7 +203,7 @@ function x(p) {
 x satisfies string;
 ```
 
-- Expected string, found (p: { b: any }, ) => any
+- Expected string, found (p: { b: any }) => any
 
 #### this
 
@@ -179,11 +211,9 @@ x satisfies string;
 function ChangeThis(this) {
 	return this.value
 }
-
-ChangeThis.call({ valued: "hi" })
 ```
 
-- Expected "hello" found "hi"
+- TODO
 
 #### Free variable restriction
 
@@ -240,6 +270,16 @@ async function x() {
 
 - Expected string, found 2
 
+#### External promise
+
+```ts
+declare let a: Promise<string>;
+
+(await a) satisfies number
+```
+
+- Expected number, found string
+
 ### Generators
 
 ```ts
@@ -258,7 +298,7 @@ function x*() {
 #TODO traps
 #TODO Object.defineProperty
 
-#### Proxy object
+#### Proxy object with default callback
 
 ```ts
 const a = new Proxy({ prop: 2 })
@@ -266,58 +306,20 @@ const a = new Proxy({ prop: 2 })
 a.prop satisfies 3
 ```
 
-- #TODO
+- Expected 3, found 2
 
-### Properties
-
-#### Delete properties
-
-> Yah weird
+#### Proxy getters
 
 ```ts
-const x = { a: 2, b: 3 }
-delete x.b;
-const b = x.b;
+const a = new Proxy({ }, { get(prop) { return prop } })
+
+a.prop1 satisfies "prop1"
+a.prop3 satisfies "prop2"
 ```
 
-- No property "b" on {"a": 2, }
+- Expected "prop2", found "prop3"
 
-#### Interface merging
-
-> Currently panics on double object restriction :(
-
-```ts
-interface X {
-	a: string,
-	b: boolean
-}
-
-interface X {
-	c: number
-}
-
-const x: X = { a: "field", b: false, c: false }
-const y: X = { a: "field", b: false, c: 2 }
-```
-
-- Type {"a": "field", "b": false, "c": false, } is not assignable to type X
-
-#### Property updates object outside of function
-
-> Currently panics on double object restriction :(
-
-```ts
-const obj: { a: number } = { a: 2 }
-function func(value: number) {
-	obj.a = value
-}
-
-const a: 2 = obj.a
-func(4)
-const b: 2 = obj.a
-```
-
-- Type 4 is not assignable to type 2
+### Collections
 
 #### Push to array
 
@@ -329,3 +331,83 @@ myArray.push("hi")
 ```
 
 - Type "hi" is not assignable to type number
+
+#### Index into array
+
+```ts
+function getFirst(a: Array<string>) {
+	return a[3]
+}
+
+print_type(getFirst)
+```
+
+#### Simple array map
+
+```ts
+function mapper(a: Array<string>) {
+	return a.map(item => item + "hi")
+}
+
+print_type(mapper)
+```
+
+#### Generic array map
+
+```ts
+function mapper<T, U>(a: Array<T>, func: T => U) {
+	return a.map(func)
+}
+
+print_type(mapper)
+```
+
+### Expressions
+
+#### Statements, declarations and expressions
+
+```ts
+function myTag(static_parts: Array<string>, first_name: string) {
+	return first_name + static_parts[0]
+}
+
+const name = "Ben";
+myTag`Hello ${name}` satisfies "Hi Ben"
+```
+
+- Expected "Hi Ben", found "Hello Ben"
+
+#### Object spread
+
+```ts
+const obj1 = { a: 2, b: 3 };
+const obj2 = { b: 4, ...obj1, a: 6 };
+
+obj1.b satisfies 100;
+obj1.a satisfies bool;
+```
+
+- Expected 100, found 3
+- Expected bool, found 6
+
+#### Bad arithmetic operator
+
+> This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
+
+```ts
+console + 2
+```
+
+- Expected number, found Console
+
+#### Array spread
+
+```ts
+const array1 = [1, 2, 3];
+const array2 = [...array1, 4, 5, 6];
+
+array2.length satisfies 6;
+array2[2] satisfies string;
+```
+
+- Expected string, found 3

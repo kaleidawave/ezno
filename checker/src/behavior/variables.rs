@@ -1,6 +1,6 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::{environment::ContextSpecifierTemp, AssignmentError};
+use crate::context::{environment::ContextLocation, AssignmentError};
 use crate::{types::TypeId, CheckingData, VariableId};
 use std::fmt::Debug;
 
@@ -15,7 +15,7 @@ pub enum VariableOrImport {
 		/// Location where variable is defined **ALSO UNIQUELY IDENTIFIES THE VARIABLE** as can
 		/// be turned into a [VariableId]
 		declared_at: SpanWithSource,
-		context: ContextSpecifierTemp,
+		context: ContextLocation,
 	},
 	MutableImport {
 		of: VariableId,

@@ -2,7 +2,7 @@
 
 use crate::{
 	behavior::{
-		functions::ClosureId,
+		functions::{ClosureId, ThisValue},
 		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	types::{is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type, TypeStore},
@@ -26,9 +26,22 @@ pub(crate) fn substitute(
 
 	match ty {
 		Type::Constant(_) => id,
-		Type::Class(..) | Type::FunctionReference(..) | Type::Object(..) | Type::Function(..) => {
+		Type::Object(..) => {
+			// TODO only sometimes
 			curry_arguments(arguments, types, id)
 		}
+		Type::Function(f, t) => {
+			// Also sub the this type
+			let id = if let ThisValue::Passed(p) = t {
+				let function_id = *f;
+				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
+				types.register_type(Type::Function(function_id, passed))
+			} else {
+				id
+			};
+			curry_arguments(arguments, types, id)
+		}
+		Type::FunctionReference(f, t) => curry_arguments(arguments, types, id),
 		Type::AliasTo { .. } | Type::And(_, _) | Type::Or(_, _) | Type::NamedRooted { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
@@ -73,48 +86,26 @@ pub(crate) fn substitute(
 				else_result,
 				result_union,
 			} => {
-				// crate::utils::notify!(
-				// 	"before on={} true={} false={}",
-				// 	crate::types::printing::print_type(
-				// 		on,
-				// 		types,
-				// 		&environment.into_general_context(),
-				// 		true
-				// 	),
-				// 	crate::types::printing::print_type(
-				// 		true_res,
-				// 		types,
-				// 		&environment.into_general_context(),
-				// 		true
-				// 	),
-				// 	crate::types::printing::print_type(
-				// 		false_res,
-				// 		types,
-				// 		&environment.into_general_context(),
-				// 		true
-				// 	)
-				// );
-
 				let condition = substitute(condition, arguments, environment, types);
 
 				// crate::utils::notify!(
 				// 	"after on={} true={} false={}",
 				// 	crate::types::printing::print_type(
-				// 		on,
+				// 		condition,
 				// 		types,
-				// 		&environment.into_general_context(),
+				// 		&environment.as_general_context(),
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
-				// 		true_result,
+				// 		truthy_result,
 				// 		types,
-				// 		&environment.into_general_context(),
+				// 		&environment.as_general_context(),
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
-				// 		false_result,
+				// 		else_result,
 				// 		types,
-				// 		&environment.into_general_context(),
+				// 		&environment.as_general_context(),
 				// 		true
 				// 	)
 				// );
@@ -126,6 +117,7 @@ pub(crate) fn substitute(
 						substitute(else_result, arguments, environment, types)
 					}
 				} else {
+					crate::utils::notify!("{:?} not decidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
 					let else_result = substitute(else_result, arguments, environment, types);
 					// TODO result_union
@@ -267,6 +259,7 @@ pub(crate) fn curry_arguments(
 	id: TypeId,
 ) -> TypeId {
 	if !arguments.is_empty() {
+		crate::utils::notify!("Storing arguments onto object");
 		// TODO only carry arguments that are used
 		let arguments = arguments.into_structural_generic_arguments();
 

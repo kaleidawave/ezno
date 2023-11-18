@@ -1,6 +1,11 @@
 //! TODO need to call interface things rather going with own implementation to generate actual DOM operations
 
-use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
+use std::borrow::Cow;
+
+use parser::{
+	ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot,
+	PropertyKey as ParserPropertyKey,
+};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
@@ -9,6 +14,7 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::expressions::synthesise_expression,
 	types::{
+		properties::PropertyKey,
 		subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 		SynthesisedArgument,
 	},
@@ -45,9 +51,9 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			attribute.get_position().clone().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
-			name,
-			crate::Property::Value(attribute_value),
 			crate::context::facts::PublicityKind::Public,
+			name,
+			crate::PropertyValue::Value(attribute_value),
 			Some(attribute_position),
 		);
 
@@ -135,17 +141,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 		for (idx, child) in children_iterator {
 			// TODO idx bad! and should override item
-			let property = checking_data
-				.types
-				.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
+			let property = PropertyKey::from_usize(idx);
 
 			let child_position = child.get_position().clone().with_source(environment.get_source());
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
-				property,
-				crate::Property::Value(child),
 				crate::context::facts::PublicityKind::Public,
+				property,
+				crate::PropertyValue::Value(child),
 				Some(child_position),
 			);
 		}
@@ -158,9 +162,10 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// TODO cache or something?
 	// TODO temp, to be worked out
 	const JSX_NAME: &str = "JSXH";
+
 	let position = element.get_position().clone().with_source(environment.get_source());
 	let jsx_function =
-		match environment.get_variable_or_error(JSX_NAME, position.clone(), checking_data) {
+		match environment.get_variable_handle_error(JSX_NAME, position.clone(), checking_data) {
 			Ok(ty) => ty.1,
 			Err(_) => {
 				todo!()
@@ -187,7 +192,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	call_type_handle_errors(
 		jsx_function,
 		crate::types::calling::CalledWithNew::None,
-		crate::behavior::functions::ThisValue::UseParent,
+		environment.facts.value_of_this,
 		None,
 		args,
 		position.clone(),
@@ -367,7 +372,8 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 			}
 
 			crate::utils::notify!("Cast to node!");
-			synthesise_expression(expression, environment, checking_data)
+			// TODO expecting
+			synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
 
 			// function intoNode(data) {
 			// 	if typeof data === "string" || typeof data === "number" {
@@ -414,7 +420,7 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 	attribute: &JSXAttribute,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
-) -> (TypeId, TypeId) {
+) -> (PropertyKey<'static>, TypeId) {
 	let (key, value) = match attribute {
 		// TODO check property exists ...?
 		JSXAttribute::Static(name, value, attribute_id) => {
@@ -423,15 +429,16 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 		JSXAttribute::Dynamic(name, expression, attribute_id) => {
 			if let Expression::ExpressionFunction(_) = &**expression {
 				// TODO temp context
-				environment.context_type.context = Some("client".to_owned());
+				environment.context_type.location = Some("client".to_owned());
 			}
 			// Do not care about the returned value at this point, just for synthesising the type into the map
-			(name, synthesise_expression(expression, environment, checking_data))
+			// TODO expecting
+			(name, synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE))
 		}
 		JSXAttribute::BooleanAttribute(name, _) => (name, TypeId::TRUE),
 		JSXAttribute::Spread(_, _) => todo!(),
 		JSXAttribute::Shorthand(_) => todo!(),
 	};
 
-	(checking_data.types.new_constant_type(crate::Constant::String(key.clone())), value)
+	(PropertyKey::String(Cow::Owned(key.clone())), value)
 }

@@ -19,7 +19,6 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 		under: &'a str,
 		position: Span,
 	},
-	SideEffect,
 	/// From `export * from ...`
 	Everything,
 }

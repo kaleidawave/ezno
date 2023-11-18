@@ -1,12 +1,15 @@
+use std::borrow::Cow;
+
 use crate::{
 	behavior::functions::ThisValue,
 	context::{facts::PublicityKind, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{printing::print_type, substitute, FunctionType},
-	Environment, TypeId,
+	types::{printing::print_type, substitute, FunctionType, StructureGenerics},
+	Constant, Environment, TypeId,
 };
 
+use ordered_float::NotNan;
 use source_map::{SourceId, Span, SpanWithSource};
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
@@ -18,35 +21,97 @@ pub enum PropertyKind {
 	Generic,
 }
 
+/// TODO symbol
+/// Implements basic definition equality, not type equality
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PropertyKey<'a> {
+	String(Cow<'a, str>),
+	// Special
+	Type(TypeId),
+}
+
+impl<'a> PropertyKey<'a> {
+	pub fn into_owned(&self) -> PropertyKey<'static> {
+		match self {
+			PropertyKey::String(s) => PropertyKey::String(Cow::Owned(s.to_string())),
+			PropertyKey::Type(s) => PropertyKey::Type(*s),
+		}
+	}
+
+	pub(crate) fn from_type(ty: TypeId, types: &TypeStore) -> PropertyKey<'static> {
+		if let Type::Constant(c) = types.get_type_by_id(ty) {
+			match c {
+				Constant::Number(n) => {
+					// if n.fractional ??
+					PropertyKey::from_usize(n.into_inner() as usize)
+				}
+				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
+				Constant::Boolean(_) => todo!(),
+				Constant::Regexp(_) => todo!(),
+				Constant::Symbol { key } => todo!(),
+				Constant::Undefined => todo!(),
+				Constant::Null => todo!(),
+				Constant::NaN => todo!(),
+			}
+		} else {
+			PropertyKey::Type(ty)
+		}
+	}
+}
+
+impl crate::serialization::BinarySerializable for PropertyKey<'static> {
+	fn serialize(self, buf: &mut Vec<u8>) {
+		todo!()
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		todo!()
+	}
+}
+
+static NUMBERS: &str = "0123456789";
+
+impl<'a> PropertyKey<'a> {
+	/// For array indexes
+	pub fn from_usize(a: usize) -> Self {
+		if a < 10 {
+			Self::String(Cow::Borrowed(&NUMBERS[a..(a + 1)]))
+		} else {
+			Self::String(Cow::Owned(a.to_string()))
+		}
+	}
+}
+
 /// TODO type predicate based
 ///
 /// TODO getter, setting need a closure id
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum Property {
+pub enum PropertyValue {
 	Value(TypeId),
 	Getter(Box<FunctionType>),
 	Setter(Box<FunctionType>),
-	GetterAndSetter(Box<FunctionType>, Box<FunctionType>),
 	Deleted,
 }
 
-impl Property {
+impl PropertyValue {
 	/// TODO wip
 	pub fn as_get_type(&self) -> TypeId {
 		match self {
-			Property::Value(value) => *value,
-			Property::Setter(_) => TypeId::UNDEFINED_TYPE,
-			Property::Getter(getter) | Property::GetterAndSetter(getter, _) => getter.return_type,
-			Property::Deleted => unreachable!(),
+			PropertyValue::Value(value) => *value,
+			PropertyValue::Getter(getter) => getter.return_type,
+			// TODO not sure about these two
+			PropertyValue::Setter(_) => TypeId::UNDEFINED_TYPE,
+			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 		}
 	}
 
 	pub fn as_set_type(&self) -> TypeId {
 		match self {
-			Property::Value(value) => *value,
-			Property::Getter(_) => TypeId::UNDEFINED_TYPE,
-			Property::Setter(setter) | Property::GetterAndSetter(_, setter) => setter.return_type,
-			Property::Deleted => unreachable!(),
+			PropertyValue::Value(value) => *value,
+			PropertyValue::Setter(setter) => setter.return_type,
+			// TODO not sure about these two
+			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
+			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 		}
 	}
 }
@@ -57,15 +122,16 @@ impl Property {
 /// types at some point*
 pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	under: TypeId,
 	publicity: PublicityKind,
+	under: PropertyKey,
 	with: Option<TypeId>,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
-	if on == TypeId::ERROR_TYPE || under == TypeId::ERROR_TYPE {
+	// || under == TypeId::ERROR_TYPE
+	if on == TypeId::ERROR_TYPE {
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
@@ -76,21 +142,22 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	}
 
 	let value: GetResult = if let Some(constraint) = environment.get_poly_base(on, types) {
-		GetResult::AccessIntroducesDependence(getter_on_type(
+		GetResult::AccessIntroducesDependence(evaluate_get_on_poly(
 			constraint,
-			under,
 			on,
 			publicity,
+			under.clone(),
 			with,
 			environment,
 			behavior,
 			types,
 		)?)
-	} else if environment.get_poly_base(under, types).is_some() {
-		todo!()
 	} else {
+		// if environment.get_poly_base(under, types).is_some() {
+		// 	todo!()
+		// }
 		// TODO
-		return get_from_an_object(on, under, publicity, environment, behavior, types);
+		return get_from_an_object(on, publicity, under, environment, behavior, types);
 	};
 
 	let reflects_dependency = match value {
@@ -100,7 +167,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 
 	behavior.get_top_level_facts(environment).events.push(Event::Getter {
 		on,
-		under,
+		under: under.into_owned(),
 		reflects_dependency,
 		publicity,
 		position,
@@ -122,19 +189,19 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 
 fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	under: TypeId,
 	publicity: PublicityKind,
+	under: PropertyKey,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {
-	let result = environment.get_property_unbound(on, under, publicity, types)?;
+	let result = environment.get_property_unbound(on, publicity, under, types)?;
 
 	return resolve_property_on_logical(result, types, on, environment, behavior);
 
 	/// Generates closure arguments, values of this and more. Runs getters
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
-		logical: Logical<Property>,
+		logical: Logical<PropertyValue>,
 		types: &mut TypeStore,
 		on: TypeId,
 		environment: &mut Environment,
@@ -143,26 +210,23 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 		match logical {
 			Logical::Pure(property) => {
 				match property {
-					Property::Value(value) => {
+					PropertyValue::Value(value) => {
 						let ty = types.get_type_by_id(value);
 						match ty {
 							// TODO function :: bind_this
 							Type::Function(func, state) => {
-								let func = types.register_type(Type::Function(
-									*func,
-									crate::behavior::functions::ThisValue::Passed(on),
-								));
+								let func = types
+									.register_type(Type::Function(*func, ThisValue::Passed(on)));
 								Some((PropertyKind::Direct, func))
 							}
 							Type::FunctionReference(func, this_argument) => {
 								crate::utils::notify!("TODO temp reference function business");
 								let func = types.register_type(Type::FunctionReference(
 									*func,
-									crate::behavior::functions::ThisValue::Passed(on),
+									ThisValue::Passed(on),
 								));
 								Some((PropertyKind::Direct, func))
 							}
-							Type::Class(..) => todo!(),
 							Type::SpecialObject(..)
 							| Type::Object(..)
 							| Type::RootPolyType { .. }
@@ -177,52 +241,35 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 								));
 								Some((PropertyKind::Direct, value))
 							}
-							Type::Constructor(Constructor::StructureGenerics { .. }) => {
-								// TODO curry type arguments
-								Some((PropertyKind::Direct, value))
+							Type::Constructor(Constructor::StructureGenerics(
+								StructureGenerics { on: sg_on, arguments },
+							)) => {
+								// TODO not great... need less overhead
+								if let Type::Function(f, p) = types.get_type_by_id(*sg_on) {
+									let arguments = arguments.clone();
+									let f = types
+										.register_type(Type::Function(*f, ThisValue::Passed(on)));
+									let ty = types.register_type(Type::Constructor(
+										Constructor::StructureGenerics(StructureGenerics {
+											on: f,
+											arguments,
+										}),
+									));
+									Some((PropertyKind::Direct, ty))
+								} else {
+									Some((PropertyKind::Direct, value))
+								}
 							}
 							Type::Constructor(constructor) => {
 								unreachable!("Interesting property on {:?}", constructor);
 							}
 							Type::AliasTo { to, name, parameters } => {
 								todo!()
-								// if environment.is_getter(property) {
-								// 	// TODO catch unwrap as error:
-								// 	let result = call_type(
-								// 		property,
-								// 		vec![],
-								// 		Some(on),
-								// 		None,
-								// 		environment,
-								// 		checking_data,
-								// 		CalledWithNew::None,
-								// 	)
-								// 	.unwrap()
-								// 	.returned_type;
-
-								// 	return Some(PropertyResult::Getter(result));
-								// } else {
-								// 	// Bind this is this is function
-								// 	let is_function = *to == TypeId::FUNCTION_TYPE
-								// 		|| matches!(environment.get_type_by_id(*to), Type::AliasTo { to, .. } if *to == TypeId::FUNCTION_TYPE);
-
-								// 	if is_function {
-								// 		let alias = environment.new_type(Type::AliasTo {
-								// 			to: property,
-								// 			name: None,
-								// 			parameters: None,
-								// 		});
-								// 		environment.this_bindings.insert(alias, on);
-								// 		alias
-								// 	} else {
-								// 		property
-								// 	}
-								// }
 							}
 						}
 					}
-					Property::GetterAndSetter(getter, _) | Property::Getter(getter) => {
-						let state = crate::behavior::functions::ThisValue::Passed(on);
+					PropertyValue::Getter(getter) => {
+						let state = ThisValue::Passed(on);
 						let call = getter.call(
 							CalledWithNew::None,
 							state,
@@ -243,8 +290,8 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 							}
 						}
 					}
-					Property::Setter(_) => todo!(),
-					Property::Deleted => None,
+					PropertyValue::Setter(_) => todo!(),
+					PropertyValue::Deleted => None,
 				}
 			}
 			Logical::Or { .. } => todo!(),
@@ -258,11 +305,11 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	}
 }
 
-fn getter_on_type<'a, E: CallCheckingBehavior>(
+fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
 	constraint: TypeId,
-	under: TypeId,
 	on: TypeId,
-	kind: PublicityKind,
+	publicity: PublicityKind,
+	under: PropertyKey,
 	with: Option<TypeId>,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -276,107 +323,85 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 	// 	is_open_poly
 	// );
 
-	let fact = environment.get_property_unbound(constraint, under, kind, types)?;
+	let fact = environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
 
-	match fact {
-		Logical::Pure(og) => {
-			match og {
-				Property::Value(og) => {
-					match types.get_type_by_id(og) {
-						Type::FunctionReference(func, _) => {
-							// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-							let with_this =
-								types.register_type(Type::Function(*func, ThisValue::Passed(og)));
-							Some(with_this)
-						}
-						Type::Class(..) | Type::Function(..) => todo!(),
-						Type::And(_, _)
-						| Type::Object(..)
-						| Type::SpecialObject(..)
-						| Type::RootPolyType(_)
-						| Type::Constructor(_)
-						| Type::Or(_, _)
-						| Type::AliasTo { .. }
-						| Type::NamedRooted { .. } => {
-							// TODO this isn't necessary sometimes
-							let constructor_result =
-								types.register_type(Type::Constructor(Constructor::Property {
-									on,
-									under,
-								}));
+	fn get_property_from_logical(
+		fact: Logical<PropertyValue>,
+		types: &mut TypeStore,
+		on: TypeId,
+		under: PropertyKey,
+	) -> Option<TypeId> {
+		match fact {
+			Logical::Pure(og) => {
+				match og {
+					PropertyValue::Value(og) => {
+						match types.get_type_by_id(og) {
+							Type::FunctionReference(func, _) => {
+								// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
+								let with_this = types
+									.register_type(Type::Function(*func, ThisValue::Passed(og)));
+								Some(with_this)
+							}
+							Type::Function(..) => todo!(),
+							Type::And(_, _)
+							| Type::RootPolyType(_)
+							| Type::Constructor(_)
+							| Type::Or(_, _)
+							| Type::AliasTo { .. }
+							| Type::NamedRooted { .. } => {
+								// TODO this isn't necessary sometimes
+								let constructor_result =
+									types.register_type(Type::Constructor(Constructor::Property {
+										on,
+										under: under.into_owned(),
+										result: og,
+									}));
 
-							Some(constructor_result)
+								Some(constructor_result)
+							}
+							Type::Constant(_) | Type::Object(..) | Type::SpecialObject(..) => {
+								Some(og)
+							}
 						}
-						Type::Constant(_) => Some(og),
 					}
+					PropertyValue::Getter(getter) => {
+						// if is_open_poly {
+						// 	crate::utils::notify!("TODO evaluate getter...");
+						// } else {
+						// 	crate::utils::notify!("TODO don't evaluate getter");
+						// }
+						// TODO : getter.return_type
+						Some(types.register_type(Type::Constructor(Constructor::Property {
+							on,
+							under: under.into_owned(),
+							result: getter.return_type,
+						})))
+					}
+					PropertyValue::Setter(_) => todo!("error"),
+					// Very important
+					PropertyValue::Deleted => None,
 				}
-				Property::GetterAndSetter(getter, _) | Property::Getter(getter) => {
-					// if is_open_poly {
-					// 	crate::utils::notify!("TODO evaluate getter...");
-					// } else {
-					// 	crate::utils::notify!("TODO don't evaluate getter");
-					// }
-					// TODO : getter.return_type
-					Some(
-						types.register_type(Type::Constructor(Constructor::Property { on, under })),
-					)
+			}
+			Logical::Or { left, right } => {
+				let left = get_property_from_logical(*left, types, on, under.clone());
+				let right = get_property_from_logical(*right, types, on, under);
+
+				if let (Some(lhs), Some(rhs)) = (left, right) {
+					crate::utils::notify!("TODO how does conditionality work");
+					Some(types.new_or_type(lhs, rhs))
+				} else {
+					crate::utils::notify!("TODO emit some diagnostic about missing");
+					None
 				}
-				Property::Setter(_) => todo!("error"),
-				// Very important
-				Property::Deleted => None,
+			}
+			Logical::Implies { on, antecedent } => {
+				todo!()
+				// Some(substitute(*on, &mut antecedent.type_arguments, environment, types))
 			}
 		}
-		Logical::Or { .. } => todo!(),
-		Logical::Implies { .. } => todo!(),
 	}
-	// }
-	// PolyBase::Dynamic { to, boundary } => {
-	// 	todo!("this is likely changing")
-	// crate::utils::notify!(
-	// 	"Getting property {:?} which has a dynamic constraint {:?}",
-	// 	on,
-	// 	to
-	// );
-	// // If the property on the dynamic constraint is None
-	// if environment.get_property_unbound(to, under, types).is_none() {
-	// 	let on = if to == TypeId::ANY_TYPE {
-	// 		let new_constraint = types.register_type(Type::Object(
-	// 			crate::types::ObjectNature::ModifiableConstraint,
-	// 		));
-	// 		crate::utils::notify!("Here!!!");
-	// 		environment.attempt_to_modify_base(on, boundary, new_constraint);
-	// 		new_constraint
-	// 	} else if matches!(
-	// 		types.get_type_by_id(to),
-	// 		Type::AliasTo { to: TypeId::OBJECT_TYPE, .. }
-	// 	) {
-	// 		to
-	// 	} else {
-	// 		todo!("new and")
-	// 	};
 
-	// 	environment
-	// 		.facts
-	// 		.current_properties
-	// 		.entry(on)
-	// 		.or_default()
-	// 		.push((under, Property::Value(with.unwrap_or(TypeId::ANY_TYPE))));
-	// } else {
-	// 	crate::utils::notify!("Found existing property on dynamic constraint");
-	// }
-
-	// let constructor_result =
-	// 	types.register_type(Type::Constructor(Constructor::Property { on, under }));
-
-	// // environment
-	// // 	.context_type
-	// // 	.get_inferrable_constraints_mut()
-	// // 	.unwrap()
-	// // 	.insert(constructor_result);
-
-	// Some(GetResult::AccessIntroducesDependence(constructor_result))
-	// }
-	// }
+	get_property_from_logical(fact, types, on, under)
 }
 
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
@@ -384,9 +409,9 @@ fn getter_on_type<'a, E: CallCheckingBehavior>(
 /// Evaluates setters
 pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	under: TypeId,
 	publicity: PublicityKind,
-	new: Property,
+	under: PropertyKey,
+	new: PropertyValue,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -400,14 +425,16 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// if E::CHECK_PARAMETERS {
 	let object_constraint = environment.get_object_constraint(on);
 
-	if let Some(object) = object_constraint {
-		let property_constraint = environment.get_property_unbound(object, under, publicity, types);
-		crate::utils::notify!(
-			"Re-assignment constraint {}, prop={} {:?}",
-			print_type(object, types, &environment.as_general_context(), true),
-			print_type(under, types, &environment.as_general_context(), true),
-			property_constraint
-		);
+	for constraint in object_constraint {
+		let property_constraint =
+			environment.get_property_unbound(constraint, publicity, under.clone(), types);
+
+		// crate::utils::notify!(
+		// 	"Re-assignment constraint {}, prop={} {:?}",
+		// 	print_type(constraint, types, &environment.as_general_context(), true),
+		// 	print_type(under, types, &environment.as_general_context(), true),
+		// 	property_constraint
+		// );
 
 		if let Some(property) = property_constraint {
 			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
@@ -453,24 +480,24 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	// 	)
 	// );
 
-	let current_property = environment.get_property_unbound(on, under, publicity, types);
+	let current_property = environment.get_property_unbound(on, publicity, under.clone(), types);
 
-	let new = Property::Value(new.as_get_type());
+	let new = PropertyValue::Value(new.as_get_type());
 
 	if let Some(fact) = current_property {
 		match fact {
 			Logical::Pure(og) => match og {
-				Property::Deleted | Property::Value(..) => {
+				PropertyValue::Deleted | PropertyValue::Value(..) => {
 					let facts = behavior.get_top_level_facts(environment);
 					facts.current_properties.entry(on).or_default().push((
-						under,
 						publicity,
+						under.into_owned(),
 						new.clone(),
 					));
 					facts.events.push(Event::Setter {
 						on,
 						new,
-						under,
+						under: under.into_owned(),
 						publicity,
 						// TODO
 						reflects_dependency: None,
@@ -478,8 +505,10 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 						position: setter_position,
 					});
 				}
-				Property::Getter(_) => todo!(),
-				Property::GetterAndSetter(_, _setter) | Property::Setter(_setter) => todo!(),
+				PropertyValue::Getter(_) => todo!(),
+				PropertyValue::Setter(_setter) => {
+					todo!()
+				}
 			},
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { .. } => todo!(),
@@ -490,10 +519,10 @@ pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 		let register_setter_event = true;
 		behavior.get_top_level_facts(environment).register_property(
 			on,
-			under,
+			publicity,
+			under.into_owned(),
 			new,
 			register_setter_event,
-			publicity,
 			setter_position,
 		);
 	}

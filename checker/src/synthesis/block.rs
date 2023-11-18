@@ -2,7 +2,7 @@ use parser::{declarations::VariableDeclaration, Declaration, Statement, Statemen
 
 use crate::{
 	behavior::modules::Exported, context::Environment, diagnostics::TypeCheckError, CheckingData,
-	Scope,
+	Scope, TypeId,
 };
 
 use super::{
@@ -109,13 +109,13 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							let pair = super::hoisting::export_part_to_name_pair(part);
 							if let Some(pair) = pair {
 								let position = pair.position.with_source(environment.get_source());
-								let value = environment.get_variable_or_error(
+								let value = environment.get_variable_handle_error(
 									pair.value,
 									position,
 									checking_data,
 								);
 								if let crate::Scope::Module { ref mut exported, .. } =
-									environment.context_type.kind
+									environment.context_type.scope
 								{
 									if let Ok(value) = value {
 										exported.named.push((
@@ -132,8 +132,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				}
 			}
 			parser::declarations::ExportDeclaration::Default { expression, position } => {
-				let result = synthesise_expression(expression, environment, checking_data);
-				if let Scope::Module { ref mut exported, .. } = environment.context_type.kind {
+				// TODO can be inferred sometimes
+				let result =
+					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
+				if let Scope::Module { ref mut exported, .. } = environment.context_type.scope {
 					if exported.default.is_some() {
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::DoubleDefaultExport(

@@ -5,13 +5,16 @@ use crate::{
 		facts::{Facts, PublicityKind},
 		Environment,
 	},
-	types::{properties::Property, TypeStore},
+	types::{
+		properties::{PropertyKey, PropertyValue},
+		TypeStore,
+	},
 	TypeId,
 };
 
 // TODO slice indexes
 pub struct ObjectBuilder {
-	pub(crate) object: TypeId,
+	pub object: TypeId,
 }
 
 impl ObjectBuilder {
@@ -24,12 +27,12 @@ impl ObjectBuilder {
 	pub fn append(
 		&mut self,
 		environment: &mut Environment,
-		under: TypeId,
-		value: Property,
-		property: PublicityKind,
+		publicity: PublicityKind,
+		under: PropertyKey<'static>,
+		value: PropertyValue,
 		position: Option<SpanWithSource>,
 	) {
-		environment.facts.register_property(self.object, under, value, true, property, position)
+		environment.facts.register_property(self.object, publicity, under, value, true, position)
 	}
 
 	pub fn build_object(self) -> TypeId {
@@ -46,8 +49,8 @@ pub enum SpecialObjects {
 		position: (),
 	},
 	Proxy {
-		handler: (),
-		over: (),
+		over: TypeId,
+		handler: TypeId,
 	},
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),

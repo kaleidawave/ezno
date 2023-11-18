@@ -36,18 +36,23 @@ interface nominal Array<T> {
         }
     }
 
-    last() performs {
-        return this[this.length - 1]
-    }
+    // last() performs {
+    //     return this[this.length - 1]
+    // }
 }
 
 interface Math {
     sin(x: number): number performs const sin;
     cos(x: number): number performs const cos;
     tan(x: number): number performs const tan;
-    trunc(x: number): number performs const trunc;
+    floor(x: number): number performs const floor;
     sqrt(x: number): number performs const sqrt;
     cbrt(x: number): number performs const cbrt;
+
+    // TODO newer method
+    trunc(x: number): number performs const trunc;
+
+    PI: 3.141592653589793
 }
 
 interface nominal string {
@@ -69,9 +74,26 @@ interface JSON {
     stringify(input: any): string;
 }
 
+interface Function {
+    bind(this_ty: any): Function performs const bind;
+}
+
+interface Object {
+    setPrototypeOf(on: object, to: object): object performs const set_prototype;
+
+    getPrototypeOf(on: object): object | null performs const get_prototype;
+
+    // create(prototype: object): object performs {
+    //     const n = {};
+    //     Object.setProtoTypeOf(n, prototype);
+    //     return n
+    // }
+}
+
 declare var JSON: JSON;
 declare var Math: Math;
 declare var console: Console;
+declare var Object: Object;
 
 declare function JSXH(tagname: string, attributes: any, children?: any) performs {
     return tagname
@@ -87,5 +109,5 @@ interface FormData {
 @client
 declare const document: Document;
 
-@server
-declare function createItem(a: any);
+// @server
+// declare function createItem(a: any);

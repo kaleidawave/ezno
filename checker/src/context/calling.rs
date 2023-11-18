@@ -1,5 +1,5 @@
 use super::facts::Facts;
-use crate::{Environment, FunctionId};
+use crate::{events::EarlyReturn, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub(crate) trait CallCheckingBehavior {
@@ -84,12 +84,12 @@ impl CallCheckingBehavior for Target {
 impl Target {
 	pub(crate) fn new_conditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut Target),
-	) -> Facts {
+		cb: impl for<'a> FnOnce(&'a mut Target) -> EarlyReturn,
+	) -> (Facts, EarlyReturn) {
 		self.0.push(TargetKind::Conditional(Facts::default()));
-		cb(self);
+		let result = cb(self);
 		if let Some(TargetKind::Conditional(facts)) = self.0.pop() {
-			facts
+			(facts, result)
 		} else {
 			unreachable!()
 		}

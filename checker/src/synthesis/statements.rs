@@ -25,7 +25,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 ) {
 	match statement {
 		Statement::Expression(expression) => {
-			synthesise_multiple_expression(expression, environment, checking_data);
+			synthesise_multiple_expression(
+				expression,
+				environment,
+				checking_data,
+				TypeId::ANY_TYPE,
+			);
 		}
 		// Statement::ExportStatement(_export_statement) => {
 		// if let Some(out_exports) = out_exports {
@@ -69,7 +74,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		// }
 		Statement::Return(return_statement) => {
 			let returned = if let Some(ref expression) = return_statement.1 {
-				synthesise_multiple_expression(expression, environment, checking_data)
+				// TODO expecting based of expected return type
+				synthesise_multiple_expression(
+					expression,
+					environment,
+					checking_data,
+					TypeId::ANY_TYPE,
+				)
 			} else {
 				TypeId::UNDEFINED_TYPE
 			};
@@ -86,8 +97,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) {
-				let condition =
-					synthesise_multiple_expression(current.0, environment, checking_data);
+				let condition = synthesise_multiple_expression(
+					current.0,
+					environment,
+					checking_data,
+					TypeId::ANY_TYPE,
+				);
 
 				environment.new_conditional_context(
 					condition,
@@ -347,7 +362,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::Throw(stmt) => {
-			let thrown_value = synthesise_multiple_expression(&stmt.1, environment, checking_data);
+			let thrown_value = synthesise_multiple_expression(
+				&stmt.1,
+				environment,
+				checking_data,
+				TypeId::ANY_TYPE,
+			);
 			let thrown_position = stmt.2.clone().with_source(environment.get_source());
 			environment.throw_value(thrown_value, thrown_position)
 		}

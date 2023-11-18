@@ -1,4 +1,4 @@
-use std::{convert::TryInto, marker::PhantomData};
+use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
 
 use parser::{
 	expressions::{
@@ -7,15 +7,24 @@ use parser::{
 		MultipleExpression, SpecialOperators, SpreadExpression, SuperReference, TemplateLiteral,
 	},
 	operators::{BinaryAssignmentOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
-	ASTNode, Expression,
+	ASTNode, Expression, MethodHeader,
 };
 
-use crate::{behavior::variables::VariableWithValue, synthesis::property_key_as_type};
+use crate::{
+	behavior::{
+		functions::{
+			register_arrow_function, register_expression_function, FunctionRegisterBehavior,
+			SynthesisableFunction,
+		},
+		variables::VariableWithValue,
+	},
+	synthesis::parser_property_key_to_checker_property_key,
+	types::properties::PropertyKey,
+};
 
 use crate::{
 	behavior::{
 		assignments::Assignable,
-		functions::{RegisterAsType, RegisterOnExistingObject},
 		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
@@ -34,6 +43,7 @@ use crate::{
 
 use super::{
 	assignments::{synthesise_access_to_reference, synthesise_lhs_of_assignment_to_reference},
+	classes::synthesise_class_declaration,
 	extensions::{is_expression::synthesise_is_expression, jsx::synthesise_jsx_root},
 	type_annotations::synthesise_type_annotation,
 	EznoParser,
@@ -43,14 +53,15 @@ pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
 	expression: &MultipleExpression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
+	expecting: TypeId,
 ) -> TypeId {
 	match expression {
 		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-			synthesise_multiple_expression(lhs, environment, checking_data);
-			synthesise_expression(rhs, environment, checking_data)
+			synthesise_multiple_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
+			synthesise_expression(rhs, environment, checking_data, expecting)
 		}
 		MultipleExpression::Single(expression) => {
-			synthesise_expression(expression, environment, checking_data)
+			synthesise_expression(expression, environment, checking_data, expecting)
 		}
 	}
 }
@@ -59,6 +70,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 	expression: &Expression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
+	expecting: TypeId,
 ) -> TypeId {
 	let instance: Instance = match expression {
 		Expression::Comment(..) => unreachable!("Should have skipped this higher up"),
@@ -77,22 +89,20 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		Expression::ArrayLiteral(elements, _) => {
+			/// TODO spread + count length
 			fn synthesise_array_item<T: crate::ReadFromFS>(
 				idx: usize,
 				element: &SpreadExpression,
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
-			) -> (TypeId, TypeId) {
+			) -> (PropertyKey<'static>, TypeId) {
 				match element {
 					SpreadExpression::NonSpread(element) => {
+						// TODO based off above
+						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
-							synthesise_expression(element, environment, checking_data);
-						(
-							checking_data.types.new_constant_type(Constant::Number(
-								(idx as f64).try_into().unwrap(),
-							)),
-							expression_type,
-						)
+							synthesise_expression(element, environment, checking_data, expecting);
+						(PropertyKey::from_usize(idx), expression_type)
 					}
 					SpreadExpression::Spread(expr, position) => {
 						{
@@ -102,21 +112,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							);
 						}
 						crate::utils::notify!("Skipping spread");
-						(
-							checking_data.types.new_constant_type(Constant::Number(
-								(idx as f64).try_into().unwrap(),
-							)),
-							TypeId::ERROR_TYPE,
-						)
+						(PropertyKey::from_usize(idx), TypeId::ERROR_TYPE)
 					}
 					SpreadExpression::Empty => {
 						crate::utils::notify!("Empty expression temp as empty");
-						(
-							checking_data.types.new_constant_type(Constant::Number(
-								(idx as f64).try_into().unwrap(),
-							)),
-							TypeId::UNDEFINED_TYPE,
-						)
+						(PropertyKey::from_usize(idx), TypeId::UNDEFINED_TYPE)
 					}
 				}
 			}
@@ -133,9 +133,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				let (key, value) = synthesise_array_item(idx, value, environment, checking_data);
 				basis.append(
 					environment,
-					key,
-					crate::types::properties::Property::Value(value),
 					PublicityKind::Public,
+					key,
+					crate::types::properties::PropertyValue::Value(value),
 					Some(spread_expression_position),
 				);
 			}
@@ -146,20 +146,20 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			// TODO: Should there be a position here?
 			basis.append(
 				environment,
-				TypeId::LENGTH_AS_STRING,
-				crate::types::properties::Property::Value(len),
 				PublicityKind::Public,
+				PropertyKey::String("length".into()),
+				crate::types::properties::PropertyValue::Value(len),
 				None,
 			);
 
 			Instance::RValue(basis.build_object())
 		}
-		Expression::ObjectLiteral(object_literal) => {
-			let synthesise_object_literal =
-				synthesise_object_literal(object_literal, checking_data, environment);
-
-			Instance::RValue(synthesise_object_literal)
-		}
+		Expression::ObjectLiteral(object_literal) => Instance::RValue(synthesise_object_literal(
+			object_literal,
+			checking_data,
+			environment,
+			expecting,
+		)),
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
 			let mut parts_iter = parts.iter().map(|part| match part {
 				parser::expressions::TemplateLiteralPart::Static(value) => {
@@ -169,13 +169,20 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
 				}
 			});
-			let tag =
-				tag.as_ref().map(|expr| synthesise_expression(expr, environment, checking_data));
+			let tag = tag.as_ref().map(|expr| {
+				synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE)
+			});
 
-			synthesise_template_literal(tag, parts_iter, environment, checking_data)
+			Instance::RValue(synthesise_template_literal(
+				tag,
+				parts_iter,
+				position,
+				environment,
+				checking_data,
+			))
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, .. } => {
-			let lhs_ty = synthesise_expression(&*lhs, environment, checking_data);
+			let lhs_ty = synthesise_expression(&*lhs, environment, checking_data, TypeId::ANY_TYPE);
 
 			if let BinaryOperator::LogicalAnd
 			| BinaryOperator::LogicalOr
@@ -199,7 +206,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				.unwrap();
 			}
 
-			let rhs_ty = synthesise_expression(&*rhs, environment, checking_data);
+			let rhs_ty = synthesise_expression(&*rhs, environment, checking_data, TypeId::ANY_TYPE);
 
 			if lhs_ty == TypeId::ERROR_TYPE || rhs_ty == TypeId::ERROR_TYPE {
 				return TypeId::ERROR_TYPE;
@@ -259,7 +266,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					todo!("cast to number")
 				}
 				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
-					let operand_type = synthesise_expression(&*operand, environment, checking_data);
+					let operand_type = synthesise_expression(
+						&*operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
+					);
 					let operator = match operator {
 						UnaryOperator::Negation => PureUnary::Negation,
 						UnaryOperator::BitwiseNot => PureUnary::BitwiseNot,
@@ -278,8 +290,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				UnaryOperator::Await => todo!(),
 				UnaryOperator::TypeOf => todo!(),
 				UnaryOperator::Void => {
-					let _operand_type =
-						synthesise_expression(&*operand, environment, checking_data);
+					let _operand_type = synthesise_expression(
+						&*operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
+					);
 					return TypeId::UNDEFINED_TYPE;
 				}
 				UnaryOperator::Delete => {
@@ -287,21 +303,52 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					// TODO more expressions
 					match &**operand {
 						Expression::PropertyAccess { parent, property, is_optional, position } => {
-							let on = synthesise_expression(parent, environment, checking_data);
+							let on = synthesise_expression(
+								parent,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							);
 							match property {
-								parser::PropertyReference::Standard { property, is_private: _ } => {
-									let property = checking_data
-										.types
-										.new_constant_type(Constant::String(property.clone()));
-									let result = environment.remove_property(on, property);
+								parser::PropertyReference::Standard {
+									property,
+									is_private: _is_private,
+								} => {
+									let result = environment.delete_property(
+										on,
+										PropertyKey::String(Cow::Owned(property.clone())),
+									);
 									return if result { TypeId::TRUE } else { TypeId::FALSE };
 								}
 								parser::PropertyReference::Cursor(_) => todo!(),
 							}
 						}
+						Expression::Index { indexee, indexer, is_optional, position } => {
+							let indexee = synthesise_expression(
+								indexee,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							);
+							let indexer = synthesise_multiple_expression(
+								indexer,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							);
+
+							let property = PropertyKey::from_type(indexer, &checking_data.types);
+							let result = environment.delete_property(indexee, property);
+							return if result { TypeId::TRUE } else { TypeId::FALSE };
+						}
 						_ => {
-							let _operand_type =
-								synthesise_expression(&*operand, environment, checking_data);
+							crate::utils::notify!("Deleting non property raise warning");
+							let _operand_type = synthesise_expression(
+								&*operand,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							);
 							return TypeId::FALSE;
 						}
 					}
@@ -407,7 +454,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::VariableReference(name, position) => {
-			let get_variable_or_alternatives = environment.get_variable_or_error(
+			let get_variable_or_alternatives = environment.get_variable_handle_error(
 				name.as_str(),
 				position.clone().with_source(environment.get_source()),
 				checking_data,
@@ -419,10 +466,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::PropertyAccess { parent, position, property, .. } => {
-			let on = synthesise_expression(parent, environment, checking_data);
+			let on = synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
 			let property =
 				if let parser::PropertyReference::Standard { property, is_private: _ } = property {
-					checking_data.types.new_constant_type(Constant::String(property.clone()))
+					PropertyKey::String(Cow::Borrowed(property.as_str()))
 				} else {
 					todo!()
 				};
@@ -431,58 +478,54 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			// TODO
 			let publicity = PublicityKind::Public;
 
-			let get_property = environment.get_property(
+			let result = environment.get_property_handle_errors(
 				on,
-				property,
 				publicity,
-				&mut checking_data.types,
-				None,
+				property,
+				checking_data,
 				access_position,
 			);
 
-			match get_property {
-				Some((kind, result)) => match kind {
-					PropertyKind::Getter => Instance::GValue(result),
-					// TODO instance.property...?
-					PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
-				},
-				None => {
-					// TODO could do a positional reference to the variable...?
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::PropertyDoesNotExist {
-							property: TypeStringRepresentation::from_type_id(
-								property,
-								&environment.as_general_context(),
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							on: TypeStringRepresentation::from_type_id(
-								on,
-								&environment.as_general_context(),
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							site: position.clone().with_source(environment.get_source()),
-						},
-					);
-
-					return TypeId::ERROR_TYPE;
-				}
+			match result {
+				Ok(instance) => instance,
+				Err(_) => return TypeId::ERROR_TYPE,
 			}
 		}
-		Expression::ThisReference(..) => {
-			let position = SynthesisableExpression::get_position(expression)
-				.clone()
-				.with_source(environment.get_source());
+		Expression::Index { indexee, indexer, position, .. } => {
+			let indexee =
+				synthesise_expression(indexee, environment, checking_data, TypeId::ANY_TYPE);
+			let indexer = synthesise_multiple_expression(
+				indexer,
+				environment,
+				checking_data,
+				TypeId::ANY_TYPE,
+			);
+
+			let index_position = position.clone().with_source(environment.get_source());
+			// TODO handle differently?
+			let result = environment.get_property_handle_errors(
+				indexee,
+				PublicityKind::Public,
+				PropertyKey::from_type(indexer, &checking_data.types),
+				checking_data,
+				index_position,
+			);
+
+			match result {
+				Ok(instance) => instance,
+				Err(_) => return TypeId::ERROR_TYPE,
+			}
+		}
+		Expression::ThisReference(pos) => {
+			let position = pos.clone().with_source(environment.get_source());
 			Instance::RValue(environment.get_value_of_this(&mut checking_data.types, position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
 			SuperReference::Call { arguments } => {
-				let constructor =
-					environment.get_current_constructor().expect("not in constructor");
-
 				todo!();
 
+				// let constructor =
+				// 	environment.get_current_constructor().expect("not in constructor");
 				// let crate::ConstructorInformation {
 				// 	fields,
 				// 	class_constructor_ty,
@@ -534,7 +577,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		},
 		Expression::NewTarget(..) => todo!(),
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
-			let on = synthesise_expression(&*function, environment, checking_data);
+			let on =
+				synthesise_expression(&*function, environment, checking_data, TypeId::ANY_TYPE);
 
 			let (result, special) = call_function(
 				on,
@@ -551,8 +595,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(result)
 		}
 		Expression::ConstructorCall { constructor, type_arguments, arguments, position } => {
-			let on = synthesise_expression(&*constructor, environment, checking_data);
-			let called_with_new = CalledWithNew::New { import_new: on };
+			let on =
+				synthesise_expression(&*constructor, environment, checking_data, TypeId::ANY_TYPE);
+			let called_with_new = CalledWithNew::New { on };
 			let (result, _) = call_function(
 				on,
 				called_with_new,
@@ -564,87 +609,61 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 			Instance::RValue(result)
 		}
-		Expression::Index { indexee, indexer, position, .. } => {
-			let indexee = synthesise_expression(indexee, environment, checking_data);
-			let indexer = synthesise_multiple_expression(indexer, environment, checking_data);
-
-			let index_position = position.clone().with_source(environment.get_source());
-			let get_property = environment.get_property(
-				indexee,
-				indexer,
-				PublicityKind::Public,
-				&mut checking_data.types,
-				None,
-				index_position,
-			);
-
-			match get_property {
-				Some((kind, result)) => match kind {
-					PropertyKind::Getter => Instance::GValue(result),
-					// TODO instance.property...?
-					PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
-				},
-				None => {
-					// TODO could do a positional reference to the variable...?
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::PropertyDoesNotExist {
-							property: TypeStringRepresentation::from_type_id(
-								indexer,
-								&environment.as_general_context(),
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							on: TypeStringRepresentation::from_type_id(
-								indexee,
-								&environment.as_general_context(),
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							site: position.clone().with_source(environment.get_source()),
-						},
-					);
-
-					return TypeId::ERROR_TYPE;
-				}
-			}
-		}
 		Expression::ConditionalTernaryExpression {
 			condition, truthy_result, falsy_result, ..
 		} => {
-			let condition = synthesise_expression(condition, environment, checking_data);
+			let condition =
+				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
 			Instance::RValue(environment.new_conditional_context(
 				condition,
 				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-					synthesise_expression(&truthy_result, env, data)
+					synthesise_expression(&truthy_result, env, data, expecting)
 				},
 				Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-					synthesise_expression(&falsy_result, env, data)
+					synthesise_expression(&falsy_result, env, data, expecting)
 				}),
 				checking_data,
 			))
 		}
-		Expression::ExpressionFunction(function) => {
-			Instance::RValue(environment.new_function(checking_data, function, RegisterAsType))
-		}
-		Expression::ArrowFunction(arrow_function) => Instance::RValue(environment.new_function(
+		Expression::ArrowFunction(function) => Instance::RValue(register_arrow_function(
+			expecting,
+			function.header.is_some(),
+			function,
+			environment,
 			checking_data,
-			arrow_function,
-			RegisterAsType,
 		)),
+		Expression::ExpressionFunction(function) => {
+			let is_async = function.header.is_async();
+			let is_generator = function.header.is_generator();
+			let location = function.header.get_location().map(|location| match location {
+				parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
+				parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+			});
+			Instance::RValue(register_expression_function(
+				expecting,
+				is_async,
+				is_generator,
+				location,
+				function,
+				environment,
+				checking_data,
+			))
+		}
+
 		Expression::Null(_) => return TypeId::NULL_TYPE,
 		Expression::JSXRoot(jsx_root) => {
 			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
 		}
 		Expression::PostfixComment(expression, _comment, _)
 		| Expression::PrefixComment(_comment, expression, _) => {
-			Instance::RValue(synthesise_expression(expression, environment, checking_data))
+			return synthesise_expression(expression, environment, checking_data, expecting)
 		}
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
-			synthesise_multiple_expression(inner_expression, environment, checking_data),
+			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
-		Expression::ClassExpression(_) => {
-			todo!()
+		Expression::ClassExpression(class) => {
+			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
 		}
 		Expression::Cursor { cursor_id, position } => todo!(),
 		Expression::SpecialOperators(operator, position) => match operator {
@@ -655,11 +674,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					),
 				);
 
-				return synthesise_expression(value, environment, checking_data);
+				return synthesise_expression(value, environment, checking_data, expecting);
 			}
 			SpecialOperators::IsExpression { value, is_keyword, type_annotation } => todo!(),
 			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
-				let value = synthesise_expression(value, environment, checking_data);
+				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
 
@@ -672,10 +691,28 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return value;
 			}
-			SpecialOperators::InExpression { .. } => todo!(),
+			SpecialOperators::InExpression { lhs, rhs } => {
+				let lhs = match lhs {
+					parser::expressions::InExpressionLHS::PrivateProperty(_) => todo!(),
+					parser::expressions::InExpressionLHS::Expression(lhs) => {
+						synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE)
+					}
+				};
+				let rhs = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+				let result =
+					environment.property_in(rhs, PropertyKey::from_type(lhs, &checking_data.types));
+
+				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
+			}
 			SpecialOperators::InstanceOfExpression { .. } => todo!(),
 		},
-		Expression::DynamicImport { .. } => todo!(),
+		Expression::DynamicImport { position, .. } => {
+			checking_data.raise_unimplemented_error(
+				"dynamic import",
+				position.clone().with_source(environment.get_source()),
+			);
+			return TypeId::ERROR_TYPE;
+		}
 		Expression::IsExpression(is_expr) => {
 			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
 		}
@@ -796,6 +833,7 @@ fn call_function<T: crate::ReadFromFS>(
 	)
 }
 
+/// TODO do lazily
 fn synthesise_arguments<T: crate::ReadFromFS>(
 	arguments: &Vec<SpreadExpression>,
 	environment: &mut Environment,
@@ -823,7 +861,8 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 				// ) {
 				// 	crate::utils::notify!("TODO absolute function here");
 				// }
-				let ty = synthesise_expression(expr, environment, checking_data);
+				// TODO expecting here
+				let ty = synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE);
 				Some(SynthesisedArgument::NonSpread {
 					ty,
 					position: ASTNode::get_position(expr)
@@ -836,39 +875,11 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 		.collect::<Vec<SynthesisedArgument>>()
 }
 
-pub(super) fn synthesise_class_fields<T: crate::ReadFromFS>(
-	fields: Vec<(TypeId, PublicityKind, Expression)>,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
-	todo!("get event position");
-	// TODO: Needs clarification. This only passes the position of the first field. Should we pass all fields positions?
-	// TODO: Placeholder. This placeholder implementation retrieves the position of the first field in order to satisfy the compiler
-	let fields_position = SynthesisableExpression::get_position(&fields[0].2)
-		.clone()
-		.with_source(environment.get_source());
-
-	let this = environment.get_value_of_this(&mut checking_data.types, fields_position);
-	for (under, publicity, mut expression) in fields {
-		let new = synthesise_expression(&expression, environment, checking_data);
-		environment.facts.events.push(Event::Setter {
-			on: this,
-			new: crate::types::properties::Property::Value(new),
-			under,
-			reflects_dependency: None,
-			initialization: true,
-			publicity,
-			position: Some(fields_position),
-		});
-		todo!()
-		// environment.new_property(this, under, new, false);
-	}
-}
-
 pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	environment: &mut Environment,
+	expected: TypeId,
 ) -> TypeId {
 	let mut object_builder =
 		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
@@ -883,8 +894,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 			}
 			ObjectLiteralMember::Shorthand(name, position) => {
-				let key = checking_data.types.new_constant_type(Constant::String(name.clone()));
-				let get_variable = environment.get_variable_or_error(
+				let key = PropertyKey::String(Cow::Owned(name.clone()));
+				let get_variable = environment.get_variable_handle_error(
 					name,
 					position.clone().with_source(environment.get_source()),
 					checking_data,
@@ -905,23 +916,30 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				object_builder.append(
 					environment,
-					key,
-					crate::types::properties::Property::Value(value),
 					PublicityKind::Public,
+					key,
+					crate::types::properties::PropertyValue::Value(value),
 					Some(member_position),
 				);
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
-				let key =
-					property_key_as_type(key.get_ast_ref(), environment, &mut checking_data.types);
+				let key = parser_property_key_to_checker_property_key(
+					key.get_ast_ref(),
+					environment,
+					checking_data,
+				);
 
-				let value = synthesise_expression(expression, environment, checking_data);
-				let value = crate::types::properties::Property::Value(value);
+				// TODO base of above
+				let expecting = TypeId::ANY_TYPE;
+				let value =
+					synthesise_expression(expression, environment, checking_data, expecting);
+
+				let value = crate::types::properties::PropertyValue::Value(value);
 				object_builder.append(
 					environment,
+					PublicityKind::Public,
 					key,
 					value,
-					PublicityKind::Public,
 					Some(member_position),
 				);
 
@@ -944,20 +962,36 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// )
 			}
 			ObjectLiteralMember::Method(method) => {
-				let key = property_key_as_type(
+				let key = parser_property_key_to_checker_property_key(
 					method.name.get_ast_ref(),
 					environment,
-					&mut checking_data.types,
+					checking_data,
 				);
 
-				let property =
-					environment.new_function(checking_data, method, RegisterOnExistingObject);
+				let behavior = crate::behavior::functions::FunctionRegisterBehavior::ObjectMethod {
+					is_async: method.header.as_ref().map(|h| h.is_async()).unwrap_or_default(),
+					is_generator: method
+						.header
+						.as_ref()
+						.map(|h| h.is_generator())
+						.unwrap_or_default(),
+				};
+
+				let function = environment.new_function(checking_data, method, behavior);
+
+				let property = match &method.header {
+					Some(MethodHeader::Get(_)) => crate::PropertyValue::Getter(Box::new(function)),
+					Some(MethodHeader::Set(_)) => crate::PropertyValue::Setter(Box::new(function)),
+					_ => {
+						crate::PropertyValue::Value(checking_data.types.new_function_type(function))
+					}
+				};
 
 				object_builder.append(
 					environment,
+					PublicityKind::Public,
 					key,
 					property,
-					PublicityKind::Public,
 					Some(member_position),
 				)
 			}

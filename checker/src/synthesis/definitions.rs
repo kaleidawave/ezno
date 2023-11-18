@@ -2,7 +2,7 @@ use parser::ASTNode;
 
 use crate::{
 	context::{Names, RootContext},
-	synthesis::{functions::type_function_reference, EznoParser},
+	synthesis::{functions::synthesise_function_annotation, EznoParser},
 	Environment, Facts, TypeId,
 };
 
@@ -70,7 +70,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::Function(func) => {
 				// TODO abstract
 				let declared_at = func.get_position().clone().with_source(source);
-				let base = type_function_reference(
+				let base = synthesise_function_annotation(
 					&func.type_parameters,
 					&func.parameters,
 					func.return_type.as_ref(),
@@ -78,7 +78,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					checking_data,
 					func.performs.as_ref().into(),
 					declared_at.clone(),
-					crate::types::FunctionKind::Arrow,
+					crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
 					None,
 				);
 
@@ -89,7 +89,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					// TODO
 					declared_at,
 					base.effects,
-					base.constant_id,
+					base.constant_function,
 				);
 
 				let behavior = crate::context::VariableRegisterBehavior::Declare {

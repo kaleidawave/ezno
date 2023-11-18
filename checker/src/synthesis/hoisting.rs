@@ -9,7 +9,7 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::{
-		functions::RegisterOnExisting,
+		functions::synthesise_hoisted_statement_function,
 		modules::{Exported, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::{
-	functions::type_function_reference, type_annotations::synthesise_type_annotation,
+	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	variables::register_variable, EznoParser,
 };
 
@@ -75,7 +75,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				parser::Declaration::Import(import) => {
-					let kind = match &import.items {
+					let items = match &import.items {
 						parser::declarations::import::ImportedItems::Parts(parts) => {
 							crate::behavior::modules::ImportKind::Parts(
 								parts
@@ -102,54 +102,49 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
-					if let Some(path) = import.from.get_path() {
-						environment.import_items(
-							path,
-							import.position.clone(),
-							default_import,
-							kind,
-							checking_data,
-							false,
-						);
-					}
+					environment.import_items(
+						&import.from.get_path().unwrap(),
+						import.position.clone(),
+						default_import,
+						items,
+						checking_data,
+						false,
+					);
 				}
 				parser::Declaration::Export(export) => {
 					if let ExportDeclaration::Variable { exported, position } = &export.on {
 						// Imports & types
 						match exported {
 							Exportable::ImportAll { r#as, from } => {
-								if let Some(path) = from.get_path() {
-									let kind = match r#as {
-										Some(VariableIdentifier::Standard(name, pos)) => {
-											ImportKind::All { under: name, position: pos.clone() }
-										}
-										Some(VariableIdentifier::Cursor(_, _)) => todo!(),
-										None => ImportKind::Everything,
-									};
-									environment.import_items::<iter::Empty<_>, _, _>(
-										path,
-										position.clone(),
-										None,
-										kind,
-										checking_data,
-										true,
-									);
-								}
+								let kind = match r#as {
+									Some(VariableIdentifier::Standard(name, pos)) => {
+										ImportKind::All { under: name, position: pos.clone() }
+									}
+									Some(VariableIdentifier::Cursor(_, _)) => todo!(),
+									None => ImportKind::Everything,
+								};
+
+								environment.import_items::<iter::Empty<_>, _, _>(
+									from.get_path().unwrap(),
+									position.clone(),
+									None,
+									kind,
+									checking_data,
+									true,
+								)
 							}
 							Exportable::ImportParts { parts, from } => {
 								let parts =
 									parts.iter().filter_map(|item| export_part_to_name_pair(item));
 
-								if let Some(path) = from.get_path() {
-									environment.import_items(
-										path,
-										position.clone(),
-										None,
-										crate::behavior::modules::ImportKind::Parts(parts),
-										checking_data,
-										true,
-									);
-								}
+								environment.import_items(
+									from.get_path().unwrap(),
+									position.clone(),
+									None,
+									crate::behavior::modules::ImportKind::Parts(parts),
+									checking_data,
+									true,
+								);
 							}
 							Exportable::TypeAlias(alias) => {
 								let export = environment.new_alias::<_, EznoParser>(
@@ -160,7 +155,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								);
 
 								if let crate::Scope::Module { ref mut exported, .. } =
-									environment.context_type.kind
+									environment.context_type.scope
 								{
 									exported
 										.named_types
@@ -206,7 +201,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::DeclareFunction(func) => {
 					// TODO abstract
 					let declared_at = func.position.clone().with_source(environment.get_source());
-					let base = type_function_reference(
+					let base = synthesise_function_annotation(
 						&func.type_parameters,
 						&func.parameters,
 						func.return_type.as_ref(),
@@ -214,7 +209,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 						func.performs.as_ref().into(),
 						declared_at.clone(),
-						crate::types::FunctionKind::Arrow,
+						crate::behavior::functions::FunctionBehavior::ArrowFunction {
+							is_async: false,
+						},
 						None,
 					);
 
@@ -224,7 +221,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						base.return_type,
 						declared_at,
 						base.effects,
-						base.constant_id,
+						base.constant_function,
 					);
 
 					let behavior =
@@ -338,30 +335,60 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	// Third stage: functions
 	for item in items {
 		match item {
-			StatementOrDeclaration::Declaration(Declaration::Function(func)) => {
-				environment.new_function(
+			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
+				let variable_id =
+					crate::VariableId(environment.get_source(), item.get_position().start);
+				let is_async = function.on.header.is_async();
+				let is_generator = function.on.header.is_generator();
+				let location = function.on.header.get_location().map(|location| match location {
+					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+				});
+
+				synthesise_hoisted_statement_function(
+					variable_id,
+					is_async,
+					is_generator,
+					location,
+					&function.on,
+					environment,
 					checking_data,
-					&func.on,
-					RegisterOnExisting(crate::VariableId(
-						environment.get_source(),
-						item.get_position().start,
-					)),
 				);
 			}
 			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
 				on:
-					ExportDeclaration::Variable { exported: Exportable::Function(func), position: _ },
+					ExportDeclaration::Variable {
+						exported: Exportable::Function(function),
+						position: _,
+					},
 				..
 			})) => {
 				let variable_id =
 					crate::VariableId(environment.get_source(), item.get_position().start);
-				environment.new_function(checking_data, func, RegisterOnExisting(variable_id));
 
-				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				let is_async = function.header.is_async();
+				let is_generator = function.header.is_generator();
+				let location = function.header.get_location().map(|location| match location {
+					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+				});
+
+				synthesise_hoisted_statement_function(
+					variable_id,
+					is_async,
+					is_generator,
+					location,
+					function,
+					environment,
+					checking_data,
+				);
+
+				if let crate::Scope::Module { ref mut exported, .. } =
+					environment.context_type.scope
 				{
 					// TODO check existing?
 					exported.named.push((
-						func.name.as_str().to_owned(),
+						function.name.as_str().to_owned(),
 						(variable_id, VariableMutability::Constant),
 					));
 				}
