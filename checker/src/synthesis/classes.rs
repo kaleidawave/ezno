@@ -96,14 +96,11 @@ pub(super) fn synthesise_class_declaration<
 
 				// TODO abstract
 				let (getter_setter, is_async, is_generator) = match &method.header {
-					Some(MethodHeader::Get(_)) => (GetterSetter::Getter, false, false),
-					Some(MethodHeader::Set(_)) => (GetterSetter::Setter, false, false),
-					None => (GetterSetter::None, false, false),
-					Some(
-						MethodHeader::Generator(is_async, _)
-						| MethodHeader::GeneratorStar(is_async, _),
-					) => (GetterSetter::None, is_async.is_some(), true),
-					Some(MethodHeader::Async(_)) => (GetterSetter::None, true, false),
+					MethodHeader::Get(_) => (GetterSetter::Getter, false, false),
+					MethodHeader::Set(_) => (GetterSetter::Setter, false, false),
+					MethodHeader::Regular { r#async, generator } => {
+						(GetterSetter::None, r#async.is_some(), generator.is_some())
+					}
 				};
 
 				let method_ty = environment.new_function(
@@ -187,27 +184,17 @@ pub(super) fn synthesise_class_declaration<
 					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
 					_ => Publicity::Public,
 				};
-				let (is_async, is_generator) = match &method.header {
-					None | Some(MethodHeader::Set(_)) | Some(MethodHeader::Get(_)) => {
-						(false, false)
-					}
-					Some(
-						MethodHeader::Generator(is_async, _)
-						| MethodHeader::GeneratorStar(is_async, _),
-					) => (is_async.is_some(), true),
-					Some(MethodHeader::Async(_)) => (true, false),
-				};
 				let behavior = FunctionRegisterBehavior::ClassMethod {
-					is_async,
-					is_generator,
+					is_async: method.header.is_async(),
+					is_generator: method.header.is_generator(),
 					// TODO
 					super_type: None,
 				};
 				let function = environment.new_function(checking_data, method, behavior);
 
 				let value = match method.header {
-					Some(MethodHeader::Get(_)) => PropertyValue::Getter(Box::new(function)),
-					Some(MethodHeader::Set(_)) => PropertyValue::Setter(Box::new(function)),
+					MethodHeader::Get(_) => PropertyValue::Getter(Box::new(function)),
+					MethodHeader::Set(_) => PropertyValue::Setter(Box::new(function)),
 					_ => PropertyValue::Value(checking_data.types.new_function_type(function)),
 				};
 

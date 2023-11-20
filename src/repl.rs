@@ -40,6 +40,7 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 	}
 }
 
+#[allow(unused)]
 pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	cli_input_resolver: U,
 	ReplArguments { type_output, const_as_let, type_definition_module }: ReplArguments,

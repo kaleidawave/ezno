@@ -31,7 +31,8 @@ try {
 interface X {
     a: string
 }"#
-	.trim_start();
+	.trim_start()
+	.replace("    ", "\t");
 
 	let module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
@@ -94,7 +95,8 @@ try {
         console.error(e)
     }
 }"#
-	.trim_start();
+	.trim_start()
+	.replace("    ", "\t");
 
 	let module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();

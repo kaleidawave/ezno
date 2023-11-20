@@ -81,7 +81,7 @@ impl ASTNode for ClassMember {
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Readonly))
 			.map(|token| Keyword::new(token.get_span()));
 
-		let header = MethodHeader::optional_from_reader(reader);
+		let header = MethodHeader::from_reader(reader);
 		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
 
 		match reader.peek() {
@@ -181,7 +181,7 @@ impl ClassFunction {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		get_set_generator: Option<MethodHeader>,
+		get_set_generator: MethodHeader,
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
 		FunctionBase::from_reader_with_header_and_name(
@@ -196,7 +196,7 @@ impl ClassFunction {
 
 impl FunctionBased for ClassFunctionBase {
 	type Body = Block;
-	type Header = Option<MethodHeader>;
+	type Header = MethodHeader;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
 
 	fn header_and_name_from_reader(
@@ -204,7 +204,7 @@ impl FunctionBased for ClassFunctionBase {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		let header = MethodHeader::optional_from_reader(reader);
+		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
 		Ok((header, name))
 	}
@@ -216,14 +216,12 @@ impl FunctionBased for ClassFunctionBase {
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if let Some(header) = header {
-			header.to_string_from_buffer(buf);
-		}
+		header.to_string_from_buffer(buf);
 		name.to_string_from_buffer(buf, options, depth);
 	}
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		header.as_ref().map(|header| header.get_start())
+		header.get_start()
 	}
 }
 

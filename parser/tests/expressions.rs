@@ -47,3 +47,23 @@ a.a(...expr, y)
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
+
+#[test]
+fn objects() {
+	let input = r#"
+({ a: 5 });
+({ ...b, a: 5, ...c, d: 4 });
+({ async e() {
+	return 2
+} })
+    "#
+	.trim();
+
+	let module =
+		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+
+	eprintln!("Module: {:#?}", module);
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}

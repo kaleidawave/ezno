@@ -910,7 +910,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	for member in members.iter() {
 		let member_position = member.get_position().clone().with_source(environment.get_source());
 		match member {
-			ObjectLiteralMember::SpreadExpression(spread, pos) => {
+			ObjectLiteralMember::Spread(spread, pos) => {
 				checking_data.raise_unimplemented_error(
 					"spread in object literal",
 					pos.clone().with_source(environment.get_source()),
@@ -992,19 +992,15 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 
 				let behavior = crate::behavior::functions::FunctionRegisterBehavior::ObjectMethod {
-					is_async: method.header.as_ref().map(|h| h.is_async()).unwrap_or_default(),
-					is_generator: method
-						.header
-						.as_ref()
-						.map(|h| h.is_generator())
-						.unwrap_or_default(),
+					is_async: method.header.is_async(),
+					is_generator: method.header.is_generator(),
 				};
 
 				let function = environment.new_function(checking_data, method, behavior);
 
 				let property = match &method.header {
-					Some(MethodHeader::Get(_)) => crate::PropertyValue::Getter(Box::new(function)),
-					Some(MethodHeader::Set(_)) => crate::PropertyValue::Setter(Box::new(function)),
+					MethodHeader::Get(_) => crate::PropertyValue::Getter(Box::new(function)),
+					MethodHeader::Set(_) => crate::PropertyValue::Setter(Box::new(function)),
 					_ => {
 						crate::PropertyValue::Value(checking_data.types.new_function_type(function))
 					}

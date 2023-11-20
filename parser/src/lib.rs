@@ -167,7 +167,7 @@ impl Default for ToStringOptions {
 			expect_jsx: false,
 			trailing_semicolon: false,
 			expect_cursors: false,
-			indent_with: "    ".to_owned(),
+			indent_with: "\t".to_owned(),
 		}
 	}
 }
@@ -702,6 +702,40 @@ impl NumberRepresentation {
 	}
 }
 
+#[derive(Eq, PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum GeneratorSpecifier {
+	Star(Span),
+	#[cfg(feature = "extras")]
+	Keyword(Keyword<tsx_keywords::Generator>),
+}
+
+impl GeneratorSpecifier {
+	pub(crate) fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+	) -> Option<Self> {
+		match reader.peek() {
+			Some(Token(TSXToken::Multiply, _)) => {
+				Some(GeneratorSpecifier::Star(reader.next().unwrap().get_span()))
+			}
+			#[cfg(feature = "extras")]
+			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
+				Some(GeneratorSpecifier::Keyword(Keyword::new(reader.next().unwrap().get_span())))
+			}
+			_ => None,
+		}
+	}
+
+	fn get_start(&self) -> source_map::Start {
+		match self {
+			GeneratorSpecifier::Star(pos) => pos.get_start(),
+			#[cfg(feature = "extras")]
+			GeneratorSpecifier::Keyword(kw) => kw.get_position().get_start(),
+		}
+	}
+}
+
 /// This structure removes possible invalid combinations with async
 #[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -709,86 +743,77 @@ impl NumberRepresentation {
 pub enum MethodHeader {
 	Get(Keyword<tsx_keywords::Get>),
 	Set(Keyword<tsx_keywords::Set>),
-	GeneratorStar(Option<Keyword<tsx_keywords::Async>>, Span),
-	#[cfg(feature = "extras")]
-	Generator(Option<Keyword<tsx_keywords::Async>>, Keyword<tsx_keywords::Generator>),
-	Async(Keyword<tsx_keywords::Async>),
+	Regular { r#async: Option<Keyword<tsx_keywords::Async>>, generator: Option<GeneratorSpecifier> },
+}
+
+impl Default for MethodHeader {
+	fn default() -> Self {
+		Self::Regular { r#async: None, generator: None }
+	}
 }
 
 impl MethodHeader {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		buf.push_str(match self {
-			MethodHeader::Get(_) => "get ",
-			MethodHeader::Set(_) => "set ",
-			MethodHeader::GeneratorStar(None, _) => "*",
-			MethodHeader::GeneratorStar(Some(_), _) => "async *",
-			MethodHeader::Async(_) => "async ",
-			// Use default
-			#[cfg(feature = "extras")]
-			MethodHeader::Generator(None, _) => "*",
-			#[cfg(feature = "extras")]
-			MethodHeader::Generator(Some(_), _) => "async *",
-		})
-	}
-
-	pub(crate) fn optional_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> Option<Self> {
-		let async_kw = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-			.map(|tok| Keyword::new(tok.get_span()));
-
-		match reader.peek() {
-			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				Some(MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span())))
+		match self {
+			MethodHeader::Get(_) => buf.push_str("get "),
+			MethodHeader::Set(_) => buf.push_str("set "),
+			MethodHeader::Regular { r#async, generator } => {
+				if r#async.is_some() {
+					buf.push_str("async ");
+				}
+				if let Some(_generator) = generator {
+					buf.push('*');
+				}
 			}
-			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				Some(MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span())))
-			}
-			Some(Token(TSXToken::Multiply, _)) => {
-				Some(MethodHeader::GeneratorStar(async_kw, reader.next().unwrap().get_span()))
-			}
-			#[cfg(feature = "extras")]
-			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => Some(MethodHeader::Generator(
-				async_kw,
-				Keyword::new(reader.next().unwrap().get_span()),
-			)),
-			_ => None,
 		}
 	}
 
-	pub(crate) fn get_start(&self) -> source_map::Start {
-		match self {
-			MethodHeader::Get(kw) => kw.1.get_start(),
-			MethodHeader::Set(kw) => kw.1.get_start(),
-			MethodHeader::Async(kw) => kw.1.get_start(),
-			MethodHeader::GeneratorStar(async_kw, a) => {
-				async_kw.as_ref().map_or(a.get_start(), |kw| kw.1.get_start())
+	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
+		match reader.peek() {
+			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
+				MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span()))
 			}
-			#[cfg(feature = "extras")]
-			MethodHeader::Generator(async_kw, a) => {
-				async_kw.as_ref().map_or(a.1.get_start(), |kw| kw.1.get_start())
+			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
+				MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span()))
+			}
+			_ => {
+				let r#async = reader
+					.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
+					.map(|tok| Keyword::new(tok.get_span()));
+
+				let generator = GeneratorSpecifier::from_reader(reader);
+
+				MethodHeader::Regular { r#async, generator }
+			}
+		}
+	}
+
+	pub(crate) fn get_start(&self) -> Option<source_map::Start> {
+		match self {
+			MethodHeader::Get(kw) => Some(kw.1.get_start()),
+			MethodHeader::Set(kw) => Some(kw.1.get_start()),
+			MethodHeader::Regular { r#async, generator } => {
+				if let Some(r#async) = r#async {
+					Some(r#async.get_position().get_start())
+				} else if let Some(generator) = generator {
+					Some(generator.get_start())
+				} else {
+					None
+				}
 			}
 		}
 	}
 
 	pub fn is_async(&self) -> bool {
-		match self {
-			MethodHeader::GeneratorStar(async_kw, _) => async_kw.is_some(),
-			#[cfg(feature = "extras")]
-			MethodHeader::Generator(async_kw, _) => async_kw.is_some(),
-			MethodHeader::Async(_) => true,
-			_ => false,
-		}
+		matches!(self, Self::Regular { r#async: Some(_), .. })
 	}
 
 	pub fn is_generator(&self) -> bool {
-		match self {
-			MethodHeader::GeneratorStar(..) => true,
-			#[cfg(feature = "extras")]
-			MethodHeader::Generator(..) => true,
-			_ => false,
-		}
+		matches!(self, Self::Regular { generator: Some(_), .. })
+	}
+
+	fn is_some(&self) -> bool {
+		!matches!(self, Self::Regular { r#async: None, generator: None })
 	}
 
 	// pub(crate) fn get_end(&self) -> source_map::End {

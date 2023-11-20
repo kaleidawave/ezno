@@ -14,12 +14,14 @@ use crate::{
 // }
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
-	type Private: Debug + Sync + Send + Clone + PartialEq;
+	type Private: Debug + Sync + Send + Clone + Copy + PartialEq + Eq;
 
 	fn parse_ident(
 		first: Token<TSXToken, crate::TokenStart>,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self::Private)>;
+
+	fn is_private(p: Self::Private) -> bool;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +35,10 @@ impl PropertyKeyKind for AlwaysPublic {
 		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self::Private)> {
 		token_as_identifier(first, "property key").map(|(name, position)| (name, position, ()))
+	}
+
+	fn is_private(_p: Self::Private) -> bool {
+		true
 	}
 }
 
@@ -53,6 +59,10 @@ impl PropertyKeyKind for PublicOrPrivate {
 			token_as_identifier(first, "property key")
 				.map(|(name, position)| (name, position, false))
 		}
+	}
+
+	fn is_private(p: Self::Private) -> bool {
+		p
 	}
 }
 
@@ -75,6 +85,13 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 			| PropertyKey::StringLiteral(_, _, pos)
 			| PropertyKey::NumberLiteral(_, pos)
 			| PropertyKey::Computed(_, pos) => pos,
+		}
+	}
+
+	pub fn is_private(&self) -> bool {
+		match self {
+			PropertyKey::Ident(_, _, p) => U::is_private(*p),
+			_ => false,
 		}
 	}
 }

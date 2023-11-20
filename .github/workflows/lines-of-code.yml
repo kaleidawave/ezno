@@ -23,14 +23,19 @@ jobs:
       - name: Run update script
         run: |
           cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r name version pathInfo ; do
-            linesOfRustCode=$(scc -c --no-cocomo -f json -i rs ${pathInfo:13:-1} | jq '.[] | .Code');
-
+            path=${pathInfo:13:-1}
+            if [[ -d "$path/src" ]] ; then
+              linesOfRustCode=$(scc -c --no-cocomo -f json -i rs "$path/src" | jq '.[] | .Code');
+            else
+              linesOfRustCode=$(scc -c --no-cocomo -f json -i rs $path | jq '.[] | .Code');
+            fi
+          
             curl \
               --header "Content-Type: application/json" \
               --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
               --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$linesOfRustCode}" \
               -w "\nUpdated-project: \n" \
               https://projects.kaleidawave.workers.dev/update-project;
-
-            echo "\`$name\` has $linesOfRustCode lines of code" >> $GITHUB_STEP_SUMMARY;
+          
+            echo "\`$name\` has $linesOfRustCode lines of code"Y;
           done

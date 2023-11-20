@@ -133,7 +133,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 		for member in members {
 			match &member.on {
 				InterfaceMember::Method {
-					kind,
+					header,
 					name,
 					type_parameters,
 					parameters,
@@ -143,18 +143,16 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => {
 					let behavior = functions::FunctionBehavior::Method {
-						is_async: kind.as_ref().map_or(false, |header| header.is_async()),
-						is_generator: kind.as_ref().map_or(false, |header| header.is_generator()),
+						is_async: header.is_async(),
+						is_generator: header.is_generator(),
 						// TODO ...
 						free_this_id: TypeId::ERROR_TYPE,
 					};
-					let getter = kind.as_ref().map_or(GetterSetter::None, |header| match header {
+					let getter = match header {
 						parser::MethodHeader::Get(_) => GetterSetter::Getter,
 						parser::MethodHeader::Set(_) => GetterSetter::Setter,
-						parser::MethodHeader::GeneratorStar(_, _)
-						| parser::MethodHeader::Generator(_, _)
-						| parser::MethodHeader::Async(_) => GetterSetter::None,
-					});
+						_ => GetterSetter::None,
+					};
 					let function = synthesise_function_annotation(
 						type_parameters,
 						parameters,
@@ -212,6 +210,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					return_type,
 					is_readonly,
 					position,
+					performs,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
 					position.clone().with_source(environment.get_source()),

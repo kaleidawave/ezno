@@ -4,12 +4,13 @@
 	"description": "Ezno as a plugin",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
-	"types": "./dist/types.d.ts",
+	"types": "./types.d.ts",
 	"license": "MIT",
 	"exports": {
 		".": {
 			"require": "./dist/index.cjs",
-			"import": "./dist/index.mjs"
+			"import": "./dist/index.mjs",
+			"types": "./types.d.ts"
 		}
 	},
 	"dependencies": {
@@ -38,7 +39,8 @@
 		"unbuild": "^1.1.2"
 	},
 	"scripts": {
-		"build": "unbuild"
+		"build": "unbuild",
+		"build-js": "unbuild"
 	},
 	"build": {
 		"entries": [
