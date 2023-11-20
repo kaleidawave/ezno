@@ -24,7 +24,7 @@ pub struct ObjectLiteral {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectLiteralMember {
-	SpreadExpression(Expression, Span),
+	Spread(Expression, Span),
 	Shorthand(String, Span),
 	Property(WithComment<PropertyKey<AlwaysPublic>>, Expression, Span),
 	Method(ObjectLiteralMethod),
@@ -39,7 +39,7 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::SpreadExpression(_, _) => {}
+			ObjectLiteralMember::Spread(_, _) => {}
 			ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit(visitors, data, options, chain),
@@ -54,7 +54,7 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::SpreadExpression(_, _) => {}
+			ObjectLiteralMember::Spread(_, _) => {}
 			ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Property(_, _, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit_mut(visitors, data, options, chain),
@@ -68,12 +68,8 @@ pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
-	type Header = Option<MethodHeader>;
+	type Header = MethodHeader;
 	type Body = Block;
-
-	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
-	// 	ChainVariable::UnderClassMethod(this.body.1)
-	// }
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -81,7 +77,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		options: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
 		Ok((
-			MethodHeader::optional_from_reader(reader),
+			MethodHeader::from_reader(reader),
 			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?,
 		))
 	}
@@ -93,14 +89,12 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		if let Some(ref header) = header {
-			header.to_string_from_buffer(buf);
-		}
+		header.to_string_from_buffer(buf);
 		name.to_string_from_buffer(buf, options, depth);
 	}
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		header.as_ref().map(|header| header.get_start())
+		header.get_start()
 	}
 }
 
@@ -129,7 +123,7 @@ impl ASTNode for ObjectLiteral {
 		buf.push('{');
 		options.add_gap(buf);
 		for (at_end, member) in self.members.iter().endiate() {
-			member.to_string_from_buffer(buf, options, depth + 1);
+			member.to_string_from_buffer(buf, options, depth);
 			if !at_end {
 				buf.push(',');
 				options.add_gap(buf);
@@ -170,22 +164,31 @@ impl ASTNode for ObjectLiteralMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		if let Some(Token(_, spread_start)) =
+			reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
+		{
+			// TODO precedence okay?
+			let expression = Expression::from_reader(reader, state, options)?;
+			let position = spread_start.union(expression.get_position());
+			return Ok(Self::Spread(expression, position));
+		};
+
 		// TODO this probably needs with comment here:
-		let mut header = MethodHeader::optional_from_reader(reader);
+		let mut header = MethodHeader::from_reader(reader);
 		// Catch for named get or set :(
 		let is_named_get_or_set = matches!(
 			(reader.peek(), &header),
 			(
 				Some(Token(TSXToken::OpenParentheses | TSXToken::Colon, _)),
-				Some(MethodHeader::Get(..) | MethodHeader::Set(..))
+				MethodHeader::Get(..) | MethodHeader::Set(..)
 			)
 		);
 
 		let key = if is_named_get_or_set {
 			// Backtrack allowing `get` to be a key
 			let (name, position) = match mem::take(&mut header) {
-				Some(MethodHeader::Get(kw)) => ("get", kw.1),
-				Some(MethodHeader::Set(kw)) => ("set", kw.1),
+				MethodHeader::Get(kw) => ("get", kw.1),
+				MethodHeader::Set(kw) => ("set", kw.1),
 				_ => unreachable!(),
 			};
 			WithComment::None(PropertyKey::Ident(name.to_owned(), position, ()))
@@ -206,8 +209,7 @@ impl ASTNode for ObjectLiteralMember {
 				if header.is_some() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
-				if matches!(reader.peek(), Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _))) {
-					// TODO fix
+				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
 					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
@@ -243,7 +245,7 @@ impl ASTNode for ObjectLiteralMember {
 			Self::Method(func) => {
 				func.to_string_from_buffer(buf, options, depth);
 			}
-			Self::SpreadExpression(spread_expr, _) => {
+			Self::Spread(spread_expr, _) => {
 				buf.push_str("...");
 				spread_expr.to_string_from_buffer(buf, options, depth);
 			}
@@ -253,9 +255,7 @@ impl ASTNode for ObjectLiteralMember {
 	fn get_position(&self) -> &Span {
 		match self {
 			Self::Method(method) => method.get_position(),
-			Self::Shorthand(_, pos)
-			| Self::Property(_, _, pos)
-			| Self::SpreadExpression(_, pos) => pos,
+			Self::Shorthand(_, pos) | Self::Property(_, _, pos) | Self::Spread(_, pos) => pos,
 		}
 	}
 }

@@ -159,7 +159,7 @@ impl ASTNode for InterfaceDeclaration {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum InterfaceMember {
 	Method {
-		kind: Option<MethodHeader>,
+		header: MethodHeader,
 		name: PropertyKey<PublicOrPrivate>,
 		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		parameters: TypeAnnotationFunctionParameters,
@@ -193,6 +193,8 @@ pub enum InterfaceMember {
 		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
+		#[cfg(feature = "extras")]
+		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Caller {
@@ -304,18 +306,25 @@ impl ASTNode for InterfaceMember {
 						None
 					};
 
+				#[cfg(feature = "extras")]
+				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
+					Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
+
+				let end =
+					return_type.as_ref().map(ASTNode::get_position).unwrap_or(&parameters.position);
+
+				let position =
+					readonly_keyword.as_ref().map_or(&new_span, |kw| kw.get_position()).union(end);
+
 				Ok(InterfaceMember::Constructor {
 					is_readonly,
-					position: readonly_keyword
-						.as_ref()
-						.map_or(&new_span, |kw| kw.get_position())
-						.union(
-							return_type
-								.as_ref()
-								.map(ASTNode::get_position)
-								.unwrap_or(&parameters.position),
-						),
+					position,
 					parameters,
+					#[cfg(feature = "extras")]
+					performs,
 					type_parameters,
 					return_type,
 				})
@@ -333,7 +342,7 @@ impl ASTNode for InterfaceMember {
 				Ok(InterfaceMember::Comment(comment, span))
 			}
 			_ => {
-				let kind = MethodHeader::optional_from_reader(reader);
+				let header = MethodHeader::from_reader(reader);
 
 				// TODO tidy
 				let (name, type_parameters) = if let TSXToken::OpenBracket =
@@ -504,7 +513,7 @@ impl ASTNode for InterfaceMember {
 						};
 
 						Ok(InterfaceMember::Method {
-							kind,
+							header,
 							name,
 							parameters,
 							type_parameters,
@@ -545,7 +554,7 @@ impl ASTNode for InterfaceMember {
 						};
 
 						Ok(InterfaceMember::Method {
-							kind,
+							header,
 							name,
 							parameters,
 							type_parameters,

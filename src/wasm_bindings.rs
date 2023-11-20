@@ -133,7 +133,7 @@ pub fn minify_module(input: String) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
 	match item {
-		Ok(mut item) => {
+		Ok(item) => {
 			serde_wasm_bindgen::to_value(&item.to_string(&parser::ToStringOptions::minified()))
 				.unwrap()
 		}

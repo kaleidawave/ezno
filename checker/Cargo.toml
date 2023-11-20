@@ -13,7 +13,6 @@ categories = ["compilers"]
 
 [features]
 default = []
-# declaration-synthesis = []
 ezno-parser = ["parser"]
 
 [dependencies]
@@ -45,6 +44,6 @@ erased-serde = "0.3"
 [dependencies.parser]
 path = "../parser"
 optional = true
-version = "0.0.8"
+version = "0.1.0"
 features = ["extras"]
 package = "ezno-parser"
