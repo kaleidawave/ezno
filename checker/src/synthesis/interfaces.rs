@@ -4,7 +4,7 @@ use parser::{
 };
 
 use crate::{
-	behavior::functions::{self, ThisValue},
+	behavior::functions::{self, GetterSetter, ThisValue},
 	context::{
 		facts::Publicity,
 		Environment, {Context, ContextType},
@@ -49,12 +49,6 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 	);
 
 	fn interface_type(&self) -> Option<TypeId>;
-}
-
-pub enum GetterSetter {
-	Getter,
-	Setter,
-	None,
 }
 
 pub(crate) enum InterfaceValue {

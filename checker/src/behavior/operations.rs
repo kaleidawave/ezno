@@ -5,7 +5,6 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	diagnostics::TypeCheckError,
-	synthesis::EznoParser,
 	types::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
 		StructureGenerics, TypeStore,

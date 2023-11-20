@@ -21,10 +21,10 @@ function emitDiagnostics(on, diagnostics, plugin) {
 /** @param {import("./types").EznoUnpluginOptions} options  */
 function plugin(options = {}) {
 	let all_js_ts_files = options.all_js_ts_files ?? false;
+	const build = options.customBuild ?? ezno_build;
+
 	// TODO the other 50
 	const extensions = ["ts", "tsx", "js", "jsx"];
-
-	const build = options.customBuild ?? ezno_build;
 
 	const name = "ezno";
 	const esbuild = {

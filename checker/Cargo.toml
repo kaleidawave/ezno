@@ -44,6 +44,6 @@ erased-serde = "0.3"
 [dependencies.parser]
 path = "../parser"
 optional = true
-version = "0.1.0"
+version = "0.1.1"
 features = ["extras"]
 package = "ezno-parser"

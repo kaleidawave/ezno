@@ -73,6 +73,11 @@ jobs:
         run: 
           cargo check -p ezno-parser --no-default-features
 
+      - name: Check checker without default features
+        if: steps.changes.outputs.checker == 'true'
+        run: 
+          cargo check -p ezno-checker --no-default-features
+
   formating:
     runs-on: ubuntu-latest
     steps:

@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-ast-generator"
-version = "0.0.8"
+version = "0.0.9"
 dependencies = [
  "ezno-parser",
  "pretty_assertions",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser"
-version = "0.0.8"
+version = "0.1.1"
 dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",

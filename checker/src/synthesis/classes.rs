@@ -9,7 +9,7 @@ use parser::{
 
 use crate::{
 	behavior::functions::{
-		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior,
+		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter,
 	},
 	context::{
 		environment,
@@ -28,10 +28,7 @@ use crate::{
 	ASTImplementation, CheckingData, PropertyValue, Scope, Type, TypeId,
 };
 
-use super::{
-	block::synthesise_block, expressions::synthesise_expression, interfaces::GetterSetter,
-	EznoParser,
-};
+use super::{block::synthesise_block, expressions::synthesise_expression, EznoParser};
 
 /// Doesn't have any metadata yet
 ///

@@ -9,7 +9,6 @@ use crate::{
 		Context, ContextType,
 	},
 	events::Event,
-	synthesis::interfaces::GetterSetter,
 	types::{
 		classes::ClassValue,
 		functions::SynthesisedParameters,
@@ -46,6 +45,12 @@ impl ThisValue {
 			ThisValue::UseParent => None,
 		}
 	}
+}
+
+pub enum GetterSetter {
+	Getter,
+	Setter,
+	None,
 }
 
 pub fn register_arrow_function<T: crate::ReadFromFS, M: crate::ASTImplementation>(

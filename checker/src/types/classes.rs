@@ -1,7 +1,8 @@
 use crate::{
-	behavior::functions::ClassPropertiesToRegister, context::facts::Publicity, events::Event,
-	synthesis::interfaces::GetterSetter, ASTImplementation, CheckingData, Environment,
-	PropertyValue, TypeId,
+	behavior::functions::{ClassPropertiesToRegister, GetterSetter},
+	context::facts::Publicity,
+	events::Event,
+	ASTImplementation, CheckingData, Environment, PropertyValue, TypeId,
 };
 
 use super::properties::PropertyKey;
