@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{facts::PublicityKind, CallCheckingBehavior, Logical, SetPropertyError},
+	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
 	types::{printing::print_type, substitute, FunctionType, StructureGenerics},
@@ -122,7 +122,7 @@ impl PropertyValue {
 /// types at some point*
 pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	publicity: PublicityKind,
+	publicity: Publicity,
 	under: PropertyKey,
 	with: Option<TypeId>,
 	environment: &mut Environment,
@@ -189,7 +189,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 
 fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	publicity: PublicityKind,
+	publicity: Publicity,
 	under: PropertyKey,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -308,7 +308,7 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,
-	publicity: PublicityKind,
+	publicity: Publicity,
 	under: PropertyKey,
 	with: Option<TypeId>,
 	environment: &mut Environment,
@@ -394,9 +394,11 @@ fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
 					None
 				}
 			}
-			Logical::Implies { on, antecedent } => {
+			Logical::Implies { on: a, antecedent } => {
 				todo!()
-				// Some(substitute(*on, &mut antecedent.type_arguments, environment, types))
+				// TODO pass down argument instead ...
+				// let a = get_property_from_logical(*a, types, on, under.clone())?;
+				// Some(substitute(*a, &mut antecedent.type_arguments, environment, types))
 			}
 		}
 	}
@@ -409,7 +411,7 @@ fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
 /// Evaluates setters
 pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
 	on: TypeId,
-	publicity: PublicityKind,
+	publicity: Publicity,
 	under: PropertyKey,
 	new: PropertyValue,
 	environment: &mut Environment,

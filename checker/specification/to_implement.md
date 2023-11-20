@@ -208,7 +208,7 @@ x satisfies string;
 #### this
 
 ```ts
-function ChangeThis(this) {
+function ChangeThis() {
 	return this.value
 }
 ```
@@ -342,6 +342,18 @@ function getFirst(a: Array<string>) {
 print_type(getFirst)
 ```
 
+#### Array spread
+
+```ts
+const array1 = [1, 2, 3];
+const array2 = [...array1, 4, 5, 6];
+
+array2.length satisfies 6;
+array2[2] satisfies string;
+```
+
+- Expected string, found 3
+
 #### Simple array map
 
 ```ts
@@ -379,6 +391,8 @@ myTag`Hello ${name}` satisfies "Hi Ben"
 
 #### Object spread
 
+> parser currently broken
+
 ```ts
 const obj1 = { a: 2, b: 3 };
 const obj2 = { b: 4, ...obj1, a: 6 };
@@ -394,20 +408,42 @@ obj1.a satisfies bool;
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
 
+> This would need to support [Symbol.toPrimitive] + a bunch of error handling
+
 ```ts
 console + 2
 ```
 
 - Expected number, found Console
 
-#### Array spread
+#### Expected argument
+
+> Requires synthesising arguments later ...?
 
 ```ts
-const array1 = [1, 2, 3];
-const array2 = [...array1, 4, 5, 6];
+function map(a: (a: number) => number) {}
 
-array2.length satisfies 6;
-array2[2] satisfies string;
+map(a => a.t)
 ```
 
-- Expected string, found 3
+> No property t on string
+
+#### Index
+
+> Panics specialising property
+
+```ts
+function getFirst(array: Array<string>) {
+    return array[0]
+}
+
+print_type(getFirst)
+```
+
+#### Expected
+
+```ts
+const x: (a: string) => number = (a) => a.to;
+```
+
+> No property to on string

@@ -26,7 +26,7 @@ use crate::{
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
 	events::RootReference,
-	Environment, TruthyFalsy,
+	Decidable, Environment,
 };
 
 pub use self::functions::*;
@@ -279,14 +279,14 @@ pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStor
 	types.new_conditional_type(lhs, lhs, rhs)
 }
 
-pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
+pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 	// These first two branches are just shortcuts.
-	if ty == TypeId::TRUE || ty == TypeId::FALSE {
-		TruthyFalsy::Decidable(ty == TypeId::TRUE)
-	} else if ty == TypeId::NULL_TYPE || ty == TypeId::UNDEFINED_TYPE {
-		TruthyFalsy::Decidable(false)
+	if id == TypeId::TRUE || id == TypeId::FALSE {
+		Decidable::Known(id == TypeId::TRUE)
+	} else if id == TypeId::NULL_TYPE || id == TypeId::UNDEFINED_TYPE {
+		Decidable::Known(false)
 	} else {
-		let ty = types.get_type_by_id(ty);
+		let ty = types.get_type_by_id(id);
 		match ty {
 			Type::AliasTo { .. }
 			| Type::And(_, _)
@@ -295,15 +295,15 @@ pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
 			| Type::Constructor(_)
 			| Type::NamedRooted { .. } => {
 				// TODO some of these case are known
-				TruthyFalsy::Unknown
+				Decidable::Unknown(id)
 			}
 			Type::Function(..)
 			| Type::FunctionReference(..)
 			| Type::SpecialObject(_)
-			| Type::Object(_) => TruthyFalsy::Decidable(true),
+			| Type::Object(_) => Decidable::Known(true),
 			Type::Constant(cst) => {
 				// TODO strict casts
-				TruthyFalsy::Decidable(cast_as_boolean(cst, false).unwrap())
+				Decidable::Known(cast_as_boolean(cst, false).unwrap())
 			}
 		}
 	}

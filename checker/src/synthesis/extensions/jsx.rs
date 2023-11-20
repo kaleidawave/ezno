@@ -51,7 +51,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			attribute.get_position().clone().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
-			crate::context::facts::PublicityKind::Public,
+			crate::context::facts::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
 			Some(attribute_position),
@@ -147,7 +147,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
-				crate::context::facts::PublicityKind::Public,
+				crate::context::facts::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
 				Some(child_position),

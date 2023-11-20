@@ -98,6 +98,7 @@ impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
 	type Module = parser::Module;
+	type OwnedModule = parser::Module;
 	type DefinitionFile = parser::TypeDefinitionModule;
 	type TypeAnnotation = parser::TypeAnnotation;
 	type TypeParameter = parser::GenericTypeConstraint;
@@ -162,6 +163,10 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_type_annotation(annotation, environment, checking_data)
+	}
+
+	fn owned_module_from_module(module: Self::Module) -> Self::OwnedModule {
+		module
 	}
 }
 

@@ -4,12 +4,18 @@ use source_map::{SourceId, Span, SpanWithSource};
 
 use super::variables::VariableMutability;
 use crate::{
-	context::{facts::Facts, Context, ContextType},
+	context::{
+		facts::{Facts, Publicity},
+		Context, ContextType,
+	},
 	events::Event,
 	synthesis::interfaces::GetterSetter,
 	types::{
-		classes::ClassProperties, functions::SynthesisedParameters,
-		poly_types::GenericTypeParameters, properties::PropertyValue, FunctionType, TypeStore,
+		classes::ClassValue,
+		functions::SynthesisedParameters,
+		poly_types::GenericTypeParameters,
+		properties::{PropertyKey, PropertyValue},
+		FunctionType, TypeStore,
 	},
 	ASTImplementation, CheckingData, Environment, FunctionId, ReadFromFS, Type, TypeId, VariableId,
 };
@@ -114,30 +120,6 @@ pub fn function_to_property(
 		GetterSetter::None => PropertyValue::Value(types.new_function_type(function)),
 	}
 }
-
-// pub struct RegisterAsConstructor<'a, M: ASTImplementation> {
-// 	pub class: TypeId,
-// 	pub class_extends: bool,
-// 	pub properties: ClassProperties<'a, M>,
-// }
-
-// impl<'a, M: crate::ASTImplementation> FunctionRegisterBehavior<M> for RegisterAsConstructor<'a, M> {
-// 	type Return = FunctionType;
-
-// 	fn constructor_on(&mut self) -> Option<(TypeId, bool, ClassProperties<M>)> {
-// 		Some((self.class, self.class_extends, mem::take(&mut self.properties)))
-// 	}
-
-// 	fn afterwards<T: SynthesisableFunction<M>, U: ContextType>(
-// 		&self,
-// 		original_function: &T,
-// 		synthesised_function: FunctionType,
-// 		environment: &mut Context<U>,
-// 		types: &mut TypeStore,
-// 	) -> Self::Return {
-// 		synthesised_function
-// 	}
-// }
 
 /// TODO different place
 /// TODO maybe generic
@@ -258,9 +240,11 @@ pub enum FunctionRegisterBehavior<'a, M: crate::ASTImplementation> {
 		prototype: TypeId,
 		/// Is this is_some then can use `super()`
 		super_type: Option<TypeId>,
-		properties: ClassProperties<'a, M>,
+		properties: ClassPropertiesToRegister<'a, M>,
 	},
 }
+
+pub struct ClassPropertiesToRegister<'a, M: ASTImplementation>(pub Vec<ClassValue<'a, M>>);
 
 impl<'a, M: crate::ASTImplementation> FunctionRegisterBehavior<'a, M> {
 	pub fn is_async(&self) -> bool {

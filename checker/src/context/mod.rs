@@ -38,7 +38,7 @@ use crate::{
 
 use self::{
 	environment::FunctionScope,
-	facts::{Facts, PublicityKind},
+	facts::{Facts, Publicity},
 };
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
@@ -771,7 +771,7 @@ impl<T: ContextType> Context<T> {
 	pub fn get_properties_on_type(
 		&self,
 		base: TypeId,
-	) -> Vec<(PublicityKind, PropertyKey<'static>, TypeId)> {
+	) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
 		let reversed_flattened_properties = self
 			.parents_iter()
 			.flat_map(|ctx| {
@@ -800,7 +800,7 @@ impl<T: ContextType> Context<T> {
 	pub(crate) fn get_property_unbound(
 		&self,
 		on: TypeId,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		under: PropertyKey,
 		types: &TypeStore,
 	) -> Option<Logical<PropertyValue>> {
@@ -808,7 +808,7 @@ impl<T: ContextType> Context<T> {
 			env: GeneralContext,
 			types: &TypeStore,
 			on: TypeId,
-			under: (PublicityKind, &PropertyKey),
+			under: (Publicity, &PropertyKey),
 		) -> Option<PropertyValue> {
 			get_on_ctx!(env.facts.current_properties.get(&on)).and_then(|properties| {
 				// TODO rev is important
@@ -828,29 +828,23 @@ impl<T: ContextType> Context<T> {
 							}
 						}
 						PropertyKey::Type(key) => {
-							if let PropertyKey::Type(want) = want_key {
-								if key == want {
-									return Some(value.clone());
+							match want_key {
+								PropertyKey::Type(want) => {
+									// TODO backing type...
+									if key == want {
+										Some(value.clone())
+									} else {
+										None
+									}
 								}
-							}
-							// TODO temp
-							if *key == TypeId::NUMBER_TYPE {
-								// crate::utils::notify!(
-								// 	"Key has type number, {:?}",
-								// 	types.get_type_by_id(under.0)
-								// );
-
-								// if want_key == TypeId::NUMBER_TYPE
-								// 	|| matches!(
-								// 		types.get_type_by_id(under.0),
-								// 		Type::Constant(Constant::Number(_))
-								// 	) {
-								// 	Some(value.clone())
-								// } else {
-								None
-							// }
-							} else {
-								None
+								PropertyKey::String(s) => {
+									// TODO ...
+									if s.parse::<usize>().is_ok() {
+										Some(value.clone())
+									} else {
+										None
+									}
+								}
 							}
 						}
 					}
@@ -1141,10 +1135,11 @@ impl<T: ContextType> Context<T> {
 				}
 				FunctionScope::Constructor { extends, type_of_super, ref mut this_object_type } => {
 					crate::utils::notify!("Setting 'this' type here");
-					if let Some((_constructor_type, properties)) = constructor {
+					if let Some((prototype, properties)) = constructor {
 						let new_this_object_type = create_this_before_function_synthesis(
 							&mut checking_data.types,
 							&mut function_environment.facts,
+							prototype,
 						);
 
 						*this_object_type = new_this_object_type;

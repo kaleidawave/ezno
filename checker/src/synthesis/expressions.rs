@@ -20,6 +20,7 @@ use crate::{
 	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::properties::PropertyKey,
+	Decidable,
 };
 
 use crate::{
@@ -33,7 +34,7 @@ use crate::{
 		},
 		template_literal::synthesise_template_literal,
 	},
-	context::facts::PublicityKind,
+	context::facts::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	events::Event,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
@@ -89,9 +90,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		Expression::ArrayLiteral(elements, _) => {
-			/// TODO spread + count length
 			fn synthesise_array_item<T: crate::ReadFromFS>(
-				idx: usize,
+				idx: Decidable<usize>,
 				element: &SpreadExpression,
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -102,7 +102,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
 							synthesise_expression(element, environment, checking_data, expecting);
-						(PropertyKey::from_usize(idx), expression_type)
+						(
+							PropertyKey::from_usize(match idx {
+								Decidable::Known(idx) => idx,
+								_ => todo!(),
+							}),
+							expression_type,
+						)
 					}
 					SpreadExpression::Spread(expr, position) => {
 						{
@@ -112,11 +118,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							);
 						}
 						crate::utils::notify!("Skipping spread");
-						(PropertyKey::from_usize(idx), TypeId::ERROR_TYPE)
+						(
+							PropertyKey::from_usize(match idx {
+								Decidable::Known(idx) => idx,
+								_ => todo!(),
+							}),
+							TypeId::ERROR_TYPE,
+						)
 					}
 					SpreadExpression::Empty => {
-						crate::utils::notify!("Empty expression temp as empty");
-						(PropertyKey::from_usize(idx), TypeId::UNDEFINED_TYPE)
+						crate::utils::notify!("Empty expression temp as empty. Should be ");
+						(
+							PropertyKey::from_usize(match idx {
+								Decidable::Known(idx) => idx,
+								_ => todo!(),
+							}),
+							TypeId::UNDEFINED_TYPE,
+						)
 					}
 				}
 			}
@@ -127,13 +145,17 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				&mut environment.facts,
 			);
 
+			// TODO remove enumerate, add add function and more
 			for (idx, value) in elements.iter().enumerate() {
 				let spread_expression_position =
 					value.get_position().clone().with_source(environment.get_source());
-				let (key, value) = synthesise_array_item(idx, value, environment, checking_data);
+
+				let (key, value) =
+					synthesise_array_item(Decidable::Known(idx), value, environment, checking_data);
+
 				basis.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					key,
 					crate::types::properties::PropertyValue::Value(value),
 					Some(spread_expression_position),
@@ -146,7 +168,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			// TODO: Should there be a position here?
 			basis.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(len),
 				None,
@@ -283,6 +305,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							operator,
 							operand_type,
 							&mut checking_data.types,
+							checking_data.options.strict_casts,
 						)
 						.unwrap(),
 					)
@@ -476,7 +499,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			let access_position = position.clone().with_source(environment.get_source());
 			// TODO
-			let publicity = PublicityKind::Public;
+			let publicity = Publicity::Public;
 
 			let result = environment.get_property_handle_errors(
 				on,
@@ -505,7 +528,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			// TODO handle differently?
 			let result = environment.get_property_handle_errors(
 				indexee,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
 				index_position,
@@ -916,7 +939,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				object_builder.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					key,
 					crate::types::properties::PropertyValue::Value(value),
 					Some(member_position),
@@ -937,7 +960,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let value = crate::types::properties::PropertyValue::Value(value);
 				object_builder.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					key,
 					value,
 					Some(member_position),
@@ -989,7 +1012,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				object_builder.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					key,
 					property,
 					Some(member_position),

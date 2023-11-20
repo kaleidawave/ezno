@@ -82,7 +82,7 @@ impl RootContext {
 		source: SourceId,
 		module: M::Module,
 		checking_data: &'a mut CheckingData<T, M>,
-	) -> &'a SynthesisedModule<M::Module> {
+	) -> &'a SynthesisedModule<M::OwnedModule> {
 		let mut environment = self.new_lexical_environment(crate::Scope::Module {
 			source,
 			exported: Exported::default(),
@@ -92,7 +92,12 @@ impl RootContext {
 		let crate::Scope::Module { exported, .. } = environment.context_type.scope else {
 			unreachable!()
 		};
-		let module = SynthesisedModule { content: module, exported, facts: environment.facts };
+
+		let module = SynthesisedModule {
+			content: M::owned_module_from_module(module),
+			exported,
+			facts: environment.facts,
+		};
 
 		// TODO better way to do this?
 		checking_data.modules.synthesised_modules.insert(source, module);

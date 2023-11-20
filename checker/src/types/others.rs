@@ -1,7 +1,7 @@
 // Types to runtime behavior
 
 use crate::{
-	behavior::objects::ObjectBuilder, context::facts::PublicityKind, Constant, Environment, Type,
+	behavior::objects::ObjectBuilder, context::facts::Publicity, Constant, Environment, Type,
 	TypeId,
 };
 
@@ -23,7 +23,7 @@ pub(crate) fn create_object_for_type(
 			// TODO: Do we need positions for the following appends?
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("kind".into()),
 				crate::PropertyValue::Value(types.new_constant_type(Constant::String(kind.into()))),
 				None,
@@ -32,14 +32,14 @@ pub(crate) fn create_object_for_type(
 			let right = create_object_for_type(right, environment, types);
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("left".into()),
 				crate::PropertyValue::Value(left),
 				None,
 			);
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("right".into()),
 				crate::PropertyValue::Value(right),
 				None,
@@ -53,7 +53,7 @@ pub(crate) fn create_object_for_type(
 			// TODO: Do we need positions for the following appends?
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("name".into()),
 				crate::PropertyValue::Value(types.new_constant_type(Constant::String(name))),
 				None,
@@ -68,7 +68,7 @@ pub(crate) fn create_object_for_type(
 					let value = create_object_for_type(property, environment, types);
 					inner_object.append(
 						environment,
-						PublicityKind::Public,
+						Publicity::Public,
 						key,
 						crate::PropertyValue::Value(value),
 						None,
@@ -77,7 +77,7 @@ pub(crate) fn create_object_for_type(
 
 				obj.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					PropertyKey::String("properties".into()),
 					crate::PropertyValue::Value(inner_object.build_object()),
 					None,
@@ -87,7 +87,7 @@ pub(crate) fn create_object_for_type(
 		Type::Constant(_) => {
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("constant".into()),
 				crate::PropertyValue::Value(ty),
 				None,
@@ -101,7 +101,7 @@ pub(crate) fn create_object_for_type(
 			);
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("kind".into()),
 				value,
 				None,
@@ -115,7 +115,7 @@ pub(crate) fn create_object_for_type(
 				let value = create_object_for_type(property, environment, types);
 				inner_object.append(
 					environment,
-					PublicityKind::Public,
+					Publicity::Public,
 					key,
 					crate::PropertyValue::Value(value),
 					None,
@@ -124,7 +124,7 @@ pub(crate) fn create_object_for_type(
 
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("properties".into()),
 				crate::PropertyValue::Value(inner_object.build_object()),
 				None,

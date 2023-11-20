@@ -772,7 +772,7 @@ impl FunctionType {
 			}
 		}
 
-		// set events should cover property specialization here:
+		// set events should cover property specialisation here:
 		let returned_type = if let Some(returned_type) = early_return {
 			returned_type
 		} else {

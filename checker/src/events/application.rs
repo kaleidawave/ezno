@@ -11,7 +11,7 @@ use crate::{
 		properties::{get_property, set_property, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
-	Environment, TruthyFalsy, Type,
+	Decidable, Environment, Type,
 };
 
 pub(crate) fn apply_event(
@@ -233,7 +233,7 @@ pub(crate) fn apply_event(
 		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
-			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
+			if let Decidable::Known(result) = is_type_truthy_falsy(condition, types) {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
 				for event in to_evaluate.iter().cloned() {
 					if let Some(early) =

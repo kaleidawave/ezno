@@ -8,7 +8,7 @@ use parser::{
 
 use crate::{
 	behavior::assignments::{Assignable, Reference},
-	context::{facts::PublicityKind, Environment},
+	context::{facts::Publicity, Environment},
 	synthesis::expressions::synthesise_expression,
 	types::{properties::PropertyKey, Constant},
 	CheckingData, TypeId,
@@ -127,7 +127,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			match property {
 				parser::PropertyReference::Standard { property, is_private } => {
 					let publicity =
-						if *is_private { PublicityKind::Private } else { PublicityKind::Public };
+						if *is_private { Publicity::Private } else { Publicity::Public };
 					Reference::Property {
 						on: parent_ty,
 						with: crate::types::properties::PropertyKey::String(Cow::Owned(
@@ -156,7 +156,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					&checking_data.types,
 				),
 				span: position.clone().with_source(environment.get_source()),
-				publicity: crate::context::facts::PublicityKind::Public,
+				publicity: crate::context::facts::Publicity::Public,
 			}
 		}
 	}

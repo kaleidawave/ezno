@@ -26,7 +26,7 @@ use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
-	context::facts::PublicityKind,
+	context::facts::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning},
 	subtyping::{self, type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
@@ -354,7 +354,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 						obj.append(
 							environment,
-							PublicityKind::Public,
+							Publicity::Public,
 							PropertyKey::from_usize(idx),
 							PropertyValue::Value(item_ty),
 							Some(ty_position),
@@ -372,7 +372,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// TODO: Does `constant` have a position? Or should it have one?
 			obj.append(
 				environment,
-				PublicityKind::Public,
+				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length_value),
 				None,
@@ -388,7 +388,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
 			if let Some(prop) = environment.get_property_unbound(
 				indexee,
-				PublicityKind::Public,
+				Publicity::Public,
 				crate::types::properties::PropertyKey::Type(indexer),
 				&checking_data.types,
 			) {

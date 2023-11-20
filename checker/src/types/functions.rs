@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::FunctionBehavior,
+	behavior::functions::{ClassPropertiesToRegister, FunctionBehavior},
 	context::{
 		environment::{self, FunctionScope},
-		facts::PublicityKind,
+		facts::Publicity,
 		Context, ContextType,
 	},
 	events::{Event, RootReference},
@@ -14,10 +14,7 @@ use crate::{
 	Type, TypeId,
 };
 
-use super::{
-	classes::{register_properties_into_environment, ClassProperties},
-	TypeStore,
-};
+use super::{classes::register_properties_into_environment, TypeStore};
 
 /// This is a mesh of annotation and actually defined functions
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -55,8 +52,8 @@ impl FunctionType {
 		M: crate::ASTImplementation,
 		S: ContextType,
 	>(
-		_class_prototype: TypeId,
-		properties: ClassProperties<M>,
+		class_prototype: TypeId,
+		properties: ClassPropertiesToRegister<M>,
 		// TODO S overkill
 		context: &mut crate::context::Context<S>,
 		checking_data: &mut CheckingData<T, M>,
@@ -74,6 +71,7 @@ impl FunctionType {
 				let on = create_this_before_function_synthesis(
 					&mut checking_data.types,
 					&mut environment.facts,
+					class_prototype,
 				);
 				if let Scope::Function(FunctionScope::Constructor {
 					ref mut this_object_type,
@@ -113,13 +111,14 @@ impl FunctionType {
 pub(crate) fn create_this_before_function_synthesis(
 	types: &mut TypeStore,
 	facts: &mut Facts,
+	prototype: TypeId,
 ) -> TypeId {
 	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
 	crate::utils::notify!("Registered 'this' type as {:?}", ty);
 	let value = Event::CreateObject {
 		referenced_in_scope_as: ty,
-		prototype: crate::events::PrototypeArgument::None,
+		prototype: crate::events::PrototypeArgument::Yeah(prototype),
 		position: None,
 	};
 	facts.events.push(value);

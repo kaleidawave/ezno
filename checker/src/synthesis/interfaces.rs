@@ -6,7 +6,7 @@ use parser::{
 use crate::{
 	behavior::functions::{self, ThisValue},
 	context::{
-		facts::PublicityKind,
+		facts::Publicity,
 		Environment, {Context, ContextType},
 	},
 	synthesis::parser_property_key_to_checker_property_key,
@@ -81,17 +81,17 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		let (publicity, under) = match key {
 			ParserPropertyKeyType::ClassProperty(key) => (
 				if matches!(key, parser::PropertyKey::Ident(_, _, true)) {
-					PublicityKind::Private
+					Publicity::Private
 				} else {
-					PublicityKind::Public
+					Publicity::Public
 				},
 				parser_property_key_to_checker_property_key(key, environment, checking_data),
 			),
 			ParserPropertyKeyType::ObjectProperty(key) => (
-				PublicityKind::Public,
+				Publicity::Public,
 				parser_property_key_to_checker_property_key(key, environment, checking_data),
 			),
-			ParserPropertyKeyType::Type(ty) => (PublicityKind::Public, PropertyKey::Type(ty)),
+			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
 		let ty = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {

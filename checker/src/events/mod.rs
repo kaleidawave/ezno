@@ -4,7 +4,7 @@
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{calling::Target, facts::PublicityKind, get_on_ctx, CallCheckingBehavior},
+	context::{calling::Target, facts::Publicity, get_on_ctx, CallCheckingBehavior},
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
@@ -62,7 +62,7 @@ pub enum Event {
 		on: TypeId,
 		under: PropertyKey<'static>,
 		reflects_dependency: Option<TypeId>,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		position: SpanWithSource,
 	},
 	/// All changes to the value of a property
@@ -76,7 +76,7 @@ pub enum Event {
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		position: Option<SpanWithSource>,
 	},
 
@@ -119,7 +119,7 @@ pub enum Event {
 		prototype: PrototypeArgument,
 		/// This is the id referencing a [Type::AliasTo] that is created
 		///
-		/// This is also for the specialization (somehow)
+		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
 	},

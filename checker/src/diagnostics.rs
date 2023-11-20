@@ -328,7 +328,7 @@ mod defined_errors_and_warnings {
 								position: argument_position,
 								labels: vec![(
 									format!(
-										"{} was specialized with type {}",
+										"{} was specialised with type {}",
 										parameter_type, restriction
 									),
 									Some(restriction_pos),

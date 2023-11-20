@@ -14,9 +14,6 @@
 ### Open poly types
 Poly types retain information and flow of data through the use of higher poly types.
 
-A few differences
-- They are not subject to specialization (#TODO explain why)
-
 ### Objects
 In simple case objects (collections of data) can be considered constant
 

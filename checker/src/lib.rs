@@ -77,7 +77,7 @@ pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
 	/// To catch cyclic imports
 	pub(crate) currently_checking_modules: HashSet<PathBuf>,
 	/// The result of checking. Includes exported variables and facts
-	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST::Module>>,
+	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST::OwnedModule>>,
 	pub(crate) parsing_options: ModuleAST::ParseOptions,
 }
 
@@ -86,6 +86,8 @@ pub trait ASTImplementation: Sized {
 	type ParseError: Into<Diagnostic>;
 
 	type Module;
+	/// TODO fix for allowing modules to reference
+	type OwnedModule;
 	type DefinitionFile;
 
 	type TypeAnnotation;
@@ -135,6 +137,8 @@ pub trait ASTImplementation: Sized {
 	) -> (Names, Facts);
 
 	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str;
+
+	fn owned_module_from_module(module: Self::Module) -> Self::OwnedModule;
 }
 
 impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, ModuleAST> {
@@ -178,10 +182,10 @@ impl FunctionId {
 	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
 }
 
-pub enum TruthyFalsy {
-	Decidable(bool),
-	/// Poly types
-	Unknown,
+pub enum Decidable<T> {
+	Known(T),
+	/// Points to poly type
+	Unknown(TypeId),
 }
 
 /// TODO
@@ -259,7 +263,7 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 				full_importer: PathBuf,
 				environment: &mut Environment,
 				checking_data: &'a mut CheckingData<T, M>,
-			) -> Option<Result<&'a SynthesisedModule<M::Module>, M::ParseError>> {
+			) -> Option<Result<&'a SynthesisedModule<M::OwnedModule>, M::ParseError>> {
 				let existing = checking_data.modules.files.get_source_at_path(&full_importer);
 				if let Some(existing) = existing {
 					Some(Ok(checking_data
@@ -280,11 +284,14 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 							content,
 							&checking_data.modules.parsing_options,
 						) {
-							Ok(module) => Some(Ok(environment.get_root().new_module_context(
-								source,
-								module,
-								checking_data,
-							))),
+							Ok(module) => {
+								let new_module_context = environment.get_root().new_module_context(
+									source,
+									module,
+									checking_data,
+								);
+								Some(Ok(new_module_context))
+							}
 							Err(err) => Some(Err(err)),
 						}
 					} else {
@@ -383,7 +390,7 @@ pub struct PostCheckData<M: ASTImplementation> {
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
-	pub modules: HashMap<SourceId, SynthesisedModule<M::Module>>,
+	pub modules: HashMap<SourceId, SynthesisedModule<M::OwnedModule>>,
 	pub entry_source: SourceId,
 }
 

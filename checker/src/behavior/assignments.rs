@@ -1,8 +1,7 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	context::facts::PublicityKind, types::properties::PropertyKey, CheckingData, Environment,
-	TypeId,
+	context::facts::Publicity, types::properties::PropertyKey, CheckingData, Environment, TypeId,
 };
 
 use super::operations::{Logical, MathematicalAndBitwise};
@@ -18,12 +17,7 @@ pub enum Assignable {
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
-	Property {
-		on: TypeId,
-		with: PropertyKey<'static>,
-		publicity: PublicityKind,
-		span: SpanWithSource,
-	},
+	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number

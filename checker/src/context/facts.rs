@@ -11,7 +11,7 @@ use crate::{
 
 /// TODO explain usage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
-pub enum PublicityKind {
+pub enum Publicity {
 	Private,
 	Public,
 }
@@ -26,7 +26,7 @@ pub struct Facts {
 	/// This can be not have a value if not defined
 	pub(crate) variable_current_value: HashMap<VariableId, TypeId>,
 	pub(crate) current_properties:
-		HashMap<TypeId, Vec<(PublicityKind, PropertyKey<'static>, PropertyValue)>>,
+		HashMap<TypeId, Vec<(Publicity, PropertyKey<'static>, PropertyValue)>>,
 	pub(crate) prototypes: HashMap<TypeId, TypeId>,
 
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
@@ -47,7 +47,7 @@ impl Facts {
 	pub fn register_property(
 		&mut self,
 		on: TypeId,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		under: PropertyKey<'static>,
 		to: PropertyValue,
 		register_setter_event: bool,
@@ -108,7 +108,7 @@ impl Facts {
 	pub fn get_properties_on_type_for_this_level(
 		&self,
 		ty: TypeId,
-	) -> Option<&Vec<(PublicityKind, PropertyKey, PropertyValue)>> {
+	) -> Option<&Vec<(Publicity, PropertyKey, PropertyValue)>> {
 		self.current_properties.get(&ty)
 	}
 

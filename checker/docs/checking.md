@@ -9,8 +9,8 @@ These happen in a few places
 
 This is implemented in `types/sub-typing`
 
-#### Specializing
-This subtype checking also doubles as a way to specialize generic types that were not or could not be specified as a specific arguments. This is implicitly / inferred, so not explicit arguments.
+#### Specialising/substituting
+This subtype checking also doubles as a way to specialise generic types that were not or could not be specified as a specific arguments. This is implicitly / inferred, so not explicit arguments.
 
 ### `type` querying
 
@@ -18,7 +18,7 @@ Rather than checking whether types are subtypes of some base type, these are con
 - Property access (and destructuring)
 - Is callable (the parameters can be checked)
 
-> These could be implemented using the first method. Property access could be implemented by checking and specializing using `{ [name]: T }`, but doesn't
+> These could be implemented using the first method. Property access could be implemented by checking and substituting using `{ [name]: T }`, but doesn't
 
 ## Checking a program
 Starts with a list of statements.
@@ -45,7 +45,6 @@ There are three stages to hoisting.
     - Return type synthesised
 
 #### Still working out
-- Imports, exports?
 - Types cannot mutate structure
     - Where do callable interfaces go? (need to be functions)
     - interface extends (needs to be aliases)

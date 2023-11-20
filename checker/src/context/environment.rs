@@ -21,13 +21,13 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	ASTImplementation, CheckingData, Instance, RootContext, TruthyFalsy, TypeCombinable, TypeId,
+	ASTImplementation, CheckingData, Decidable, Instance, RootContext, TypeCombinable, TypeId,
 	VariableId,
 };
 
 use super::{
 	calling::CheckThings,
-	facts::{Facts, PublicityKind},
+	facts::{Facts, Publicity},
 	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
 	Environment, GeneralContext, SetPropertyError,
 };
@@ -532,7 +532,7 @@ impl<'a> Environment<'a> {
 		// on_default() okay because might be in a nested context.
 		// entry empty does not mean no properties, just no properties set on this level
 		self.facts.current_properties.entry(on).or_default().push((
-			PublicityKind::Public,
+			Publicity::Public,
 			under.clone(),
 			PropertyValue::Deleted,
 		));
@@ -544,7 +544,7 @@ impl<'a> Environment<'a> {
 			new: PropertyValue::Deleted,
 			reflects_dependency: None,
 			initialization: false,
-			publicity: PublicityKind::Public,
+			publicity: Publicity::Public,
 			position: None,
 		});
 
@@ -566,7 +566,7 @@ impl<'a> Environment<'a> {
 	pub fn get_property(
 		&mut self,
 		on: TypeId,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		property: PropertyKey,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
@@ -587,7 +587,7 @@ impl<'a> Environment<'a> {
 	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		on: TypeId,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		key: PropertyKey,
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
@@ -825,9 +825,7 @@ impl<'a> Environment<'a> {
 		M: crate::ASTImplementation,
 		R: TypeCombinable,
 	{
-		if let TruthyFalsy::Decidable(result) =
-			is_type_truthy_falsy(condition, &checking_data.types)
-		{
+		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 			// TODO emit warning
 			return if result {
 				then_evaluate(self, checking_data)
@@ -899,7 +897,7 @@ impl<'a> Environment<'a> {
 	pub fn set_property(
 		&mut self,
 		on: TypeId,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		under: PropertyKey,
 		new: TypeId,
 		types: &mut TypeStore,

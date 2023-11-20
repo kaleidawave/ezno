@@ -2,7 +2,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{
-		facts::{Facts, PublicityKind},
+		facts::{Facts, Publicity},
 		Environment,
 	},
 	types::{
@@ -27,7 +27,7 @@ impl ObjectBuilder {
 	pub fn append(
 		&mut self,
 		environment: &mut Environment,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		under: PropertyKey<'static>,
 		value: PropertyValue,
 		position: Option<SpanWithSource>,

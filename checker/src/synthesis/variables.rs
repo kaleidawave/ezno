@@ -9,7 +9,7 @@ use parser::{
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
 	behavior::variables::VariableMutability,
-	context::{facts::PublicityKind, Context, ContextType},
+	context::{facts::Publicity, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{printing::print_type, properties::PropertyKey, Constant},
@@ -84,7 +84,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							let under = crate::types::properties::PropertyKey::from_usize(idx);
 							let property_constraint = environment.get_property_unbound(
 								constraint,
-								PublicityKind::Public,
+								Publicity::Public,
 								under.clone(),
 								&checking_data.types,
 							);
@@ -173,7 +173,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							);
 							let property_constraint = environment.get_property_unbound(
 								constraint,
-								PublicityKind::Public,
+								Publicity::Public,
 								// TODO different above
 								under.clone(),
 								&checking_data.types,
@@ -304,7 +304,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						let value = environment.get_property(
 							value,
-							PublicityKind::Public,
+							Publicity::Public,
 							idx,
 							&mut checking_data.types,
 							None,
@@ -350,7 +350,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						// TODO record information
 						let property = environment.get_property(
 							value,
-							PublicityKind::Public,
+							Publicity::Public,
 							key_ty,
 							&mut checking_data.types,
 							None,
@@ -387,7 +387,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						// TODO record information
 						let property_value = environment.get_property(
 							value,
-							PublicityKind::Public,
+							Publicity::Public,
 							// TODO different above
 							key_ty,
 							&mut checking_data.types,

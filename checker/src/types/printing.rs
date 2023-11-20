@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeId, TypeStore};
 use crate::{
-	context::{facts::PublicityKind, get_on_ctx},
+	context::{facts::Publicity, get_on_ctx},
 	types::{Constructor, StructureGenerics},
 	Constant, GeneralContext,
 };
@@ -267,7 +267,7 @@ fn print_type_into_buf(
 			buf.push_str("{ ");
 			let properties = get_on_ctx!(ctx.get_properties_on_type(id));
 			for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
-				if let PublicityKind::Private = publicity {
+				if let Publicity::Private = publicity {
 					buf.push('#');
 				}
 				print_property_key_into_buf(buf, &key, cycles, types, ctx, debug);

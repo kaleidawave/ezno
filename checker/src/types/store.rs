@@ -22,7 +22,7 @@ pub struct TypeStore {
 	// TODO merge into type
 	// pub(crate) functions_on_type: HashMap<TypeId, FunctionType>,
 	// pub(crate) proxies: HashMap<TypeId, Proxy>,
-	pub(crate) specializations: HashMap<TypeId, Vec<TypeId>>,
+	pub(crate) specialisations: HashMap<TypeId, Vec<TypeId>>,
 
 	/// TODO not best place	but is passed through everything so
 	pub(crate) closure_counter: u32,
@@ -89,7 +89,7 @@ impl Default for TypeStore {
 			types: types.to_vec(),
 			functions: HashMap::new(),
 			dependent_dependencies: Default::default(),
-			specializations: Default::default(),
+			specialisations: Default::default(),
 			closure_counter: 0,
 		}
 	}

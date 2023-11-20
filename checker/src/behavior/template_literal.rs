@@ -70,7 +70,7 @@ where
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
-						crate::context::facts::PublicityKind::Public,
+						crate::context::facts::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
@@ -121,6 +121,7 @@ where
 					crate::behavior::operations::MathematicalAndBitwise::Add,
 					other,
 					&mut checking_data.types,
+					checking_data.options.strict_casts,
 				);
 				match result {
 					Ok(result) => acc = result,

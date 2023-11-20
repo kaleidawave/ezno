@@ -6,7 +6,7 @@ use crate::{
 		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	types::{is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type, TypeStore},
-	Environment, TruthyFalsy, TypeId,
+	Decidable, Environment, TypeId,
 };
 
 use super::generic_type_arguments::{StructureGenericArguments, TypeArgumentStore};
@@ -65,7 +65,7 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_mathematical_operation(lhs, operator, rhs, types)
+				evaluate_mathematical_operation(lhs, operator, rhs, types, false)
 					.expect("restriction about binary operator failed")
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
@@ -110,7 +110,7 @@ pub(crate) fn substitute(
 				// 	)
 				// );
 
-				if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
+				if let Decidable::Known(result) = is_type_truthy_falsy(condition, types) {
 					if result {
 						substitute(truthy_result, arguments, environment, types)
 					} else {
@@ -132,7 +132,7 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Property { .. } | Constructor::FunctionResult { .. } => {
-				unreachable!("this should have covered by event specialization");
+				unreachable!("this should have covered by event specialisation");
 
 				// let on = substitute(on, arguments, environment);
 
@@ -188,7 +188,7 @@ pub(crate) fn substitute(
 			// 	let prototype = substitute(prototype, arguments, environment, types);
 			// 	if let Type::AliasTo { to, .. } = types.get_type_by_id(prototype) {
 			// 		crate::utils::notify!(
-			// 			"TODO temp might have to do more here when specializing a prototype"
+			// 			"TODO temp might have to do more here when specialising a prototype"
 			// 		);
 			// 		*to
 			// 	} else {
@@ -207,7 +207,7 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, operator, rhs, types)
+				evaluate_equality_inequality_operation(lhs, operator, rhs, types, false)
 					.expect("restriction about binary operator failed")
 			}
 			Constructor::TypeOperator(..) => todo!(),
