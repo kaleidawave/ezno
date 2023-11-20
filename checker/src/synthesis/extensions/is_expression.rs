@@ -12,8 +12,13 @@ pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
-	let matcher =
-		synthesise_multiple_expression(&is_expression.matcher, environment, checking_data);
+	// TODO expecting
+	let matcher = synthesise_multiple_expression(
+		&is_expression.matcher,
+		environment,
+		checking_data,
+		TypeId::ANY_TYPE,
+	);
 
 	let mut returned = TypeId::UNDEFINED_TYPE;
 	for (condition, code) in is_expression.branches.iter() {

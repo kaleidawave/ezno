@@ -1,3 +1,10 @@
+/// Contains implementations of specific JavaScript items and how Ezno handles them.
+/// Contains
+/// - Helper / abstracting functions for synthesising
+/// Does not contain
+/// - Logic stuff
+/// - Context
+/// - Internal structures
 pub mod assignments;
 pub mod constant_functions;
 pub mod functions;

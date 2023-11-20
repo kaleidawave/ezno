@@ -17,7 +17,7 @@ pub(crate) struct UnmatchedGenericsError;
 
 /// When comparing parameters to arguments this sets type arguments
 pub(crate) struct SeedingContext {
-	/// usize = parameter position
+	/// usize = argument position
 	pub type_arguments: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource, usize)>>,
 	/// Produced by explicit call site type arguments (TODO explain) and function parameters (TODO explain)
 	pub type_restrictions: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>>,
@@ -60,6 +60,7 @@ impl SeedingContext {
 
 	/// TODO remove
 	pub(crate) fn set_this(&mut self, arg: TypeId) {
-		self.type_arguments.insert(TypeId::THIS_ARG, vec![(arg, SpanWithSource::NULL_SPAN, 0)]);
+		self.type_arguments
+			.insert(TypeId::ANY_INFERRED_FREE_THIS, vec![(arg, SpanWithSource::NULL_SPAN, 0)]);
 	}
 }

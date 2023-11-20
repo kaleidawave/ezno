@@ -1,21 +1,22 @@
 //! Function tings. Contains parameter synthesis, function body synthesis
 
-use std::mem;
+use std::{env, mem};
 
 use parser::{
 	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBase, FunctionBased,
-	GenericTypeConstraint, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
+	GenericTypeConstraint, Statement, StatementOrDeclaration, TypeAnnotation, VariableField,
+	VariableIdentifier, WithComment,
 };
 use source_map::{SourceId, Span, SpanWithSource};
 
 use crate::{
-	behavior::functions::{MethodKind, SynthesisableFunction},
-	context::{CanUseThis, Context, ContextType, Scope},
+	behavior::functions::{FunctionBehavior, SynthesisableFunction},
+	context::{CanReferenceThis, Context, ContextType, Scope},
 	types::poly_types::GenericTypeParameters,
 	types::{
 		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},
 		poly_types::generic_type_arguments::TypeArgumentStore,
-		FunctionKind, FunctionType, StructureGenerics,
+		FunctionType, StructureGenerics,
 	},
 	types::{Constructor, Type, TypeId},
 	CheckingData, Environment, FunctionId,
@@ -29,30 +30,53 @@ use super::{
 trait FunctionBasedItem: FunctionBased {
 	type ObjectTypeId;
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind;
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind;
+
+	fn location(func: &FunctionBase<Self>) -> Option<String> {
+		None
+	}
 }
 
 // TODO generic for these two
 impl FunctionBasedItem for parser::functions::bases::StatementFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		match (func.header.is_async(), func.header.is_generator()) {
-			(is_async, true) => MethodKind::Generator { is_async },
-			(true, false) => MethodKind::Async,
-			(false, false) => MethodKind::Plain,
-		}
-	}
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	FunctionKind::StatementFunction {
+	// 		is_async: func.header.is_async(),
+	// 		generator: func.header.is_generator(),
+	// 	}
+	// }
 }
 
 impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		match (func.header.is_async(), func.header.is_generator()) {
-			(is_async, true) => MethodKind::Generator { is_async },
-			(true, false) => MethodKind::Async,
-			(false, false) => MethodKind::Plain,
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	FunctionKind::StatementFunction {
+	// 		is_async: func.header.is_async(),
+	// 		generator: func.header.is_generator(),
+	// 	}
+	// }
+
+	fn location(func: &FunctionBase<Self>) -> Option<String> {
+		match &func.header {
+			parser::FunctionHeader::VirginFunctionHeader { location, .. }
+			| parser::FunctionHeader::ChadFunctionHeader { location, .. } => {
+				if let Some(parser::functions::FunctionLocationModifier::Server(_)) = location {
+					Some("server".to_owned())
+				} else {
+					// if let Some(StatementOrDeclaration::Statement(Statement::Expression(expr))) =
+					// 	func.body.0.first()
+					// {
+					// 	if matches!(expr, parser::expressions::MultipleExpression::Single(parser::Expression::StringLiteral(s, _, _)) if s == "use server")
+					// 	{
+					// 		return Some("server".to_owned());
+					// 	}
+					// }
+					None
+				}
+			}
 		}
 	}
 }
@@ -60,53 +84,34 @@ impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
 impl FunctionBasedItem for parser::functions::bases::ArrowFunctionBase {
 	type ObjectTypeId = ();
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		let is_async = func.header.is_some();
-		if is_async {
-			MethodKind::Async
-		} else {
-			MethodKind::Plain
-		}
-	}
-}
-
-// TODO don't use From
-impl<'a> From<&'a Option<parser::MethodHeader>> for MethodKind {
-	fn from(value: &'a Option<parser::MethodHeader>) -> Self {
-		match value {
-			Some(parser::MethodHeader::Get(_)) => MethodKind::Get,
-			Some(parser::MethodHeader::Set(_)) => MethodKind::Set,
-			Some(
-				parser::MethodHeader::Generator(a, _) | parser::MethodHeader::GeneratorStar(a, _),
-			) => MethodKind::Generator { is_async: a.is_some() },
-			Some(parser::MethodHeader::Async(_)) => MethodKind::Async,
-			None => MethodKind::Plain,
-		}
-	}
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	let is_async = func.header.is_some();
+	// 	FunctionKind::ArrowFunction { is_async }
+	// }
 }
 
 impl FunctionBasedItem for parser::functions::bases::ObjectLiteralMethodBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		From::from(&func.header)
-	}
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	FunctionKind::Method(From::from(&func.header))
+	// }
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassFunctionBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		From::from(&func.header)
-	}
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	FunctionKind::Method(From::from(&func.header))
+	// }
 }
 
 impl FunctionBasedItem for parser::functions::bases::ClassConstructorBase {
 	type ObjectTypeId = Option<TypeId>;
 
-	fn get_kind(func: &FunctionBase<Self>) -> MethodKind {
-		MethodKind::Plain
-	}
+	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
+	// 	FunctionKind::ClassConstructor
+	// }
 }
 
 impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
@@ -115,8 +120,12 @@ where
 	U: FunctionBasedItem,
 	U::Body: SynthesisableFunctionBody,
 {
-	fn is_declare(&self) -> bool {
-		false
+	fn id(&self, source_id: SourceId) -> FunctionId {
+		FunctionId(source_id, self.get_position().start)
+	}
+
+	fn has_body(&self) -> bool {
+		true
 	}
 
 	fn type_parameters<T: crate::ReadFromFS>(
@@ -129,33 +138,38 @@ where
 			.map(|ty_params| synthesise_type_parameters(&ty_params, environment, checking_data))
 	}
 
-	fn id(&self, source_id: SourceId) -> FunctionId {
-		FunctionId(source_id, self.get_position().start)
-	}
-
 	fn this_constraint<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
-		// TODO
-		None
+		if let Some((ref annotation, _)) = self.parameters.this_type {
+			crate::utils::notify!("Synthesising this restriction");
+			Some(synthesise_type_annotation(annotation, environment, checking_data))
+		} else {
+			None
+		}
+	}
+
+	fn super_constraint<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) -> Option<TypeId> {
+		if let Some((ref annotation, _)) = self.parameters.super_type {
+			Some(synthesise_type_annotation(annotation, environment, checking_data))
+		} else {
+			None
+		}
 	}
 
 	fn parameters<T: crate::ReadFromFS>(
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
+		expected_parameters: Option<SynthesisedParameters>,
 	) -> SynthesisedParameters {
 		synthesise_function_parameters(&self.parameters, environment, checking_data)
-	}
-
-	fn body<T: crate::ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, super::EznoParser>,
-	) {
-		self.body.synthesise_function_body(environment, checking_data)
 	}
 
 	fn return_type_annotation<T: crate::ReadFromFS>(
@@ -171,8 +185,12 @@ where
 		})
 	}
 
-	fn get_kind(&self) -> MethodKind {
-		U::get_kind(self)
+	fn body<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) {
+		self.body.synthesise_function_body(environment, checking_data)
 	}
 }
 
@@ -204,7 +222,9 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				let returned = synthesise_expression(expression, environment, checking_data);
+				// TODO expecting
+				let returned =
+					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
 				let position =
 					expression.get_position().clone().with_source(environment.get_source());
 				environment.return_value(returned, position);
@@ -258,7 +278,7 @@ pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 /// Expected parameter types will be in the same order as the parameters
 ///
 /// TODO reduce with other
-pub(super) fn type_function_parameters_from_reference<T: crate::ReadFromFS>(
+pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromFS>(
 	reference_parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -422,10 +442,12 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 	}
 }
 
-/// This synthesises is for function types, references and interfaces.
+/// This synthesise is for function types, references and interfaces.
 ///
 /// TODO should always take effect annotations (right?)
-pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
+///
+/// TODO abstract
+pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextType>(
 	type_parameters: &Option<Vec<GenericTypeConstraint>>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some
@@ -434,57 +456,128 @@ pub(super) fn type_function_reference<T: crate::ReadFromFS, S: ContextType>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	performs: super::Performs,
 	position: source_map::SpanWithSource,
-	kind: FunctionKind,
+	mut behavior: FunctionBehavior,
 	on_interface: Option<TypeId>,
 ) -> FunctionType {
+	// TODO don't have to create new environment if no generic type parameters or performs body
 	environment
 		.new_lexical_environment_fold_into_parent(
-			Scope::FunctionReference {},
+			Scope::FunctionAnnotation {},
 			checking_data,
 			|environment, checking_data| {
-				let type_parameters: Option<GenericTypeParameters> = if let Some(type_parameters) =
-					type_parameters
-				{
-					Some(synthesise_type_parameters(type_parameters, environment, checking_data))
-				} else {
-					None
-				};
-
-				let parameters =
-					type_function_parameters_from_reference(parameters, environment, checking_data);
-
-				let return_type = return_type
-					.as_ref()
-					.map(|reference| {
-						synthesise_type_annotation(reference, environment, checking_data)
-					})
-					.unwrap_or(TypeId::UNDEFINED_TYPE);
-
-				let (effects, constant_id) = match performs {
+				match performs {
 					Performs::Block(block) => {
-						environment.can_use_this = CanUseThis::Yeah {
-							// TODO use local this
-							this_ty: on_interface.unwrap_or(TypeId::ANY_TYPE),
+						let new_scope = if let Some(on_interface) = on_interface {
+							let free_this_type = checking_data.types.register_type(
+								Type::RootPolyType(crate::types::PolyNature::FreeVariable {
+									reference: crate::events::RootReference::This,
+									based_on: on_interface,
+								}),
+							);
+							if let FunctionBehavior::Method { ref mut free_this_id, .. } = behavior
+							{
+								*free_this_id = free_this_type;
+							} else {
+								unreachable!()
+							}
+							crate::context::environment::FunctionScope::MethodFunction {
+								free_this_type,
+								is_async: true,
+								is_generator: true,
+							}
+						} else {
+							crate::context::environment::FunctionScope::ArrowFunction {
+								free_this_type: TypeId::ERROR_TYPE,
+								is_async: true,
+							}
 						};
-						// TODO new environment ?
-						synthesise_block(&block.0, environment, checking_data);
-						(mem::take(&mut environment.facts.events), None)
-					}
-					Performs::Const(id) => (Default::default(), Some(id)),
-					Performs::None => (Default::default(), Default::default()),
-				};
+						let mut env =
+							environment.new_lexical_environment(Scope::Function(new_scope));
 
-				FunctionType {
-					// TODO
-					id: FunctionId(position.source, position.start),
-					parameters,
-					return_type,
-					type_parameters,
-					effects,
-					free_variables: Default::default(),
-					closed_over_variables: Default::default(),
-					kind,
-					constant_id,
+						let type_parameters: Option<GenericTypeParameters> =
+							if let Some(type_parameters) = type_parameters {
+								Some(synthesise_type_parameters(
+									type_parameters,
+									&mut env,
+									checking_data,
+								))
+							} else {
+								None
+							};
+
+						let parameters = synthesise_type_annotation_function_parameters(
+							parameters,
+							&mut env,
+							checking_data,
+						);
+
+						let return_type = return_type
+							.as_ref()
+							.map(|reference| {
+								synthesise_type_annotation(reference, &mut env, checking_data)
+							})
+							.unwrap_or(TypeId::UNDEFINED_TYPE);
+
+						env.can_reference_this = CanReferenceThis::Yeah;
+
+						synthesise_block(&block.0, &mut env, checking_data);
+
+						// TODO inject properties back
+						FunctionType {
+							// TODO
+							id: FunctionId(position.source, position.start),
+							parameters,
+							return_type,
+							type_parameters,
+							effects: env.facts.events,
+							free_variables: Default::default(),
+							closed_over_variables: Default::default(),
+							behavior,
+							constant_function: None,
+						}
+					}
+					other => {
+						let type_parameters: Option<GenericTypeParameters> =
+							if let Some(type_parameters) = type_parameters {
+								Some(synthesise_type_parameters(
+									type_parameters,
+									environment,
+									checking_data,
+								))
+							} else {
+								None
+							};
+
+						let parameters = synthesise_type_annotation_function_parameters(
+							parameters,
+							environment,
+							checking_data,
+						);
+
+						let return_type = return_type
+							.as_ref()
+							.map(|reference| {
+								synthesise_type_annotation(reference, environment, checking_data)
+							})
+							.unwrap_or(TypeId::UNDEFINED_TYPE);
+
+						FunctionType {
+							// TODO
+							id: FunctionId(position.source, position.start),
+							parameters,
+							return_type,
+							type_parameters,
+							effects: Vec::new(),
+							free_variables: Default::default(),
+							closed_over_variables: Default::default(),
+							behavior,
+							constant_function: match other {
+								Performs::Block(_) => unreachable!(),
+								Performs::Const(id) => Some(id),
+								Performs::None => None,
+							},
+						}
+					}
 				}
 			},
 		)

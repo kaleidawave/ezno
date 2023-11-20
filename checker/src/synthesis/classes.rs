@@ -2,17 +2,35 @@ use std::iter;
 
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
-	Decorated, Expression, GenericTypeConstraint, TypeAnnotation,
+	property_key::PublicOrPrivate,
+	Decorated, Expression, GenericTypeConstraint, MethodHeader, PropertyKey as ParserPropertyKey,
+	TypeAnnotation,
 };
 
 use crate::{
+	behavior::functions::{
+		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior,
+	},
 	context::{
-		facts::PublicityKind,
+		environment,
+		facts::Publicity,
 		Environment, {Context, ContextType},
 	},
-	synthesis::{property_key_as_type, type_annotations::synthesise_type_annotation},
-	types::poly_types::GenericTypeParameters,
-	CheckingData, Property, Type, TypeId,
+	synthesis::{
+		parser_property_key_to_checker_property_key, type_annotations::synthesise_type_annotation,
+	},
+	types::{
+		classes::{ClassValue, PropertyFunctionProperty},
+		poly_types::GenericTypeParameters,
+		properties::PropertyKey,
+		FunctionType, SynthesisedParameters,
+	},
+	ASTImplementation, CheckingData, PropertyValue, Scope, Type, TypeId,
+};
+
+use super::{
+	block::synthesise_block, expressions::synthesise_expression, interfaces::GetterSetter,
+	EznoParser,
 };
 
 /// Doesn't have any metadata yet
@@ -20,220 +38,225 @@ use crate::{
 /// Returns the constructor
 pub(super) fn synthesise_class_declaration<
 	T: crate::ReadFromFS,
-	S: ContextType,
 	P: parser::ExpressionOrStatementPosition,
 >(
 	class: &ClassDeclaration<P>,
-	environment: &mut Context<S>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
-	// TODO type needs to be hoisted
-	let parameters =
-		if let Some(ref type_parameters) = class.type_parameters { todo!() } else { None };
+	{
+		// TODO what about no name
+		let name = P::as_option_str(&class.name).unwrap().to_owned();
+		// TODO type needs to be hoisted
+		// let parameters =
+		// 	if let Some(ref type_parameters) = class.type_parameters { todo!() } else { None };
+		// TODO
+		// let nominal = true;
+		// let ty = Type::NamedRooted { name, parameters, nominal };
+		// let class_type = checking_data.types.register_type(ty);
+	}
 
-	// TODO what about no name
-	let name = P::as_option_str(&class.name).unwrap().to_owned();
-
-	let nominal = true;
-	let ty = Type::NamedRooted { name, parameters, nominal };
-
-	let class_type = checking_data.types.register_type(ty);
-	if let Some(ref extends) = class.extends {
-		todo!();
-		// let extends = environment.get_type_handle_errors(extends, checking_data);
+	let extends = if let Some(ref extends) = class.extends {
+		// TODO temp
+		// let expecting = TypeId::ANY_TYPE;
+		Some(synthesise_expression(&**extends, environment, checking_data, TypeId::ANY_TYPE))
+	} else {
+		None
 	};
 
-	// TODO static
-	// checking_data.type_mappings.types_to_types.insert(class.type_id, class_type);
-	// let class_type = *checking_data.type_mappings.types_to_types.get(&class.type_id).unwrap();
+	// TODO prototype of extends
+	let class_prototype =
+		checking_data.types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-	let (constructor, ..) = environment.new_lexical_environment_fold_into_parent(
-		crate::context::Scope::ClassEnvironment {},
-		checking_data,
-		|environment, checking_data| {
-			if let Some(parameters) =
-				checking_data.types.get_type_by_id(class_type).get_parameters()
-			{
-				let generic_parameters = type_generic_type_constraints(
-					class.type_parameters.as_ref().unwrap(),
+	let mut class_constructor = class.members.iter().find_map(|member| {
+		if let ClassMember::Constructor(c) = &member.on {
+			Some(c)
+		} else {
+			None
+		}
+	});
+
+	let mut properties = Vec::new();
+
+	// Property keys on `static` items
+	let mut static_property_keys: Vec<PropertyKey<'static>> = Vec::new();
+
+	for (idx, member) in class.members.iter().enumerate() {
+		match &member.on {
+			ClassMember::Method(None, method) => {
+				let publicity = match method.name.get_ast_ref() {
+					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					_ => Publicity::Public,
+				};
+				let property_key = parser_property_key_to_checker_property_key(
+					method.name.get_ast_ref(),
 					environment,
 					checking_data,
-					Some(parameters),
 				);
-			};
 
-			// let extends = if let Some(ref extends) = class.extends {
-			// 	fn build_extends_type<'a, T: crate::ReadFromFS>(
-			// 		mut extends: impl Iterator<Item = &'a TypeAnnotation>,
-			// 		environment: &mut Environment,
-			// 		checking_data: &mut CheckingData<T, super::EznoParser>,
-			// 		on: TypeId,
-			// 	) -> TypeId {
-			// 		let mut ty = synthesise_type_annotation(
-			// 			extends.next().unwrap(),
-			// 			environment,
-			// 			checking_data,
-			// 		);
+				// TODO abstract
+				let (getter_setter, is_async, is_generator) = match &method.header {
+					Some(MethodHeader::Get(_)) => (GetterSetter::Getter, false, false),
+					Some(MethodHeader::Set(_)) => (GetterSetter::Setter, false, false),
+					None => (GetterSetter::None, false, false),
+					Some(
+						MethodHeader::Generator(is_async, _)
+						| MethodHeader::GeneratorStar(is_async, _),
+					) => (GetterSetter::None, is_async.is_some(), true),
+					Some(MethodHeader::Async(_)) => (GetterSetter::None, true, false),
+				};
 
-			// 		for reference in extends {
-			// 			let rhs = synthesise_type_annotation(reference, environment, checking_data);
-			// 			// TODOsynthesise_type_annotation
-			// 			ty = checking_data.types.register_type(Type::And(ty, rhs));
-			// 		}
+				let method_ty = environment.new_function(
+					checking_data,
+					method,
+					FunctionRegisterBehavior::ClassMethod {
+						is_async,
+						is_generator,
+						// TODO
+						super_type: None,
+					},
+				);
 
-			// 		environment.bases.connect_extends(on, ty);
+				let property =
+					function_to_property(getter_setter, method_ty, &mut checking_data.types);
 
-			// 		ty
-			// 	}
-
-			// 	let result =
-			// 		build_extends_type(iter::once(extends), environment, checking_data, class_type);
-
-			// 	Some(result)
-			// } else {
-			// 	None
-			// };
-
-			let mut class_constructor = None;
-			let mut properties = Vec::<(TypeId, Expression)>::new();
-			let mut static_properties = Vec::<(TypeId, PublicityKind, Property)>::new();
-
-			for member in class.members.iter() {
-				match &member.on {
-					ClassMember::Constructor(constructor) => {
-						let ty = environment.new_function(
-							checking_data,
-							constructor,
-							crate::RegisterAsType,
-						);
-
-						class_constructor = Some(ty);
-					}
-					ClassMember::Method(static_kw, function) => {
-						let property_key = function.name.get_ast_ref();
-						let publicity =
-							if matches!(property_key, parser::PropertyKey::Ident(_, _, true)) {
-								PublicityKind::Private
-							} else {
-								PublicityKind::Public
-							};
-						let key = property_key_as_type(
-							property_key,
-							environment,
-							&mut checking_data.types,
-						);
-						let property = environment.new_function(
-							checking_data,
-							function,
-							crate::RegisterOnExistingObject,
-						);
-
-						if static_kw.is_some() {
-							static_properties.push((key, publicity, property));
-						} else {
-							let member_position =
-								member.position.clone().with_source(environment.get_source());
-
-							environment.facts.register_property(
-								class_type,
-								key,
-								property,
-								true,
-								publicity,
-								Some(member_position),
-							);
-							// TODO check not already exists
-
-							// if let Some(existing_property) = existing_property {
-							// 	// panic!("{:?} declared twice", key_ty);
-							// }
-						}
-					}
-					ClassMember::StaticBlock(..) => {}
-					ClassMember::Property(_, _) => todo!(),
-					ClassMember::Comment(_, _) => {}
-				}
-
-				// match member {
-				// 	ClassMember::Property(
-				// 		is_static,
-				// 		ClassProperty { key, type_annotation, value },
-				// 	) => {
-				// 		// Important, key is also evaluated **outside** of the constructor function
-				// 		let key = property_key_as_type(key.get_ast(), environment);
-				// 		if is_static.is_some() {
-				// 			let value = if let Some(value) = value {
-				// 				synthesise_expression(value, environment, checking_data)
-				// 			} else {
-				// 				TypeId::UNDEFINED_TYPE
-				// 			};
-				// 			static_properties.push((key, value));
-				// 		} else {
-				// 			if let Some(value) = value {
-				// 				// TODO BAD CLONE
-				// 				properties.push((key, Expression::clone(value)));
-				// 			} else {
-				// 				todo!("property with no value, what is the useful for, insert undefined")
-				// 			}
-				// 		}
-				// 	}
-				// 	ClassMember::Constructor(ext) => {
-				// 	}
-				// 	ClassMember::Function(is_static, ext) => {
-				// 		todo!()
-				// 		// if let Some(method) = GetFunction::<
-				// 		// 	parser::statements::classes::ClassFunctionBase,
-				// 		// >::get_function_ref(
-				// 		// 	&checking_data.functions.functions, ext.0
-				// 		// ) {
-				// 		//
-				// 		// } else {
-				// 		// 	panic!()
-				// 		// }
-				// 	}
-				// }
+				let position = Some(method.position.clone().with_source(environment.get_source()));
+				environment.facts.register_property(
+					class_prototype,
+					publicity,
+					property_key,
+					property,
+					// Is dynamic environment
+					true,
+					position,
+				);
 			}
+			ClassMember::Property(None, property) => {
+				let publicity = match property.key.get_ast_ref() {
+					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					_ => Publicity::Public,
+				};
+				let key = parser_property_key_to_checker_property_key(
+					property.key.get_ast_ref(),
+					environment,
+					checking_data,
+				);
+				// TODO restriction
+				properties.push(ClassValue { publicity, key, value: property.value.as_deref() });
+			}
+			ClassMember::Property(Some(_), property) => {
+				let value = parser_property_key_to_checker_property_key(
+					property.key.get_ast_ref(),
+					environment,
+					checking_data,
+				);
+				static_property_keys.push(value)
+			}
+			_ => {}
+		}
+	}
 
-			let class_constructor = if let Some(class_constructor) = class_constructor {
-				class_constructor
-			} else {
-				todo!()
-			};
+	// TODO abstract
+	let function = if let Some(constructor) = class_constructor {
+		let behavior = FunctionRegisterBehavior::Constructor {
+			prototype: class_prototype,
+			super_type: extends,
+			properties: ClassPropertiesToRegister(properties),
+		};
+		environment.new_function(checking_data, constructor, behavior)
+	} else {
+		FunctionType::new_auto_constructor(
+			class_prototype,
+			ClassPropertiesToRegister(properties),
+			environment,
+			checking_data,
+		)
+	};
 
-			// // ORDER INCREDIBLY IMPORTANT HERE
-			// environment.class_constructors.insert(class_type, constructor_type);
+	let class_type = checking_data.types.new_function_type(function);
 
-			// crate::utils::notify!(
-			// 	"Added two way class binding, {:?} {:?}",
-			// 	class_type,
-			// 	constructor_type
-			// );
+	// Static items and blocks
 
-			// TODO add static propertoes
-			// for (static_key, static_value) in static_properties {
-			// 	// TODO abstract, not here
-			// 	environment.proofs.new_property(constructor_type, static_key, static_value, true);
-			// 	environment.context_type.events.push(Event::Setter {
-			// 		on: constructor_type,
-			// 		new: static_key,
-			// 		under: static_value,
-			// 		reflects_dependency: None,
-			// 		initialization: true,
-			// 	});
-			// }
+	// TODO ...
+	static_property_keys.reverse();
 
-			class_constructor
-		},
-	);
+	for member in class.members.iter() {
+		match &member.on {
+			ClassMember::Method(Some(_), method) => {
+				let publicity_kind = match method.name.get_ast_ref() {
+					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					_ => Publicity::Public,
+				};
+				let (is_async, is_generator) = match &method.header {
+					None | Some(MethodHeader::Set(_)) | Some(MethodHeader::Get(_)) => {
+						(false, false)
+					}
+					Some(
+						MethodHeader::Generator(is_async, _)
+						| MethodHeader::GeneratorStar(is_async, _),
+					) => (is_async.is_some(), true),
+					Some(MethodHeader::Async(_)) => (true, false),
+				};
+				let behavior = FunctionRegisterBehavior::ClassMethod {
+					is_async,
+					is_generator,
+					// TODO
+					super_type: None,
+				};
+				let function = environment.new_function(checking_data, method, behavior);
 
-	constructor
-}
+				let value = match method.header {
+					Some(MethodHeader::Get(_)) => PropertyValue::Getter(Box::new(function)),
+					Some(MethodHeader::Set(_)) => PropertyValue::Setter(Box::new(function)),
+					_ => PropertyValue::Value(checking_data.types.new_function_type(function)),
+				};
 
-pub(super) fn type_generic_type_constraints<T: crate::ReadFromFS>(
-	unwrap: &[GenericTypeConstraint],
-	environment: &mut Context<crate::context::Syntax>,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	parameters: Option<Vec<TypeId>>,
-) -> GenericTypeParameters {
-	todo!()
+				// (publicity_kind, property_key, PropertyOnClass::Function { method, property })
+				environment.facts.register_property(
+					class_type,
+					publicity_kind,
+					static_property_keys.pop().unwrap(),
+					value,
+					// TODO
+					true,
+					// TODO not needed right?
+					None,
+				);
+			}
+			ClassMember::Property(Some(_), property) => {
+				let publicity_kind = match property.key.get_ast_ref() {
+					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					_ => Publicity::Public,
+				};
+				let value = if let Some(ref value) = property.value {
+					let expecting = TypeId::ANY_TYPE;
+					synthesise_expression(&**value, environment, checking_data, expecting)
+				} else {
+					TypeId::UNDEFINED_TYPE
+				};
+				environment.facts.register_property(
+					class_type,
+					publicity_kind,
+					static_property_keys.pop().unwrap(),
+					PropertyValue::Value(value),
+					// TODO
+					true,
+					// TODO not needed right?
+					None,
+				);
+			}
+			ClassMember::StaticBlock(block) => {
+				environment.new_lexical_environment_fold_into_parent(
+					Scope::StaticBlock {},
+					checking_data,
+					|environment, checking_data| {
+						synthesise_block(&block.0, environment, checking_data)
+					},
+				);
+			}
+			_ => {}
+		}
+	}
+
+	class_type
 }

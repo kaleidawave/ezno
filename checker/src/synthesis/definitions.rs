@@ -2,7 +2,7 @@ use parser::ASTNode;
 
 use crate::{
 	context::{Names, RootContext},
-	synthesis::{functions::type_function_reference, EznoParser},
+	synthesis::{functions::synthesise_function_annotation, EznoParser},
 	Environment, Facts, TypeId,
 };
 
@@ -54,22 +54,12 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				// ),
 			}
 			TypeDefinitionModuleDeclaration::TypeAlias(type_alias) => {
-				if type_alias.type_name.type_parameters.is_some() {
-					todo!()
-				}
-				let to = synthesise_type_annotation(
+				env.new_alias(
+					&type_alias.type_name.name,
+					type_alias.type_name.type_parameters.as_deref(),
 					&type_alias.type_expression,
-					&mut env,
 					checking_data,
 				);
-
-				// idx_to_types.insert(
-				// 	interface.on.position.start,
-				// 	(&interface.on, &mut env, checking_data),
-				// );
-				env.new_alias(&type_alias.type_name.name, to, &mut checking_data.types);
-				// checking_data
-				// 	.raise_unimplemented_error("type alias", type_alias.type_name.position.clone());
 			}
 			_ => {}
 		}
@@ -80,7 +70,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::Function(func) => {
 				// TODO abstract
 				let declared_at = func.get_position().clone().with_source(source);
-				let base = type_function_reference(
+				let base = synthesise_function_annotation(
 					&func.type_parameters,
 					&func.parameters,
 					func.return_type.as_ref(),
@@ -88,7 +78,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					checking_data,
 					func.performs.as_ref().into(),
 					declared_at.clone(),
-					crate::types::FunctionKind::Arrow,
+					crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
 					None,
 				);
 
@@ -99,10 +89,13 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					// TODO
 					declared_at,
 					base.effects,
-					base.constant_id,
+					base.constant_function,
 				);
 
-				let behavior = crate::context::VariableRegisterBehavior::Declare { base };
+				let behavior = crate::context::VariableRegisterBehavior::Declare {
+					base,
+					context: decorators_to_context(&func.decorators),
+				};
 
 				let res = env.register_variable_handle_error(
 					func.name.as_str(),
@@ -126,6 +119,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					// TODO warning here
 					let behavior = crate::context::VariableRegisterBehavior::Declare {
 						base: constraint.unwrap_or(TypeId::ANY_TYPE),
+						context: decorators_to_context(&decorators),
 					};
 
 					crate::synthesis::variables::register_variable(
@@ -221,6 +215,18 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 	let Environment { named_types, facts, variable_names, variables, .. } = env;
 	(Names { named_types, variable_names, variables }, facts)
+}
+
+pub(crate) fn decorators_to_context(decorators: &Vec<parser::Decorator>) -> Option<String> {
+	decorators.iter().find_map(|dec| {
+		if dec.name.first() == Some(&"server".to_owned()) {
+			Some("server".to_owned())
+		} else if dec.name.first() == Some(&"client".to_owned()) {
+			Some("client".to_owned())
+		} else {
+			None
+		}
+	})
 }
 
 #[cfg(feature = "declaration-synthesis")]

@@ -1,5 +1,7 @@
 use super::variables::VariableMutability;
-use crate::{context::facts::Facts, Diagnostic, TypeId, VariableId, VariableOrImport};
+use crate::{
+	behavior::variables::VariableOrImport, context::facts::Facts, Diagnostic, TypeId, VariableId,
+};
 use derive_enum_from_into::EnumFrom;
 use source_map::Span;
 use std::{collections::HashMap, default, path::PathBuf};
@@ -17,7 +19,6 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 		under: &'a str,
 		position: Span,
 	},
-	SideEffect,
 	/// From `export * from ...`
 	Everything,
 }

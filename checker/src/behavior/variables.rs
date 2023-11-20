@@ -1,6 +1,6 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::AssignmentError;
+use crate::context::{environment::ContextLocation, AssignmentError};
 use crate::{types::TypeId, CheckingData, VariableId};
 use std::fmt::Debug;
 
@@ -15,6 +15,7 @@ pub enum VariableOrImport {
 		/// Location where variable is defined **ALSO UNIQUELY IDENTIFIES THE VARIABLE** as can
 		/// be turned into a [VariableId]
 		declared_at: SpanWithSource,
+		context: ContextLocation,
 	},
 	MutableImport {
 		of: VariableId,
@@ -30,7 +31,7 @@ pub enum VariableOrImport {
 impl VariableOrImport {
 	pub(crate) fn get_id(&self) -> VariableId {
 		match self {
-			VariableOrImport::Variable { mutability: _, declared_at } => {
+			VariableOrImport::Variable { mutability: _, declared_at, .. } => {
 				VariableId(declared_at.source, declared_at.start)
 			}
 			VariableOrImport::MutableImport { import_specified_at, .. }
@@ -42,7 +43,7 @@ impl VariableOrImport {
 
 	pub(crate) fn get_mutability(&self) -> VariableMutability {
 		match self {
-			VariableOrImport::Variable { mutability, declared_at } => *mutability,
+			VariableOrImport::Variable { mutability, declared_at, .. } => *mutability,
 			VariableOrImport::MutableImport { of, constant, import_specified_at } => {
 				VariableMutability::Constant
 			}

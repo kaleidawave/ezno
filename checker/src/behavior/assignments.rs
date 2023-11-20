@@ -1,20 +1,23 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::{context::facts::PublicityKind, CheckingData, Environment, TypeId};
+use crate::{
+	context::facts::Publicity, types::properties::PropertyKey, CheckingData, Environment, TypeId,
+};
 
 use super::operations::{Logical, MathematicalAndBitwise};
 
 pub enum Assignable {
 	Reference(Reference),
-	ObjectDestructuring(Vec<(TypeId, Assignable)>),
+	ObjectDestructuring(Vec<(PropertyKey<'static>, Assignable)>),
 	ArrayDestructuring(Vec<Option<Assignable>>),
 }
 
-// TODO copy, when span copy
+// TODO derive copy, when span derives copy
+// TODO reference
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
-	Property { on: TypeId, with: TypeId, publicity: PublicityKind, span: SpanWithSource },
+	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number
@@ -41,15 +44,4 @@ impl Reference {
 			Reference::Variable(_, span) | Reference::Property { span, .. } => span.clone(),
 		}
 	}
-}
-
-// TODO
-pub trait SynthesisableExpression<M: crate::ASTImplementation> {
-	fn synthesise_expression<U: crate::ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<U, M>,
-	) -> TypeId;
-
-	fn get_position(&self) -> &Span;
 }

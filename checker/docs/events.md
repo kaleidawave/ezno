@@ -10,7 +10,7 @@ They reference things in the type system. Their are no values, only type referen
 The side effects of a function are bundled into the events in the function. Side effects = events that
 
 ### Function synthesis and calling
-When synthesizing a function, events are recorded. They are then held on the function type. When calling that function, the events are replayed with the current state of the program.
+When synthesising a function, events are recorded. They are then held on the function type. When calling that function, the events are replayed with the current state of the program.
 
 ## Using as an IR
 The events can be used as an intermediate representation as a a representation of the program in a lowered syntax.

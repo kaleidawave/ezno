@@ -3,14 +3,15 @@ use std::{borrow::Cow, collections::HashMap};
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::ClosureId,
+	behavior::functions::{ClosureId, ThisValue},
 	events::{Event, RootReference},
-	Property, Type, TypeId, VariableId,
+	types::properties::PropertyKey,
+	PropertyValue, Type, TypeId, VariableId,
 };
 
 /// TODO explain usage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
-pub enum PublicityKind {
+pub enum Publicity {
 	Private,
 	Public,
 }
@@ -24,7 +25,8 @@ pub struct Facts {
 
 	/// This can be not have a value if not defined
 	pub(crate) variable_current_value: HashMap<VariableId, TypeId>,
-	pub(crate) current_properties: HashMap<TypeId, Vec<(TypeId, PublicityKind, Property)>>,
+	pub(crate) current_properties:
+		HashMap<TypeId, Vec<(Publicity, PropertyKey<'static>, PropertyValue)>>,
 	pub(crate) prototypes: HashMap<TypeId, TypeId>,
 
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
@@ -33,6 +35,11 @@ pub struct Facts {
 	pub(crate) enumerable: HashMap<(TypeId, TypeId), TypeId>,
 	pub(crate) writable: HashMap<(TypeId, TypeId), TypeId>,
 	pub(crate) frozen: HashMap<TypeId, TypeId>,
+
+	/// For super calls etc
+	///
+	/// TODO not great that this has to be Option to satisfy Default
+	pub(crate) value_of_this: ThisValue,
 }
 
 impl Facts {
@@ -40,14 +47,14 @@ impl Facts {
 	pub fn register_property(
 		&mut self,
 		on: TypeId,
-		under: TypeId,
-		to: Property,
+		publicity: Publicity,
+		under: PropertyKey<'static>,
+		to: PropertyValue,
 		register_setter_event: bool,
-		publicity: PublicityKind,
 		position: Option<SpanWithSource>,
 	) {
 		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
-		self.current_properties.entry(on).or_default().push((under, publicity, to.clone()));
+		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
 		if register_setter_event {
 			self.events.push(Event::Setter {
 				on,
@@ -98,10 +105,10 @@ impl Facts {
 		ty
 	}
 
-	pub fn get_properties_on_type(
+	pub fn get_properties_on_type_for_this_level(
 		&self,
 		ty: TypeId,
-	) -> Option<&Vec<(TypeId, PublicityKind, Property)>> {
+	) -> Option<&Vec<(Publicity, PropertyKey, PropertyValue)>> {
 		self.current_properties.get(&ty)
 	}
 

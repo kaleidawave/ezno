@@ -1,7 +1,8 @@
 use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
-	behavior::modules::Exported, types::TypeId, CheckingData, Environment, GeneralContext,
-	SynthesisedModule,
+	behavior::modules::{Exported, SynthesisedModule},
+	types::TypeId,
+	CheckingData, Environment, GeneralContext,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
@@ -71,7 +72,7 @@ impl RootContext {
 			bases: Default::default(),
 			object_constraints: Default::default(),
 			// TODO
-			can_use_this: crate::context::CanUseThis::Yeah { this_ty: TypeId::ERROR_TYPE },
+			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			facts: Default::default(),
 		}
 	}
@@ -81,17 +82,22 @@ impl RootContext {
 		source: SourceId,
 		module: M::Module,
 		checking_data: &'a mut CheckingData<T, M>,
-	) -> &'a SynthesisedModule<M::Module> {
+	) -> &'a SynthesisedModule<M::OwnedModule> {
 		let mut environment = self.new_lexical_environment(crate::Scope::Module {
 			source,
 			exported: Exported::default(),
 		});
-		M::synthesize_module(&module, source, &mut environment, checking_data);
+		M::synthesise_module(&module, source, &mut environment, checking_data);
 
-		let crate::Scope::Module { exported, .. } = environment.context_type.kind else {
+		let crate::Scope::Module { exported, .. } = environment.context_type.scope else {
 			unreachable!()
 		};
-		let module = SynthesisedModule { content: module, exported, facts: environment.facts };
+
+		let module = SynthesisedModule {
+			content: M::owned_module_from_module(module),
+			exported,
+			facts: environment.facts,
+		};
 
 		// TODO better way to do this?
 		checking_data.modules.synthesised_modules.insert(source, module);
@@ -137,7 +143,7 @@ impl RootContext {
 		// ctx.subtyping_constant_proofs = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// ctx.terms_reverse = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// ctx.proxies = BinarySerializable::deserialize(&mut bytes, backing_source);
-		// ctx.can_use_this = BinarySerializable::deserialize(&mut bytes, backing_source);
+		// ctx.can_reference_this = BinarySerializable::deserialize(&mut bytes, backing_source);
 
 		// Ok(ctx)
 	}

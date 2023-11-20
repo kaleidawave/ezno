@@ -1,4 +1,4 @@
-When synthesizing (aka checking) a function a few thing happen:
+When synthesising (aka checking) a function a few thing happen:
 - Parameters are synthesised
 - Ones that are not already generic are made into generics
 

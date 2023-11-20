@@ -6,28 +6,28 @@ use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
 	println!("cargo:rerun-if-changed=specification.md");
+	println!("cargo:rerun-if-changed=staging.md");
 	println!("cargo:rerun-if-changed=to_implement.md");
 
 	let out_path = Path::new(&std::env::var("OUT_DIR")?).join("specification.rs");
 	let mut out = File::create(out_path)?;
 
-	let specification = read_to_string("./specification.md")?;
-	let mut lines = specification.lines().enumerate();
-
-	while let Some((_, line)) = lines.next() {
-		if line == "## Specification" {
-			break;
-		}
+	if cfg!(not(feature = "just-staging")) {
+		let specification = read_to_string("./specification.md")?;
+		markdown_lines_append_test_to_rust(specification.lines().enumerate(), &mut out)?;
 	}
 
-	markdown_lines_append_test_to_rust(lines, &mut out)?;
+	if cfg!(feature = "staging") {
+		let staging = read_to_string("./staging.md")?;
+		writeln!(&mut out, "mod staging {{ use super::check_errors; ").unwrap();
+		markdown_lines_append_test_to_rust(staging.lines().enumerate(), &mut out)?;
+		writeln!(&mut out, "}}").unwrap();
+	}
 
 	if cfg!(feature = "all") {
-		let not_yet_implemented = read_to_string("./to_implement.md")?;
-		let lines = not_yet_implemented.lines().enumerate();
-
-		writeln!(&mut out, "mod todo {{ use super::check_errors; ").unwrap();
-		markdown_lines_append_test_to_rust(lines, &mut out)?;
+		let to_implement = read_to_string("./to_implement.md")?;
+		writeln!(&mut out, "mod to_implement {{ use super::check_errors; ").unwrap();
+		markdown_lines_append_test_to_rust(to_implement.lines().enumerate(), &mut out)?;
 		writeln!(&mut out, "}}").unwrap();
 	}
 
@@ -56,6 +56,7 @@ fn markdown_lines_append_test_to_rust(
 		if !line.starts_with("#### ") {
 			continue;
 		}
+
 		let heading = line.strip_prefix("####").unwrap().trim_start();
 		let test_title = heading_to_rust_name(heading);
 
@@ -98,7 +99,8 @@ fn markdown_lines_append_test_to_rust(
 						break;
 					}
 				} else {
-					let error = line.strip_prefix("- ").unwrap().replace('"', "\\\"");
+					let error =
+						line.strip_prefix("- ").unwrap().replace('\\', "").replace('"', "\\\"");
 					errors.push(format!("\"{}\"", error))
 				}
 			}
@@ -122,7 +124,9 @@ fn markdown_lines_append_test_to_rust(
             }}",
 		)?;
 	}
-	writeln!(out, "}}").unwrap();
+	if !first_section {
+		writeln!(out, "}}").unwrap();
+	}
 
 	Ok(())
 }
@@ -130,6 +134,6 @@ fn markdown_lines_append_test_to_rust(
 fn heading_to_rust_name(heading: &str) -> String {
 	heading
 		.replace([' ', '-', '&'], "_")
-		.replace(['*', '\'', '!', '(', ')', ','], "")
+		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
 		.to_lowercase()
 }

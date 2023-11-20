@@ -4,8 +4,11 @@
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{calling::Target, facts::PublicityKind, get_on_ctx, CallCheckingBehavior},
-	types::{calling::CalledWithNew, properties::Property},
+	context::{calling::Target, facts::Publicity, get_on_ctx, CallCheckingBehavior},
+	types::{
+		calling::CalledWithNew,
+		properties::{PropertyKey, PropertyValue},
+	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
@@ -57,23 +60,23 @@ pub enum Event {
 	/// Mostly trivial, sometimes can call a function :(
 	Getter {
 		on: TypeId,
-		under: TypeId,
+		under: PropertyKey<'static>,
 		reflects_dependency: Option<TypeId>,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		position: SpanWithSource,
 	},
 	/// All changes to the value of a property
 	Setter {
 		on: TypeId,
-		under: TypeId,
+		under: PropertyKey<'static>,
 		// Can be a getter through define property
-		new: Property,
+		new: PropertyValue,
 		reflects_dependency: Option<TypeId>,
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
 		initialization: bool,
-		publicity: PublicityKind,
+		publicity: Publicity,
 		position: Option<SpanWithSource>,
 	},
 
@@ -116,11 +119,10 @@ pub enum Event {
 		prototype: PrototypeArgument,
 		/// This is the id referencing a [Type::AliasTo] that is created
 		///
-		/// This is also for the specialization (somehow)
+		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
 	},
-	// Registration(Registration),
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]

@@ -1,11 +1,11 @@
 // Types to runtime behavior
 
 use crate::{
-	behavior::objects::ObjectBuilder, context::facts::PublicityKind, Constant, Environment, Type,
+	behavior::objects::ObjectBuilder, context::facts::Publicity, Constant, Environment, Type,
 	TypeId,
 };
 
-use super::TypeStore;
+use super::{properties::PropertyKey, TypeStore};
 
 pub(crate) fn create_object_for_type(
 	ty: TypeId,
@@ -23,25 +23,25 @@ pub(crate) fn create_object_for_type(
 			// TODO: Do we need positions for the following appends?
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("kind".into())),
-				crate::Property::Value(types.new_constant_type(Constant::String(kind.into()))),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("kind".into()),
+				crate::PropertyValue::Value(types.new_constant_type(Constant::String(kind.into()))),
 				None,
 			);
 			let left = create_object_for_type(left, environment, types);
 			let right = create_object_for_type(right, environment, types);
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("left".into())),
-				crate::Property::Value(left),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("left".into()),
+				crate::PropertyValue::Value(left),
 				None,
 			);
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("right".into())),
-				crate::Property::Value(right),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("right".into()),
+				crate::PropertyValue::Value(right),
 				None,
 			);
 		}
@@ -53,9 +53,9 @@ pub(crate) fn create_object_for_type(
 			// TODO: Do we need positions for the following appends?
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("name".into())),
-				crate::Property::Value(types.new_constant_type(Constant::String(name))),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("name".into()),
+				crate::PropertyValue::Value(types.new_constant_type(Constant::String(name))),
 				None,
 			);
 
@@ -64,22 +64,22 @@ pub(crate) fn create_object_for_type(
 				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
 
 				// let properties = env.create_array();
-				for (key, _, property) in environment.get_properties_on_type(ty) {
+				for (_, key, property) in environment.get_properties_on_type(ty) {
 					let value = create_object_for_type(property, environment, types);
 					inner_object.append(
 						environment,
+						Publicity::Public,
 						key,
-						crate::Property::Value(value),
-						PublicityKind::Public,
+						crate::PropertyValue::Value(value),
 						None,
 					);
 				}
 
 				obj.append(
 					environment,
-					types.new_constant_type(Constant::String("properties".into())),
-					crate::Property::Value(inner_object.build_object()),
-					PublicityKind::Public,
+					Publicity::Public,
+					PropertyKey::String("properties".into()),
+					crate::PropertyValue::Value(inner_object.build_object()),
 					None,
 				);
 			}
@@ -87,24 +87,23 @@ pub(crate) fn create_object_for_type(
 		Type::Constant(_) => {
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("constant".into())),
-				crate::Property::Value(ty),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("constant".into()),
+				crate::PropertyValue::Value(ty),
 				None,
 			);
 		}
 		Type::Function(_, _) => todo!(),
 		Type::FunctionReference(_, _) => todo!(),
-		Type::Class(_) => todo!(),
 		Type::Object(_) => {
-			let value = crate::Property::Value(
+			let value = crate::PropertyValue::Value(
 				types.new_constant_type(Constant::String("anonymous object".into())),
 			);
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("kind".into())),
+				Publicity::Public,
+				PropertyKey::String("kind".into()),
 				value,
-				PublicityKind::Public,
 				None,
 			);
 
@@ -112,22 +111,22 @@ pub(crate) fn create_object_for_type(
 			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
 
 			// let properties = env.create_array();
-			for (key, _, property) in environment.get_properties_on_type(ty) {
+			for (_, key, property) in environment.get_properties_on_type(ty) {
 				let value = create_object_for_type(property, environment, types);
 				inner_object.append(
 					environment,
+					Publicity::Public,
 					key,
-					crate::Property::Value(value),
-					PublicityKind::Public,
+					crate::PropertyValue::Value(value),
 					None,
 				);
 			}
 
 			obj.append(
 				environment,
-				types.new_constant_type(Constant::String("properties".into())),
-				crate::Property::Value(inner_object.build_object()),
-				PublicityKind::Public,
+				Publicity::Public,
+				PropertyKey::String("properties".into()),
+				crate::PropertyValue::Value(inner_object.build_object()),
 				None,
 			);
 		}

@@ -1,5 +1,6 @@
 pub mod calling;
-mod casts;
+pub mod casts;
+pub mod classes;
 pub mod functions;
 pub mod others;
 pub mod poly_types;
@@ -25,19 +26,18 @@ use crate::{
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
 	events::RootReference,
-	Environment, TruthyFalsy,
+	Decidable, Environment,
 };
 
 pub use self::functions::*;
 use self::{
 	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
+	properties::PropertyKey,
 	subtyping::type_is_subtype,
 };
 use crate::FunctionId;
 
 /// References [Type]
-///
-/// Not to be confused with [parser::TypeId]
 ///
 /// TODO maybe u32 or u64
 /// TODO maybe on environment rather than here
@@ -78,17 +78,15 @@ impl TypeId {
 	pub const ZERO: Self = Self(16);
 	pub const ONE: Self = Self(17);
 	pub const NAN_TYPE: Self = Self(18);
-	/// For arrays
-	pub const LENGTH_AS_STRING: Self = Self(19);
 
-	/// For this_arg for type constraints only
-	pub const THIS_ARG: Self = Self(20);
+	/// TODO remove. Shortcut for inferred this
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(19);
 	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
-	pub const NEW_TARGET_ARG: Self = Self(21);
+	pub const NEW_TARGET_ARG: Self = Self(20);
 
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(22);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 23;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 22;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -125,7 +123,6 @@ pub enum Type {
 	FunctionReference(FunctionId, ThisValue),
 
 	/// Technically could be just a function but...
-	Class(FunctionId),
 	Object(ObjectNature),
 	SpecialObject(SpecialObjects),
 }
@@ -193,7 +190,6 @@ impl Type {
 			Type::Constant(_)
 			| Type::Function(..)
 			| Type::FunctionReference(..)
-			| Type::Class(..)
 			| Type::Object(_) => false,
 			Type::SpecialObject(_) => todo!(),
 		}
@@ -237,7 +233,8 @@ pub enum Constructor {
 	},
 	Property {
 		on: TypeId,
-		under: TypeId,
+		under: PropertyKey<'static>,
+		result: TypeId,
 	},
 	/// Might not be best place but okay.
 	StructureGenerics(StructureGenerics),
@@ -282,11 +279,14 @@ pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStor
 	types.new_conditional_type(lhs, lhs, rhs)
 }
 
-pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
-	if ty == TypeId::TRUE || ty == TypeId::FALSE {
-		TruthyFalsy::Decidable(ty == TypeId::TRUE)
+pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
+	// These first two branches are just shortcuts.
+	if id == TypeId::TRUE || id == TypeId::FALSE {
+		Decidable::Known(id == TypeId::TRUE)
+	} else if id == TypeId::NULL_TYPE || id == TypeId::UNDEFINED_TYPE {
+		Decidable::Known(false)
 	} else {
-		let ty = types.get_type_by_id(ty);
+		let ty = types.get_type_by_id(id);
 		match ty {
 			Type::AliasTo { .. }
 			| Type::And(_, _)
@@ -295,16 +295,15 @@ pub fn is_type_truthy_falsy(ty: TypeId, types: &TypeStore) -> TruthyFalsy {
 			| Type::Constructor(_)
 			| Type::NamedRooted { .. } => {
 				// TODO some of these case are known
-				TruthyFalsy::Unknown
+				Decidable::Unknown(id)
 			}
 			Type::Function(..)
 			| Type::FunctionReference(..)
-			| Type::Class(..)
 			| Type::SpecialObject(_)
-			| Type::Object(_) => TruthyFalsy::Decidable(true),
+			| Type::Object(_) => Decidable::Known(true),
 			Type::Constant(cst) => {
 				// TODO strict casts
-				TruthyFalsy::Decidable(cast_as_boolean(cst, false).unwrap())
+				Decidable::Known(cast_as_boolean(cst, false).unwrap())
 			}
 		}
 	}
@@ -422,7 +421,7 @@ pub enum SubTypeResult {
 pub enum NonEqualityReason {
 	Mismatch,
 	PropertiesInvalid {
-		errors: Vec<(TypeId, PropertyError)>,
+		errors: Vec<(PropertyKey<'static>, PropertyError)>,
 	},
 	TooStrict,
 	/// TODO more information

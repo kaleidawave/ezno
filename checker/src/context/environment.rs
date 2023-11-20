@@ -3,38 +3,40 @@ use std::collections::HashSet;
 
 use crate::{
 	behavior::{
-		assignments::{Assignable, AssignmentKind, Reference, SynthesisableExpression},
+		assignments::{Assignable, AssignmentKind, Reference},
 		modules::{Exported, ImportKind, NamePair},
 		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
-		variables::{VariableMutability, VariableWithValue},
+		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, RootReference},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
-		properties::{Property, PropertyKind},
+		properties::{PropertyKey, PropertyKind, PropertyValue},
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	ASTImplementation, CheckingData, RootContext, TruthyFalsy, TypeId, VariableId,
-	VariableOrImport,
+	ASTImplementation, CheckingData, Decidable, Instance, RootContext, TypeCombinable, TypeId,
+	VariableId,
 };
 
 use super::{
 	calling::CheckThings,
-	facts::{Facts, PublicityKind},
+	facts::{Facts, Publicity},
 	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
 	Environment, GeneralContext, SetPropertyError,
 };
 
+pub type ContextLocation = Option<String>;
+
 #[derive(Debug)]
 pub struct Syntax<'a> {
-	pub kind: Scope,
+	pub scope: Scope,
 	pub(super) parent: GeneralContext<'a>,
 
 	/// Variables that this context pulls in from above (across a dynamic context). aka not from parameters of bound this
@@ -44,6 +46,9 @@ pub struct Syntax<'a> {
 	/// Variables used in this scope which are closed over by functions. These need to be stored
 	/// Not to be confused with `used_parent_references`
 	pub closed_over_references: ClosedOverReferencesInScope,
+
+	/// TODO WIP!
+	pub location: ContextLocation,
 }
 
 impl<'a> ContextType for Syntax<'a> {
@@ -56,7 +61,7 @@ impl<'a> ContextType for Syntax<'a> {
 	}
 
 	fn is_dynamic_boundary(&self) -> bool {
-		matches!(self.kind, Scope::Function { .. } | Scope::Looping { .. })
+		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
 	}
 
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
@@ -64,7 +69,7 @@ impl<'a> ContextType for Syntax<'a> {
 	}
 
 	fn get_exports(&mut self) -> Option<&mut Exported> {
-		if let Scope::Module { ref mut exported, .. } = self.kind {
+		if let Scope::Module { ref mut exported, .. } = self.scope {
 			Some(exported)
 		} else {
 			None
@@ -72,25 +77,50 @@ impl<'a> ContextType for Syntax<'a> {
 	}
 }
 
+/// TODO better names
+/// Decides whether `await` and `yield` are available
+#[derive(Debug, Clone)]
+pub enum FunctionScope {
+	ArrowFunction {
+		// This always points to a poly free variable type
+		free_this_type: TypeId,
+		is_async: bool,
+	},
+	MethodFunction {
+		// This always points to a poly free variable type
+		free_this_type: TypeId,
+		is_async: bool,
+		is_generator: bool,
+	},
+	// is new-able
+	Function {
+		is_generator: bool,
+		is_async: bool,
+		// This always points to a conditional type based on `new.target === undefined`
+		this_type: TypeId,
+		type_of_super: TypeId,
+	},
+	Constructor {
+		/// Can call `super`
+		extends: bool,
+		type_of_super: Option<TypeId>,
+		// This is always creates, but may not be used (or have the relevant properties & prototype)
+		this_object_type: TypeId,
+	},
+}
+
 /// TODO name of structure
 /// TODO conditionals should have conditional proofs (separate from the ones on context)
 #[derive(Debug, Clone)]
 pub enum Scope {
-	Function {
-		/// This also can be used to get the super type. Can be `any`
-		this_constraint: TypeId,
-		/// Aka can use `super`, todo not sure
-		this_extends: bool,
-		constructor_on: Option<TypeId>,
-	},
+	Function(FunctionScope),
 	InterfaceEnvironment {
 		this_constraint: TypeId,
 	},
-	ClassEnvironment {},
-	FunctionReference {},
+	FunctionAnnotation {},
 	/// For ifs, elses, or lazy operators
 	Conditional {
-		/// Things that are true
+		/// Something that is truthy for this to run
 		antecedent: TypeId,
 	},
 	/// Variables here are dependent on the iteration,
@@ -107,6 +137,9 @@ pub enum Scope {
 	DefinitionModule {
 		source: SourceId,
 	},
+	/// For generic parameters
+	TypeAlias,
+	StaticBlock {},
 	/// For repl only
 	PassThrough {
 		source: SourceId,
@@ -119,16 +152,12 @@ impl<'a> Environment<'a> {
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
 	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
-	pub fn assign_to_assignable_handle_errors<
-		U: crate::ReadFromFS,
-		M: crate::ASTImplementation,
-		T: SynthesisableExpression<M>,
-	>(
+	pub fn assign_to_assignable_handle_errors<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
-		expression: Option<&T>,
+		expression: Option<&M::Expression>,
 		assignment_span: SpanWithSource,
 		checking_data: &mut CheckingData<U, M>,
 	) -> TypeId {
@@ -142,18 +171,23 @@ impl<'a> Environment<'a> {
 				) -> TypeId {
 					match reference {
 						Reference::Variable(name, position) => {
-							env.get_variable_or_error(&name, position.clone(), checking_data)
+							env.get_variable_handle_error(&name, position.clone(), checking_data)
 								.unwrap()
 								.1
 						}
-						Reference::Property { on, with, publicity, span } => env
-							.get_property_handle_errors(
+						Reference::Property { on, with, publicity, span } => {
+							let get_property_handle_errors = env.get_property_handle_errors(
 								on,
-								with,
 								publicity,
+								with,
 								checking_data,
 								span.clone(),
-							),
+							);
+							match get_property_handle_errors {
+								Ok(i) => i.get_value(),
+								Err(_) => TypeId::ERROR_TYPE,
+							}
+						}
 					}
 				}
 
@@ -174,8 +208,8 @@ impl<'a> Environment<'a> {
 						Reference::Property { on, with, publicity, span } => Ok(env
 							.set_property(
 								on,
-								with,
 								publicity,
+								with,
 								new,
 								&mut checking_data.types,
 								Some(span),
@@ -211,7 +245,12 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = expression.unwrap().synthesise_expression(self, checking_data);
+						let new = M::synthesise_expression(
+							expression.unwrap(),
+							TypeId::ANY_TYPE,
+							self,
+							checking_data,
+						);
 						let result = set_reference(self, reference, new, checking_data);
 						match result {
 							Ok(ty) => ty,
@@ -230,18 +269,24 @@ impl<'a> Environment<'a> {
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
-						let span = reference.get_position();
+						let reference_position = reference.get_position();
 						let existing = get_reference(self, reference.clone(), checking_data);
 
 						let expression = expression.unwrap();
-						let with_source =
-							expression.get_position().clone().with_source(self.get_source());
-						let rhs =
-							(expression.synthesise_expression(self, checking_data), with_source);
+						let expression_pos = M::expression_position(expression)
+							.clone()
+							.with_source(self.get_source());
+						let rhs = M::synthesise_expression(
+							expression,
+							TypeId::ANY_TYPE,
+							self,
+							checking_data,
+						);
+
 						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, span),
+							(existing, reference_position),
 							operator.into(),
-							rhs,
+							(rhs, expression_pos),
 							checking_data,
 							self,
 						);
@@ -381,7 +426,7 @@ impl<'a> Environment<'a> {
 
 		if let Some((_, _, variable)) = variable_in_map {
 			match variable {
-				crate::VariableOrImport::Variable { mutability, declared_at } => {
+				VariableOrImport::Variable { mutability, declared_at, context } => {
 					match mutability {
 						VariableMutability::Constant => {
 							Err(AssignmentError::Constant(declared_at.clone()))
@@ -437,8 +482,8 @@ impl<'a> Environment<'a> {
 						}
 					}
 				}
-				crate::VariableOrImport::MutableImport { .. }
-				| crate::VariableOrImport::ConstantImport { .. } => {
+				VariableOrImport::MutableImport { .. }
+				| VariableOrImport::ConstantImport { .. } => {
 					Err(AssignmentError::Constant(assignment_position))
 				}
 			}
@@ -463,21 +508,51 @@ impl<'a> Environment<'a> {
 	}
 
 	pub(crate) fn get_environment_type(&self) -> &Scope {
-		&self.context_type.kind
+		&self.context_type.scope
 	}
 
-	pub fn remove_property(&mut self, on: TypeId, property: TypeId) -> bool {
+	/// TODO decidable & private?
+	pub fn property_in(&self, on: TypeId, property: PropertyKey) -> bool {
+		self.facts_chain().any(|facts| match facts.current_properties.get(&on) {
+			Some(v) => {
+				v.iter().any(
+					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { *p == property },
+				)
+			}
+			None => false,
+		})
+	}
+
+	/// TODO decidable & private?
+	pub fn delete_property(&mut self, on: TypeId, property: PropertyKey) -> bool {
+		let existing = self.property_in(on, property.clone());
+
+		let under = property.into_owned();
+
+		// on_default() okay because might be in a nested context.
+		// entry empty does not mean no properties, just no properties set on this level
 		self.facts.current_properties.entry(on).or_default().push((
-			property,
-			PublicityKind::Public,
-			Property::Deleted,
+			Publicity::Public,
+			under.clone(),
+			PropertyValue::Deleted,
 		));
-		// TODO if deleted
-		true
+
+		// TODO Event::Delete. Dependent result based on in
+		self.facts.events.push(Event::Setter {
+			on,
+			under,
+			new: PropertyValue::Deleted,
+			reflects_dependency: None,
+			initialization: false,
+			publicity: Publicity::Public,
+			position: None,
+		});
+
+		existing
 	}
 
 	pub(crate) fn get_environment_type_mut(&mut self) -> &mut Scope {
-		&mut self.context_type.kind
+		&mut self.context_type.scope
 	}
 
 	pub(crate) fn get_parent(&self) -> GeneralContext {
@@ -491,16 +566,16 @@ impl<'a> Environment<'a> {
 	pub fn get_property(
 		&mut self,
 		on: TypeId,
-		property: TypeId,
-		kind: PublicityKind,
+		publicity: Publicity,
+		property: PropertyKey,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 		position: SpanWithSource,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
+			publicity,
 			property,
-			kind,
 			with,
 			self,
 			&mut CheckThings,
@@ -512,37 +587,58 @@ impl<'a> Environment<'a> {
 	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		on: TypeId,
-		property: TypeId,
-		kind: PublicityKind,
+		publicity: Publicity,
+		key: PropertyKey,
 		checking_data: &mut CheckingData<U, M>,
 		site: SpanWithSource,
-	) -> TypeId {
-		match self.get_property(on, property, kind, &mut checking_data.types, None, site.clone()) {
-			Some((_, ty)) => ty,
+	) -> Result<Instance, ()> {
+		let get_property = self.get_property(
+			on,
+			publicity,
+			key.clone(),
+			&mut checking_data.types,
+			None,
+			site.clone(),
+		);
+		match get_property {
+			Some((kind, result)) => Ok(match kind {
+				PropertyKind::Getter => Instance::GValue(result),
+				// TODO instance.property...?
+				PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
+			}),
 			None => {
+				let types = &checking_data.types;
+				let ctx = &self.as_general_context();
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::PropertyDoesNotExist {
-						property: crate::diagnostics::TypeStringRepresentation::from_type_id(
-							property,
-							&self.as_general_context(),
-							&checking_data.types,
-							false,
-						),
+						// TODO printing temp
+						property: match key {
+							PropertyKey::String(s) => {
+								crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
+							}
+							PropertyKey::Type(t) => {
+								crate::diagnostics::PropertyRepresentation::Type(
+									crate::types::printing::print_type(
+										t,
+										&checking_data.types,
+										&self.as_general_context(),
+										false,
+									),
+								)
+							}
+						},
 						on: crate::diagnostics::TypeStringRepresentation::from_type_id(
-							on,
-							&self.as_general_context(),
-							&checking_data.types,
-							false,
+							on, ctx, types, false,
 						),
 						site,
 					},
 				);
-				TypeId::ERROR_TYPE
+				Err(())
 			}
 		}
 	}
 
-	pub fn get_variable_or_error<U: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn get_variable_handle_error<U: crate::ReadFromFS, M: ASTImplementation>(
 		&mut self,
 		name: &str,
 		position: SpanWithSource,
@@ -570,6 +666,28 @@ impl<'a> Environment<'a> {
 
 		let reference = RootReference::Variable(og_var.get_id());
 
+		if let VariableOrImport::Variable { context: Some(ref context), .. } = og_var {
+			if let Some(ref current_context) = self.parents_iter().find_map(|a| {
+				if let GeneralContext::Syntax(syn) = a {
+					syn.context_type.location.clone()
+				} else {
+					None
+				}
+			}) {
+				if current_context != context {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::VariableNotDefinedInContext {
+							variable: name,
+							expected_context: context,
+							current_context: current_context.clone(),
+							position,
+						},
+					);
+					return Err(TypeId::ERROR_TYPE);
+				}
+			}
+		}
+
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		// TODO in_root temp fix
@@ -596,6 +714,13 @@ impl<'a> Environment<'a> {
 							// TODO temp
 							if matches!(ty, Type::Function(..)) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
+							} else if let Type::RootPolyType(PolyNature::Open(ot)) = ty {
+								crate::utils::notify!(
+									"Open poly type treated as immutable free variable"
+								);
+								return Ok(VariableWithValue(og_var.clone(), *ot));
+							} else {
+								crate::utils::notify!("Free variable!");
 							}
 						}
 					}
@@ -689,49 +814,47 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, U, M>(
+	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, M, R>(
 		&mut self,
 		condition: TypeId,
-		then_evaluate: U,
-		// TODO maybe V::Other
-		else_evaluate: Option<U>,
+		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R,
+		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R>,
 		checking_data: &mut CheckingData<T, M>,
-	) -> U::ExpressionResult
+	) -> R
 	where
 		M: crate::ASTImplementation,
-		U: crate::SynthesisableConditional<M>,
+		R: TypeCombinable,
 	{
-		if let TruthyFalsy::Decidable(result) =
-			is_type_truthy_falsy(condition, &checking_data.types)
-		{
+		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 			// TODO emit warning
 			return if result {
-				then_evaluate.synthesise_condition(self, checking_data)
+				then_evaluate(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
-				else_evaluate.synthesise_condition(self, checking_data)
+				else_evaluate(self, checking_data)
 			} else {
-				U::default_result()
+				R::default()
 			};
 		}
 
 		let (truthy_result, truthy_events) = {
 			let mut truthy_environment =
 				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
-			let result = then_evaluate.synthesise_condition(&mut truthy_environment, checking_data);
+
+			let result = then_evaluate(&mut truthy_environment, checking_data);
+
 			(result, truthy_environment.facts.events)
 		};
+
 		if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 			});
-			let falsy_result =
-				else_evaluate.synthesise_condition(&mut falsy_environment, checking_data);
-			let combined_result = U::conditional_expression_result(
-				condition,
-				truthy_result,
-				falsy_result,
-				&mut checking_data.types,
-			);
+
+			let falsy_result = else_evaluate(&mut falsy_environment, checking_data);
+
+			let combined_result =
+				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
+
 			let falsy_events = falsy_environment.facts.events;
 			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
 			self.facts.events.push(Event::Conditionally {
@@ -774,55 +897,22 @@ impl<'a> Environment<'a> {
 	pub fn set_property(
 		&mut self,
 		on: TypeId,
-		under: TypeId,
-		kind: PublicityKind,
+		publicity: Publicity,
+		under: PropertyKey,
 		new: TypeId,
 		types: &mut TypeStore,
 		setter_position: Option<SpanWithSource>,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
+			publicity,
 			under,
-			kind,
-			Property::Value(new),
+			PropertyValue::Value(new),
 			self,
 			&mut CheckThings,
 			types,
 			setter_position,
 		)
-	}
-
-	pub(crate) fn create_this(&mut self, over: TypeId, store: &mut TypeStore) -> TypeId {
-		let current_constructor_type = self.get_current_constructor().unwrap();
-
-		// TODO I think
-		let ty = store.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-
-		let condition = store.register_type(Type::Constructor(
-			crate::types::Constructor::CanonicalRelationOperator {
-				operator: crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual,
-				lhs: TypeId::NEW_TARGET_ARG,
-				rhs: current_constructor_type,
-			},
-		));
-
-		let prototype = crate::events::PrototypeArgument::Yeah(over);
-		// TODO Unknown position
-		let event = Event::Conditionally {
-			condition,
-			events_if_truthy: Box::new([Event::CreateObject {
-				referenced_in_scope_as: ty,
-				prototype,
-				position: None,
-			}]),
-			else_events: Box::new([]),
-			position: None,
-		};
-
-		self.facts.events.push(event);
-
-		self.can_use_this = crate::context::CanUseThis::ConstructorCalled { this_ty: ty };
-		ty
 	}
 
 	pub(crate) fn import_items<
@@ -840,7 +930,7 @@ impl<'a> Environment<'a> {
 		also_export: bool,
 	) {
 		let current_source = self.get_source();
-		if !matches!(self.context_type.kind, crate::Scope::Module { .. }) {
+		if !matches!(self.context_type.scope, crate::Scope::Module { .. }) {
 			checking_data.diagnostics_container.add_error(TypeCheckError::NotTopLevelImport(
 				import_position.with_source(current_source),
 			));
@@ -850,17 +940,17 @@ impl<'a> Environment<'a> {
 		let exports = checking_data.import_file(current_source, &partial_import_path, self);
 
 		if let Err(ref err) = exports {
-			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile(
-				err.clone(),
-				import_position.with_source(self.get_source()),
-			));
+			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
+				file: err.clone(),
+				position: Some(import_position.with_source(self.get_source())),
+			});
 		}
 
 		if let Some((default_name, position)) = default_import {
 			if let Ok(Ok(ref exports)) = exports {
 				if let Some(item) = &exports.default {
 					let id = crate::VariableId(current_source, position.start);
-					let v = crate::VariableOrImport::ConstantImport {
+					let v = VariableOrImport::ConstantImport {
 						to: None,
 						import_specified_at: position.clone().with_source(current_source),
 					};
@@ -912,7 +1002,7 @@ impl<'a> Environment<'a> {
 										}
 									};
 
-									let v = crate::VariableOrImport::MutableImport {
+									let v = VariableOrImport::MutableImport {
 										of: variable,
 										constant,
 										import_specified_at: part
@@ -926,7 +1016,7 @@ impl<'a> Environment<'a> {
 									}
 									if also_export {
 										if let Scope::Module { ref mut exported, .. } =
-											self.context_type.kind
+											self.context_type.scope
 										{
 											exported.named.push((
 												part.r#as.to_owned(),
@@ -992,6 +1082,7 @@ impl<'a> Environment<'a> {
 				} else {
 					let behavior = crate::context::VariableRegisterBehavior::Declare {
 						base: TypeId::ERROR_TYPE,
+						context: None,
 					};
 					self.register_variable_handle_error(
 						under,
@@ -1001,12 +1092,11 @@ impl<'a> Environment<'a> {
 					);
 				}
 			}
-			ImportKind::SideEffect => {}
 			ImportKind::Everything => {
 				if let Ok(Ok(ref exports)) = exports {
 					for (name, (variable, mutability)) in exports.named.iter() {
 						// TODO are variables put into scope?
-						if let Scope::Module { ref mut exported, .. } = self.context_type.kind {
+						if let Scope::Module { ref mut exported, .. } = self.context_type.scope {
 							exported.named.push((name.clone(), (*variable, mutability.clone())));
 						}
 					}
@@ -1016,66 +1106,4 @@ impl<'a> Environment<'a> {
 			}
 		}
 	}
-}
-
-pub(crate) fn get_this_type_from_constraint(
-	facts: &mut Facts,
-	this_ty: TypeId,
-	types: &mut TypeStore,
-	position: SpanWithSource,
-) -> TypeId {
-	// TODO `this_ty` can be error here..?
-	if this_ty == TypeId::ERROR_TYPE {
-		unreachable!()
-	}
-
-	// let mut last = None;
-	// for parent in self.parents_iter() {
-	// 	if let Some(constraint) = get_on_ctx!(parent.get_this_constraint()) {
-	// 		last = Some((constraint, get_on_ctx!(parent.context_id)));
-	// 		break;
-	// 	}
-	// }
-
-	let reference = RootReference::This;
-
-	// let (value, reflects_dependency) = if let Some(boundary) = crossed_boundary {
-	// 	let this_inferred = constraint_of_this.is_none();
-	// 	let based_on = match constraint_of_this {
-	// 		Some(ty) => PolyPointer::Fixed(ty),
-	// 		None => PolyPointer::Inferred(boundary),
-	// 	};
-	// 	let poly_nature = PolyNature::FreeVariable { reference, based_on };
-	// 	let ty = types.register_type(Type::RootPolyType(poly_nature));
-	// 	(ty, Some(ty))
-	// } else {
-	// 	// TODO... always replace
-	// 	(constraint_of_this.unwrap(), None)
-	// };
-
-	for event in facts.events.iter() {
-		// TODO explain why don't need to detect sets
-		if let Event::ReadsReference {
-			reference: other_reference,
-			reflects_dependency: Some(dep),
-			position,
-		} = event
-		{
-			if reference == RootReference::This {
-				return *dep;
-			}
-		}
-	}
-
-	// TODO temp
-	let poly_nature = PolyNature::FreeVariable { reference, based_on: this_ty };
-	let ty = types.register_type(Type::RootPolyType(poly_nature));
-
-	facts.events.push(Event::ReadsReference {
-		reference: RootReference::This,
-		reflects_dependency: Some(ty),
-		position,
-	});
-
-	ty
 }

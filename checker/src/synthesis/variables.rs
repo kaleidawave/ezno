@@ -9,23 +9,19 @@ use parser::{
 use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
 use crate::{
 	behavior::variables::VariableMutability,
-	context::{facts::PublicityKind, Context, ContextType},
+	context::{facts::Publicity, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	synthesis::property_key_as_type,
-	types::Constant,
+	synthesis::parser_property_key_to_checker_property_key,
+	types::{printing::print_type, properties::PropertyKey, Constant},
 	CheckingData, Environment, TypeId,
 };
 
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
 ///
 /// TODO shouldn't return type, for performs...
-pub(crate) fn register_variable<
-	T: crate::ReadFromFS,
-	U: parser::VariableFieldKind,
-	V: ContextType,
->(
+pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKind>(
 	name: &parser::VariableField<U>,
-	environment: &mut Context<V>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	behavior: crate::context::VariableRegisterBehavior,
 	constraint: Option<TypeId>,
@@ -85,13 +81,11 @@ pub(crate) fn register_variable<
 					}
 					ArrayDestructuringField::Name(name, _) => {
 						let property_constraint = constraint.map(|constraint| {
-							let under = checking_data
-								.types
-								.new_constant_type(Constant::Number(NotNan::from(idx as u32)));
+							let under = crate::types::properties::PropertyKey::from_usize(idx);
 							let property_constraint = environment.get_property_unbound(
 								constraint,
-								under,
-								PublicityKind::Public,
+								Publicity::Public,
+								under.clone(),
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -99,12 +93,10 @@ pub(crate) fn register_variable<
 								None => {
 									checking_data.diagnostics_container.add_error(
 										TypeCheckError::PropertyDoesNotExist {
-											property: TypeStringRepresentation::from_type_id(
-												constraint,
-												&environment.as_general_context(),
-												&checking_data.types,
-												false,
-											),
+											property: match under {
+												PropertyKey::String(s) => crate::diagnostics::PropertyRepresentation::StringKey(s.to_string()),
+												PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(print_type(t, &checking_data.types, &environment.as_general_context(), false))
+											},
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
 												&environment.as_general_context(),
@@ -174,12 +166,16 @@ pub(crate) fn register_variable<
 					}
 					ObjectDestructuringField::Map { from, name, default_value, position } => {
 						let property_constraint = constraint.map(|constraint| {
-							let under =
-								property_key_as_type(from, environment, &mut checking_data.types);
+							let under = parser_property_key_to_checker_property_key(
+								from,
+								environment,
+								checking_data,
+							);
 							let property_constraint = environment.get_property_unbound(
 								constraint,
-								under,
-								PublicityKind::Public,
+								Publicity::Public,
+								// TODO different above
+								under.clone(),
 								&checking_data.types,
 							);
 							match property_constraint {
@@ -187,12 +183,10 @@ pub(crate) fn register_variable<
 								None => {
 									checking_data.diagnostics_container.add_error(
 										TypeCheckError::PropertyDoesNotExist {
-											property: TypeStringRepresentation::from_type_id(
-												constraint,
-												&environment.as_general_context(),
-												&checking_data.types,
-												false,
-											),
+											property: match under {
+												PropertyKey::String(s) => crate::diagnostics::PropertyRepresentation::StringKey(s.to_string()),
+												PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(print_type(t, &checking_data.types, &environment.as_general_context(), false))
+											},
 											on: TypeStringRepresentation::from_type_id(
 												constraint,
 												&environment.as_general_context(),
@@ -248,10 +242,15 @@ pub(super) fn synthesise_variable_declaration_item<
 		.map(|(ty, pos)| (*ty, pos.clone()));
 
 	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
-		let value_ty = super::expressions::synthesise_expression(value, environment, checking_data);
+		let value_ty = super::expressions::synthesise_expression(
+			value,
+			environment,
+			checking_data,
+			TypeId::ANY_TYPE,
+		);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
-			crate::check_variable_initialization(
+			crate::behavior::variables::check_variable_initialization(
 				(var_ty, ta_pos),
 				(value_ty, value.get_position().clone().with_source(environment.get_source())),
 				environment,
@@ -281,7 +280,8 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 			let id = crate::VariableId(environment.get_source(), get_position.start);
 			environment.register_initial_variable_declaration_value(id, value);
 			if let Some(mutability) = exported {
-				if let crate::Scope::Module { ref mut exported, .. } = environment.context_type.kind
+				if let crate::Scope::Module { ref mut exported, .. } =
+					environment.context_type.scope
 				{
 					let existing =
 						exported.named.push((name.as_str().to_owned(), (id, mutability)));
@@ -295,9 +295,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				match item {
 					ArrayDestructuringField::Spread(_, _) => todo!(),
 					ArrayDestructuringField::Name(variable_field, _) => {
-						let idx = checking_data
-							.types
-							.new_constant_type(Constant::Number((idx as f64).try_into().unwrap()));
+						let idx = PropertyKey::from_usize(idx);
 
 						let field_position = variable_field
 							.get_position()
@@ -306,8 +304,8 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						let value = environment.get_property(
 							value,
+							Publicity::Public,
 							idx,
-							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
 							field_position,
@@ -339,9 +337,9 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						let id = crate::VariableId(environment.get_source(), get_position.start);
 
 						let key_ty = match name {
-							VariableIdentifier::Standard(name, _) => checking_data
-								.types
-								.new_constant_type(Constant::String(name.clone())),
+							VariableIdentifier::Standard(name, _) => {
+								crate::types::properties::PropertyKey::String(Cow::Borrowed(name))
+							}
 							VariableIdentifier::Cursor(..) => todo!(),
 						};
 
@@ -352,8 +350,8 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						// TODO record information
 						let property = environment.get_property(
 							value,
+							Publicity::Public,
 							key_ty,
-							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
 							get_position_with_source,
@@ -367,6 +365,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 										else_expression,
 										environment,
 										checking_data,
+										TypeId::ANY_TYPE,
 									)
 								} else {
 									// TODO emit error
@@ -378,18 +377,19 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						environment.register_initial_variable_declaration_value(id, value)
 					}
 					ObjectDestructuringField::Map { from, name, default_value, position } => {
-						let key_ty = super::property_key_as_type(
+						let key_ty = super::parser_property_key_to_checker_property_key(
 							from,
 							environment,
-							&mut checking_data.types,
+							checking_data,
 						);
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
 						let property_value = environment.get_property(
 							value,
+							Publicity::Public,
+							// TODO different above
 							key_ty,
-							PublicityKind::Public,
 							&mut checking_data.types,
 							None,
 							position.clone().with_source(environment.get_source()),
@@ -400,7 +400,12 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							None => {
 								// TODO non decidable error
 								if let Some(default_value) = default_value {
-									synthesise_expression(default_value, environment, checking_data)
+									synthesise_expression(
+										default_value,
+										environment,
+										checking_data,
+										TypeId::ANY_TYPE,
+									)
 								} else {
 									// TODO emit error
 									TypeId::ERROR_TYPE

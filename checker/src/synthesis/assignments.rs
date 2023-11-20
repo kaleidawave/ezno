@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ordered_float::NotNan;
 use parser::{
 	ast::LHSOfAssignment, expressions::assignments::VariableOrPropertyAccess, ASTNode,
@@ -6,13 +8,15 @@ use parser::{
 
 use crate::{
 	behavior::assignments::{Assignable, Reference},
-	context::{facts::PublicityKind, Environment},
+	context::{facts::Publicity, Environment},
 	synthesis::expressions::synthesise_expression,
-	types::Constant,
+	types::{properties::PropertyKey, Constant},
 	CheckingData, TypeId,
 };
 
-use super::{expressions::synthesise_multiple_expression, property_key_as_type};
+use super::{
+	expressions::synthesise_multiple_expression, parser_property_key_to_checker_property_key,
+};
 
 pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 	lhs: &LHSOfAssignment,
@@ -25,13 +29,11 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 				.iter()
 				.map(|item| match item.get_ast_ref() {
 					parser::ObjectDestructuringField::Name(name, _, _) => {
-						let on = checking_data.types.new_constant_type(Constant::String(
-							if let VariableIdentifier::Standard(name, _) = name {
-								name.clone()
-							} else {
-								todo!()
-							},
-						));
+						let on = if let VariableIdentifier::Standard(name, _) = name {
+							PropertyKey::String(Cow::Owned(name.clone()))
+						} else {
+							todo!()
+						};
 						(
 							on,
 							synthesise_object_shorthand_assignable(
@@ -51,10 +53,10 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 						// TODO into function
 						match name.get_ast_ref() {
 							parser::VariableField::Name(name) => {
-								let on = property_key_as_type(
+								let on = parser_property_key_to_checker_property_key(
 									from,
 									environment,
-									&mut checking_data.types,
+									checking_data,
 								);
 								let a = synthesise_object_shorthand_assignable(
 									name,
@@ -120,16 +122,17 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			position.clone().with_source(environment.get_source()),
 		),
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
-			let parent_ty = synthesise_expression(&parent, environment, checking_data);
+			let parent_ty =
+				synthesise_expression(&parent, environment, checking_data, TypeId::ANY_TYPE);
 			match property {
 				parser::PropertyReference::Standard { property, is_private } => {
 					let publicity =
-						if *is_private { PublicityKind::Private } else { PublicityKind::Public };
+						if *is_private { Publicity::Private } else { Publicity::Public };
 					Reference::Property {
 						on: parent_ty,
-						with: checking_data
-							.types
-							.new_constant_type(Constant::String(property.clone())),
+						with: crate::types::properties::PropertyKey::String(Cow::Owned(
+							property.clone(),
+						)),
 						span: position.clone().with_source(environment.get_source()),
 						publicity,
 					}
@@ -138,13 +141,22 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			}
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {
-			let parent_ty = synthesise_expression(&indexee, environment, checking_data);
-			let key_ty = synthesise_multiple_expression(&indexer, environment, checking_data);
+			let parent_ty =
+				synthesise_expression(&indexee, environment, checking_data, TypeId::ANY_TYPE);
+			let key_ty = synthesise_multiple_expression(
+				&indexer,
+				environment,
+				checking_data,
+				TypeId::ANY_TYPE,
+			);
 			Reference::Property {
 				on: parent_ty,
-				with: key_ty,
+				with: crate::types::properties::PropertyKey::from_type(
+					key_ty,
+					&checking_data.types,
+				),
 				span: position.clone().with_source(environment.get_source()),
-				publicity: crate::context::facts::PublicityKind::Public,
+				publicity: crate::context::facts::Publicity::Public,
 			}
 		}
 	}

@@ -2,19 +2,39 @@ use std::collections::HashMap;
 
 use source_map::{Span, SpanWithSource};
 
-use crate::{events::RootReference, FunctionId, GenericTypeParameters, TypeId};
+use crate::{
+	behavior::functions::{ClassPropertiesToRegister, FunctionBehavior},
+	context::{
+		environment::{self, FunctionScope},
+		facts::Publicity,
+		Context, ContextType,
+	},
+	events::{Event, RootReference},
+	CheckingData, Environment, Facts, FunctionId, GenericTypeParameters, PropertyValue, Scope,
+	Type, TypeId,
+};
 
+use super::{classes::register_properties_into_environment, TypeStore};
+
+/// This is a mesh of annotation and actually defined functions
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionType {
 	/// Syntax defined pointer
 	pub id: FunctionId,
 
+	pub constant_function: Option<String>,
+
+	/// If async, generator and what to do with `this`
+	pub behavior: FunctionBehavior,
+
 	/// TODO not sure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesisedParameters,
+	/// This is just aesthetic TODO also throw
 	pub return_type: TypeId,
+
 	/// Side effects of the function
-	pub effects: Vec<crate::events::Event>,
+	pub effects: Vec<Event>,
 
 	/// Things that this function pulls in. Converse of closed over which is where results below use
 	/// variables in this scope.
@@ -24,12 +44,86 @@ pub struct FunctionType {
 	///
 	/// The type is the initial value of the closure variable when this is called
 	pub closed_over_variables: HashMap<RootReference, TypeId>,
+}
 
-	/// Can be called for constant result
-	pub constant_id: Option<String>,
+impl FunctionType {
+	pub(crate) fn new_auto_constructor<
+		T: crate::ReadFromFS,
+		M: crate::ASTImplementation,
+		S: ContextType,
+	>(
+		class_prototype: TypeId,
+		properties: ClassPropertiesToRegister<M>,
+		// TODO S overkill
+		context: &mut crate::context::Context<S>,
+		checking_data: &mut CheckingData<T, M>,
+	) -> Self {
+		let scope = Scope::Function(FunctionScope::Constructor {
+			extends: false,
+			type_of_super: None,
+			this_object_type: TypeId::ERROR_TYPE,
+		});
 
-	/// TODO temp
-	pub kind: FunctionKind,
+		let (on, env_data, _) = context.new_lexical_environment_fold_into_parent(
+			scope,
+			checking_data,
+			|environment, checking_data| {
+				let on = create_this_before_function_synthesis(
+					&mut checking_data.types,
+					&mut environment.facts,
+					class_prototype,
+				);
+				if let Scope::Function(FunctionScope::Constructor {
+					ref mut this_object_type,
+					..
+				}) = environment.context_type.scope
+				{
+					*this_object_type = on
+				}
+
+				register_properties_into_environment(environment, on, checking_data, properties);
+				on
+			},
+		);
+		// TODO think Some fine
+		// TODO
+		let behavior =
+			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
+
+		let (events, free_variables) = env_data.unwrap();
+		Self {
+			id: crate::FunctionId::AUTO_CONSTRUCTOR,
+			constant_function: None,
+			type_parameters: None,
+			parameters: SynthesisedParameters::default(),
+			// Only needed for printing
+			return_type: on,
+			effects: events,
+			behavior,
+			// TODO ???
+			free_variables: Default::default(),
+			closed_over_variables: Default::default(),
+		}
+	}
+}
+
+/// For inside the function
+pub(crate) fn create_this_before_function_synthesis(
+	types: &mut TypeStore,
+	facts: &mut Facts,
+	prototype: TypeId,
+) -> TypeId {
+	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
+	crate::utils::notify!("Registered 'this' type as {:?}", ty);
+	let value = Event::CreateObject {
+		referenced_in_scope_as: ty,
+		prototype: crate::events::PrototypeArgument::Yeah(prototype),
+		position: None,
+	};
+	facts.events.push(value);
+
+	ty
 }
 
 /// TODO temp
@@ -38,47 +132,6 @@ pub enum GetSet {
 	Get,
 	Set,
 }
-
-/// TODO as generics
-#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionKind {
-	Arrow,
-	Function {
-		function_prototype: TypeId,
-	},
-	ClassConstructor {
-		// TODO constructor event
-	},
-	Method {
-		/// TODO this should be generically rather than at runtime
-		get_set: Option<GetSet>,
-	},
-}
-
-// /// TODO needs improvement
-// #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-// pub enum FunctionNature {
-// 	BehindPoly {
-// 		/// TODO function id?
-// 		function_id_if_open_poly: Option<FunctionId>,
-// 		state: FunctionState,
-// 	},
-// 	/// Last is 'this' type,
-// 	Source {
-// 		state: FunctionState,
-// 	},
-// 	Reference,
-// }
-
-// impl FunctionNature {
-// 	pub fn get_this_and_closed_variables(self) -> (Option<TypeId>, ClosedOverVariables) {
-// 		match self {
-// 			FunctionNature::BehindPoly { function_id_if_open_poly: _ , state }
-// 			| FunctionNature::Source { state } => (state.value_of_this, state.closed_over_variables),
-// 			FunctionNature::Reference => (None, Default::default()),
-// 		}
-// 	}
-// }
 
 /// Optionality is indicated by what vector it is in [SynthesisedParameters]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -109,54 +162,6 @@ pub struct SynthesisedParameters {
 	pub parameters: Vec<SynthesisedParameter>,
 	pub rest_parameter: Option<SynthesisedRestParameter>,
 }
-
-// impl TypeDisplay for SynthesisedParameters {
-// 	fn fmt(
-// 		&self,
-// 		buf: &mut String,
-// 		indent: usize,
-// 		cycles: &mut std::collections::HashSet<usize>,
-// 		environment: &GeneralContext,
-// 		store: &TypeStore,
-// 	) {
-// 		buf.push('(');
-
-// 		for (at_end, SynthesisedParameter { name, ty: constraint, .. }) in
-// 			self.parameters.iter().endiate()
-// 		{
-// 			buf.push_str(name);
-// 			buf.push_str(": ");
-// 			let constraint_ty = get_on_ctx!(environment.get_type_by_id(*constraint));
-// 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment, store);
-// 			if !at_end || !self.optional_parameters.is_empty() || self.rest_parameter.is_some() {
-// 				buf.push_str(", ");
-// 			}
-// 		}
-
-// 		for (at_end, SynthesisedParameter { name, ty: constraint, .. }) in
-// 			self.optional_parameters.iter().endiate()
-// 		{
-// 			buf.push_str(name);
-// 			buf.push_str("?: ");
-// 			let constraint_ty = get_on_ctx!(environment.get_type_by_id(*constraint));
-// 			TypeDisplay::fmt(constraint, buf, indent, cycles, environment);
-// 			if !at_end || self.rest_parameter.is_some() {
-// 				buf.push_str(", ");
-// 			}
-// 		}
-
-// 		if let Some(synthesisedRestParameter { name, item_type, .. }) = self.rest_parameter.as_ref()
-// 		{
-// 			buf.push_str("...");
-// 			buf.push_str(&name);
-// 			buf.push_str(": ");
-// 			let item_type_ty = get_on_ctx!(environment.get_type_by_id(*item_type));
-// 			TypeDisplay::fmt(item_type, buf, indent, cycles, environment);
-// 		}
-
-// 		buf.push(')')
-// 	}
-// }
 
 impl SynthesisedParameters {
 	// TODO should be aware of undefined in optionals possibly

@@ -8,10 +8,10 @@ use crate::{
 		functions::SynthesisedArgument,
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
-		properties::{get_property, set_property, Property},
+		properties::{get_property, set_property, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
-	Environment, TruthyFalsy, Type,
+	Decidable, Environment, Type,
 };
 
 pub(crate) fn apply_event(
@@ -35,7 +35,7 @@ pub(crate) fn apply_event(
 						match value {
 							Some(ty) => ty,
 							None => {
-								todo!("tdz error");
+								crate::utils::notify!("emit a tdz error");
 								TypeId::ERROR_TYPE
 							}
 						}
@@ -66,11 +66,19 @@ pub(crate) fn apply_event(
 		}
 		Event::Getter { on, under, reflects_dependency, publicity, position } => {
 			let on = substitute(on, type_arguments, environment, types);
-			let property = substitute(under, type_arguments, environment, types);
+			let under = match under {
+				crate::types::properties::PropertyKey::Type(under) => {
+					let ty = substitute(under, type_arguments, environment, types);
+					crate::types::properties::PropertyKey::from_type(ty, &types)
+				}
+				under => under,
+			};
 
 			let (_, value) =
-				get_property(on, under, publicity, None, environment, target, types, position)
-					.expect("Inferred constraints and checking failed");
+				get_property(on, publicity, under, None, environment, target, types, position)
+					.expect(
+						"Inferred or checking failed, could not get property when getting property",
+					);
 
 			if let Some(id) = reflects_dependency {
 				type_arguments.set_id_from_reference(id, value, types);
@@ -86,17 +94,26 @@ pub(crate) fn apply_event(
 			position,
 		} => {
 			let on = substitute(on, type_arguments, environment, types);
-			let under = substitute(under, type_arguments, environment, types);
+			let under = match under {
+				crate::types::properties::PropertyKey::Type(under) => {
+					let ty = substitute(under, type_arguments, environment, types);
+					crate::types::properties::PropertyKey::from_type(ty, &types)
+				}
+				under => under,
+			};
 
 			let new = match new {
-				Property::Value(new) => {
-					Property::Value(substitute(new, type_arguments, environment, types))
+				PropertyValue::Value(new) => {
+					PropertyValue::Value(substitute(new, type_arguments, environment, types))
 				}
 				// For declare property
-				Property::Getter(_) => todo!(),
-				Property::Setter(_) => todo!(),
-				Property::GetterAndSetter(_, _) => todo!(),
-				Property::Deleted => todo!(),
+				PropertyValue::Getter(_) => todo!(),
+				PropertyValue::Setter(_) => todo!(),
+				// TODO this might be a different thing at some point
+				PropertyValue::Deleted => {
+					environment.delete_property(on, under);
+					return None;
+				}
 			};
 
 			let gc = environment.as_general_context();
@@ -126,10 +143,10 @@ pub(crate) fn apply_event(
 					};
 				target
 					.get_top_level_facts(environment)
-					.register_property(on, under, new, true, publicity, position);
+					.register_property(on, publicity, under, new, true, position);
 			} else {
 				let returned =
-					set_property(on, under, publicity, new, environment, target, types, position)
+					set_property(on, publicity, under, new, environment, target, types, position)
 						.unwrap();
 
 				if let Some(id) = reflects_dependency {
@@ -216,26 +233,54 @@ pub(crate) fn apply_event(
 		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
-			if let TruthyFalsy::Decidable(result) = is_type_truthy_falsy(condition, types) {
+			if let Decidable::Known(result) = is_type_truthy_falsy(condition, types) {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
 				for event in to_evaluate.iter().cloned() {
-					apply_event(event, this_value, type_arguments, environment, target, types);
+					if let Some(early) =
+						apply_event(event, this_value, type_arguments, environment, target, types)
+					{
+						return Some(early);
+					}
 				}
 			} else {
 				// TODO early returns
 
 				// TODO could inject proofs but probably already worked out
-				let truthy_facts = target.new_conditional_target(|target: &mut Target| {
-					for event in events_if_truthy.into_vec() {
-						apply_event(event, this_value, type_arguments, environment, target, types);
-					}
-				});
+				let (truthy_facts, _early_return) =
+					target.new_conditional_target(|target: &mut Target| {
+						for event in events_if_truthy.into_vec() {
+							if let Some(early) = apply_event(
+								event,
+								this_value,
+								type_arguments,
+								environment,
+								target,
+								types,
+							) {
+								return Some(early);
+							}
+						}
+						None
+					});
 
-				let mut else_facts = target.new_conditional_target(|target: &mut Target| {
-					for event in else_events.into_vec() {
-						apply_event(event, this_value, type_arguments, environment, target, types);
-					}
-				});
+				let (mut else_facts, _early_return) =
+					target.new_conditional_target(|target: &mut Target| {
+						for event in else_events.into_vec() {
+							if let Some(early) = apply_event(
+								event,
+								this_value,
+								type_arguments,
+								environment,
+								target,
+								types,
+							) {
+								return Some(early);
+							}
+						}
+						None
+					});
+
+				// TODO early return
 
 				// crate::utils::notify!("TF {:?}\n EF {:?}", truthy_facts, else_facts);
 
@@ -265,19 +310,14 @@ pub(crate) fn apply_event(
 		}
 		Event::Return { returned, returned_position } => {
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
-
 			if substituted_returned != TypeId::ERROR_TYPE {
 				return Some(substituted_returned);
 			} else {
 				crate::utils::notify!("event returned error so skipped");
 			}
 		}
-
 		// TODO Needs a position (or not?)
 		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
-			// TODO only if exposed via set
-
-			// TODO
 			let is_under_dyn = true;
 
 			let new_object_id = match prototype {
@@ -297,8 +337,7 @@ pub(crate) fn apply_event(
 				}
 			};
 
-			// let new_object_id_with_curried_arguments =  new_object_id;
-			// TODO conditionally
+			// TODO conditionally if any properties are structurally generic
 			let new_object_id_with_curried_arguments =
 				curry_arguments(type_arguments, types, new_object_id);
 
