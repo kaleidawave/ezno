@@ -114,7 +114,7 @@ impl Module {
 		let mut chain = temporary_annex::Annex::new(&mut chain);
 
 		{
-			visitors.visit_block(&mut crate::block::BlockLike { items: &self.items }, data, &chain);
+			visitors.visit_block(&crate::block::BlockLike { items: &self.items }, data, &chain);
 		}
 
 		let iter = self.items.iter();

@@ -30,7 +30,7 @@ impl ThisValue {
 	pub(crate) fn get(
 		&self,
 		environment: &mut Environment,
-		types: &mut TypeStore,
+		types: &TypeStore,
 		position: SpanWithSource,
 	) -> TypeId {
 		match self {

@@ -69,7 +69,7 @@ pub(crate) fn apply_event(
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
-					crate::types::properties::PropertyKey::from_type(ty, &types)
+					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
 				under => under,
 			};
@@ -97,7 +97,7 @@ pub(crate) fn apply_event(
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
-					crate::types::properties::PropertyKey::from_type(ty, &types)
+					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
 				under => under,
 			};

@@ -106,10 +106,6 @@ impl DiagnosticsContainer {
 		self.diagnostics.iter().flat_map(|item| item.sources())
 	}
 
-	pub fn into_iter(self) -> impl DoubleEndedIterator<Item = Diagnostic> {
-		self.diagnostics.into_iter()
-	}
-
 	#[doc(hidden)]
 	pub fn get_diagnostics(self) -> Vec<Diagnostic> {
 		self.diagnostics
@@ -121,6 +117,16 @@ impl DiagnosticsContainer {
 		} else {
 			Ok(self)
 		}
+	}
+}
+
+impl IntoIterator for DiagnosticsContainer {
+	type Item = Diagnostic;
+
+	type IntoIter = std::vec::IntoIter<Diagnostic>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.diagnostics.into_iter()
 	}
 }
 
@@ -284,7 +290,7 @@ mod defined_errors_and_warnings {
 	impl From<TypeCheckError<'_>> for Diagnostic {
 		fn from(error: TypeCheckError<'_>) -> Self {
 			let kind = super::DiagnosticKind::Error;
-			let diagnostic = match error {
+			match error {
 				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
@@ -590,8 +596,7 @@ mod defined_errors_and_warnings {
 					position,
 					kind,
 				}
-			};
-			diagnostic
+			}
 		}
 	}
 

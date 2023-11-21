@@ -78,10 +78,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					let items = match &import.items {
 						parser::declarations::import::ImportedItems::Parts(parts) => {
 							crate::behavior::modules::ImportKind::Parts(
-								parts
-									.iter()
-									.flatten()
-									.filter_map(|item| import_part_to_name_pair(item)),
+								parts.iter().flatten().filter_map(import_part_to_name_pair),
 							)
 						}
 						parser::declarations::import::ImportedItems::All { under } => match under {
@@ -103,7 +100,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						}
 					});
 					environment.import_items(
-						&import.from.get_path().unwrap(),
+						import.from.get_path().unwrap(),
 						import.position.clone(),
 						default_import,
 						items,
@@ -134,8 +131,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								)
 							}
 							Exportable::ImportParts { parts, from, .. } => {
-								let parts =
-									parts.iter().filter_map(|item| export_part_to_name_pair(item));
+								let parts = parts.iter().filter_map(export_part_to_name_pair);
 
 								environment.import_items(
 									from.get_path().unwrap(),
@@ -308,7 +304,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 							Exportable::Variable(declaration) => {
 								// TODO mark exported
-								hoist_variable_declaration(&declaration, environment, checking_data)
+								hoist_variable_declaration(declaration, environment, checking_data)
 							}
 							Exportable::Interface(interface) => {
 								let ty = idx_to_types.remove(&interface.position.start).unwrap();
@@ -402,7 +398,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 	match item {
 		parser::declarations::ImportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: &name, r#as: &name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: position.clone() })
 			} else {
 				None
 			}
@@ -414,12 +410,12 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
 					_ => todo!(),
 				},
-				r#as: &name,
+				r#as: name,
 				position: position.clone(),
 			})
 		}
 		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
-			item.as_deref().map(import_part_to_name_pair).flatten()
+			item.as_deref().and_then(import_part_to_name_pair)
 		}
 		parser::declarations::ImportPart::PostfixComment(item, _, _) => {
 			import_part_to_name_pair(item)
@@ -433,14 +429,14 @@ pub(super) fn export_part_to_name_pair(
 	match item {
 		parser::declarations::export::ExportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: &name, r#as: &name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: position.clone() })
 			} else {
 				None
 			}
 		}
 		parser::declarations::export::ExportPart::NameWithAlias { name, alias, position } => {
 			Some(NamePair {
-				value: &name,
+				value: name,
 				r#as: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
@@ -450,7 +446,7 @@ pub(super) fn export_part_to_name_pair(
 			})
 		}
 		parser::declarations::export::ExportPart::PrefixComment(_, item, _) => {
-			item.as_deref().map(export_part_to_name_pair).flatten()
+			item.as_deref().and_then(export_part_to_name_pair)
 		}
 		parser::declarations::export::ExportPart::PostfixComment(item, _, _) => {
 			export_part_to_name_pair(item)

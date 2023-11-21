@@ -110,7 +110,7 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		options: &Self::ParseOptions,
 	) -> Result<Self::Module, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
+		<parser::Module as parser::ASTNode>::from_string(string, *options, source_id, None)
 			.map_err(|err| (err, source_id))
 	}
 

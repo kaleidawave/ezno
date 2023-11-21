@@ -24,7 +24,7 @@ pub struct TypeStore {
 	// pub(crate) proxies: HashMap<TypeId, Proxy>,
 	pub(crate) specialisations: HashMap<TypeId, Vec<TypeId>>,
 
-	/// TODO not best place	but is passed through everything so
+	/// TODO not best place but is passed through everything so
 	pub(crate) closure_counter: u32,
 }
 

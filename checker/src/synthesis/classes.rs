@@ -53,13 +53,9 @@ pub(super) fn synthesise_class_declaration<
 		// let class_type = checking_data.types.register_type(ty);
 	}
 
-	let extends = if let Some(ref extends) = class.extends {
-		// TODO temp
-		// let expecting = TypeId::ANY_TYPE;
-		Some(synthesise_expression(&**extends, environment, checking_data, TypeId::ANY_TYPE))
-	} else {
-		None
-	};
+	let extends = class.extends.as_ref().map(|extends| {
+		synthesise_expression(extends, environment, checking_data, TypeId::ANY_TYPE)
+	});
 
 	// TODO prototype of extends
 	let class_prototype =
@@ -214,7 +210,7 @@ pub(super) fn synthesise_class_declaration<
 				};
 				let value = if let Some(ref value) = property.value {
 					let expecting = TypeId::ANY_TYPE;
-					synthesise_expression(&**value, environment, checking_data, expecting)
+					synthesise_expression(value, environment, checking_data, expecting)
 				} else {
 					TypeId::UNDEFINED_TYPE
 				};

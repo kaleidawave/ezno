@@ -273,12 +273,12 @@ pub fn lex_script(
 								&& !(*fractional || script[..idx].ends_with('_'))
 							{
 								*literal_type = NumberLiteralType::Exponent;
-							} else if !matches!(chr, '0'..='9') {
+							} else if !chr.is_ascii_digit() {
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}
 						NumberLiteralType::Exponent => {
-							if !matches!(chr, '0'..='9') {
+							if !chr.is_ascii_digit() {
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}

@@ -45,7 +45,7 @@ pub(crate) fn call_constant_function(
 				arguments
 					.last()
 					.ok_or(ConstantFunctionError::BadCall)?
-					.into_type()
+					.to_type()
 					.map_err(|_| ConstantFunctionError::BadCall)?,
 			);
 
@@ -114,7 +114,7 @@ pub(crate) fn call_constant_function(
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
-				.into_type()
+				.to_type()
 				.map_err(|_| ConstantFunctionError::BadCall)?;
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
@@ -123,7 +123,7 @@ pub(crate) fn call_constant_function(
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
-				.into_type()
+				.to_type()
 				.map_err(|_| ConstantFunctionError::BadCall)?;
 			if let Type::Function(func, _) | Type::FunctionReference(func, _) =
 				types.get_type_by_id(ty)
@@ -145,7 +145,7 @@ pub(crate) fn call_constant_function(
 				Some(this_ty),
 			) = (on, first_argument)
 			{
-				let type_id = this_ty.into_type().map_err(|_| ConstantFunctionError::BadCall)?;
+				let type_id = this_ty.to_type().map_err(|_| ConstantFunctionError::BadCall)?;
 				let value = types.register_type(Type::Function(*func, ThisValue::Passed(type_id)));
 				Ok(ConstantOutput::Value(value))
 			} else {
@@ -157,7 +157,7 @@ pub(crate) fn call_constant_function(
 				let prototype = environment
 					.facts
 					.prototypes
-					.insert(first.into_type().unwrap(), second.into_type().unwrap());
+					.insert(first.to_type().unwrap(), second.to_type().unwrap());
 				// TODO
 				Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE))
 			} else {
@@ -170,7 +170,7 @@ pub(crate) fn call_constant_function(
 				let prototype = environment
 					.facts
 					.prototypes
-					.get(&first.into_type().unwrap())
+					.get(&first.to_type().unwrap())
 					.cloned()
 					.unwrap_or(TypeId::NULL_TYPE);
 				Ok(ConstantOutput::Value(prototype))
@@ -183,8 +183,8 @@ pub(crate) fn call_constant_function(
 				// TODO checking for both, what about spreading
 				let value = types.register_type(Type::SpecialObject(
 					crate::behavior::objects::SpecialObjects::Proxy {
-						handler: trap.into_type().expect("single type"),
-						over: object.into_type().expect("single type"),
+						handler: trap.to_type().expect("single type"),
+						over: object.to_type().expect("single type"),
 					},
 				));
 				Ok(ConstantOutput::Value(value))
@@ -196,7 +196,7 @@ pub(crate) fn call_constant_function(
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
-				.into_type()
+				.to_type()
 				.map_err(|_| ConstantFunctionError::BadCall)?;
 			// TODO temp!!!
 			let arg = call_site_type_args
@@ -234,7 +234,7 @@ pub(crate) fn call_constant_function(
 					arguments
 						.first()
 						.ok_or(ConstantFunctionError::BadCall)?
-						.into_type()
+						.to_type()
 						.map_err(|_| ConstantFunctionError::BadCall)?
 				)
 				.is_dependent()

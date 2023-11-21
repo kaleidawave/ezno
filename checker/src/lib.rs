@@ -519,12 +519,9 @@ impl TypeCombinable for () {
 		_else_result: Self,
 		_types: &mut TypeStore,
 	) -> Self {
-		()
 	}
 
-	fn default() -> Self {
-		()
-	}
+	fn default() -> Self {}
 }
 
 // For ternary conditional operators

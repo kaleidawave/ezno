@@ -100,8 +100,8 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 
 fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	checking_data: &CheckingData<T, super::EznoParser>,
+	environment: &crate::context::Context<crate::context::Syntax<'_>>,
 ) -> Assignable {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
@@ -123,7 +123,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		),
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
 			let parent_ty =
-				synthesise_expression(&parent, environment, checking_data, TypeId::ANY_TYPE);
+				synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
 			match property {
 				parser::PropertyReference::Standard { property, is_private } => {
 					let publicity =
@@ -142,9 +142,9 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {
 			let parent_ty =
-				synthesise_expression(&indexee, environment, checking_data, TypeId::ANY_TYPE);
+				synthesise_expression(indexee, environment, checking_data, TypeId::ANY_TYPE);
 			let key_ty = synthesise_multiple_expression(
-				&indexer,
+				indexer,
 				environment,
 				checking_data,
 				TypeId::ANY_TYPE,

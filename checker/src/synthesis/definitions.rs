@@ -154,6 +154,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}) => {
 				let TypeDeclaration { name, type_parameters, .. } = &type_name;
 
+				// To remove when implementing
+				#[allow(clippy::redundant_pattern_matching)]
 				if let Some(_) = type_parameters {
 					todo!()
 				// let ty = if let Some(type_parameters) = type_parameters {
@@ -217,7 +219,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	(Names { named_types, variable_names, variables }, facts)
 }
 
-pub(crate) fn decorators_to_context(decorators: &Vec<parser::Decorator>) -> Option<String> {
+pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
 		if dec.name.first() == Some(&"server".to_owned()) {
 			Some("server".to_owned())

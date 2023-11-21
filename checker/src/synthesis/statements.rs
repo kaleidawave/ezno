@@ -107,7 +107,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment.new_conditional_context(
 					condition,
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-						synthesise_block_or_single_statement(&current.1, env, data)
+						synthesise_block_or_single_statement(current.1, env, data)
 					},
 					if !others.is_empty() || last.is_some() {
 						Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {

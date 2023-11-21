@@ -48,8 +48,7 @@ impl Exported {
 		self.named
 			.iter()
 			.find_map(|(export, value)| {
-				(export == want)
-					.then_some(TypeOrVariable::ExportedVariable((value.0, value.1.clone())))
+				(export == want).then_some(TypeOrVariable::ExportedVariable((value.0, value.1)))
 			})
 			.or_else(|| {
 				self.named_types.iter().find_map(|(export, value)| {

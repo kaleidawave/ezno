@@ -25,7 +25,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 	for (idx, statement) in statements.iter().enumerate() {
 		match statement {
 			StatementOrDeclaration::Statement(statement) => {
-				let statement_result = synthesise_statement(statement, environment, checking_data);
+				synthesise_statement(statement, environment, checking_data);
 
 				// TODO Statement::is_control_flow ...?
 				if let Statement::Return(..) | Statement::Break(..) | Statement::Continue(..) =

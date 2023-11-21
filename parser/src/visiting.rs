@@ -282,6 +282,10 @@ mod structures {
 			self.0.len()
 		}
 
+		pub fn is_empty(&self) -> bool {
+			self.0.is_empty()
+		}
+
 		pub fn truncate(&mut self, to_size: usize) {
 			self.0.truncate(to_size)
 		}

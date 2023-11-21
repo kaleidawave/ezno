@@ -57,7 +57,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	};
 
 	let definitions = if let Some(tdm) = type_definition_module {
-		HashSet::from_iter(std::iter::once(tdm.into()))
+		HashSet::from_iter(std::iter::once(tdm))
 	} else {
 		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
 	};
@@ -79,7 +79,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	loop {
 		let input = cli_input_resolver("");
 		let input = if let Some(input) = input {
-			if input.len() == 0 {
+			if input.is_empty() {
 				continue;
 			} else if input.trim() == "close()" {
 				if let Some((_process, stdin, _child_buf)) = items.as_mut() {
@@ -157,10 +157,8 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 							}
 						}
 					}
-				} else {
-					if let Some(last_ty) = last_ty {
-						println!("{last_ty}");
-					}
+				} else if let Some(last_ty) = last_ty {
+					println!("{last_ty}");
 				}
 			}
 			Err(diagnostics) => {
