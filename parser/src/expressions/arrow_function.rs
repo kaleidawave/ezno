@@ -107,6 +107,24 @@ impl FunctionBased for ArrowFunctionBase {
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		header.as_ref().map(|kw| kw.get_position().get_start())
 	}
+
+	fn visit_name<TData>(
+		_: &Self::Name,
+		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
+
+	fn visit_name_mut<TData>(
+		_: &mut Self::Name,
+		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
 }
 
 impl ArrowFunction {

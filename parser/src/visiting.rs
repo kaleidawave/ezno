@@ -1,7 +1,7 @@
 use source_map::SourceId;
 
 use crate::{
-	ArrayDestructuringField, Expression, JSXElement, ObjectDestructuringField, PropertyKey,
+	ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey,
 	StatementOrDeclaration, WithComment,
 };
 
@@ -21,7 +21,7 @@ mod ast {
 
 	/// Options for behavior when visiting AST.
 	/// Customizable behavior is important for analysis
-	pub struct VisitSettings {
+	pub struct VisitOptions {
 		/// Visits statements in reverse,
 		/// e.g
 		/// ```ts
@@ -30,13 +30,12 @@ mod ast {
 		/// ```
 		/// If `reverse_statements` is true will visit the `const y = 3` statement first
 		pub reverse_statements: bool,
-		/// Will not visit parameters and statements in functions. This includes arrow functions
-		pub visit_function_bodies: bool,
+		pub visit_nested_blocks: bool,
 	}
 
-	impl Default for VisitSettings {
+	impl Default for VisitOptions {
 		fn default() -> Self {
-			Self { reverse_statements: false, visit_function_bodies: true }
+			Self { reverse_statements: false, visit_nested_blocks: true }
 		}
 	}
 
@@ -52,11 +51,11 @@ mod ast {
 	pub trait SelfVisitableMut {}
 
 	mark_items! {
-		impl SelfVisitable for Expression, StatementOrDeclarationRef<'_>, BlockLike<'_>, JSXElement, ImmutableVariableOrPropertyPart<'_>
+		impl SelfVisitable for Expression, StatementOrDeclarationRef<'_>, BlockLike<'_>, ImmutableVariableOrProperty<'_>
 	}
 
 	mark_items! {
-		impl SelfVisitableMut for Expression, StatementOrDeclarationMut<'_>, BlockLikeMut<'_>, JSXElement, MutableVariablePart<'_>
+		impl SelfVisitableMut for Expression, StatementOrDeclarationMut<'_>, BlockLikeMut<'_>, MutableVariableOrProperty<'_>
 	}
 
 	/// For something to visitable it can visit all nested fields.
@@ -65,7 +64,7 @@ mod ast {
 			&self,
 			visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 			data: &mut TData,
-			options: &VisitSettings,
+			options: &VisitOptions,
 			chain: &mut Annex<Chain>,
 		);
 
@@ -73,7 +72,7 @@ mod ast {
 			&mut self,
 			visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			data: &mut TData,
-			options: &VisitSettings,
+			options: &VisitOptions,
 			chain: &mut Annex<Chain>,
 		);
 	}
@@ -84,7 +83,7 @@ mod ast {
 			&self,
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			Visitable::visit(&**self, v, d, s, c)
@@ -94,7 +93,7 @@ mod ast {
 			&mut self,
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			Visitable::visit_mut(&mut **self, v, d, s, c)
@@ -106,7 +105,7 @@ mod ast {
 			&self,
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			self.iter().for_each(|item| item.visit(v, d, s, c));
@@ -116,7 +115,7 @@ mod ast {
 			&mut self,
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			self.iter_mut().for_each(|item| item.visit_mut(v, d, s, c));
@@ -128,7 +127,7 @@ mod ast {
 			&self,
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			if let Some(item) = self {
@@ -140,7 +139,7 @@ mod ast {
 			&mut self,
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			if let Some(item) = self {
@@ -154,7 +153,7 @@ mod ast {
 			&self,
 			v: &mut (impl VisitorReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			self.0.visit(v, d, s, c);
@@ -165,7 +164,7 @@ mod ast {
 			&mut self,
 			v: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 			d: &mut TData,
-			s: &VisitSettings,
+			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
 			self.0.visit_mut(v, d, s, c);
@@ -181,7 +180,7 @@ mod ast {
                         &self,
                         _visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
                         _data: &mut TData,
-                        _options: &VisitSettings,
+                        _options: &VisitOptions,
                         _chain: &mut Annex<Chain>,
                     ) {}
 
@@ -189,7 +188,7 @@ mod ast {
                         &mut self,
                         _visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
                         _data: &mut TData,
-                        _options: &VisitSettings,
+                        _options: &VisitOptions,
                         _chain: &mut Annex<Chain>,
                     ) {}
                 }
@@ -240,8 +239,8 @@ mod ast {
 		crate::Quoted,
 		crate::declarations::ImportExportName,
 		crate::declarations::ImportLocation,
-		crate::PropertyKey<crate::property_key::AlwaysPublic>,
-		crate::PropertyKey<crate::property_key::PublicOrPrivate>
+		crate::functions::FunctionHeader,
+		crate::functions::MethodHeader
 	];
 }
 
@@ -249,7 +248,7 @@ mod ast {
 mod structures {
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		Declaration, Statement, VariableFieldInSourceCode,
+		Declaration, Statement, VariableFieldInSourceCode, VariableIdentifier,
 	};
 
 	use super::*;
@@ -322,24 +321,8 @@ mod structures {
 		}
 	}
 
-	/// TODO these may go
 	#[derive(Debug)]
-	pub enum MutableVariablePart<'a> {
-		VariableFieldName(&'a mut String),
-		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
-		ClassName(Option<&'a mut String>),
-		FunctionName(&'a mut String),
-		ClassPropertyKey(&'a mut WithComment<PropertyKey<PublicOrPrivate>>),
-		ObjectPropertyKey(&'a mut WithComment<PropertyKey<AlwaysPublic>>),
-	}
-
-	/// TODO these may go
-	#[derive(Debug)]
-	pub enum ImmutableVariableOrPropertyPart<'a> {
+	pub enum ImmutableVariableOrProperty<'a> {
 		// TODO maybe WithComment on some of these
 		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
@@ -347,33 +330,51 @@ mod structures {
 		ObjectDestructuringMember(
 			&'a WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
 		),
-		ClassName(Option<&'a str>, &'a Span),
-		FunctionName(&'a str, &'a Span),
+		ClassName(Option<&'a VariableIdentifier>),
+		FunctionName(Option<&'a VariableIdentifier>),
 		ClassPropertyKey(&'a WithComment<PropertyKey<PublicOrPrivate>>),
 		ObjectPropertyKey(&'a WithComment<PropertyKey<AlwaysPublic>>),
 	}
 
-	impl<'a> ImmutableVariableOrPropertyPart<'a> {
-		pub fn get_name(&self) -> Option<&'a str> {
+	#[derive(Debug)]
+	pub enum MutableVariableOrProperty<'a> {
+		VariableFieldName(&'a mut String),
+		// TODO these should maybe only be the spread variables
+		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
+		ObjectDestructuringMember(
+			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
+		),
+		ClassName(Option<&'a mut VariableIdentifier>),
+		FunctionName(Option<&'a mut VariableIdentifier>),
+		ClassPropertyKey(&'a mut WithComment<PropertyKey<PublicOrPrivate>>),
+		ObjectPropertyKey(&'a mut WithComment<PropertyKey<AlwaysPublic>>),
+	}
+
+	impl<'a> ImmutableVariableOrProperty<'a> {
+		pub fn get_variable_name(&self) -> Option<&'a str> {
 			match self {
-				ImmutableVariableOrPropertyPart::FunctionName(name, _)
-				| ImmutableVariableOrPropertyPart::VariableFieldName(name, _) => Some(name),
-				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(_)
-				| ImmutableVariableOrPropertyPart::ObjectDestructuringMember(_) => None,
-				ImmutableVariableOrPropertyPart::ClassName(name, _) => *name,
-				ImmutableVariableOrPropertyPart::ObjectPropertyKey(property) => {
-					match property.get_ast_ref() {
-						PropertyKey::Ident(ident, _, _)
-						| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
-						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
-					}
+				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
+				ImmutableVariableOrProperty::ArrayDestructuringMember(_)
+				| ImmutableVariableOrProperty::ObjectDestructuringMember(_) => None,
+				ImmutableVariableOrProperty::FunctionName(name)
+				| ImmutableVariableOrProperty::ClassName(name) => name.map(|n| n.as_str()),
+				ImmutableVariableOrProperty::ObjectPropertyKey(_property) => {
+					// Just want variable names
+					None
+					// match property.get_ast_ref() {
+					// 	PropertyKey::Ident(ident, _, _)
+					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
+					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
+					// }
 				}
-				ImmutableVariableOrPropertyPart::ClassPropertyKey(property) => {
-					match property.get_ast_ref() {
-						PropertyKey::Ident(ident, _, _)
-						| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
-						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
-					}
+				ImmutableVariableOrProperty::ClassPropertyKey(_property) => {
+					// Just want variable names
+					None
+					// match property.get_ast_ref() {
+					// 	PropertyKey::Ident(ident, _, _)
+					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
+					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
+					// }
 				}
 			}
 		}
@@ -381,21 +382,16 @@ mod structures {
 		pub fn get_position(&self) -> &Span {
 			use crate::ASTNode;
 			match self {
-				ImmutableVariableOrPropertyPart::FunctionName(_, pos)
-				| ImmutableVariableOrPropertyPart::ClassName(_, pos)
-				| ImmutableVariableOrPropertyPart::VariableFieldName(_, pos) => pos,
-				ImmutableVariableOrPropertyPart::ArrayDestructuringMember(member) => {
-					member.get_position()
-				}
-				ImmutableVariableOrPropertyPart::ObjectDestructuringMember(member) => {
-					member.get_position()
-				}
-				ImmutableVariableOrPropertyPart::ClassPropertyKey(property_key) => {
-					property_key.get_position()
-				}
-				ImmutableVariableOrPropertyPart::ObjectPropertyKey(property_key) => {
-					property_key.get_position()
-				}
+				ImmutableVariableOrProperty::FunctionName(pos)
+				| ImmutableVariableOrProperty::ClassName(pos) => match pos {
+					Some(p) => p.get_position(),
+					None => &Span::NULL_SPAN,
+				},
+				ImmutableVariableOrProperty::VariableFieldName(_, pos) => pos,
+				ImmutableVariableOrProperty::ArrayDestructuringMember(m) => m.get_position(),
+				ImmutableVariableOrProperty::ObjectDestructuringMember(m) => m.get_position(),
+				ImmutableVariableOrProperty::ClassPropertyKey(k) => k.get_position(),
+				ImmutableVariableOrProperty::ObjectPropertyKey(k) => k.get_position(),
 			}
 		}
 	}
@@ -484,11 +480,9 @@ mod visitors {
 		) {
 		}
 
-		fn visit_jsx_element(&mut self, element: &JSXElement, data: &mut T, chain: &Chain) {}
-
 		fn visit_variable(
 			&mut self,
-			variable: &ImmutableVariableOrPropertyPart,
+			variable: &ImmutableVariableOrProperty,
 			data: &mut T,
 			chain: &Chain,
 		) {
@@ -513,15 +507,9 @@ mod visitors {
 			self.statement_visitors.iter_mut().for_each(|vis| vis.visit(&statement, data, chain));
 		}
 
-		fn visit_jsx_element(&mut self, jsx_element: &JSXElement, data: &mut T, chain: &Chain) {
-			self.jsx_element_visitors
-				.iter_mut()
-				.for_each(|vis| vis.visit(jsx_element, data, chain));
-		}
-
 		fn visit_variable(
 			&mut self,
-			variable: &ImmutableVariableOrPropertyPart,
+			variable: &ImmutableVariableOrProperty,
 			data: &mut T,
 			chain: &Chain,
 		) {
@@ -538,13 +526,13 @@ mod visitors {
 
 	type ExpressionVisitor<T> = Box<dyn Visitor<Expression, T>>;
 	type StatementVisitor<T> = Box<dyn for<'a> Visitor<StatementOrDeclarationRef<'a>, T>>;
-	type VariableVisitor<T> = Box<dyn for<'a> Visitor<ImmutableVariableOrPropertyPart<'a>, T>>;
+	type VariableVisitor<T> = Box<dyn for<'a> Visitor<ImmutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> Visitor<BlockLike<'a>, T>>;
+
 	#[derive(Default)]
 	pub struct Visitors<T> {
 		pub expression_visitors: Vec<ExpressionVisitor<T>>,
 		pub statement_visitors: Vec<StatementVisitor<T>>,
-		pub jsx_element_visitors: Vec<Box<dyn Visitor<JSXElement, T>>>,
 		pub variable_visitors: Vec<VariableVisitor<T>>,
 		pub block_visitors: Vec<BlockVisitor<T>>,
 	}
@@ -611,12 +599,9 @@ mod visitors_mut {
 		) {
 		}
 
-		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
-		}
-
 		fn visit_variable_mut(
 			&mut self,
-			variable: &mut MutableVariablePart,
+			variable: &mut MutableVariableOrProperty,
 			data: &mut T,
 			chain: &Chain,
 		) {
@@ -626,13 +611,12 @@ mod visitors_mut {
 	}
 
 	type StatementVisitor<T> = Box<dyn for<'a> VisitorMut<StatementOrDeclarationMut<'a>, T>>;
-	type VariableVisitor<T> = Box<dyn for<'a> VisitorMut<MutableVariablePart<'a>, T>>;
+	type VariableVisitor<T> = Box<dyn for<'a> VisitorMut<MutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>;
 
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
 		pub statement_visitors_mut: Vec<StatementVisitor<T>>,
-		pub jsx_element_visitors_mut: Vec<Box<dyn VisitorMut<JSXElement, T>>>,
 		pub variable_visitors_mut: Vec<VariableVisitor<T>>,
 		pub block_visitors_mut: Vec<BlockVisitor<T>>,
 	}
@@ -642,7 +626,6 @@ mod visitors_mut {
 			Self {
 				expression_visitors_mut: Default::default(),
 				statement_visitors_mut: Default::default(),
-				jsx_element_visitors_mut: Default::default(),
 				variable_visitors_mut: Default::default(),
 				block_visitors_mut: Default::default(),
 			}
@@ -672,15 +655,9 @@ mod visitors_mut {
 				.for_each(|vis| vis.visit_mut(&mut statement, data, chain));
 		}
 
-		fn visit_jsx_element_mut(&mut self, element: &mut JSXElement, data: &mut T, chain: &Chain) {
-			self.jsx_element_visitors_mut
-				.iter_mut()
-				.for_each(|vis| vis.visit_mut(element, data, chain));
-		}
-
 		fn visit_variable_mut(
 			&mut self,
-			variable: &mut MutableVariablePart,
+			variable: &mut MutableVariableOrProperty,
 			data: &mut T,
 			chain: &Chain,
 		) {

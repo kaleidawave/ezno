@@ -1,6 +1,6 @@
 use ezno_parser::{
 	statements::UnconditionalElseStatement,
-	visiting::{Chain, StatementOrDeclarationMut, VisitSettings, VisitorMut, VisitorsMut},
+	visiting::{Chain, StatementOrDeclarationMut, VisitOptions, VisitorMut, VisitorsMut},
 	ASTNode, Expression, Module, SourceId, Span, Statement, ToStringOptions,
 };
 use pretty_assertions::assert_eq;
@@ -22,11 +22,10 @@ fn visiting() {
 	let mut visitors = VisitorsMut {
 		expression_visitors_mut: vec![Box::new(MakeStringsUppercase)],
 		statement_visitors_mut: vec![Box::new(AddElseClause)],
-		jsx_element_visitors_mut: Default::default(),
 		variable_visitors_mut: Default::default(),
 		block_visitors_mut: Default::default(),
 	};
-	module.visit_mut(&mut visitors, &mut (), &VisitSettings::default());
+	module.visit_mut(&mut visitors, &mut (), &VisitOptions::default());
 
 	let output = module.to_string(&ToStringOptions::minified());
 

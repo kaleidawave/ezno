@@ -49,7 +49,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		self.get_ast_ref().visit(visitors, data, options, chain)
@@ -59,7 +59,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		self.get_ast_mut().visit_mut(visitors, data, options, chain)

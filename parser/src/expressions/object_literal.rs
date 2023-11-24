@@ -5,9 +5,13 @@ use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, functions::FunctionBased, property_key::AlwaysPublic,
-	throw_unexpected_token_with_token, ASTNode, Block, Expression, FunctionBase, MethodHeader,
-	ParseOptions, ParseResult, PropertyKey, Span, TSXToken, Token, TokenReader, WithComment,
+	errors::parse_lexing_error,
+	functions::{FunctionBased, MethodHeader},
+	property_key::AlwaysPublic,
+	throw_unexpected_token_with_token,
+	visiting::Visitable,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
+	TSXToken, Token, TokenReader, WithComment,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
@@ -35,7 +39,7 @@ impl crate::Visitable for ObjectLiteralMember {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
@@ -50,7 +54,7 @@ impl crate::Visitable for ObjectLiteralMember {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
@@ -95,6 +99,26 @@ impl FunctionBased for ObjectLiteralMethodBase {
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		header.get_start()
+	}
+
+	fn visit_name<TData>(
+		name: &Self::Name,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit(visitors, data, options, chain)
+	}
+
+	fn visit_name_mut<TData>(
+		name: &mut Self::Name,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit_mut(visitors, data, options, chain)
 	}
 }
 

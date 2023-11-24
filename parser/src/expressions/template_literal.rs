@@ -28,7 +28,7 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
@@ -40,7 +40,7 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {

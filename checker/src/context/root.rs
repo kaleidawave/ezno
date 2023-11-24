@@ -77,24 +77,24 @@ impl RootContext {
 		}
 	}
 
-	pub fn new_module_context<'a, T: crate::ReadFromFS, M: crate::ASTImplementation>(
+	pub fn new_module_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&self,
 		source: SourceId,
-		module: M::Module,
-		checking_data: &'a mut CheckingData<T, M>,
-	) -> &'a SynthesisedModule<M::OwnedModule> {
+		module: A::Module<'static>,
+		checking_data: &'a mut CheckingData<T, A>,
+	) -> &'a SynthesisedModule<A::OwnedModule> {
 		let mut environment = self.new_lexical_environment(crate::Scope::Module {
 			source,
 			exported: Exported::default(),
 		});
-		M::synthesise_module(&module, source, &mut environment, checking_data);
+		A::synthesise_module(&module, source, &mut environment, checking_data);
 
 		let crate::Scope::Module { exported, .. } = environment.context_type.scope else {
 			unreachable!()
 		};
 
 		let module = SynthesisedModule {
-			content: M::owned_module_from_module(module),
+			content: A::owned_module_from_module(module),
 			exported,
 			facts: environment.facts,
 		};

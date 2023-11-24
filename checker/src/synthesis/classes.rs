@@ -2,9 +2,9 @@ use std::iter;
 
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
+	functions::MethodHeader,
 	property_key::PublicOrPrivate,
-	Decorated, Expression, GenericTypeConstraint, MethodHeader, PropertyKey as ParserPropertyKey,
-	TypeAnnotation,
+	Decorated, Expression, GenericTypeConstraint, PropertyKey as ParserPropertyKey, TypeAnnotation,
 };
 
 use crate::{

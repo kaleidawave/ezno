@@ -143,8 +143,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						free_this_id: TypeId::ERROR_TYPE,
 					};
 					let getter = match header {
-						parser::MethodHeader::Get(_) => GetterSetter::Getter,
-						parser::MethodHeader::Set(_) => GetterSetter::Setter,
+						parser::functions::MethodHeader::Get(_) => GetterSetter::Getter,
+						parser::functions::MethodHeader::Set(_) => GetterSetter::Setter,
 						_ => GetterSetter::None,
 					};
 					let function = synthesise_function_annotation(

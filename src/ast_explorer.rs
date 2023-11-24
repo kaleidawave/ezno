@@ -177,12 +177,12 @@ impl ExplorerSubCommand {
 				let res = Module::from_string(input, Default::default(), source_id, None);
 				match res {
 					Ok(module) => {
-						let settings = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
+						let options = if matches!(self, ExplorerSubCommand::Prettifier(_)) {
 							ToStringOptions { trailing_semicolon: true, ..Default::default() }
 						} else {
 							ToStringOptions::minified()
 						};
-						print_to_cli(format_args!("{}", module.to_string(&settings)));
+						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
 					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
 				}

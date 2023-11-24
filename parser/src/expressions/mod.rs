@@ -620,7 +620,11 @@ impl Expression {
 						};
 						let function: ExpressionFunction =
 							FunctionBase::from_reader_with_header_and_name(
-								reader, state, options, header, name,
+								reader,
+								state,
+								options,
+								header,
+								ExpressionPosition(name),
 							)?;
 
 						Expression::ExpressionFunction(function)
@@ -654,7 +658,11 @@ impl Expression {
 						};
 						let function: ExpressionFunction =
 							FunctionBase::from_reader_with_header_and_name(
-								reader, state, options, header, name,
+								reader,
+								state,
+								options,
+								header,
+								ExpressionPosition(name),
 							)?;
 
 						Expression::ExpressionFunction(function)

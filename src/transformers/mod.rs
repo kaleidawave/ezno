@@ -1,3 +1,5 @@
+pub mod optimisations;
+
 use parser::{visiting::StatementOrDeclarationMut, Declaration, Module, StatementOrDeclaration};
 
 pub struct ConstToLet;

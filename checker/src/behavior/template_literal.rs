@@ -13,22 +13,22 @@ pub enum TemplateLiteralPart<'a, T> {
 	Dynamic(&'a T),
 }
 
-pub fn synthesise_template_literal<'a, T, M>(
+pub fn synthesise_template_literal<'a, T, A>(
 	tag: Option<TypeId>,
-	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M::Expression>> + 'a,
+	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
 	position: &Span,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId
 where
 	T: crate::ReadFromFS,
-	M: crate::ASTImplementation,
-	M::Expression: 'a,
+	A: crate::ASTImplementation,
+	A::Expression<'a>: 'a,
 {
-	fn part_to_type<T: crate::ReadFromFS, M: crate::ASTImplementation>(
-		first: TemplateLiteralPart<M::Expression>,
+	fn part_to_type<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		first: TemplateLiteralPart<'a, A::Expression<'a>>,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> crate::TypeId {
 		match first {
 			TemplateLiteralPart::Static(static_part) => {
@@ -36,7 +36,7 @@ where
 			}
 			TemplateLiteralPart::Dynamic(expression) => {
 				// TODO tidy
-				let value = M::synthesise_expression(
+				let value = A::synthesise_expression(
 					expression,
 					TypeId::ANY_TYPE,
 					environment,

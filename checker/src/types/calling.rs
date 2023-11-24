@@ -27,7 +27,7 @@ use super::{
 	Constructor, PolyNature, StructureGenerics, TypeStore,
 };
 
-pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	ty: TypeId,
 	// Overwritten by .call, else look at binding
 	called_with_new: CalledWithNew,
@@ -36,7 +36,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 	arguments: Vec<SynthesisedArgument>,
 	call_site: SpanWithSource,
 	environment: &mut Environment,
-	checking_data: &mut crate::CheckingData<T, M>,
+	checking_data: &mut crate::CheckingData<T, A>,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,
@@ -538,7 +538,9 @@ impl FunctionType {
 			FunctionBehavior::Method { free_this_id, .. } => {
 				let value_of_this =
 					this_value.get_passed().expect("method has no 'this' passed :?");
-				crate::utils::notify!("ftid {:?} & vot {:?}", free_this_id, value_of_this);
+
+				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
+
 				// TODO checking
 				seeding_context
 					.type_arguments
@@ -809,7 +811,7 @@ impl FunctionType {
 			});
 
 			// let (auto_inserted_arg, argument_type) =
-			// 	if argument_type.is_none() && checking_data.settings.allow_elided_arguments {
+			// 	if argument_type.is_none() && checking_data.options.allow_elided_arguments {
 			// 		(true, Some(Cow::Owned(crate::types::Term::Undefined.into())))
 			// 	} else {
 			// 		(false, argument_type.map(Cow::Borrowed))
@@ -954,7 +956,7 @@ impl FunctionType {
 					}
 				}
 			} else {
-				// TODO types.settings.allow_extra_arguments
+				// TODO types.options.allow_extra_arguments
 				let mut left_over = arguments.iter().skip(self.parameters.parameters.len());
 				let first = left_over.next().unwrap();
 				let mut count = 1;

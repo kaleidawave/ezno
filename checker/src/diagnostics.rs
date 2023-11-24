@@ -9,7 +9,6 @@ use std::{
 };
 
 #[derive(Serialize, Debug)]
-#[serde(tag = "type")]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -18,7 +17,7 @@ pub enum DiagnosticKind {
 
 /// Contains information
 #[derive(Serialize, Debug)]
-#[serde(tag = "type")]
+#[serde(untagged)]
 pub enum Diagnostic {
 	/// Does not have positional information
 	Global {
@@ -285,6 +284,10 @@ mod defined_errors_and_warnings {
 		},
 		TypeNeedsTypeArguments(&'a str, SpanWithSource),
 		CannotFindType(&'a str, SpanWithSource),
+		TypeAliasAlreadyDeclared {
+			name: String,
+			position: SpanWithSource,
+		},
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -485,7 +488,11 @@ mod defined_errors_and_warnings {
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
 				TypeCheckError::TypeIsNotIterable(_) => todo!(),
-				TypeCheckError::NonTopLevelExport(pos) => todo!(),
+				TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
+					reason: "Cannot export at not top level".to_owned(),
+					position,
+					kind,
+				},
 				TypeCheckError::FieldNotExported { file, importing, position } => {
 					Diagnostic::Position {
 						reason: format!("{importing} not exported from {file}"),
@@ -595,7 +602,12 @@ mod defined_errors_and_warnings {
 					reason: format!("Cannot find type {ty}"),
 					position,
 					kind,
-				}
+				},
+				TypeCheckError::TypeAliasAlreadyDeclared { name, position } => Diagnostic::Position {
+					reason: format!("Type {name} already declared"),
+					position,
+					kind,
+				},
 			}
 		}
 	}

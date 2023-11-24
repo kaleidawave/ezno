@@ -123,6 +123,10 @@ pub enum Event {
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
 	},
+	/// TODO label
+	Break { position: Option<SpanWithSource> },
+	/// TODO label
+	Continue { position: Option<SpanWithSource> },
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]

@@ -1,5 +1,5 @@
 use ezno_parser::{
-	visiting::{Annex, Chain, VisitSettings, Visitable, Visitor, Visitors},
+	visiting::{Annex, Chain, VisitOptions, Visitable, Visitor, Visitors},
 	ASTNode, Expression, SourceId,
 };
 
@@ -23,7 +23,7 @@ fn main() {
 	expr.visit(
 		&mut Visitors { expression_visitors: vec![Box::new(ShowChain)], ..Default::default() },
 		&mut (),
-		&VisitSettings::default(),
+		&VisitOptions::default(),
 		&mut Annex::new(&mut Chain::new()),
 	);
 }

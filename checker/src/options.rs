@@ -1,6 +1,6 @@
 use std::any::Any;
 
-/// Settings for type checking
+/// Options for type checking
 /// TODO reach compat with tsc
 #[derive(serde::Deserialize)]
 pub struct TypeCheckOptions {

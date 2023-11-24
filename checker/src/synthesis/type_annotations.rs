@@ -200,7 +200,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							position: argument_type_annotation.get_position().clone().with_source(environment.get_source()),
+							position: argument_type_annotation.get_position().with_source(environment.get_source()),
 						};
 
 						checking_data.diagnostics_container.add_error(error);
@@ -288,8 +288,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
 			let item_type = synthesise_type_annotation(item_annotation, environment, checking_data);
-			let with_source =
-				item_annotation.get_position().clone().with_source(environment.get_source());
+			let with_source = item_annotation.get_position().with_source(environment.get_source());
 			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: TypeId::ARRAY_TYPE,
 				arguments: StructureGenericArguments {
@@ -402,7 +401,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// indexee.get_property_using_type_annotation(
 			//     &indexer,
 			//     checking_data,
-			//     crate::types::GetPropertySettings::HowAboutNo,
+			//     crate::types::GetPropertyOptions::HowAboutNo,
 			// ))
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
@@ -450,7 +449,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	checking_data
 		.type_mappings
 		.types_to_types
-		.push(annotation.get_position().clone().with_source(environment.get_source()), ty);
+		.push(annotation.get_position().with_source(environment.get_source()), ty);
 
 	ty
 }

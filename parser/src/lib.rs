@@ -76,7 +76,7 @@ impl Quoted {
 	}
 }
 
-/// Settings to customize parsing
+/// Options to customize parsing
 #[allow(unused)]
 #[derive(Copy, Clone)]
 pub struct ParseOptions {
@@ -140,7 +140,7 @@ impl Default for ParseOptions {
 	}
 }
 
-/// Settings for serializing ASTNodes
+/// Options for serializing ASTNodes
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
@@ -417,7 +417,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&self,
 		visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitSettings,
+		_options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_keyword(&(self.0.into(), &self.1), data, chain);
@@ -427,7 +427,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&mut self,
 		_visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
-		_options: &VisitSettings,
+		_options: &VisitOptions,
 		_chain: &mut Annex<Chain>,
 	) {
 		// TODO should this have a implementation?
@@ -472,10 +472,10 @@ pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
 	NaN,
-	Hex(NumberSign, u64),
-	Bin(NumberSign, u64),
+	Hex(NumberSign, String, u64),
+	Bin(NumberSign, String, u64),
 	// Last one is whether it was specified with a leading zero (boo)
-	Octal(NumberSign, u64, bool),
+	Octal(NumberSign, String, u64),
 	Number {
 		elided_zero_before_point: bool,
 		trailing_point: bool,
@@ -498,9 +498,9 @@ impl From<NumberRepresentation> for f64 {
 			NumberRepresentation::NegativeInfinity => f64::NEG_INFINITY,
 			NumberRepresentation::NaN => f64::NAN,
 			NumberRepresentation::Number { internal, .. } => internal,
-			NumberRepresentation::Hex(sign, nat)
-			| NumberRepresentation::Bin(sign, nat)
-			| NumberRepresentation::Octal(sign, nat, _) => sign.apply(nat as f64),
+			NumberRepresentation::Hex(sign, _, nat)
+			| NumberRepresentation::Bin(sign, _, nat)
+			| NumberRepresentation::Octal(sign, _, nat) => sign.apply(nat as f64),
 			NumberRepresentation::BigInt(..) => todo!(),
 		}
 	}
@@ -577,7 +577,7 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Hex(sign, number))
+					Ok(Self::Hex(sign, s.to_owned(), number))
 				}
 				Some('B' | 'b') => {
 					let mut number = 0u64;
@@ -590,7 +590,7 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Bin(sign, number))
+					Ok(Self::Bin(sign, s.to_owned(), number))
 				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
@@ -605,7 +605,7 @@ impl FromStr for NumberRepresentation {
 							return Err(s.to_owned());
 						}
 					}
-					Ok(Self::Octal(sign, number, !uses_character))
+					Ok(Self::Octal(sign, s.to_owned(), number))
 				}
 				None => Ok(Self::Number {
 					internal: 0f64,
@@ -656,9 +656,9 @@ impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			// TODO needs to do conversion
-			(Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Bin(l0, l1), Self::Bin(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Octal(l0, l1, _), Self::Octal(r0, r1, _)) => l0 == r0 && l1 == r1,
+			(Self::Hex(l0, _, l1), Self::Hex(r0, _, r1)) => l0 == r0 && l1 == r1,
+			(Self::Bin(l0, _, l1), Self::Bin(r0, _, r1)) => l0 == r0 && l1 == r1,
+			(Self::Octal(l0, _, l1), Self::Octal(r0, _, r1)) => l0 == r0 && l1 == r1,
 			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
@@ -677,16 +677,23 @@ impl NumberRepresentation {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
 			NumberRepresentation::NegativeInfinity => "-Infinity".to_owned(),
 			NumberRepresentation::NaN => "NaN".to_owned(),
-			NumberRepresentation::Hex(sign, value) => format!("{sign}{value:#x}"),
-			NumberRepresentation::Bin(sign, value) => {
-				format!("{sign}0b{value:#b}")
+			NumberRepresentation::Hex(sign, value, _) => format!("{sign}{value}"),
+			NumberRepresentation::Bin(sign, value, _) => {
+				format!("{sign}{value}")
 			}
-			NumberRepresentation::Octal(sign, value, true) => {
-				format!("{sign}0{value:o}")
+			NumberRepresentation::Octal(sign, value, _) => {
+				format!("{sign}{value}")
 			}
-			NumberRepresentation::Octal(sign, value, false) => {
-				format!("{sign}0o{value:o}")
-			}
+			// NumberRepresentation::Hex(sign, value, _) => format!("{sign}{value:#x}"),
+			// NumberRepresentation::Bin(sign, value, _) => {
+			// 	format!("{sign}0b{value:#b}")
+			// }
+			// NumberRepresentation::Octal(sign, value, true) => {
+			// 	format!("{sign}0{value:o}")
+			// }
+			// NumberRepresentation::Octal(sign, value, false) => {
+			// 	format!("{sign}0o{value:o}")
+			// }
 			NumberRepresentation::Number { internal, elided_zero_before_point, trailing_point } => {
 				let mut start = internal.to_string();
 				if elided_zero_before_point {
@@ -702,200 +709,79 @@ impl NumberRepresentation {
 	}
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum GeneratorSpecifier {
-	Star(Span),
-	#[cfg(feature = "extras")]
-	Keyword(Keyword<tsx_keywords::Generator>),
-}
-
-impl GeneratorSpecifier {
-	pub(crate) fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> Option<Self> {
-		match reader.peek() {
-			Some(Token(TSXToken::Multiply, _)) => {
-				Some(GeneratorSpecifier::Star(reader.next().unwrap().get_span()))
-			}
-			#[cfg(feature = "extras")]
-			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
-				Some(GeneratorSpecifier::Keyword(Keyword::new(reader.next().unwrap().get_span())))
-			}
-			_ => None,
-		}
-	}
-
-	fn get_start(&self) -> source_map::Start {
-		match self {
-			GeneratorSpecifier::Star(pos) => pos.get_start(),
-			#[cfg(feature = "extras")]
-			GeneratorSpecifier::Keyword(kw) => kw.get_position().get_start(),
-		}
-	}
-}
-
-/// This structure removes possible invalid combinations with async
-#[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum MethodHeader {
-	Get(Keyword<tsx_keywords::Get>),
-	Set(Keyword<tsx_keywords::Set>),
-	Regular { r#async: Option<Keyword<tsx_keywords::Async>>, generator: Option<GeneratorSpecifier> },
-}
-
-impl Default for MethodHeader {
-	fn default() -> Self {
-		Self::Regular { r#async: None, generator: None }
-	}
-}
-
-impl MethodHeader {
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		match self {
-			MethodHeader::Get(_) => buf.push_str("get "),
-			MethodHeader::Set(_) => buf.push_str("set "),
-			MethodHeader::Regular { r#async, generator } => {
-				if r#async.is_some() {
-					buf.push_str("async ");
-				}
-				if let Some(_generator) = generator {
-					buf.push('*');
-				}
-			}
-		}
-	}
-
-	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
-		match reader.peek() {
-			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span()))
-			}
-			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span()))
-			}
-			_ => {
-				let r#async = reader
-					.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-					.map(|tok| Keyword::new(tok.get_span()));
-
-				let generator = GeneratorSpecifier::from_reader(reader);
-
-				MethodHeader::Regular { r#async, generator }
-			}
-		}
-	}
-
-	pub(crate) fn get_start(&self) -> Option<source_map::Start> {
-		match self {
-			MethodHeader::Get(kw) => Some(kw.1.get_start()),
-			MethodHeader::Set(kw) => Some(kw.1.get_start()),
-			MethodHeader::Regular { r#async: Some(r#async), .. } => {
-				Some(r#async.get_position().get_start())
-			}
-			MethodHeader::Regular { generator: Some(generator), .. } => Some(generator.get_start()),
-			MethodHeader::Regular { .. } => None,
-		}
-	}
-
-	pub fn is_async(&self) -> bool {
-		matches!(self, Self::Regular { r#async: Some(_), .. })
-	}
-
-	pub fn is_generator(&self) -> bool {
-		matches!(self, Self::Regular { generator: Some(_), .. })
-	}
-
-	fn is_some(&self) -> bool {
-		!matches!(self, Self::Regular { r#async: None, generator: None })
-	}
-
-	// pub(crate) fn get_end(&self) -> source_map::End {
-	// 	match self {
-	// 		MethodHeader::Get(kw) => kw.1.get_end(),
-	// 		MethodHeader::Set(kw) => kw.1.get_end(),
-	// 		MethodHeader::Async(kw) => kw.1.get_end(),
-	// 		MethodHeader::GeneratorStar(_, a) => a.get_end(),
-	// 		#[cfg(feature = "extras")]
-	// 		MethodHeader::Generator(_, a) => a.1.get_end(),
-	// 	}
-	// }
-}
-
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
 pub trait ExpressionOrStatementPosition:
 	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
 {
-	type Name: Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name>;
+	) -> ParseResult<Self>;
 
-	fn as_option_str(name: &Self::Name) -> Option<&str>;
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String>;
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
+
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier>;
+
+	fn as_option_str(&self) -> Option<&str> {
+		if let Some(VariableIdentifier::Standard(name, _)) = self.as_option_variable_identifier() {
+			Some(name)
+		} else {
+			None
+		}
+	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct StatementPosition;
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub struct StatementPosition(VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
-	type Name = VariableIdentifier;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name> {
-		VariableIdentifier::from_reader(reader, state, options)
+	) -> ParseResult<Self> {
+		VariableIdentifier::from_reader(reader, state, options).map(Self)
 	}
 
-	fn as_option_str(name: &Self::Name) -> Option<&str> {
-		if let VariableIdentifier::Standard(name, ..) = name {
-			Some(name)
-		} else {
-			None
-		}
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
+		Some(&self.0)
 	}
 
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String> {
-		if let VariableIdentifier::Standard(name, ..) = name {
-			Some(name)
-		} else {
-			None
-		}
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
+		Some(&mut self.0)
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ExpressionPosition;
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub struct ExpressionPosition(Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
-	type Name = Option<VariableIdentifier>;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name> {
-		if let Some(Token(TSXToken::OpenBrace, _)) | None = reader.peek() {
-			Ok(None)
+	) -> ParseResult<Self> {
+		if let Some(Token(TSXToken::OpenBrace | TSXToken::OpenParentheses, _)) | None =
+			reader.peek()
+		{
+			Ok(Self(None))
 		} else {
-			StatementPosition::from_reader(reader, state, options).map(Some)
+			Ok(Self(Some(VariableIdentifier::from_reader(reader, state, options)?)))
 		}
 	}
 
-	fn as_option_str(name: &Self::Name) -> Option<&str> {
-		name.as_ref().and_then(StatementPosition::as_option_str)
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
+		self.0.as_ref()
 	}
 
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String> {
-		name.as_mut().and_then(StatementPosition::as_option_string_mut)
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
+		self.0.as_mut()
 	}
 }
 
@@ -1048,12 +934,12 @@ pub mod ast {
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
-			FunctionBase, FunctionHeader, FunctionParameters, Parameter, ParameterData,
-			SpreadParameter,
+			FunctionBase, FunctionHeader, FunctionParameters, MethodHeader, Parameter,
+			ParameterData, SpreadParameter,
 		},
 		statements::*,
-		Block, Decorated, Keyword, MethodHeader, NumberRepresentation, PropertyKey,
-		StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
+		Block, Decorated, Keyword, NumberRepresentation, PropertyKey, StatementOrDeclaration,
+		VariableField, VariableIdentifier, WithComment,
 	};
 
 	pub use source_map::{BaseSpan, SourceId};

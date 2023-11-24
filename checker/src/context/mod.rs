@@ -403,12 +403,12 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::ReadFromFS, M: crate::ASTImplementation>(
+	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		declared_at: SpanWithSource,
 		behavior: VariableRegisterBehavior,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		match self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
 		{
@@ -939,16 +939,16 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_function<U, F, M>(
+	pub fn new_function<U, F, A>(
 		&mut self,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 		function: &F,
-		behavior: FunctionRegisterBehavior<M>,
+		behavior: FunctionRegisterBehavior<A>,
 	) -> FunctionType
 	where
 		U: crate::ReadFromFS,
-		M: crate::ASTImplementation,
-		F: behavior::functions::SynthesisableFunction<M>,
+		A: crate::ASTImplementation,
+		F: behavior::functions::SynthesisableFunction<A>,
 	{
 		let is_async = behavior.is_async();
 		let is_generator = behavior.is_generator();
@@ -1294,10 +1294,10 @@ impl<T: ContextType> Context<T> {
 		// register_behavior.afterwards(function, func_ty, self, &mut checking_data.types)
 	}
 
-	pub fn new_try_context<U: crate::ReadFromFS, M: crate::ASTImplementation>(
+	pub fn new_try_context<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
-		checking_data: &mut CheckingData<U, M>,
-		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>),
+		checking_data: &mut CheckingData<U, A>,
+		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>),
 	) -> TypeId {
 		let (thrown, ..) = self.new_lexical_environment_fold_into_parent(
 			Scope::TryBlock {},
@@ -1331,12 +1331,12 @@ impl<T: ContextType> Context<T> {
 	pub fn new_lexical_environment_fold_into_parent<
 		U: crate::ReadFromFS,
 		Res,
-		M: crate::ASTImplementation,
+		A: crate::ASTImplementation,
 	>(
 		&mut self,
 		scope: Scope,
-		checking_data: &mut CheckingData<U, M>,
-		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>) -> Res,
+		checking_data: &mut CheckingData<U, A>,
+		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>) -> Res,
 	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 		if matches!(scope, Scope::Conditional { .. }) {
 			unreachable!("Use Environment::new_conditional_context")
@@ -1383,22 +1383,21 @@ impl<T: ContextType> Context<T> {
 
 		// Run any truths through subtyping
 		let additional = match scope {
-			Scope::Conditional { .. } => {
-				crate::utils::notify!("TODO scoping stuff");
-				crate::utils::notify!("What about deferred function constraints");
-
-				todo!("events should be substituted");
-				None
-				// Some((events, closed_over_references))
+			// TODO these might go
+			Scope::FunctionAnnotation {} => None,
+			// TODO temp
+			Scope::Function(FunctionScope::Constructor { .. }) => {
+				Some((facts.events, used_parent_references))
 			}
-			Scope::Looping { .. } => todo!(),
-			Scope::Function { .. } | Scope::FunctionAnnotation {} => {
-				// self.proofs.merge(proofs);
 
-				// crate::utils::notify!(
-				// 	"Function properties settings temp, breaks interfaces nesting, otherwise fine"
-				// );
-				self.facts.current_properties.extend(facts.current_properties);
+			Scope::Function { .. } => {
+				unreachable!("use new_function")
+			}
+			Scope::Conditional { .. } => {
+				unreachable!("use new_conditional")
+			}
+			Scope::Looping { .. } => {
+				// TODO temp
 				Some((facts.events, used_parent_references))
 			}
 			// TODO Scope::Module ??
@@ -1492,11 +1491,11 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U, M: crate::ASTImplementation>(
+	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		match self.get_type_from_name(name) {
 			Some(val) => val,
@@ -1511,12 +1510,12 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends
-	pub fn new_interface<M: ASTImplementation>(
+	pub fn new_interface<'a, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		nominal: bool,
-		parameters: Option<&[M::TypeParameter]>,
-		extends: Option<&[M::TypeAnnotation]>,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		extends: Option<&'a [A::TypeAnnotation<'a>]>,
 		position: SpanWithSource,
 		types: &mut TypeStore,
 	) -> TypeId {
@@ -1526,7 +1525,7 @@ impl<T: ContextType> Context<T> {
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
-						name: M::type_parameter_name(parameter).to_owned(),
+						name: A::type_parameter_name(&parameter).to_owned(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
 					types.register_type(ty)
@@ -1554,19 +1553,20 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_alias<U: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn new_alias<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		parameters: Option<&[M::TypeParameter]>,
-		to: &M::TypeAnnotation,
-		checking_data: &mut CheckingData<U, M>,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		to: &'a A::TypeAnnotation<'a>,
+		position: Span,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		let mut env = self.new_lexical_environment(Scope::TypeAlias);
 		let (parameters, to) = if let Some(parameters) = parameters {
 			let parameters = parameters
 				.iter()
 				.map(|parameter| {
-					let name = M::type_parameter_name(parameter).to_owned();
+					let name = A::type_parameter_name(&parameter).to_owned();
 					let ty = Type::RootPolyType(PolyNature::Generic {
 						name: name.clone(),
 						eager_fixed: TypeId::ANY_TYPE,
@@ -1578,11 +1578,11 @@ impl<T: ContextType> Context<T> {
 				})
 				.collect();
 
-			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
 			(Some(parameters), to)
 		} else {
 			// TODO should just use self
-			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
 			(None, to)
 		};
 
@@ -1592,7 +1592,13 @@ impl<T: ContextType> Context<T> {
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
 		if existing_type.is_some() {
-			panic!()
+			checking_data.diagnostics_container.add_error(
+				TypeCheckError::TypeAliasAlreadyDeclared {
+					name: name.to_owned(),
+					position: position.with_source(self.get_source()),
+				},
+			);
+			TypeId::ERROR_TYPE
 		} else {
 			alias_ty
 		}

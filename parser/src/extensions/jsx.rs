@@ -18,7 +18,6 @@ pub enum JSXRoot {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[visit_self]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
 	pub tag_name: String,

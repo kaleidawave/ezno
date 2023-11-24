@@ -6,8 +6,9 @@ use parser::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		MultipleExpression, SpecialOperators, SpreadExpression, SuperReference, TemplateLiteral,
 	},
+	functions::MethodHeader,
 	operators::{BinaryAssignmentOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
-	ASTNode, Expression, MethodHeader,
+	ASTNode, Expression,
 };
 
 use crate::{
@@ -148,7 +149,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			// TODO remove enumerate, add add function and more
 			for (idx, value) in elements.iter().enumerate() {
 				let spread_expression_position =
-					value.get_position().clone().with_source(environment.get_source());
+					value.get_position().with_source(environment.get_source());
 
 				let (key, value) =
 					synthesise_array_item(Decidable::Known(idx), value, environment, checking_data);
@@ -899,13 +900,22 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
 
 	for member in members.iter() {
-		let member_position = member.get_position().clone().with_source(environment.get_source());
+		let member_position = member.get_position().with_source(environment.get_source());
 		match member {
 			ObjectLiteralMember::Spread(spread, pos) => {
-				checking_data.raise_unimplemented_error(
-					"spread in object literal",
-					pos.clone().with_source(environment.get_source()),
-				);
+				let spread = synthesise_expression(spread, environment, checking_data, expected);
+
+				// TODO use what about string, what about enumerable ...
+				for (_, key, value) in environment.get_properties_on_type(spread) {
+					object_builder.append(
+						environment,
+						Publicity::Public,
+						key,
+						// TODO what about getters
+						crate::PropertyValue::Value(value),
+						Some(pos.clone().with_source(environment.get_source())),
+					);
+				}
 			}
 			ObjectLiteralMember::Shorthand(name, position) => {
 				let key = PropertyKey::String(Cow::Owned(name.clone()));

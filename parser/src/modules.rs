@@ -15,7 +15,7 @@ use crate::{
 		InterfaceDeclaration,
 	},
 	BlockLike, BlockLikeMut, Decorated, Decorator, ParseOptions, ParseResult,
-	StatementOrDeclaration, TSXKeyword, VisitSettings,
+	StatementOrDeclaration, TSXKeyword, VisitOptions,
 };
 
 use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
@@ -107,7 +107,7 @@ impl Module {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
+		options: &VisitOptions,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
@@ -129,7 +129,7 @@ impl Module {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
+		options: &VisitOptions,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));

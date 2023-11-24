@@ -347,6 +347,10 @@ pub(crate) fn apply_event(
 				types,
 			);
 		}
+		// TODO
+		Event::Break { position } => {}
+		// TODO
+		Event::Continue { position } => {}
 	}
 	None
 }

@@ -1,4 +1,7 @@
-use parser::{declarations::VariableDeclaration, Declaration, Statement, StatementOrDeclaration};
+use parser::{
+	declarations::VariableDeclaration, Declaration, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration, VariableIdentifier,
+};
 
 use crate::{
 	behavior::modules::Exported, context::Environment, diagnostics::TypeCheckError, CheckingData,
@@ -67,18 +70,22 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 		Declaration::Class(class) => {
 			let constructor = synthesise_class_declaration(&class.on, environment, checking_data);
 			let position = class.on.position.clone().with_source(environment.get_source());
-			let result = environment.declare_variable(
-				class.on.name.as_str(),
-				position.clone(),
-				constructor,
-				&mut checking_data.types,
-				None,
-			);
-			if let Err(err) = result {
-				checking_data.diagnostics_container.add_error(TypeCheckError::ReDeclaredVariable {
-					name: class.on.name.as_str(),
-					position,
-				})
+			if let Some(VariableIdentifier::Standard(name, ..)) =
+				class.on.name.as_option_variable_identifier()
+			{
+				let result = environment.declare_variable(
+					name,
+					position.clone(),
+					constructor,
+					&mut checking_data.types,
+					None,
+				);
+				if let Err(err) = result {
+					// TODO is this an issue?
+					checking_data
+						.diagnostics_container
+						.add_error(TypeCheckError::ReDeclaredVariable { name, position })
+				}
 			}
 		}
 		Declaration::DeclareVariable(_)

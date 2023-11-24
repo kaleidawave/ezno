@@ -641,6 +641,19 @@ b.c satisfies string
 
 - Expected string, found 2
 
+#### Object spread
+
+```ts
+const obj1 = { a: 2, b: 3 };
+const obj2 = { b: 4, ...obj1, a: 6 };
+
+obj2.b satisfies 100;
+obj2.a satisfies boolean;
+```
+
+- Expected 100, found 3
+- Expected boolean, found 6
+
 #### Array pushing and pop-ing
 
 ```ts
@@ -1143,6 +1156,33 @@ getProp satisfies string
 ```
 
 - Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+
+#### Generic extends
+
+```ts
+function getA<T extends { a: string }>(p: T) {
+    return p.a
+}
+
+getA({ p: 2 })
+```
+
+- Argument of type { p: 2 } is not assignable to parameter of type T
+
+> I think reasons contains more information
+
+#### Function subtyping
+
+```ts
+// Perfectly fine
+const x: (a: number) => string = (a: 4) => "hi"
+// Bad
+const y: (a: 4) => string = (a: number) => "hi"
+```
+
+- Type (a: number) => "hi" is not assignable to type (a: 4) => string
+
+> I think reasons contains more information
 
 ### Prototypes
 

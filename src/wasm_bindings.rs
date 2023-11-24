@@ -7,8 +7,12 @@ extern "C" {
 	pub(crate) fn log(s: &str);
 }
 
-#[wasm_bindgen(js_name = build)]
-pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify: bool) -> JsValue {
+#[wasm_bindgen(js_name = experimental_build)]
+pub fn experimental_build_wasm(
+	entry_path: String,
+	fs_resolver_js: &js_sys::Function,
+	minify: bool,
+) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
@@ -24,6 +28,7 @@ pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify:
 		crate::commands::BuildConfig { strip_whitespace: minify },
 		None,
 	);
+
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 

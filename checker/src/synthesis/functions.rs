@@ -180,7 +180,7 @@ where
 		self.return_type.as_ref().map(|reference| {
 			(
 				synthesise_type_annotation(reference, environment, checking_data),
-				reference.get_position().clone().with_source(environment.get_source()),
+				reference.get_position().with_source(environment.get_source()),
 			)
 		})
 	}
@@ -225,8 +225,7 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 				// TODO expecting
 				let returned =
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-				let position =
-					expression.get_position().clone().with_source(environment.get_source());
+				let position = expression.get_position().with_source(environment.get_source());
 				environment.return_value(returned, position);
 			}
 			ExpressionOrBlock::Block(block) => {

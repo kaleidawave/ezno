@@ -9,7 +9,7 @@ use iterator_endiate::EndiateIteratorExt;
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
 	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
-	TypeAnnotation, VisitSettings,
+	TypeAnnotation, VisitOptions,
 };
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
@@ -19,7 +19,7 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub class_keyword: Keyword<tsx_keywords::Class>,
-	pub name: T::Name,
+	pub name: T,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	pub extends: Option<Box<Expression>>,
 	pub implements: Option<Vec<TypeAnnotation>>,
@@ -131,7 +131,9 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		depth: u8,
 	) {
 		buf.push_str("class ");
-		buf.push_str(U::as_option_str(&self.name).unwrap_or_default());
+		if let Some(name) = self.name.as_option_str() {
+			buf.push_str(name);
+		}
 		if let Some(type_parameters) = &self.type_parameters {
 			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
 		}
@@ -161,19 +163,37 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 impl<T: ExpressionOrStatementPosition> Visitable for ClassDeclaration<T> {
 	fn visit<TData>(
 		&self,
-		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitSettings,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
+		visitors.visit_variable(
+			&crate::visiting::ImmutableVariableOrProperty::ClassName(
+				self.name.as_option_variable_identifier(),
+			),
+			data,
+			chain,
+		);
+		self.extends.visit(visitors, data, options, chain);
+		self.members.visit(visitors, data, options, chain);
 	}
 
 	fn visit_mut<TData>(
 		&mut self,
-		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitSettings,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
+		visitors.visit_variable_mut(
+			&mut crate::visiting::MutableVariableOrProperty::ClassName(
+				self.name.as_option_variable_identifier_mut(),
+			),
+			data,
+			chain,
+		);
+		self.extends.visit_mut(visitors, data, options, chain);
+		self.members.visit_mut(visitors, data, options, chain);
 	}
 }

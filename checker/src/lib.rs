@@ -78,67 +78,69 @@ pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
 	pub(crate) currently_checking_modules: HashSet<PathBuf>,
 	/// The result of checking. Includes exported variables and facts
 	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST::OwnedModule>>,
-	pub(crate) parsing_options: ModuleAST::ParseOptions,
 }
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	type ParseError: Into<Diagnostic>;
 
-	type Module;
-	/// TODO fix for allowing modules to reference
+	type Module<'a>;
+	/// TODO temp item. Some modules can have references
 	type OwnedModule;
-	type DefinitionFile;
 
-	type TypeAnnotation;
-	type TypeParameter;
-	type Expression;
+	type DefinitionFile<'a>;
 
-	type ClassMethod: SynthesisableFunction<Self>;
+	type TypeAnnotation<'a>;
+	type TypeParameter<'a>;
+	type Expression<'a>;
+
+	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
 	fn module_from_string(
 		source_id: SourceId,
 		string: String,
-		options: &Self::ParseOptions,
-	) -> Result<Self::Module, Self::ParseError>;
+		options: Self::ParseOptions,
+	) -> Result<Self::Module<'static>, Self::ParseError>;
 
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
-	) -> Result<Self::DefinitionFile, Self::ParseError>;
+	) -> Result<Self::DefinitionFile<'static>, Self::ParseError>;
 
-	fn synthesise_module<T: crate::ReadFromFS>(
-		module: &Self::Module,
+	fn synthesise_module<'a, T: crate::ReadFromFS>(
+		module: &Self::Module<'a>,
 		source_id: SourceId,
-		root: &mut Environment,
+		module_context: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	);
 
+	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'a>,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, Facts);
+
 	/// Expected is used for eagerly setting function parameters
-	fn synthesise_expression<T: crate::ReadFromFS>(
-		expression: &Self::Expression,
+	fn synthesise_expression<'a, T: crate::ReadFromFS>(
+		expression: &'a Self::Expression<'a>,
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
 
-	fn synthesise_type_annotation<T: crate::ReadFromFS>(
-		annotation: &Self::TypeAnnotation,
+	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
+		annotation: &'a Self::TypeAnnotation<'a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
 
-	fn expression_position(expression: &Self::Expression) -> Span;
+	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
-	fn type_definition_file<T: crate::ReadFromFS>(
-		file: Self::DefinitionFile,
-		root: &RootContext,
-		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts);
+	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
-	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str;
+	fn parse_options(is_js: bool) -> Self::ParseOptions;
 
-	fn owned_module_from_module(module: Self::Module) -> Self::OwnedModule;
+	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 }
 
 impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, ModuleAST> {
@@ -146,7 +148,6 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 		mut file_resolver: &'a T,
 		current_working_directory: PathBuf,
 		files: Option<MapFileStore<WithPathMap>>,
-		parsing_options: ModuleAST::ParseOptions,
 	) -> Self {
 		Self {
 			files: files.unwrap_or_default(),
@@ -156,7 +157,6 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 			// custom_module_resolvers,
 			file_reader: file_resolver,
 			current_working_directory,
-			parsing_options,
 		}
 	}
 
@@ -211,7 +211,7 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	pub(crate) modules: ModuleData<'a, FSResolver, ModuleAST>,
 	/// Options for checking
 	pub(crate) options: TypeCheckOptions,
-	// pub(crate) parse_settings: parser::ParseSettings,
+	// pub(crate) parse_options: parser::ParseOptions,
 
 	// pub(crate) events: EventsStore,
 	pub types: TypeStore,
@@ -223,20 +223,19 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 #[derive(Debug, Clone)]
 pub struct CouldNotOpenFile(pub PathBuf);
 
-impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
+impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, A> {
 	// TODO improve on this function
 	pub fn new(
-		settings: TypeCheckOptions,
+		options: TypeCheckOptions,
 		resolver: &'a T,
-		parse_options: M::ParseOptions,
 		existing_files: Option<MapFileStore<WithPathMap>>,
 	) -> Self {
 		// let custom_file_resolvers = HashMap::default();
 		let cwd = Default::default();
-		let modules = ModuleData::new(resolver, cwd, existing_files, parse_options);
+		let modules = ModuleData::new(resolver, cwd, existing_files);
 
 		Self {
-			options: settings,
+			options,
 			type_mappings: Default::default(),
 			diagnostics_container: Default::default(),
 			modules,
@@ -259,11 +258,11 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 					.unwrap()
 					.to_path_buf();
 
-			fn get_module<'a, T: crate::ReadFromFS, M: ASTImplementation>(
+			fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				full_importer: PathBuf,
 				environment: &mut Environment,
-				checking_data: &'a mut CheckingData<T, M>,
-			) -> Option<Result<&'a SynthesisedModule<M::OwnedModule>, M::ParseError>> {
+				checking_data: &'a mut CheckingData<T, A>,
+			) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
 				let existing = checking_data.modules.files.get_source_at_path(&full_importer);
 				if let Some(existing) = existing {
 					Some(Ok(checking_data
@@ -279,11 +278,14 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 							.files
 							.new_source_id(full_importer.to_path_buf(), content.clone());
 
-						match M::module_from_string(
-							source,
-							content,
-							&checking_data.modules.parsing_options,
-						) {
+						let parse_options = A::parse_options(
+							full_importer
+								.extension()
+								.and_then(|s| s.to_str())
+								.map_or(false, |s| s.ends_with("ts")),
+						);
+
+						match A::module_from_string(source, content, parse_options) {
 							Ok(module) => {
 								let new_module_context = environment.get_root().new_module_context(
 									source,
@@ -386,23 +388,25 @@ impl<'a, T: crate::ReadFromFS, M: ASTImplementation> CheckingData<'a, T, M> {
 }
 
 /// Used for transformers and other things after checking!!!!
-pub struct PostCheckData<M: ASTImplementation> {
+pub struct PostCheckData<A: crate::ASTImplementation> {
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
-	pub modules: HashMap<SourceId, SynthesisedModule<M::OwnedModule>>,
+	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub entry_source: SourceId,
 }
 
-pub fn check_project<T: crate::ReadFromFS, M: ASTImplementation>(
+pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_point: PathBuf,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
 	options: Option<TypeCheckOptions>,
-	parse_options: M::ParseOptions,
-) -> (crate::DiagnosticsContainer, Result<PostCheckData<M>, MapFileStore<WithPathMap>>) {
-	let mut checking_data =
-		CheckingData::<T, M>::new(options.unwrap_or_default(), &resolver, parse_options, None);
+) -> (crate::DiagnosticsContainer, Result<PostCheckData<A>, MapFileStore<WithPathMap>>) {
+	let mut checking_data = CheckingData::<T, A>::new(options.unwrap_or_default(), &resolver, None);
+
+	let mut root = crate::context::RootContext::new_with_primitive_references();
+
+	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 	let entry_content = (checking_data.modules.file_reader)(entry_point.as_ref());
 	let module = if let Some(content) = entry_content {
@@ -411,11 +415,12 @@ pub fn check_project<T: crate::ReadFromFS, M: ASTImplementation>(
 
 		checking_data.modules.entry_point = Some(source);
 
-		match M::module_from_string(source, content, &checking_data.modules.parsing_options) {
-			Ok(module) => {
-				module
-				// Some(Ok(environment.get_root().new_module_context(source, module, checking_data)))
-			}
+		let is_js = false;
+		let parse_options = A::parse_options(is_js);
+
+		let module = A::module_from_string(source, content, parse_options);
+		match module {
+			Ok(module) => Some(root.new_module_context(source, module, &mut checking_data)),
 			Err(err) => {
 				checking_data.diagnostics_container.add_error(err);
 				return (checking_data.diagnostics_container, Err(checking_data.modules.files));
@@ -429,21 +434,15 @@ pub fn check_project<T: crate::ReadFromFS, M: ASTImplementation>(
 		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
 	};
 
-	let mut root = crate::context::RootContext::new_with_primitive_references();
-
-	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
-
 	if checking_data.diagnostics_container.has_error() {
 		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
 	}
-
-	root.new_module_context(checking_data.modules.entry_point.unwrap(), module, &mut checking_data);
 
 	let CheckingData {
 		diagnostics_container,
 		type_mappings,
 		modules,
-		options: settings,
+		options,
 		types,
 		unimplemented_items,
 	} = checking_data;
@@ -462,10 +461,10 @@ pub fn check_project<T: crate::ReadFromFS, M: ASTImplementation>(
 	}
 }
 
-pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	type_definition_files: HashSet<PathBuf>,
 	root: &mut RootContext,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) {
 	for path in type_definition_files {
 		let (source_id, content) = match checking_data.modules.get_file(&path) {
@@ -481,11 +480,11 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, M: crate::ASTIm
 
 		// TODO U::new_tdm_from_string
 
-		let result = M::definition_module_from_string(source_id, content);
+		let result = A::definition_module_from_string(source_id, content);
 
 		match result {
 			Ok(tdm) => {
-				let (names, facts) = M::type_definition_file(tdm, root, checking_data);
+				let (names, facts) = A::synthesise_definition_file(tdm, root, checking_data);
 				root.variables.extend(names.variables);
 				root.named_types.extend(names.named_types);
 				root.variable_names.extend(names.variable_names);

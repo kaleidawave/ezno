@@ -53,12 +53,12 @@ pub enum GetterSetter {
 	None,
 }
 
-pub fn register_arrow_function<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	expecting: TypeId,
 	is_async: bool,
-	function: &impl SynthesisableFunction<M>,
+	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId {
 	let function_type = environment.new_function(
 		checking_data,
@@ -68,14 +68,14 @@ pub fn register_arrow_function<T: crate::ReadFromFS, M: crate::ASTImplementation
 	checking_data.types.new_function_type(function_type)
 }
 
-pub fn register_expression_function<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	expecting: TypeId,
 	is_async: bool,
 	is_generator: bool,
 	location: Option<String>,
-	function: &impl SynthesisableFunction<M>,
+	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId {
 	let function_type = environment.new_function(
 		checking_data,
@@ -90,14 +90,14 @@ pub fn register_expression_function<T: crate::ReadFromFS, M: crate::ASTImplement
 	checking_data.types.new_function_type(function_type)
 }
 
-pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
 	is_async: bool,
 	is_generator: bool,
 	location: Option<String>,
-	function: &impl SynthesisableFunction<M>,
+	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) {
 	// TODO get existing by variable_id
 	let behavior = crate::behavior::functions::FunctionRegisterBehavior::StatementFunction {
@@ -162,7 +162,7 @@ impl FunctionBehavior {
 }
 
 /// Covers both actual functions and
-pub trait SynthesisableFunction<M: crate::ASTImplementation> {
+pub trait SynthesisableFunction<A: crate::ASTImplementation> {
 	fn id(&self, source_id: SourceId) -> FunctionId;
 
 	// TODO temp
@@ -172,46 +172,46 @@ pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 	fn type_parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> Option<GenericTypeParameters>;
 
 	fn this_constraint<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> Option<TypeId>;
 
 	/// For object literals
 	fn super_constraint<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> Option<TypeId>;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
 	fn parameters<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 		expected_parameters: Option<SynthesisedParameters>,
 	) -> SynthesisedParameters;
 
 	fn return_type_annotation<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> Option<(TypeId, SpanWithSource)>;
 
 	/// Returned type is extracted from events, thus doesn't expect anything in return
 	fn body<T: ReadFromFS>(
 		&self,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	);
 }
 
 /// TODO might be generic if FunctionBehavior becomes generic
-pub enum FunctionRegisterBehavior<'a, M: crate::ASTImplementation> {
+pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 	ArrowFunction {
 		expecting: TypeId,
 		is_async: bool,
@@ -245,13 +245,13 @@ pub enum FunctionRegisterBehavior<'a, M: crate::ASTImplementation> {
 		prototype: TypeId,
 		/// Is this is_some then can use `super()`
 		super_type: Option<TypeId>,
-		properties: ClassPropertiesToRegister<'a, M>,
+		properties: ClassPropertiesToRegister<'a, A>,
 	},
 }
 
-pub struct ClassPropertiesToRegister<'a, M: ASTImplementation>(pub Vec<ClassValue<'a, M>>);
+pub struct ClassPropertiesToRegister<'a, A: crate::ASTImplementation>(pub Vec<ClassValue<'a, A>>);
 
-impl<'a, M: crate::ASTImplementation> FunctionRegisterBehavior<'a, M> {
+impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
 	pub fn is_async(&self) -> bool {
 		match self {
 			FunctionRegisterBehavior::ArrowFunction { is_async, .. }

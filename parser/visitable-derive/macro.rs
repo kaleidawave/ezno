@@ -28,7 +28,7 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 		vec![
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
-			parse_quote!(options: &crate::VisitSettings),
+			parse_quote!(options: &crate::VisitOptions),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -42,7 +42,7 @@ pub fn generate_visit_implementation(input: TokenStream) -> TokenStream {
 		vec![
 			parse_quote!(visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized)),
 			parse_quote!(data: &mut TData),
-			parse_quote!(options: &crate::VisitSettings),
+			parse_quote!(options: &crate::VisitOptions),
 			parse_quote!(chain: &mut ::temporary_annex::Annex<crate::visiting::Chain>),
 		],
 		None,
@@ -119,7 +119,13 @@ fn generated_visit_item(
 			.flat_map(|mut field: NamedOrUnnamedFieldMut| -> Option<Stmt> {
 				let attributes = field.get_attributes();
 
-				let skip_field = attributes.iter().any(|attr| attr.path.is_ident(VISIT_SKIP_NAME));
+				let skip_field_attr =
+					attributes.iter().find(|attr| attr.path.is_ident(VISIT_SKIP_NAME));
+
+				// TODO maybe?
+				// // None == unconditional
+				// let _skip_field_expression: Option<Expr> =
+				// 	skip_field_attr.as_ref().map(|attr| attr.bracket_token);
 
 				let visit_with_chain = attributes.iter().find_map(|attr| {
 					attr.path.is_ident(VISIT_WITH_CHAIN_NAME).then_some(&attr.tokens)
@@ -131,7 +137,7 @@ fn generated_visit_item(
 					quote!(chain)
 				};
 
-				if !skip_field {
+				if skip_field_attr.is_none() {
 					let reference = field.get_reference();
 					Some(match visit_type {
 						VisitType::Immutable => parse_quote! {

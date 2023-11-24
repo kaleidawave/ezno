@@ -47,8 +47,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	for attribute in element.attributes.iter() {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
-		let attribute_position =
-			attribute.get_position().clone().with_source(environment.get_source());
+		let attribute_position = attribute.get_position().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
 			crate::context::facts::Publicity::Public,
@@ -99,13 +98,13 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 								attr_restriction,
 		// 								&environment.as_general_context(),
 		// 								&checking_data.types,
-		// 								checking_data.settings.debug_types,
+		// 								checking_data.options.debug_types,
 		// 							),
 		// 							value_type: TypeStringRepresentation::from_type_id(
 		// 								attr_value,
 		// 								&environment.as_general_context(),
 		// 								&checking_data.types,
-		// 								checking_data.settings.debug_types,
+		// 								checking_data.options.debug_types,
 		// 							),
 		// 							attribute_type_site: (),
 		// 							value_site: parser::ASTNode::get_position(attribute)
@@ -143,7 +142,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			// TODO idx bad! and should override item
 			let property = PropertyKey::from_usize(idx);
 
-			let child_position = child.get_position().clone().with_source(environment.get_source());
+			let child_position = child.get_position().with_source(environment.get_source());
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
@@ -163,7 +162,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// TODO temp, to be worked out
 	const JSX_NAME: &str = "JSXH";
 
-	let position = element.get_position().clone().with_source(environment.get_source());
+	let position = element.get_position().with_source(environment.get_source());
 	let jsx_function =
 		match environment.get_variable_handle_error(JSX_NAME, position.clone(), checking_data) {
 			Ok(ty) => ty.1,
@@ -282,12 +281,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 						attribute_type: TypeStringRepresentation::from_type_id(
 	// 			// 							attr_restriction,
 	// 			// 							&environment.into_general_context(),
-	// 			// 							checking_data.settings.debug_types,
+	// 			// 							checking_data.options.debug_types,
 	// 			// 						),
 	// 			// 						value_type: TypeStringRepresentation::from_type_id(
 	// 			// 							attr_value,
 	// 			// 							&environment.into_general_context(),
-	// 			// 							checking_data.settings.debug_types,
+	// 			// 							checking_data.options.debug_types,
 	// 			// 						),
 	// 			// 						attribute_type_site: (),
 	// 			// 						value_site: parser::ASTNode::get_position(attribute)
@@ -396,12 +395,12 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 			//             expected: TypeStringRepresentation::from_type(
 			//                 &expected_type,
 			//                 &checking_data.memory,
-			//                 checking_data.settings.debug_types,
+			//                 checking_data.options.debug_types,
 			//             ),
 			//             found: TypeStringRepresentation::from_type(
 			//                 &expression.as_type(),
 			//                 &checking_data.memory,
-			//                 checking_data.settings.debug_types,
+			//                 checking_data.options.debug_types,
 			//             ),
 			//         },
 			//     );

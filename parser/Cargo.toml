@@ -45,7 +45,7 @@ get-field-by-type = "0.0.3"
 serde = { version = "1.0", features = ["derive"], optional = true }
 self-rust-tokenize = { version = "0.3.3", optional = true }
 
-source-map = { version = "0.14.6", features = [
+source-map = { version = "0.14.7", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }

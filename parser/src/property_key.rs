@@ -1,6 +1,10 @@
-use crate::{Quoted, TSXToken};
+use crate::{
+	visiting::{Chain, VisitOptions, Visitable},
+	Quoted, TSXToken, WithComment,
+};
 use source_map::Span;
 use std::fmt::Debug;
+use temporary_annex::Annex;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use crate::{
@@ -166,33 +170,62 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	}
 }
 
-// TODO
-// impl WithComment<PropertyKey> {
-// 	pub(crate) fn visit<TData>(
-// 		&self,
-// 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-// 		data: &mut TData,
-// 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-// 		location: PropertyKeyLocation,
-// 	) {
-// 		visitors.visit_variable(
-// 			&ImmutableVariableOrPropertyPart::PropertyKey(self, location),
-// 			data,
-// 			chain,
-// 		);
-// 	}
+impl Visitable for WithComment<PropertyKey<PublicOrPrivate>> {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		_options: &VisitOptions,
+		chain: &mut Annex<Chain>,
+	) {
+		visitors.visit_variable(
+			&crate::visiting::ImmutableVariableOrProperty::ClassPropertyKey(self),
+			data,
+			chain,
+		);
+	}
 
-// 	pub(crate) fn visit_mut<TData>(
-// 		&mut self,
-// 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-// 		data: &mut TData,
-// 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-// 		location: PropertyKeyLocation,
-// 	) {
-// 		visitors.visit_variable_mut(
-// 			&mut MutableVariablePart::PropertyKey(self, location),
-// 			data,
-// 			chain,
-// 		);
-// 	}
-// }
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		_options: &VisitOptions,
+		chain: &mut Annex<Chain>,
+	) {
+		visitors.visit_variable_mut(
+			&mut crate::visiting::MutableVariableOrProperty::ClassPropertyKey(self),
+			data,
+			chain,
+		);
+	}
+}
+
+impl Visitable for WithComment<PropertyKey<AlwaysPublic>> {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		_options: &VisitOptions,
+		chain: &mut Annex<Chain>,
+	) {
+		visitors.visit_variable(
+			&crate::visiting::ImmutableVariableOrProperty::ObjectPropertyKey(self),
+			data,
+			chain,
+		);
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		_options: &VisitOptions,
+		chain: &mut Annex<Chain>,
+	) {
+		visitors.visit_variable_mut(
+			&mut crate::visiting::MutableVariableOrProperty::ObjectPropertyKey(self),
+			data,
+			chain,
+		);
+	}
+}

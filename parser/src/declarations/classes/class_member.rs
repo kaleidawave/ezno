@@ -1,17 +1,20 @@
 use std::fmt::Debug;
 
-use crate::{errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords};
+use crate::{
+	errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords, visiting::Visitable,
+};
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 use visitable_derive::Visitable;
 
 use crate::{
-	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, Keyword, MethodHeader,
-	ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
+	functions::{FunctionBased, MethodHeader},
+	ASTNode, Block, Expression, FunctionBase, Keyword, ParseOptions, ParseResult, PropertyKey,
+	TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
 /// The variable id's of these is handled by their [PropertyKey]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ClassMember {
@@ -223,12 +226,32 @@ impl FunctionBased for ClassFunctionBase {
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		header.get_start()
 	}
+
+	fn visit_name<TData>(
+		name: &Self::Name,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit(visitors, data, options, chain)
+	}
+
+	fn visit_name_mut<TData>(
+		name: &mut Self::Name,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit_mut(visitors, data, options, chain)
+	}
 }
 
 impl FunctionBased for ClassConstructorBase {
-	type Body = Block;
 	type Header = Keyword<tsx_keywords::Constructor>;
 	type Name = ();
+	type Body = Block;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
@@ -254,5 +277,23 @@ impl FunctionBased for ClassConstructorBase {
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		Some(header.get_position().get_start())
+	}
+
+	fn visit_name<TData>(
+		_: &Self::Name,
+		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
+
+	fn visit_name_mut<TData>(
+		_: &mut Self::Name,
+		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
 	}
 }

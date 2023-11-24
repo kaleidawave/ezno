@@ -1,14 +1,15 @@
 use crate::{
 	errors::parse_lexing_error,
 	extensions::decorators::Decorated,
+	functions::MethodHeader,
 	parse_bracketed,
 	property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed,
 	tokens::token_as_identifier,
 	tsx_keywords,
 	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
-	ASTNode, Expression, GenericTypeConstraint, Keyword, MethodHeader, NumberRepresentation,
-	ParseOptions, ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ASTNode, Expression, GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions,
+	ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
 
 use get_field_by_type::GetFieldByType;

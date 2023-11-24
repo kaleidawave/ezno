@@ -14,11 +14,11 @@ pub enum PropertyFunctionProperty {
 	Standard { is_async: bool, is_generator: bool },
 }
 
-pub struct ClassValue<'a, M: ASTImplementation> {
+pub struct ClassValue<'a, A: crate::ASTImplementation> {
 	pub publicity: Publicity,
 	/// Created eagerly, don't specialise
 	pub key: PropertyKey<'static>,
-	pub value: Option<&'a M::Expression>,
+	pub value: Option<&'a A::Expression<'a>>,
 }
 
 pub struct SynthesisedClassValue {
@@ -45,11 +45,11 @@ pub struct RegisterClassPropertiesEvent {
 	pub class_prototype: TypeId,
 }
 
-fn register_properties_into_store<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+fn register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	class_prototype: TypeId,
-	properties: ClassPropertiesToRegister<'_, M>,
-	checking_data: &mut CheckingData<T, M>,
+	properties: ClassPropertiesToRegister<'_, A>,
+	checking_data: &mut CheckingData<T, A>,
 ) {
 	let scope = crate::Scope::Function(crate::context::environment::FunctionScope::Constructor {
 		extends: false,
@@ -78,16 +78,16 @@ fn register_properties_into_store<T: crate::ReadFromFS, M: crate::ASTImplementat
 
 pub(crate) fn register_properties_into_environment<
 	T: crate::ReadFromFS,
-	M: crate::ASTImplementation,
+	A: crate::ASTImplementation,
 >(
 	environment: &mut Environment,
 	on: TypeId,
-	checking_data: &mut CheckingData<T, M>,
-	properties: ClassPropertiesToRegister<M>,
+	checking_data: &mut CheckingData<T, A>,
+	properties: ClassPropertiesToRegister<A>,
 ) {
 	for ClassValue { publicity, key, value } in properties.0 {
 		let value = if let Some(expression) = value {
-			PropertyValue::Value(M::synthesise_expression(
+			PropertyValue::Value(A::synthesise_expression(
 				expression,
 				TypeId::ANY_TYPE,
 				environment,

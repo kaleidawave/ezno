@@ -36,11 +36,14 @@ pub enum PureBinaryOperation {
 }
 
 /// TODO report errors better here
-pub fn evaluate_pure_binary_operation_handle_errors<T: crate::ReadFromFS, M: ASTImplementation>(
+pub fn evaluate_pure_binary_operation_handle_errors<
+	T: crate::ReadFromFS,
+	A: crate::ASTImplementation,
+>(
 	(lhs, lhs_pos): (TypeId, SpanWithSource),
 	operator: PureBinaryOperation,
 	(rhs, rhs_pos): (TypeId, SpanWithSource),
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
 ) -> TypeId {
 	match operator {
@@ -335,32 +338,33 @@ pub enum Logical {
 
 /// TODO strict casts!
 pub fn evaluate_logical_operation_with_expression<
+	'a,
 	T: crate::ReadFromFS,
-	M: crate::ASTImplementation,
+	A: crate::ASTImplementation,
 >(
 	lhs: TypeId,
 	operator: Logical,
-	rhs: &M::Expression,
-	checking_data: &mut CheckingData<T, M>,
+	rhs: &'a A::Expression<'a>,
+	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
-	enum TypeOrSynthesisable<'a, M: crate::ASTImplementation> {
+	enum TypeOrSynthesisable<'a, A: crate::ASTImplementation> {
 		Type(TypeId),
-		Expression(&'a M::Expression),
+		Expression(&'a A::Expression<'a>),
 	}
 
-	// impl<'a, M: crate::ASTImplementation> SynthesisableConditional<M> for TypeOrSynthesisable<'a, M> {
+	// impl<'a, A: crate::ASTImplementation> SynthesisableConditional<M> for TypeOrSynthesisable<'a, M> {
 	// 	type ExpressionResult = TypeId;
 
 	// 	fn synthesise_condition<T: crate::ReadFromFS>(
 	// 		self,
 	// 		environment: &mut Environment,
-	// 		checking_data: &mut CheckingData<T, M>,
+	// 		checking_data: &mut CheckingData<T, A>,
 	// 	) -> Self::ExpressionResult {
 	// 		match self {
 	// 			TypeOrSynthesisable::Type(ty) => ty,
 	// 			TypeOrSynthesisable::Expression(expr, _) => {
-	// 				M::synthesise_expression(expr, TypeId::ANY_TYPE, environment, checking_data)
+	// 				A::synthesise_expression(expr, TypeId::ANY_TYPE, environment, checking_data)
 	// 			}
 	// 		}
 	// 	}
@@ -382,17 +386,17 @@ pub fn evaluate_logical_operation_with_expression<
 	match operator {
 		Logical::And => Ok(environment.new_conditional_context(
 			lhs,
-			|env: &mut Environment, data: &mut CheckingData<T, M>| {
-				M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+			|env: &mut Environment, data: &mut CheckingData<T, A>| {
+				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			},
-			Some(|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs),
+			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
 			checking_data,
 		)),
 		Logical::Or => Ok(environment.new_conditional_context(
 			lhs,
-			|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs,
-			Some(|env: &mut Environment, data: &mut CheckingData<T, M>| {
-				M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs,
+			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
+				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			}),
 			checking_data,
 		)),
@@ -406,10 +410,10 @@ pub fn evaluate_logical_operation_with_expression<
 			)?;
 			Ok(environment.new_conditional_context(
 				is_lhs_null,
-				|env: &mut Environment, data: &mut CheckingData<T, M>| {
-					M::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+				|env: &mut Environment, data: &mut CheckingData<T, A>| {
+					A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 				},
-				Some(|_env: &mut Environment, _data: &mut CheckingData<T, M>| lhs),
+				Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
 				checking_data,
 			))
 		}

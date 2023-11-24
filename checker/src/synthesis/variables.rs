@@ -252,7 +252,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
 			crate::behavior::variables::check_variable_initialization(
 				(var_ty, ta_pos),
-				(value_ty, value.get_position().clone().with_source(environment.get_source())),
+				(value_ty, value.get_position().with_source(environment.get_source())),
 				environment,
 				checking_data,
 			);
@@ -285,7 +285,11 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				{
 					exported.named.push((name.as_str().to_owned(), (id, mutability)));
 				} else {
-					todo!("emit error here")
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::NonTopLevelExport(
+							name.get_position().with_source(environment.get_source()),
+						),
+					);
 				}
 			}
 		}

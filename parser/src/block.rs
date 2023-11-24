@@ -6,7 +6,7 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, VisitSettings,
+	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, VisitOptions,
 	Visitable,
 };
 
@@ -167,18 +167,19 @@ impl Visitable for Block {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
-
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
-		{
-			visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
-		}
-		let iter = self.iter();
-		if options.reverse_statements {
-			iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
-		} else {
-			iter.for_each(|item| item.visit(visitors, data, options, chain));
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
+			}
+			let iter = self.iter();
+			if options.reverse_statements {
+				iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
+			} else {
+				iter.for_each(|item| item.visit(visitors, data, options, chain));
+			}
 		}
 	}
 
@@ -186,24 +187,25 @@ impl Visitable for Block {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
-
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
-		{
-			visitors.visit_block_mut(
-				&mut crate::block::BlockLikeMut { items: &mut self.0 },
-				data,
-				chain,
-			);
-		}
-		let iter_mut = self.iter_mut();
-		if options.reverse_statements {
-			iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
-		} else {
-			iter_mut
-				.rev()
-				.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block_mut(
+					&mut crate::block::BlockLikeMut { items: &mut self.0 },
+					data,
+					chain,
+				);
+			}
+			let iter_mut = self.iter_mut();
+			if options.reverse_statements {
+				iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			} else {
+				iter_mut
+					.rev()
+					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			}
 		}
 	}
 }

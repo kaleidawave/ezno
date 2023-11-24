@@ -53,11 +53,12 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				// 	env.register_type(Type::NamedRooted { name class.name.clone())),
 				// ),
 			}
-			TypeDefinitionModuleDeclaration::TypeAlias(type_alias) => {
+			TypeDefinitionModuleDeclaration::TypeAlias(alias) => {
 				env.new_alias(
-					&type_alias.type_name.name,
-					type_alias.type_name.type_parameters.as_deref(),
-					&type_alias.type_expression,
+					&alias.type_name.name,
+					alias.type_name.type_parameters.as_deref(),
+					&alias.type_expression,
+					*alias.get_position(),
 					checking_data,
 				);
 			}
@@ -69,7 +70,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		match declaration {
 			TypeDefinitionModuleDeclaration::Function(func) => {
 				// TODO abstract
-				let declared_at = func.get_position().clone().with_source(source);
+				let declared_at = func.get_position().with_source(source);
 				let base = synthesise_function_annotation(
 					&func.type_parameters,
 					&func.parameters,
@@ -100,7 +101,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				let res = env.register_variable_handle_error(
 					func.name.as_str(),
 					// TODO
-					func.get_position().clone().with_source(source),
+					func.get_position().with_source(source),
 					behavior,
 					checking_data,
 				);
@@ -195,7 +196,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				//         .get_type(
 				//             extends_type,
 				//             checking_data,
-				//             &crate::root::GetTypeFromReferenceSettings::Default,
+				//             &crate::root::GetTypeFromReferenceOptions::Default,
 				//         )
 				//         .expect("Class should have been initialised");
 				//     todo!();

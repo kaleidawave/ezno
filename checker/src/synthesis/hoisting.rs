@@ -2,8 +2,9 @@ use std::{collections::HashMap, iter};
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
-	WithComment,
+	tsx_keywords::Var,
+	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration, VariableIdentifier, WithComment,
 };
 use source_map::{Span, SpanWithSource};
 
@@ -71,6 +72,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						&alias.type_name.name,
 						alias.type_name.type_parameters.as_deref(),
 						&alias.type_expression,
+						*alias.get_position(),
 						checking_data,
 					);
 				}
@@ -147,6 +149,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									&alias.type_name.name,
 									alias.type_name.type_parameters.as_deref(),
 									&alias.type_expression,
+									*alias.get_position(),
 									checking_data,
 								);
 
@@ -173,7 +176,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				if let Statement::VarVariable(_) = stmt {
 					checking_data.raise_unimplemented_error(
 						"var statement hoisting",
-						stmt.get_position().clone().with_source(environment.get_source()),
+						stmt.get_position().with_source(environment.get_source()),
 					);
 				}
 			}
@@ -187,12 +190,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						// TODO
 						mutability: crate::behavior::variables::VariableMutability::Constant,
 					};
-					environment.register_variable_handle_error(
-						func.on.name.as_str(),
-						func.get_position().clone().with_source(environment.get_source()),
-						behavior,
-						checking_data,
-					);
+					if let Some(VariableIdentifier::Standard(name, ..)) =
+						func.on.name.as_option_variable_identifier()
+					{
+						environment.register_variable_handle_error(
+							name,
+							func.get_position().with_source(environment.get_source()),
+							behavior,
+							checking_data,
+						);
+					}
 				}
 				parser::Declaration::DeclareFunction(func) => {
 					// TODO abstract
@@ -224,7 +231,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						crate::context::VariableRegisterBehavior::Declare { base, context: None };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
-						func.get_position().clone().with_source(environment.get_source()),
+						func.get_position().with_source(environment.get_source()),
 						behavior,
 						checking_data,
 					);
@@ -295,12 +302,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									.clone()
 									.with_source(environment.get_source());
 
-								environment.register_variable_handle_error(
-									func.name.as_str(),
-									declared_at,
-									behavior,
-									checking_data,
-								);
+								if let Some(VariableIdentifier::Standard(name, ..)) =
+									func.name.as_option_variable_identifier()
+								{
+									environment.register_variable_handle_error(
+										name,
+										declared_at,
+										behavior,
+										checking_data,
+									);
+								}
 							}
 							Exportable::Variable(declaration) => {
 								// TODO mark exported
@@ -383,10 +394,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					environment.context_type.scope
 				{
 					// TODO check existing?
-					exported.named.push((
-						function.name.as_str().to_owned(),
-						(variable_id, VariableMutability::Constant),
-					));
+					if let Some(VariableIdentifier::Standard(name, ..)) =
+						function.name.as_option_variable_identifier()
+					{
+						exported
+							.named
+							.push((name.clone(), (variable_id, VariableMutability::Constant)));
+					}
 				}
 			}
 			_ => (),
@@ -518,7 +532,7 @@ fn get_annotation_from_declaration<
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
 			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().clone().with_source(environment.get_source()),
+			annotation.get_position().with_source(environment.get_source()),
 		))
 	}
 	// TODO only under config
@@ -564,7 +578,7 @@ pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
 	if let Ok(annotation) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
-			annotation.get_position().clone().with_source(source),
+			annotation.get_position().with_source(source),
 		))
 	} else {
 		// TODO warning
