@@ -150,14 +150,14 @@ impl FunctionParameters {
 				}));
 				break;
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.len() == 0 && matches!(tok, TSXToken::Keyword(TSXKeyword::This))
+				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::This))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 				let position = start.union(type_annotation.get_position());
 				this_type = Some((type_annotation, position));
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.len() == 0 && matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
+				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;

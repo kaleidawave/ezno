@@ -192,7 +192,7 @@ impl SynthesisedArgument {
 		}
 	}
 
-	pub(crate) fn into_type(&self) -> Result<TypeId, ()> {
+	pub(crate) fn to_type(&self) -> Result<TypeId, ()> {
 		match self {
 			SynthesisedArgument::NonSpread { ty, position: _ } => Ok(*ty),
 		}

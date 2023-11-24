@@ -22,12 +22,12 @@ pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 
 	let mut returned = TypeId::UNDEFINED_TYPE;
 	for (condition, code) in is_expression.branches.iter() {
-		let requirement = synthesise_type_annotation(&condition, environment, checking_data);
+		let requirement = synthesise_type_annotation(condition, environment, checking_data);
 
 		// TODO need to test subtyping and subtype here
 		// TODO move proofs here
 
-		let result = code.synthesise_function_body(environment, checking_data);
+		code.synthesise_function_body(environment, checking_data);
 
 		// let code_returns = code.synthesise_function_body(environment, checking_data);
 

@@ -135,7 +135,7 @@ where
 	) -> Option<GenericTypeParameters> {
 		self.type_parameters
 			.as_ref()
-			.map(|ty_params| synthesise_type_parameters(&ty_params, environment, checking_data))
+			.map(|ty_params| synthesise_type_parameters(ty_params, environment, checking_data))
 	}
 
 	fn this_constraint<T: crate::ReadFromFS>(
@@ -495,15 +495,9 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							environment.new_lexical_environment(Scope::Function(new_scope));
 
 						let type_parameters: Option<GenericTypeParameters> =
-							if let Some(type_parameters) = type_parameters {
-								Some(synthesise_type_parameters(
-									type_parameters,
-									&mut env,
-									checking_data,
-								))
-							} else {
-								None
-							};
+							type_parameters.as_ref().map(|type_parameters| {
+								synthesise_type_parameters(type_parameters, &mut env, checking_data)
+							});
 
 						let parameters = synthesise_type_annotation_function_parameters(
 							parameters,
@@ -538,15 +532,13 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 					}
 					other => {
 						let type_parameters: Option<GenericTypeParameters> =
-							if let Some(type_parameters) = type_parameters {
-								Some(synthesise_type_parameters(
+							type_parameters.as_ref().map(|type_parameters| {
+								synthesise_type_parameters(
 									type_parameters,
 									environment,
 									checking_data,
-								))
-							} else {
-								None
-							};
+								)
+							});
 
 						let parameters = synthesise_type_annotation_function_parameters(
 							parameters,

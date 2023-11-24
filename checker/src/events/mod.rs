@@ -103,13 +103,13 @@ pub enum Event {
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
-	/// 	- Arrays
-	/// 	- Map & Sets
-	/// 	- HTMLElement and derivatives
+	///     - Arrays
+	///     - Map & Sets
+	///     - HTMLElement and derivatives
 	///
 	/// ```typescript
 	/// function x() {
-	/// 	return {}
+	///     return {}
 	/// }
 	/// ```
 	///

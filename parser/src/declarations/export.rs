@@ -196,10 +196,10 @@ impl ASTNode for ExportDeclaration {
 						})
 					}
 				} else {
-					return Err(ParseError::new(
+					Err(ParseError::new(
 						crate::ParseErrors::UnmatchedBrackets,
 						start.with_length(1),
-					));
+					))
 				}
 			}
 			Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
@@ -388,7 +388,7 @@ impl ASTNode for ExportPart {
 			ExportPart::PrefixComment(comment, inner, _) => {
 				if options.include_comments {
 					buf.push_str("/*");
-					buf.push_str(&comment);
+					buf.push_str(comment);
 					buf.push_str("*/");
 					if inner.is_some() {
 						buf.push(' ');
@@ -402,7 +402,7 @@ impl ASTNode for ExportPart {
 				inner.to_string_from_buffer(buf, options, depth);
 				if options.include_comments {
 					buf.push_str("/*");
-					buf.push_str(&comment);
+					buf.push_str(comment);
 					buf.push_str("*/ ");
 				}
 			}

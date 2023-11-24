@@ -120,7 +120,7 @@ impl PropertyValue {
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
 /// types at some point*
-pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
+pub(crate) fn get_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
@@ -187,7 +187,7 @@ pub(crate) fn get_property<'a, E: CallCheckingBehavior>(
 	Some((PropertyKind::Direct, value))
 }
 
-fn get_from_an_object<'a, E: CallCheckingBehavior>(
+fn get_from_an_object<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
@@ -305,14 +305,14 @@ fn get_from_an_object<'a, E: CallCheckingBehavior>(
 	}
 }
 
-fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
+fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
 	with: Option<TypeId>,
 	environment: &mut Environment,
-	behavior: &mut E,
+	behavior: &E,
 	types: &mut TypeStore,
 ) -> Option<TypeId> {
 	// match constraint {
@@ -409,14 +409,14 @@ fn evaluate_get_on_poly<'a, E: CallCheckingBehavior>(
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
-pub(crate) fn set_property<'a, E: CallCheckingBehavior>(
+pub(crate) fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
 	new: PropertyValue,
 	environment: &mut Environment,
 	behavior: &mut E,
-	types: &mut TypeStore,
+	types: &TypeStore,
 	setter_position: Option<SpanWithSource>,
 ) -> Result<Option<TypeId>, SetPropertyError> {
 	// TODO

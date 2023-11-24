@@ -134,9 +134,9 @@ impl Facts {
 		self.variable_current_value.extend(other.variable_current_value.iter().to_owned());
 		self.prototypes.extend(other.prototypes.iter().to_owned());
 		self.current_properties
-			.extend(other.current_properties.iter().map(|(l, r)| (l.clone(), r.clone())));
+			.extend(other.current_properties.iter().map(|(l, r)| (*l, r.clone())));
 		self.closure_current_values
-			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), r.clone())));
+			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), *r)));
 		self.configurable.extend(other.configurable.iter().to_owned());
 		self.enumerable.extend(other.enumerable.iter().to_owned());
 		self.writable.extend(other.writable.iter().to_owned());

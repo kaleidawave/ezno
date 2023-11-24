@@ -14,7 +14,7 @@ fn main() {
 		path.to_path_buf(),
 		HashSet::from_iter(std::iter::once(ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into())),
 		|path: &std::path::Path| {
-			if path == &PathBuf::from(ezno_checker::INTERNAL_DEFINITION_FILE_PATH) {
+			if path == PathBuf::from(ezno_checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(ezno_checker::INTERNAL_DEFINITION_FILE.to_owned())
 			} else {
 				fs::read_to_string(path).ok()

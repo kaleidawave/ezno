@@ -33,10 +33,7 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 		.iter()
 		.enumerate()
 		.map(|(idx, InterpolationPoint { position, expr_name: _ })| {
-			(
-				*position,
-				ezno_parser::CursorId(idx.try_into().unwrap(), std::marker::PhantomData::default()),
-			)
+			(*position, ezno_parser::CursorId(idx.try_into().unwrap(), std::marker::PhantomData))
 		})
 		.collect();
 

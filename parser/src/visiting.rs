@@ -282,6 +282,10 @@ mod structures {
 			self.0.len()
 		}
 
+		pub fn is_empty(&self) -> bool {
+			self.0.is_empty()
+		}
+
 		pub fn truncate(&mut self, to_size: usize) {
 			self.0.truncate(to_size)
 		}
@@ -532,14 +536,17 @@ mod visitors {
 		}
 	}
 
+	type ExpressionVisitor<T> = Box<dyn Visitor<Expression, T>>;
+	type StatementVisitor<T> = Box<dyn for<'a> Visitor<StatementOrDeclarationRef<'a>, T>>;
+	type VariableVisitor<T> = Box<dyn for<'a> Visitor<ImmutableVariableOrPropertyPart<'a>, T>>;
+	type BlockVisitor<T> = Box<dyn for<'a> Visitor<BlockLike<'a>, T>>;
 	#[derive(Default)]
 	pub struct Visitors<T> {
-		pub expression_visitors: Vec<Box<dyn Visitor<Expression, T>>>,
-		pub statement_visitors: Vec<Box<dyn for<'a> Visitor<StatementOrDeclarationRef<'a>, T>>>,
+		pub expression_visitors: Vec<ExpressionVisitor<T>>,
+		pub statement_visitors: Vec<StatementVisitor<T>>,
 		pub jsx_element_visitors: Vec<Box<dyn Visitor<JSXElement, T>>>,
-		pub variable_visitors:
-			Vec<Box<dyn for<'a> Visitor<ImmutableVariableOrPropertyPart<'a>, T>>>,
-		pub block_visitors: Vec<Box<dyn for<'a> Visitor<BlockLike<'a>, T>>>,
+		pub variable_visitors: Vec<VariableVisitor<T>>,
+		pub block_visitors: Vec<BlockVisitor<T>>,
 	}
 
 	// impl<T, U> Visitor<Expression, T> for U
@@ -618,13 +625,16 @@ mod visitors_mut {
 		fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {}
 	}
 
+	type StatementVisitor<T> = Box<dyn for<'a> VisitorMut<StatementOrDeclarationMut<'a>, T>>;
+	type VariableVisitor<T> = Box<dyn for<'a> VisitorMut<MutableVariablePart<'a>, T>>;
+	type BlockVisitor<T> = Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>;
+
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
-		pub statement_visitors_mut:
-			Vec<Box<dyn for<'a> VisitorMut<StatementOrDeclarationMut<'a>, T>>>,
+		pub statement_visitors_mut: Vec<StatementVisitor<T>>,
 		pub jsx_element_visitors_mut: Vec<Box<dyn VisitorMut<JSXElement, T>>>,
-		pub variable_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<MutableVariablePart<'a>, T>>>,
-		pub block_visitors_mut: Vec<Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>>,
+		pub variable_visitors_mut: Vec<VariableVisitor<T>>,
+		pub block_visitors_mut: Vec<BlockVisitor<T>>,
 	}
 
 	impl<T> Default for VisitorsMut<T> {

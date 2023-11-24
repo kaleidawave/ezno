@@ -67,12 +67,7 @@ pub(crate) struct FunctionTypeArguments {
 }
 
 impl FunctionTypeArguments {
-	pub(crate) fn set_id_from_reference(
-		&mut self,
-		id: TypeId,
-		value: TypeId,
-		types: &mut TypeStore,
-	) {
+	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId, types: &TypeStore) {
 		self.local_arguments.insert(id, (value, SpanWithSource::NULL_SPAN));
 	}
 }
@@ -89,7 +84,7 @@ pub(crate) trait TypeArgumentStore {
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>>;
 
-	fn into_structural_generic_arguments(&self) -> StructureGenericArguments;
+	fn to_structural_generic_arguments(&self) -> StructureGenericArguments;
 
 	fn is_empty(&self) -> bool;
 }
@@ -130,7 +125,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 		None
 	}
 
-	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
 		// self.structure_arguments.clone()
 		match self.structure_arguments {
 			Some(ref parent) => {
@@ -145,7 +140,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 			}
 			None => StructureGenericArguments {
 				type_arguments: self.local_arguments.clone(),
-				closures: self.closure_id.clone().into_iter().collect(),
+				closures: self.closure_id.into_iter().collect(),
 			},
 		}
 	}
@@ -170,7 +165,7 @@ impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
 		None
 	}
 
-	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
 		todo!("This shouldn't be needed");
 	}
 
@@ -199,7 +194,7 @@ impl TypeArgumentStore for StructureGenericArguments {
 		Some(self.closures.clone())
 	}
 
-	fn into_structural_generic_arguments(&self) -> StructureGenericArguments {
+	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
 		self.clone()
 	}
 

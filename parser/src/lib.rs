@@ -538,7 +538,7 @@ impl FromStr for NumberRepresentation {
 			(NumberSign::Positive, s)
 		};
 
-		let s = if s.contains("_") { Cow::Owned(s.replace('_', "")) } else { Cow::Borrowed(s) };
+		let s = if s.contains('_') { Cow::Owned(s.replace('_', "")) } else { Cow::Borrowed(s) };
 
 		if let Some(s) = s.strip_suffix('n') {
 			Ok(NumberRepresentation::BigInt(sign, s.to_owned()))
@@ -615,12 +615,12 @@ impl FromStr for NumberRepresentation {
 			}
 		} else if s.ends_with('.') {
 			Ok(Self::Number {
-				internal: sign.apply(s[..s.len() - 1].parse().map_err(|_| s.to_owned())?),
+				internal: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: true,
 			})
 		} else if s.starts_with('.') {
-			let value: f64 = s[1..].parse().map_err(|_| s.to_owned())?;
+			let value: f64 = s.strip_prefix('.').unwrap().parse().map_err(|_| s.clone())?;
 			let digits = value.log10().floor() + 1f64;
 			let result = value * (10f64.powf(-digits));
 			Ok(Self::Number {
@@ -629,16 +629,16 @@ impl FromStr for NumberRepresentation {
 				trailing_point: false,
 			})
 		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
-			let value: f64 = left.parse().map_err(|_| s.to_owned())?;
-			let expo: i32 = right.parse().map_err(|_| s.to_owned())?;
+			let value: f64 = left.parse().map_err(|_| s.clone())?;
+			let expo: i32 = right.parse().map_err(|_| s.clone())?;
 			Ok(Self::Number {
-				internal: sign.apply((value * 10f64.powi(expo)) as f64),
+				internal: sign.apply(value * 10f64.powi(expo)),
 				elided_zero_before_point: false,
 				trailing_point: false,
 			})
 		} else {
 			Ok(Self::Number {
-				internal: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+				internal: sign.apply(s.parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: false,
 			})
@@ -792,15 +792,11 @@ impl MethodHeader {
 		match self {
 			MethodHeader::Get(kw) => Some(kw.1.get_start()),
 			MethodHeader::Set(kw) => Some(kw.1.get_start()),
-			MethodHeader::Regular { r#async, generator } => {
-				if let Some(r#async) = r#async {
-					Some(r#async.get_position().get_start())
-				} else if let Some(generator) = generator {
-					Some(generator.get_start())
-				} else {
-					None
-				}
+			MethodHeader::Regular { r#async: Some(r#async), .. } => {
+				Some(r#async.get_position().get_start())
 			}
+			MethodHeader::Regular { generator: Some(generator), .. } => Some(generator.get_start()),
+			MethodHeader::Regular { .. } => None,
 		}
 	}
 
@@ -1069,6 +1065,7 @@ pub mod ast {
 #[doc(hidden)]
 pub(crate) mod test_utils {
 	#[macro_export]
+	#[allow(clippy::crate_in_macro_def)]
 	macro_rules! assert_matches_ast {
 		($source:literal, $ast_pattern:pat) => {{
 			let node = crate::ASTNode::from_string(
@@ -1093,6 +1090,7 @@ pub(crate) mod test_utils {
 	}
 
 	#[macro_export]
+	#[allow(clippy::crate_in_macro_def)]
 	macro_rules! span {
 		($start:pat, $end:pat) => {
 			crate::Span { start: $start, end: $end, .. }

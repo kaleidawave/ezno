@@ -211,7 +211,7 @@ impl<'a> Environment<'a> {
 								publicity,
 								with,
 								new,
-								&mut checking_data.types,
+								&checking_data.types,
 								Some(span),
 							)?
 							.unwrap_or(new)),
@@ -434,7 +434,7 @@ impl<'a> Environment<'a> {
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
 
-							if let Some(reassignment_constraint) = reassignment_constraint.clone() {
+							if let Some(reassignment_constraint) = *reassignment_constraint {
 								// TODO tuple with position:
 								let mut basic_subtyping = BasicEquality {
 									add_property_restrictions: false,
@@ -900,7 +900,7 @@ impl<'a> Environment<'a> {
 		publicity: Publicity,
 		under: PropertyKey,
 		new: TypeId,
-		types: &mut TypeStore,
+		types: &TypeStore,
 		setter_position: Option<SpanWithSource>,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
@@ -937,7 +937,7 @@ impl<'a> Environment<'a> {
 			return;
 		}
 
-		let exports = checking_data.import_file(current_source, &partial_import_path, self);
+		let exports = checking_data.import_file(current_source, partial_import_path, self);
 
 		if let Err(ref err) = exports {
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
@@ -1020,7 +1020,7 @@ impl<'a> Environment<'a> {
 										{
 											exported.named.push((
 												part.r#as.to_owned(),
-												(variable, mutability.clone()),
+												(variable, mutability),
 											));
 										}
 									}
@@ -1097,7 +1097,7 @@ impl<'a> Environment<'a> {
 					for (name, (variable, mutability)) in exports.named.iter() {
 						// TODO are variables put into scope?
 						if let Scope::Module { ref mut exported, .. } = self.context_type.scope {
-							exported.named.push((name.clone(), (*variable, mutability.clone())));
+							exported.named.push((name.clone(), (*variable, *mutability)));
 						}
 					}
 				} else {

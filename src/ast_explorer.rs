@@ -75,8 +75,8 @@ impl ExplorerArguments {
 #[derive(FromArgs, Debug, EnumVariantsStrings)]
 #[argh(subcommand)]
 #[enum_variants_strings_transform(transform = "kebab_case")]
+#[allow(clippy::upper_case_acronyms)]
 pub(crate) enum ExplorerSubCommand {
-	#[allow(clippy::upper_case_acronyms)]
 	AST(ASTArgs),
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),

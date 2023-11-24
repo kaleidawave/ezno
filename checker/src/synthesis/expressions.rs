@@ -204,7 +204,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			))
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, .. } => {
-			let lhs_ty = synthesise_expression(&*lhs, environment, checking_data, TypeId::ANY_TYPE);
+			let lhs_ty = synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
 
 			if let BinaryOperator::LogicalAnd
 			| BinaryOperator::LogicalOr
@@ -228,7 +228,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				.unwrap();
 			}
 
-			let rhs_ty = synthesise_expression(&*rhs, environment, checking_data, TypeId::ANY_TYPE);
+			let rhs_ty = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
 
 			if lhs_ty == TypeId::ERROR_TYPE || rhs_ty == TypeId::ERROR_TYPE {
 				return TypeId::ERROR_TYPE;
@@ -289,7 +289,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
 					let operand_type = synthesise_expression(
-						&*operand,
+						operand,
 						environment,
 						checking_data,
 						TypeId::ANY_TYPE,
@@ -314,7 +314,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				UnaryOperator::TypeOf => todo!(),
 				UnaryOperator::Void => {
 					let _operand_type = synthesise_expression(
-						&*operand,
+						operand,
 						environment,
 						checking_data,
 						TypeId::ANY_TYPE,
@@ -367,7 +367,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						_ => {
 							crate::utils::notify!("Deleting non property raise warning");
 							let _operand_type = synthesise_expression(
-								&*operand,
+								operand,
 								environment,
 								checking_data,
 								TypeId::ANY_TYPE,
@@ -541,7 +541,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::ThisReference(pos) => {
 			let position = pos.clone().with_source(environment.get_source());
-			Instance::RValue(environment.get_value_of_this(&mut checking_data.types, position))
+			Instance::RValue(environment.get_value_of_this(&checking_data.types, position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
 			SuperReference::Call { arguments } => {
@@ -600,8 +600,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		},
 		Expression::NewTarget(..) => todo!(),
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
-			let on =
-				synthesise_expression(&*function, environment, checking_data, TypeId::ANY_TYPE);
+			let on = synthesise_expression(function, environment, checking_data, TypeId::ANY_TYPE);
 
 			let (result, special) = call_function(
 				on,
@@ -619,7 +618,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::ConstructorCall { constructor, type_arguments, arguments, position } => {
 			let on =
-				synthesise_expression(&*constructor, environment, checking_data, TypeId::ANY_TYPE);
+				synthesise_expression(constructor, environment, checking_data, TypeId::ANY_TYPE);
 			let called_with_new = CalledWithNew::New { on };
 			let (result, _) = call_function(
 				on,
@@ -641,10 +640,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(environment.new_conditional_context(
 				condition,
 				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-					synthesise_expression(&truthy_result, env, data, expecting)
+					synthesise_expression(truthy_result, env, data, expecting)
 				},
 				Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-					synthesise_expression(&falsy_result, env, data, expecting)
+					synthesise_expression(falsy_result, env, data, expecting)
 				}),
 				checking_data,
 			))
@@ -816,28 +815,20 @@ fn call_function<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: &parser::Span,
 ) -> (TypeId, Option<SpecialExpressions>) {
-	let generic_type_arguments = if let Some(type_arguments) = type_arguments {
-		Some(
-			type_arguments
-				.iter()
-				.map(|generic_type_argument| {
-					(
-						synthesise_type_annotation(
-							generic_type_argument,
-							environment,
-							checking_data,
-						),
-						generic_type_argument
-							.get_position()
-							.clone()
-							.with_source(environment.get_source()),
-					)
-				})
-				.collect::<Vec<_>>(),
-		)
-	} else {
-		None
-	};
+	let generic_type_arguments = type_arguments.as_ref().map(|type_arguments| {
+		type_arguments
+			.iter()
+			.map(|generic_type_argument| {
+				(
+					synthesise_type_annotation(generic_type_argument, environment, checking_data),
+					generic_type_argument
+						.get_position()
+						.clone()
+						.with_source(environment.get_source()),
+				)
+			})
+			.collect::<Vec<_>>()
+	});
 
 	let synthesised_arguments = arguments
 		.as_mut()
@@ -858,7 +849,7 @@ fn call_function<T: crate::ReadFromFS>(
 
 /// TODO do lazily
 fn synthesise_arguments<T: crate::ReadFromFS>(
-	arguments: &Vec<SpreadExpression>,
+	arguments: &[SpreadExpression],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Vec<SynthesisedArgument> {

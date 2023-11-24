@@ -33,9 +33,7 @@ impl BinarySerializable for String {
 impl BinarySerializable for () {
 	fn serialize(self, _buf: &mut Vec<u8>) {}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		()
-	}
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {}
 }
 
 impl<T: BinarySerializable> BinarySerializable for Option<T> {

@@ -49,12 +49,10 @@ impl SeedingContext {
 			} else {
 				self.type_restrictions.insert(on, vec![(arg, pos)]);
 			}
+		} else if let Some(args) = self.type_arguments.get_mut(&on) {
+			args.push(arg);
 		} else {
-			if let Some(args) = self.type_arguments.get_mut(&on) {
-				args.push(arg);
-			} else {
-				self.type_arguments.insert(on, vec![arg]);
-			}
+			self.type_arguments.insert(on, vec![arg]);
 		};
 	}
 

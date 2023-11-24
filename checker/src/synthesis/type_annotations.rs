@@ -70,7 +70,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(constant)
 		}
 		TypeAnnotation::BooleanLiteral(value, _) => {
-			checking_data.types.new_constant_type(Constant::Boolean(value.clone()))
+			checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		TypeAnnotation::Name(name, pos) => match name.as_str() {
 			"any" => TypeId::ANY_TYPE,
@@ -249,7 +249,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let function_type = synthesise_function_annotation(
 				type_parameters,
 				parameters,
-				Some(&*return_type),
+				Some(return_type),
 				environment,
 				checking_data,
 				super::Performs::None,
@@ -270,7 +270,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::Readonly(type_annotation, _) => {
 			let underlying_type =
-				synthesise_type_annotation(&*type_annotation, environment, checking_data);
+				synthesise_type_annotation(type_annotation, environment, checking_data);
 
 			todo!();
 
@@ -287,8 +287,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
-			let item_type =
-				synthesise_type_annotation(&*item_annotation, environment, checking_data);
+			let item_type = synthesise_type_annotation(item_annotation, environment, checking_data);
 			let with_source =
 				item_annotation.get_position().clone().with_source(environment.get_source());
 			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
@@ -320,7 +319,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			super::interfaces::synthesise_signatures(
 				None,
-				&members,
+				members,
 				super::interfaces::OnToType(onto),
 				environment,
 				checking_data,
@@ -443,7 +442,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		// TODO these are all work in progress
 		TypeAnnotation::Decorated(decorator, inner, _) => {
 			crate::utils::notify!("Unknown decorator skipping {:#?}", decorator.name);
-			synthesise_type_annotation(&inner, environment, checking_data)
+			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
 	};

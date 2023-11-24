@@ -73,6 +73,12 @@ impl ContextId {
 	pub const ROOT: Self = Self(1);
 }
 
+impl Default for ContextId {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[derive(Debug, Clone)]
 pub enum GeneralContext<'a> {
 	Syntax(&'a Environment<'a>),
@@ -1520,7 +1526,7 @@ impl<T: ContextType> Context<T> {
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
-						name: M::type_parameter_name(&parameter).to_owned(),
+						name: M::type_parameter_name(parameter).to_owned(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
 					types.register_type(ty)
@@ -1560,7 +1566,7 @@ impl<T: ContextType> Context<T> {
 			let parameters = parameters
 				.iter()
 				.map(|parameter| {
-					let name = M::type_parameter_name(&parameter).to_owned();
+					let name = M::type_parameter_name(parameter).to_owned();
 					let ty = Type::RootPolyType(PolyNature::Generic {
 						name: name.clone(),
 						eager_fixed: TypeId::ANY_TYPE,
@@ -1638,8 +1644,8 @@ impl<T: ContextType> Context<T> {
 				get_on_ctx!(env.object_constraints.get(&on))
 					.iter()
 					.cloned()
-					.cloned()
 					.flatten()
+					.cloned()
 					.collect::<Vec<_>>()
 			})
 			.collect()
@@ -1651,7 +1657,7 @@ impl<T: ContextType> Context<T> {
 
 	pub(crate) fn get_value_of_this(
 		&mut self,
-		types: &mut TypeStore,
+		types: &TypeStore,
 		position: SpanWithSource,
 	) -> TypeId {
 		self.parents_iter()
@@ -1701,10 +1707,10 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_value_of_constant_import_variable(&self, variable: VariableId) -> TypeId {
-		self.parents_iter()
+		*self
+			.parents_iter()
 			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
 			.unwrap()
-			.clone()
 	}
 }
 
@@ -1758,6 +1764,7 @@ impl<'a, T: Clone> Logical<&'a T> {
 
 // TODO temp
 impl Logical<TypeId> {
+	#[allow(clippy::wrong_self_convention)]
 	pub(crate) fn to_type(self) -> TypeId {
 		match self {
 			Logical::Pure(ty) => ty,

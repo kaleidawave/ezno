@@ -13,7 +13,7 @@ pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bo
 	let mut buf = String::new();
 	print_type_into_buf(id, &mut buf, &mut HashSet::new(), types, ctx, debug);
 
-	return buf;
+	buf
 }
 
 fn print_type_into_buf(
@@ -119,18 +119,17 @@ fn print_type_into_buf(
 				if matches!(
 					types.get_type_by_id(*on),
 					Type::NamedRooted { .. } | Type::Function { .. }
-				) {
-					if !arguments.type_arguments.is_empty() {
-						// TODO might be out of order ...
-						buf.push('<');
-						for (not_at_end, (arg, _)) in arguments.type_arguments.values().nendiate() {
-							print_type_into_buf(*arg, buf, cycles, types, ctx, debug);
-							if not_at_end {
-								buf.push_str(", ")
-							}
+				) && !arguments.type_arguments.is_empty()
+				{
+					// TODO might be out of order ...
+					buf.push('<');
+					for (not_at_end, (arg, _)) in arguments.type_arguments.values().nendiate() {
+						print_type_into_buf(*arg, buf, cycles, types, ctx, debug);
+						if not_at_end {
+							buf.push_str(", ")
 						}
-						buf.push('>');
 					}
+					buf.push('>');
 				}
 			}
 			constructor if debug => match constructor {

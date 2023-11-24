@@ -78,7 +78,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 }
 
 /// TODO this and aliases kindof broken
-pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
+pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
 	called_with_new: CalledWithNew,
 	// Overwritten by .call, else look at binding
@@ -120,7 +120,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 		// 	Function()
 		// }
 
-		let callable = get_logical_callable_from_type(on, &types);
+		let callable = get_logical_callable_from_type(on, types);
 
 		if let Some(logical) = callable {
 			let structure_generics = None;
@@ -136,7 +136,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 				behavior,
 			)
 		} else {
-			return Err(vec![FunctionCallingError::NotCallable {
+			Err(vec![FunctionCallingError::NotCallable {
 				calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					on,
 					&environment.as_general_context(),
@@ -144,7 +144,7 @@ pub(crate) fn call_type<'a, E: CallCheckingBehavior>(
 					false,
 				),
 				call_site,
-			}]);
+			}])
 		}
 	}
 }
@@ -230,7 +230,7 @@ fn get_logical_callable_from_type(
 	}
 }
 
-fn create_generic_function_call<'a, E: CallCheckingBehavior>(
+fn create_generic_function_call<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	called_with_new: CalledWithNew,
 	this_value: ThisValue,
@@ -376,7 +376,7 @@ impl FunctionType {
 	/// Calls the function
 	///
 	/// Returns warnings and errors
-	pub(crate) fn call<'a, E: CallCheckingBehavior>(
+	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
 		called_with_new: CalledWithNew,
 		mut this_value: ThisValue,
@@ -406,9 +406,7 @@ impl FunctionType {
 
 		if let (Some(const_fn_ident), true) = (self.constant_function.as_deref(), call_constant) {
 			let has_dependent_argument = arguments.iter().any(|arg| {
-				types
-					.get_type_by_id(arg.into_type().expect("dependent spread types"))
-					.is_dependent()
+				types.get_type_by_id(arg.to_type().expect("dependent spread types")).is_dependent()
 			});
 
 			// TODO temp, need a better solution
@@ -792,7 +790,7 @@ impl FunctionType {
 		arguments: &[SynthesisedArgument],
 		mut seeding_context: SeedingContext,
 		environment: &mut Environment,
-		types: &mut TypeStore,
+		types: &TypeStore,
 		errors: &mut Vec<FunctionCallingError>,
 		call_site: source_map::BaseSpan<SourceId>,
 	) -> SeedingContext {
@@ -969,7 +967,7 @@ impl FunctionType {
 					first
 						.get_position()
 						.without_source()
-						.union(&end.get_position().without_source())
+						.union(end.get_position().without_source())
 						.with_source(end.get_position().source)
 				} else {
 					first.get_position()
@@ -983,7 +981,7 @@ impl FunctionType {
 	fn synthesise_call_site_type_arguments(
 		&self,
 		call_site_type_arguments: Vec<(TypeId, SpanWithSource)>,
-		types: &mut crate::types::TypeStore,
+		types: &crate::types::TypeStore,
 		environment: &mut Environment,
 	) -> map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>> {
 		if let Some(ref typed_parameters) = self.type_parameters {

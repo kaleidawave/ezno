@@ -254,14 +254,14 @@ pub(crate) fn substitute(
 }
 
 pub(crate) fn curry_arguments(
-	arguments: &mut impl TypeArgumentStore,
+	arguments: &impl TypeArgumentStore,
 	types: &mut TypeStore,
 	id: TypeId,
 ) -> TypeId {
 	if !arguments.is_empty() {
 		crate::utils::notify!("Storing arguments onto object");
 		// TODO only carry arguments that are used
-		let arguments = arguments.into_structural_generic_arguments();
+		let arguments = arguments.to_structural_generic_arguments();
 
 		types.register_type(Type::Constructor(Constructor::StructureGenerics(
 			crate::types::StructureGenerics { on: id, arguments },

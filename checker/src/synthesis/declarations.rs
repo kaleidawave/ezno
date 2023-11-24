@@ -14,7 +14,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 		VariableDeclaration::ConstDeclaration { declarations, .. } => {
 			for variable_declaration in declarations.iter() {
 				synthesise_variable_declaration_item(
-					&variable_declaration,
+					variable_declaration,
 					environment,
 					true,
 					checking_data,
@@ -37,7 +37,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 					VariableMutability::Mutable { reassignment_constraint: restriction }
 				});
 				synthesise_variable_declaration_item(
-					&variable_declaration,
+					variable_declaration,
 					environment,
 					false,
 					checking_data,
