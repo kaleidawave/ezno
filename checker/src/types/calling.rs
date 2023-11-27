@@ -27,24 +27,35 @@ use super::{
 	Constructor, PolyNature, StructureGenerics, TypeStore,
 };
 
+pub struct CallingInput {
+	pub called_with_new: CalledWithNew,
+	pub this_value: ThisValue,
+	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	pub call_site: SpanWithSource,
+}
+
+pub struct CallingInputWithoutThis {
+	pub called_with_new: CalledWithNew,
+	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	pub call_site: SpanWithSource,
+}
+
 pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation>(
 	ty: TypeId,
-	// Overwritten by .call, else look at binding
-	called_with_new: CalledWithNew,
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
-	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	environment: &mut Environment,
+	arguments: Vec<SynthesisedArgument>,
 	checking_data: &mut crate::CheckingData<T, M>,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,
-		called_with_new,
-		this_value,
-		call_site_type_arguments,
+		CallingInput {
+			called_with_new,
+			this_value,
+			call_site_type_arguments,
+			call_site: call_site.clone(),
+		},
 		arguments,
-		call_site.clone(),
 		environment,
 		&mut CheckThings,
 		&mut checking_data.types,
@@ -80,12 +91,8 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 /// TODO this and aliases kindof broken
 pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
-	called_with_new: CalledWithNew,
-	// Overwritten by .call, else look at binding
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -105,11 +112,8 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	if let Some(constraint) = environment.get_poly_base(on, types) {
 		create_generic_function_call(
 			constraint,
-			called_with_new,
-			this_value,
-			call_site_type_arguments,
+			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 			arguments,
-			call_site,
 			on,
 			environment,
 			behavior,
@@ -127,11 +131,9 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 			call_logical(
 				logical,
 				types,
-				called_with_new,
-				call_site_type_arguments,
+				CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
 				structure_generics,
 				arguments,
-				&call_site,
 				environment,
 				behavior,
 			)
@@ -152,11 +154,9 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 fn call_logical<E: CallCheckingBehavior>(
 	logical: Logical<(FunctionId, ThisValue)>,
 	types: &mut TypeStore,
-	called_with_new: CalledWithNew,
-	call_site_type_arguments: Option<Vec<(TypeId, source_map::BaseSpan<SourceId>)>>,
+	CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site }: CallingInputWithoutThis,
 	structure_generics: Option<StructureGenericArguments>,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: &source_map::BaseSpan<SourceId>,
 	environment: &mut Environment,
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
@@ -164,12 +164,14 @@ fn call_logical<E: CallCheckingBehavior>(
 		Logical::Pure((func, this_value)) => {
 			if let Some(function_type) = types.functions.get(&func) {
 				function_type.clone().call(
-					called_with_new,
-					this_value,
-					call_site_type_arguments,
+					CallingInput {
+						called_with_new,
+						this_value,
+						call_site_type_arguments,
+						call_site,
+					},
 					structure_generics,
 					&arguments,
-					call_site.clone(),
 					environment,
 					behavior,
 					types,
@@ -183,11 +185,9 @@ fn call_logical<E: CallCheckingBehavior>(
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
 			types,
-			called_with_new,
-			call_site_type_arguments,
+			CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
 			Some(antecedent),
 			arguments,
-			call_site,
 			environment,
 			behavior,
 		),
@@ -232,11 +232,8 @@ fn get_logical_callable_from_type(
 
 fn create_generic_function_call<E: CallCheckingBehavior>(
 	constraint: TypeId,
-	called_with_new: CalledWithNew,
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
 	on: TypeId,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -245,12 +242,14 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	// TODO don't like how it is mixed
 	let result = call_type(
 		constraint,
-		called_with_new,
-		this_value,
-		call_site_type_arguments,
+		CallingInput {
+			called_with_new,
+			this_value,
+			call_site_type_arguments,
+			call_site: call_site.clone(),
+		},
 		// TODO clone
 		arguments.clone(),
-		call_site.clone(),
 		environment,
 		behavior,
 		types,
@@ -274,8 +273,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 				on,
 				with,
 				timing: crate::events::CallingTiming::Synchronous,
-				called_with_new,
-				// Don't care about output.
+				called_with_new, // Don't care about output.
 				reflects_dependency: None,
 				position: call_site.clone(),
 			});
@@ -376,14 +374,13 @@ impl FunctionType {
 	/// Calls the function
 	///
 	/// Returns warnings and errors
+	// Move references in a wrapping struct can be hard due to lifetimes
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
-		called_with_new: CalledWithNew,
-		mut this_value: ThisValue,
-		call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+		CallingInput { called_with_new, mut this_value, call_site_type_arguments, call_site }: CallingInput,
 		parent_type_arguments: Option<StructureGenericArguments>,
 		arguments: &[SynthesisedArgument],
-		call_site: SpanWithSource,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
@@ -470,12 +467,14 @@ impl FunctionType {
 				// TODO with cloned!!
 				let result = self
 					.call(
-						called_with_new,
-						this_value,
-						call_site_type_arguments,
+						CallingInput {
+							called_with_new,
+							this_value,
+							call_site_type_arguments,
+							call_site: call_site.clone(),
+						},
 						parent_type_arguments,
 						arguments,
-						call_site.clone(),
 						environment,
 						behavior,
 						types,

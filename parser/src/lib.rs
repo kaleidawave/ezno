@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![deny(clippy::all)]
 #![allow(clippy::new_without_default)]
 
 mod block;

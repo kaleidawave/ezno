@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 mod ast_explorer;
 mod commands;
 mod error_handling;

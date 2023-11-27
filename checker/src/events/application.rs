@@ -175,12 +175,14 @@ pub(crate) fn apply_event(
 				CallingTiming::Synchronous => {
 					let result = crate::types::calling::call_type(
 						on,
-						called_with_new,
-						Default::default(),
-						None,
+						crate::types::calling::CallingInput {
+							called_with_new,
+							this_value: Default::default(),
+							call_site_type_arguments: None,
+							// TODO:
+							call_site: source_map::SpanWithSource::NULL_SPAN,
+						},
 						with,
-						// TODO
-						source_map::SpanWithSource::NULL_SPAN,
 						environment,
 						target,
 						types,

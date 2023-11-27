@@ -14,6 +14,7 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::expressions::synthesise_expression,
 	types::{
+		calling::CallingInput,
 		properties::PropertyKey,
 		subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 		SynthesisedArgument,
@@ -191,12 +192,14 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	call_type_handle_errors(
 		jsx_function,
-		crate::types::calling::CalledWithNew::None,
-		environment.facts.value_of_this,
-		None,
-		args,
-		position.clone(),
+		CallingInput {
+			called_with_new: crate::types::calling::CalledWithNew::None,
+			this_value: environment.facts.value_of_this,
+			call_site: position.clone(),
+			call_site_type_arguments: None,
+		},
 		environment,
+		args,
 		checking_data,
 	)
 	.0

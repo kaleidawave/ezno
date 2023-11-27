@@ -1,3 +1,4 @@
+#![deny(clippy::all)]
 use ezno_lib::cli::run_cli;
 use std::io;
 

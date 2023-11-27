@@ -4,7 +4,7 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
-	types::{cast_as_string, SynthesisedArgument},
+	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
 	CheckingData, Constant, Environment, Instance, Type, TypeId,
 };
 
@@ -101,12 +101,14 @@ where
 		let call_site = position.clone().with_source(environment.get_source());
 		crate::types::calling::call_type_handle_errors(
 			tag,
-			crate::types::calling::CalledWithNew::None,
-			crate::behavior::functions::ThisValue::UseParent,
-			None,
-			arguments,
-			call_site,
+			CallingInput {
+				called_with_new: crate::types::calling::CalledWithNew::None,
+				this_value: crate::behavior::functions::ThisValue::UseParent,
+				call_site,
+				call_site_type_arguments: None,
+			},
 			environment,
+			arguments,
 			checking_data,
 		)
 		.0

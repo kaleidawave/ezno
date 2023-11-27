@@ -5,7 +5,9 @@ use crate::{
 	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{printing::print_type, substitute, FunctionType, StructureGenerics},
+	types::{
+		calling::CallingInput, printing::print_type, substitute, FunctionType, StructureGenerics,
+	},
 	Constant, Environment, TypeId,
 };
 
@@ -271,13 +273,15 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Getter(getter) => {
 						let state = ThisValue::Passed(on);
 						let call = getter.call(
-							CalledWithNew::None,
-							state,
-							None,
+							CallingInput {
+								called_with_new: CalledWithNew::None,
+								this_value: state,
+								call_site_type_arguments: None,
+								call_site: SpanWithSource::NULL_SPAN,
+							},
 							// TODO
 							None,
 							&[],
-							SpanWithSource::NULL_SPAN,
 							environment,
 							behavior,
 							types,

@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![deny(clippy::all)]
 #![allow(
 	unreachable_code,
 	unused_variables,
@@ -6,7 +7,9 @@
 	unused_mut,
 	dead_code,
 	irrefutable_let_patterns,
-	deprecated
+	deprecated,
+    // TODO: Remove when fixed
+	clippy::result_unit_err
 )]
 
 pub mod behavior;

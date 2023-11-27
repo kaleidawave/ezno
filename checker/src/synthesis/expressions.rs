@@ -19,7 +19,7 @@ use crate::{
 		variables::VariableWithValue,
 	},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::properties::PropertyKey,
+	types::{calling::CallingInput, properties::PropertyKey},
 	Decidable,
 };
 
@@ -837,12 +837,14 @@ fn call_function<T: crate::ReadFromFS>(
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
-		called_with_new,
-		Default::default(),
-		generic_type_arguments,
-		synthesised_arguments,
-		call_site.clone().with_source(environment.get_source()),
+		CallingInput {
+			called_with_new,
+			this_value: Default::default(),
+			call_site: call_site.clone().with_source(environment.get_source()),
+			call_site_type_arguments: generic_type_arguments,
+		},
 		environment,
+		synthesised_arguments,
 		checking_data,
 	)
 }
