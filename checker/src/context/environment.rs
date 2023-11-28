@@ -151,7 +151,7 @@ impl<'a> Environment<'a> {
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
-	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
+	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with `Span::NULL` ...? Maybe RHS type could be None to accommodate
 	pub fn assign_to_assignable_handle_errors<U: crate::ReadFromFS, M: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable,
@@ -185,7 +185,7 @@ impl<'a> Environment<'a> {
 							);
 							match get_property_handle_errors {
 								Ok(i) => i.get_value(),
-								Err(_) => TypeId::ERROR_TYPE,
+								Err(()) => TypeId::ERROR_TYPE,
 							}
 						}
 					}
@@ -503,6 +503,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
+	#[must_use]
 	pub fn get_environment_id(&self) -> super::ContextId {
 		self.context_id
 	}
@@ -512,11 +513,12 @@ impl<'a> Environment<'a> {
 	}
 
 	/// TODO decidable & private?
-	pub fn property_in(&self, on: TypeId, property: PropertyKey) -> bool {
+	#[must_use]
+	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
 		self.facts_chain().any(|facts| match facts.current_properties.get(&on) {
 			Some(v) => {
 				v.iter().any(
-					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { *p == property },
+					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
 				)
 			}
 			None => false,
@@ -524,8 +526,8 @@ impl<'a> Environment<'a> {
 	}
 
 	/// TODO decidable & private?
-	pub fn delete_property(&mut self, on: TypeId, property: PropertyKey) -> bool {
-		let existing = self.property_in(on, property.clone());
+	pub fn delete_property(&mut self, on: TypeId, property: &PropertyKey) -> bool {
+		let existing = self.property_in(on, property);
 
 		let under = property.into_owned();
 
@@ -646,21 +648,18 @@ impl<'a> Environment<'a> {
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
-			match this {
-				Some((in_root, crossed_boundary, og_var)) => {
-					(in_root, crossed_boundary, og_var.clone())
-				}
-				None => {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::CouldNotFindVariable {
-							variable: name,
-							// TODO
-							possibles: Default::default(),
-							position,
-						},
-					);
-					return Err(TypeId::ERROR_TYPE);
-				}
+			if let Some((in_root, crossed_boundary, og_var)) = this {
+				(in_root, crossed_boundary, og_var.clone())
+			} else {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::CouldNotFindVariable {
+						variable: name,
+						// TODO
+						possibles: Default::default(),
+						position,
+					},
+				);
+				return Err(TypeId::ERROR_TYPE);
 			}
 		};
 
@@ -719,9 +718,9 @@ impl<'a> Environment<'a> {
 									"Open poly type treated as immutable free variable"
 								);
 								return Ok(VariableWithValue(og_var.clone(), *ot));
-							} else {
-								crate::utils::notify!("Free variable!");
 							}
+
+							crate::utils::notify!("Free variable!");
 						}
 					}
 

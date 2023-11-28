@@ -16,7 +16,7 @@ pub(crate) fn create_object_for_type(
 	let mut obj = ObjectBuilder::new(None, types, &mut environment.facts); // env.facts.new_object(None, types, false);
 	match types.get_type_by_id(ty) {
 		Type::AliasTo { to, name, parameters } => todo!(),
-		ty @ Type::And(left, right) | ty @ Type::Or(left, right) => {
+		ty @ (Type::And(left, right) | Type::Or(left, right)) => {
 			let kind = if matches!(ty, Type::And(..)) { "and" } else { "or" };
 			let (left, right) = (*left, *right);
 

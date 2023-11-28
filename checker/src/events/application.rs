@@ -111,7 +111,7 @@ pub(crate) fn apply_event(
 				PropertyValue::Setter(_) => todo!(),
 				// TODO this might be a different thing at some point
 				PropertyValue::Deleted => {
-					environment.delete_property(on, under);
+					environment.delete_property(on, &under);
 					return None;
 				}
 			};
@@ -314,9 +314,9 @@ pub(crate) fn apply_event(
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
 			if substituted_returned != TypeId::ERROR_TYPE {
 				return Some(substituted_returned);
-			} else {
-				crate::utils::notify!("event returned error so skipped");
 			}
+
+			crate::utils::notify!("event returned error so skipped");
 		}
 		// TODO Needs a position (or not?)
 		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
