@@ -447,6 +447,7 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 /// TODO should always take effect annotations (right?)
 ///
 /// TODO abstract
+#[allow(clippy::too_many_arguments)]
 pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextType>(
 	type_parameters: &Option<Vec<GenericTypeConstraint>>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
