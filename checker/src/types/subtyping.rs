@@ -104,6 +104,7 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn type_is_subtype2<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,
@@ -603,6 +604,8 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 }
 
 /// TODO temp
+
+#[allow(clippy::too_many_arguments)]
 fn check_properties<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,

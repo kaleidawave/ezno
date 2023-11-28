@@ -122,6 +122,8 @@ impl PropertyValue {
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
 /// types at some point*
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn get_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
@@ -309,6 +311,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	}
 }
 
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,
@@ -413,6 +417,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
+
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
