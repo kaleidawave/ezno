@@ -119,7 +119,7 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 	) -> Result<Self::DefinitionFile, Self::ParseError> {
 		let options = Default::default();
-		parser::TypeDefinitionModule::from_string(string, options, source_id)
+		parser::TypeDefinitionModule::from_string(&string, options, source_id)
 			.map_err(|err| (err, source_id))
 	}
 

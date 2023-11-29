@@ -65,9 +65,8 @@ pub use types::{
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{
-	Chain, ChainVariable, ImmutableVariableOrPropertyPart, MutableVariablePart, SelfVisitable,
-	SelfVisitableMut, VisitSettings, Visitable, Visitor, VisitorMut, VisitorMutReceiver,
-	VisitorReceiver,
+	Chain, ChainVariable, ImmutableVariableOrPropertyPart, MutableVariablePart, VisitSettings,
+	Visitable, VisitorMutReceiver, VisitorReceiver,
 };
 
 use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
