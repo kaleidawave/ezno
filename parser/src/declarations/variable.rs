@@ -196,7 +196,8 @@ pub enum VariableDeclarationKeyword {
 }
 
 impl VariableDeclarationKeyword {
-	#[must_use] pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
+	#[must_use]
+	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
 
@@ -214,14 +215,16 @@ impl VariableDeclarationKeyword {
 		}
 	}
 
-	#[must_use] pub fn as_str(&self) -> &str {
+	#[must_use]
+	pub fn as_str(&self) -> &str {
 		match self {
 			VariableDeclarationKeyword::Const(_) => "const ",
 			VariableDeclarationKeyword::Let(_) => "let ",
 		}
 	}
 
-	#[must_use] pub fn get_position(&self) -> &Span {
+	#[must_use]
+	pub fn get_position(&self) -> &Span {
 		match self {
 			VariableDeclarationKeyword::Const(kw) => kw.get_position(),
 			VariableDeclarationKeyword::Let(kw) => kw.get_position(),
@@ -312,7 +315,8 @@ impl ASTNode for VariableDeclaration {
 }
 
 impl VariableDeclaration {
-	#[must_use] pub fn is_constant(&self) -> bool {
+	#[must_use]
+	pub fn is_constant(&self) -> bool {
 		matches!(self, VariableDeclaration::ConstDeclaration { .. })
 	}
 }

@@ -70,7 +70,8 @@ pub enum GenericTypeConstraint {
 }
 
 impl GenericTypeConstraint {
-	#[must_use] pub fn name(&self) -> &str {
+	#[must_use]
+	pub fn name(&self) -> &str {
 		match self {
 			GenericTypeConstraint::Parameter { name, .. }
 			| GenericTypeConstraint::Extends(name, _)

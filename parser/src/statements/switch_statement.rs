@@ -72,8 +72,11 @@ impl ASTNode for SwitchStatement {
 			};
 			let mut statements = Vec::new();
 			loop {
-				if let Some(Token(TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default) |
-TSXToken::CloseBrace, _)) = reader.peek()
+				if let Some(Token(
+					TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default)
+					| TSXToken::CloseBrace,
+					_,
+				)) = reader.peek()
 				{
 					break;
 				}

@@ -3,7 +3,8 @@ use std::marker::PhantomData;
 pub type EmptyCursorId = CursorId<()>;
 
 impl EmptyCursorId {
-	#[must_use] pub fn new(id: u8) -> Self {
+	#[must_use]
+	pub fn new(id: u8) -> Self {
 		Self(id, PhantomData)
 	}
 
