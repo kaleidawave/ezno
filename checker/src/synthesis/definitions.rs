@@ -8,7 +8,7 @@ use crate::{
 
 const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
-/// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [TypeDefinitionModule]
+/// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	mut definition: parser::TypeDefinitionModule,
@@ -32,7 +32,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 	// Hoisting names of interfaces, namespaces and types
 	// At some point with binaries could remove this pass
-	for statement in definition.declarations.iter() {
+	for statement in &definition.declarations {
 		match statement {
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = env.new_interface::<EznoParser>(
@@ -40,7 +40,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					interface.on.nominal_keyword.is_some(),
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
-					interface.on.position.clone().with_source(source).clone(),
+					&interface.on.position.clone().with_source(source),
 					&mut checking_data.types,
 				);
 				idx_to_types.insert(interface.on.position.start, ty);
@@ -65,7 +65,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		}
 	}
 
-	for declaration in definition.declarations.into_iter() {
+	for declaration in definition.declarations {
 		match declaration {
 			TypeDefinitionModuleDeclaration::Function(func) => {
 				// TODO abstract
@@ -77,7 +77,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					&mut env,
 					checking_data,
 					func.performs.as_ref().into(),
-					declared_at.clone(),
+					&declared_at,
 					crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
 					None,
 				);
@@ -87,7 +87,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					base.parameters,
 					base.return_type,
 					// TODO
-					declared_at,
+					&declared_at,
 					base.effects,
 					base.constant_function,
 				);
@@ -111,7 +111,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				position,
 				decorators,
 			}) => {
-				for declaration in declarations.iter() {
+				for declaration in &declarations {
 					let constraint = declaration.type_annotation.as_ref().map(|annotation| {
 						synthesise_type_annotation(annotation, &mut env, checking_data)
 					});
@@ -216,7 +216,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	}
 
 	let Environment { named_types, facts, variable_names, variables, .. } = env;
-	(Names { named_types, variable_names, variables }, facts)
+	(Names { variables, named_types, variable_names }, facts)
 }
 
 pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {

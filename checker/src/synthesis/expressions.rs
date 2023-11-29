@@ -219,10 +219,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				return evaluate_logical_operation_with_expression(
 					lhs_ty,
 					match operator {
-						BinaryOperator::LogicalAnd => crate::behavior::operations::Logical::And,
-						BinaryOperator::LogicalOr => crate::behavior::operations::Logical::Or,
+						BinaryOperator::LogicalAnd => &crate::behavior::operations::Logical::And,
+						BinaryOperator::LogicalOr => &crate::behavior::operations::Logical::Or,
 						BinaryOperator::NullCoalescing => {
-							crate::behavior::operations::Logical::NullCoalescing
+							&crate::behavior::operations::Logical::NullCoalescing
 						}
 						_ => unreachable!(),
 					},
@@ -546,7 +546,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::ThisReference(pos) => {
 			let position = pos.clone().with_source(environment.get_source());
-			Instance::RValue(environment.get_value_of_this(&checking_data.types, position))
+			Instance::RValue(environment.get_value_of_this(&checking_data.types, &position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
 			SuperReference::Call { arguments } => {

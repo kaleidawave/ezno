@@ -37,7 +37,7 @@ impl ContextType for Root {
 const HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
 
 impl RootContext {
-	/// Merges two [RootEnvironments]. May be used for multiple `.d.ts` files
+	/// Merges two [`RootEnvironments`]. May be used for multiple `.d.ts` files
 	pub(crate) fn union(&mut self, other: Self) {
 		// TODO this is bad, some things need to merge, inserting over existing will be bad
 		self.variables.extend(other.variables);
@@ -45,6 +45,7 @@ impl RootContext {
 		// self.tys.extend(other.tys.into_iter());
 	}
 
+	#[must_use]
 	pub fn new_with_primitive_references() -> Self {
 		// TODO number might not be a reference at some point
 		let named_types = [
@@ -110,7 +111,7 @@ impl RootContext {
 		todo!()
 	}
 
-	pub(crate) fn deserialize(source: Vec<u8>, backing_source: SourceId) -> Result<Self, String> {
+	pub(crate) fn deserialize(source: &[u8], backing_source: SourceId) -> Result<Self, String> {
 		todo!()
 		// let mut ctx = Root::new_with_primitive_references();
 

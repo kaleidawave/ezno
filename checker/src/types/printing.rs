@@ -9,6 +9,8 @@ use crate::{
 };
 
 /// TODO temp, needs recursion safe, reuse buffer
+
+#[must_use]
 pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bool) -> String {
 	let mut buf = String::new();
 	print_type_into_buf(id, &mut buf, &mut HashSet::new(), types, ctx, debug);
@@ -78,7 +80,7 @@ fn print_type_into_buf(
 				}
 				print_type_into_buf(*to, buf, cycles, types, ctx, debug);
 			}
-			nature => {
+			PolyNature::RecursiveFunction(_, _) => {
 				todo!()
 				// let modified_base = match env {
 				// 	GeneralContext::Syntax(syn) => {
@@ -97,7 +99,7 @@ fn print_type_into_buf(
 				result_union,
 			} => {
 				if debug {
-					write!(buf, "[? {:? }", id).unwrap();
+					write!(buf, "[? {id:? }").unwrap();
 					print_type_into_buf(*condition, buf, cycles, types, ctx, debug);
 					buf.push(']');
 				}
@@ -126,7 +128,7 @@ fn print_type_into_buf(
 					for (not_at_end, (arg, _)) in arguments.type_arguments.values().nendiate() {
 						print_type_into_buf(*arg, buf, cycles, types, ctx, debug);
 						if not_at_end {
-							buf.push_str(", ")
+							buf.push_str(", ");
 						}
 					}
 					buf.push('>');
@@ -170,7 +172,7 @@ fn print_type_into_buf(
 			},
 			constructor => {
 				let base = get_on_ctx!(ctx.get_poly_base(id, types)).unwrap();
-				print_type_into_buf(base, buf, cycles, types, ctx, debug)
+				print_type_into_buf(base, buf, cycles, types, ctx, debug);
 			}
 		},
 		Type::NamedRooted { name, parameters, nominal } => {
@@ -191,7 +193,7 @@ fn print_type_into_buf(
 			// }
 			// buf.push_str(" }")
 			} else {
-				buf.push_str(name)
+				buf.push_str(name);
 			}
 			if let (true, Some(parameters)) = (debug, parameters) {
 				buf.push('<');
@@ -199,7 +201,7 @@ fn print_type_into_buf(
 					print_type_into_buf(*param, buf, cycles, types, ctx, debug);
 					buf.push_str(", ");
 				}
-				buf.push('>')
+				buf.push('>');
 			}
 		}
 		Type::Constant(cst) => {
@@ -237,7 +239,7 @@ fn print_type_into_buf(
 						todo!()
 					}
 					if not_at_end {
-						buf.push_str(", ")
+						buf.push_str(", ");
 					}
 				}
 				buf.push('>');
@@ -248,7 +250,7 @@ fn print_type_into_buf(
 				buf.push_str(": ");
 				print_type_into_buf(param.ty, buf, cycles, types, ctx, debug);
 				if not_at_end {
-					buf.push_str(", ")
+					buf.push_str(", ");
 				}
 			}
 			buf.push_str(") => ");
@@ -316,6 +318,7 @@ fn print_type_into_buf(
 	cycles.remove(&id);
 }
 
+#[must_use]
 pub fn print_property_key(
 	key: &PropertyKey,
 	types: &TypeStore,

@@ -36,7 +36,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 				}
 			}
 			StatementOrDeclaration::Declaration(declaration) => {
-				synthesise_declaration(declaration, environment, checking_data)
+				synthesise_declaration(declaration, environment, checking_data);
 			}
 		}
 	}
@@ -62,7 +62,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 ) {
 	match declaration {
 		Declaration::Variable(declaration) => {
-			synthesise_variable_declaration(declaration, environment, checking_data, false)
+			synthesise_variable_declaration(declaration, environment, checking_data, false);
 		}
 		Declaration::Class(class) => {
 			let constructor = synthesise_class_declaration(&class.on, environment, checking_data);
@@ -78,7 +78,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				checking_data.diagnostics_container.add_error(TypeCheckError::ReDeclaredVariable {
 					name: class.on.name.as_str(),
 					position,
-				})
+				});
 			}
 		}
 		Declaration::DeclareVariable(_)
@@ -87,16 +87,12 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 		| Declaration::Function(_)
 		| Declaration::Enum(_)
 		| Declaration::Interface(_)
-		| Declaration::TypeAlias(_) => {}
-		// Imports are hoisted
-		Declaration::Import(_) => {}
+		| Declaration::TypeAlias(_)
+		| Declaration::Import(_) => {}
 		Declaration::Export(exported) => match &exported.on {
 			parser::declarations::ExportDeclaration::Variable { exported, position } => {
 				match exported {
 					// Skipped as this is done earlier
-					parser::declarations::export::Exportable::Function(_)
-					| parser::declarations::export::Exportable::Interface(_)
-					| parser::declarations::export::Exportable::TypeAlias(_) => {}
 					parser::declarations::export::Exportable::Class(class) => {
 						// TODO mark as exported
 						synthesise_class_declaration(class, environment, checking_data);
@@ -105,7 +101,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 						synthesise_variable_declaration(variable, environment, checking_data, true);
 					}
 					parser::declarations::export::Exportable::Parts(parts) => {
-						for part in parts.iter() {
+						for part in parts {
 							let pair = super::hoisting::export_part_to_name_pair(part);
 							if let Some(pair) = pair {
 								let position = pair.position.with_source(environment.get_source());
@@ -128,7 +124,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 						}
 					}
 					parser::declarations::export::Exportable::ImportAll { .. }
-					| parser::declarations::export::Exportable::ImportParts { .. } => {}
+					| parser::declarations::export::Exportable::ImportParts { .. }
+					| parser::declarations::export::Exportable::Function(_)
+					| parser::declarations::export::Exportable::Interface(_)
+					| parser::declarations::export::Exportable::TypeAlias(_) => {}
 				}
 			}
 			parser::declarations::ExportDeclaration::Default { expression, position } => {

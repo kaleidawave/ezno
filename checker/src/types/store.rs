@@ -86,7 +86,7 @@ impl Default for TypeStore {
 		assert_eq!(types.len(), TypeId::INTERNAL_TYPE_COUNT);
 
 		Self {
-			types: types.to_vec(),
+			types: types.clone(),
 			functions: HashMap::new(),
 			dependent_dependencies: Default::default(),
 			specialisations: Default::default(),
@@ -125,6 +125,7 @@ impl TypeStore {
 		id
 	}
 
+	#[must_use]
 	pub fn get_type_by_id(&self, id: TypeId) -> &Type {
 		&self.types[id.0 as usize]
 	}
@@ -141,6 +142,7 @@ impl TypeStore {
 	}
 
 	/// TODO temp
+	#[must_use]
 	pub fn into_vec_temp(self) -> Vec<(TypeId, Type)> {
 		self.types.into_iter().enumerate().map(|(idx, ty)| (TypeId(idx as u16), ty)).collect()
 	}
@@ -151,7 +153,7 @@ impl TypeStore {
 		type_parameters: Option<super::poly_types::GenericTypeParameters>,
 		parameters: crate::types::functions::SynthesisedParameters,
 		return_type: TypeId,
-		declared_at: source_map::SpanWithSource,
+		declared_at: &source_map::SpanWithSource,
 		effects: Vec<crate::events::Event>,
 		constant_function: Option<String>,
 	) -> TypeId {
@@ -230,14 +232,14 @@ impl TypeStore {
 		&self,
 		ctx: &'a Context<S>,
 		on: TypeId,
-		resolver: &impl Fn(GeneralContext<'a>, &TypeStore, TypeId, TData) -> Option<TResult>,
+		resolver: &impl Fn(&GeneralContext<'a>, &TypeStore, TypeId, TData) -> Option<TResult>,
 		data: TData,
 	) -> Option<Logical<TResult>> {
 		match self.get_type_by_id(on) {
 			Type::Function(..) => {
 				let on_function = ctx
 					.parents_iter()
-					.find_map(|env| resolver(env, self, on, data))
+					.find_map(|env| resolver(&env, self, on, data))
 					.map(Logical::Pure);
 
 				// TODO undecided on this
@@ -248,7 +250,7 @@ impl TypeStore {
 			Type::AliasTo { to, .. } => {
 				let property_on_self = ctx
 					.parents_iter()
-					.find_map(|env| resolver(env, self, on, data))
+					.find_map(|env| resolver(&env, self, on, data))
 					.map(Logical::Pure);
 
 				property_on_self.or_else(|| self.get_fact_about_type(ctx, *to, resolver, data))
@@ -294,7 +296,7 @@ impl TypeStore {
 			}
 			Type::Object(..) | Type::NamedRooted { .. } => ctx
 				.parents_iter()
-				.find_map(|env| resolver(env, self, on, data))
+				.find_map(|env| resolver(&env, self, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
 					if let Some(prototype) = ctx
@@ -308,7 +310,7 @@ impl TypeStore {
 				}),
 			Type::Constant(cst) => ctx
 				.parents_iter()
-				.find_map(|env| resolver(env, self, on, data))
+				.find_map(|env| resolver(&env, self, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
 					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
@@ -323,6 +325,7 @@ impl TypeStore {
 		ClosureId(self.closure_counter)
 	}
 
+	#[must_use]
 	pub fn get_function_from_id(&self, id: FunctionId) -> &FunctionType {
 		self.functions.get(&id).unwrap()
 	}

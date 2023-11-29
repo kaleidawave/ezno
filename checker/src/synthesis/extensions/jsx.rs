@@ -38,6 +38,10 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
+	// TODO cache or something?
+	// TODO temp, to be worked out
+	const JSX_NAME: &str = "JSXH";
+
 	let tag_name = element.tag_name.as_str();
 
 	let tag_name_as_cst_ty =
@@ -46,7 +50,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let mut attributes_object =
 		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
 
-	for attribute in element.attributes.iter() {
+	for attribute in &element.attributes {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
 		let attribute_position =
 			attribute.get_position().clone().with_source(environment.get_source());
@@ -160,10 +164,6 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		None
 	};
 
-	// TODO cache or something?
-	// TODO temp, to be worked out
-	const JSX_NAME: &str = "JSXH";
-
 	let position = element.get_position().clone().with_source(environment.get_source());
 	let jsx_function =
 		match environment.get_variable_handle_error(JSX_NAME, position.clone(), checking_data) {
@@ -187,7 +187,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let mut args = vec![tag_name_argument, attributes_argument];
 	if let Some(child_nodes) = child_nodes {
 		// TODO position here
-		args.push(SynthesisedArgument::NonSpread { ty: child_nodes, position: position.clone() })
+		args.push(SynthesisedArgument::NonSpread { ty: child_nodes, position: position.clone() });
 	}
 
 	call_type_handle_errors(

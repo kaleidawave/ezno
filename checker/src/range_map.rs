@@ -14,6 +14,7 @@ impl<T> Default for RangeMap<T> {
 }
 
 impl<T> RangeMap<T> {
+	#[must_use]
 	pub fn new() -> Self {
 		Self { entries: Default::default() }
 	}
@@ -28,9 +29,10 @@ impl<T> RangeMap<T> {
 	}
 
 	/// Get the top level entry at some point
+	#[must_use]
 	pub fn get(&self, point: u32) -> Option<&T> {
 		self.entries
-			.range(0..(point + 1))
+			.range(0..=point)
 			// very important to reverse
 			.rev()
 			.find_map(|(_, v)| v.iter().find_map(|(e, v)| (*e > point).then_some(v)))

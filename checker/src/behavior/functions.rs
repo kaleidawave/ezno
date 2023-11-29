@@ -28,20 +28,20 @@ pub enum ThisValue {
 
 impl ThisValue {
 	pub(crate) fn get(
-		&self,
+		self,
 		environment: &mut Environment,
 		types: &TypeStore,
-		position: SpanWithSource,
+		position: &SpanWithSource,
 	) -> TypeId {
 		match self {
-			ThisValue::Passed(value) => *value,
+			ThisValue::Passed(value) => value,
 			ThisValue::UseParent => environment.get_value_of_this(types, position),
 		}
 	}
 
-	pub(crate) fn get_passed(&self) -> Option<TypeId> {
+	pub(crate) fn get_passed(self) -> Option<TypeId> {
 		match self {
-			ThisValue::Passed(value) => Some(*value),
+			ThisValue::Passed(value) => Some(value),
 			ThisValue::UseParent => None,
 		}
 	}
@@ -115,7 +115,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, M: crate::AST
 }
 
 pub fn function_to_property(
-	getter_setter: GetterSetter,
+	getter_setter: &GetterSetter,
 	function: FunctionType,
 	types: &mut TypeStore,
 ) -> PropertyValue {
@@ -210,7 +210,7 @@ pub trait SynthesisableFunction<M: crate::ASTImplementation> {
 	);
 }
 
-/// TODO might be generic if FunctionBehavior becomes generic
+/// TODO might be generic if `FunctionBehavior` becomes generic
 pub enum FunctionRegisterBehavior<'a, M: crate::ASTImplementation> {
 	ArrowFunction {
 		expecting: TypeId,
@@ -252,6 +252,7 @@ pub enum FunctionRegisterBehavior<'a, M: crate::ASTImplementation> {
 pub struct ClassPropertiesToRegister<'a, M: ASTImplementation>(pub Vec<ClassValue<'a, M>>);
 
 impl<'a, M: crate::ASTImplementation> FunctionRegisterBehavior<'a, M> {
+	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {
 			FunctionRegisterBehavior::ArrowFunction { is_async, .. }
@@ -263,6 +264,7 @@ impl<'a, M: crate::ASTImplementation> FunctionRegisterBehavior<'a, M> {
 		}
 	}
 
+	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
 			FunctionRegisterBehavior::ExpressionFunction { is_generator, .. }

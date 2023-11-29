@@ -2,13 +2,13 @@ pub(crate) fn format_list<D: Display>(mut iterator: impl ExactSizeIterator<Item 
 	use std::fmt::Write;
 
 	match iterator.len() {
-		0 => "".into(),
+		0 => String::new(),
 		1 => iterator.next().unwrap().to_string(),
 		2 => format!("{} and {}", iterator.next().unwrap(), iterator.next().unwrap()),
 		val => {
 			let mut buf = String::new();
 			for value in iterator.by_ref().take(val - 1) {
-				write!(&mut buf, "{}, ", value).unwrap();
+				write!(&mut buf, "{value}, ").unwrap();
 			}
 			write!(&mut buf, "and {}", iterator.next().unwrap()).unwrap();
 			buf

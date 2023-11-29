@@ -26,13 +26,13 @@ where
 	M::Expression: 'a,
 {
 	fn part_to_type<T: crate::ReadFromFS, M: crate::ASTImplementation>(
-		first: TemplateLiteralPart<M::Expression>,
+		first: &TemplateLiteralPart<M::Expression>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, M>,
 	) -> crate::TypeId {
 		match first {
 			TemplateLiteralPart::Static(static_part) => {
-				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()))
+				checking_data.types.new_constant_type(Constant::String((*static_part).to_owned()))
 			}
 			TemplateLiteralPart::Dynamic(expression) => {
 				// TODO tidy
@@ -67,7 +67,7 @@ where
 		for part in parts_iter {
 			match part {
 				p @ TemplateLiteralPart::Static(_) => {
-					let value = part_to_type(p, environment, checking_data);
+					let value = part_to_type(&p, environment, checking_data);
 					static_parts.append(
 						environment,
 						crate::context::facts::Publicity::Public,
@@ -79,12 +79,12 @@ where
 					static_part_count += 1;
 				}
 				p @ TemplateLiteralPart::Dynamic(_) => {
-					let ty = part_to_type(p, environment, checking_data);
+					let ty = part_to_type(&p, environment, checking_data);
 					arguments.push(SynthesisedArgument::NonSpread {
 						ty,
 						// TODO position
 						position: SpanWithSource::NULL_SPAN,
-					})
+					});
 				}
 			}
 		}
@@ -115,9 +115,9 @@ where
 	} else {
 		// Bit weird but makes Rust happy
 		if let Some(first) = parts_iter.next() {
-			let mut acc = part_to_type(first, environment, checking_data);
+			let mut acc = part_to_type(&first, environment, checking_data);
 			for rest in parts_iter {
-				let other = part_to_type(rest, environment, checking_data);
+				let other = part_to_type(&rest, environment, checking_data);
 				let result = super::operations::evaluate_mathematical_operation(
 					acc,
 					crate::behavior::operations::MathematicalAndBitwise::Add,
@@ -127,14 +127,14 @@ where
 				);
 				match result {
 					Ok(result) => acc = result,
-					Err(_) => {
+					Err(()) => {
 						crate::utils::notify!("Invalid template literal concatenation");
 					}
 				}
 			}
 			acc
 		} else {
-			checking_data.types.new_constant_type(Constant::String("".into()))
+			checking_data.types.new_constant_type(Constant::String(String::new()))
 		}
 	}
 }

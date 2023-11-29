@@ -39,6 +39,7 @@ pub enum AssignmentReturnStatus {
 }
 
 impl Reference {
+	#[must_use]
 	pub fn get_position(&self) -> SpanWithSource {
 		match self {
 			Reference::Variable(_, span) | Reference::Property { span, .. } => span.clone(),

@@ -46,7 +46,7 @@ pub struct TypeId(pub(crate) u16);
 
 // TODO ids as macro as to not do in [crate::RootEnvironment]
 impl TypeId {
-	/// Not to be confused with [TypeId::NEVER_TYPE]
+	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
 	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
 
@@ -81,7 +81,7 @@ impl TypeId {
 
 	/// TODO remove. Shortcut for inferred this
 	pub const ANY_INFERRED_FREE_THIS: Self = Self(19);
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
 	pub const NEW_TARGET_ARG: Self = Self(20);
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
@@ -149,6 +149,7 @@ pub enum PolyNature {
 }
 
 // TODO
+#[must_use]
 pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
 		return true;
@@ -175,6 +176,7 @@ impl Type {
 
 	/// TODO return is poly
 	pub(crate) fn is_dependent(&self) -> bool {
+		#[allow(clippy::match_same_arms)]
 		match self {
 			// TODO
 			Type::Constructor(Constructor::StructureGenerics(..)) => false,
@@ -279,6 +281,7 @@ pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStor
 	types.new_conditional_type(lhs, lhs, rhs)
 }
 
+#[must_use]
 pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 	// These first two branches are just shortcuts.
 	if id == TypeId::TRUE || id == TypeId::FALSE {
@@ -309,7 +312,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 	}
 }
 
-/// TODO add_property_restrictions via const generics
+/// TODO `add_property_restrictions` via const generics
 pub struct BasicEquality {
 	pub add_property_restrictions: bool,
 	pub position: SpanWithSource,

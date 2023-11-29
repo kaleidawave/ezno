@@ -2,7 +2,7 @@ use super::Constant;
 
 /// TODO needs environment for to primitive
 ///
-/// https://tc39.es/ecma262/multipage/abstract-operations.html#sec-tonumber
+/// <https://tc39.es/ecma262/multipage/abstract-operations.html#sec-tonumber>
 pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, ()> {
 	if strict_casts && !matches!(cst, Constant::Number(_)) {
 		return Err(());
@@ -30,9 +30,10 @@ pub(crate) fn cast_as_string(cst: &Constant, strict_casts: bool) -> Result<Strin
 	Ok(cst.as_js_string())
 }
 
-/// https://tc39.es/ecma262/multipage/abstract-operations.html#sec-toboolean
+/// <https://tc39.es/ecma262/multipage/abstract-operations.html#sec-toboolean>
 ///
-/// TODO this ridiculous clause: https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-IsHTMLDDA-internal-slot-to-boolean
+/// TODO this ridiculous clause: <https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-IsHTMLDDA-internal-slot-to-boolean>
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn cast_as_boolean(cst: &Constant, strict_casts: bool) -> Result<bool, ()> {
 	if strict_casts {
 		crate::utils::notify!("TODO assert boolean type here, maybe levels. Need to also return where can do collapsation");

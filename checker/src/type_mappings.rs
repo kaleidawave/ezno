@@ -12,10 +12,10 @@ use crate::{
 	types::{TypeId, TypeStore},
 	FunctionId, GeneralContext, VariableId,
 };
-/// [TypeMappings] is used to retaining information between passes, including the synthesise and checking passes
+/// [`TypeMappings`] is used to retaining information between passes, including the synthesise and checking passes
 /// This for use in the both use in the compiler and compiler plugins
-/// Checking things are held on [crate::Memory], function things are held on [crate::HoistedFunctionContainer]
-/// and module things on [crate::ModuleData]
+/// Checking things are held on [`crate::Memory`], function things are held on [`crate::HoistedFunctionContainer`]
+/// and module things on [`crate::ModuleData`]
 #[derive(Default, Debug)]
 pub struct TypeMappings {
 	/// Figures out the types of the expressions in the AST
@@ -47,17 +47,19 @@ pub struct VariablesToTypes(pub(crate) HashMap<VariableId, TypeId>);
 
 // TODO these are temp
 impl TypeMappings {
+	#[must_use]
 	pub fn print_called_functions(&self, source: &str) -> String {
 		let mut buf = "Called functions:\n".to_owned();
-		for func_id in self.called_functions.iter() {
+		for func_id in &self.called_functions {
 			buf.push_str(
 				source.get((func_id.1 as usize)..(func_id.1 as usize + 10)).unwrap_or_default(),
 			);
-			buf.push('\n')
+			buf.push('\n');
 		}
 		buf
 	}
 
+	#[must_use]
 	pub fn print_type_mappings(
 		&self,
 		source: &str,
@@ -78,8 +80,8 @@ impl TypeMappings {
 	}
 }
 
-/// See https://www.internalpointers.com/post/understanding-meaning-lexpressions-and-rexpressions-c for a understanding
-/// of LValue vs RValue
+/// See <https://www.internalpointers.com/post/understanding-meaning-lexpressions-and-rexpressions-c> for a understanding
+/// of `LValue` vs `RValue`
 #[derive(Clone, Debug)]
 pub enum Instance {
 	LValue(VariableWithValue),
@@ -89,6 +91,7 @@ pub enum Instance {
 }
 
 impl Instance {
+	#[must_use]
 	pub fn get_variable_id(&self) -> Option<VariableId> {
 		match self {
 			Self::LValue(variable) => Some(variable.0.get_id()),
@@ -96,6 +99,7 @@ impl Instance {
 		}
 	}
 
+	#[must_use]
 	pub fn get_value(&self) -> TypeId {
 		match self {
 			Instance::LValue(l) => l.1,

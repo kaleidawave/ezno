@@ -32,15 +32,14 @@ pub(crate) fn apply_event(
 							id,
 							Some(&*type_arguments),
 						);
-						match value {
-							Some(ty) => ty,
-							None => {
-								crate::utils::notify!("emit a tdz error");
-								TypeId::ERROR_TYPE
-							}
+						if let Some(ty) = value {
+							ty
+						} else {
+							crate::utils::notify!("emit a tdz error");
+							TypeId::ERROR_TYPE
 						}
 					}
-					RootReference::This => this_value.get(environment, types, position),
+					RootReference::This => this_value.get(environment, types, &position),
 				};
 				type_arguments.set_id_from_reference(id, value, types);
 			}
@@ -71,7 +70,7 @@ pub(crate) fn apply_event(
 					let ty = substitute(under, type_arguments, environment, types);
 					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
-				under => under,
+				under @ crate::types::properties::PropertyKey::String(_) => under,
 			};
 
 			let (_, value) =
@@ -99,7 +98,7 @@ pub(crate) fn apply_event(
 					let ty = substitute(under, type_arguments, environment, types);
 					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
-				under => under,
+				under @ crate::types::properties::PropertyKey::String(_) => under,
 			};
 
 			let new = match new {
@@ -146,7 +145,7 @@ pub(crate) fn apply_event(
 					.register_property(on, publicity, under, new, true, position);
 			} else {
 				let returned =
-					set_property(on, publicity, under, new, environment, target, types, position)
+					set_property(on, publicity, &under, &new, environment, target, types, position)
 						.unwrap();
 
 				if let Some(id) = reflects_dependency {
@@ -298,7 +297,7 @@ pub(crate) fn apply_event(
 							condition,
 							truth,
 							else_facts.variable_current_value.remove(&var).unwrap_or(*existing),
-						)
+						);
 					});
 				}
 
