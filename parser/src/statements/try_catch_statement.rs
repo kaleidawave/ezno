@@ -77,12 +77,12 @@ impl ASTNode for TryCatchStatement {
 		} else {
 			// Parse error if neither catch nor finally clause is present
 			return Err(ParseError::new(
-				ParseErrors::ExpectedCatchOrFinally,
+				&ParseErrors::ExpectedCatchOrFinally,
 				reader.next().unwrap().get_span(),
 			));
 		};
 
-		Ok(Self { position, try_inner, exception_var, catch_inner, finally_inner })
+		Ok(Self { try_inner, catch_inner, exception_var, finally_inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

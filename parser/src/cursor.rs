@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 pub type EmptyCursorId = CursorId<()>;
 
 impl EmptyCursorId {
-	pub fn new(id: u8) -> Self {
+	#[must_use] pub fn new(id: u8) -> Self {
 		Self(id, PhantomData)
 	}
 
@@ -35,6 +35,6 @@ impl<T> self_rust_tokenize::SelfRustTokenize for CursorId<T> {
 	) {
 		use self_rust_tokenize::proc_macro2::{Ident, Span};
 		let token = Ident::new(&format!("_cursor_{}", self.0), Span::call_site());
-		token_stream.extend(self_rust_tokenize::quote!(ezno_parser::IntoAST::into_ast(#token)))
+		token_stream.extend(self_rust_tokenize::quote!(ezno_parser::IntoAST::into_ast(#token)));
 	}
 }

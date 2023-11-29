@@ -66,7 +66,7 @@ impl Display for LexingErrors {
 				f.write_str("Expected closing angle at end of self closing JSX tag")
 			}
 			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
-				write!(f, "Invalid character {:?} in JSX attribute name", chr)
+				write!(f, "Invalid character {chr:?} in JSX attribute name")
 			}
 			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
 			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
@@ -158,7 +158,7 @@ impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
 			let position = token.get_span();
 			let reason =
 				ParseErrors::UnexpectedToken { expected: &[expected_type], found: token.0 };
-			Self::new(reason, position)
+			Self::new(&reason, position)
 		} else {
 			parse_lexing_error()
 		}
@@ -167,7 +167,7 @@ impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
+	ParseError::new(&ParseErrors::LexingFailed, Span::NULL_SPAN)
 }
 
 pub trait ParserErrorReason: Display {}
@@ -183,7 +183,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
+	pub fn new(reason: &impl ParserErrorReason, position: Span) -> Self {
 		Self { reason: reason.to_string(), position }
 	}
 }

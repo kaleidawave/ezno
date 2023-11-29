@@ -21,7 +21,7 @@ use crate::{
 
 /// A reference to a type
 ///
-/// TODO need to figure out what [TypeId] is used for here and where it might be useful for the checker
+/// TODO need to figure out what [`TypeId`] is used for here and where it might be useful for the checker
 #[derive(Debug, Clone, PartialEqExtras, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
@@ -146,7 +146,7 @@ pub enum SpreadKind {
 	Spread,
 }
 
-/// Condition in a [TypeAnnotation::Conditional]
+/// Condition in a [`TypeAnnotation::Conditional`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -195,7 +195,7 @@ impl TypeCondition {
 	}
 }
 
-/// The result of a [TypeAnnotation::Condition]
+/// The result of a [`TypeAnnotation::Condition`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -242,7 +242,7 @@ impl ASTNode for TypeConditionResult {
 				inferred_type.to_string_from_buffer(buf, options, depth);
 			}
 			TypeConditionResult::Reference(reference) => {
-				reference.to_string_from_buffer(buf, options, depth)
+				reference.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}
@@ -265,9 +265,7 @@ impl ASTNode for TypeAnnotation {
 	) {
 		match self {
 			Self::Cursor(..) => {
-				if !options.expect_cursors {
-					panic!()
-				}
+				assert!(options.expect_cursors,);
 			}
 			Self::CommonName(name, _) => buf.push_str(match name {
 				CommonTypes::String => "string",
@@ -277,16 +275,16 @@ impl ASTNode for TypeAnnotation {
 			Self::Decorated(decorator, on_type_annotation, _) => {
 				decorator.to_string_from_buffer(buf, options, depth);
 				buf.push(' ');
-				on_type_annotation.to_string_from_buffer(buf, options, depth)
+				on_type_annotation.to_string_from_buffer(buf, options, depth);
 			}
 			Self::Name(name, _) => buf.push_str(name),
 			Self::NameWithGenericArguments(name, arguments, _) => {
 				buf.push_str(name);
-				to_string_bracketed(arguments, ('<', '>'), buf, options, depth)
+				to_string_bracketed(arguments, ('<', '>'), buf, options, depth);
 			}
 			Self::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
 				if let Some(type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth)
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
 				}
 				parameters.to_string_from_buffer(buf, options, depth);
 				buf.push_str(" => ");
@@ -592,8 +590,7 @@ impl TypeAnnotation {
 		// Namespaced name
 		if let Some(Token(TSXToken::Dot, _)) = reader.peek() {
 			reader.next();
-			let (name, start) =
-				if let Self::Name(name, start) = reference { (name, start) } else { panic!() };
+			let Self::Name(name, start) = reference else { panic!() };
 			let (namespace_member, end) =
 				token_as_identifier(reader.next().unwrap(), "namespace name")?;
 			let position = start.union(end);
@@ -602,12 +599,10 @@ impl TypeAnnotation {
 		// Generics arguments:
 		if let Some(Token(TSXToken::OpenChevron, _position)) = reader.peek() {
 			// Assert its a Self::Name
-			let (name, start_span) = if let Self::Name(name, start_span) = reference {
-				(name, start_span)
-			} else {
+			let Self::Name(name, start_span) = reference else {
 				let position = reader.next().unwrap().get_span();
 				return Err(ParseError::new(
-					crate::ParseErrors::TypeArgumentsNotValidOnReference,
+					&crate::ParseErrors::TypeArgumentsNotValidOnReference,
 					position,
 				));
 			};
@@ -753,7 +748,7 @@ impl TypeAnnotation {
 	}
 }
 
-/// Parses the arguments (vector of [TypeAnnotation]s) parsed to to a type reference or function call.
+/// Parses the arguments (vector of [`TypeAnnotation`]s) parsed to to a type reference or function call.
 /// Returns arguments and the closing span.
 /// TODO could use parse bracketed but needs to have the more complex logic inside
 pub(crate) fn generic_arguments_from_reader_sub_open_angle(
@@ -807,7 +802,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 	}
 }
 
-/// Mirrors [crate::FunctionParameters]
+/// Mirrors [`crate::FunctionParameters`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -837,7 +832,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		for parameter in self.parameters.iter() {
+		for parameter in &self.parameters {
 			if let Some(ref name) = parameter.name {
 				name.to_string_from_buffer(buf, options, depth);
 			}
@@ -873,6 +868,7 @@ impl TypeAnnotationFunctionParameters {
 			while let Some(Token(TSXToken::At, _)) = reader.peek() {
 				decorators.push(Decorator::from_reader(reader, state, options)?);
 			}
+
 			if let Some(Token(TSXToken::Spread, _)) = reader.peek() {
 				let token = reader.next().unwrap();
 				let (name, _) = token_as_identifier(
@@ -888,49 +884,49 @@ impl TypeAnnotationFunctionParameters {
 					decorators,
 				}));
 				break;
-			} else {
-				let mut depth = 0;
-				let after_variable_field = reader.scan(|token, _| match token {
-					TSXToken::OpenBracket | TSXToken::OpenBrace | TSXToken::OpenParentheses => {
-						depth += 1;
-						false
-					}
-					TSXToken::CloseBracket | TSXToken::CloseBrace | TSXToken::CloseParentheses => {
-						depth -= 1;
-						depth == 0
-					}
-					_ => depth == 0,
-				});
-				let name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>> =
-					if let Some(Token(TSXToken::Colon | TSXToken::OptionalMember, _)) =
-						after_variable_field
-					{
-						Some(ASTNode::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
-				let is_optional = match reader.next().ok_or_else(parse_lexing_error)? {
-					Token(TSXToken::Colon, _) => false,
-					Token(TSXToken::OptionalMember, _) => true,
-					token => {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Colon, TSXToken::OptionalMember],
-						)
-					}
-				};
-				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-				parameters.push(TypeAnnotationFunctionParameter {
-					position: name
-						.as_ref()
-						.map_or(type_annotation.get_position(), |name| name.get_position())
-						.union(type_annotation.get_position()),
-					decorators,
-					name,
-					type_annotation,
-					is_optional,
-				});
 			}
+
+			let mut depth = 0;
+			let after_variable_field = reader.scan(|token, _| match token {
+				TSXToken::OpenBracket | TSXToken::OpenBrace | TSXToken::OpenParentheses => {
+					depth += 1;
+					false
+				}
+				TSXToken::CloseBracket | TSXToken::CloseBrace | TSXToken::CloseParentheses => {
+					depth -= 1;
+					depth == 0
+				}
+				_ => depth == 0,
+			});
+			let name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>> =
+				if let Some(Token(TSXToken::Colon | TSXToken::OptionalMember, _)) =
+					after_variable_field
+				{
+					Some(ASTNode::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
+			let is_optional = match reader.next().ok_or_else(parse_lexing_error)? {
+				Token(TSXToken::Colon, _) => false,
+				Token(TSXToken::OptionalMember, _) => true,
+				token => {
+					return throw_unexpected_token_with_token(
+						token,
+						&[TSXToken::Colon, TSXToken::OptionalMember],
+					)
+				}
+			};
+			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+			parameters.push(TypeAnnotationFunctionParameter {
+				position: name
+					.as_ref()
+					.map_or(type_annotation.get_position(), |name| name.get_position())
+					.union(type_annotation.get_position()),
+				decorators,
+				name,
+				type_annotation,
+				is_optional,
+			});
 
 			if reader.conditional_next(|tok| matches!(tok, TSXToken::Comma)).is_none() {
 				break;
@@ -975,7 +971,7 @@ mod tests {
 	#[test]
 	fn name() {
 		assert_matches_ast!("something", TypeAnnotation::Name(Deref @ "something", span!(0, 9)));
-		assert_matches_ast!("string", TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)))
+		assert_matches_ast!("string", TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)));
 	}
 
 	#[test]
@@ -1035,7 +1031,7 @@ mod tests {
 				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
 				_,
 			)
-		)
+		);
 	}
 
 	#[test]
@@ -1047,7 +1043,7 @@ mod tests {
 				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
 				_,
 			)
-		)
+		);
 	}
 
 	#[test]

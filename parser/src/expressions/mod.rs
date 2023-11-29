@@ -53,7 +53,7 @@ use std::convert::{TryFrom, TryInto};
 
 /// Expression structures
 ///
-/// Comma is implemented as a [BinaryOperator]
+/// Comma is implemented as a [`BinaryOperator`]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
@@ -209,7 +209,7 @@ impl ASTNode for Expression {
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		self.to_string_using_precedence(buf, options, depth, COMMA_PRECEDENCE)
+		self.to_string_using_precedence(buf, options, depth, COMMA_PRECEDENCE);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -218,6 +218,7 @@ impl ASTNode for Expression {
 }
 
 impl Expression {
+	#[allow(clippy::similar_names)]
 	pub(self) fn from_reader_with_precedence(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -372,7 +373,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
+						&crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -415,7 +416,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
+						&crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -450,7 +451,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
+						&crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -520,7 +521,7 @@ impl Expression {
 				let position = start.union(expression.get_position());
 				Expression::PrefixComment(comment, Box::new(expression), position)
 			}
-			Token(tok @ TSXToken::JSXOpeningTagStart | tok @ TSXToken::JSXFragmentStart, span) => {
+			Token(tok @ (TSXToken::JSXOpeningTagStart | TSXToken::JSXFragmentStart), span) => {
 				let var_name = matches!(tok, TSXToken::JSXFragmentStart);
 				let root = JSXRoot::from_reader_sub_start(reader, state, options, var_name, span)?;
 				Expression::JSXRoot(root)
@@ -552,16 +553,16 @@ impl Expression {
 							start,
 						)?;
 						return Ok(Expression::ArrowFunction(function));
-					} else {
-						let (name, position) = token_as_identifier(token, "function parameter")?;
-						let function = ArrowFunction::from_reader_with_first_parameter(
-							reader,
-							state,
-							options,
-							(name, position),
-						)?;
-						return Ok(Expression::ArrowFunction(function));
 					}
+
+					let (name, position) = token_as_identifier(token, "function parameter")?;
+					let function = ArrowFunction::from_reader_with_first_parameter(
+						reader,
+						state,
+						options,
+						(name, position),
+					)?;
+					return Ok(Expression::ArrowFunction(function));
 				}
 
 				#[cfg(feature = "extras")]
@@ -737,7 +738,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
+						&crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -1066,10 +1067,9 @@ impl Expression {
 								is_optional: false,
 							};
 							continue;
-						} else {
-							// TODO
-							&reader.peek().unwrap().0
 						}
+						// TODO
+						&reader.peek().unwrap().0
 					} else {
 						token
 					};
@@ -1140,6 +1140,7 @@ impl Expression {
 		}
 	}
 
+	#[must_use]
 	pub fn get_precedence(&self) -> u8 {
 		match self {
             Self::NumberLiteral(..)
@@ -1204,9 +1205,7 @@ impl Expression {
 	) {
 		match self {
 			Self::Cursor { .. } => {
-				if !options.expect_cursors {
-					panic!();
-				}
+				assert!(options.expect_cursors,);
 			}
 			Self::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
 			Self::StringLiteral(string, quoted, _) => {
@@ -1253,18 +1252,18 @@ impl Expression {
 							buf.push_str(property);
 						}
 						InExpressionLHS::Expression(lhs) => {
-							lhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE)
+							lhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE)
+					rhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE);
 				}
 				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
 					lhs.to_string_using_precedence(buf, options, depth, INSTANCE_OF_PRECEDENCE);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, depth, INSTANCE_OF_PRECEDENCE)
+					rhs.to_string_using_precedence(buf, options, depth, INSTANCE_OF_PRECEDENCE);
 				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {
@@ -1279,14 +1278,14 @@ impl Expression {
 			Self::Assignment { lhs, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, depth);
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				rhs.to_string_from_buffer(buf, options, depth)
+				rhs.to_string_from_buffer(buf, options, depth);
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, depth);
 				options.add_gap(buf);
 				buf.push_str(operator.to_str());
 				options.add_gap(buf);
-				rhs.to_string_from_buffer(buf, options, depth)
+				rhs.to_string_from_buffer(buf, options, depth);
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
@@ -1330,7 +1329,7 @@ impl Expression {
 				if let MultipleExpression::Single(inner @ Expression::VariableReference(..)) =
 					&**expr
 				{
-					inner.to_string_from_buffer(buf, options, depth)
+					inner.to_string_from_buffer(buf, options, depth);
 				} else {
 					buf.push('(');
 					expr.to_string_from_buffer(buf, options, depth);
@@ -1390,10 +1389,10 @@ impl Expression {
 			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, depth),
 			Self::ObjectLiteral(object_literal) => {
-				object_literal.to_string_from_buffer(buf, options, depth)
+				object_literal.to_string_from_buffer(buf, options, depth);
 			}
 			Self::ArrowFunction(arrow_function) => {
-				arrow_function.to_string_from_buffer(buf, options, depth)
+				arrow_function.to_string_from_buffer(buf, options, depth);
 			}
 			Self::ExpressionFunction(function) => {
 				function.to_string_from_buffer(buf, options, depth);
@@ -1423,7 +1422,7 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
-				template_literal.to_string_from_buffer(buf, options, depth)
+				template_literal.to_string_from_buffer(buf, options, depth);
 			}
 			Self::ConditionalTernaryExpression {
 				condition, truthy_result, falsy_result, ..
@@ -1484,6 +1483,7 @@ pub enum MultipleExpression {
 }
 
 impl MultipleExpression {
+	#[must_use]
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
 		if let MultipleExpression::Single(inner) = self {
 			inner.is_iife()
@@ -1730,7 +1730,7 @@ impl SpreadExpression {
 			SpreadExpression::Spread(expression, _) | SpreadExpression::NonSpread(expression) => {
 				expression
 			}
-			_ => panic!(),
+			SpreadExpression::Empty => panic!(),
 		}
 	}
 }
@@ -1744,6 +1744,7 @@ impl From<Expression> for SpreadExpression {
 // Utils for Expression
 impl Expression {
 	/// IIFE = immediate invoked function execution
+	#[must_use]
 	pub fn build_iife(block: Block) -> Self {
 		let position = block.get_position().clone();
 		Expression::FunctionCall {
@@ -1777,6 +1778,7 @@ impl Expression {
 		}
 	}
 
+	#[must_use]
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
 		if let Expression::FunctionCall { arguments, function, .. } = self {
 			if let (true, Expression::ParenthesizedExpression(expression, _)) =
@@ -1793,6 +1795,7 @@ impl Expression {
 	}
 
 	/// Recurses to find first non parenthesized expression
+	#[must_use]
 	pub fn get_non_parenthesized(&self) -> &Self {
 		if let Expression::ParenthesizedExpression(inner_multiple_expr, _) = self {
 			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
@@ -1813,6 +1816,7 @@ impl Expression {
 	/// For prettier printing
 	///
 	/// TODO temp
+	#[must_use]
 	pub fn is_small(&self) -> bool {
 		match self {
 			Self::NumberLiteral(..) | Self::BooleanLiteral(..) | Self::VariableReference(..) => {
@@ -1883,7 +1887,7 @@ mod tests {
 			Default::default(),
 		)
 		.unwrap();
-		assert!(expr.is_iife().is_some())
+		assert!(expr.is_iife().is_some());
 	}
 
 	#[test]

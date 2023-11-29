@@ -43,8 +43,14 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	let line_starts = ezno_parser::source_map::LineStarts::new("");
 	let options = ezno_parser::ParseOptions::default();
 	let source = ezno_parser::SourceId::NULL;
-	let parse_result =
-		ezno_parser::lex_and_parse_script::<T>(line_starts, options, string, source, None, cursors);
+	let parse_result = ezno_parser::lex_and_parse_script::<T>(
+		line_starts,
+		options,
+		&string,
+		source,
+		None,
+		cursors,
+	);
 
 	let node = match parse_result {
 		Ok(node) => node,

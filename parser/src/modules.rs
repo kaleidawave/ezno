@@ -51,7 +51,7 @@ impl ASTNode for Module {
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		statements_and_declarations_to_string(&self.items, buf, options, depth)
+		statements_and_declarations_to_string(&self.items, buf, options, depth);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -83,6 +83,7 @@ impl Module {
 		buf.build(fs)
 	}
 
+	#[must_use]
 	pub fn length(&self, options: &crate::ToStringOptions) -> usize {
 		let mut buf = source_map::Counter::new();
 		self.to_string_from_buffer(&mut buf, options, 0);
@@ -190,7 +191,7 @@ pub struct TypeDefinitionModule {
 
 impl TypeDefinitionModule {
 	pub fn from_string(
-		script: String,
+		script: &str,
 		mut options: ParseOptions,
 		source: SourceId,
 	) -> ParseResult<Self> {
@@ -199,7 +200,7 @@ impl TypeDefinitionModule {
 		// Important not to parse JSX as <> is used for casting
 		options.jsx = false;
 
-		let line_starts = source_map::LineStarts::new(&script);
+		let line_starts = source_map::LineStarts::new(script);
 		super::lex_and_parse_script(line_starts, options, script, source, None, Default::default())
 	}
 
@@ -211,7 +212,7 @@ impl TypeDefinitionModule {
 	) -> Result<Self, FromFileError> {
 		let script = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
 		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
-		Self::from_string(script, options, source)
+		Self::from_string(&script, options, source)
 			.map_err(|err| FromFileError::ParseError(err, source))
 	}
 }
@@ -291,11 +292,11 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 					)?,
 				))
 			}
-			Token(TSXToken::Comment(_), _) | Token(TSXToken::MultiLineComment(_), _) => {
-				let comment = match reader.next().unwrap().0 {
-					// TODO loses multiline/single-line data
-					TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment) => comment,
-					_ => unreachable!(),
+			Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _) => {
+				let (TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment)) =
+					reader.next().unwrap().0
+				else {
+					unreachable!()
 				};
 				Ok(TypeDefinitionModuleDeclaration::Comment(comment))
 			}

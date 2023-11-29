@@ -75,7 +75,7 @@ impl ASTNode for IfStatement {
 			}
 		}
 		let position = start_span.union(inner.get_position());
-		Ok(IfStatement { condition, inner, position, else_conditions, trailing_else })
+		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
 	}
 
 	fn get_position(&self) -> &Span {

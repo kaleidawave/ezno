@@ -158,7 +158,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 			self.parameters.to_string_from_buffer(buf, options, depth);
 			if let Some(return_type) = &self.return_type {
 				buf.push_str(": ");
-				return_type.to_string_from_buffer(buf, options, depth)
+				return_type.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}
@@ -199,18 +199,9 @@ impl DeclareFunctionDeclaration {
 		};
 
 		let position = start_pos
-			.union(return_type.as_ref().map(ASTNode::get_position).unwrap_or(&parameters.position));
+			.union(return_type.as_ref().map_or(&parameters.position, ASTNode::get_position));
 
-		Ok(Self {
-			name,
-			type_parameters,
-			parameters,
-			return_type,
-			decorators,
-			position,
-			#[cfg(feature = "extras")]
-			performs,
-		})
+		Ok(Self { name, type_parameters, parameters, return_type, performs, decorators, position })
 	}
 }
 

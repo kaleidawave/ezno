@@ -252,17 +252,17 @@ impl ASTNode for ForLoopCondition {
 					}
 				});
 
-				let condition = if !matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
-					Some(MultipleExpression::from_reader(reader, state, options)?)
-				} else {
+				let condition = if matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
 					None
+				} else {
+					Some(MultipleExpression::from_reader(reader, state, options)?)
 				};
 				let semi_colon_two = reader.expect_next_get_end(TSXToken::SemiColon)?;
 				let afterthought =
-					if !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-						Some(MultipleExpression::from_reader(reader, state, options)?)
-					} else {
+					if matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
 						None
+					} else {
+						Some(MultipleExpression::from_reader(reader, state, options)?)
 					};
 				let end = afterthought
 					.as_ref()
@@ -305,13 +305,13 @@ impl ASTNode for ForLoopCondition {
 				if let Some(initializer) = initializer {
 					match initializer {
 						ForLoopStatementInitializer::VariableDeclaration(stmt) => {
-							stmt.to_string_from_buffer(buf, options, depth)
+							stmt.to_string_from_buffer(buf, options, depth);
 						}
 						ForLoopStatementInitializer::Expression(expr) => {
 							expr.to_string_from_buffer(buf, options, depth);
 						}
 						ForLoopStatementInitializer::VarStatement(stmt) => {
-							stmt.to_string_from_buffer(buf, options, depth)
+							stmt.to_string_from_buffer(buf, options, depth);
 						}
 					}
 				}
@@ -346,6 +346,6 @@ mod tests {
 
 	#[test]
 	fn condition_without_variable_keyword() {
-		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. })
+		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. });
 	}
 }

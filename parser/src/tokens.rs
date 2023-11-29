@@ -1,4 +1,4 @@
-//! Contains the declaration for [TSXToken] which are pieces of syntax. Also
+//! Contains the declaration for [`TSXToken`] which are pieces of syntax. Also
 //! - How tokens are made from consecutive characters
 //! - Keywords
 
@@ -376,6 +376,7 @@ impl std::fmt::Display for TSXToken {
 }
 
 impl TSXToken {
+	#[must_use]
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
@@ -395,6 +396,7 @@ impl TSXToken {
 	}
 
 	/// Used for lexing regular expression and JSX literals differently
+	#[must_use]
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
@@ -412,6 +414,7 @@ impl TSXToken {
 	}
 
 	/// Returns a keyword token else an identifier literal
+	#[must_use]
 	pub fn from_slice(slice: &str) -> Self {
 		match TSXKeyword::from_str(slice) {
 			Ok(keyword_token) => TSXToken::Keyword(keyword_token),
@@ -421,7 +424,7 @@ impl TSXToken {
 }
 
 /// Some tokens can be used as names for variables, methods (eg 'get' in <Map>.get()). This function
-/// takes a [Token] and returns its name as a [String] and the location as a [Span]. Will throw [ParseError] if
+/// takes a [Token] and returns its name as a [String] and the location as a [Span]. Will throw [`ParseError`] if
 /// cannot convert token to string
 pub(crate) fn token_as_identifier(
 	token: Token<TSXToken, TokenStart>,
@@ -433,7 +436,7 @@ pub(crate) fn token_as_identifier(
 		TSXToken::Keyword(keyword) => EnumVariantsStrings::to_str(&keyword).to_owned(),
 		token_type => {
 			return Err(ParseError::new(
-				crate::ParseErrors::ExpectedIdent { found: token_type, at_location },
+				&crate::ParseErrors::ExpectedIdent { found: token_type, at_location },
 				position,
 			));
 		}

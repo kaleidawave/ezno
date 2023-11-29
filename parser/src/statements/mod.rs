@@ -171,26 +171,26 @@ impl ASTNode for Statement {
 			TSXToken::Keyword(TSXKeyword::Break) => {
 				let break_token = reader.next().unwrap();
 				// TODO token is semi-colon
-				let label = if !matches!(
+				let label = if matches!(
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					Some(token_as_identifier(reader.next().unwrap(), "break label")?.0)
-				} else {
 					None
+				} else {
+					Some(token_as_identifier(reader.next().unwrap(), "break label")?.0)
 				};
 				Ok(Statement::Break(label, break_token.get_span()))
 			}
 			TSXToken::Keyword(TSXKeyword::Continue) => {
 				let continue_token = reader.next().unwrap();
 				// TODO token is semi-colon
-				let label = if !matches!(
+				let label = if matches!(
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					Some(token_as_identifier(reader.next().unwrap(), "continue label")?.0)
-				} else {
 					None
+				} else {
+					Some(token_as_identifier(reader.next().unwrap(), "continue label")?.0)
 				};
 				Ok(Statement::Continue(label, continue_token.get_span()))
 			}
@@ -227,9 +227,7 @@ impl ASTNode for Statement {
 	) {
 		match self {
 			Statement::Cursor(..) => {
-				if !options.expect_cursors {
-					panic!("tried to to-string cursor")
-				}
+				assert!(options.expect_cursors, "tried to to-string cursor");
 			}
 			Statement::Empty(..) => {
 				buf.push(';');
@@ -296,7 +294,8 @@ impl ASTNode for Statement {
 }
 
 impl Statement {
-	/// Used for skipping in to_string
+	/// Used for skipping in `to_string`
+	#[must_use]
 	pub fn is_comment(&self) -> bool {
 		matches!(self, Statement::Comment(..) | Statement::MultiLineComment(..))
 	}

@@ -109,7 +109,7 @@ impl ImportLocation {
 			Ok((Self::Cursor(id.into_cursor()), source_map::End(start.0)))
 		} else {
 			Err(ParseError::new(
-				ParseErrors::ExpectedStringLiteral { found: token.0 },
+				&ParseErrors::ExpectedStringLiteral { found: token.0 },
 				token.1.with_length(0),
 			))
 		}
@@ -127,6 +127,7 @@ impl ImportLocation {
 	}
 
 	/// Can be None if self is a cursor point
+	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
 		if let Self::Quoted(name, _) = self {
 			Some(name)
@@ -214,19 +215,19 @@ impl crate::ASTNode for Declaration {
 							Ok(Declaration::DeclareFunction(declare_func))
 						}
 						TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("class"),
+							&ParseErrors::InvalidDeclareItem("class"),
 							item.get_position().clone(),
 						)),
 						TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("interface"),
+							&ParseErrors::InvalidDeclareItem("interface"),
 							item.get_position().clone(),
 						)),
 						TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("type alias"),
+							&ParseErrors::InvalidDeclareItem("type alias"),
 							item.get_position().clone(),
 						)),
 						TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("namespace"),
+							&ParseErrors::InvalidDeclareItem("namespace"),
 							item.get_position().clone(),
 						)),
 						TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
@@ -274,7 +275,7 @@ impl crate::ASTNode for Declaration {
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, depth),
 			Declaration::DeclareInterface(did) => {
 				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, options, depth)
+				did.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}

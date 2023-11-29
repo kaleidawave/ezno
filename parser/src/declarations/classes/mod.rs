@@ -45,7 +45,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		self.to_string_from_buffer(buf, options, depth)
+		self.to_string_from_buffer(buf, options, depth);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -113,15 +113,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		}
 		let position =
 			class_keyword.get_position().union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
-		Ok(ClassDeclaration {
-			class_keyword,
-			name,
-			extends,
-			implements,
-			members,
-			type_parameters,
-			position,
-		})
+		Ok(ClassDeclaration { class_keyword, name, type_parameters, extends, implements, members, position })
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(

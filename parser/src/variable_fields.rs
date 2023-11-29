@@ -1,6 +1,6 @@
 /// Contains:
-/// - [VariableId] given to variable declaring items
-/// - [VariableField] for destructuring things and its nested derivatives + visiting behavior + tests for self
+/// - [`VariableId`] given to variable declaring items
+/// - [`VariableField`] for destructuring things and its nested derivatives + visiting behavior + tests for self
 use std::fmt::Debug;
 
 use crate::{
@@ -57,6 +57,7 @@ impl ASTNode for VariableIdentifier {
 
 impl VariableIdentifier {
 	/// TODO temp
+	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableIdentifier::Standard(name, _) => name.as_str(),
@@ -154,9 +155,9 @@ impl<T: VariableFieldKind> Eq for VariableField<T> {}
 
 /// Variable field can be used in type annotations but cannot have a value
 ///
-/// TODO value assignment this is VariableOrFieldAccess thingy
+/// TODO value assignment this is `VariableOrFieldAccess` thingy
 ///
-/// TODO could have get_optional_expression_as_option(&Self::OptionalExpression) -> Option<Expression>
+/// TODO could have `get_optional_expression_as_option(&Self::OptionalExpression`) -> Option<Expression>
 pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 	type OptionalExpression: PartialEq + Eq + Debug + Clone + Sync + Send;
 
@@ -206,14 +207,14 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 	) {
 		if let Some(optional_expression) = optional_expression {
 			buf.push_str(if options.pretty { " = " } else { "=" });
-			optional_expression.to_string_from_buffer(buf, options, depth)
+			optional_expression.to_string_from_buffer(buf, options, depth);
 		}
 	}
 
 	fn optional_expression_get_position(
 		optional_expression: &Self::OptionalExpression,
 	) -> Option<&Span> {
-		optional_expression.as_ref().map(|expr| expr.get_position())
+		optional_expression.as_ref().map(ASTNode::get_position)
 	}
 }
 
@@ -340,41 +341,38 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		match reader.peek().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::Spread, _) => {
-				let token = reader.next().unwrap();
-				let identifier = VariableIdentifier::from_reader(reader, state, options)?;
-				let position = token.get_span().union(identifier.get_position());
-				Ok(Self::Spread(identifier, position))
-			}
-			_ => {
-				let key = PropertyKey::from_reader(reader, state, options)?;
-				if matches!(reader.peek(), Some(Token(TSXToken::Colon, _))) {
-					reader.next();
-					let variable_name =
-						WithComment::<VariableField<U>>::from_reader(reader, state, options)?;
-					let default_value = U::optional_expression_from_reader(reader, state, options)?;
-					let position =
-						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							key.get_position().union(pos)
-						} else {
-							key.get_position().clone()
-						};
-					Ok(Self::Map { from: key, name: variable_name, default_value, position })
-				} else if let PropertyKey::Ident(name, key_pos, _) = key {
-					let default_value = U::optional_expression_from_reader(reader, state, options)?;
-					let standard = VariableIdentifier::Standard(name, key_pos);
-					let position =
-						if let Some(pos) = U::optional_expression_get_position(&default_value) {
-							standard.get_position().union(pos)
-						} else {
-							standard.get_position().clone()
-						};
-					Ok(Self::Name(standard, default_value, position))
-				} else {
-					let token = reader.next().ok_or_else(parse_lexing_error)?;
-					throw_unexpected_token_with_token(token, &[TSXToken::Colon])
-				}
+		if let Token(TSXToken::Spread, _) = reader.peek().ok_or_else(parse_lexing_error)? {
+			let token = reader.next().unwrap();
+			let identifier = VariableIdentifier::from_reader(reader, state, options)?;
+			let position = token.get_span().union(identifier.get_position());
+			Ok(Self::Spread(identifier, position))
+		} else {
+			let key = PropertyKey::from_reader(reader, state, options)?;
+			if matches!(reader.peek(), Some(Token(TSXToken::Colon, _))) {
+				reader.next();
+				let variable_name =
+					WithComment::<VariableField<U>>::from_reader(reader, state, options)?;
+				let default_value = U::optional_expression_from_reader(reader, state, options)?;
+				let position =
+					if let Some(pos) = U::optional_expression_get_position(&default_value) {
+						key.get_position().union(pos)
+					} else {
+						key.get_position().clone()
+					};
+				Ok(Self::Map { from: key, name: variable_name, default_value, position })
+			} else if let PropertyKey::Ident(name, key_pos, ()) = key {
+				let default_value = U::optional_expression_from_reader(reader, state, options)?;
+				let standard = VariableIdentifier::Standard(name, key_pos);
+				let position =
+					if let Some(pos) = U::optional_expression_get_position(&default_value) {
+						standard.get_position().union(pos)
+					} else {
+						standard.get_position().clone()
+					};
+				Ok(Self::Name(standard, default_value, position))
+			} else {
+				let token = reader.next().ok_or_else(parse_lexing_error)?;
+				throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 			}
 		}
 	}
@@ -392,13 +390,13 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 			}
 			Self::Name(name, default_value, _) => {
 				buf.push_str(name.as_str());
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
 			}
 			Self::Map { from, name: variable_name, default_value, .. } => {
 				from.to_string_from_buffer(buf, options, depth);
 				buf.push(':');
 				variable_name.to_string_from_buffer(buf, options, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
 			}
 		}
 	}
@@ -408,7 +406,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 	}
 }
 
-/// TODO not sure about the positions here, is potential duplication if T::OptionalExpression is none
+/// TODO not sure about the positions here, is potential duplication if `T::OptionalExpression` is none
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -466,7 +464,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 			}
 			Self::Name(name, default_value) => {
 				name.to_string_from_buffer(buf, options, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth)
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
 			}
 			Self::None => {}
 		}
@@ -495,7 +493,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 				}
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
-				for field in array_destructuring_fields.iter() {
+				for field in array_destructuring_fields {
 					visitors.visit_variable(
 						&ImmutableVariableOrPropertyPart::ArrayDestructuringMember(field),
 						data,
@@ -512,7 +510,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 				}
 			}
 			VariableField::Object(object_destructuring_fields, _) => {
-				for field in object_destructuring_fields.iter() {
+				for field in object_destructuring_fields {
 					visitors.visit_variable(
 						&ImmutableVariableOrPropertyPart::ObjectDestructuringMember(field),
 						data,

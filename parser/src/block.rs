@@ -71,10 +71,10 @@ impl ASTNode for StatementOrDeclaration {
 	) {
 		match self {
 			StatementOrDeclaration::Statement(item) => {
-				item.to_string_from_buffer(buf, options, depth)
+				item.to_string_from_buffer(buf, options, depth);
 			}
 			StatementOrDeclaration::Declaration(item) => {
-				item.to_string_from_buffer(buf, options, depth)
+				item.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}
@@ -256,7 +256,7 @@ impl ASTNode for BlockOrSingleStatement {
 	) {
 		match self {
 			BlockOrSingleStatement::Braced(block) => {
-				block.to_string_from_buffer(buf, options, depth)
+				block.to_string_from_buffer(buf, options, depth);
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
 				if options.pretty {

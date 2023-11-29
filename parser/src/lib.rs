@@ -1,6 +1,19 @@
 #![doc = include_str!("../README.md")]
 #![deny(clippy::all)]
-#![allow(clippy::new_without_default)]
+#![deny(clippy::pedantic)]
+#![allow(
+    clippy::new_without_default,
+    // TODO: Remove when fixed
+	clippy::result_unit_err,
+    clippy::default_trait_access,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::implicit_hasher,
+    clippy::too_many_lines,
+    // More explicit sometimes to have the module name
+    clippy::module_name_repetitions
+)]
+#![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 mod block;
 mod comments;
@@ -51,7 +64,11 @@ pub use types::{
 	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
 };
 pub use variable_fields::*;
-pub(crate) use visiting::*;
+pub(crate) use visiting::{
+	Chain, ChainVariable, ImmutableVariableOrPropertyPart, MutableVariablePart, SelfVisitable,
+	SelfVisitableMut, VisitSettings, Visitable, Visitor, VisitorMut, VisitorMutReceiver,
+	VisitorReceiver,
+};
 
 use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
@@ -80,6 +97,8 @@ impl Quoted {
 /// Settings to customize parsing
 #[allow(unused)]
 #[derive(Copy, Clone)]
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
@@ -109,6 +128,7 @@ impl ParseOptions {
 		}
 	}
 
+	#[must_use]
 	pub fn all_features() -> Self {
 		Self {
 			jsx: true,
@@ -141,7 +161,9 @@ impl Default for ParseOptions {
 	}
 }
 
-/// Settings for serializing ASTNodes
+/// Settings for serializing `ASTNodes`
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
@@ -174,16 +196,18 @@ impl Default for ToStringOptions {
 }
 
 impl ToStringOptions {
+	#[must_use]
 	pub fn minified() -> Self {
 		ToStringOptions {
 			pretty: false,
 			include_comments: false,
-			indent_with: "".to_owned(),
+			indent_with: String::new(),
 			..Default::default()
 		}
 	}
 
 	/// With typescript type syntax
+	#[must_use]
 	pub fn typescript() -> Self {
 		ToStringOptions { include_types: true, ..Default::default() }
 	}
@@ -194,7 +218,7 @@ impl ToStringOptions {
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {
-		(0..indent).for_each(|_| buf.push_str(&self.indent_with))
+		(0..indent).for_each(|_| buf.push_str(&self.indent_with));
 	}
 
 	pub(crate) fn add_gap<T: source_map::ToString>(&self, buf: &mut T) {
@@ -209,7 +233,7 @@ impl ToStringOptions {
 ///
 /// TODO remove partial eq
 pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
-	/// From string, with default impl to call abstract method from_reader
+	/// From string, with default impl to call abstract method `from_reader`
 	fn from_string(
 		script: String,
 		options: ParseOptions,
@@ -221,10 +245,10 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		// TODO take from argument
 		let line_starts = LineStarts::new(script.as_str());
 
-		lex_and_parse_script(line_starts, options, script, source, offset, Default::default())
+		lex_and_parse_script(line_starts, options, &script, source, offset, Default::default())
 	}
 
-	/// Returns position of node as span AS IT WAS PARSED. May be Span::NULL if AST was doesn't match anything in source
+	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
 	fn get_position(&self) -> &Span;
 
 	fn from_reader(
@@ -253,7 +277,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
-	script: String,
+	script: &str,
 	source: SourceId,
 	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
@@ -275,9 +299,9 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		res
 	});
 
-	let lex_result = lexer::lex_script(&script, &mut sender, &lex_options, offset, cursors);
+	let lex_result = lexer::lex_script(script, &mut sender, &lex_options, offset, cursors);
 	if let Err((reason, pos)) = lex_result {
-		return Err(ParseError::new(reason, pos));
+		return Err(ParseError::new(&reason, pos));
 	}
 	drop(sender);
 	parsing_thread.join().expect("Parsing panicked")
@@ -326,7 +350,7 @@ pub(crate) fn throw_unexpected_token_with_token<T>(
 	expected: &[TSXToken],
 ) -> Result<T, ParseError> {
 	let position = token.get_span();
-	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
+	Err(ParseError::new(&ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
 }
 
 #[derive(Debug)]
@@ -375,6 +399,7 @@ impl<T: tokens::TSXKeywordNode> Keyword<T>
 where
 	tokens::TSXKeyword: std::convert::From<T>,
 {
+	#[must_use]
 	pub fn new(span: Span) -> Self {
 		Keyword(T::default(), span)
 	}
@@ -399,7 +424,7 @@ where
 					Ok(Self::new(span))
 				} else {
 					Err(ParseError::new(
-						ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
+						&ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
 						span,
 					))
 				}
@@ -563,17 +588,17 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('X' | 'x') => {
 					let mut number = 0u64;
-					for c in s[2..].as_bytes().iter() {
+					for c in s[2..].as_bytes() {
 						number <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
-								number += (c - b'0') as u64;
+								number += u64::from(c - b'0');
 							}
 							b'a'..=b'f' => {
-								number += (c - b'a') as u64 + 10;
+								number += u64::from(c - b'a') + 10;
 							}
 							b'A'..=b'F' => {
-								number += (c - b'A') as u64 + 10;
+								number += u64::from(c - b'A') + 10;
 							}
 							_ => return Err(s.to_owned()),
 						}
@@ -582,11 +607,11 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('B' | 'b') => {
 					let mut number = 0u64;
-					for c in s[2..].as_bytes().iter() {
+					for c in s[2..].as_bytes() {
 						number <<= 1;
 						match c {
 							b'0' | b'1' => {
-								number += (c - b'0') as u64;
+								number += u64::from(c - b'0');
 							}
 							_ => return Err(s.to_owned()),
 						}
@@ -598,10 +623,10 @@ impl FromStr for NumberRepresentation {
 					let uses_character = matches!(c, 'o' | 'O');
 					let start = if uses_character { 2 } else { 1 };
 					let mut number = 0u64;
-					for c in s[start..].as_bytes().iter() {
+					for c in s[start..].as_bytes() {
 						number <<= 3; // 8=2^3
 						if matches!(c, b'0'..=b'7') {
-							number += (c - b'0') as u64;
+							number += u64::from(c - b'0');
 						} else {
 							return Err(s.to_owned());
 						}
@@ -657,9 +682,9 @@ impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			// TODO needs to do conversion
-			(Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Bin(l0, l1), Self::Bin(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Octal(l0, l1, _), Self::Octal(r0, r1, _)) => l0 == r0 && l1 == r1,
+			(Self::Bin(l0, l1), Self::Bin(r0, r1))
+			| (Self::Octal(l0, l1, _), Self::Octal(r0, r1, _))
+			| (Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
 			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
 			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
 		}
@@ -669,10 +694,12 @@ impl PartialEq for NumberRepresentation {
 impl Eq for NumberRepresentation {}
 
 impl NumberRepresentation {
+	#[must_use]
 	pub fn negate(&self) -> Self {
 		f64::from(self.clone()).neg().into()
 	}
 
+	#[must_use]
 	pub fn as_js_string(self) -> String {
 		match self {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
@@ -694,7 +721,7 @@ impl NumberRepresentation {
 					start.remove(0);
 				}
 				if trailing_point {
-					start.push('.')
+					start.push('.');
 				}
 				start
 			}
@@ -801,10 +828,12 @@ impl MethodHeader {
 		}
 	}
 
+	#[must_use]
 	pub fn is_async(&self) -> bool {
 		matches!(self, Self::Regular { r#async: Some(_), .. })
 	}
 
+	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		matches!(self, Self::Regular { generator: Some(_), .. })
 	}
@@ -928,7 +957,7 @@ pub(crate) fn parse_bracketed<T: ASTNode>(
 				}
 				let position = token.get_span();
 				return Err(ParseError::new(
-					crate::ParseErrors::UnexpectedToken {
+					&crate::ParseErrors::UnexpectedToken {
 						expected: &[end, TSXToken::Comma],
 						found: token.0,
 					},
@@ -985,19 +1014,19 @@ fn receiver_to_tokens(
 		let start = span.start;
 		let section =
 			(input.get(std::ops::Range::from(span.clone())).unwrap_or("?").to_owned(), true);
-		if last != start {
+		if last == start {
+			last = span.end;
+			Some(section)
+		} else {
 			last_section = Some(section);
 			let token = input.get((last as usize)..(start as usize)).unwrap_or("?").to_owned();
 			last = span.end;
 			Some((token, false))
-		} else {
-			last = span.end;
-			Some(section)
 		}
 	})
 }
 
-/// *to_strings* items surrounded in `{`, `[`, `(`, etc
+/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc
 ///
 /// TODO delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
