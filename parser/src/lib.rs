@@ -311,17 +311,17 @@ pub fn lex_and_parse_script<T: ASTNode>(
 pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
-	script: String,
+	script: &str,
 	source: SourceId,
 	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 	let lex_result =
-		lexer::lex_script(&script, &mut queue, &options.get_lex_options(), offset, cursors);
+		lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset, cursors);
 
 	if let Err((reason, pos)) = lex_result {
-		return Err(ParseError::new(reason, pos));
+		return Err(ParseError::new(&reason, pos));
 	}
 
 	let mut state = ParsingState {

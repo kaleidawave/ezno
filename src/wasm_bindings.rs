@@ -21,7 +21,7 @@ pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify:
 		Path::new(&entry_path),
 		None,
 		Path::new("out.js"),
-		crate::commands::BuildConfig { strip_whitespace: minify },
+		&crate::commands::BuildConfig { strip_whitespace: minify },
 		None,
 	);
 	serde_wasm_bindgen::to_value(&result).unwrap()
@@ -76,7 +76,7 @@ pub fn run_cli_wasm(
 			.and_then(JsValue::as_string)
 	};
 
-	crate::run_cli(&arguments, read_file, write_file, cli_input_resolver)
+	crate::run_cli(&arguments, &read_file, write_file, cli_input_resolver)
 }
 
 #[wasm_bindgen(js_name = parse_expression)]
