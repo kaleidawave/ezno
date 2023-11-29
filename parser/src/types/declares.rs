@@ -201,7 +201,16 @@ impl DeclareFunctionDeclaration {
 		let position = start_pos
 			.union(return_type.as_ref().map_or(&parameters.position, ASTNode::get_position));
 
-		Ok(Self { name, type_parameters, parameters, return_type, performs, decorators, position })
+		Ok(Self {
+			name,
+			type_parameters,
+			parameters,
+			return_type,
+			#[cfg(feature = "extras")]
+			performs,
+			decorators,
+			position,
+		})
 	}
 }
 

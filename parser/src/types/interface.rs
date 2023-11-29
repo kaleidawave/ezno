@@ -61,6 +61,7 @@ impl ASTNode for InterfaceDeclaration {
 
 		#[cfg(feature = "extras")]
 		let nominal_keyword = Keyword::optionally_from_reader(reader);
+
 		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
 		// 	Some((reader.next().unwrap().1))
 		// } else {
@@ -103,6 +104,7 @@ impl ASTNode for InterfaceDeclaration {
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
 			name,
+			#[cfg(feature = "extras")]
 			nominal_keyword,
 			type_parameters,
 			extends,
