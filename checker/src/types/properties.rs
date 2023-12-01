@@ -4,7 +4,7 @@ use crate::{
 	behavior::functions::ThisValue,
 	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
-	subtyping::{type_is_subtype, SubTypeResult},
+	subtyping::{type_is_subtype, NonEqualityReason, SubTypeResult},
 	types::{printing::print_type, substitute, FunctionType, StructureGenerics},
 	Constant, Environment, TypeId,
 };
@@ -377,7 +377,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							result: getter.return_type,
 						})))
 					}
-					PropertyValue::Setter(_) => todo!("error"),
+					PropertyValue::Setter(setter) => None,
 					// Very important
 					PropertyValue::Deleted => None,
 				}
@@ -507,9 +507,49 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 						position: setter_position,
 					});
 				}
-				PropertyValue::Getter(_) => todo!(),
-				PropertyValue::Setter(_setter) => {
-					todo!()
+				PropertyValue::Getter(_) => return Err(SetPropertyError::NotWriteable),
+				PropertyValue::Setter(setter) => {
+					// Setters must have 1 parameters, so it's supposed to be catch at parsing time
+					let param = setter.parameters.parameters.get(0).unwrap();
+
+					let position = setter_position.unwrap_or(source_map::SpanWithSource::NULL_SPAN);
+
+					let mut basic_subtyping = crate::types::subtyping::BasicEquality {
+						add_property_restrictions: true,
+						position: position.clone(),
+					};
+
+					if let SubTypeResult::IsNotSubType(sub_type_error) = type_is_subtype(
+						param.ty,
+						new.as_get_type(),
+						&mut basic_subtyping,
+						environment,
+						types,
+					) {
+						// TODO don't short circuit
+						return Err(SetPropertyError::DoesNotMeetConstraint(
+							param.ty,
+							sub_type_error,
+						));
+					}
+
+					let facts = behavior.get_top_level_facts(environment);
+
+					facts.current_properties.entry(on).or_default().push((
+						publicity,
+						under.into_owned(),
+						new.clone(),
+					));
+					facts.events.push(Event::Setter {
+						on,
+						new,
+						under: under.into_owned(),
+						publicity,
+						// TODO
+						reflects_dependency: None,
+						initialization: false,
+						position: Some(position),
+					});
 				}
 			},
 			Logical::Or { .. } => todo!(),
