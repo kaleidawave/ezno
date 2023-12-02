@@ -286,7 +286,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 
 	let lex_result = lexer::lex_script(script, &mut sender, &lex_options, offset, cursors);
 	if let Err((reason, pos)) = lex_result {
-		return Err(ParseError::new(&reason, pos));
+		return Err(ParseError::new(reason, pos));
 	}
 	drop(sender);
 	parsing_thread.join().expect("Parsing panicked")
@@ -335,7 +335,7 @@ pub(crate) fn throw_unexpected_token_with_token<T>(
 	expected: &[TSXToken],
 ) -> Result<T, ParseError> {
 	let position = token.get_span();
-	Err(ParseError::new(&ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
+	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
 }
 
 #[derive(Debug)]
@@ -409,7 +409,7 @@ where
 					Ok(Self::new(span))
 				} else {
 					Err(ParseError::new(
-						&ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
+						ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
 						span,
 					))
 				}
@@ -942,7 +942,7 @@ pub(crate) fn parse_bracketed<T: ASTNode>(
 				}
 				let position = token.get_span();
 				return Err(ParseError::new(
-					&crate::ParseErrors::UnexpectedToken {
+					crate::ParseErrors::UnexpectedToken {
 						expected: &[end, TSXToken::Comma],
 						found: token.0,
 					},

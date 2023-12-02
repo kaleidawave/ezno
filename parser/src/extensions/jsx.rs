@@ -432,7 +432,7 @@ impl JSXElement {
 				let end = start.0 + closing_tag_name.len() as u32 + 2;
 				if closing_tag_name != tag_name {
 					return Err(ParseError::new(
-						&crate::ParseErrors::ClosingTagDoesNotMatch {
+						crate::ParseErrors::ClosingTagDoesNotMatch {
 							expected: &tag_name,
 							found: &closing_tag_name,
 						},

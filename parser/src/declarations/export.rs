@@ -195,7 +195,7 @@ impl ASTNode for ExportDeclaration {
 					}
 				} else {
 					Err(ParseError::new(
-						&crate::ParseErrors::UnmatchedBrackets,
+						crate::ParseErrors::UnmatchedBrackets,
 						start.with_length(1),
 					))
 				}

@@ -373,7 +373,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						&crate::ParseErrors::UnmatchedBrackets,
+						crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -416,7 +416,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						&crate::ParseErrors::UnmatchedBrackets,
+						crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -451,7 +451,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						&crate::ParseErrors::UnmatchedBrackets,
+						crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}
@@ -738,7 +738,7 @@ impl Expression {
 					}
 				} else {
 					return Err(ParseError::new(
-						&crate::ParseErrors::UnmatchedBrackets,
+						crate::ParseErrors::UnmatchedBrackets,
 						t.get_span(),
 					));
 				}

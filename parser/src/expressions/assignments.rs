@@ -99,7 +99,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::PropertyAccess { parent, position, property, is_optional } => {
 				if is_optional {
 					// Still a proposal :(
-					Err(ParseError::new(&crate::ParseErrors::InvalidLHSAssignment, position))
+					Err(ParseError::new(crate::ParseErrors::InvalidLHSAssignment, position))
 				} else {
 					Ok(Self::PropertyAccess { parent, position, property })
 				}
@@ -113,13 +113,13 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					TryFrom::try_from(expression)
 				} else {
 					Err(ParseError::new(
-						&crate::ParseErrors::InvalidLHSAssignment,
+						crate::ParseErrors::InvalidLHSAssignment,
 						inner.get_position().clone(),
 					))
 				}
 			}
 			expression => Err(ParseError::new(
-				&crate::ParseErrors::InvalidLHSAssignment,
+				crate::ParseErrors::InvalidLHSAssignment,
 				expression.get_position().clone(),
 			)),
 		}

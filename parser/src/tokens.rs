@@ -436,7 +436,7 @@ pub(crate) fn token_as_identifier(
 		TSXToken::Keyword(keyword) => EnumVariantsStrings::to_str(&keyword).to_owned(),
 		token_type => {
 			return Err(ParseError::new(
-				&crate::ParseErrors::ExpectedIdent { found: token_type, at_location },
+				crate::ParseErrors::ExpectedIdent { found: token_type, at_location },
 				position,
 			));
 		}

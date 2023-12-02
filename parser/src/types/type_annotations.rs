@@ -602,7 +602,7 @@ impl TypeAnnotation {
 			let Self::Name(name, start_span) = reference else {
 				let position = reader.next().unwrap().get_span();
 				return Err(ParseError::new(
-					&crate::ParseErrors::TypeArgumentsNotValidOnReference,
+					crate::ParseErrors::TypeArgumentsNotValidOnReference,
 					position,
 				));
 			};

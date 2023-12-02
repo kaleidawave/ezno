@@ -191,7 +191,7 @@ impl FunctionParameters {
 				{
 					if is_optional {
 						return Err(ParseError::new(
-							&crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
+							crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
 							token.get_span(),
 						));
 					}
