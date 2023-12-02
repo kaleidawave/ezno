@@ -1,6 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![deny(clippy::all)]
-#![deny(clippy::pedantic)]
 #![allow(
 	unreachable_code,
 	unused_variables,
@@ -9,17 +7,11 @@
 	dead_code,
 	irrefutable_let_patterns,
 	deprecated,
-    // TODO: Remove when fixed
-	clippy::result_unit_err,
-    clippy::default_trait_access,
-    clippy::missing_errors_doc,
-    clippy::missing_panics_doc,
-    clippy::implicit_hasher,
-    clippy::too_many_lines,
-    // More explicit sometimes to have the module name
-    clippy::module_name_repetitions
+	clippy::new_without_default,
+	clippy::too_many_lines,
+	clippy::result_unit_err
 )]
-#![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+
 pub mod behavior;
 pub mod context;
 pub mod diagnostics;

@@ -1,19 +1,5 @@
 #![doc = include_str!("../README.md")]
-#![deny(clippy::all)]
-#![deny(clippy::pedantic)]
-#![allow(
-    clippy::new_without_default,
-    // TODO: Remove when fixed
-	clippy::result_unit_err,
-    clippy::default_trait_access,
-    clippy::missing_errors_doc,
-    clippy::missing_panics_doc,
-    clippy::implicit_hasher,
-    clippy::too_many_lines,
-    // More explicit sometimes to have the module name
-    clippy::module_name_repetitions
-)]
-#![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#![allow(clippy::new_without_default, clippy::too_many_lines)]
 
 mod block;
 mod comments;

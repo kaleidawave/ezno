@@ -8,7 +8,7 @@ fn main() {
 		None,
 	);
 
-	println!("{:#?}", reference);
+	println!("{reference:#?}");
 
 	let expression = Expression::from_string(
 		"(x << 3, x >> 2, y<Array<string>>(2), x < 7, x< 7)".into(),
@@ -17,5 +17,5 @@ fn main() {
 		None,
 	);
 
-	println!("{:#?}", expression);
+	println!("{expression:#?}");
 }

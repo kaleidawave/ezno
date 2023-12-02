@@ -14,6 +14,6 @@ fn main() {
 			SourceId::NULL,
 			None,
 		);
-		println!("{:#?}", expression);
+		println!("{expression:#?}");
 	}
 }

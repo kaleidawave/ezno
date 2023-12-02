@@ -33,9 +33,9 @@ fn lex_and_print_tokens(script: String, cursors: Option<Vec<(usize, EmptyCursorI
 	// println!("{count} tokens");
 
 	match thread.join().unwrap() {
-		Ok(_) => {}
+		Ok(()) => {}
 		Err((lexer_err, _)) => {
-			eprintln!("lexer error: {:?}", lexer_err);
+			eprintln!("lexer error: {lexer_err:?}");
 		}
 	}
 }
