@@ -307,7 +307,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset, cursors);
 
 	if let Err((reason, pos)) = lex_result {
-		return Err(ParseError::new(&reason, pos));
+		return Err(ParseError::new(reason, pos));
 	}
 
 	let mut state = ParsingState {
