@@ -1,15 +1,10 @@
 use crate::{
-	errors::parse_lexing_error,
-	extensions::decorators::Decorated,
-	functions::MethodHeader,
-	parse_bracketed,
-	property_key::PublicOrPrivate,
-	throw_unexpected_token_with_token, to_string_bracketed,
-	tokens::token_as_identifier,
-	tsx_keywords,
-	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
-	ASTNode, Expression, GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions,
-	ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
+	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
+	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
+	to_string_bracketed, tokens::token_as_identifier, tsx_keywords,
+	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
+	GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions, ParseResult, PropertyKey,
+	Span, TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -270,10 +265,8 @@ impl ASTNode for InterfaceMember {
 				} else {
 					None
 				};
-				let position = return_type
-					.as_ref()
-					.map_or(&parameters.position, ASTNode::get_position)
-					.clone();
+				let position =
+					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
 				Ok(InterfaceMember::Caller {
 					is_readonly,
@@ -345,7 +338,7 @@ impl ASTNode for InterfaceMember {
 							let position = start.with_length(value.len());
 							PropertyKey::NumberLiteral(
 								value.parse::<NumberRepresentation>().unwrap(),
-								position.clone(),
+								position,
 							)
 						}
 						token => {
@@ -476,7 +469,7 @@ impl ASTNode for InterfaceMember {
 							TypeAnnotationFunctionParameters::from_reader_sub_open_parenthesis(
 								reader, state, options, start,
 							)?;
-						let mut position = start.union(&parameters.position);
+						let mut position = start.union(parameters.position);
 						let return_type = if reader
 							.conditional_next(|tok| matches!(tok, TSXToken::Colon))
 							.is_some()
@@ -516,7 +509,7 @@ impl ASTNode for InterfaceMember {
 						let parameters =
 							TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
 
-						let mut position = start.union(&parameters.position);
+						let mut position = start.union(parameters.position);
 
 						let return_type = if reader
 							.conditional_next(|tok| matches!(tok, TSXToken::Colon))

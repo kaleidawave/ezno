@@ -13,7 +13,6 @@ use crate::{
 	TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
-/// The variable id's of these is handled by their [PropertyKey]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -109,7 +108,7 @@ impl ASTNode for ClassMember {
 				MethodHeader::Get(kw) => ("get", kw.1),
 				MethodHeader::Set(kw) => ("set", kw.1),
 				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
-				_ => unreachable!(),
+				MethodHeader::Regular { .. } => unreachable!(),
 			};
 			WithComment::None(PropertyKey::Ident(name.to_owned(), position, false))
 		} else {
@@ -146,7 +145,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						readonly_keyword,
-						position: key.get_position().clone(),
+						position: *key.get_position(),
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
@@ -264,7 +263,7 @@ impl FunctionBased for ClassFunctionBase {
 		options: &crate::visiting::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		name.visit(visitors, data, options, chain)
+		name.visit(visitors, data, options, chain);
 	}
 
 	fn visit_name_mut<TData>(
@@ -274,7 +273,7 @@ impl FunctionBased for ClassFunctionBase {
 		options: &crate::visiting::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		name.visit_mut(visitors, data, options, chain)
+		name.visit_mut(visitors, data, options, chain);
 	}
 }
 

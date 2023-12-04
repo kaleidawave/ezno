@@ -59,12 +59,10 @@ impl FunctionBased for ArrowFunctionBase {
 			token => {
 				let (name, position) = token_as_identifier(token, "arrow function parameter")?;
 				let parameters = vec![Parameter {
-					name: WithComment::None(
-						VariableIdentifier::Standard(name, position.clone()).into(),
-					),
+					name: WithComment::None(VariableIdentifier::Standard(name, position).into()),
 					type_annotation: None,
 					additionally: None,
-					position: position.clone(),
+					position,
 				}];
 				Ok(FunctionParameters {
 					parameters,
@@ -136,11 +134,11 @@ impl ArrowFunction {
 	) -> ParseResult<Self> {
 		let parameters = vec![crate::Parameter {
 			name: WithComment::None(
-				VariableIdentifier::Standard(first_parameter.0, first_parameter.1.clone()).into(),
+				VariableIdentifier::Standard(first_parameter.0, first_parameter.1).into(),
 			),
 			type_annotation: None,
 			additionally: None,
-			position: first_parameter.1.clone(),
+			position: first_parameter.1,
 		}];
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;

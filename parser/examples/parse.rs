@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments: Comments::None,
-		..ParseOptions::default()
+		..ParseOptions::all_features()
 	};
 
 	let result = Module::from_file(&path, options, &mut fs);

@@ -361,7 +361,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 					if let Some(pos) = U::optional_expression_get_position(&default_value) {
 						key.get_position().union(pos)
 					} else {
-						key.get_position().clone()
+						*key.get_position()
 					};
 				Ok(Self::Map { from: key, name: variable_name, default_value, position })
 			} else if let PropertyKey::Ident(name, key_pos, ()) = key {
@@ -371,7 +371,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 					if let Some(pos) = U::optional_expression_get_position(&default_value) {
 						standard.get_position().union(pos)
 					} else {
-						standard.get_position().clone()
+						*standard.get_position()
 					};
 				Ok(Self::Name(standard, default_value, position))
 			} else {

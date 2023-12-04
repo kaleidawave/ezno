@@ -150,7 +150,7 @@ impl ASTNode for Statement {
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					let position = return_keyword.get_position().clone();
+					let position = *return_keyword.get_position();
 					Statement::Return(ReturnStatement(return_keyword, None, position))
 				} else {
 					let multiple_expression =

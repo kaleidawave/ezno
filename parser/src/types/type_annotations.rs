@@ -721,10 +721,10 @@ impl TypeAnnotation {
 				reader.next();
 				let return_type =
 					Self::from_reader_with_config(reader, state, options, true, false)?;
-				let parameters_position = reference.get_position().clone();
+				let parameters_position = *reference.get_position();
 				let position = parameters_position.union(return_type.get_position());
 				Ok(Self::FunctionLiteral {
-					position: position.clone(),
+					position,
 					type_parameters: None,
 					parameters: TypeAnnotationFunctionParameters {
 						parameters: vec![TypeAnnotationFunctionParameter {

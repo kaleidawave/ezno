@@ -398,9 +398,7 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return)
-				| TSXToken::Keyword(TSXKeyword::Yield)
-				| TSXToken::Keyword(TSXKeyword::Throw)
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw)
 				| TSXToken::Assign
 				| TSXToken::Arrow
 				| TSXToken::OpenParentheses

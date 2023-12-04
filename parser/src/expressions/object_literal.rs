@@ -105,7 +105,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		options: &crate::visiting::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		name.visit(visitors, data, options, chain)
+		name.visit(visitors, data, options, chain);
 	}
 
 	fn visit_name_mut<TData>(
@@ -115,7 +115,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		options: &crate::visiting::VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		name.visit_mut(visitors, data, options, chain)
+		name.visit_mut(visitors, data, options, chain);
 	}
 }
 
@@ -196,7 +196,7 @@ impl ASTNode for ObjectLiteralMember {
 		};
 
 		// TODO this probably needs with comment here:
-		while reader.conditional_next(|t| t.is_comment()).is_some() {}
+		while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 		let mut header = MethodHeader::from_reader(reader);
 		// Catch for named get or set :(
@@ -221,7 +221,7 @@ impl ASTNode for ObjectLiteralMember {
 				MethodHeader::Get(kw) => ("get", kw.1),
 				MethodHeader::Set(kw) => ("set", kw.1),
 				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
-				_ => unreachable!(),
+				MethodHeader::Regular { .. } => unreachable!(),
 			};
 			PropertyKey::Ident(name.to_owned(), position, ())
 		} else {

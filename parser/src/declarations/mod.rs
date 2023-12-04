@@ -6,8 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
-	CursorId, Decorated, Keyword, ParseError, ParseErrors, Quoted, StatementPosition, TSXKeyword,
-	TSXToken, TypeDefinitionModuleDeclaration,
+	CursorId, Decorated, Keyword, ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition,
+	TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
 };
 
 pub use self::{
@@ -60,6 +60,7 @@ impl Declaration {
 	// TODO strict mode, type etc can affect result
 	pub(crate) fn is_declaration_start(
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
+		options: &ParseOptions,
 	) -> bool {
 		let token = reader.peek();
 		let result = matches!(
@@ -78,7 +79,7 @@ impl Declaration {
 
 		#[cfg(feature = "extras")]
 		return result
-			|| matches!(token, Some(Token(TSXToken::Keyword(kw), _)) if kw.is_in_function_header())
+			|| matches!(token, Some(Token(TSXToken::Keyword(kw), _)) if (options.custom_function_headers && kw.is_special_function_header()))
 			|| (matches!(token, Some(Token(TSXToken::Keyword(TSXKeyword::From), _)))
 				&& matches!(reader.peek_n(1), Some(Token(TSXToken::StringLiteral(..), _))));
 
@@ -166,7 +167,7 @@ impl crate::ASTNode for Declaration {
 					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			}
 			#[cfg(feature = "extras")]
-			TSXToken::Keyword(ref kw) if kw.is_in_function_header() => {
+			TSXToken::Keyword(ref kw) if kw.is_special_function_header() => {
 				let function = StatementFunction::from_reader(reader, state, options)?;
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
@@ -214,19 +215,19 @@ impl crate::ASTNode for Declaration {
 						}
 						TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
 							ParseErrors::InvalidDeclareItem("class"),
-							item.get_position().clone(),
+							*item.get_position(),
 						)),
 						TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
 							ParseErrors::InvalidDeclareItem("interface"),
-							item.get_position().clone(),
+							*item.get_position(),
 						)),
 						TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
 							ParseErrors::InvalidDeclareItem("type alias"),
-							item.get_position().clone(),
+							*item.get_position(),
 						)),
 						TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
 							ParseErrors::InvalidDeclareItem("namespace"),
-							item.get_position().clone(),
+							*item.get_position(),
 						)),
 						TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
 						| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)

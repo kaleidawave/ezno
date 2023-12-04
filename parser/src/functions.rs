@@ -282,7 +282,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 			&ImmutableVariableOrProperty::FunctionName(name.as_option_variable_identifier()),
 			data,
 			chain,
-		)
+		);
 	}
 
 	fn visit_name_mut<TData>(
@@ -296,7 +296,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 			&mut MutableVariableOrProperty::FunctionName(name.as_option_variable_identifier_mut()),
 			data,
 			chain,
-		)
+		);
 	}
 }
 
@@ -379,7 +379,7 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 
 		if let Some(token) = next_generator {
 			let span = token.get_span();
-			let generator_keyword = Some(Keyword::new(span.clone()));
+			let generator_keyword = Some(Keyword::new(span));
 			let location = parse_function_location(reader);
 
 			let function_keyword = Keyword::from_reader(reader)?;
@@ -437,10 +437,8 @@ fn parse_regular_header(
 		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 		.map(|token| token.get_span());
 
-	let mut position = async_keyword
-		.as_ref()
-		.map_or(function_keyword.get_position(), |kw| kw.get_position())
-		.clone();
+	let mut position =
+		*async_keyword.as_ref().map_or(function_keyword.get_position(), |kw| kw.get_position());
 
 	if let Some(ref generator_star_token_position) = generator_star_token_position {
 		position = position.union(generator_star_token_position);
@@ -553,14 +551,17 @@ impl MethodHeader {
 		}
 	}
 
+	#[must_use]
 	pub fn is_async(&self) -> bool {
 		matches!(self, Self::Regular { r#async: Some(_), .. })
 	}
 
+	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		matches!(self, Self::Regular { generator: Some(_), .. })
 	}
 
+	#[must_use]
 	pub fn is_some(&self) -> bool {
 		!matches!(self, Self::Regular { r#async: None, generator: None })
 	}

@@ -90,7 +90,6 @@ pub struct ParseOptions {
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
 	pub decorators: bool,
-	pub generator_keyword: bool,
 	/// Skip **all** comments from the AST
 	pub comments: Comments,
 	/// See [crate::extensions::is_expression::IsExpression]
@@ -124,7 +123,6 @@ impl ParseOptions {
 			comments: Comments::All,
 			decorators: true,
 			slots: true,
-			generator_keyword: true,
 			custom_function_headers: true,
 			is_expressions: true,
 			buffer_size: 100,
@@ -142,7 +140,6 @@ impl Default for ParseOptions {
 			comments: Comments::All,
 			decorators: true,
 			slots: false,
-			generator_keyword: true,
 			custom_function_headers: false,
 			is_expressions: false,
 			buffer_size: 100,
@@ -609,7 +606,7 @@ impl FromStr for NumberRepresentation {
 						})
 					}
 				}
-				Some(c @ 'X' | c @ 'x') => {
+				Some(c @ ('X' | 'x')) => {
 					let identifier_uppercase = c.is_uppercase();
 					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
@@ -629,7 +626,7 @@ impl FromStr for NumberRepresentation {
 					}
 					Ok(Self::Hex { sign, identifier_uppercase, value })
 				}
-				Some(c @ 'B' | c @ 'b') => {
+				Some(c @ ('B' | 'b')) => {
 					let identifier_uppercase = c.is_uppercase();
 					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
@@ -721,6 +718,7 @@ impl PartialEq for NumberRepresentation {
 impl Eq for NumberRepresentation {}
 
 impl NumberRepresentation {
+	#[must_use]
 	pub fn as_js_string(self) -> String {
 		match self {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
@@ -930,8 +928,7 @@ fn receiver_to_tokens(
 		}
 		let span = token.get_span();
 		let start = span.start;
-		let section =
-			(input.get(std::ops::Range::from(span.clone())).unwrap_or("?").to_owned(), true);
+		let section = (input.get(std::ops::Range::from(span)).unwrap_or("?").to_owned(), true);
 		if last == start {
 			last = span.end;
 			Some(section)

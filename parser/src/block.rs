@@ -54,7 +54,7 @@ impl ASTNode for StatementOrDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if Declaration::is_declaration_start(reader) {
+		if Declaration::is_declaration_start(reader, options) {
 			let dec = Declaration::from_reader(reader, state, options)?;
 			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
@@ -245,7 +245,7 @@ impl Visitable for BlockOrSingleStatement {
 			BlockOrSingleStatement::SingleStatement(s) => {
 				s.visit(visitors, data, options, chain);
 				visitors.visit_statement(
-					crate::visiting::BlockItem::SingleStatement(&s),
+					crate::visiting::BlockItem::SingleStatement(s),
 					data,
 					chain,
 				);

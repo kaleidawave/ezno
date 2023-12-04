@@ -24,7 +24,7 @@ where
 		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
 		let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(self.get_ast_ref());
-		token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)))
+		token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)));
 	}
 }
 

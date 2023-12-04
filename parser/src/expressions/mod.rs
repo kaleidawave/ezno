@@ -18,6 +18,7 @@ use self::{
 	object_literal::ObjectLiteral,
 };
 
+#[allow(clippy::wildcard_imports)]
 use super::{
 	operators::*, tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError,
 	ParseOptions, Span, TSXToken, Token, TokenReader, TypeAnnotation,
@@ -857,12 +858,12 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.next();
-					let get_position = top.get_position().clone();
+					let condition_position = *top.get_position();
 					let condition = Box::new(top);
 					let lhs = Box::new(Self::from_reader(reader, state, options)?);
 					reader.expect_next(TSXToken::Colon)?;
 					let rhs = Self::from_reader(reader, state, options)?;
-					let position = get_position.union(rhs.get_position());
+					let position = condition_position.union(rhs.get_position());
 					top = Expression::ConditionalTernary {
 						position,
 						condition,
@@ -945,7 +946,7 @@ impl Expression {
 							token_as_identifier(token, "variable reference")?;
 						(PropertyReference::Standard { property, is_private }, position)
 					};
-					let position = top.get_position().union(&position);
+					let position = top.get_position().union(position);
 					top = Expression::PropertyAccess {
 						parent: Box::new(top),
 						property,
@@ -1795,7 +1796,7 @@ impl Expression {
 	/// IIFE = immediate invoked function execution
 	#[must_use]
 	pub fn build_iife(block: Block) -> Self {
-		let position = block.get_position().clone();
+		let position = *block.get_position();
 		Expression::FunctionCall {
 			function: Expression::ParenthesizedExpression(
 				Box::new(
@@ -1806,18 +1807,18 @@ impl Expression {
 						parameters: crate::FunctionParameters {
 							parameters: Default::default(),
 							rest_parameter: Default::default(),
-							position: position.clone(),
+							position,
 							this_type: None,
 							super_type: None,
 						},
 						return_type: None,
 						type_parameters: None,
-						position: position.clone(),
+						position,
 						body: ExpressionOrBlock::Block(block),
 					})
 					.into(),
 				),
-				position.clone(),
+				position,
 			)
 			.into(),
 			type_arguments: None,

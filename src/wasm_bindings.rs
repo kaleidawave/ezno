@@ -26,6 +26,7 @@ pub fn experimental_build_wasm(
 		None,
 		Path::new("out.js"),
 		&crate::build::BuildConfig { strip_whitespace: minify },
+		None,
 	);
 
 	serde_wasm_bindgen::to_value(&result).unwrap()

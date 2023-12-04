@@ -274,7 +274,7 @@ mod structures {
 		Block(Span),
 	}
 
-	/// Contains [ChainVariable]s which signal the position in the AST
+	/// Contains [`ChainVariable`]s which signal the position in the AST
 	#[derive(Debug, Clone)]
 	pub struct Chain(Vec<ChainVariable>);
 
@@ -305,6 +305,7 @@ mod structures {
 			self.0.truncate(to_size);
 		}
 
+		#[must_use]
 		pub fn get_module(&self) -> SourceId {
 			if let ChainVariable::Module(source) = self.0.first().unwrap() {
 				source.to_owned()
@@ -362,6 +363,7 @@ mod structures {
 	}
 
 	impl<'a> ImmutableVariableOrProperty<'a> {
+		#[must_use]
 		pub fn get_variable_name(&self) -> Option<&'a str> {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
@@ -377,7 +379,9 @@ mod structures {
 					}
 				}
 				ImmutableVariableOrProperty::FunctionName(name)
-				| ImmutableVariableOrProperty::ClassName(name) => name.map(|n| n.as_str()),
+				| ImmutableVariableOrProperty::ClassName(name) => {
+					name.map(crate::variable_fields::VariableIdentifier::as_str)
+				}
 				ImmutableVariableOrProperty::ObjectPropertyKey(_property) => {
 					// Just want variable names
 					None
@@ -417,8 +421,8 @@ mod structures {
 		}
 	}
 
-	/// Wrapper type for [StatementOrDeclaration]. Needed because [crate::Statement] doesn't
-	/// come under [StatementOrDeclaration] in the case of [crate::BlockOrSingleStatement]
+	/// Wrapper type for [`StatementOrDeclaration`]. Needed because [`crate::Statement`] doesn't
+	/// come under [`StatementOrDeclaration`] in the case of [`crate::BlockOrSingleStatement`]
 	pub enum BlockItem<'a> {
 		StatementOrDeclaration(&'a crate::StatementOrDeclaration),
 		SingleStatement(&'a crate::Statement),
@@ -461,7 +465,7 @@ mod visitors {
 	use crate::{block::BlockLike, TSXKeyword};
 	use source_map::Span;
 
-	/// A visitor over something which is hooked/is [SelfVisitable] with some generic `Data`
+	/// A visitor over something which is hooked/is [`SelfVisitable`] with some generic `Data`
 	pub trait Visitor<Item: SelfVisitable, Data> {
 		fn visit(&mut self, item: &Item, data: &mut Data, chain: &Chain);
 	}
@@ -517,7 +521,7 @@ mod visitors {
 	type VariableVisitor<T> = Box<dyn for<'a> Visitor<ImmutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> Visitor<BlockLike<'a>, T>>;
 
-	/// A utility type which implements [VisitorReceiver]. Use for running a bunch of different **immutable**
+	/// A utility type which implements [`VisitorReceiver`]. Use for running a bunch of different **immutable**
 	/// visitors over a **immutable** AST. Used for simple analysis
 	#[derive(Default)]
 	pub struct Visitors<T> {
@@ -565,7 +569,7 @@ mod visitors_mut {
 
 	use super::{BlockItemMut, Chain, Expression, MutableVariableOrProperty, SelfVisitableMut};
 
-	/// A visitor over something which is hooked/is `SelfVisitable` with some Data
+	/// A visitor over something which is hooked/is [`SelfVisitableMut`] with some Data
 	pub trait VisitorMut<Item: SelfVisitableMut, Data> {
 		fn visit_mut(&mut self, item: &mut Item, data: &mut Data, chain: &Chain);
 	}
@@ -598,7 +602,7 @@ mod visitors_mut {
 	type VariableVisitor<T> = Box<dyn for<'a> VisitorMut<MutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>;
 
-	/// A utility type which implements [VisitorMutReceiver]. Use for running a bunch of different **mutable**
+	/// A utility type which implements [`VisitorMutReceiver`]. Use for running a bunch of different **mutable**
 	/// visitors over a **mutable** AST. Therefore can remove, add or change AST
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
