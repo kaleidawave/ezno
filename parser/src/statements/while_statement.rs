@@ -96,7 +96,9 @@ impl ASTNode for DoWhileStatement {
 				}
 				BlockOrSingleStatement::SingleStatement(stmt) => {
 					stmt.to_string_from_buffer(buf, options, depth);
-					buf.push(';');
+					if stmt.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 		};

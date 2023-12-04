@@ -525,6 +525,12 @@ pub enum NumberRepresentation {
 		/// TODO could do as something other than f64
 		value: f64,
 	},
+	Exponential {
+		sign: NumberSign,
+		value: f64,
+		exponent: i32,
+		identifier_uppercase: bool,
+	},
 	BigInt(NumberSign, String),
 }
 
@@ -547,6 +553,12 @@ impl TryFrom<NumberRepresentation> for f64 {
 			NumberRepresentation::Hex { sign, value, .. }
 			| NumberRepresentation::Bin { sign, value, .. }
 			| NumberRepresentation::Octal { sign, value, .. } => Ok(sign.apply(value as f64)),
+			NumberRepresentation::Exponential {
+				sign,
+				value,
+				exponent,
+				identifier_uppercase: _,
+			} => Ok(sign.apply(value * 10f64.powi(exponent))),
 			NumberRepresentation::BigInt(..) => Err(()),
 		}
 	}
@@ -640,10 +652,20 @@ impl FromStr for NumberRepresentation {
 					}
 					Ok(Self::Bin { identifier_uppercase, sign, value })
 				}
+				Some(c @ ('e' | 'E')) => {
+					let exponent: i32 = s[1..].parse().map_err(|_| s.clone())?;
+					Ok(Self::Exponential {
+						sign,
+						value: 0f64,
+						exponent,
+						identifier_uppercase: c.is_uppercase(),
+					})
+				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
-					let start = if uses_character { 1 } else { 0 };
+					// If it uses the the character then skip one, else skip zero
+					let start: usize = uses_character.into();
 					let mut value = 0u64;
 					for c in s[start..].as_bytes() {
 						value <<= 3; // 8=2^3
@@ -680,14 +702,14 @@ impl FromStr for NumberRepresentation {
 				elided_zero_before_point: true,
 				trailing_point: false,
 			})
-		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
+		} else if let Some((left, right)) = s.split_once('e') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
-			let expo: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Number {
-				value: sign.apply(value * 10f64.powi(expo)),
-				elided_zero_before_point: false,
-				trailing_point: false,
-			})
+			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
+			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: false })
+		} else if let Some((left, right)) = s.split_once('E') {
+			let value: f64 = left.parse().map_err(|_| s.clone())?;
+			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
+			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: true })
 		} else {
 			Ok(Self::Number {
 				value: sign.apply(s.parse().map_err(|_| s.clone())?),
@@ -758,6 +780,13 @@ impl NumberRepresentation {
 					start.push('.');
 				}
 				start
+			}
+			NumberRepresentation::Exponential { sign, value, exponent, identifier_uppercase } => {
+				if identifier_uppercase {
+					format!("{sign}{value}E{exponent}")
+				} else {
+					format!("{sign}{value}e{exponent}")
+				}
 			}
 			NumberRepresentation::BigInt(s, value) => format!("{s}{value}n"),
 		}

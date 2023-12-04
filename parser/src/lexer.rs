@@ -330,6 +330,9 @@ pub fn lex_script(
 					{
 						*literal_type = NumberLiteralType::BigInt;
 					}
+					// `10e-5` is a valid literal
+					'-' if matches!(literal_type, NumberLiteralType::Exponent)
+						&& matches!(script[..idx].as_bytes().last(), Some(b'e' | b'E')) => {}
 					chr => {
 						if is_number_delimiter(chr) {
 							// Note not = as don't want to include chr
