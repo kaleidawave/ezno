@@ -2,7 +2,6 @@
 fn main() {
 	use ezno_checker::{check_project, synthesis};
 	use std::{
-		collections::HashSet,
 		env, fs,
 		path::{Path, PathBuf},
 	};
@@ -12,7 +11,7 @@ fn main() {
 
 	let (diagnostics, post_check_data) = check_project::<_, synthesis::EznoParser>(
 		path.to_path_buf(),
-		HashSet::from_iter(std::iter::once(ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into())),
+		std::iter::once(ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path: &std::path::Path| {
 			if path == PathBuf::from(ezno_checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(ezno_checker::INTERNAL_DEFINITION_FILE.to_owned())
@@ -29,7 +28,7 @@ fn main() {
 		if args.iter().any(|arg| arg == "--types") {
 			eprintln!("Types:");
 			for item in post_check_data.types.into_vec_temp() {
-				eprintln!("\t{:?}", item);
+				eprintln!("\t{item:?}");
 			}
 		}
 		if args.iter().any(|arg| arg == "--events") {
@@ -37,14 +36,14 @@ fn main() {
 			let entry_module =
 				post_check_data.modules.remove(&post_check_data.entry_source).unwrap();
 			for item in entry_module.facts.get_events() {
-				eprintln!("\t{:?}", item);
+				eprintln!("\t{item:?}");
 			}
 		}
 	}
 
 	eprintln!("Diagnostics:");
-	for diagnostic in diagnostics.into_iter() {
-		eprintln!("\t{}", diagnostic.reason())
+	for diagnostic in diagnostics {
+		eprintln!("\t{}", diagnostic.reason());
 	}
 }
 

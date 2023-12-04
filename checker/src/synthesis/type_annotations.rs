@@ -1,14 +1,14 @@
-//! Logic for getting [TypeId] from [parser::TypeAnnotation]s
+//! Logic for getting [`TypeId`] from [`parser::TypeAnnotation`]s
 //!
 //! ### There are several behaviors for type references depending on their position:
 //! #### Sources:
-//! - Type reference of any source variable declarations is a [crate::TypeConstraint]
-//! - Type references in parameters are [crate::TypeConstraint]s
-//! - Type references in returns types are also [crate::TypeConstraint]s, because ezno uses the body to get the return
+//! - Type reference of any source variable declarations is a [`crate::TypeConstraint`]
+//! - Type references in parameters are [`crate::TypeConstraint`]s
+//! - Type references in returns types are also [`crate::TypeConstraint`]s, because ezno uses the body to get the return
 //! type
 //!
 //! #### Declarations
-//! - Type reference in any declaration or return type is a internal type [crate::Type::InternalObjectReference]
+//! - Type reference in any declaration or return type is a internal type [`crate::Type::InternalObjectReference`]
 //!     - Return types need to know whether they return a unique object (todo don't know any examples)
 //! or a new object. e.g. `Array.from`
 //! - Parameters shouldn't do generic resolving
@@ -21,7 +21,12 @@
 use std::{convert::TryInto, iter::FromIterator};
 
 use indexmap::IndexSet;
-use parser::{type_annotations::*, ASTNode};
+use parser::{
+	type_annotations::{
+		AnnotationWithBinder, CommonTypes, SpreadKind, TypeCondition, TypeConditionResult,
+	},
+	ASTNode, TypeAnnotation,
+};
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
@@ -41,11 +46,11 @@ use crate::{
 
 use crate::context::{Context, ContextType};
 
-/// Turns a [parser::TypeAnnotation] into [TypeId]
+/// Turns a [`parser::TypeAnnotation`] into [`TypeId`]
 ///
-/// [CheckingData] contains [Memory] and [crate::ErrorAndWarningHandler]
+/// [`CheckingData`] contains [Memory] and [`crate::ErrorAndWarningHandler`]
 ///
-/// Returns a Type if it is found else a [Result::Err].
+/// Returns a Type if it is found else a [`Result::Err`].
 /// Errors other than non existent type are instead appended to the warning handler and a "default" is returned:
 /// Example errors:
 /// - Reference to generic without generic types
@@ -79,33 +84,28 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			"this" => todo!(), // environment.get_value_of_this(&mut checking_data.types),
 			"self" => TypeId::ANY_INFERRED_FREE_THIS,
 			name => {
-				match environment.get_type_from_name(name) {
-					Some(ty) => {
-						// Warn if it requires parameters. e.g. Array
-						if let Type::AliasTo { parameters: Some(_), .. }
-						| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
-						{
-							// TODO check defaults...
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::TypeNeedsTypeArguments(
-									name,
-									pos.clone().with_source(environment.get_source()),
-								),
-							);
-							TypeId::ANY_TYPE
-						} else {
-							ty
-						}
-					}
-					None => {
+				if let Some(ty) = environment.get_type_from_name(name) {
+					// Warn if it requires parameters. e.g. Array
+					if let Type::AliasTo { parameters: Some(_), .. }
+					| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
+					{
+						// TODO check defaults...
 						checking_data.diagnostics_container.add_error(
-							TypeCheckError::CannotFindType(
+							TypeCheckError::TypeNeedsTypeArguments(
 								name,
 								pos.clone().with_source(environment.get_source()),
 							),
 						);
-						TypeId::ERROR_TYPE
+						TypeId::ANY_TYPE
+					} else {
+						ty
 					}
+				} else {
+					checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
+						name,
+						pos.clone().with_source(environment.get_source()),
+					));
+					TypeId::ERROR_TYPE
 				}
 			}
 		},
@@ -255,7 +255,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 				super::Performs::None,
-				position.clone(),
+				&position,
 				// TODO async
 				crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
 				None,
@@ -265,7 +265,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				function_type.type_parameters,
 				function_type.parameters,
 				function_type.return_type,
-				position.clone(),
+				&position,
 				function_type.effects,
 				None,
 			)
@@ -383,17 +383,18 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
 			synthesise_type_annotation(reference, environment, checking_data)
 		}
-		TypeAnnotation::Index(indexee, indexer, _) => {
-			let indexee = synthesise_type_annotation(indexee, environment, checking_data);
+		TypeAnnotation::Index(being_indexed, indexer, _) => {
+			let being_indexed =
+				synthesise_type_annotation(being_indexed, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
 			let under =
 				crate::types::properties::PropertyKey::from_type(indexer, &checking_data.types);
 
-			if let Some(base) = environment.get_poly_base(indexee, &checking_data.types) {
-				checking_data.types.new_property_constructor(indexee, indexer, base)
+			if let Some(base) = environment.get_poly_base(being_indexed, &checking_data.types) {
+				checking_data.types.new_property_constructor(being_indexed, indexer, base)
 			} else {
 				if let Some(prop) = environment.get_property_unbound(
-					indexee,
+					being_indexed,
 					Publicity::Public,
 					under,
 					&checking_data.types,
@@ -411,14 +412,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {
-			let condition = synthesise_type_condition(condition, environment, checking_data);
-
 			fn synthesise_condition(result: &TypeConditionResult) -> &TypeAnnotation {
 				match result {
 					TypeConditionResult::Reference(reference) => reference,
 					TypeConditionResult::Infer(_infer, _) => todo!(),
 				}
 			}
+
+			let condition = synthesise_type_condition(condition, environment, checking_data);
 
 			let truthy_result = synthesise_type_annotation(
 				synthesise_condition(resolve_true),

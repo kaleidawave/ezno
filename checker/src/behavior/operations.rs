@@ -66,7 +66,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 		PureBinaryOperation::EqualityAndInequality(operator) => {
 			evaluate_equality_inequality_operation(
 				lhs,
-				operator,
+				&operator,
 				rhs,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
@@ -85,7 +85,7 @@ pub fn evaluate_mathematical_operation(
 ) -> Result<TypeId, ()> {
 	fn attempt_constant_math_operator(
 		lhs: TypeId,
-		operator: MathematicalAndBitwise,
+		operator: &MathematicalAndBitwise,
 		rhs: TypeId,
 		types: &mut TypeStore,
 		strict_casts: bool,
@@ -156,7 +156,7 @@ pub fn evaluate_mathematical_operation(
 		return Ok(types.register_type(crate::Type::Constructor(constructor)));
 	}
 
-	attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
+	attempt_constant_math_operator(lhs, &operator, rhs, types, strict_casts)
 }
 
 /// Not canonical / reducible
@@ -181,7 +181,7 @@ pub enum CanonicalEqualityAndInequality {
 
 pub fn evaluate_equality_inequality_operation(
 	lhs: TypeId,
-	operator: EqualityAndInequality,
+	operator: &EqualityAndInequality,
 	rhs: TypeId,
 	types: &mut TypeStore,
 	strict_casts: bool,
@@ -205,7 +205,7 @@ pub fn evaluate_equality_inequality_operation(
 
 			match attempt_constant_equality(lhs, rhs, types) {
 				Ok(ty) => Ok(ty),
-				Err(_) => {
+				Err(()) => {
 					unreachable!("should have been caught by above")
 				}
 			}
@@ -251,7 +251,7 @@ pub fn evaluate_equality_inequality_operation(
 		EqualityAndInequality::StrictNotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
 				rhs,
-				EqualityAndInequality::StrictEqual,
+				&EqualityAndInequality::StrictEqual,
 				lhs,
 				types,
 				strict_casts,
@@ -270,7 +270,7 @@ pub fn evaluate_equality_inequality_operation(
 		EqualityAndInequality::NotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
 				rhs,
-				EqualityAndInequality::Equal,
+				&EqualityAndInequality::Equal,
 				lhs,
 				types,
 				strict_casts,
@@ -284,7 +284,7 @@ pub fn evaluate_equality_inequality_operation(
 		}
 		EqualityAndInequality::GreaterThan => evaluate_equality_inequality_operation(
 			rhs,
-			EqualityAndInequality::LessThan,
+			&EqualityAndInequality::LessThan,
 			lhs,
 			types,
 			strict_casts,
@@ -292,7 +292,7 @@ pub fn evaluate_equality_inequality_operation(
 		EqualityAndInequality::LessThanEqual => {
 			let lhs = evaluate_equality_inequality_operation(
 				rhs,
-				EqualityAndInequality::StrictEqual,
+				&EqualityAndInequality::StrictEqual,
 				lhs,
 				types,
 				strict_casts,
@@ -303,7 +303,7 @@ pub fn evaluate_equality_inequality_operation(
 			} else if lhs == TypeId::FALSE {
 				evaluate_equality_inequality_operation(
 					rhs,
-					EqualityAndInequality::LessThan,
+					&EqualityAndInequality::LessThan,
 					lhs,
 					types,
 					strict_casts,
@@ -311,7 +311,7 @@ pub fn evaluate_equality_inequality_operation(
 			} else {
 				let rhs = evaluate_equality_inequality_operation(
 					rhs,
-					EqualityAndInequality::LessThan,
+					&EqualityAndInequality::LessThan,
 					lhs,
 					types,
 					strict_casts,
@@ -321,7 +321,7 @@ pub fn evaluate_equality_inequality_operation(
 		}
 		EqualityAndInequality::GreaterThanEqual => evaluate_equality_inequality_operation(
 			rhs,
-			EqualityAndInequality::LessThanEqual,
+			&EqualityAndInequality::LessThanEqual,
 			lhs,
 			types,
 			strict_casts,
@@ -403,7 +403,7 @@ pub fn evaluate_logical_operation_with_expression<
 		Logical::NullCoalescing => {
 			let is_lhs_null = evaluate_equality_inequality_operation(
 				lhs,
-				EqualityAndInequality::StrictEqual,
+				&EqualityAndInequality::StrictEqual,
 				TypeId::NULL_TYPE,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,

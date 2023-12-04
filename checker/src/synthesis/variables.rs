@@ -88,29 +88,41 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 								under.clone(),
 								&checking_data.types,
 							);
-							match property_constraint {
-								Some(value) => value.prop_to_type(),
-								None => {
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property: match under {
-												PropertyKey::String(s) => crate::diagnostics::PropertyRepresentation::StringKey(s.to_string()),
-												PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(print_type(t, &checking_data.types, &environment.as_general_context(), false))
-											},
-											on: TypeStringRepresentation::from_type_id(
-												constraint,
-												&environment.as_general_context(),
-												&checking_data.types,
-												false,
-											),
-											site: name
-												.get_position()
-												.clone()
-												.with_source(environment.get_source()),
-										},
-									);
-									TypeId::ERROR_TYPE
-								}
+							if let Some(value) = property_constraint {
+								value.prop_to_type()
+							} else {
+								checking_data
+									.diagnostics_container
+									.add_error(TypeCheckError::PropertyDoesNotExist {
+									property: match under {
+										PropertyKey::String(s) => {
+											crate::diagnostics::PropertyRepresentation::StringKey(
+												s.to_string(),
+											)
+										}
+										PropertyKey::Type(t) => {
+											crate::diagnostics::PropertyRepresentation::Type(
+												print_type(
+													t,
+													&checking_data.types,
+													&environment.as_general_context(),
+													false,
+												),
+											)
+										}
+									},
+									on: TypeStringRepresentation::from_type_id(
+										constraint,
+										&environment.as_general_context(),
+										&checking_data.types,
+										false,
+									),
+									site: name
+										.get_position()
+										.clone()
+										.with_source(environment.get_source()),
+								});
+								TypeId::ERROR_TYPE
 							}
 						});
 						register_variable(
@@ -127,27 +139,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 			TypeId::ERROR_TYPE
 		}
 		parser::VariableField::Object(items, _) => {
-			for field in items.iter() {
+			for field in items {
 				match field.get_ast_ref() {
-					ObjectDestructuringField::Spread(variable, _) => {
-						let ty = register_variable_identifier(
-							variable,
-							environment,
-							checking_data,
-							behavior.clone(),
-							// TODO
-							constraint,
-						);
-						if let Some(constraint) = constraint {
-							// TODO
-							// checking_data
-							// 	.type_mappings
-							// 	.variables_to_constraints
-							// 	.0
-							// 	.insert(crate::VariableId(pos.source, pos.start), constraint);
-						}
-					}
-					ObjectDestructuringField::Name(variable, ..) => {
+					ObjectDestructuringField::Name(variable, ..)
+					| ObjectDestructuringField::Spread(variable, _) => {
 						let ty = register_variable_identifier(
 							variable,
 							environment,
@@ -178,29 +173,41 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 								under.clone(),
 								&checking_data.types,
 							);
-							match property_constraint {
-								Some(value) => value.prop_to_type(),
-								None => {
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property: match under {
-												PropertyKey::String(s) => crate::diagnostics::PropertyRepresentation::StringKey(s.to_string()),
-												PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(print_type(t, &checking_data.types, &environment.as_general_context(), false))
-											},
-											on: TypeStringRepresentation::from_type_id(
-												constraint,
-												&environment.as_general_context(),
-												&checking_data.types,
-												false,
-											),
-											site: name
-												.get_position()
-												.clone()
-												.with_source(environment.get_source()),
-										},
-									);
-									TypeId::ERROR_TYPE
-								}
+							if let Some(value) = property_constraint {
+								value.prop_to_type()
+							} else {
+								checking_data
+									.diagnostics_container
+									.add_error(TypeCheckError::PropertyDoesNotExist {
+									property: match under {
+										PropertyKey::String(s) => {
+											crate::diagnostics::PropertyRepresentation::StringKey(
+												s.to_string(),
+											)
+										}
+										PropertyKey::Type(t) => {
+											crate::diagnostics::PropertyRepresentation::Type(
+												print_type(
+													t,
+													&checking_data.types,
+													&environment.as_general_context(),
+													false,
+												),
+											)
+										}
+									},
+									on: TypeStringRepresentation::from_type_id(
+										constraint,
+										&environment.as_general_context(),
+										&checking_data.types,
+										false,
+									),
+									site: name
+										.get_position()
+										.clone()
+										.with_source(environment.get_source()),
+								});
+								TypeId::ERROR_TYPE
 							}
 						});
 						register_variable(
@@ -220,7 +227,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 
 /// Name already been hoisted,
 ///
-/// TODO U::as_option_expr()
+/// TODO `U::as_option_expr()`
 ///
 /// TODO no idea how arrays and objects are checked here
 pub(super) fn synthesise_variable_declaration_item<
@@ -323,7 +330,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 								checking_data,
 								value,
 								exported,
-							)
+							);
 						}
 
 						// TODO
@@ -379,7 +386,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							}
 						};
 
-						environment.register_initial_variable_declaration_value(id, value)
+						environment.register_initial_variable_declaration_value(id, value);
 					}
 					ObjectDestructuringField::Map { from, name, default_value, position } => {
 						let key_ty = super::parser_property_key_to_checker_property_key(
@@ -424,7 +431,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							checking_data,
 							value,
 							exported,
-						)
+						);
 					}
 				}
 			}

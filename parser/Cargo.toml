@@ -9,7 +9,11 @@ repository = "https://github.com/kaleidawave/ezno"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 categories = ["parser-implementations"]
 
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints]
+workspace = true
 
 [features]
 # TODO these shouldn't be default

@@ -82,7 +82,7 @@ impl ASTNode for TryCatchStatement {
 			));
 		};
 
-		Ok(Self { position, try_inner, exception_var, catch_inner, finally_inner })
+		Ok(Self { try_inner, catch_inner, exception_var, finally_inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

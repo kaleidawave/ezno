@@ -39,7 +39,7 @@ pub struct SynthesisedClassValue {
 
 /// TODO i really hate this setup. Can it be simpler & faster?
 ///
-/// What about storing it as just set_events...?
+/// What about storing it as just `set_events`...?
 pub struct RegisterClassPropertiesEvent {
 	pub properties: Vec<SynthesisedClassValue>,
 	pub class_prototype: TypeId,
@@ -58,7 +58,7 @@ fn register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementat
 		this_object_type: TypeId::ERROR_TYPE,
 	});
 
-	let (_, result, _) = environment.new_lexical_environment_fold_into_parent(
+	let ((), result, _) = environment.new_lexical_environment_fold_into_parent(
 		scope,
 		checking_data,
 		|environment, checking_data| {

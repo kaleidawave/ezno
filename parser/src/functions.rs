@@ -26,7 +26,7 @@ pub mod bases {
 	};
 }
 
-/// Specialization information for [FunctionBase]
+/// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// Includes a keyword and/or modifiers
 	type Header: Debug + Clone + PartialEq + Eq + Send + Sync;
@@ -51,12 +51,13 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		depth: u8,
 	);
 
-	/// For [crate::ArrowFunction]
+	/// For [`crate::ArrowFunction`]
+	#[must_use]
 	fn get_parameter_body_boundary_token() -> Option<TSXToken> {
 		None
 	}
 
-	/// For [crate::ArrowFunction]
+	/// For [`crate::ArrowFunction`]
 	fn parameters_from_reader<T: ToString>(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -65,7 +66,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		FunctionParameters::from_reader(reader, state, options)
 	}
 
-	/// For [crate::ArrowFunction]
+	/// For [`crate::ArrowFunction`]
 	fn parameters_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		parameters: &FunctionParameters,
@@ -75,7 +76,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		parameters.to_string_from_buffer(buf, options, depth);
 	}
 
-	/// For [crate::ArrowFunction]
+	/// For [`crate::ArrowFunction`]
 	fn parameter_body_boundary_token_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		options: &crate::ToStringOptions,
@@ -102,7 +103,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 
 /// Base for all function based structures with bodies (no interface, type reference etc)
 ///
-/// Note: the [PartialEq] implementation is based on syntactical representation rather than [FunctionId] equality
+/// Note: the [`PartialEq`] implementation is based on syntactical representation rather than [`FunctionId`] equality
 #[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -120,6 +121,7 @@ pub struct FunctionBase<T: FunctionBased> {
 impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
+	#[allow(clippy::similar_names)]
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -153,6 +155,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	}
 }
 
+#[allow(clippy::similar_names)]
 impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -186,7 +189,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 		} else {
 			parameters.position.clone().union(body_pos)
 		};
-		Ok(Self { position, header, name, parameters, type_parameters, body, return_type })
+		Ok(Self { header, name, type_parameters, parameters, return_type, body, position })
 	}
 }
 
@@ -235,6 +238,7 @@ pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>)
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
 
+#[allow(clippy::similar_names)]
 impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> {
 	type Body = Block;
 	type Header = FunctionHeader;
@@ -453,6 +457,7 @@ fn parse_regular_header(
 }
 
 impl FunctionHeader {
+	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
 			FunctionHeader::VirginFunctionHeader {
@@ -465,6 +470,7 @@ impl FunctionHeader {
 		}
 	}
 
+	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {
 			FunctionHeader::VirginFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
@@ -474,6 +480,7 @@ impl FunctionHeader {
 	}
 
 	#[cfg(feature = "extras")]
+	#[must_use]
 	pub fn get_location(&self) -> Option<&FunctionLocationModifier> {
 		match self {
 			FunctionHeader::VirginFunctionHeader { location, .. }

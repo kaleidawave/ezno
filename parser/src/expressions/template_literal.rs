@@ -32,7 +32,7 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit(visitors, data, options, chain)
+			dynamic.visit(visitors, data, options, chain);
 		}
 	}
 
@@ -44,7 +44,7 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		if let Self::Dynamic(dynamic) = self {
-			dynamic.visit_mut(visitors, data, options, chain)
+			dynamic.visit_mut(visitors, data, options, chain);
 		}
 	}
 }
@@ -73,10 +73,10 @@ impl ASTNode for TemplateLiteral {
 			tag.to_string_from_buffer(buf, options, depth);
 		}
 		buf.push('`');
-		for part in self.parts.iter() {
+		for part in &self.parts {
 			match part {
 				TemplateLiteralPart::Static(content) => {
-					buf.push_str_contains_new_line(content.as_str())
+					buf.push_str_contains_new_line(content.as_str());
 				}
 				TemplateLiteralPart::Dynamic(expression) => {
 					buf.push_str("${");

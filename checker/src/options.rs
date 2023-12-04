@@ -3,6 +3,8 @@ use std::any::Any;
 /// Options for type checking
 /// TODO reach compat with tsc
 #[derive(serde::Deserialize)]
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
 pub struct TypeCheckOptions {
 	/// Parameters cannot be reassigned
 	pub constant_parameters: bool,

@@ -66,7 +66,7 @@ impl Display for LexingErrors {
 				f.write_str("Expected closing angle at end of self closing JSX tag")
 			}
 			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
-				write!(f, "Invalid character {:?} in JSX attribute name", chr)
+				write!(f, "Invalid character {chr:?} in JSX attribute name")
 			}
 			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
 			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
@@ -183,6 +183,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
+	#[allow(clippy::needless_pass_by_value)]
 	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
 		Self { reason: reason.to_string(), position }
 	}

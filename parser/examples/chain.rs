@@ -12,7 +12,7 @@ struct ShowChain;
 impl Visitor<Expression, ()> for ShowChain {
 	fn visit(&mut self, item: &Expression, _data: &mut (), chain: &Chain) {
 		if matches!(item, Expression::VariableReference(name, _) if name == "chain") {
-			eprintln!("{:#?}", chain);
+			eprintln!("{chain:#?}");
 		}
 	}
 }

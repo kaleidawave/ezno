@@ -187,12 +187,12 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 /// This actually removes the events as they are caught
 pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
 	let mut new_events = Vec::new();
-	for event in events.into_iter() {
+	for event in events {
 		if let Event::Throw(value, position) = event {
 			thrown.push(value);
 		} else {
 			// TODO nested grouping
-			new_events.push(event)
+			new_events.push(event);
 		}
 	}
 	new_events

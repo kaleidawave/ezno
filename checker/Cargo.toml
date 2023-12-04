@@ -11,6 +11,9 @@ categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints]
+workspace = true
+
 [features]
 default = []
 ezno-parser = ["parser"]
@@ -23,7 +26,7 @@ binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1
 temporary-annex = "0.1.0"
 derive-enum-from-into = "0.1.0"
 derive-debug-extras = { version = "0.2.0", features = [
-    "auto-debug-single-tuple-inline",
+  "auto-debug-single-tuple-inline",
 ] }
 enum-variants-strings = "0.2"
 iterator-endiate = "0.2"

@@ -1,7 +1,7 @@
 //! Synthesis is the aim of giving types to AST structures
 //! **Synthesis and checking are split between two passes**
 //! The aim is a AST cannot known to be valid until it everything has been attempted to be given a type
-//! Unknown types are [types::Meta]
+//! Unknown types are [`types::Meta`]
 
 mod assignments;
 pub mod block;
@@ -132,7 +132,7 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = Default::default();
-		parser::TypeDefinitionModule::from_string(string, options, source_id)
+		parser::TypeDefinitionModule::from_string(&string, options, source_id)
 			.map_err(|err| (err, source_id))
 	}
 
@@ -142,7 +142,7 @@ impl crate::ASTImplementation for EznoParser {
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
-		synthesise_block(&module.items, module_environment, checking_data)
+		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
 	fn synthesise_expression<'a, U: crate::ReadFromFS>(
@@ -275,6 +275,7 @@ pub mod interactive {
 			}
 		}
 
+		#[must_use]
 		pub fn get_fs_ref(&self) -> &MapFileStore<WithPathMap> {
 			&self.checking_data.modules.files
 		}
@@ -283,6 +284,7 @@ pub mod interactive {
 			&mut self.checking_data.modules.files
 		}
 
+		#[must_use]
 		pub fn get_source_id(&self) -> SourceId {
 			self.checking_data.modules.entry_point.unwrap()
 		}

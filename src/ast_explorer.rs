@@ -24,15 +24,16 @@ pub(crate) struct ExplorerArguments {
 }
 
 impl ExplorerArguments {
+	#[allow(clippy::needless_continue)]
 	pub(crate) fn run<T: crate::ReadFromFS, U: crate::CLIInputResolver>(
 		&mut self,
-		fs_resolver: T,
+		fs_resolver: &T,
 		cli_input_resolver: U,
 	) {
 		if let Some(ref file) = self.file {
 			let content = fs_resolver.get_content_at_path(file);
 			if let Some(content) = content {
-				self.nested.run(content, Some(file.to_owned()))
+				self.nested.run(content, Some(file.to_owned()));
 			} else {
 				eprintln!("Could not find file at {}", file.display());
 			}
@@ -40,6 +41,7 @@ impl ExplorerArguments {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
 				let input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
+
 				if input.is_empty() {
 					continue;
 				} else if input.trim() == "#exit" {
@@ -48,10 +50,7 @@ impl ExplorerArguments {
 					self.nested = match ExplorerSubCommand::from_str(new_mode.trim()) {
 						Ok(mode) => mode,
 						Err(expected) => {
-							print_to_cli(format_args!(
-								"Unexpected mode, options are {:?}",
-								expected
-							));
+							print_to_cli(format_args!("Unexpected mode, options are {expected:?}"));
 							continue;
 						}
 					};
@@ -59,7 +58,7 @@ impl ExplorerArguments {
 					let input = match fs::read_to_string(path.trim()) {
 						Ok(string) => string,
 						Err(err) => {
-							print_to_cli(format_args!("{:?}", err));
+							print_to_cli(format_args!("{err:?}"));
 							continue;
 						}
 					};
@@ -138,7 +137,7 @@ impl ExplorerSubCommand {
 								serde_json::to_string_pretty(&res).unwrap()
 							));
 						} else {
-							print_to_cli(format_args!("{:#?}", res));
+							print_to_cli(format_args!("{res:#?}"));
 						}
 					}
 					// TODO temp
@@ -163,7 +162,7 @@ impl ExplorerSubCommand {
 								serde_json::to_string_pretty(&res).unwrap()
 							));
 						} else {
-							print_to_cli(format_args!("{:#?}", res));
+							print_to_cli(format_args!("{res:#?}"));
 						}
 					}
 					// TODO temp
@@ -190,9 +189,7 @@ impl ExplorerSubCommand {
 			ExplorerSubCommand::Lexer(_) => {
 				let mut color = console::Color::Red;
 				for (section, with) in parser::script_to_tokens(input) {
-					if !with {
-						print_to_cli_without_newline(format_args!("{}", section));
-					} else {
+					if with {
 						let value = style(section).bg(color);
 						// Cycle through colors
 						color = match color {
@@ -204,7 +201,9 @@ impl ExplorerSubCommand {
 							console::Color::Cyan => console::Color::Red,
 							_ => unreachable!(),
 						};
-						print_to_cli_without_newline(format_args!("{}", value));
+						print_to_cli_without_newline(format_args!("{value}"));
+					} else {
+						print_to_cli_without_newline(format_args!("{section}"));
 					}
 				}
 				print_to_cli(format_args!(""));

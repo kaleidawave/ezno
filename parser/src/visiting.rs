@@ -19,7 +19,10 @@ mod ast {
 
 	use crate::block::{BlockLike, BlockLikeMut};
 
-	use super::*;
+	use super::{
+		BlockItem, BlockItemMut, Chain, Expression, ImmutableVariableOrProperty,
+		MutableVariableOrProperty, VisitorMutReceiver, VisitorReceiver,
+	};
 
 	/// Options for behavior when visiting AST.
 	/// Customizable behavior is important for analysis
@@ -93,7 +96,7 @@ mod ast {
 			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit(&**self, v, d, s, c)
+			Visitable::visit(&**self, v, d, s, c);
 		}
 
 		fn visit_mut<TData>(
@@ -103,7 +106,7 @@ mod ast {
 			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit_mut(&mut **self, v, d, s, c)
+			Visitable::visit_mut(&mut **self, v, d, s, c);
 		}
 	}
 
@@ -257,7 +260,10 @@ mod structures {
 		Statement, VariableFieldInSourceCode, VariableIdentifier,
 	};
 
-	use super::*;
+	use super::{
+		ArrayDestructuringField, ObjectDestructuringField, PropertyKey, SourceId,
+		StatementOrDeclaration, WithComment,
+	};
 	use source_map::Span;
 	use temporary_annex::{Annex, Annexable};
 
@@ -273,26 +279,30 @@ mod structures {
 	pub struct Chain(Vec<ChainVariable>);
 
 	impl Chain {
+		#[must_use]
 		pub fn new() -> Self {
 			Self(Vec::with_capacity(10))
 		}
 
+		#[must_use]
 		pub fn new_with_initial(initial: ChainVariable) -> Self {
 			let mut buf = Vec::with_capacity(10);
 			buf.push(initial);
 			Self(buf)
 		}
 
+		#[must_use]
 		pub fn len(&self) -> usize {
 			self.0.len()
 		}
 
+		#[must_use]
 		pub fn is_empty(&self) -> bool {
 			self.0.is_empty()
 		}
 
 		pub fn truncate(&mut self, to_size: usize) {
-			self.0.truncate(to_size)
+			self.0.truncate(to_size);
 		}
 
 		pub fn get_module(&self) -> SourceId {
@@ -389,6 +399,7 @@ mod structures {
 			}
 		}
 
+		#[must_use]
 		pub fn get_position(&self) -> &Span {
 			use crate::ASTNode;
 			match self {
@@ -446,7 +457,7 @@ mod structures {
 }
 
 mod visitors {
-	use super::*;
+	use super::{BlockItem, Chain, Expression, ImmutableVariableOrProperty, SelfVisitable};
 	use crate::{block::BlockLike, TSXKeyword};
 	use source_map::Span;
 
@@ -490,11 +501,11 @@ mod visitors {
 			data: &mut T,
 			chain: &Chain,
 		) {
-			self.variable_visitors.iter_mut().for_each(|vis| vis.visit(variable, data, chain))
+			self.variable_visitors.iter_mut().for_each(|vis| vis.visit(variable, data, chain));
 		}
 
 		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {
-			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain))
+			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain));
 		}
 
 		fn visit_keyword(&mut self, _keyword: &(TSXKeyword, &Span), _data: &mut T, _chain: &Chain) {
@@ -552,9 +563,9 @@ mod visitors {
 mod visitors_mut {
 	use crate::block::BlockLikeMut;
 
-	use super::*;
+	use super::{BlockItemMut, Chain, Expression, MutableVariableOrProperty, SelfVisitableMut};
 
-	/// A visitor over something which is hooked/is SelfVisitable with some Data
+	/// A visitor over something which is hooked/is `SelfVisitable` with some Data
 	pub trait VisitorMut<Item: SelfVisitableMut, Data> {
 		fn visit_mut(&mut self, item: &mut Item, data: &mut Data, chain: &Chain);
 	}

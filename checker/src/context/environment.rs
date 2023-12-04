@@ -191,7 +191,7 @@ impl<'a> Environment<'a> {
 							);
 							match get_property_handle_errors {
 								Ok(i) => i.get_value(),
-								Err(_) => TypeId::ERROR_TYPE,
+								Err(()) => TypeId::ERROR_TYPE,
 							}
 						}
 					}
@@ -215,7 +215,7 @@ impl<'a> Environment<'a> {
 							.set_property(
 								on,
 								publicity,
-								with,
+								&with,
 								new,
 								&checking_data.types,
 								Some(span),
@@ -226,7 +226,7 @@ impl<'a> Environment<'a> {
 
 				fn set_property_error_to_type_check_error(
 					ctx: &GeneralContext,
-					error: SetPropertyError,
+					error: &SetPropertyError,
 					assignment_span: SpanWithSource,
 					types: &TypeStore,
 					new: TypeId,
@@ -238,7 +238,10 @@ impl<'a> Environment<'a> {
 						SetPropertyError::DoesNotMeetConstraint(constraint, _) => {
 							TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
 								property_type: TypeStringRepresentation::from_type_id(
-									constraint, ctx, types, false,
+									*constraint,
+									ctx,
+									types,
+									false,
 								),
 								value_type: TypeStringRepresentation::from_type_id(
 									new, ctx, types, false,
@@ -263,7 +266,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									error,
+									&error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -302,7 +305,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									error,
+									&error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -348,7 +351,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									error,
+									&error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -378,7 +381,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									error,
+									&error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -528,11 +531,12 @@ impl<'a> Environment<'a> {
 	}
 
 	/// TODO decidable & private?
-	pub fn property_in(&self, on: TypeId, property: PropertyKey) -> bool {
+	#[must_use]
+	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
 		self.facts_chain().any(|facts| match facts.current_properties.get(&on) {
 			Some(v) => {
 				v.iter().any(
-					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { *p == property },
+					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
 				)
 			}
 			None => false,
@@ -540,8 +544,8 @@ impl<'a> Environment<'a> {
 	}
 
 	/// TODO decidable & private?
-	pub fn delete_property(&mut self, on: TypeId, property: PropertyKey) -> bool {
-		let existing = self.property_in(on, property.clone());
+	pub fn delete_property(&mut self, on: TypeId, property: &PropertyKey) -> bool {
+		let existing = self.property_in(on, property);
 
 		let under = property.into_owned();
 
@@ -616,41 +620,36 @@ impl<'a> Environment<'a> {
 			None,
 			site.clone(),
 		);
-		match get_property {
-			Some((kind, result)) => Ok(match kind {
+		if let Some((kind, result)) = get_property {
+			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
 				// TODO instance.property...?
 				PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
-			}),
-			None => {
-				let types = &checking_data.types;
-				let ctx = &self.as_general_context();
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::PropertyDoesNotExist {
-						// TODO printing temp
-						property: match key {
-							PropertyKey::String(s) => {
-								crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
-							}
-							PropertyKey::Type(t) => {
-								crate::diagnostics::PropertyRepresentation::Type(
-									crate::types::printing::print_type(
-										t,
-										&checking_data.types,
-										&self.as_general_context(),
-										false,
-									),
-								)
-							}
-						},
-						on: crate::diagnostics::TypeStringRepresentation::from_type_id(
-							on, ctx, types, false,
+			})
+		} else {
+			let types = &checking_data.types;
+			let ctx = &self.as_general_context();
+			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
+				// TODO printing temp
+				property: match key {
+					PropertyKey::String(s) => {
+						crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
+					}
+					PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(
+						crate::types::printing::print_type(
+							t,
+							&checking_data.types,
+							&self.as_general_context(),
+							false,
 						),
-						site,
-					},
-				);
-				Err(())
-			}
+					),
+				},
+				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
+					on, ctx, types, false,
+				),
+				site,
+			});
+			Err(())
 		}
 	}
 
@@ -662,21 +661,18 @@ impl<'a> Environment<'a> {
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
-			match this {
-				Some((in_root, crossed_boundary, og_var)) => {
-					(in_root, crossed_boundary, og_var.clone())
-				}
-				None => {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::CouldNotFindVariable {
-							variable: name,
-							// TODO
-							possibles: Default::default(),
-							position,
-						},
-					);
-					return Err(TypeId::ERROR_TYPE);
-				}
+			if let Some((in_root, crossed_boundary, og_var)) = this {
+				(in_root, crossed_boundary, og_var.clone())
+			} else {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::CouldNotFindVariable {
+						variable: name,
+						// TODO
+						possibles: Default::default(),
+						position,
+					},
+				);
+				return Err(TypeId::ERROR_TYPE);
 			}
 		};
 
@@ -735,28 +731,26 @@ impl<'a> Environment<'a> {
 									"Open poly type treated as immutable free variable"
 								);
 								return Ok(VariableWithValue(og_var.clone(), *ot));
-							} else {
-								crate::utils::notify!("Free variable!");
 							}
+
+							crate::utils::notify!("Free variable!");
 						}
 					}
 
 					// TODO is primitive, then can just use type
-					match constraint {
-						Some(constraint) => *constraint,
-						None => {
-							crate::utils::notify!("TODO record that parent variable is `any` here");
-							TypeId::ANY_TYPE
-						}
+					if let Some(constraint) = constraint {
+						*constraint
+					} else {
+						crate::utils::notify!("TODO record that parent variable is `any` here");
+						TypeId::ANY_TYPE
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
-					match reassignment_constraint {
-						Some(constraint) => constraint,
-						None => {
-							crate::utils::notify!("TODO record that parent variable is `any` here");
-							TypeId::ANY_TYPE
-						}
+					if let Some(constraint) = reassignment_constraint {
+						constraint
+					} else {
+						crate::utils::notify!("TODO record that parent variable is `any` here");
+						TypeId::ANY_TYPE
 					}
 				}
 			};
@@ -764,7 +758,7 @@ impl<'a> Environment<'a> {
 			// TODO temp position
 			let mut value = None;
 
-			for event in self.facts.events.iter() {
+			for event in &self.facts.events {
 				// TODO explain why don't need to detect sets
 				if let Event::ReadsReference {
 					reference: other_reference,
@@ -905,7 +899,7 @@ impl<'a> Environment<'a> {
 	}
 
 	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
-		self.facts.events.push(Event::Return { returned, returned_position })
+		self.facts.events.push(Event::Return { returned, returned_position });
 	}
 
 	/// Updates **a existing property**
@@ -915,7 +909,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
-		under: PropertyKey,
+		under: &PropertyKey,
 		new: TypeId,
 		types: &TypeStore,
 		setter_position: Option<SpanWithSource>,
@@ -924,7 +918,7 @@ impl<'a> Environment<'a> {
 			on,
 			publicity,
 			under,
-			PropertyValue::Value(new),
+			&PropertyValue::Value(new),
 			self,
 			&mut CheckThings,
 			types,
@@ -1111,7 +1105,7 @@ impl<'a> Environment<'a> {
 			}
 			ImportKind::Everything => {
 				if let Ok(Ok(ref exports)) = exports {
-					for (name, (variable, mutability)) in exports.named.iter() {
+					for (name, (variable, mutability)) in &exports.named {
 						// TODO are variables put into scope?
 						if let Scope::Module { ref mut exported, .. } = self.context_type.scope {
 							exported.named.push((name.clone(), (*variable, *mutability)));

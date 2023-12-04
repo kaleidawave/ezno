@@ -152,7 +152,7 @@ impl<U: ASTNode> Decorated<U> {
 	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
 		let position =
 			decorators.first().map_or(on.get_position(), |d| &d.position).union(on.get_position());
-		Self { decorators, position, on }
+		Self { decorators, on, position }
 	}
 
 	pub(crate) fn to_string_from_buffer_just_decorators<T: source_map::ToString>(
@@ -162,7 +162,7 @@ impl<U: ASTNode> Decorated<U> {
 		depth: u8,
 	) {
 		if options.include_decorators {
-			for decorator in self.decorators.iter() {
+			for decorator in &self.decorators {
 				decorator.to_string_from_buffer(buf, options, depth);
 				if options.pretty {
 					buf.push_new_line();

@@ -27,24 +27,35 @@ use super::{
 	Constructor, PolyNature, StructureGenerics, TypeStore,
 };
 
-pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+pub struct CallingInput {
+	pub called_with_new: CalledWithNew,
+	pub this_value: ThisValue,
+	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	pub call_site: SpanWithSource,
+}
+
+pub struct CallingInputWithoutThis {
+	pub called_with_new: CalledWithNew,
+	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	pub call_site: SpanWithSource,
+}
+
+pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation>(
 	ty: TypeId,
-	// Overwritten by .call, else look at binding
-	called_with_new: CalledWithNew,
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
-	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	environment: &mut Environment,
-	checking_data: &mut crate::CheckingData<T, A>,
+	arguments: Vec<SynthesisedArgument>,
+	checking_data: &mut crate::CheckingData<T, M>,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,
-		called_with_new,
-		this_value,
-		call_site_type_arguments,
+		CallingInput {
+			called_with_new,
+			this_value,
+			call_site_type_arguments,
+			call_site: call_site.clone(),
+		},
 		arguments,
-		call_site.clone(),
 		environment,
 		&mut CheckThings,
 		&mut checking_data.types,
@@ -58,7 +69,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 						position: call_site.clone(),
 						kind: crate::diagnostics::DiagnosticKind::Info,
 					},
-				)
+				);
 			}
 
 			if let Some(called) = called {
@@ -70,7 +81,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			for error in errors {
 				checking_data
 					.diagnostics_container
-					.add_error(TypeCheckError::FunctionCallingError(error))
+					.add_error(TypeCheckError::FunctionCallingError(error));
 			}
 			(TypeId::ERROR_TYPE, None)
 		}
@@ -80,12 +91,8 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 /// TODO this and aliases kindof broken
 pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
-	called_with_new: CalledWithNew,
-	// Overwritten by .call, else look at binding
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -105,11 +112,8 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	if let Some(constraint) = environment.get_poly_base(on, types) {
 		create_generic_function_call(
 			constraint,
-			called_with_new,
-			this_value,
-			call_site_type_arguments,
+			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 			arguments,
-			call_site,
 			on,
 			environment,
 			behavior,
@@ -127,11 +131,9 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 			call_logical(
 				logical,
 				types,
-				called_with_new,
-				call_site_type_arguments,
+				CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
 				structure_generics,
 				arguments,
-				&call_site,
 				environment,
 				behavior,
 			)
@@ -152,11 +154,9 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 fn call_logical<E: CallCheckingBehavior>(
 	logical: Logical<(FunctionId, ThisValue)>,
 	types: &mut TypeStore,
-	called_with_new: CalledWithNew,
-	call_site_type_arguments: Option<Vec<(TypeId, source_map::BaseSpan<SourceId>)>>,
+	CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site }: CallingInputWithoutThis,
 	structure_generics: Option<StructureGenericArguments>,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: &source_map::BaseSpan<SourceId>,
 	environment: &mut Environment,
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
@@ -164,12 +164,14 @@ fn call_logical<E: CallCheckingBehavior>(
 		Logical::Pure((func, this_value)) => {
 			if let Some(function_type) = types.functions.get(&func) {
 				function_type.clone().call(
-					called_with_new,
-					this_value,
-					call_site_type_arguments,
+					CallingInput {
+						called_with_new,
+						this_value,
+						call_site_type_arguments,
+						call_site,
+					},
 					structure_generics,
 					&arguments,
-					call_site.clone(),
 					environment,
 					behavior,
 					types,
@@ -183,11 +185,9 @@ fn call_logical<E: CallCheckingBehavior>(
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
 			types,
-			called_with_new,
-			call_site_type_arguments,
+			CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
 			Some(antecedent),
 			arguments,
-			call_site,
 			environment,
 			behavior,
 		),
@@ -232,11 +232,8 @@ fn get_logical_callable_from_type(
 
 fn create_generic_function_call<E: CallCheckingBehavior>(
 	constraint: TypeId,
-	called_with_new: CalledWithNew,
-	this_value: ThisValue,
-	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	call_site: SpanWithSource,
 	on: TypeId,
 	environment: &mut Environment,
 	behavior: &mut E,
@@ -245,12 +242,14 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	// TODO don't like how it is mixed
 	let result = call_type(
 		constraint,
-		called_with_new,
-		this_value,
-		call_site_type_arguments,
+		CallingInput {
+			called_with_new,
+			this_value,
+			call_site_type_arguments,
+			call_site: call_site.clone(),
+		},
 		// TODO clone
 		arguments.clone(),
-		call_site.clone(),
 		environment,
 		behavior,
 		types,
@@ -260,7 +259,10 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 
 	// TODO work this out
 	let is_open_poly = false;
-	let reflects_dependency = if !is_open_poly {
+
+	let reflects_dependency = if is_open_poly {
+		None
+	} else {
 		// Skip constant types
 		if matches!(result.returned_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
 			|| matches!(
@@ -274,8 +276,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 				on,
 				with,
 				timing: crate::events::CallingTiming::Synchronous,
-				called_with_new,
-				// Don't care about output.
+				called_with_new, // Don't care about output.
 				reflects_dependency: None,
 				position: call_site.clone(),
 			});
@@ -294,8 +295,6 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		let constructor_return = types.register_type(Type::Constructor(constructor));
 
 		Some(constructor_return)
-	} else {
-		None
 	};
 
 	// TODO nearest fact
@@ -376,14 +375,13 @@ impl FunctionType {
 	/// Calls the function
 	///
 	/// Returns warnings and errors
+	// Move references in a wrapping struct can be hard due to lifetimes
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
-		called_with_new: CalledWithNew,
-		mut this_value: ThisValue,
-		call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
+		CallingInput { called_with_new, mut this_value, call_site_type_arguments, call_site }: CallingInput,
 		parent_type_arguments: Option<StructureGenericArguments>,
 		arguments: &[SynthesisedArgument],
-		call_site: SpanWithSource,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
@@ -470,12 +468,14 @@ impl FunctionType {
 				// TODO with cloned!!
 				let result = self
 					.call(
-						called_with_new,
-						this_value,
-						call_site_type_arguments,
+						CallingInput {
+							called_with_new,
+							this_value,
+							call_site_type_arguments,
+							call_site: call_site.clone(),
+						},
 						parent_type_arguments,
 						arguments,
-						call_site.clone(),
 						environment,
 						behavior,
 						types,
@@ -564,7 +564,7 @@ impl FunctionType {
 					CalledWithNew::SpecialSuperCall { this_type } => todo!(),
 					CalledWithNew::None => {
 						// TODO
-						let value_of_this = this_value.get(environment, types, call_site.clone());
+						let value_of_this = this_value.get(environment, types, &call_site);
 
 						seeding_context.type_arguments.insert(
 							free_this_id,
@@ -619,13 +619,13 @@ impl FunctionType {
 			environment,
 			types,
 			&mut errors,
-			call_site,
+			&call_site,
 		);
 
 		// take the found and inject back into what it resolved
 		let mut result_type_arguments = map_vec::Map::new();
 
-		for (item, values) in found.into_iter() {
+		found.into_iter().for_each(|(item, values)| {
 			let mut into_iter = values.into_iter();
 			let (mut value, argument_position, param) =
 				into_iter.next().expect("no type argument ...?");
@@ -670,14 +670,14 @@ impl FunctionType {
 							parameter_type,
 							parameter_position: synthesised_parameter.position.clone(),
 							restriction,
-						})
+						});
 					}
 				}
 			}
 
 			// TODO position is just the first
 			result_type_arguments.insert(item, (value, argument_position));
-		}
+		});
 		// for (item, restrictions) in type_restrictions.iter() {
 		// 	for (restriction, pos) in restrictions {
 		// 		// TODO
@@ -700,16 +700,16 @@ impl FunctionType {
 
 		// Evaluate effects directly into environment
 		let mut early_return = behavior.new_function_target(self.id, |target| {
-			type_arguments.closure_id = if !self.closed_over_variables.is_empty() {
+			type_arguments.closure_id = if self.closed_over_variables.is_empty() {
+				None
+			} else {
 				let closure_id = types.new_closure_id();
 				Some(closure_id)
-			} else {
-				None
 			};
 
 			let mut return_result = None;
 
-			for event in self.effects.clone().into_iter() {
+			for event in self.effects.clone() {
 				let result =
 					apply_event(event, this_value, &mut type_arguments, environment, target, types);
 
@@ -721,7 +721,7 @@ impl FunctionType {
 
 			if let Some(closure_id) = type_arguments.closure_id {
 				// Set closed over values
-				for (reference, value) in self.closed_over_variables.iter() {
+				self.closed_over_variables.iter().for_each(|(reference, value)| {
 					let value = substitute(*value, &mut type_arguments, environment, types);
 					environment
 						.facts
@@ -729,7 +729,7 @@ impl FunctionType {
 						.insert((closure_id, reference.clone()), value);
 
 					crate::utils::notify!("in {:?} set {:?} to {:?}", closure_id, reference, value);
-				}
+				});
 			}
 
 			return_result
@@ -794,7 +794,7 @@ impl FunctionType {
 		environment: &mut Environment,
 		types: &TypeStore,
 		errors: &mut Vec<FunctionCallingError>,
-		call_site: source_map::BaseSpan<SourceId>,
+		call_site: &source_map::BaseSpan<SourceId>,
 	) -> SeedingContext {
 		for (parameter_idx, parameter) in self.parameters.parameters.iter().enumerate() {
 			// TODO temp
@@ -854,7 +854,7 @@ impl FunctionType {
 							parameter_position: parameter.position.clone(),
 							argument_position: argument_position.clone(),
 							restriction: None,
-						})
+						});
 					}
 				} else {
 					// Already checked so can set. TODO destructuring etc
@@ -870,7 +870,7 @@ impl FunctionType {
 					parameter.ty,
 					(value, SpanWithSource::NULL_SPAN, parameter_idx),
 					false,
-				)
+				);
 			} else {
 				// TODO group
 				errors.push(FunctionCallingError::MissingArgument {
@@ -902,12 +902,13 @@ impl FunctionType {
 				for (idx, argument) in
 					arguments.iter().enumerate().skip(self.parameters.parameters.len())
 				{
-					let (argument_type, argument_pos) =
-						if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
-							(ty, pos)
-						} else {
-							todo!()
-						};
+					let SynthesisedArgument::NonSpread {
+						ty: argument_type,
+						position: argument_pos,
+					} = argument
+					else {
+						todo!()
+					};
 
 					let item_type = if let Type::Constructor(Constructor::StructureGenerics(
 						StructureGenerics { on, arguments },
@@ -949,7 +950,7 @@ impl FunctionType {
 								argument_position: argument_pos.clone(),
 								parameter_position: rest_parameter.position.clone(),
 								restriction: None,
-							})
+							});
 						}
 					} else {
 						todo!("substitute")

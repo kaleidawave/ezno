@@ -1,15 +1,15 @@
 //! Contains the definitions for expressions
 
-//! Operators marked in spec but implemented as a variant of [crate::Expression] rather than a *operator*:
-//! OptionalChain, OptionalCall, OptionalIndex, Index, Group, Initialize, Call,
+//! Operators marked in spec but implemented as a variant of [`crate::Expression`] rather than a *operator*:
+//! `OptionalChain`, `OptionalCall`, `OptionalIndex`, Index, Group, Initialize, Call,
 
 use std::convert::TryFrom;
 
 use crate::{TSXKeyword, TSXToken};
 
-/// Comma operator is on [crate::MultipleExpression]
+/// Comma operator is on [`crate::MultipleExpression`]
 /// 
-/// InstanceOf, In are special operators
+/// `InstanceOf`, In are special operators
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -125,7 +125,7 @@ impl Operator for BinaryOperator {
 			BinaryOperator::LessThan => "<",
 			BinaryOperator::GreaterThan => ">",
 			BinaryOperator::LessThanEqual => "<=",
-			BinaryOperator::GreaterThanEqual => ">",
+			BinaryOperator::GreaterThanEqual => ">=",
 			BinaryOperator::Equal => "==",
 			BinaryOperator::StrictEqual => "===",
 			BinaryOperator::NotEqual => "!=",
@@ -148,19 +148,20 @@ impl Operator for BinaryOperator {
 
 	fn precedence(&self) -> u8 {
 		match self {
+			BinaryOperator::Pipe | BinaryOperator::Compose => 15,
 			BinaryOperator::Exponent => 14,
-			BinaryOperator::Multiply => 13,
-			BinaryOperator::Divide => 13,
-			BinaryOperator::Modulo => 13,
-			BinaryOperator::Add => 12,
-			BinaryOperator::Subtract => 12,
-			BinaryOperator::BitwiseShiftLeft => 11,
-			BinaryOperator::BitwiseShiftRight => 11,
-			BinaryOperator::BitwiseShiftRightUnsigned => 11,
-			BinaryOperator::LessThan => 10,
-			BinaryOperator::LessThanEqual => 10,
-			BinaryOperator::GreaterThan => 10,
-			BinaryOperator::GreaterThanEqual => 10,
+			BinaryOperator::Multiply
+			| BinaryOperator::Divide
+			| BinaryOperator::Modulo
+			| BinaryOperator::Divides => 13,
+			BinaryOperator::Add | BinaryOperator::Subtract => 12,
+			BinaryOperator::BitwiseShiftLeft
+			| BinaryOperator::BitwiseShiftRightUnsigned
+			| BinaryOperator::BitwiseShiftRight => 11,
+			BinaryOperator::LessThan
+			| BinaryOperator::LessThanEqual
+			| BinaryOperator::GreaterThanEqual
+			| BinaryOperator::GreaterThan => 10,
 			BinaryOperator::Equal
 			| BinaryOperator::NotEqual
 			| BinaryOperator::StrictEqual
@@ -169,13 +170,7 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseXOr => 7,
 			BinaryOperator::BitwiseOr => 6,
 			BinaryOperator::LogicalAnd => 5,
-			BinaryOperator::NullCoalescing => 4,
-			BinaryOperator::LogicalOr => 4,
-			// Same as modulo
-			BinaryOperator::Divides => 13,
-			// No idea
-			BinaryOperator::Pipe => 15,
-			BinaryOperator::Compose => 15,
+			BinaryOperator::NullCoalescing | BinaryOperator::LogicalOr => 4,
 		}
 	}
 
@@ -466,6 +461,7 @@ impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
 impl BinaryOperator {
 	/// Operators which return true may or may not evaluate RHS based on their own value
 	/// TODO might be more
+	#[must_use]
 	pub fn is_rhs_conditional_evaluation(&self) -> bool {
 		matches!(self, BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr)
 	}

@@ -40,7 +40,7 @@ impl FunctionBased for ArrowFunctionBase {
 		_depth: u8,
 	) {
 		if is_async.is_some() {
-			buf.push_str("async ")
+			buf.push_str("async ");
 		}
 	}
 
@@ -192,7 +192,7 @@ impl ArrowFunction {
 	}
 }
 
-/// For [ArrowFunction] and [crate::MatchArm] bodies
+/// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]

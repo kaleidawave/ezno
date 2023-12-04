@@ -108,7 +108,7 @@ pub(super) fn synthesise_class_declaration<
 				);
 
 				let property =
-					function_to_property(getter_setter, method_ty, &mut checking_data.types);
+					function_to_property(&getter_setter, method_ty, &mut checking_data.types);
 
 				let position = Some(method.position.clone().with_source(environment.get_source()));
 				environment.facts.register_property(
@@ -140,7 +140,7 @@ pub(super) fn synthesise_class_declaration<
 					environment,
 					checking_data,
 				);
-				static_property_keys.push(value)
+				static_property_keys.push(value);
 			}
 			_ => {}
 		}
@@ -170,7 +170,7 @@ pub(super) fn synthesise_class_declaration<
 	// TODO ...
 	static_property_keys.reverse();
 
-	for member in class.members.iter() {
+	for member in &class.members {
 		match &member.on {
 			ClassMember::Method(Some(_), method) => {
 				let publicity_kind = match method.name.get_ast_ref() {
@@ -188,7 +188,9 @@ pub(super) fn synthesise_class_declaration<
 				let value = match method.header {
 					MethodHeader::Get(_) => PropertyValue::Getter(Box::new(function)),
 					MethodHeader::Set(_) => PropertyValue::Setter(Box::new(function)),
-					_ => PropertyValue::Value(checking_data.types.new_function_type(function)),
+					MethodHeader::Regular { .. } => {
+						PropertyValue::Value(checking_data.types.new_function_type(function))
+					}
 				};
 
 				// (publicity_kind, property_key, PropertyOnClass::Function { method, property })
@@ -230,7 +232,7 @@ pub(super) fn synthesise_class_declaration<
 					Scope::StaticBlock {},
 					checking_data,
 					|environment, checking_data| {
-						synthesise_block(&block.0, environment, checking_data)
+						synthesise_block(&block.0, environment, checking_data);
 					},
 				);
 			}

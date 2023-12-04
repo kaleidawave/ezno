@@ -32,9 +32,10 @@ impl ObjectBuilder {
 		value: PropertyValue,
 		position: Option<SpanWithSource>,
 	) {
-		environment.facts.register_property(self.object, publicity, under, value, true, position)
+		environment.facts.register_property(self.object, publicity, under, value, true, position);
 	}
 
+	#[must_use]
 	pub fn build_object(self) -> TypeId {
 		self.object
 	}

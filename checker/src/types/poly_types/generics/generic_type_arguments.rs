@@ -101,7 +101,7 @@ impl ClosureChain for FunctionTypeArguments {
 			}
 		}
 		if let Some(ref parent) = self.structure_arguments {
-			for closure_id in parent.closures.iter() {
+			for closure_id in &parent.closures {
 				let res = cb(*closure_id);
 				if res.is_some() {
 					return res;
@@ -135,7 +135,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 
 				StructureGenericArguments {
 					type_arguments: merged,
-					closures: parent.closures.iter().cloned().chain(self.closure_id).collect(),
+					closures: parent.closures.iter().copied().chain(self.closure_id).collect(),
 				}
 			}
 			None => StructureGenericArguments {

@@ -28,6 +28,7 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 			Expression::ObjectLiteral(literal) => {
 				// TODO properties and even entire object
 				for item in literal.members.iter_mut() {
+					let item = item.get_ast_mut();
 					if let ObjectLiteralMember::Method(method) = item {
 						let current_module = chain.get_module();
 						let get_position = method.get_position();
@@ -98,7 +99,7 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 					{
 						// Replace with property to not break Object.keys for now
 						// TODO replacing this with variable isn't great but is the unfortunate design of `StatementOrDeclarationMut`
-						**declaration = parser::Declaration::Variable(
+						*declaration = parser::Declaration::Variable(
 							parser::declarations::VariableDeclaration::LetDeclaration {
 								keyword: parser::Keyword::new(parser::Span::NULL_SPAN),
 								declarations: Vec::new(),

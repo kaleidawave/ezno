@@ -35,7 +35,7 @@ interface X {
 	.replace("    ", "\t");
 
 	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+		Module::from_string(input.clone(), Default::default(), SourceId::NULL, None).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
@@ -99,7 +99,7 @@ try {
 	.replace("    ", "\t");
 
 	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+		Module::from_string(input.clone(), Default::default(), SourceId::NULL, None).unwrap();
 	let output = module.to_string(&Default::default());
 	assert_eq!(output, input);
 }
@@ -218,7 +218,7 @@ from "module-name" import defaultExport, * as name;
 	let module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
 
-	eprintln!("Module: {:#?}", module);
+	eprintln!("Module: {module:#?}");
 
 	// let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 	// assert_eq!(output, input);
@@ -227,20 +227,20 @@ from "module-name" import defaultExport, * as name;
 #[cfg(feature = "extras")]
 #[test]
 fn function_custom_headers() {
-	let input = r#"
+	let input = "
 function a() {}
 generator function a() {}
 generator server function a() {}
 generator server function a() {}
 async server function a() {}
 worker function a() {}
-    "#
+    "
 	.trim();
 
 	let module =
 		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
 
-	eprintln!("Module: {:#?}", module);
+	eprintln!("Module: {module:#?}");
 
 	// let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 	// assert_eq!(output, input);

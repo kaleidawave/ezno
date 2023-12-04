@@ -32,15 +32,14 @@ pub(crate) fn apply_event(
 							id,
 							Some(&*type_arguments),
 						);
-						match value {
-							Some(ty) => ty,
-							None => {
-								crate::utils::notify!("emit a tdz error");
-								TypeId::ERROR_TYPE
-							}
+						if let Some(ty) = value {
+							ty
+						} else {
+							crate::utils::notify!("emit a tdz error");
+							TypeId::ERROR_TYPE
 						}
 					}
-					RootReference::This => this_value.get(environment, types, position),
+					RootReference::This => this_value.get(environment, types, &position),
 				};
 				type_arguments.set_id_from_reference(id, value, types);
 			}
@@ -71,7 +70,7 @@ pub(crate) fn apply_event(
 					let ty = substitute(under, type_arguments, environment, types);
 					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
-				under => under,
+				under @ crate::types::properties::PropertyKey::String(_) => under,
 			};
 
 			let (_, value) =
@@ -99,7 +98,7 @@ pub(crate) fn apply_event(
 					let ty = substitute(under, type_arguments, environment, types);
 					crate::types::properties::PropertyKey::from_type(ty, types)
 				}
-				under => under,
+				under @ crate::types::properties::PropertyKey::String(_) => under,
 			};
 
 			let new = match new {
@@ -111,7 +110,7 @@ pub(crate) fn apply_event(
 				PropertyValue::Setter(_) => todo!(),
 				// TODO this might be a different thing at some point
 				PropertyValue::Deleted => {
-					environment.delete_property(on, under);
+					environment.delete_property(on, &under);
 					return None;
 				}
 			};
@@ -146,7 +145,7 @@ pub(crate) fn apply_event(
 					.register_property(on, publicity, under, new, true, position);
 			} else {
 				let returned =
-					set_property(on, publicity, under, new, environment, target, types, position)
+					set_property(on, publicity, &under, &new, environment, target, types, position)
 						.unwrap();
 
 				if let Some(id) = reflects_dependency {
@@ -175,12 +174,14 @@ pub(crate) fn apply_event(
 				CallingTiming::Synchronous => {
 					let result = crate::types::calling::call_type(
 						on,
-						called_with_new,
-						Default::default(),
-						None,
+						crate::types::calling::CallingInput {
+							called_with_new,
+							this_value: Default::default(),
+							call_site_type_arguments: None,
+							// TODO:
+							call_site: source_map::SpanWithSource::NULL_SPAN,
+						},
 						with,
-						// TODO
-						source_map::SpanWithSource::NULL_SPAN,
 						environment,
 						target,
 						types,
@@ -296,7 +297,7 @@ pub(crate) fn apply_event(
 							condition,
 							truth,
 							else_facts.variable_current_value.remove(&var).unwrap_or(*existing),
-						)
+						);
 					});
 				}
 
@@ -312,9 +313,9 @@ pub(crate) fn apply_event(
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
 			if substituted_returned != TypeId::ERROR_TYPE {
 				return Some(substituted_returned);
-			} else {
-				crate::utils::notify!("event returned error so skipped");
 			}
+
+			crate::utils::notify!("event returned error so skipped");
 		}
 		// TODO Needs a position (or not?)
 		Event::CreateObject { referenced_in_scope_as, prototype, position } => {

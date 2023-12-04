@@ -6,7 +6,10 @@
 	unused_mut,
 	dead_code,
 	irrefutable_let_patterns,
-	deprecated
+	deprecated,
+	clippy::new_without_default,
+	clippy::too_many_lines,
+	clippy::result_unit_err
 )]
 
 pub mod behavior;
@@ -66,7 +69,7 @@ pub use source_map::{self, SourceId, Span};
 
 /// Contains all the modules and mappings for import statements
 ///
-/// TODO could files and synthesised_modules be merged? (with a change to the source map crate)
+/// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
 pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
 	pub(crate) file_reader: &'a FileReader,
 	pub(crate) current_working_directory: PathBuf,
@@ -96,12 +99,16 @@ pub trait ASTImplementation: Sized {
 
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
+	/// # Errors
+	/// TODO
 	fn module_from_string(
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
 	) -> Result<Self::Module<'static>, Self::ParseError>;
 
+	/// # Errors
+	/// TODO
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
@@ -343,7 +350,7 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 		self.diagnostics_container.add_error(TypeCheckWarning::DeadBranch {
 			expression_span: span,
 			expression_value: value,
-		})
+		});
 	}
 
 	/// TODO temp, needs better place
@@ -467,15 +474,12 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 	checking_data: &mut CheckingData<T, A>,
 ) {
 	for path in type_definition_files {
-		let (source_id, content) = match checking_data.modules.get_file(&path) {
-			Some(result) => result,
-			None => {
-				checking_data.diagnostics_container.add_error(Diagnostic::Global {
-					reason: format!("could not find {}", path.display()),
-					kind: crate::DiagnosticKind::Error,
-				});
-				continue;
-			}
+		let Some((source_id, content)) = checking_data.modules.get_file(&path) else {
+			checking_data.diagnostics_container.add_error(Diagnostic::Global {
+				reason: format!("could not find {}", path.display()),
+				kind: crate::DiagnosticKind::Error,
+			});
+			continue;
 		};
 
 		// TODO U::new_tdm_from_string

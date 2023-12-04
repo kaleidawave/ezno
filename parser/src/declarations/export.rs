@@ -99,7 +99,7 @@ impl ASTNode for ExportDeclaration {
 				let position = start.union(class_declaration.get_position());
 				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Const) | TSXToken::Keyword(TSXKeyword::Let), _) => {
+			Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _) => {
 				let variable_declaration =
 					VariableDeclaration::from_reader(reader, state, options)?;
 				let position = start.union(variable_declaration.get_position());
@@ -118,36 +118,34 @@ impl ASTNode for ExportDeclaration {
 				})
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-				match reader.peek_n(1).ok_or_else(parse_lexing_error)? {
-					Token(TSXToken::OpenBrace, _) => {
-						let type_keyword = reader.next().map(|tok| Keyword::new(tok.get_span()));
+				if let Token(TSXToken::OpenBrace, _) =
+					reader.peek_n(1).ok_or_else(parse_lexing_error)?
+				{
+					let type_keyword = reader.next().map(|tok| Keyword::new(tok.get_span()));
 
-						let Token(_, start) = reader.next().unwrap(); // OpenBrace
+					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
-						let (parts, _end) = crate::parse_bracketed::<ExportPart>(
-							reader,
-							state,
-							options,
-							None,
-							TSXToken::CloseBrace,
-						)?;
+					let (parts, _end) = crate::parse_bracketed::<ExportPart>(
+						reader,
+						state,
+						options,
+						None,
+						TSXToken::CloseBrace,
+					)?;
 
-						reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+					reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
 
-						let (from, end) = ImportLocation::from_token(
-							reader.next().ok_or_else(parse_lexing_error)?,
-						)?;
+					let (from, end) =
+						ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 
-						Ok(Self::Variable {
-							exported: Exportable::ImportParts { parts, from, type_keyword },
-							position: start.union(end),
-						})
-					}
-					_ => {
-						let type_alias = TypeAlias::from_reader(reader, state, options)?;
-						let position = start.union(type_alias.get_position());
-						Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
-					}
+					Ok(Self::Variable {
+						exported: Exportable::ImportParts { parts, from, type_keyword },
+						position: start.union(end),
+					})
+				} else {
+					let type_alias = TypeAlias::from_reader(reader, state, options)?;
+					let position = start.union(type_alias.get_position());
+					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
 				}
 			}
 			Token(TSXToken::OpenBrace, _) => {
@@ -307,7 +305,7 @@ impl ASTNode for ExportDeclaration {
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 ///
-/// Similar to [ImportPart] but reversed
+/// Similar to [`ImportPart`] but reversed
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -358,7 +356,7 @@ impl ASTNode for ExportPart {
 					unreachable!()
 				};
 				let pos = value.get_position().union(start.get_end_after(c.len() + 2));
-				value = Self::PostfixComment(Box::new(value), c, pos)
+				value = Self::PostfixComment(Box::new(value), c, pos);
 			}
 			Ok(value)
 		}

@@ -43,9 +43,9 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::Spread(_, _) => {}
-			ObjectLiteralMember::Shorthand(_, _) => {}
-			ObjectLiteralMember::Property(_, _, _) => {}
+			ObjectLiteralMember::Shorthand(_, _)
+			| ObjectLiteralMember::Property(_, _, _)
+			| ObjectLiteralMember::Spread(_, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit(visitors, data, options, chain),
 		}
 	}
@@ -58,9 +58,9 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::Spread(_, _) => {}
-			ObjectLiteralMember::Shorthand(_, _) => {}
-			ObjectLiteralMember::Property(_, _, _) => {}
+			ObjectLiteralMember::Property(_, _, _)
+			| ObjectLiteralMember::Spread(_, _)
+			| ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit_mut(visitors, data, options, chain),
 		}
 	}
@@ -180,6 +180,7 @@ impl ObjectLiteral {
 }
 
 impl ASTNode for ObjectLiteralMember {
+	#[allow(clippy::similar_names)]
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -242,7 +243,7 @@ impl ASTNode for ObjectLiteralMember {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Ident(name, position, _) = key {
+					if let PropertyKey::Ident(name, position, ()) = key {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						let token = reader.next().ok_or_else(parse_lexing_error)?;

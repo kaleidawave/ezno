@@ -5,7 +5,9 @@ use crate::{
 	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	events::Event,
 	subtyping::{type_is_subtype, SubTypeResult},
-	types::{printing::print_type, substitute, FunctionType, StructureGenerics},
+	types::{
+		calling::CallingInput, printing::print_type, substitute, FunctionType, StructureGenerics,
+	},
 	Constant, Environment, TypeId,
 };
 
@@ -31,6 +33,7 @@ pub enum PropertyKey<'a> {
 }
 
 impl<'a> PropertyKey<'a> {
+	#[must_use]
 	pub fn into_owned(&self) -> PropertyKey<'static> {
 		match self {
 			PropertyKey::String(s) => PropertyKey::String(Cow::Owned(s.to_string())),
@@ -73,9 +76,10 @@ static NUMBERS: &str = "0123456789";
 
 impl<'a> PropertyKey<'a> {
 	/// For array indexes
+	#[must_use]
 	pub fn from_usize(a: usize) -> Self {
 		if a < 10 {
-			Self::String(Cow::Borrowed(&NUMBERS[a..(a + 1)]))
+			Self::String(Cow::Borrowed(&NUMBERS[a..=a]))
 		} else {
 			Self::String(Cow::Owned(a.to_string()))
 		}
@@ -95,6 +99,7 @@ pub enum PropertyValue {
 
 impl PropertyValue {
 	/// TODO wip
+	#[must_use]
 	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
@@ -105,6 +110,7 @@ impl PropertyValue {
 		}
 	}
 
+	#[must_use]
 	pub fn as_set_type(&self) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
@@ -120,6 +126,8 @@ impl PropertyValue {
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
 /// types at some point*
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn get_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
@@ -130,15 +138,15 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	types: &mut TypeStore,
 	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
-	// || under == TypeId::ERROR_TYPE
-	if on == TypeId::ERROR_TYPE {
-		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
-	}
-
 	enum GetResult {
 		AccessIntroducesDependence(TypeId),
 		/// These always return the same value
 		FromAObject(TypeId),
+	}
+
+	// || under == TypeId::ERROR_TYPE
+	if on == TypeId::ERROR_TYPE {
+		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
 	let value: GetResult = if let Some(constraint) = environment.get_poly_base(on, types) {
@@ -195,10 +203,6 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {
-	let result = environment.get_property_unbound(on, publicity, under, types)?;
-
-	return resolve_property_on_logical(result, types, on, environment, behavior);
-
 	/// Generates closure arguments, values of this and more. Runs getters
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
 		logical: Logical<PropertyValue>,
@@ -271,13 +275,15 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Getter(getter) => {
 						let state = ThisValue::Passed(on);
 						let call = getter.call(
-							CalledWithNew::None,
-							state,
-							None,
+							CallingInput {
+								called_with_new: CalledWithNew::None,
+								this_value: state,
+								call_site_type_arguments: None,
+								call_site: SpanWithSource::NULL_SPAN,
+							},
 							// TODO
 							None,
 							&[],
-							SpanWithSource::NULL_SPAN,
 							environment,
 							behavior,
 							types,
@@ -303,8 +309,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 			}
 		}
 	}
+
+	let result = environment.get_property_unbound(on, publicity, under, types)?;
+
+	resolve_property_on_logical(result, types, on, environment, behavior)
 }
 
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,
@@ -322,8 +334,6 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	// 	environment.debug_type(on, types),
 	// 	is_open_poly
 	// );
-
-	let fact = environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
 
 	fn get_property_from_logical(
 		fact: Logical<PropertyValue>,
@@ -403,17 +413,22 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
+	let fact = environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
+
 	get_property_from_logical(fact, types, on, under)
 }
 
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
+
+// https://github.com/kaleidawave/ezno/pull/88
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
-	under: PropertyKey,
-	new: PropertyValue,
+	under: &PropertyKey,
+	new: &PropertyValue,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &TypeStore,

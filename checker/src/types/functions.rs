@@ -78,7 +78,7 @@ impl FunctionType {
 					..
 				}) = environment.context_type.scope
 				{
-					*this_object_type = on
+					*this_object_type = on;
 				}
 
 				register_properties_into_environment(environment, on, checking_data, properties);
@@ -133,7 +133,7 @@ pub enum GetSet {
 	Set,
 }
 
-/// Optionality is indicated by what vector it is in [SynthesisedParameters]
+/// Optionality is indicated by what vector it is in [`SynthesisedParameters`]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct SynthesisedParameter {
 	pub name: String,
@@ -192,6 +192,8 @@ impl SynthesisedArgument {
 		}
 	}
 
+	// TODO: Remove when error is added
+	#[allow(clippy::unnecessary_wraps)]
 	pub(crate) fn to_type(&self) -> Result<TypeId, ()> {
 		match self {
 			SynthesisedArgument::NonSpread { ty, position: _ } => Ok(*ty),

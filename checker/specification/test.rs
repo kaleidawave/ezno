@@ -58,15 +58,13 @@ fn check_errors(
 		|path| {
 			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+			} else if code.len() == 1 {
+				Some(code[0].1.to_owned())
 			} else {
-				if code.len() == 1 {
-					Some(code[0].1.to_owned())
-				} else {
-					code.iter().find_map(|(code_path, content)| {
-						(std::path::Path::new(code_path) == path)
-							.then_some(content.to_owned().to_owned())
-					})
-				}
+				code.iter().find_map(|(code_path, content)| {
+					(std::path::Path::new(code_path) == path)
+						.then_some(content.to_owned().to_owned())
+				})
 			}
 		},
 		type_check_options,
@@ -89,7 +87,7 @@ fn check_errors(
 		})
 		.collect();
 
-	if &diagnostics != expected_diagnostics {
+	if diagnostics != expected_diagnostics {
 		panic!(
 			"{}",
 			pretty_assertions::Comparison::new(expected_diagnostics, &diagnostics).to_string()

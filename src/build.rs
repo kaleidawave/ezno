@@ -48,7 +48,7 @@ pub fn build<T: crate::ReadFromFS>(
 	input_path: &Path,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
-	config: BuildConfig,
+	config: &BuildConfig,
 	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax

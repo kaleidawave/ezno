@@ -46,7 +46,7 @@ pub(crate) fn call_constant_function(
 					.last()
 					.ok_or(ConstantFunctionError::BadCall)?
 					.to_type()
-					.map_err(|_| ConstantFunctionError::BadCall)?,
+					.map_err(|()| ConstantFunctionError::BadCall)?,
 			);
 
 			let Type::Constant(Constant::Number(num)) = second_argument_type else {
@@ -115,7 +115,7 @@ pub(crate) fn call_constant_function(
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
 				.to_type()
-				.map_err(|_| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::BadCall)?;
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
@@ -124,14 +124,14 @@ pub(crate) fn call_constant_function(
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
 				.to_type()
-				.map_err(|_| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::BadCall)?;
 			if let Type::Function(func, _) | Type::FunctionReference(func, _) =
 				types.get_type_by_id(ty)
 			{
 				let effects =
 					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
 				// TODO print using a different function
-				Ok(ConstantOutput::Diagnostic(format!("{:#?}", effects)))
+				Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
 			} else {
 				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
 			}
@@ -145,7 +145,7 @@ pub(crate) fn call_constant_function(
 				Some(this_ty),
 			) = (on, first_argument)
 			{
-				let type_id = this_ty.to_type().map_err(|_| ConstantFunctionError::BadCall)?;
+				let type_id = this_ty.to_type().map_err(|()| ConstantFunctionError::BadCall)?;
 				let value = types.register_type(Type::Function(*func, ThisValue::Passed(type_id)));
 				Ok(ConstantOutput::Value(value))
 			} else {
@@ -171,7 +171,7 @@ pub(crate) fn call_constant_function(
 					.facts
 					.prototypes
 					.get(&first.to_type().unwrap())
-					.cloned()
+					.copied()
 					.unwrap_or(TypeId::NULL_TYPE);
 				Ok(ConstantOutput::Value(prototype))
 			} else {
@@ -197,7 +197,7 @@ pub(crate) fn call_constant_function(
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
 				.to_type()
-				.map_err(|_| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::BadCall)?;
 			// TODO temp!!!
 			let arg = call_site_type_args
 				.iter()
@@ -235,7 +235,7 @@ pub(crate) fn call_constant_function(
 						.first()
 						.ok_or(ConstantFunctionError::BadCall)?
 						.to_type()
-						.map_err(|_| ConstantFunctionError::BadCall)?
+						.map_err(|()| ConstantFunctionError::BadCall)?
 				)
 				.is_dependent()
 		))),

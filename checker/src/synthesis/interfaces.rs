@@ -102,7 +102,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		};
 
 		// TODO: `None` position passed
-		environment.facts.register_property(self.0, publicity, under, ty, false, None)
+		environment.facts.register_property(self.0, publicity, under, ty, false, None);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -154,7 +154,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						environment,
 						checking_data,
 						performs.as_ref().into(),
-						position.clone().with_source(environment.get_source()),
+						&position.clone().with_source(environment.get_source()),
 						behavior,
 						interface_register_behavior.interface_type(),
 					);
@@ -163,7 +163,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Function(function, getter),
 						checking_data,
 						environment,
-					)
+					);
 				}
 				InterfaceMember::Property {
 					name,
@@ -179,7 +179,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
-					)
+					);
 				}
 				InterfaceMember::Indexer {
 					name,
@@ -196,7 +196,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
-					)
+					);
 				}
 				InterfaceMember::Constructor {
 					parameters,

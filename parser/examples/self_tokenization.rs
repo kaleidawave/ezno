@@ -9,7 +9,7 @@ fn main() {
 
 	let tokens = SelfRustTokenize::to_tokens(&expression);
 
-	println!("{}", tokens);
+	println!("{tokens}");
 }
 
 #[cfg(not(feature = "self-rust-tokenize"))]

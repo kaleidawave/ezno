@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,21 +44,21 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	cli_input_resolver: U,
 	ReplArguments { type_output, const_as_let, type_definition_module }: ReplArguments,
 ) {
-	let mut items = if !type_output {
+	let mut items = if type_output {
+		None
+	} else {
 		let mut deno = Command::new("deno");
 		let command = deno.arg("repl").arg("-q").stdout(Stdio::piped()).stdin(Stdio::piped());
 		let mut process = command.spawn().unwrap();
 		let stdin = process.stdin.take().unwrap();
 		let child_buf = BufReader::new(process.stdout.take().unwrap());
 		Some((process, stdin, child_buf))
-	} else {
-		None
 	};
 
 	let definitions = if let Some(tdm) = type_definition_module {
-		HashSet::from_iter(std::iter::once(tdm))
+		std::iter::once(tdm).collect()
 	} else {
-		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
+		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
 	};
 
 	let state = checker::synthesis::interactive::State::new(&file_system_resolver, definitions);
@@ -67,7 +66,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 	let mut state = match state {
 		Ok(state) => state,
 		Err((diagnostics, fs)) => {
-			for diagnostic in diagnostics.into_iter() {
+			for diagnostic in diagnostics {
 				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 			}
 			return;
@@ -87,9 +86,9 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 					stdin.flush().unwrap();
 				}
 				break;
-			} else {
-				input
 			}
+
+			input
 		} else {
 			continue;
 		};
@@ -131,7 +130,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 
 		match result {
 			Ok((last_ty, diagnostics)) => {
-				for diagnostic in diagnostics.into_iter() {
+				for diagnostic in diagnostics {
 					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
 				}
 				if let Some((_process, stdin, child_buf)) = items.as_mut() {
@@ -143,18 +142,15 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 
 					loop {
 						let mut buf = String::new();
-						match child_buf.read_line(&mut buf) {
-							Ok(_output) => {
-								if buf.contains("REPL_END") {
-									break;
-								}
-								// deno already emits new line so just print here
-								print!("{}", buf);
-							}
-							Err(_) => {
-								println!("Error");
+						if let Ok(_output) = child_buf.read_line(&mut buf) {
+							if buf.contains("REPL_END") {
 								break;
 							}
+							// deno already emits new line so just print here
+							print!("{buf}");
+						} else {
+							println!("Error");
+							break;
 						}
 					}
 				} else if let Some(last_ty) = last_ty {
@@ -162,7 +158,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 				}
 			}
 			Err(diagnostics) => {
-				for diagnostic in diagnostics.into_iter() {
+				for diagnostic in diagnostics {
 					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
 				}
 			}

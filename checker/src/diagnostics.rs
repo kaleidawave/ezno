@@ -1,5 +1,6 @@
 //! Contains type checking errors, warnings and related structures
 
+use crate::diagnostics;
 use serde::Serialize;
 use source_map::{SourceId, Span, SpanWithSource};
 use std::{
@@ -45,12 +46,13 @@ impl Diagnostic {
 			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source))),
 			Diagnostic::PositionWithAdditionLabels { position: pos, labels, .. } => {
 				Right(iter::once(pos.source).chain(
-					labels.iter().flat_map(|(_, span)| span.as_ref().map(|span| span.source)),
+					labels.iter().filter_map(|(_, span)| span.as_ref().map(|span| span.source)),
 				))
 			}
 		}
 	}
 
+	#[must_use]
 	pub fn reason(&self) -> &str {
 		match self {
 			Diagnostic::Global { reason, .. }
@@ -59,6 +61,7 @@ impl Diagnostic {
 		}
 	}
 
+	#[must_use]
 	pub fn reason_and_position(self) -> (String, Option<SpanWithSource>) {
 		match self {
 			Diagnostic::Global { reason, .. } => (reason, None),
@@ -80,32 +83,35 @@ pub struct DiagnosticsContainer {
 
 // TODO the add methods are the same...
 impl DiagnosticsContainer {
+	#[must_use]
 	pub fn new() -> Self {
 		Self { diagnostics: Default::default(), has_error: false }
 	}
 
 	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {
 		self.has_error = true;
-		self.diagnostics.push(error.into())
+		self.diagnostics.push(error.into());
 	}
 
 	pub fn add_warning<T: Into<Diagnostic>>(&mut self, warning: T) {
-		self.diagnostics.push(warning.into())
+		self.diagnostics.push(warning.into());
 	}
 
 	pub fn add_info<T: Into<Diagnostic>>(&mut self, info: T) {
-		self.diagnostics.push(info.into())
+		self.diagnostics.push(info.into());
 	}
 
+	#[must_use]
 	pub fn has_error(&self) -> bool {
 		self.has_error
 	}
 
 	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
-		self.diagnostics.iter().flat_map(|item| item.sources())
+		self.diagnostics.iter().flat_map(diagnostics::Diagnostic::sources)
 	}
 
 	#[doc(hidden)]
+	#[must_use]
 	pub fn get_diagnostics(self) -> Vec<Diagnostic> {
 		self.diagnostics
 	}
@@ -147,6 +153,7 @@ pub enum PropertyRepresentation {
 }
 
 impl TypeStringRepresentation {
+	#[must_use]
 	pub fn from_type_id(
 		id: TypeId,
 		ctx: &GeneralContext,
@@ -297,8 +304,7 @@ mod defined_errors_and_warnings {
 				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable {} in scope",
-							variable,
+							"Could not find variable {variable} in scope",
 							// possibles Consider '{:?}'
 						),
 						position,
@@ -306,15 +312,15 @@ mod defined_errors_and_warnings {
 					}
 				}
 				TypeCheckError::CouldNotFindType(reference, pos) => Diagnostic::Position {
-					reason: format!("Could not find type '{}'", reference),
+					reason: format!("Could not find type '{reference}'"),
 					position: pos,
 					kind,
 				},
 				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
 					Diagnostic::Position {
 						reason: match property {
-							PropertyRepresentation::Type(ty) => format!("No property of type {} on {}", ty, on),
-							PropertyRepresentation::StringKey(property) => format!("No property '{}' on {}", property, on),
+							PropertyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
+							PropertyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
 						},
 						position: site,
 						kind,
@@ -331,14 +337,12 @@ mod defined_errors_and_warnings {
 						if let Some((restriction_pos, restriction)) = restriction {
 							Diagnostic::PositionWithAdditionLabels {
 								reason: format!(
-									"Argument of type {} is not assignable to parameter of type {}",
-									argument_type, restriction
+									"Argument of type {argument_type} is not assignable to parameter of type {restriction}" 
 								),
 								position: argument_position,
 								labels: vec![(
 									format!(
-										"{} was specialised with type {}",
-										parameter_type, restriction
+										"{parameter_type} was specialised with type {restriction}"
 									),
 									Some(restriction_pos),
 								)],
@@ -347,12 +351,11 @@ mod defined_errors_and_warnings {
 						} else {
 							Diagnostic::PositionWithAdditionLabels {
 								reason: format!(
-									"Argument of type {} is not assignable to parameter of type {}",
-									argument_type, parameter_type
+									"Argument of type {argument_type} is not assignable to parameter of type {parameter_type}",
 								),
 								position: argument_position,
 								labels: vec![(
-									format!("Parameter has type {}", parameter_type),
+									format!("Parameter has type {parameter_type}"),
 									Some(parameter_position),
 								)],
 								kind,
@@ -513,7 +516,7 @@ mod defined_errors_and_warnings {
 					}
 				}
 				TypeCheckError::Unsupported { thing, at } => Diagnostic::Position {
-					reason: format!("Unsupported: {}", thing),
+					reason: format!("Unsupported: {thing}"),
 					position: at,
 					kind,
 				},
@@ -524,8 +527,7 @@ mod defined_errors_and_warnings {
 					position,
 				} => Diagnostic::Position {
 					reason: format!(
-						"{} constraint on function does not match synthesised form {}",
-						function_constraint, function_type
+						"{function_constraint} constraint on function does not match synthesised form {function_type}",
 					),
 					position,
 					kind,
@@ -642,7 +644,7 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckWarning::DeadBranch { expression_span, expression_value } => {
 					Diagnostic::Position {
-						reason: format!("Expression is always {:?}", expression_value),
+						reason: format!("Expression is always {expression_value:?}"),
 						position: expression_span,
 						kind,
 					}
@@ -653,7 +655,7 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckWarning::Unimplemented { thing, at } => Diagnostic::Position {
-					reason: format!("Unsupported: {}", thing),
+					reason: format!("Unsupported: {thing}"),
 					position: at,
 					kind,
 				},

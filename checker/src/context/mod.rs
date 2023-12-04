@@ -305,7 +305,7 @@ impl<T: ContextType> Context<T> {
 	/// Declares a new variable in the environment and returns the new variable
 	///
 	/// **THIS IS USED FOR HOISTING, DOES NOT SET THE VALUE**
-	/// TODO maybe name: VariableDeclarator to include destructuring ...?
+	/// TODO maybe name: `VariableDeclarator` to include destructuring ...?
 	/// TODO hoisted vs declared
 	pub fn register_variable<'b>(
 		&mut self,
@@ -396,10 +396,10 @@ impl<T: ContextType> Context<T> {
 			}
 		};
 
-		if !existing_variable {
-			Ok(ty)
-		} else {
+		if existing_variable {
 			Err(CannotRedeclareVariable { name })
+		} else {
+			Ok(ty)
 		}
 	}
 
@@ -410,18 +410,18 @@ impl<T: ContextType> Context<T> {
 		behavior: VariableRegisterBehavior,
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
-		match self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
+		if let Ok(ty) =
+			self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
 		{
-			Ok(ty) => ty,
-			Err(_) => {
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::CannotRedeclareVariable {
-						name: name.to_owned(),
-						position: declared_at,
-					},
-				);
-				TypeId::ERROR_TYPE
-			}
+			ty
+		} else {
+			checking_data.diagnostics_container.add_error(
+				TypeCheckError::CannotRedeclareVariable {
+					name: name.to_owned(),
+					position: declared_at,
+				},
+			);
+			TypeId::ERROR_TYPE
 		}
 	}
 
@@ -479,9 +479,9 @@ impl<T: ContextType> Context<T> {
 			// .unwrap();
 			if let GeneralContext::Syntax(syn) = ctx {
 				if !syn.facts.events.is_empty() {
-					writeln!(buf, "{}> Events:", indent).unwrap();
-					for event in syn.facts.events.iter() {
-						writeln!(buf, "{}   {:?}", indent, event).unwrap();
+					writeln!(buf, "{indent}> Events:").unwrap();
+					for event in &syn.facts.events {
+						writeln!(buf, "{indent}   {event:?}").unwrap();
 					}
 				}
 			}
@@ -494,7 +494,7 @@ impl<T: ContextType> Context<T> {
 		match types.get_type_by_id(on) {
 			Type::RootPolyType(nature) => {
 				fn does_type_have_mutable_constraint<T: ContextType>(
-					context: Context<T>,
+					context: &Context<T>,
 					on: TypeId,
 				) -> bool {
 					context.parents_iter().any(|env| {
@@ -712,11 +712,11 @@ impl<T: ContextType> Context<T> {
 				| Scope::Function(FunctionScope::Function { this_type: this_constraint, .. }) => {
 					Some(*this_constraint)
 				}
-				Scope::Function(_) => None,
 				Scope::FunctionAnnotation {} => todo!(),
-				Scope::StaticBlock { .. } => None,
 				Scope::Conditional { .. }
 				| Scope::Looping { .. }
+				| Scope::StaticBlock { .. }
+				| Scope::Function(_)
 				| Scope::TryBlock { .. }
 				| Scope::TypeAlias
 				| Scope::Block {}
@@ -728,7 +728,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	/// Similar to [Context::get_this_unbound]
+	/// Similar to [`Context::get_this_unbound`]
 	fn get_variable_unbound(
 		&self,
 		variable_name: &str,
@@ -780,7 +780,7 @@ impl<T: ContextType> Context<T> {
 	) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
 		let reversed_flattened_properties = self
 			.parents_iter()
-			.flat_map(|ctx| {
+			.filter_map(|ctx| {
 				let id = get_on_ctx!(ctx.context_id);
 				let properties = get_on_ctx!(ctx.facts.current_properties.get(&base));
 				properties.map(|v| v.iter().rev())
@@ -811,7 +811,7 @@ impl<T: ContextType> Context<T> {
 		types: &TypeStore,
 	) -> Option<Logical<PropertyValue>> {
 		fn get_property(
-			env: GeneralContext,
+			env: &GeneralContext,
 			types: &TypeStore,
 			on: TypeId,
 			under: (Publicity, &PropertyKey),
@@ -860,38 +860,35 @@ impl<T: ContextType> Context<T> {
 
 		// TODO need actual method for these, aka lowest
 
-		match types.get_type_by_id(on) {
-			Type::SpecialObject(obj) => {
-				todo!()
-			}
-			_ => {
-				let under = match under {
-					PropertyKey::Type(t) => {
-						PropertyKey::Type(self.get_poly_base(t, types).unwrap_or(t))
-					}
-					under => under,
-				};
-				types.get_fact_about_type(self, on, &get_property, (publicity, &under))
-			}
+		if let Type::SpecialObject(obj) = types.get_type_by_id(on) {
+			todo!()
+		} else {
+			let under = match under {
+				PropertyKey::Type(t) => {
+					PropertyKey::Type(self.get_poly_base(t, types).unwrap_or(t))
+				}
+				under @ PropertyKey::String(_) => under,
+			};
+			types.get_fact_about_type(self, on, &get_property, (publicity, &under))
 		}
 	}
 
 	/// Note: this also returns base generic types like `Array`
 	pub fn get_type_from_name(&self, name: &str) -> Option<TypeId> {
-		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).cloned()
+		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied()
 	}
 
-	pub(crate) fn get_variable_name(&self, id: &VariableId) -> &str {
-		self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(id))).unwrap()
+	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
+		self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))).unwrap()
 	}
 
 	pub fn as_general_context(&self) -> GeneralContext {
 		T::as_general_context(self)
 	}
 
-	/// TODO doesn't look at aliases using get_type_fact!
+	/// TODO doesn't look at aliases using `get_type_fact`!
 	pub fn is_frozen(&self, value: TypeId) -> Option<TypeId> {
-		self.parents_iter().find_map(|ctx| get_on_ctx!(ctx.facts.frozen.get(&value))).cloned()
+		self.parents_iter().find_map(|ctx| get_on_ctx!(ctx.facts.frozen.get(&value))).copied()
 	}
 
 	// TODO temp declaration
@@ -1078,7 +1075,7 @@ impl<T: ContextType> Context<T> {
 
 				self.can_reference_this = can_reference_this;
 
-				for (on, mut properties) in facts.current_properties.into_iter() {
+				for (on, mut properties) in facts.current_properties {
 					match self.facts.current_properties.entry(on) {
 						hash_map::Entry::Occupied(mut occupied) => {
 							occupied.get_mut().append(&mut properties);
@@ -1142,15 +1139,14 @@ impl<T: ContextType> Context<T> {
 		pos: SpanWithSource,
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
-		match self.get_type_from_name(name) {
-			Some(val) => val,
-			None => {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::CouldNotFindType(name, pos));
+		if let Some(val) = self.get_type_from_name(name) {
+			val
+		} else {
+			checking_data
+				.diagnostics_container
+				.add_error(TypeCheckError::CouldNotFindType(name, pos));
 
-				TypeId::ERROR_TYPE
-			}
+			TypeId::ERROR_TYPE
 		}
 	}
 
@@ -1294,9 +1290,9 @@ impl<T: ContextType> Context<T> {
 			.flat_map(|env| {
 				get_on_ctx!(env.object_constraints.get(&on))
 					.iter()
-					.cloned()
+					.copied()
 					.flatten()
-					.cloned()
+					.copied()
 					.collect::<Vec<_>>()
 			})
 			.collect()
@@ -1309,22 +1305,25 @@ impl<T: ContextType> Context<T> {
 	pub(crate) fn get_value_of_this(
 		&mut self,
 		types: &TypeStore,
-		position: SpanWithSource,
+		position: &SpanWithSource,
 	) -> TypeId {
 		self.parents_iter()
-			.find_map(|env| match env {
-				GeneralContext::Syntax(ctx) => match ctx.context_type.scope {
-					Scope::Function(
-						FunctionScope::ArrowFunction { free_this_type, .. }
-						| FunctionScope::MethodFunction { free_this_type, .. },
-					) => Some(free_this_type),
-					Scope::Function(FunctionScope::Constructor { this_object_type, .. }) => {
-						Some(this_object_type)
+			.find_map(|env| {
+				if let GeneralContext::Syntax(ctx) = env {
+					match ctx.context_type.scope {
+						Scope::Function(
+							FunctionScope::ArrowFunction { free_this_type, .. }
+							| FunctionScope::MethodFunction { free_this_type, .. },
+						) => Some(free_this_type),
+						Scope::Function(FunctionScope::Constructor {
+							this_object_type, ..
+						}) => Some(this_object_type),
+						Scope::Function(FunctionScope::Function { this_type, .. }) => {
+							Some(this_type)
+						}
+						_ => None,
 					}
-					Scope::Function(FunctionScope::Function { this_type, .. }) => Some(this_type),
-					_ => None,
-				},
-				_ => {
+				} else {
 					crate::utils::notify!("TODO get root type");
 					Some(TypeId::ERROR_TYPE)
 				}
@@ -1402,6 +1401,7 @@ pub enum Logical<T> {
 }
 
 impl<'a, T: Clone> Logical<&'a T> {
+	#[must_use]
 	pub fn cloned(self) -> Logical<T> {
 		match self {
 			Logical::Pure(t) => Logical::Pure(t.clone()),

@@ -73,8 +73,7 @@ impl ASTNode for SwitchStatement {
 			let mut statements = Vec::new();
 			loop {
 				if let Some(Token(
-					TSXToken::Keyword(TSXKeyword::Case)
-					| TSXToken::Keyword(TSXKeyword::Default)
+					TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default)
 					| TSXToken::CloseBrace,
 					_,
 				)) = reader.peek()
@@ -87,9 +86,9 @@ impl ASTNode for SwitchStatement {
 				}
 			}
 			if let Some(case) = case {
-				branches.push(SwitchBranch::Case(case, statements))
+				branches.push(SwitchBranch::Case(case, statements));
 			} else {
-				branches.push(SwitchBranch::Default(statements))
+				branches.push(SwitchBranch::Default(statements));
 			}
 		}
 		Ok(Self { case, branches, position: start.union(close_brace_pos) })
@@ -108,7 +107,7 @@ impl ASTNode for SwitchStatement {
 		buf.push(')');
 		options.add_gap(buf);
 		buf.push('{');
-		for branch in self.branches.iter() {
+		for branch in &self.branches {
 			if options.pretty {
 				buf.push_new_line();
 				options.add_indent(depth + 1, buf);

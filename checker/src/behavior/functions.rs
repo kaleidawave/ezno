@@ -36,20 +36,20 @@ pub enum ThisValue {
 
 impl ThisValue {
 	pub(crate) fn get(
-		&self,
+		self,
 		environment: &mut Environment,
 		types: &TypeStore,
-		position: SpanWithSource,
+		position: &SpanWithSource,
 	) -> TypeId {
 		match self {
-			ThisValue::Passed(value) => *value,
+			ThisValue::Passed(value) => value,
 			ThisValue::UseParent => environment.get_value_of_this(types, position),
 		}
 	}
 
-	pub(crate) fn get_passed(&self) -> Option<TypeId> {
+	pub(crate) fn get_passed(self) -> Option<TypeId> {
 		match self {
-			ThisValue::Passed(value) => Some(*value),
+			ThisValue::Passed(value) => Some(value),
 			ThisValue::UseParent => None,
 		}
 	}
@@ -123,7 +123,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 }
 
 pub fn function_to_property(
-	getter_setter: GetterSetter,
+	getter_setter: &GetterSetter,
 	function: FunctionType,
 	types: &mut TypeStore,
 ) -> PropertyValue {
@@ -271,6 +271,7 @@ impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
 		}
 	}
 
+	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
 			FunctionRegisterBehavior::ExpressionFunction { is_generator, .. }

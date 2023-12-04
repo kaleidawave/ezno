@@ -25,7 +25,6 @@ pub(crate) fn substitute(
 	let ty = types.get_type_by_id(id);
 
 	match ty {
-		Type::Constant(_) => id,
 		Type::Object(..) => {
 			// TODO only sometimes
 			curry_arguments(arguments, types, id)
@@ -42,7 +41,11 @@ pub(crate) fn substitute(
 			curry_arguments(arguments, types, id)
 		}
 		Type::FunctionReference(f, t) => curry_arguments(arguments, types, id),
-		Type::AliasTo { .. } | Type::And(_, _) | Type::Or(_, _) | Type::NamedRooted { .. } => id,
+		Type::Constant(_)
+		| Type::AliasTo { .. }
+		| Type::And(_, _)
+		| Type::Or(_, _)
+		| Type::NamedRooted { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
 				id
@@ -207,7 +210,7 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, operator, rhs, types, false)
+				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
 					.expect("restriction about binary operator failed")
 			}
 			Constructor::TypeOperator(..) => todo!(),
@@ -258,7 +261,9 @@ pub(crate) fn curry_arguments(
 	types: &mut TypeStore,
 	id: TypeId,
 ) -> TypeId {
-	if !arguments.is_empty() {
+	if arguments.is_empty() {
+		id
+	} else {
 		crate::utils::notify!("Storing arguments onto object");
 		// TODO only carry arguments that are used
 		let arguments = arguments.to_structural_generic_arguments();
@@ -266,7 +271,5 @@ pub(crate) fn curry_arguments(
 		types.register_type(Type::Constructor(Constructor::StructureGenerics(
 			crate::types::StructureGenerics { on: id, arguments },
 		)))
-	} else {
-		id
 	}
 }

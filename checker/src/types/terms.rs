@@ -2,9 +2,9 @@ use super::TypeId;
 
 /// Terms
 /// TODO:
-/// - IntoProof
-/// - BigInt (https://github.com/rust-num/num-bigint)
-/// - Separate NotNull term, and implement js subtyping
+/// - `IntoProof`
+/// - `BigInt` (<https://github.com/rust-num/num-bigint>)
+/// - Separate `NotNull` term, and implement js subtyping
 ///
 /// TODO not sure about some of these
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -26,6 +26,7 @@ pub enum Constant {
 
 impl Constant {
 	/// **AS OF THE JS IMPLEMENTATION**
+	#[must_use]
 	pub fn as_js_string(&self) -> String {
 		match self {
 			Constant::Number(value) => value.to_string(),
@@ -39,7 +40,7 @@ impl Constant {
 		}
 	}
 
-	/// Like [Constant::as_js_string] but adds quotes to strings
+	/// Like [`Constant::as_js_string`] but adds quotes to strings
 	///
 	/// TODO take buffer
 	pub(crate) fn as_type_name(&self) -> String {
@@ -56,6 +57,7 @@ impl Constant {
 		}
 	}
 
+	#[must_use]
 	pub fn get_backing_type_id(&self) -> TypeId {
 		match self {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,

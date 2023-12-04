@@ -63,13 +63,14 @@ fn markdown_lines_append_test_to_rust(
 		let blocks = {
 			let mut blocks = Vec::new();
 			let mut current_filename = None;
-			while let Some((_, line)) = lines.next() {
+			for (_, line) in lines.by_ref() {
 				if line == "```ts" {
 					break;
 				}
 			}
 			let mut code = String::new();
-			while let Some((_, line)) = lines.next() {
+
+			for (_, line) in lines.by_ref() {
 				if let Some(path) = line.strip_prefix("// in ") {
 					if !code.trim().is_empty() {
 						blocks.push((
@@ -91,7 +92,7 @@ fn markdown_lines_append_test_to_rust(
 		};
 		let errors = {
 			let mut errors = Vec::new();
-			while let Some((_, line)) = lines.next() {
+			for (_, line) in lines.by_ref() {
 				if line.starts_with("#") {
 					panic!("block with no diagnostics or break between")
 				} else if line.starts_with('-') {

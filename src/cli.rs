@@ -60,6 +60,8 @@ pub(crate) enum ExperimentalSubcommand {
 /// TODO definition file as list
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "build")]
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct BuildArguments {
 	/// path to input file
 	#[argh(positional)]
@@ -146,7 +148,7 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 
 pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
 	cli_arguments: &[&str],
-	read_file: T,
+	read_file: &T,
 	write_file: U,
 	cli_input_resolver: V,
 ) {
@@ -164,7 +166,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		}
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file } = check_arguments;
-			let (diagnostics, _others) = check(&read_file, &input, definition_file.as_deref());
+			let (diagnostics, _others) = check(read_file, &input, definition_file.as_deref());
 
 			let fs = match _others {
 				Ok(data) => data.module_contents,
@@ -195,11 +197,11 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			};
 
 			let output = build(
-				&read_file,
+				read_file,
 				&build_config.input,
 				build_config.definition_file.as_deref(),
 				&output_path,
-				BuildConfig { strip_whitespace: build_config.minify },
+				&BuildConfig { strip_whitespace: build_config.minify },
 				Some(default_builders),
 			);
 
@@ -208,14 +210,14 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					for diagnostic in diagnostics.into_iter() {
+					for diagnostic in diagnostics {
 						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 					}
 
 					print_to_cli(format_args!("Project built successfully 🎉"))
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					for diagnostic in diagnostics.into_iter() {
+					for diagnostic in diagnostics {
 						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 					}
 				}
