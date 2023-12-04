@@ -168,6 +168,17 @@ fn print_type_into_buf(
 					unreachable!()
 				}
 			},
+			Constructor::Property { on, under, result } => {
+				// TODO inefficient
+				if crate::types::is_explicit_generic(*on, types) {
+					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					buf.push('[');
+					print_property_key_into_buf(buf, under, cycles, types, ctx, debug);
+					buf.push(']');
+				} else {
+					print_type_into_buf(*result, buf, cycles, types, ctx, debug)
+				}
+			}
 			constructor => {
 				let base = get_on_ctx!(ctx.get_poly_base(id, types)).unwrap();
 				print_type_into_buf(base, buf, cycles, types, ctx, debug)

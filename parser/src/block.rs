@@ -6,14 +6,15 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, VisitOptions,
-	Visitable,
+	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, TSXKeyword,
+	VisitOptions, Visitable,
 };
 
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[visit_self(under statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
@@ -58,6 +59,16 @@ impl ASTNode for StatementOrDeclaration {
 			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
 		} else {
+			if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum | TSXKeyword::Type), _)) =
+				reader.peek()
+			{
+				if reader.peek_n(1).map_or(false, |t| !t.0.is_symbol()) {
+					return Ok(StatementOrDeclaration::Declaration(Declaration::from_reader(
+						reader, state, options,
+					)?));
+				}
+			}
+
 			let stmt = Statement::from_reader(reader, state, options)?;
 			Ok(StatementOrDeclaration::Statement(stmt))
 		}
@@ -211,12 +222,58 @@ impl Visitable for Block {
 }
 
 /// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, EnumFrom)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
+}
+
+impl Visitable for BlockOrSingleStatement {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(b) => {
+				b.visit(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(s) => {
+				s.visit(visitors, data, options, chain);
+				visitors.visit_statement(
+					crate::visiting::BlockItem::SingleStatement(&s),
+					data,
+					chain,
+				);
+			}
+		}
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(ref mut b) => {
+				b.visit_mut(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(ref mut s) => {
+				s.visit_mut(visitors, data, options, chain);
+				visitors.visit_statement_mut(
+					crate::visiting::BlockItemMut::SingleStatement(s),
+					data,
+					chain,
+				);
+			}
+		}
+	}
 }
 
 impl From<Statement> for BlockOrSingleStatement {

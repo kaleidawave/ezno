@@ -434,3 +434,16 @@ pub enum PropertyError {
 	Missing,
 	Invalid { expected: TypeId, found: TypeId, mismatch: NonEqualityReason },
 }
+
+/// TODO temp fix for printing
+pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
+	if let Type::RootPolyType(PolyNature::Generic { .. }) = types.get_type_by_id(on) {
+		true
+	} else if let Type::Constructor(Constructor::Property { on, under, result }) =
+		types.get_type_by_id(on)
+	{
+		is_explicit_generic(*on, types)
+	} else {
+		false
+	}
+}

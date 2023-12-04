@@ -1,6 +1,6 @@
 use crate::{
 	visiting::{Chain, VisitOptions, Visitable},
-	Quoted, TSXToken, WithComment,
+	Quoted, TSXToken,
 };
 use source_map::Span;
 use std::fmt::Debug;
@@ -141,8 +141,13 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 				Ok(Self::Computed(Box::new(expression), start.union(end)))
 			}
 			token => {
-				let (name, position, private) = U::parse_ident(token, reader)?;
-				Ok(Self::Ident(name, position, private))
+				if token.0.is_comment() {
+					// TODO could add marker?
+					Self::from_reader(reader, state, options)
+				} else {
+					let (name, position, private) = U::parse_ident(token, reader)?;
+					Ok(Self::Ident(name, position, private))
+				}
 			}
 		}
 	}
@@ -170,7 +175,8 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 	}
 }
 
-impl Visitable for WithComment<PropertyKey<PublicOrPrivate>> {
+// TODO visit expression?
+impl Visitable for PropertyKey<PublicOrPrivate> {
 	fn visit<TData>(
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
@@ -200,7 +206,7 @@ impl Visitable for WithComment<PropertyKey<PublicOrPrivate>> {
 	}
 }
 
-impl Visitable for WithComment<PropertyKey<AlwaysPublic>> {
+impl Visitable for PropertyKey<AlwaysPublic> {
 	fn visit<TData>(
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),

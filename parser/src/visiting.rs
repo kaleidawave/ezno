@@ -1,3 +1,5 @@
+//! Contains logic that makes viewing and transform parts of AST trivial through the visitor pattern
+
 use source_map::SourceId;
 
 use crate::{
@@ -28,8 +30,9 @@ mod ast {
 		/// const x = 2;
 		/// const y = 3;
 		/// ```
-		/// If `reverse_statements` is true will visit the `const y = 3` statement first
+		/// If `reverse_statements` is true, `const y = 3` will be visited before `const x = 2`
 		pub reverse_statements: bool,
+		/// Will not visit anything under nested blocks, functions etc
 		pub visit_nested_blocks: bool,
 	}
 
@@ -47,15 +50,19 @@ mod ast {
             )*
         }
     }
+
+	/// Yielded during visiting AST. Might not be 1:1 with AST and include a wrapping type
 	pub trait SelfVisitable {}
+
+	/// Yielded during visiting AST. Might not be 1:1 with AST and include a wrapping type
 	pub trait SelfVisitableMut {}
 
 	mark_items! {
-		impl SelfVisitable for Expression, StatementOrDeclarationRef<'_>, BlockLike<'_>, ImmutableVariableOrProperty<'_>
+		impl SelfVisitable for Expression, BlockItem<'_>, BlockLike<'_>, ImmutableVariableOrProperty<'_>
 	}
 
 	mark_items! {
-		impl SelfVisitableMut for Expression, StatementOrDeclarationMut<'_>, BlockLikeMut<'_>, MutableVariableOrProperty<'_>
+		impl SelfVisitableMut for Expression, BlockLikeMut<'_>, BlockItemMut<'_>, MutableVariableOrProperty<'_>
 	}
 
 	/// For something to visitable it can visit all nested fields.
@@ -196,9 +203,8 @@ mod ast {
         }
     }
 
-	// Create a bunch of blank implementations for data types that do not have
+	// A bunch of blank implementations for data types that do not have
 	// any AST nested / aren't important for visiting.
-	// TODO propertyKey should be visited
 	create_blank_visiting_implementations![
 		(),
 		bool,
@@ -244,11 +250,11 @@ mod ast {
 	];
 }
 
-/// These are structures used when visiting AST
+/// Data used when visiting AST
 mod structures {
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		Declaration, Statement, VariableFieldInSourceCode, VariableIdentifier,
+		Statement, VariableFieldInSourceCode, VariableIdentifier,
 	};
 
 	use super::*;
@@ -262,7 +268,7 @@ mod structures {
 		Block(Span),
 	}
 
-	/// The current location in the AST
+	/// Contains [ChainVariable]s which signal the position in the AST
 	#[derive(Debug, Clone)]
 	pub struct Chain(Vec<ChainVariable>);
 
@@ -287,11 +293,6 @@ mod structures {
 
 		pub fn truncate(&mut self, to_size: usize) {
 			self.0.truncate(to_size)
-		}
-
-		/// TODO remove
-		pub fn get_chain(&self) -> &[ChainVariable] {
-			&self.0
 		}
 
 		pub fn get_module(&self) -> SourceId {
@@ -332,8 +333,8 @@ mod structures {
 		),
 		ClassName(Option<&'a VariableIdentifier>),
 		FunctionName(Option<&'a VariableIdentifier>),
-		ClassPropertyKey(&'a WithComment<PropertyKey<PublicOrPrivate>>),
-		ObjectPropertyKey(&'a WithComment<PropertyKey<AlwaysPublic>>),
+		ClassPropertyKey(&'a PropertyKey<PublicOrPrivate>),
+		ObjectPropertyKey(&'a PropertyKey<AlwaysPublic>),
 	}
 
 	#[derive(Debug)]
@@ -346,16 +347,25 @@ mod structures {
 		),
 		ClassName(Option<&'a mut VariableIdentifier>),
 		FunctionName(Option<&'a mut VariableIdentifier>),
-		ClassPropertyKey(&'a mut WithComment<PropertyKey<PublicOrPrivate>>),
-		ObjectPropertyKey(&'a mut WithComment<PropertyKey<AlwaysPublic>>),
+		ClassPropertyKey(&'a mut PropertyKey<PublicOrPrivate>),
+		ObjectPropertyKey(&'a mut PropertyKey<AlwaysPublic>),
 	}
 
 	impl<'a> ImmutableVariableOrProperty<'a> {
 		pub fn get_variable_name(&self) -> Option<&'a str> {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
-				ImmutableVariableOrProperty::ArrayDestructuringMember(_)
-				| ImmutableVariableOrProperty::ObjectDestructuringMember(_) => None,
+				ImmutableVariableOrProperty::ArrayDestructuringMember(a) => match a {
+					ArrayDestructuringField::Spread(_, a) => Some(a.as_str()),
+					ArrayDestructuringField::Name(_, _) | ArrayDestructuringField::None => None,
+				},
+				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
+					match o.get_ast_ref() {
+						ObjectDestructuringField::Spread(name, _)
+						| ObjectDestructuringField::Name(name, _, _) => Some(name.as_str()),
+						ObjectDestructuringField::Map { .. } => None,
+					}
+				}
 				ImmutableVariableOrProperty::FunctionName(name)
 				| ImmutableVariableOrProperty::ClassName(name) => name.map(|n| n.as_str()),
 				ImmutableVariableOrProperty::ObjectPropertyKey(_property) => {
@@ -396,63 +406,41 @@ mod structures {
 		}
 	}
 
-	pub enum StatementOrDeclarationRef<'a> {
-		Statement(&'a crate::Statement),
-		Declaration(&'a crate::Declaration),
+	/// Wrapper type for [StatementOrDeclaration]. Needed because [crate::Statement] doesn't
+	/// come under [StatementOrDeclaration] in the case of [crate::BlockOrSingleStatement]
+	pub enum BlockItem<'a> {
+		StatementOrDeclaration(&'a crate::StatementOrDeclaration),
+		SingleStatement(&'a crate::Statement),
 	}
 
-	impl<'a> From<&'a StatementOrDeclaration> for StatementOrDeclarationRef<'a> {
-		fn from(value: &'a StatementOrDeclaration) -> Self {
-			match value {
-				StatementOrDeclaration::Statement(item) => {
-					StatementOrDeclarationRef::Statement(item)
-				}
-				StatementOrDeclaration::Declaration(item) => {
-					StatementOrDeclarationRef::Declaration(item)
-				}
-			}
+	impl<'a> From<&'a StatementOrDeclaration> for BlockItem<'a> {
+		fn from(item: &'a StatementOrDeclaration) -> Self {
+			BlockItem::StatementOrDeclaration(item)
 		}
 	}
 
-	impl<'a> From<&'a Statement> for StatementOrDeclarationRef<'a> {
+	impl<'a> From<&'a Statement> for BlockItem<'a> {
 		fn from(item: &'a Statement) -> Self {
-			StatementOrDeclarationRef::Statement(item)
+			BlockItem::SingleStatement(item)
 		}
 	}
 
-	impl<'a> From<&'a Declaration> for StatementOrDeclarationRef<'a> {
-		fn from(item: &'a Declaration) -> Self {
-			StatementOrDeclarationRef::Declaration(item)
+	/// Wrapper type for [StatementOrDeclaration]. Needed because [crate::Statement] doesn't
+	/// come under [StatementOrDeclaration] in the case of [crate::BlockOrSingleStatement]
+	pub enum BlockItemMut<'a> {
+		StatementOrDeclaration(&'a mut crate::StatementOrDeclaration),
+		SingleStatement(&'a mut crate::Statement),
+	}
+
+	impl<'a> From<&'a mut StatementOrDeclaration> for BlockItemMut<'a> {
+		fn from(item: &'a mut StatementOrDeclaration) -> Self {
+			BlockItemMut::StatementOrDeclaration(item)
 		}
 	}
 
-	pub enum StatementOrDeclarationMut<'a> {
-		Statement(&'a mut crate::Statement),
-		Declaration(&'a mut crate::Declaration),
-	}
-
-	impl<'a> From<&'a mut StatementOrDeclaration> for StatementOrDeclarationMut<'a> {
-		fn from(value: &'a mut StatementOrDeclaration) -> Self {
-			match value {
-				StatementOrDeclaration::Statement(item) => {
-					StatementOrDeclarationMut::Statement(item)
-				}
-				StatementOrDeclaration::Declaration(item) => {
-					StatementOrDeclarationMut::Declaration(item)
-				}
-			}
-		}
-	}
-
-	impl<'a> From<&'a mut Statement> for StatementOrDeclarationMut<'a> {
+	impl<'a> From<&'a mut Statement> for BlockItemMut<'a> {
 		fn from(item: &'a mut Statement) -> Self {
-			StatementOrDeclarationMut::Statement(item)
-		}
-	}
-
-	impl<'a> From<&'a mut Declaration> for StatementOrDeclarationMut<'a> {
-		fn from(item: &'a mut Declaration) -> Self {
-			StatementOrDeclarationMut::Declaration(item)
+			BlockItemMut::SingleStatement(item)
 		}
 	}
 }
@@ -462,23 +450,17 @@ mod visitors {
 	use crate::{block::BlockLike, TSXKeyword};
 	use source_map::Span;
 
-	/// A visitor over something which is hooked/is SelfVisitable with some Data
+	/// A visitor over something which is hooked/is [SelfVisitable] with some generic `Data`
 	pub trait Visitor<Item: SelfVisitable, Data> {
 		fn visit(&mut self, item: &Item, data: &mut Data, chain: &Chain);
 	}
 
-	/// These are a receiver traits of the visitor
+	/// Something which has a bunch of callbacks for AST
 	#[allow(unused_variables)]
 	pub trait VisitorReceiver<T> {
 		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {}
 
-		fn visit_statement(
-			&mut self,
-			statement: StatementOrDeclarationRef,
-			data: &mut T,
-			chain: &Chain,
-		) {
-		}
+		fn visit_statement(&mut self, statement: BlockItem, data: &mut T, chain: &Chain) {}
 
 		fn visit_variable(
 			&mut self,
@@ -498,12 +480,7 @@ mod visitors {
 			self.expression_visitors.iter_mut().for_each(|vis| vis.visit(expression, data, chain));
 		}
 
-		fn visit_statement(
-			&mut self,
-			statement: StatementOrDeclarationRef,
-			data: &mut T,
-			chain: &Chain,
-		) {
+		fn visit_statement(&mut self, statement: BlockItem, data: &mut T, chain: &Chain) {
 			self.statement_visitors.iter_mut().for_each(|vis| vis.visit(&statement, data, chain));
 		}
 
@@ -525,10 +502,12 @@ mod visitors {
 	}
 
 	type ExpressionVisitor<T> = Box<dyn Visitor<Expression, T>>;
-	type StatementVisitor<T> = Box<dyn for<'a> Visitor<StatementOrDeclarationRef<'a>, T>>;
+	type StatementVisitor<T> = Box<dyn for<'a> Visitor<BlockItem<'a>, T>>;
 	type VariableVisitor<T> = Box<dyn for<'a> Visitor<ImmutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> Visitor<BlockLike<'a>, T>>;
 
+	/// A utility type which implements [VisitorReceiver]. Use for running a bunch of different **immutable**
+	/// visitors over a **immutable** AST. Used for simple analysis
 	#[derive(Default)]
 	pub struct Visitors<T> {
 		pub expression_visitors: Vec<ExpressionVisitor<T>>,
@@ -591,13 +570,7 @@ mod visitors_mut {
 		) {
 		}
 
-		fn visit_statement_mut(
-			&mut self,
-			statement: StatementOrDeclarationMut,
-			data: &mut T,
-			chain: &Chain,
-		) {
-		}
+		fn visit_statement_mut(&mut self, statement: BlockItemMut, data: &mut T, chain: &Chain) {}
 
 		fn visit_variable_mut(
 			&mut self,
@@ -610,10 +583,12 @@ mod visitors_mut {
 		fn visit_block_mut(&mut self, block: &mut BlockLikeMut, data: &mut T, chain: &Chain) {}
 	}
 
-	type StatementVisitor<T> = Box<dyn for<'a> VisitorMut<StatementOrDeclarationMut<'a>, T>>;
+	type StatementVisitor<T> = Box<dyn for<'a> VisitorMut<BlockItemMut<'a>, T>>;
 	type VariableVisitor<T> = Box<dyn for<'a> VisitorMut<MutableVariableOrProperty<'a>, T>>;
 	type BlockVisitor<T> = Box<dyn for<'a> VisitorMut<BlockLikeMut<'a>, T>>;
 
+	/// A utility type which implements [VisitorMutReceiver]. Use for running a bunch of different **mutable**
+	/// visitors over a **mutable** AST. Therefore can remove, add or change AST
 	pub struct VisitorsMut<T> {
 		pub expression_visitors_mut: Vec<Box<dyn VisitorMut<Expression, T>>>,
 		pub statement_visitors_mut: Vec<StatementVisitor<T>>,
@@ -644,15 +619,10 @@ mod visitors_mut {
 				.for_each(|vis| vis.visit_mut(expression, data, chain));
 		}
 
-		fn visit_statement_mut(
-			&mut self,
-			mut statement: StatementOrDeclarationMut,
-			data: &mut T,
-			chain: &Chain,
-		) {
+		fn visit_statement_mut(&mut self, mut item: BlockItemMut, data: &mut T, chain: &Chain) {
 			self.statement_visitors_mut
 				.iter_mut()
-				.for_each(|vis| vis.visit_mut(&mut statement, data, chain));
+				.for_each(|vis| vis.visit_mut(&mut item, data, chain));
 		}
 
 		fn visit_variable_mut(

@@ -9,7 +9,7 @@ use crate::{
 	tsx_keywords,
 	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
 	ASTNode, Expression, GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions,
-	ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -27,7 +27,7 @@ pub struct InterfaceDeclaration {
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
-	pub members: Vec<Decorated<InterfaceMember>>,
+	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
 	pub position: Span,
 }
 
@@ -215,7 +215,6 @@ pub enum InterfaceMember {
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
-	Comment(String, Span),
 }
 
 impl ASTNode for InterfaceMember {
@@ -329,18 +328,6 @@ impl ASTNode for InterfaceMember {
 					type_parameters,
 					return_type,
 				})
-			}
-			TSXToken::MultiLineComment(..) | TSXToken::Comment(..) => {
-				let token = reader.next().unwrap();
-				let span = token.get_span();
-				let comment = if let TSXToken::MultiLineComment(comment)
-				| TSXToken::Comment(comment) = token.0
-				{
-					comment
-				} else {
-					unreachable!()
-				};
-				Ok(InterfaceMember::Comment(comment, span))
 			}
 			_ => {
 				let header = MethodHeader::from_reader(reader);
@@ -667,13 +654,13 @@ pub(crate) fn parse_interface_members(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
-) -> ParseResult<Vec<Decorated<InterfaceMember>>> {
+) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
 	let mut members = Vec::new();
 	loop {
 		if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
 			break;
 		}
-		let decorated_member = Decorated::<InterfaceMember>::from_reader(reader, state, options)?;
+		let decorated_member = WithComment::from_reader(reader, state, options)?;
 		members.push(decorated_member);
 		// Semi colons and commas are optional here
 		if let Some(Token(TSXToken::SemiColon | TSXToken::Comma, _)) = reader.peek() {

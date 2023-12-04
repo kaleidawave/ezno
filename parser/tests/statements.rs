@@ -233,7 +233,7 @@ generator function a() {}
 generator server function a() {}
 generator server function a() {}
 async server function a() {}
-module function a() {}
+worker function a() {}
     "#
 	.trim();
 

@@ -56,7 +56,7 @@ use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
-use std::{borrow::Cow, ops::Neg, str::FromStr};
+use std::{borrow::Cow, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -88,21 +88,25 @@ pub struct ParseOptions {
 	pub decorators: bool,
 	pub generator_keyword: bool,
 	/// Skip **all** comments from the AST
-	pub include_comments: bool,
+	pub comments: Comments,
 	/// See [crate::extensions::is_expression::IsExpression]
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
-	pub server_functions: bool,
-	/// Allows functions to be prefixed with 'module'
-	pub module_functions: bool,
+	pub custom_function_headers: bool,
 	/// For LSP allows incomplete AST for completions. TODO tidy up
 	pub slots: bool,
+	/// TODO temp for seeing how channel performs
+	pub buffer_size: usize,
+	/// TODO temp for seeing how channel performs
+	///
+	/// Has no effect on WASM
+	pub stack_size: Option<usize>,
 }
 
 impl ParseOptions {
 	fn get_lex_options(&self) -> LexerOptions {
 		LexerOptions {
-			include_comments: self.include_comments,
+			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
 		}
@@ -112,13 +116,14 @@ impl ParseOptions {
 		Self {
 			jsx: true,
 			special_jsx_attributes: true,
-			include_comments: true,
+			comments: Comments::All,
 			decorators: true,
 			slots: true,
 			generator_keyword: true,
-			server_functions: true,
-			module_functions: true,
+			custom_function_headers: true,
 			is_expressions: true,
+			buffer_size: 100,
+			stack_size: None,
 		}
 	}
 }
@@ -129,13 +134,14 @@ impl Default for ParseOptions {
 		Self {
 			jsx: true,
 			special_jsx_attributes: false,
-			include_comments: true,
+			comments: Comments::All,
 			decorators: true,
 			slots: false,
 			generator_keyword: true,
-			server_functions: false,
-			module_functions: false,
-			is_expressions: true,
+			custom_function_headers: false,
+			is_expressions: false,
+			buffer_size: 100,
+			stack_size: None,
 		}
 	}
 }
@@ -150,7 +156,7 @@ pub struct ToStringOptions {
 	pub include_types: bool,
 	/// TODO not sure about this
 	pub include_decorators: bool,
-	pub include_comments: bool,
+	pub comments: Comments,
 	pub indent_with: String,
 	/// If false, panics if sees JSX
 	pub expect_jsx: bool,
@@ -163,7 +169,7 @@ impl Default for ToStringOptions {
 			pretty: true,
 			include_types: false,
 			include_decorators: false,
-			include_comments: true,
+			comments: Comments::All,
 			expect_jsx: false,
 			trailing_semicolon: false,
 			expect_cursors: false,
@@ -176,31 +182,41 @@ impl ToStringOptions {
 	pub fn minified() -> Self {
 		ToStringOptions {
 			pretty: false,
-			include_comments: false,
+			comments: Comments::None,
 			indent_with: "".to_owned(),
 			..Default::default()
 		}
 	}
 
-	/// With typescript type syntax
+	/// With TypeScript type syntax
 	pub fn typescript() -> Self {
 		ToStringOptions { include_types: true, ..Default::default() }
 	}
 
 	/// Whether to include comment in source
-	pub(crate) fn should_add_comment(&self) -> bool {
-		self.pretty && self.include_comments
+	pub(crate) fn should_add_comment(&self, document_comment: bool) -> bool {
+		matches!(self.comments, Comments::All)
+			|| (matches!(self.comments, Comments::JustDocumentation) && document_comment)
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {
 		(0..indent).for_each(|_| buf.push_str(&self.indent_with))
 	}
 
+	/// Adds whitespace **conditionally** (based on pretty setting)
 	pub(crate) fn add_gap<T: source_map::ToString>(&self, buf: &mut T) {
 		if self.pretty {
 			buf.push(' ');
 		}
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Comments {
+	All,
+	/// Only multiline comments starting with `/**`
+	JustDocumentation,
+	None,
 }
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
@@ -257,22 +273,30 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
-	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
+	let (mut sender, mut reader) =
+		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
 	let length = script.len() as u32;
-	let parsing_thread = std::thread::spawn(move || {
-		let mut state = ParsingState {
-			line_starts,
-			source,
-			length_of_source: length,
-			constant_imports: Default::default(),
-		};
-		let res = T::from_reader(&mut reader, &mut state, &options);
-		if res.is_ok() {
-			reader.expect_next(TSXToken::EOS)?;
-		}
-		res
-	});
+	let mut thread = std::thread::Builder::new().name("AST parsing".into());
+	if let Some(stack_size) = options.stack_size {
+		thread = thread.stack_size(stack_size);
+	}
+
+	let parsing_thread = thread
+		.spawn(move || {
+			let mut state = ParsingState {
+				line_starts,
+				source,
+				length_of_source: length,
+				constant_imports: Default::default(),
+			};
+			let res = T::from_reader(&mut reader, &mut state, &options);
+			if res.is_ok() {
+				reader.expect_next(TSXToken::EOS)?;
+			}
+			res
+		})
+		.unwrap();
 
 	let lex_result = lexer::lex_script(&script, &mut sender, &lex_options, offset, cursors);
 	if let Err((reason, pos)) = lex_result {
@@ -472,15 +496,27 @@ pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
 	NaN,
-	Hex(NumberSign, String, u64),
-	Bin(NumberSign, String, u64),
-	// Last one is whether it was specified with a leading zero (boo)
-	Octal(NumberSign, String, u64),
+	Hex {
+		sign: NumberSign,
+		identifier_uppercase: bool,
+		value: u64,
+	},
+	Bin {
+		sign: NumberSign,
+		identifier_uppercase: bool,
+		value: u64,
+	},
+	Octal {
+		sign: NumberSign,
+		/// None = leading 0 (boo 👎)
+		identifier_uppercase: Option<bool>,
+		value: u64,
+	},
 	Number {
 		elided_zero_before_point: bool,
 		trailing_point: bool,
 		/// TODO could do as something other than f64
-		internal: f64,
+		value: f64,
 	},
 	BigInt(NumberSign, String),
 }
@@ -491,17 +527,20 @@ impl std::hash::Hash for NumberRepresentation {
 	}
 }
 
-impl From<NumberRepresentation> for f64 {
-	fn from(this: NumberRepresentation) -> f64 {
+impl TryFrom<NumberRepresentation> for f64 {
+	// BigInt!!
+	type Error = ();
+
+	fn try_from(this: NumberRepresentation) -> Result<Self, Self::Error> {
 		match this {
-			NumberRepresentation::Infinity => f64::INFINITY,
-			NumberRepresentation::NegativeInfinity => f64::NEG_INFINITY,
-			NumberRepresentation::NaN => f64::NAN,
-			NumberRepresentation::Number { internal, .. } => internal,
-			NumberRepresentation::Hex(sign, _, nat)
-			| NumberRepresentation::Bin(sign, _, nat)
-			| NumberRepresentation::Octal(sign, _, nat) => sign.apply(nat as f64),
-			NumberRepresentation::BigInt(..) => todo!(),
+			NumberRepresentation::Infinity => Ok(f64::INFINITY),
+			NumberRepresentation::NegativeInfinity => Ok(f64::NEG_INFINITY),
+			NumberRepresentation::NaN => Ok(f64::NAN),
+			NumberRepresentation::Number { value: internal, .. } => Ok(internal),
+			NumberRepresentation::Hex { sign, value, .. }
+			| NumberRepresentation::Bin { sign, value, .. }
+			| NumberRepresentation::Octal { sign, value, .. } => Ok(sign.apply(value as f64)),
+			NumberRepresentation::BigInt(..) => Err(()),
 		}
 	}
 }
@@ -515,7 +554,7 @@ impl From<f64> for NumberRepresentation {
 		} else if value.is_nan() {
 			Self::NaN
 		} else {
-			Self::Number { internal: value, elided_zero_before_point: false, trailing_point: false }
+			Self::Number { value, elided_zero_before_point: false, trailing_point: false }
 		}
 	}
 }
@@ -548,74 +587,83 @@ impl FromStr for NumberRepresentation {
 				Some('.') => {
 					if s.len() == 2 {
 						Ok(Self::Number {
-							internal: 0f64,
+							value: 0f64,
 							elided_zero_before_point: false,
 							trailing_point: true,
 						})
 					} else {
 						Ok(Self::Number {
-							internal: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
 							elided_zero_before_point: false,
 							trailing_point: false,
 						})
 					}
 				}
-				Some('X' | 'x') => {
-					let mut number = 0u64;
+				Some(c @ 'X' | c @ 'x') => {
+					let identifier_uppercase = c.is_uppercase();
+					// TODO this can overflow, need to detect and handle when
+					let mut value = 0u64;
 					for c in s[2..].as_bytes().iter() {
-						number <<= 4; // 16=2^4
+						value <<= 4;
 						match c {
 							b'0'..=b'9' => {
-								number += (c - b'0') as u64;
+								value += (c - b'0') as u64;
 							}
 							b'a'..=b'f' => {
-								number += (c - b'a') as u64 + 10;
+								value += ((c - b'a') + 10) as u64;
 							}
 							b'A'..=b'F' => {
-								number += (c - b'A') as u64 + 10;
+								value += ((c - b'A') + 10) as u64;
 							}
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Hex(sign, s.to_owned(), number))
+					Ok(Self::Hex { sign, identifier_uppercase, value })
 				}
-				Some('B' | 'b') => {
-					let mut number = 0u64;
+				Some(c @ 'B' | c @ 'b') => {
+					let identifier_uppercase = c.is_uppercase();
+					// TODO this can overflow, need to detect and handle when
+					let mut value = 0u64;
 					for c in s[2..].as_bytes().iter() {
-						number <<= 1;
+						value <<= 1;
 						match c {
 							b'0' | b'1' => {
-								number += (c - b'0') as u64;
+								value += (c - b'0') as u64;
 							}
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Bin(sign, s.to_owned(), number))
+					Ok(Self::Bin { identifier_uppercase, sign, value })
 				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
 					let start = if uses_character { 2 } else { 1 };
-					let mut number = 0u64;
+					// TODO this can overflow, need to detect and handle when
+					let mut value = 0u64;
 					for c in s[start..].as_bytes().iter() {
-						number <<= 3; // 8=2^3
+						value <<= 3;
 						if matches!(c, b'0'..=b'7') {
-							number += (c - b'0') as u64;
+							value += (c - b'0') as u64;
 						} else {
 							return Err(s.to_owned());
 						}
 					}
-					Ok(Self::Octal(sign, s.to_owned(), number))
+					Ok(Self::Octal {
+						sign,
+						value,
+						identifier_uppercase: uses_character.then_some(c.is_uppercase()),
+					})
 				}
 				None => Ok(Self::Number {
-					internal: 0f64,
+					value: 0f64,
 					elided_zero_before_point: false,
 					trailing_point: false,
 				}),
 			}
 		} else if s.ends_with('.') {
 			Ok(Self::Number {
-				internal: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
+				value: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: true,
 			})
@@ -624,7 +672,7 @@ impl FromStr for NumberRepresentation {
 			let digits = value.log10().floor() + 1f64;
 			let result = value * (10f64.powf(-digits));
 			Ok(Self::Number {
-				internal: sign.apply(result),
+				value: sign.apply(result),
 				elided_zero_before_point: true,
 				trailing_point: false,
 			})
@@ -632,13 +680,13 @@ impl FromStr for NumberRepresentation {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
 			let expo: i32 = right.parse().map_err(|_| s.clone())?;
 			Ok(Self::Number {
-				internal: sign.apply(value * 10f64.powi(expo)),
+				value: sign.apply(value * 10f64.powi(expo)),
 				elided_zero_before_point: false,
 				trailing_point: false,
 			})
 		} else {
 			Ok(Self::Number {
-				internal: sign.apply(s.parse().map_err(|_| s.clone())?),
+				value: sign.apply(s.parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: false,
 			})
@@ -654,13 +702,11 @@ impl std::fmt::Display for NumberRepresentation {
 
 impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			// TODO needs to do conversion
-			(Self::Hex(l0, _, l1), Self::Hex(r0, _, r1)) => l0 == r0 && l1 == r1,
-			(Self::Bin(l0, _, l1), Self::Bin(r0, _, r1)) => l0 == r0 && l1 == r1,
-			(Self::Octal(l0, _, l1), Self::Octal(r0, _, r1)) => l0 == r0 && l1 == r1,
-			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
+			a == b
+		} else {
+			// TODO ...
+			false
 		}
 	}
 }
@@ -668,33 +714,37 @@ impl PartialEq for NumberRepresentation {
 impl Eq for NumberRepresentation {}
 
 impl NumberRepresentation {
-	pub fn negate(&self) -> Self {
-		f64::from(self.clone()).neg().into()
-	}
-
 	pub fn as_js_string(self) -> String {
 		match self {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
 			NumberRepresentation::NegativeInfinity => "-Infinity".to_owned(),
 			NumberRepresentation::NaN => "NaN".to_owned(),
-			NumberRepresentation::Hex(sign, value, _) => format!("{sign}{value}"),
-			NumberRepresentation::Bin(sign, value, _) => {
-				format!("{sign}{value}")
+			NumberRepresentation::Hex { sign, identifier_uppercase: true, value, .. } => {
+				format!("{sign}0X{value:X}")
 			}
-			NumberRepresentation::Octal(sign, value, _) => {
-				format!("{sign}{value}")
+			NumberRepresentation::Hex { sign, identifier_uppercase: false, value, .. } => {
+				format!("{sign}0x{value:x}")
 			}
-			// NumberRepresentation::Hex(sign, value, _) => format!("{sign}{value:#x}"),
-			// NumberRepresentation::Bin(sign, value, _) => {
-			// 	format!("{sign}0b{value:#b}")
-			// }
-			// NumberRepresentation::Octal(sign, value, true) => {
-			// 	format!("{sign}0{value:o}")
-			// }
-			// NumberRepresentation::Octal(sign, value, false) => {
-			// 	format!("{sign}0o{value:o}")
-			// }
-			NumberRepresentation::Number { internal, elided_zero_before_point, trailing_point } => {
+			NumberRepresentation::Bin { sign, identifier_uppercase: true, value, .. } => {
+				format!("{sign}0B{value}")
+			}
+			NumberRepresentation::Bin { sign, identifier_uppercase: false, value, .. } => {
+				format!("{sign}0b{value}")
+			}
+			NumberRepresentation::Octal { identifier_uppercase: None, sign, value } => {
+				format!("{sign}0{value:o}")
+			}
+			NumberRepresentation::Octal { identifier_uppercase: Some(true), sign, value } => {
+				format!("{sign}0O{value:o}")
+			}
+			NumberRepresentation::Octal { identifier_uppercase: Some(false), sign, value } => {
+				format!("{sign}0o{value:o}")
+			}
+			NumberRepresentation::Number {
+				value: internal,
+				elided_zero_before_point,
+				trailing_point,
+			} => {
 				let mut start = internal.to_string();
 				if elided_zero_before_point {
 					start.remove(0);
@@ -767,8 +817,13 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::OpenBrace | TSXToken::OpenParentheses, _)) | None =
-			reader.peek()
+		if let Some(Token(
+			TSXToken::OpenBrace
+			| TSXToken::OpenParentheses
+			| TSXToken::Keyword(TSXKeyword::Extends),
+			_,
+		))
+		| None = reader.peek()
 		{
 			Ok(Self(None))
 		} else {

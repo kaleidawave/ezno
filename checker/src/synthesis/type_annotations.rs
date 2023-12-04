@@ -66,7 +66,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
-			let constant = Constant::Number(f64::from(value.clone()).try_into().unwrap());
+			let constant = Constant::Number(
+				f64::try_from(value.clone()).expect("big int number type").try_into().unwrap(),
+			);
 			checking_data.types.new_constant_type(constant)
 		}
 		TypeAnnotation::BooleanLiteral(value, _) => {
@@ -384,25 +386,28 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::Index(indexee, indexer, _) => {
 			let indexee = synthesise_type_annotation(indexee, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
-			if let Some(prop) = environment.get_property_unbound(
-				indexee,
-				Publicity::Public,
-				crate::types::properties::PropertyKey::Type(indexer),
-				&checking_data.types,
-			) {
-				match prop {
-					crate::context::Logical::Pure(ty) => ty.as_get_type(),
-					crate::context::Logical::Or { .. } => todo!(),
-					crate::context::Logical::Implies { .. } => todo!(),
-				}
+			let under =
+				crate::types::properties::PropertyKey::from_type(indexer, &checking_data.types);
+
+			if let Some(base) = environment.get_poly_base(indexee, &checking_data.types) {
+				checking_data.types.new_property_constructor(indexee, indexer, base)
 			} else {
-				todo!("Error")
+				if let Some(prop) = environment.get_property_unbound(
+					indexee,
+					Publicity::Public,
+					under,
+					&checking_data.types,
+				) {
+					match prop {
+						crate::context::Logical::Pure(ty) => ty.as_get_type(),
+						crate::context::Logical::Or { .. } => todo!(),
+						crate::context::Logical::Implies { .. } => todo!(),
+					}
+				} else {
+					crate::utils::notify!("Error: no index on type annotation");
+					TypeId::ERROR_TYPE
+				}
 			}
-			// indexee.get_property_using_type_annotation(
-			//     &indexer,
-			//     checking_data,
-			//     crate::types::GetPropertyOptions::HowAboutNo,
-			// ))
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {

@@ -53,7 +53,8 @@ pub enum BinaryAssignmentOperator {
 pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
-    Await, TypeOf, Void, Delete, Yield, DelegatedYield,
+    Await, TypeOf, Void, Delete,
+	Yield, DelegatedYield,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -408,14 +409,12 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 	}
 }
 
+// Note `yield` and `yield *` handled differently
 impl TryFrom<&TSXToken> for UnaryOperator {
 	type Error = ();
 
 	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
 		match expression {
-			TSXToken::Keyword(TSXKeyword::Yield) => Ok(UnaryOperator::Yield),
-			// TODO
-			// TSXToken::Keyword(TSXKeywordToken::DelegatedYield) => Ok(UnaryOperators::DelegatedYield),
 			TSXToken::Keyword(TSXKeyword::TypeOf) => Ok(UnaryOperator::TypeOf),
 			TSXToken::Keyword(TSXKeyword::Await) => Ok(UnaryOperator::Await),
 			TSXToken::Keyword(TSXKeyword::Void) => Ok(UnaryOperator::Void),

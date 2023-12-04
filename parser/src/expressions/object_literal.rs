@@ -19,7 +19,7 @@ use crate::{
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ObjectLiteral {
-	pub members: Vec<ObjectLiteralMember>,
+	pub members: Vec<WithComment<ObjectLiteralMember>>,
 	pub position: Span,
 }
 
@@ -30,7 +30,7 @@ pub struct ObjectLiteral {
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
-	Property(WithComment<PropertyKey<AlwaysPublic>>, Expression, Span),
+	Property(PropertyKey<AlwaysPublic>, Expression, Span),
 	Method(ObjectLiteralMethod),
 }
 
@@ -71,7 +71,7 @@ pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 impl FunctionBased for ObjectLiteralMethodBase {
-	type Name = WithComment<PropertyKey<AlwaysPublic>>;
+	type Name = PropertyKey<AlwaysPublic>;
 	type Header = MethodHeader;
 	type Body = Block;
 
@@ -80,10 +80,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<(Self::Header, Self::Name)> {
-		Ok((
-			MethodHeader::from_reader(reader),
-			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?,
-		))
+		Ok((MethodHeader::from_reader(reader), PropertyKey::from_reader(reader, state, options)?))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -165,12 +162,12 @@ impl ObjectLiteral {
 		options: &ParseOptions,
 		start: TokenStart,
 	) -> ParseResult<Self> {
-		let mut members: Vec<ObjectLiteralMember> = Vec::new();
+		let mut members: Vec<WithComment<ObjectLiteralMember>> = Vec::new();
 		loop {
 			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
 				break;
 			}
-			members.push(ObjectLiteralMember::from_reader(reader, state, options)?);
+			members.push(WithComment::from_reader(reader, state, options)?);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
 			} else {
@@ -198,27 +195,38 @@ impl ASTNode for ObjectLiteralMember {
 		};
 
 		// TODO this probably needs with comment here:
+		while reader.conditional_next(|t| t.is_comment()).is_some() {}
+
 		let mut header = MethodHeader::from_reader(reader);
 		// Catch for named get or set :(
-		let is_named_get_or_set = matches!(
+		let is_named_get_set_or_async = matches!(
 			(reader.peek(), &header),
 			(
-				Some(Token(TSXToken::OpenParentheses | TSXToken::Colon, _)),
-				MethodHeader::Get(..) | MethodHeader::Set(..)
+				Some(Token(
+					TSXToken::OpenParentheses
+						| TSXToken::OpenChevron | TSXToken::Colon
+						| TSXToken::Comma | TSXToken::CloseBrace,
+					_
+				)),
+				MethodHeader::Get(..)
+					| MethodHeader::Set(..)
+					| MethodHeader::Regular { r#async: Some(_), .. }
 			)
 		);
 
-		let key = if is_named_get_or_set {
+		let key = if is_named_get_set_or_async {
 			// Backtrack allowing `get` to be a key
 			let (name, position) = match mem::take(&mut header) {
 				MethodHeader::Get(kw) => ("get", kw.1),
 				MethodHeader::Set(kw) => ("set", kw.1),
+				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
 				_ => unreachable!(),
 			};
-			WithComment::None(PropertyKey::Ident(name.to_owned(), position, ()))
+			PropertyKey::Ident(name.to_owned(), position, ())
 		} else {
-			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?
+			PropertyKey::from_reader(reader, state, options)?
 		};
+
 		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
 		match token {
 			// Functions, (OpenChevron is for generic parameters)
@@ -234,7 +242,7 @@ impl ASTNode for ObjectLiteralMember {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
+					if let PropertyKey::Ident(name, position, _) = key {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						let token = reader.next().ok_or_else(parse_lexing_error)?;

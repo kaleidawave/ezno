@@ -20,13 +20,12 @@ pub fn experimental_build_wasm(
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let result = crate::commands::build(
+	let result = crate::build::build(
 		&fs_resolver,
 		Path::new(&entry_path),
 		None,
 		Path::new("out.js"),
-		crate::commands::BuildConfig { strip_whitespace: minify },
-		None,
+		crate::build::BuildConfig { strip_whitespace: minify },
 	);
 
 	serde_wasm_bindgen::to_value(&result).unwrap()
@@ -41,7 +40,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (diagnostics, _) = crate::commands::check(&fs_resolver, Path::new(&entry_path), None);
+	let (diagnostics, _) = crate::check::check(&fs_resolver, Path::new(&entry_path), None);
 	// TODO also emit mappings
 	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
 }

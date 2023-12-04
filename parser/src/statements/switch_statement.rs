@@ -5,10 +5,10 @@ use visitable_derive::Visitable;
 
 use crate::{
 	ast::MultipleExpression, errors::parse_lexing_error, throw_unexpected_token_with_token,
-	ASTNode, Expression, ParseOptions, Statement, TSXKeyword, TSXToken,
+	ASTNode, Expression, ParseOptions, StatementOrDeclaration, TSXKeyword, TSXToken,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -18,12 +18,12 @@ pub struct SwitchStatement {
 	pub position: Span,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SwitchBranch {
-	Default(Vec<Statement>),
-	Case(Expression, Vec<Statement>),
+	Default(Vec<StatementOrDeclaration>),
+	Case(Expression, Vec<StatementOrDeclaration>),
 }
 
 impl ASTNode for SwitchStatement {
@@ -81,7 +81,7 @@ impl ASTNode for SwitchStatement {
 				{
 					break;
 				}
-				statements.push(Statement::from_reader(reader, state, options)?);
+				statements.push(StatementOrDeclaration::from_reader(reader, state, options)?);
 				if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
 					reader.next();
 				}

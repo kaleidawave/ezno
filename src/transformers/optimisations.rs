@@ -7,8 +7,8 @@ use parser::{
 		ClassDeclaration,
 	},
 	expressions::object_literal::ObjectLiteralMember,
-	visiting::{StatementOrDeclarationMut, VisitorMut},
-	ASTNode, Expression, ExpressionOrStatementPosition, SourceId,
+	visiting::{BlockItemMut, VisitorMut},
+	ASTNode, Expression, ExpressionOrStatementPosition, SourceId, StatementOrDeclaration,
 };
 
 /// A transformer that optimises expression code
@@ -75,16 +75,18 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 /// - Removes dead functions
 pub struct StatementOptimiser;
 
-impl VisitorMut<StatementOrDeclarationMut<'_>, PostCheckData<EznoParser>> for StatementOptimiser {
+impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimiser {
 	fn visit_mut(
 		&mut self,
-		item: &mut StatementOrDeclarationMut,
+		item: &mut BlockItemMut,
 		data: &mut PostCheckData<EznoParser>,
 		chain: &parser::visiting::Chain,
 	) {
-		match item {
-			StatementOrDeclarationMut::Statement(_) => {}
-			StatementOrDeclarationMut::Declaration(declaration) => match declaration {
+		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
+			declaration,
+		)) = item
+		{
+			match declaration {
 				parser::Declaration::Variable(_) => {
 					// TODO remove if never read
 				}
@@ -122,7 +124,7 @@ impl VisitorMut<StatementOrDeclarationMut<'_>, PostCheckData<EznoParser>> for St
 				| parser::Declaration::DeclareFunction(_)
 				| parser::Declaration::DeclareInterface(_)
 				| parser::Declaration::Export(_) => {}
-			},
+			}
 		}
 	}
 }

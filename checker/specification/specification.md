@@ -631,15 +631,21 @@ const my_obj: { b: 3 } = { a: 2 }
 #### Getters
 
 ```ts
-const b = {
-	get c() {
-		return 2
+let global = 0;
+const object = {
+	get getValue() {
+		return global++
 	},
 }
-b.c satisfies string
+
+object.getValue satisfies string
+object.getValue satisfies boolean
 ```
 
-- Expected string, found 2
+> Also test that side effects work here
+
+- Expected string, found 0
+- Expected boolean, found 1
 
 #### Object spread
 
@@ -655,6 +661,8 @@ obj2.a satisfies boolean;
 - Expected boolean, found 6
 
 #### Array pushing and pop-ing
+
+> TODO maybe separate
 
 ```ts
 const x = [1]

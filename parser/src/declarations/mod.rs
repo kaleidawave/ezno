@@ -37,7 +37,6 @@ pub use import::{ImportDeclaration, ImportExportName, ImportPart};
 )]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
-#[visit_self(under statement)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Declaration {
@@ -69,8 +68,7 @@ impl Declaration {
 				TSXToken::Keyword(
 					TSXKeyword::Let
 						| TSXKeyword::Const | TSXKeyword::Function
-						| TSXKeyword::Class | TSXKeyword::Enum
-						| TSXKeyword::Type | TSXKeyword::Declare
+						| TSXKeyword::Class | TSXKeyword::Declare
 						| TSXKeyword::Import | TSXKeyword::Export
 						| TSXKeyword::Interface | TSXKeyword::Async
 				) | TSXToken::At,

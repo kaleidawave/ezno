@@ -194,8 +194,6 @@ impl TypeDefinitionModule {
 		mut options: ParseOptions,
 		source: SourceId,
 	) -> ParseResult<Self> {
-		// Unfortunately some comments contain data (variable ids)
-		options.include_comments = true;
 		// Important not to parse JSX as <> is used for casting
 		options.jsx = false;
 

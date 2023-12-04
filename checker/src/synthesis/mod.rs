@@ -44,7 +44,19 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		}
 		ParserPropertyKey::NumberLiteral(number, _) => {
 			// TODO
-			PropertyKey::from_usize(f64::from(number.clone()) as usize)
+			let result = f64::try_from(number.clone());
+			match result {
+				Ok(v) => {
+					if v.floor() == v {
+						PropertyKey::from_usize(v as usize)
+					} else {
+						// TODO
+						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
+					}
+				}
+				// TODO
+				Err(_) => todo!(),
+			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
 			let key_type =

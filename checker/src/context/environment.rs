@@ -3,7 +3,9 @@ use std::collections::HashSet;
 
 use crate::{
 	behavior::{
+		self,
 		assignments::{Assignable, AssignmentKind, Reference},
+		functions,
 		modules::{Exported, ImportKind, NamePair},
 		objects::ObjectBuilder,
 		operations::{
@@ -391,6 +393,20 @@ impl<'a> Environment<'a> {
 			Assignable::ObjectDestructuring(_) => todo!(),
 			Assignable::ArrayDestructuring(_) => todo!(),
 		}
+	}
+
+	pub fn new_function<U, F, A>(
+		&mut self,
+		checking_data: &mut CheckingData<U, A>,
+		function: &F,
+		behavior: functions::FunctionRegisterBehavior<A>,
+	) -> crate::types::FunctionType
+	where
+		U: crate::ReadFromFS,
+		A: crate::ASTImplementation,
+		F: functions::SynthesisableFunction<A>,
+	{
+		functions::register_function(self, behavior, function, checking_data)
 	}
 
 	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(

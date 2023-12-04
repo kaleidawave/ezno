@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, mem};
 
 use crate::{
 	errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords, visiting::Visitable,
@@ -84,8 +84,36 @@ impl ASTNode for ClassMember {
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Readonly))
 			.map(|token| Keyword::new(token.get_span()));
 
-		let header = MethodHeader::from_reader(reader);
-		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
+		let mut header = MethodHeader::from_reader(reader);
+
+		// Catch for named get or set :(
+		let is_named_get_set_or_async = matches!(
+			(reader.peek(), &header),
+			(
+				Some(Token(
+					TSXToken::OpenParentheses
+						| TSXToken::OpenChevron | TSXToken::Colon
+						| TSXToken::Comma | TSXToken::CloseBrace,
+					_
+				)),
+				MethodHeader::Get(..)
+					| MethodHeader::Set(..)
+					| MethodHeader::Regular { r#async: Some(_), .. }
+			)
+		);
+
+		let key = if is_named_get_set_or_async {
+			// Backtrack allowing `get` to be a key
+			let (name, position) = match mem::take(&mut header) {
+				MethodHeader::Get(kw) => ("get", kw.1),
+				MethodHeader::Set(kw) => ("set", kw.1),
+				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
+				_ => unreachable!(),
+			};
+			WithComment::None(PropertyKey::Ident(name.to_owned(), position, false))
+		} else {
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?
+		};
 
 		match reader.peek() {
 			Some(Token(TSXToken::OpenParentheses, _)) if readonly_keyword.is_none() => {
@@ -169,7 +197,7 @@ impl ASTNode for ClassMember {
 				block.to_string_from_buffer(buf, options, depth + 1);
 			}
 			Self::Comment(c, _) => {
-				if options.include_comments {
+				if options.should_add_comment(c.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(c);
 					buf.push_str("*/")

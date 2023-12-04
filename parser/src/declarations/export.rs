@@ -386,7 +386,7 @@ impl ASTNode for ExportPart {
 				}
 			}
 			ExportPart::PrefixComment(comment, inner, _) => {
-				if options.include_comments {
+				if options.should_add_comment(comment.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(comment);
 					buf.push_str("*/");
@@ -400,7 +400,7 @@ impl ASTNode for ExportPart {
 			}
 			ExportPart::PostfixComment(inner, comment, _) => {
 				inner.to_string_from_buffer(buf, options, depth);
-				if options.include_comments {
+				if options.should_add_comment(comment.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(comment);
 					buf.push_str("*/ ");

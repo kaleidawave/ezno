@@ -84,7 +84,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::Regexp(pattern.clone()));
 		}
 		Expression::NumberLiteral(value, ..) => {
-			let not_nan = f64::from(value.clone()).try_into().unwrap();
+			let not_nan = match f64::try_from(value.clone()) {
+				Ok(v) => v.try_into().unwrap(),
+				Err(_) => {
+					crate::utils::notify!("TODO big int");
+					return TypeId::ERROR_TYPE;
+				}
+			};
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
 		}
 		Expression::BooleanLiteral(value, ..) => {
@@ -204,7 +210,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 			))
 		}
-		Expression::BinaryOperation { lhs, operator, rhs, .. } => {
+		Expression::BinaryOperation { lhs, operator, rhs, position } => {
 			let lhs_ty = synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
 
 			if let BinaryOperator::LogicalAnd
@@ -271,9 +277,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				| BinaryOperator::NullCoalescing => {
 					unreachable!()
 				}
-				BinaryOperator::Divides => todo!(),
-				BinaryOperator::Pipe => todo!(),
-				BinaryOperator::Compose => todo!(),
+				BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose => {
+					checking_data.raise_unimplemented_error(
+						"special operations",
+						position.clone().with_source(environment.get_source()),
+					);
+					return TypeId::ERROR_TYPE;
+				}
 			};
 			Instance::RValue(evaluate_pure_binary_operation_handle_errors(
 				(lhs_ty, lhs_pos),
@@ -311,8 +321,20 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						.unwrap(),
 					)
 				}
-				UnaryOperator::Await => todo!(),
-				UnaryOperator::TypeOf => todo!(),
+				UnaryOperator::Await => {
+					checking_data.raise_unimplemented_error(
+						"await",
+						position.clone().with_source(environment.get_source()),
+					);
+					return TypeId::ERROR_TYPE;
+				}
+				UnaryOperator::TypeOf => {
+					checking_data.raise_unimplemented_error(
+						"TypeOf",
+						position.clone().with_source(environment.get_source()),
+					);
+					return TypeId::ERROR_TYPE;
+				}
 				UnaryOperator::Void => {
 					let _operand_type = synthesise_expression(
 						operand,
@@ -377,8 +399,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						}
 					}
 				}
-				UnaryOperator::Yield => todo!(),
-				UnaryOperator::DelegatedYield => todo!(),
+				UnaryOperator::Yield | UnaryOperator::DelegatedYield => {
+					checking_data.raise_unimplemented_error(
+						"yield expression",
+						position.clone().with_source(environment.get_source()),
+					);
+					return TypeId::ERROR_TYPE;
+				}
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
@@ -632,9 +659,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 			Instance::RValue(result)
 		}
-		Expression::ConditionalTernaryExpression {
-			condition, truthy_result, falsy_result, ..
-		} => {
+		Expression::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
 			let condition =
 				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
@@ -661,7 +686,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let is_generator = function.header.is_generator();
 			let location = function.header.get_location().map(|location| match location {
 				parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-				parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+				parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
 			});
 			Instance::RValue(register_expression_function(
 				expecting,
@@ -716,7 +741,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 			SpecialOperators::InExpression { lhs, rhs } => {
 				let lhs = match lhs {
-					parser::expressions::InExpressionLHS::PrivateProperty(_) => todo!(),
+					parser::expressions::InExpressionLHS::PrivateProperty(_) => {
+						checking_data.raise_unimplemented_error(
+							"in on private",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::ERROR_TYPE;
+					}
 					parser::expressions::InExpressionLHS::Expression(lhs) => {
 						synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE)
 					}
@@ -727,7 +758,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
 			}
-			SpecialOperators::InstanceOfExpression { .. } => todo!(),
+			SpecialOperators::InstanceOfExpression { .. } => {
+				checking_data.raise_unimplemented_error(
+					"instanceof expression",
+					position.with_source(environment.get_source()),
+				);
+				return TypeId::ERROR_TYPE;
+			}
 		},
 		Expression::DynamicImport { position, .. } => {
 			checking_data.raise_unimplemented_error(
@@ -901,7 +938,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 	for member in members.iter() {
 		let member_position = member.get_position().with_source(environment.get_source());
-		match member {
+		match member.get_ast_ref() {
 			ObjectLiteralMember::Spread(spread, pos) => {
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
@@ -947,11 +984,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
-				let key = parser_property_key_to_checker_property_key(
-					key.get_ast_ref(),
-					environment,
-					checking_data,
-				);
+				let key =
+					parser_property_key_to_checker_property_key(key, environment, checking_data);
 
 				// TODO base of above
 				let expecting = TypeId::ANY_TYPE;
@@ -987,7 +1021,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			}
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 				);

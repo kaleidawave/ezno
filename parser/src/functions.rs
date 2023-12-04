@@ -302,7 +302,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum FunctionLocationModifier {
 	Server(Keyword<tsx_keywords::Server>),
-	Module(Keyword<tsx_keywords::Module>),
+	Worker(Keyword<tsx_keywords::Worker>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -404,15 +404,15 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 pub(crate) fn parse_function_location(
 	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
 ) -> Option<FunctionLocationModifier> {
-	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Module), _)) =
+	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Worker), _)) =
 		reader.peek()
 	{
 		Some(match reader.next().unwrap() {
 			t @ Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
 				FunctionLocationModifier::Server(Keyword::new(t.get_span()))
 			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Module), _) => {
-				FunctionLocationModifier::Module(Keyword::new(t.get_span()))
+			t @ Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
+				FunctionLocationModifier::Worker(Keyword::new(t.get_span()))
 			}
 			_ => unreachable!(),
 		})

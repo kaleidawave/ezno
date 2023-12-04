@@ -242,12 +242,14 @@ pub(super) fn synthesise_variable_declaration_item<
 		.map(|(ty, pos)| (*ty, pos.clone()));
 
 	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
-		let value_ty = super::expressions::synthesise_expression(
-			value,
-			environment,
-			checking_data,
-			TypeId::ANY_TYPE,
-		);
+		let expecting = if let Some((var_ty, _)) = var_ty_and_pos.as_ref() {
+			*var_ty
+		} else {
+			TypeId::ANY_TYPE
+		};
+
+		let value_ty =
+			super::expressions::synthesise_expression(value, environment, checking_data, expecting);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
 			crate::behavior::variables::check_variable_initialization(

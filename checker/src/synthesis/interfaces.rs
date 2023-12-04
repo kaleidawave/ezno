@@ -1,6 +1,6 @@
 use parser::{
 	types::interface::{InterfaceDeclaration, InterfaceMember},
-	Decorated, PropertyKey as ParserPropertyKey,
+	Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
 
 use crate::{
@@ -112,20 +112,20 @@ impl SynthesiseInterfaceBehavior for OnToType {
 
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
 	type_parameters: Option<&[parser::GenericTypeConstraint]>,
-	signatures: &[Decorated<InterfaceMember>],
+	signatures: &[WithComment<Decorated<InterfaceMember>>],
 	mut behavior: B,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> B {
 	/// TODO check members declared before
 	fn synthesise_members<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
-		members: &[Decorated<InterfaceMember>],
+		members: &[WithComment<Decorated<InterfaceMember>>],
 		environment: &mut Context<crate::context::environment::Syntax<'_>>,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		interface_register_behavior: &mut B,
 	) {
 		for member in members {
-			match &member.on {
+			match &member.get_ast_ref().on {
 				InterfaceMember::Method {
 					header,
 					name,
@@ -231,7 +231,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					"interface rule",
 					position.clone().with_source(environment.get_source()),
 				),
-				InterfaceMember::Comment(..) => {}
 			}
 		}
 	}

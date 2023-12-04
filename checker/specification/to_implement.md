@@ -14,21 +14,6 @@ const b = 2;
 getB();
 ```
 
-#### Spread arguments
-
-```ts
-function spread(main, ...others) {
-	return {
-		main,
-		others,
-	}
-}
-spread(1, 2, 3) satisfies string
-```
-
-#TODO spread array
-#TODO spread object
-
 ### Types
 
 #### Resolving value by property on dependent
@@ -332,28 +317,6 @@ myArray.push("hi")
 
 - Type "hi" is not assignable to type number
 
-#### Index into array
-
-```ts
-function getFirst(a: Array<string>) {
-	return a[3]
-}
-
-print_type(getFirst)
-```
-
-#### Array spread
-
-```ts
-const array1 = [1, 2, 3];
-const array2 = [...array1, 4, 5, 6];
-
-array2.length satisfies 6;
-array2[2] satisfies string;
-```
-
-- Expected string, found 3
-
 #### Simple array map
 
 ```ts
@@ -389,21 +352,6 @@ myTag`Hello ${name}` satisfies "Hi Ben"
 
 - Expected "Hi Ben", found "Hello Ben"
 
-#### Object spread
-
-> parser currently broken
-
-```ts
-const obj1 = { a: 2, b: 3 };
-const obj2 = { b: 4, ...obj1, a: 6 };
-
-obj1.b satisfies 100;
-obj1.a satisfies bool;
-```
-
-- Expected 100, found 3
-- Expected bool, found 6
-
 #### Bad arithmetic operator
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
@@ -427,18 +375,6 @@ map(a => a.t)
 ```
 
 > No property t on string
-
-#### Index
-
-> Panics specialising property
-
-```ts
-function getFirst(array: Array<string>) {
-    return array[0]
-}
-
-print_type(getFirst)
-```
 
 #### Expected
 

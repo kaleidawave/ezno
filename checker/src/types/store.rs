@@ -8,7 +8,7 @@ use crate::{
 	FunctionId, GeneralContext, TypeId,
 };
 
-use super::{Constructor, StructureGenerics, TypeRelationOperator};
+use super::{properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator};
 
 /// Holds all the types. Eventually may be split across modules
 #[derive(Debug)]
@@ -331,5 +331,16 @@ impl TypeStore {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
 		self.register_type(Type::Function(id, Default::default()))
+	}
+
+	pub(crate) fn new_property_constructor(
+		&mut self,
+		indexee: TypeId,
+		indexer: TypeId,
+		base: TypeId,
+	) -> TypeId {
+		let under = PropertyKey::from_type(indexer, self);
+		let ty = Type::Constructor(Constructor::Property { on: indexee, under, result: base });
+		self.register_type(ty)
 	}
 }

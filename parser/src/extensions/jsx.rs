@@ -272,7 +272,8 @@ impl ASTNode for JSXNode {
 			JSXNode::Element(element) => element.to_string_from_buffer(buf, options, depth + 1),
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
-				if !options.should_add_comment() && matches!(&**expression, Expression::Comment(..))
+				if !options.should_add_comment(false)
+					&& matches!(&**expression, Expression::Comment(..))
 				{
 					return;
 				}

@@ -349,7 +349,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_generator = function.on.header.is_generator();
 				let location = function.on.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -377,7 +377,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_generator = function.header.is_generator();
 				let location = function.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -539,7 +539,7 @@ fn get_annotation_from_declaration<
 	else if let WithComment::PostfixComment(item, possible_declaration, position) =
 		&declaration.name
 	{
-		string_comment_to_type(
+		comment_as_type_annotation(
 			possible_declaration,
 			position.clone().with_source(environment.get_source()),
 			environment,
@@ -560,7 +560,7 @@ fn get_annotation_from_declaration<
 	result.map(|(value, _span)| value)
 }
 
-pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
+pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	possible_declaration: &String,
 	position: source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,

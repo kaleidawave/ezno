@@ -67,7 +67,6 @@ use crate::{ParseError, Quoted};
     "-?:" => TSXToken::NonOptionalMember,
     "??" => TSXToken::NullishCoalescing,
     "??=" => TSXToken::NullishCoalescingAssign,
-    "!" => TSXToken::LogicalNot,
     "!=" => TSXToken::NotEqual,
     "!==" => TSXToken::StrictNotEqual,
     "<" => TSXToken::OpenChevron,
@@ -91,7 +90,7 @@ use crate::{ParseError, Quoted};
 ))]
 #[rustfmt::skip]
 pub enum TSXToken {
-    IdentLiteral(String),
+    Identifier(String),
     Keyword(TSXKeyword),
     NumberLiteral(String), 
     StringLiteral(String, Quoted),
@@ -190,7 +189,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXContent(lit)
 			| TSXToken::JSXComment(lit)
 			| TSXToken::JSXTagName(lit)
-			| TSXToken::IdentLiteral(lit)
+			| TSXToken::Identifier(lit)
 			| TSXToken::NumberLiteral(lit)
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
@@ -326,8 +325,10 @@ pub enum TSXKeyword {
     Private, Public, Protected,
     // TS Keywords
     As, Declare, Readonly, Infer, Is, Satisfies, Namespace, KeyOf,
+	// TODO not sure
+	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
-    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Module,
+    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker, 
     // Type declaration changes
     #[cfg(feature = "extras")] Nominal, #[cfg(feature = "extras")] Performs,
 
@@ -341,18 +342,15 @@ pub enum TSXKeyword {
 
 impl TSXKeyword {
 	#[cfg(feature = "extras")]
-	pub(crate) fn is_in_function_header(&self) -> bool {
-		matches!(
-			self,
-			TSXKeyword::Function
-				| TSXKeyword::Async
-				| TSXKeyword::Module
-				| TSXKeyword::Server
-				| TSXKeyword::Generator
-		)
+	pub(crate) fn is_special_function_header(&self) -> bool {
+		matches!(self, TSXKeyword::Worker | TSXKeyword::Server | TSXKeyword::Generator)
 	}
 
 	#[cfg(not(feature = "extras"))]
+	pub(crate) fn is_special_function_header(&self) -> bool {
+		false
+	}
+
 	pub(crate) fn is_in_function_header(&self) -> bool {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
@@ -369,7 +367,7 @@ impl std::fmt::Display for TSXToken {
 		match self {
 			TSXToken::Keyword(kw) => std::fmt::Debug::fmt(kw, f),
 			TSXToken::NumberLiteral(num) => std::fmt::Display::fmt(num, f),
-			TSXToken::IdentLiteral(value) => std::fmt::Display::fmt(value, f),
+			TSXToken::Identifier(value) => std::fmt::Display::fmt(value, f),
 			_ => std::fmt::Debug::fmt(&self, f),
 		}
 	}
@@ -395,19 +393,24 @@ impl TSXToken {
 	}
 
 	/// Used for lexing regular expression and JSX literals differently
+	///
+	/// TODO more
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
 			TSXToken::Keyword(TSXKeyword::Return)
-                | TSXToken::Assign
-                | TSXToken::Arrow
-                | TSXToken::OpenParentheses
-                | TSXToken::OpenBrace
-                | TSXToken::JSXExpressionStart
-                | TSXToken::QuestionMark
-                | TSXToken::Colon
-                // This is for match bindings
-                | TSXToken::At
+				| TSXToken::Keyword(TSXKeyword::Yield)
+				| TSXToken::Keyword(TSXKeyword::Throw)
+				| TSXToken::Assign
+				| TSXToken::Arrow
+				| TSXToken::OpenParentheses
+				| TSXToken::OpenBrace
+				| TSXToken::JSXExpressionStart
+				| TSXToken::QuestionMark
+				| TSXToken::Colon
+				| TSXToken::LogicalNot
+				| TSXToken::LogicalAnd
+				| TSXToken::LogicalOr
 		)
 	}
 
@@ -415,8 +418,12 @@ impl TSXToken {
 	pub fn from_slice(slice: &str) -> Self {
 		match TSXKeyword::from_str(slice) {
 			Ok(keyword_token) => TSXToken::Keyword(keyword_token),
-			Err(_) => TSXToken::IdentLiteral(slice.to_owned()),
+			Err(_) => TSXToken::Identifier(slice.to_owned()),
 		}
+	}
+
+	pub(crate) fn is_symbol(&self) -> bool {
+		!matches!(self, TSXToken::Keyword(_) | TSXToken::Identifier(..))
 	}
 }
 
@@ -429,7 +436,7 @@ pub(crate) fn token_as_identifier(
 ) -> Result<(String, Span), ParseError> {
 	let position = token.get_span();
 	let name = match token.0 {
-		TSXToken::IdentLiteral(value) => value,
+		TSXToken::Identifier(value) => value,
 		TSXToken::Keyword(keyword) => EnumVariantsStrings::to_str(&keyword).to_owned(),
 		token_type => {
 			return Err(ParseError::new(

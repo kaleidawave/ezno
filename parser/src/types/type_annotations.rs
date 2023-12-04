@@ -20,8 +20,6 @@ use crate::{
 };
 
 /// A reference to a type
-///
-/// TODO need to figure out what [TypeId] is used for here and where it might be useful for the checker
 #[derive(Debug, Clone, PartialEqExtras, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
@@ -64,8 +62,7 @@ pub enum TypeAnnotation {
 		position: Span,
 	},
 	/// Object literal e.g. `{ y: string }`
-	/// Here [TypeId] refers to the type it declares
-	ObjectLiteral(Vec<Decorated<InterfaceMember>>, Span),
+	ObjectLiteral(Vec<WithComment<Decorated<InterfaceMember>>>, Span),
 	/// Tuple literal e.g. `[number, x: string]`
 	TupleLiteral(Vec<(SpreadKind, AnnotationWithBinder)>, Span),
 	/// ?
