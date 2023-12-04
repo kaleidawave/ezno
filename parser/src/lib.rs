@@ -643,7 +643,7 @@ impl FromStr for NumberRepresentation {
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
-					let start = if uses_character { 2 } else { 1 };
+					let start = if uses_character { 1 } else { 0 };
 					let mut value = 0u64;
 					for c in s[start..].as_bytes() {
 						value <<= 3; // 8=2^3

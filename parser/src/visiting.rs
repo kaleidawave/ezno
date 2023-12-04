@@ -440,8 +440,8 @@ mod structures {
 		}
 	}
 
-	/// Wrapper type for [StatementOrDeclaration]. Needed because [crate::Statement] doesn't
-	/// come under [StatementOrDeclaration] in the case of [crate::BlockOrSingleStatement]
+	/// Wrapper type for [`StatementOrDeclaration`]. Needed because [`crate::Statement`] doesn't
+	/// come under [`StatementOrDeclaration`] in the case of [`crate::BlockOrSingleStatement`]
 	pub enum BlockItemMut<'a> {
 		StatementOrDeclaration(&'a mut crate::StatementOrDeclaration),
 		SingleStatement(&'a mut crate::Statement),

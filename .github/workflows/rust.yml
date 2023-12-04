@@ -177,7 +177,7 @@ jobs:
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     continue-on-error: true
     strategy:
       matrix:

@@ -82,7 +82,7 @@ pub fn run_cli_wasm(
 			.and_then(JsValue::as_string)
 	};
 
-	run_cli(&arguments, &read_from_file, write_to_file, |p| Some(cli_input_resolver(p)));
+	crate::run_cli(&arguments, &read_from_file, write_to_file, |p| Some(cli_input_resolver(p)));
 }
 
 #[wasm_bindgen(js_name = parse_expression)]
