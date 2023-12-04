@@ -2,7 +2,7 @@ use crate::{ASTNode, Expression, PropertyReference, Statement, VariableIdentifie
 
 use source_map::Span;
 
-/// A trait which means that self can be pushed to a [TokenSender]
+/// A trait which means that self can be pushed to a [`TokenSender`]
 pub trait IntoAST<T> {
 	fn into_ast(self) -> T;
 }

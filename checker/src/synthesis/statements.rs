@@ -107,21 +107,21 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment.new_conditional_context(
 					condition,
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
-						synthesise_block_or_single_statement(current.1, env, data)
+						synthesise_block_or_single_statement(current.1, env, data);
 					},
 					if !others.is_empty() || last.is_some() {
 						Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 							if let [current, others @ ..] = &others {
-								run_condition(*current, others, last, env, data)
+								run_condition(*current, others, last, env, data);
 							} else {
-								synthesise_block_or_single_statement(last.unwrap(), env, data)
+								synthesise_block_or_single_statement(last.unwrap(), env, data);
 							}
 						})
 					} else {
 						None
 					},
 					checking_data,
-				)
+				);
 			}
 
 			let others = if_statement
@@ -138,7 +138,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				last,
 				environment,
 				checking_data,
-			)
+			);
 
 			// environment.new_conditional_context(
 			// 	condition,
@@ -351,7 +351,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			// yay!
 		}
 		// TODO acknowledge '@ts-ignore' statements but error
-		Statement::Comment(..) | Statement::MultiLineComment(..) => {}
 		Statement::Cursor(cursor_id, _) => {
 			todo!("Dump environment data somewhere")
 		}
@@ -369,7 +368,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				TypeId::ANY_TYPE,
 			);
 			let thrown_position = stmt.2.clone().with_source(environment.get_source());
-			environment.throw_value(thrown_value, thrown_position)
+			environment.throw_value(thrown_value, thrown_position);
 		}
 		Statement::Labelled { position, name, statement } => {
 			checking_data.raise_unimplemented_error(
@@ -414,7 +413,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		Statement::Empty(_) => {}
+		Statement::Empty(_) | Statement::Comment(..) | Statement::MultiLineComment(..) => {}
 	}
 }
 
@@ -425,10 +424,10 @@ fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 ) {
 	match block_or_single_statement {
 		BlockOrSingleStatement::Braced(block) => {
-			synthesise_block(&block.0, environment, checking_data)
+			synthesise_block(&block.0, environment, checking_data);
 		}
 		BlockOrSingleStatement::SingleStatement(statement) => {
-			synthesise_statement(statement, environment, checking_data)
+			synthesise_statement(statement, environment, checking_data);
 		}
 	}
 	// environment.new_lexical_environment_fold_into_parent(

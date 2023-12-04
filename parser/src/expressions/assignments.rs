@@ -143,6 +143,7 @@ impl From<VariableOrPropertyAccess> for Expression {
 }
 
 impl VariableOrPropertyAccess {
+	#[must_use]
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..) => None,
@@ -160,7 +161,7 @@ impl VariableOrPropertyAccess {
 	}
 }
 
-/// TODO should be different from VariableFieldInSourceCode here
+/// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
 /// TODO cursor
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
@@ -180,6 +181,7 @@ pub enum LHSOfAssignment {
 }
 
 impl LHSOfAssignment {
+	#[must_use]
 	pub fn get_position(&self) -> &Span {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(_, pos)
@@ -221,7 +223,7 @@ impl LHSOfAssignment {
 				buf.push(']');
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(variable_or_property_access) => {
-				variable_or_property_access.to_string_from_buffer(buf, options, depth)
+				variable_or_property_access.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}

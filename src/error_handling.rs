@@ -13,14 +13,14 @@ pub(crate) fn emit_ezno_diagnostic(
 ) -> Result<(), codespan_reporting::files::Error> {
 	let diagnostic = match diagnostic {
 		checker::Diagnostic::Global { reason, kind } => Diagnostic {
-			severity: ezno_diagnostic_to_severity(kind),
+			severity: ezno_diagnostic_to_severity(&kind),
 			code: None,
 			message: reason,
 			labels: Vec::new(),
 			notes: Vec::default(),
 		},
 		checker::Diagnostic::Position { reason, position, kind } => Diagnostic {
-			severity: ezno_diagnostic_to_severity(kind),
+			severity: ezno_diagnostic_to_severity(&kind),
 			code: None,
 			message: Default::default(),
 			labels: vec![Label::primary(position.source, position).with_message(reason)],
@@ -31,7 +31,7 @@ pub(crate) fn emit_ezno_diagnostic(
 				labels.into_iter().partition::<Vec<_>, _>(|(_, value)| value.is_some());
 
 			Diagnostic {
-				severity: ezno_diagnostic_to_severity(kind),
+				severity: ezno_diagnostic_to_severity(&kind),
 				code: None,
 				message: Default::default(),
 				labels: iter::once(Label::primary(position.source, position).with_message(reason))
@@ -48,7 +48,7 @@ pub(crate) fn emit_ezno_diagnostic(
 	emit_diagnostic(&diagnostic, &fs.into_code_span_store())
 }
 
-fn ezno_diagnostic_to_severity(kind: checker::DiagnosticKind) -> Severity {
+fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
 		checker::DiagnosticKind::Error => Severity::Error,
 		checker::DiagnosticKind::Warning => Severity::Warning,

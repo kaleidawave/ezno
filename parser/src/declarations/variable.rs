@@ -56,12 +56,12 @@ impl DeclarationExpression for Option<Expression> {
 	) {
 		if let Some(expr) = self {
 			buf.push_str(if options.pretty { " = " } else { "=" });
-			expr.to_string_from_buffer(buf, options, depth)
+			expr.to_string_from_buffer(buf, options, depth);
 		}
 	}
 
 	fn get_decl_position(&self) -> Option<&Span> {
-		self.as_ref().map(|expr| expr.get_position())
+		self.as_ref().map(ASTNode::get_position)
 	}
 
 	fn as_option_expr_ref(&self) -> Option<&Expression> {
@@ -90,7 +90,7 @@ impl DeclarationExpression for crate::Expression {
 		depth: u8,
 	) {
 		buf.push_str(if options.pretty { " = " } else { "=" });
-		ASTNode::to_string_from_buffer(self, buf, options, depth)
+		ASTNode::to_string_from_buffer(self, buf, options, depth);
 	}
 
 	fn get_decl_position(&self) -> Option<&Span> {
@@ -140,7 +140,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			position: name.get_position().union(
 				expression
 					.get_decl_position()
-					.or(type_annotation.as_ref().map(|ta| ta.get_position()))
+					.or(type_annotation.as_ref().map(ASTNode::get_position))
 					// TODO lol
 					.unwrap_or(name.get_position()),
 			),
@@ -196,6 +196,7 @@ pub enum VariableDeclarationKeyword {
 }
 
 impl VariableDeclarationKeyword {
+	#[must_use]
 	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
@@ -214,6 +215,7 @@ impl VariableDeclarationKeyword {
 		}
 	}
 
+	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableDeclarationKeyword::Const(_) => "const ",
@@ -221,6 +223,7 @@ impl VariableDeclarationKeyword {
 		}
 	}
 
+	#[must_use]
 	pub fn get_position(&self) -> &Span {
 		match self {
 			VariableDeclarationKeyword::Const(kw) => kw.get_position(),
@@ -312,6 +315,7 @@ impl ASTNode for VariableDeclaration {
 }
 
 impl VariableDeclaration {
+	#[must_use]
 	pub fn is_constant(&self) -> bool {
 		matches!(self, VariableDeclaration::ConstDeclaration { .. })
 	}

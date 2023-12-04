@@ -17,7 +17,10 @@ mod ast {
 
 	use crate::block::{BlockLike, BlockLikeMut};
 
-	use super::*;
+	use super::{
+		Chain, Expression, ImmutableVariableOrPropertyPart, JSXElement, MutableVariablePart,
+		StatementOrDeclarationMut, StatementOrDeclarationRef, VisitorMutReceiver, VisitorReceiver,
+	};
 
 	/// Options for behavior when visiting AST.
 	/// Customizable behavior is important for analysis
@@ -87,7 +90,7 @@ mod ast {
 			s: &VisitSettings,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit(&**self, v, d, s, c)
+			Visitable::visit(&**self, v, d, s, c);
 		}
 
 		fn visit_mut<TData>(
@@ -97,7 +100,7 @@ mod ast {
 			s: &VisitSettings,
 			c: &mut Annex<Chain>,
 		) {
-			Visitable::visit_mut(&mut **self, v, d, s, c)
+			Visitable::visit_mut(&mut **self, v, d, s, c);
 		}
 	}
 
@@ -252,7 +255,10 @@ mod structures {
 		Declaration, Statement, VariableFieldInSourceCode,
 	};
 
-	use super::*;
+	use super::{
+		ArrayDestructuringField, ObjectDestructuringField, PropertyKey, SourceId,
+		StatementOrDeclaration, WithComment,
+	};
 	use source_map::Span;
 	use temporary_annex::{Annex, Annexable};
 
@@ -268,33 +274,39 @@ mod structures {
 	pub struct Chain(Vec<ChainVariable>);
 
 	impl Chain {
+		#[must_use]
 		pub fn new() -> Self {
 			Self(Vec::with_capacity(10))
 		}
 
+		#[must_use]
 		pub fn new_with_initial(initial: ChainVariable) -> Self {
 			let mut buf = Vec::with_capacity(10);
 			buf.push(initial);
 			Self(buf)
 		}
 
+		#[must_use]
 		pub fn len(&self) -> usize {
 			self.0.len()
 		}
 
+		#[must_use]
 		pub fn is_empty(&self) -> bool {
 			self.0.is_empty()
 		}
 
 		pub fn truncate(&mut self, to_size: usize) {
-			self.0.truncate(to_size)
+			self.0.truncate(to_size);
 		}
 
 		/// TODO remove
+		#[must_use]
 		pub fn get_chain(&self) -> &[ChainVariable] {
 			&self.0
 		}
 
+		#[must_use]
 		pub fn get_module(&self) -> SourceId {
 			if let ChainVariable::Module(source) = self.0.first().unwrap() {
 				source.to_owned()
@@ -354,6 +366,7 @@ mod structures {
 	}
 
 	impl<'a> ImmutableVariableOrPropertyPart<'a> {
+		#[must_use]
 		pub fn get_name(&self) -> Option<&'a str> {
 			match self {
 				ImmutableVariableOrPropertyPart::FunctionName(name, _)
@@ -363,7 +376,7 @@ mod structures {
 				ImmutableVariableOrPropertyPart::ClassName(name, _) => *name,
 				ImmutableVariableOrPropertyPart::ObjectPropertyKey(property) => {
 					match property.get_ast_ref() {
-						PropertyKey::Ident(ident, _, _)
+						PropertyKey::Ident(ident, _, ())
 						| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 						PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					}
@@ -378,6 +391,7 @@ mod structures {
 			}
 		}
 
+		#[must_use]
 		pub fn get_position(&self) -> &Span {
 			use crate::ASTNode;
 			match self {
@@ -462,11 +476,14 @@ mod structures {
 }
 
 mod visitors {
-	use super::*;
+	use super::{
+		Chain, Expression, ImmutableVariableOrPropertyPart, JSXElement, SelfVisitable,
+		StatementOrDeclarationRef,
+	};
 	use crate::{block::BlockLike, TSXKeyword};
 	use source_map::Span;
 
-	/// A visitor over something which is hooked/is SelfVisitable with some Data
+	/// A visitor over something which is hooked/is `SelfVisitable` with some Data
 	pub trait Visitor<Item: SelfVisitable, Data> {
 		fn visit(&mut self, item: &Item, data: &mut Data, chain: &Chain);
 	}
@@ -525,11 +542,11 @@ mod visitors {
 			data: &mut T,
 			chain: &Chain,
 		) {
-			self.variable_visitors.iter_mut().for_each(|vis| vis.visit(variable, data, chain))
+			self.variable_visitors.iter_mut().for_each(|vis| vis.visit(variable, data, chain));
 		}
 
 		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {
-			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain))
+			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain));
 		}
 
 		fn visit_keyword(&mut self, _keyword: &(TSXKeyword, &Span), _data: &mut T, _chain: &Chain) {
@@ -585,9 +602,12 @@ mod visitors {
 mod visitors_mut {
 	use crate::block::BlockLikeMut;
 
-	use super::*;
+	use super::{
+		Chain, Expression, JSXElement, MutableVariablePart, SelfVisitableMut,
+		StatementOrDeclarationMut,
+	};
 
-	/// A visitor over something which is hooked/is SelfVisitable with some Data
+	/// A visitor over something which is hooked/is `SelfVisitable` with some Data
 	pub trait VisitorMut<Item: SelfVisitableMut, Data> {
 		fn visit_mut(&mut self, item: &mut Item, data: &mut Data, chain: &Chain);
 	}

@@ -27,7 +27,7 @@ where
 			| WithComment::PrefixComment(_, item, _)
 			| WithComment::PostfixComment(item, _, _) => {
 				let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(item);
-				token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)))
+				token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)));
 			}
 		}
 	}
@@ -52,7 +52,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.get_ast_ref().visit(visitors, data, options, chain)
+		self.get_ast_ref().visit(visitors, data, options, chain);
 	}
 
 	fn visit_mut<TData>(
@@ -62,7 +62,7 @@ impl<T: Visitable> Visitable for WithComment<T> {
 		options: &crate::VisitSettings,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		self.get_ast_mut().visit_mut(visitors, data, options, chain)
+		self.get_ast_mut().visit_mut(visitors, data, options, chain);
 	}
 }
 

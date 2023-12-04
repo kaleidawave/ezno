@@ -45,7 +45,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		options: &crate::ToStringOptions,
 		depth: u8,
 	) {
-		self.to_string_from_buffer(buf, options, depth)
+		self.to_string_from_buffer(buf, options, depth);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -116,10 +116,10 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		Ok(ClassDeclaration {
 			class_keyword,
 			name,
+			type_parameters,
 			extends,
 			implements,
 			members,
-			type_parameters,
 			position,
 		})
 	}

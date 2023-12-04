@@ -353,7 +353,7 @@ impl ASTNode for ImportPart {
 					unreachable!()
 				};
 				let pos = value.get_position().union(start.get_end_after(c.len() + 2));
-				value = Self::PostfixComment(Box::new(value), c, pos)
+				value = Self::PostfixComment(Box::new(value), c, pos);
 			}
 			Ok(value)
 		}

@@ -6,7 +6,9 @@ use crate::{
 	throw_unexpected_token_with_token, to_string_bracketed,
 	tokens::token_as_identifier,
 	tsx_keywords,
-	types::{type_annotations::TypeAnnotationFunctionParameters, type_declarations::*},
+	types::{
+		type_annotations::TypeAnnotationFunctionParameters, type_declarations::TypeDeclaration,
+	},
 	ASTNode, Expression, GenericTypeConstraint, Keyword, MethodHeader, NumberRepresentation,
 	ParseOptions, ParseResult, PropertyKey, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
@@ -59,6 +61,7 @@ impl ASTNode for InterfaceDeclaration {
 
 		#[cfg(feature = "extras")]
 		let nominal_keyword = Keyword::optionally_from_reader(reader);
+
 		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
 		// 	Some((reader.next().unwrap().1))
 		// } else {
@@ -101,12 +104,12 @@ impl ASTNode for InterfaceDeclaration {
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
 			name,
-			members,
-			type_parameters,
-			extends,
-			position,
 			#[cfg(feature = "extras")]
 			nominal_keyword,
+			type_parameters,
+			extends,
+			members,
+			position,
 		})
 	}
 
@@ -136,7 +139,7 @@ impl ASTNode for InterfaceDeclaration {
 			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();
 			}
-			for member in self.members.iter() {
+			for member in &self.members {
 				options.add_indent(depth + 1, buf);
 				member.to_string_from_buffer(buf, options, depth + 1);
 				if options.pretty {
@@ -152,7 +155,7 @@ impl ASTNode for InterfaceDeclaration {
 	}
 }
 
-/// This is also used for [TypeAnnotation::ObjectLiteral]
+/// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -217,6 +220,7 @@ pub enum InterfaceMember {
 	Comment(String, Span),
 }
 
+#[allow(clippy::similar_names)]
 impl ASTNode for InterfaceMember {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -246,10 +250,7 @@ impl ASTNode for InterfaceMember {
 					.as_ref()
 					.map_or(&parameters.position, |kw| kw.get_position())
 					.union(
-						return_type
-							.as_ref()
-							.map(ASTNode::get_position)
-							.unwrap_or(&parameters.position),
+						return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
 					);
 				Ok(InterfaceMember::Caller {
 					is_readonly,
@@ -313,8 +314,7 @@ impl ASTNode for InterfaceMember {
 					None
 				};
 
-				let end =
-					return_type.as_ref().map(ASTNode::get_position).unwrap_or(&parameters.position);
+				let end = return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
 				let position =
 					readonly_keyword.as_ref().map_or(&new_span, |kw| kw.get_position()).union(end);
@@ -332,13 +332,12 @@ impl ASTNode for InterfaceMember {
 			TSXToken::MultiLineComment(..) | TSXToken::Comment(..) => {
 				let token = reader.next().unwrap();
 				let span = token.get_span();
-				let comment = if let TSXToken::MultiLineComment(comment)
-				| TSXToken::Comment(comment) = token.0
-				{
-					comment
-				} else {
+
+				let (TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment)) = token.0
+				else {
 					unreachable!()
 				};
+
 				Ok(InterfaceMember::Comment(comment, span))
 			}
 			_ => {

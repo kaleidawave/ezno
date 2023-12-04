@@ -4,10 +4,7 @@ use parser::{
 	ASTNode, ParseOptions, ToStringOptions,
 };
 use serde::Deserialize;
-use std::{
-	collections::HashSet,
-	path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub type EznoCheckerData = PostCheckData<checker::synthesis::EznoParser>;
 
@@ -17,9 +14,9 @@ pub fn check<T: crate::ReadFromFS>(
 	type_definition_module: Option<&Path>,
 ) -> (checker::DiagnosticsContainer, Result<EznoCheckerData, MapFileStore<WithPathMap>>) {
 	let definitions = if let Some(tdm) = type_definition_module {
-		HashSet::from_iter(std::iter::once(tdm.into()))
+		std::iter::once(tdm.into()).collect()
 	} else {
-		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
+		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
 	};
 
 	let read_from_fs = |path: &Path| {
@@ -81,7 +78,7 @@ pub fn build<T: crate::ReadFromFS>(
 	input_path: &Path,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
-	config: BuildConfig,
+	config: &BuildConfig,
 	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse settings + non_standard_library & non_standard_syntax

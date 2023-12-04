@@ -35,7 +35,7 @@ impl ASTNode for TypeDeclaration {
 					.map(|(params, _)| params)
 			})
 			.transpose()?;
-		Ok(Self { name, position, type_parameters })
+		Ok(Self { name, type_parameters, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -46,7 +46,7 @@ impl ASTNode for TypeDeclaration {
 	) {
 		buf.push_str(&self.name);
 		if let Some(ref type_parameters) = self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth)
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
 		}
 	}
 
@@ -70,6 +70,7 @@ pub enum GenericTypeConstraint {
 }
 
 impl GenericTypeConstraint {
+	#[must_use]
 	pub fn name(&self) -> &str {
 		match self {
 			GenericTypeConstraint::Parameter { name, .. }

@@ -25,7 +25,7 @@ impl BinarySerializable for String {
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
 		let len = iter.next().unwrap();
-		String::from_iter(iter.by_ref().take(len as usize).map(|v| v as char))
+		iter.by_ref().take(len as usize).map(|v| v as char).collect::<String>()
 	}
 }
 
@@ -58,7 +58,7 @@ impl<T: BinarySerializable> BinarySerializable for Option<T> {
 impl<T: BinarySerializable> BinarySerializable for Vec<T> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
-		for item in self.into_iter() {
+		for item in self {
 			item.serialize(buf);
 		}
 	}
@@ -71,7 +71,7 @@ impl<T: BinarySerializable> BinarySerializable for Vec<T> {
 
 impl<T: BinarySerializable> BinarySerializable for Box<T> {
 	fn serialize(self, buf: &mut Vec<u8>) {
-		BinarySerializable::serialize(*self, buf)
+		BinarySerializable::serialize(*self, buf);
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
@@ -116,7 +116,7 @@ where
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
 
-		for (k, v) in self.into_iter() {
+		for (k, v) in self {
 			k.serialize(buf);
 			v.serialize(buf);
 		}
@@ -135,7 +135,7 @@ where
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
 
-		for v in self.into_iter() {
+		for v in self {
 			v.serialize(buf);
 		}
 	}
@@ -153,7 +153,7 @@ where
 {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
-		for (k, v) in self.into_iter() {
+		for (k, v) in self {
 			k.serialize(buf);
 			v.serialize(buf);
 		}
@@ -172,7 +172,7 @@ where
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
 
-		for v in self.into_iter() {
+		for v in self {
 			v.serialize(buf);
 		}
 	}
@@ -259,7 +259,7 @@ impl BinarySerializable for ordered_float::NotNan<f64> {
 
 impl BinarySerializable for bool {
 	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.push(if self { 1 } else { 0 })
+		buf.push(u8::from(self));
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {

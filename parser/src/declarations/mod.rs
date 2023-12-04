@@ -127,6 +127,7 @@ impl ImportLocation {
 	}
 
 	/// Can be None if self is a cursor point
+	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
 		if let Self::Quoted(name, _) = self {
 			Some(name)
@@ -274,7 +275,7 @@ impl crate::ASTNode for Declaration {
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, depth),
 			Declaration::DeclareInterface(did) => {
 				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, options, depth)
+				did.to_string_from_buffer(buf, options, depth);
 			}
 		}
 	}

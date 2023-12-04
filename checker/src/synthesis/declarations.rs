@@ -12,7 +12,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 ) {
 	match declaration {
 		VariableDeclaration::ConstDeclaration { declarations, .. } => {
-			for variable_declaration in declarations.iter() {
+			for variable_declaration in declarations {
 				synthesise_variable_declaration_item(
 					variable_declaration,
 					environment,
@@ -27,7 +27,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 			keyword: parser::Keyword(_, position),
 			..
 		} => {
-			for variable_declaration in declarations.iter() {
+			for variable_declaration in declarations {
 				let exported = exported.then(|| {
 					let restriction = checking_data
 						.type_mappings

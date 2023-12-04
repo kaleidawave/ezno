@@ -10,7 +10,7 @@ use crate::{
 	ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
-/// The variable id's of these is handled by their [PropertyKey]
+/// The variable id's of these is handled by their [`PropertyKey`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -52,6 +52,7 @@ impl ASTNode for ClassMember {
 		}
 	}
 
+	#[allow(clippy::similar_names)]
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -82,6 +83,7 @@ impl ASTNode for ClassMember {
 			.map(|token| Keyword::new(token.get_span()));
 
 		let header = MethodHeader::from_reader(reader);
+
 		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
 
 		match reader.peek() {
@@ -156,10 +158,10 @@ impl ASTNode for ClassMember {
 				if is_static.is_some() {
 					buf.push_str("static ");
 				}
-				function.to_string_from_buffer(buf, options, depth + 1)
+				function.to_string_from_buffer(buf, options, depth + 1);
 			}
 			Self::Constructor(constructor) => {
-				constructor.to_string_from_buffer(buf, options, depth + 1)
+				constructor.to_string_from_buffer(buf, options, depth + 1);
 			}
 			Self::StaticBlock(block) => {
 				buf.push_str("static ");
@@ -169,7 +171,7 @@ impl ASTNode for ClassMember {
 				if options.include_comments {
 					buf.push_str("/*");
 					buf.push_str(c);
-					buf.push_str("*/")
+					buf.push_str("*/");
 				}
 			}
 		}
@@ -199,6 +201,7 @@ impl FunctionBased for ClassFunctionBase {
 	type Header = MethodHeader;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
 
+	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -249,7 +252,7 @@ impl FunctionBased for ClassConstructorBase {
 		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
-		buf.push_str("constructor")
+		buf.push_str("constructor");
 	}
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {

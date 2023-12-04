@@ -60,7 +60,7 @@ impl ASTNode for JSXElement {
 	) {
 		buf.push('<');
 		buf.push_str(&self.tag_name);
-		for attribute in self.attributes.iter() {
+		for attribute in &self.attributes {
 			buf.push(' ');
 			attribute.to_string_from_buffer(buf, options, depth);
 		}
@@ -191,7 +191,7 @@ fn jsx_children_to_string<T: source_map::ToString>(
 ) {
 	let indent =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
-	for node in children.iter() {
+	for node in children {
 		if indent {
 			options.add_indent(depth + 1, buf);
 		}
@@ -365,9 +365,7 @@ impl JSXElement {
 		options: &ParseOptions,
 		start: TokenStart,
 	) -> ParseResult<Self> {
-		let tag_name = if let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() {
-			tag_name
-		} else {
+		let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() else {
 			return Err(parse_lexing_error());
 		};
 		let mut attributes = Vec::new();
@@ -458,11 +456,13 @@ impl JSXElement {
 }
 
 /// Used for lexing
+#[must_use]
 pub fn html_tag_contains_literal_content(tag_name: &str) -> bool {
 	matches!(tag_name, "script" | "style")
 }
 
 /// Used for lexing
+#[must_use]
 pub fn html_tag_is_self_closing(tag_name: &str) -> bool {
 	matches!(
 		tag_name,

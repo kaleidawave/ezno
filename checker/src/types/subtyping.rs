@@ -23,7 +23,7 @@ type TypeArguments = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
 
 /// `base_type :>= ty` (`ty <=: base_type`)
 ///
-/// TODO TypeArguments as a chain?
+/// TODO `TypeArguments` as a chain?
 pub fn type_is_subtype<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,
@@ -51,7 +51,7 @@ fn set_object_restriction(environment: &mut Environment, object: TypeId, restric
 	}
 }
 
-/// TODO integrate set_restriction, but it can't create a type ? maybe object restriction should be logically.
+/// TODO integrate `set_restriction`, but it can't create a type ? maybe object restriction should be logically.
 /// maybe sub function
 pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 	property: Logical<PropertyValue>,
@@ -104,6 +104,7 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn type_is_subtype2<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,
@@ -365,75 +366,71 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 			arguments,
 		})) => {
 			// Overwrites for special types with proofs
-			match *on {
-				// TODO is nominal
-				TypeId::ARRAY_TYPE => {
-					let backing_type =
-						arguments.get_argument(TypeId::T_TYPE).expect("array T argument not set ?");
+			if let TypeId::ARRAY_TYPE = *on {
+				let backing_type =
+					arguments.get_argument(TypeId::T_TYPE).expect("array T argument not set ?");
 
-					// TODO temp fix for general parameters
-					if let Type::Object(_) = right_ty {
-						for (publicity, property, value) in environment.get_properties_on_type(ty) {
-							// Assume every property on itself is either number or 'length'
-							match property {
-								PropertyKey::String(a) if a == "length" => {
-									continue;
-								}
-								PropertyKey::String(a) => {
-									crate::utils::notify!("looking at prototype {}", a);
-								}
-								_ => (),
+				// TODO temp fix for general parameters
+				if let Type::Object(_) = right_ty {
+					for (publicity, property, value) in environment.get_properties_on_type(ty) {
+						// Assume every property on itself is either number or 'length'
+						match property {
+							PropertyKey::String(a) if a == "length" => {
+								continue;
 							}
-							let result = type_is_subtype2(
-								backing_type,
-								value,
-								Some(&arguments.type_arguments),
-								right_type_arguments,
-								behavior,
-								environment,
-								types,
-								restriction_mode,
-							);
-							// TODO collect
-							if !matches!(result, SubTypeResult::IsSubType) {
-								return result;
+							PropertyKey::String(a) => {
+								crate::utils::notify!("looking at prototype {}", a);
 							}
-
-							// TODO cheaper subtype checker
-							// if let SubTypeResult::IsSubType = type_is_subtype2(
-							// 	*base_property,
-							// 	property,
-							// 	Some(&arguments.type_arguments),
-							// 	right_type_arguments,
-							// 	behavior,
-							// 	environment,
-							// 	types,
-							// 	false,
-							// ) {
-							// }
+							PropertyKey::Type(_) => (),
+						}
+						let result = type_is_subtype2(
+							backing_type,
+							value,
+							Some(&arguments.type_arguments),
+							right_type_arguments,
+							behavior,
+							environment,
+							types,
+							restriction_mode,
+						);
+						// TODO collect
+						if !matches!(result, SubTypeResult::IsSubType) {
+							return result;
 						}
 
-						SubTypeResult::IsSubType
-					} else {
-						crate::utils::notify!("Else here :?");
-						todo!("get right type structure generics match parameters");
+						// TODO cheaper subtype checker
+						// if let SubTypeResult::IsSubType = type_is_subtype2(
+						// 	*base_property,
+						// 	property,
+						// 	Some(&arguments.type_arguments),
+						// 	right_type_arguments,
+						// 	behavior,
+						// 	environment,
+						// 	types,
+						// 	false,
+						// ) {
+						// }
 					}
+
+					SubTypeResult::IsSubType
+				} else {
+					crate::utils::notify!("Else here :?");
+					todo!("get right type structure generics match parameters");
 				}
-				_ => {
-					if base_type_arguments.is_some() {
-						todo!("need chain to do nesting")
-					}
-					type_is_subtype2(
-						*on,
-						ty,
-						Some(&arguments.type_arguments),
-						right_type_arguments,
-						behavior,
-						environment,
-						types,
-						restriction_mode,
-					)
+			} else {
+				if base_type_arguments.is_some() {
+					todo!("need chain to do nesting")
 				}
+				type_is_subtype2(
+					*on,
+					ty,
+					Some(&arguments.type_arguments),
+					right_type_arguments,
+					behavior,
+					environment,
+					types,
+					restriction_mode,
+				)
 			}
 		}
 		Type::Constructor(cst) => match cst {
@@ -603,6 +600,8 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 }
 
 /// TODO temp
+
+#[allow(clippy::too_many_arguments)]
 fn check_properties<T: SubtypeBehavior>(
 	base_type: TypeId,
 	ty: TypeId,
@@ -644,7 +643,7 @@ fn check_properties<T: SubtypeBehavior>(
 						match result {
 							SubTypeResult::IsSubType => {
 								if behavior.add_property_restrictions() {
-									set_object_restriction(environment, rhs_type, property)
+									set_object_restriction(environment, rhs_type, property);
 								}
 							}
 							SubTypeResult::IsNotSubType(mismatch) => {
@@ -669,12 +668,12 @@ fn check_properties<T: SubtypeBehavior>(
 			}
 		}
 	}
-	if !property_errors.is_empty() {
+	if property_errors.is_empty() {
+		SubTypeResult::IsSubType
+	} else {
 		SubTypeResult::IsNotSubType(NonEqualityReason::PropertiesInvalid {
 			errors: property_errors,
 		})
-	} else {
-		SubTypeResult::IsSubType
 	}
 }
 
@@ -690,7 +689,7 @@ impl NonEqualityReason {
 			| NonEqualityReason::MissingParameter
 			| NonEqualityReason::Mismatch => Vec::new(),
 			NonEqualityReason::PropertiesInvalid { errors } => {
-				errors.into_iter().map(|error| format!("{:?}", error)).collect()
+				errors.into_iter().map(|error| format!("{error:?}")).collect()
 			}
 			NonEqualityReason::TooStrict => todo!(),
 		}

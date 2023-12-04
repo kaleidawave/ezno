@@ -10,6 +10,7 @@ use super::generic_type_arguments::TypeArgumentStore;
 pub struct GenericTypeParameters(pub Vec<GenericTypeParameter>);
 
 impl GenericTypeParameters {
+	#[must_use]
 	pub fn as_option(&self) -> Option<()> {
 		todo!()
 		// let borrow = self.0.borrow();

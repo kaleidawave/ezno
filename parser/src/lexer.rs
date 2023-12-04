@@ -1,6 +1,6 @@
 //! Contains lexing logic for all the whole of JS + TypeScript type annotations + JSX + other syntax
 //!
-//! Uses [TSXToken]s for data, uses [Span] for location data. Uses [tokenizer_lib] for logic.
+//! Uses [`TSXToken`]s for data, uses [Span] for location data. Uses [`tokenizer_lib`] for logic.
 
 use super::{Span, TSXToken};
 use crate::{
@@ -61,8 +61,6 @@ pub fn lex_script(
 	offset: Option<u32>,
 	mut cursors: Vec<(usize, EmptyCursorId)>,
 ) -> Result<(), (LexingErrors, Span)> {
-	cursors.reverse();
-
 	#[derive(PartialEq, Debug)]
 	enum JSXAttributeValueDelimiter {
 		None,
@@ -160,6 +158,8 @@ pub fn lex_script(
 			after_last_slash: bool,
 		},
 	}
+
+	cursors.reverse();
 
 	let mut state: LexingState = LexingState::None;
 
@@ -369,10 +369,10 @@ pub fn lex_script(
 							push_token!(result);
 							start = idx + chr.len_utf8();
 							continue;
-						} else {
-							push_token!(result);
-							start = idx;
 						}
+
+						push_token!(result);
+						start = idx;
 					}
 					GetNextResult::NewState(new_state) => {
 						state = LexingState::Symbol(new_state);
@@ -543,10 +543,10 @@ pub fn lex_script(
 							if *tag_depth == 0 {
 								set_state!(LexingState::None);
 								continue;
-							} else {
-								start = idx + 1;
-								*jsx_state = JSXLexingState::Content;
 							}
+
+							start = idx + 1;
+							*jsx_state = JSXLexingState::Content;
 						}
 						// Fragment start
 						'>' if !*lexed_start => {
@@ -641,9 +641,8 @@ pub fn lex_script(
 								*jsx_state = JSXLexingState::Content;
 							}
 							continue;
-						} else {
-							return_err!(LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag);
 						}
+						return_err!(LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag);
 					}
 					JSXLexingState::AttributeKey => match chr {
 						'=' => {
@@ -890,10 +889,10 @@ pub fn lex_script(
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
 				'_' | '$' => {
-					set_state!(LexingState::Identifier)
+					set_state!(LexingState::Identifier);
 				}
 				chr if chr.is_alphabetic() => {
-					set_state!(LexingState::Identifier)
+					set_state!(LexingState::Identifier);
 				}
 				chr if chr.is_whitespace() => {
 					continue;
