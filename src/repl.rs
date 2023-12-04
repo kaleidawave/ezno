@@ -99,7 +99,7 @@ pub(crate) fn run_deno_repl<U: crate::CLIInputResolver>(
 		let offset = Some(from_index as u32);
 		let result = if input.trim_start().starts_with('{') {
 			Expression::from_string(input, options, source, offset).map(|expression| Module {
-				span: expression.get_position().clone(),
+				span: *expression.get_position(),
 				items: vec![Statement::Expression(expression.into()).into()],
 				source,
 			})

@@ -291,7 +291,7 @@ mod defined_errors_and_warnings {
 		},
 		TypeNeedsTypeArguments(&'a str, SpanWithSource),
 		CannotFindType(&'a str, SpanWithSource),
-		TypeAliasAlreadyDeclared {
+		TypeAlreadyDeclared {
 			name: String,
 			position: SpanWithSource,
 		},
@@ -474,7 +474,7 @@ mod defined_errors_and_warnings {
 					),
 					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
-						Some(annotation_position.clone()),
+						Some(annotation_position),
 					)],
 					position: returned_position,
 					kind,
@@ -605,7 +605,7 @@ mod defined_errors_and_warnings {
 					position,
 					kind,
 				},
-				TypeCheckError::TypeAliasAlreadyDeclared { name, position } => Diagnostic::Position {
+				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
 					reason: format!("Type {name} already declared"),
 					position,
 					kind,
@@ -629,6 +629,9 @@ mod defined_errors_and_warnings {
 		UselessExpression {
 			expression_span: SpanWithSource,
 			// TODO other branch information
+		},
+		MergingInterfaceInSameContext {
+			position: SpanWithSource,
 		},
 	}
 
@@ -664,6 +667,13 @@ mod defined_errors_and_warnings {
 					position: expression_span,
 					kind,
 				},
+				TypeCheckWarning::MergingInterfaceInSameContext { position } => {
+					Diagnostic::Position {
+						reason: "Merging interfaces in the same context".to_owned(),
+						position,
+						kind,
+					}
+				}
 			}
 		}
 	}

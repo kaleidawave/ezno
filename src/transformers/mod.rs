@@ -22,7 +22,7 @@ impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 			} = decl
 			{
 				*decl = parser::declarations::VariableDeclaration::LetDeclaration {
-					keyword: parser::Keyword::new(keyword.get_position().clone()),
+					keyword: parser::Keyword::new(*keyword.get_position()),
 					declarations: declarations
 						.drain(..)
 						.map(|dec| parser::declarations::VariableDeclarationItem {
@@ -32,7 +32,7 @@ impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 							position: dec.position,
 						})
 						.collect(),
-					position: position.clone(),
+					position: *position,
 				};
 			}
 		}

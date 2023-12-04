@@ -45,7 +45,7 @@ pub(crate) fn substitute(
 		| Type::AliasTo { .. }
 		| Type::And(_, _)
 		| Type::Or(_, _)
-		| Type::NamedRooted { .. } => id,
+		| Type::Interface { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
 				id

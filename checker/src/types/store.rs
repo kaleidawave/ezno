@@ -32,15 +32,15 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let mut types = vec![
-			Type::NamedRooted { name: "error".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "never".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "any".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "boolean".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "number".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "string".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "undefined".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted { name: "null".to_owned(), parameters: None, nominal: true },
-			Type::NamedRooted {
+			Type::Interface { name: "error".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "boolean".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "number".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "string".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "undefined".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "null".to_owned(), parameters: None, nominal: true },
+			Type::Interface {
 				name: "Array".to_owned(),
 				parameters: Some(vec![TypeId::T_TYPE]),
 				nominal: true,
@@ -50,9 +50,9 @@ impl Default for TypeStore {
 				name: "T".to_owned(),
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			Type::NamedRooted { name: "object".to_owned(), parameters: None, nominal: false },
-			Type::NamedRooted { name: "Function".to_owned(), parameters: None, nominal: false },
-			Type::NamedRooted { name: "RegExp".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "object".to_owned(), parameters: None, nominal: false },
+			Type::Interface { name: "Function".to_owned(), parameters: None, nominal: false },
+			Type::Interface { name: "RegExp".to_owned(), parameters: None, nominal: true },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -292,9 +292,9 @@ impl TypeStore {
 				// Don't think any properties exist on this poly type
 				let constraint = ctx.get_poly_base(on, self).unwrap();
 				// TODO might need to send more information here, rather than forgetting via .get_type
-				self.get_fact_about_type(ctx, constraint, resolver, data)
+				self.get_fact_about_type(ctx, on, resolver, data)
 			}
-			Type::Object(..) | Type::NamedRooted { .. } => ctx
+			Type::Object(..) | Type::Interface { .. } => ctx
 				.parents_iter()
 				.find_map(|env| resolver(&env, self, on, data))
 				.map(Logical::Pure)

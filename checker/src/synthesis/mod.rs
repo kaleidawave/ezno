@@ -106,6 +106,8 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 
 pub struct EznoParser;
 
+// Clippy suggests a fix that breaks the code
+#[allow(clippy::needless_lifetimes)]
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
@@ -123,7 +125,7 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		options: Self::ParseOptions,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options.clone(), source_id, None)
+		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
 			.map_err(|err| (err, source_id))
 	}
 
@@ -155,7 +157,7 @@ impl crate::ASTImplementation for EznoParser {
 	}
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> source_map::Span {
-		ASTNode::get_position(expression).clone()
+		*ASTNode::get_position(expression)
 	}
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {

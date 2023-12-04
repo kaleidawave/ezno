@@ -235,7 +235,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							| Type::Object(..)
 							| Type::RootPolyType { .. }
 							| Type::Constant(..) => Some((PropertyKind::Direct, value)),
-							Type::NamedRooted { .. } | Type::And(_, _) | Type::Or(_, _) => {
+							Type::Interface { .. } | Type::And(_, _) | Type::Or(_, _) => {
 								crate::utils::notify!(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
 								    property, ty
@@ -348,9 +348,18 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						match types.get_type_by_id(og) {
 							Type::FunctionReference(func, _) => {
 								// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-								let with_this = types
-									.register_type(Type::Function(*func, ThisValue::Passed(og)));
-								Some(with_this)
+								let depends_on_this =
+									types.get_function_from_id(*func).behavior.can_be_bound();
+
+								if depends_on_this {
+									let with_this = types.register_type(Type::Function(
+										*func,
+										ThisValue::Passed(on),
+									));
+									Some(with_this)
+								} else {
+									Some(og)
+								}
 							}
 							Type::Function(..) => todo!(),
 							Type::And(_, _)
@@ -358,7 +367,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							| Type::Constructor(_)
 							| Type::Or(_, _)
 							| Type::AliasTo { .. }
-							| Type::NamedRooted { .. } => {
+							| Type::Interface { .. } => {
 								// TODO this isn't necessary sometimes
 								let constructor_result =
 									types.register_type(Type::Constructor(Constructor::Property {

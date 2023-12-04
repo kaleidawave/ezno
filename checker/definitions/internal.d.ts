@@ -42,11 +42,17 @@ interface nominal Array<T> {
 }
 
 interface Math {
+    @DoNotIncludeThis
     sin(x: number): number performs const sin;
+    @DoNotIncludeThis
     cos(x: number): number performs const cos;
+    @DoNotIncludeThis
     tan(x: number): number performs const tan;
+    @DoNotIncludeThis
     floor(x: number): number performs const floor;
+    @DoNotIncludeThis
     sqrt(x: number): number performs const sqrt;
+    @DoNotIncludeThis
     cbrt(x: number): number performs const cbrt;
 
     // TODO newer method
@@ -63,14 +69,17 @@ interface nominal string {
 }
 
 interface Console {
+    @DoNotIncludeThis
     log(msg: any): void;
 }
 
 interface JSON {
     // TODO any temp
+    @DoNotIncludeThis
     parse(input: string): any;
 
     // TODO any temp
+    @DoNotIncludeThis
     stringify(input: any): string;
 }
 
@@ -79,8 +88,10 @@ interface Function {
 }
 
 interface Object {
+    @DoNotIncludeThis
     setPrototypeOf(on: object, to: object): object performs const set_prototype;
 
+    @DoNotIncludeThis
     getPrototypeOf(on: object): object | null performs const get_prototype;
 
     // create(prototype: object): object performs {

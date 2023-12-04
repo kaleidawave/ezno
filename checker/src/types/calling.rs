@@ -14,7 +14,7 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		substitute,
+		printing::print_type, substitute,
 	},
 	types::{FunctionType, Type},
 	FunctionId, SpecialExpressions, TypeId,
@@ -49,12 +49,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let result = call_type(
 		ty,
-		CallingInput {
-			called_with_new,
-			this_value,
-			call_site_type_arguments,
-			call_site: call_site.clone(),
-		},
+		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 		arguments,
 		environment,
 		&mut CheckThings,
@@ -66,7 +61,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 				checking_data.diagnostics_container.add_info(
 					crate::diagnostics::Diagnostic::Position {
 						reason: warning.0,
-						position: call_site.clone(),
+						position: call_site,
 						kind: crate::diagnostics::DiagnosticKind::Info,
 					},
 				);
@@ -110,6 +105,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	}
 
 	if let Some(constraint) = environment.get_poly_base(on, types) {
+		crate::utils::notify!("Evaluating generic call");
 		create_generic_function_call(
 			constraint,
 			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
@@ -160,6 +156,7 @@ fn call_logical<E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+	crate::utils::notify!("Calling logical");
 	match logical {
 		Logical::Pure((func, this_value)) => {
 			if let Some(function_type) = types.functions.get(&func) {
@@ -224,7 +221,7 @@ fn get_logical_callable_from_type(
 			}
 			get_logical_callable_from_type(*to, types)
 		}
-		Type::NamedRooted { .. } | Type::Constant(_) | Type::Object(_) => None,
+		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
 		Type::FunctionReference(f, t) | Type::Function(f, t) => Some(Logical::Pure((*f, *t))),
 		Type::SpecialObject(_) => todo!(),
 	}
@@ -239,15 +236,9 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	// TODO don't like how it is mixed
 	let result = call_type(
 		constraint,
-		CallingInput {
-			called_with_new,
-			this_value,
-			call_site_type_arguments,
-			call_site: call_site.clone(),
-		},
+		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 		// TODO clone
 		arguments.clone(),
 		environment,
@@ -278,7 +269,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 				timing: crate::events::CallingTiming::Synchronous,
 				called_with_new, // Don't care about output.
 				reflects_dependency: None,
-				position: call_site.clone(),
+				position: call_site,
 			});
 
 			return Ok(result);
@@ -304,7 +295,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		timing: crate::events::CallingTiming::Synchronous,
 		called_with_new,
 		reflects_dependency,
-		position: call_site.clone(),
+		position: call_site,
 	});
 
 	// TODO should wrap result in open poly
@@ -405,7 +396,7 @@ impl FunctionType {
 		if let (Some(const_fn_ident), true) = (self.constant_function.as_deref(), call_constant) {
 			let has_dependent_argument = arguments.iter().any(|arg| {
 				types.get_type_by_id(arg.to_type().expect("dependent spread types")).is_dependent()
-			});
+			}) || matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
 
 			// TODO temp, need a better solution
 			let call_anyway = matches!(
@@ -472,7 +463,7 @@ impl FunctionType {
 							called_with_new,
 							this_value,
 							call_site_type_arguments,
-							call_site: call_site.clone(),
+							call_site,
 						},
 						parent_type_arguments,
 						arguments,
@@ -500,7 +491,7 @@ impl FunctionType {
 					reflects_dependency: Some(ty),
 					timing: crate::events::CallingTiming::Synchronous,
 					called_with_new,
-					position: call_site.clone(),
+					position: call_site,
 				});
 
 				return Ok(FunctionCallResult {
@@ -575,9 +566,7 @@ impl FunctionType {
 			}
 			FunctionBehavior::Constructor { non_super_prototype, this_object_type } => {
 				if let CalledWithNew::None = called_with_new {
-					errors.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(
-						call_site.clone(),
-					));
+					errors.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
 				}
 			}
 		}
@@ -635,7 +624,7 @@ impl FunctionType {
 				for (restriction, restriction_position) in restrictions_for_item {
 					let mut behavior = BasicEquality {
 						add_property_restrictions: false,
-						position: restriction_position.clone(),
+						position: *restriction_position,
 					};
 
 					let result =
@@ -655,7 +644,7 @@ impl FunctionType {
 							false,
 						);
 
-						let restriction = Some((restriction_position.clone(), restriction_type));
+						let restriction = Some((*restriction_position, restriction_type));
 						let synthesised_parameter = &self.parameters.parameters[param];
 						let parameter_type = TypeStringRepresentation::from_type_id(
 							synthesised_parameter.ty,
@@ -666,9 +655,9 @@ impl FunctionType {
 
 						errors.push(FunctionCallingError::InvalidArgumentType {
 							argument_type,
-							argument_position: argument_position.clone(),
+							argument_position,
 							parameter_type,
-							parameter_position: synthesised_parameter.position.clone(),
+							parameter_position: synthesised_parameter.position,
 							restriction,
 						});
 					}
@@ -819,7 +808,7 @@ impl FunctionType {
 
 			if let Some((argument_type, argument_position)) = argument_type_and_pos {
 				seeding_context.argument_position_and_parameter_idx =
-					(argument_position.clone(), parameter_idx);
+					(*argument_position, parameter_idx);
 
 				// crate::utils::notify!(
 				// 	"param {}, arg {}",
@@ -851,8 +840,8 @@ impl FunctionType {
 								types,
 								false,
 							),
-							parameter_position: parameter.position.clone(),
-							argument_position: argument_position.clone(),
+							parameter_position: parameter.position,
+							argument_position: *argument_position,
 							restriction: None,
 						});
 					}
@@ -860,7 +849,7 @@ impl FunctionType {
 					// Already checked so can set. TODO destructuring etc
 					seeding_context.set_id(
 						parameter.ty,
-						(*argument_type, argument_position.clone(), parameter_idx),
+						(*argument_type, *argument_position, parameter_idx),
 						false,
 					);
 				}
@@ -874,8 +863,8 @@ impl FunctionType {
 			} else {
 				// TODO group
 				errors.push(FunctionCallingError::MissingArgument {
-					parameter_position: parameter.position.clone(),
-					call_site: call_site.clone(),
+					parameter_position: parameter.position,
+					call_site: *call_site,
 				});
 			}
 
@@ -947,8 +936,8 @@ impl FunctionType {
 									types,
 									false,
 								),
-								argument_position: argument_pos.clone(),
-								parameter_position: rest_parameter.position.clone(),
+								argument_position: *argument_pos,
+								parameter_position: rest_parameter.position,
 								restriction: None,
 							});
 						}
@@ -992,14 +981,12 @@ impl FunctionType {
 				.0
 				.iter()
 				.zip(call_site_type_arguments)
-				.map(|(param, (ty, pos))| {
+				.map(|(param, (ty, position))| {
 					if let Type::RootPolyType(PolyNature::Generic { eager_fixed, .. }) =
 						types.get_type_by_id(param.id)
 					{
-						let mut basic_subtyping = BasicEquality {
-							add_property_restrictions: false,
-							position: pos.clone(),
-						};
+						let mut basic_subtyping =
+							BasicEquality { add_property_restrictions: false, position };
 						let type_is_subtype = type_is_subtype(
 							*eager_fixed,
 							ty,
@@ -1019,7 +1006,7 @@ impl FunctionType {
 						// crate::utils::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
 					};
 
-					(param.id, vec![(ty, pos)])
+					(param.id, vec![(ty, position)])
 				})
 				.collect()
 		} else {

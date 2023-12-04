@@ -30,7 +30,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -611,7 +611,9 @@ impl Expression {
 					};
 
 					let function_keyword =
-						Keyword::new(function_start.with_length(f.length() as usize));
+						Keyword::new(function_start.with_length(
+							tokenizer_lib::sized_tokens::SizedToken::length(&f) as usize,
+						));
 
 					if let Some(generator_keyword) = generator_keyword {
 						let position = async_keyword
@@ -724,7 +726,11 @@ impl Expression {
 					};
 					let function: ExpressionFunction =
 						FunctionBase::from_reader_with_header_and_name(
-							reader, state, options, header, name,
+							reader,
+							state,
+							options,
+							header,
+							ExpressionPosition(name),
 						)?;
 
 					Expression::ExpressionFunction(function)

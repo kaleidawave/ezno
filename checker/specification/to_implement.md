@@ -376,10 +376,41 @@ map(a => a.t)
 
 > No property t on string
 
-#### Expected
+#### Spread arguments
 
 ```ts
-const x: (a: string) => number = (a) => a.to;
+function spread(main, ...others) {
+	return {
+		main,
+		others,
+	}
+}
+
+spread(1, 2, 3) satisfies string
 ```
 
-> No property to on string
+- TODO...
+
+#### Array spread
+
+```ts
+const array1 = [1, 2, 3];
+const array2 = [...array1, 4, 5, 6];
+
+array2.length satisfies 6;
+array2[2] satisfies string;
+```
+
+- Expected string, found 3
+
+#### Index into array
+
+```ts
+function getFirst(a: Array<string>) {
+	return a[3]
+}
+
+print_type(getFirst)
+```
+
+- TODO

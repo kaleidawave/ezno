@@ -177,9 +177,7 @@ impl<'a> Environment<'a> {
 				) -> TypeId {
 					match reference {
 						Reference::Variable(name, position) => {
-							env.get_variable_handle_error(&name, position.clone(), checking_data)
-								.unwrap()
-								.1
+							env.get_variable_handle_error(&name, position, checking_data).unwrap().1
 						}
 						Reference::Property { on, with, publicity, span } => {
 							let get_property_handle_errors = env.get_property_handle_errors(
@@ -187,7 +185,7 @@ impl<'a> Environment<'a> {
 								publicity,
 								with,
 								checking_data,
-								span.clone(),
+								span,
 							);
 							match get_property_handle_errors {
 								Ok(i) => i.get_value(),
@@ -282,9 +280,8 @@ impl<'a> Environment<'a> {
 						let existing = get_reference(self, reference.clone(), checking_data);
 
 						let expression = expression.unwrap();
-						let expression_pos = A::expression_position(expression)
-							.clone()
-							.with_source(self.get_source());
+						let expression_pos =
+							A::expression_position(expression).with_source(self.get_source());
 						let rhs = A::synthesise_expression(
 							expression,
 							TypeId::ANY_TYPE,
@@ -452,7 +449,7 @@ impl<'a> Environment<'a> {
 				VariableOrImport::Variable { mutability, declared_at, context } => {
 					match mutability {
 						VariableMutability::Constant => {
-							Err(AssignmentError::Constant(declared_at.clone()))
+							Err(AssignmentError::Constant(*declared_at))
 						}
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
@@ -461,7 +458,7 @@ impl<'a> Environment<'a> {
 								// TODO tuple with position:
 								let mut basic_subtyping = BasicEquality {
 									add_property_restrictions: false,
-									position: declared_at.clone(),
+									position: *declared_at,
 								};
 								let result = type_is_subtype(
 									reassignment_constraint,
@@ -486,8 +483,8 @@ impl<'a> Environment<'a> {
 											false,
 										),
 										// TODO split
-										variable_site: assignment_position.clone(),
-										value_site: assignment_position.clone(),
+										variable_site: assignment_position,
+										value_site: assignment_position,
 									});
 								}
 							}
@@ -612,14 +609,8 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<U, A>,
 		site: SpanWithSource,
 	) -> Result<Instance, ()> {
-		let get_property = self.get_property(
-			on,
-			publicity,
-			key.clone(),
-			&mut checking_data.types,
-			None,
-			site.clone(),
-		);
+		let get_property =
+			self.get_property(on, publicity, key.clone(), &mut checking_data.types, None, site);
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
@@ -963,7 +954,7 @@ impl<'a> Environment<'a> {
 					let id = crate::VariableId(current_source, position.start);
 					let v = VariableOrImport::ConstantImport {
 						to: None,
-						import_specified_at: position.clone().with_source(current_source),
+						import_specified_at: position.with_source(current_source),
 					};
 					self.facts.variable_current_value.insert(id, *item);
 					let existing = self.variables.insert(default_name.to_owned(), v);
@@ -1018,7 +1009,6 @@ impl<'a> Environment<'a> {
 										constant,
 										import_specified_at: part
 											.position
-											.clone()
 											.with_source(self.get_source()),
 									};
 									let existing = self.variables.insert(part.r#as.to_owned(), v);
@@ -1047,7 +1037,7 @@ impl<'a> Environment<'a> {
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::FieldNotExported {
 									file: partial_import_path,
-									position: position.clone(),
+									position,
 									importing: part.value,
 								},
 							);

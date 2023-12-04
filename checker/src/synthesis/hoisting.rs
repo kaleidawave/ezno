@@ -42,28 +42,28 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				| parser::Declaration::Function(_) => {}
 				parser::Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
 					"enum",
-					r#enum.on.position.clone().with_source(environment.get_source()),
+					r#enum.on.position.with_source(environment.get_source()),
 				),
 				parser::Declaration::DeclareInterface(interface) => {
 					// TODO any difference bc declare?
-					let ty = environment.new_interface::<super::EznoParser>(
+					let ty = environment.new_interface(
 						&interface.name,
 						interface.nominal_keyword.is_some(),
 						interface.type_parameters.as_deref(),
 						interface.extends.as_deref(),
 						interface.position.with_source(environment.get_source()),
-						&mut checking_data.types,
+						checking_data,
 					);
 					idx_to_types.insert(interface.position.start, ty);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = environment.new_interface::<super::EznoParser>(
+					let ty = environment.new_interface(
 						&interface.on.name,
 						interface.on.nominal_keyword.is_some(),
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
 						interface.on.position.with_source(environment.get_source()),
-						&mut checking_data.types,
+						checking_data,
 					);
 					idx_to_types.insert(interface.on.position.start, ty);
 				}
@@ -87,7 +87,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(under, position) => {
 								crate::behavior::modules::ImportKind::All {
 									under,
-									position: position.clone(),
+									position: *position,
 								}
 							}
 							VariableIdentifier::Cursor(_, _) => todo!(),
@@ -95,15 +95,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					};
 					let default_import = import.default.as_ref().and_then(|default_identifier| {
 						match default_identifier {
-							VariableIdentifier::Standard(name, pos) => {
-								Some((name.as_str(), pos.clone()))
+							VariableIdentifier::Standard(name, position) => {
+								Some((name.as_str(), *position))
 							}
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
 					environment.import_items(
 						import.from.get_path().unwrap(),
-						import.position.clone(),
+						import.position,
 						default_import,
 						items,
 						checking_data,
@@ -116,8 +116,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						match exported {
 							Exportable::ImportAll { r#as, from } => {
 								let kind = match r#as {
-									Some(VariableIdentifier::Standard(name, pos)) => {
-										ImportKind::All { under: name, position: pos.clone() }
+									Some(VariableIdentifier::Standard(name, position)) => {
+										ImportKind::All { under: name, position: *position }
 									}
 									Some(VariableIdentifier::Cursor(_, _)) => todo!(),
 									None => ImportKind::Everything,
@@ -125,7 +125,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 								environment.import_items::<iter::Empty<_>, _, _>(
 									from.get_path().unwrap(),
-									position.clone(),
+									*position,
 									None,
 									kind,
 									checking_data,
@@ -137,7 +137,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 								environment.import_items(
 									from.get_path().unwrap(),
-									position.clone(),
+									*position,
 									None,
 									crate::behavior::modules::ImportKind::Parts(parts),
 									checking_data,
@@ -203,7 +203,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				parser::Declaration::DeclareFunction(func) => {
 					// TODO abstract
-					let declared_at = func.position.clone().with_source(environment.get_source());
+					let declared_at = func.position.with_source(environment.get_source());
 					let base = synthesise_function_annotation(
 						&func.type_parameters,
 						&func.parameters,
@@ -239,7 +239,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Enum(r#enum) => {
 					checking_data.raise_unimplemented_error(
 						"enum",
-						r#enum.position.clone().with_source(environment.get_source()),
+						r#enum.position.with_source(environment.get_source()),
 					);
 				}
 				parser::Declaration::Interface(interface) => {
@@ -291,10 +291,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								let behavior = crate::context::VariableRegisterBehavior::Register {
 									mutability,
 								};
-								let declared_at = func
-									.get_position()
-									.clone()
-									.with_source(environment.get_source());
+								let declared_at =
+									func.get_position().with_source(environment.get_source());
 
 								if let Some(VariableIdentifier::Standard(name, ..)) =
 									func.name.as_option_variable_identifier()
@@ -411,7 +409,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 	match item {
 		parser::declarations::ImportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: *position })
 			} else {
 				None
 			}
@@ -424,7 +422,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 					parser::declarations::ImportExportName::Cursor(_) => todo!(),
 				},
 				r#as: name,
-				position: position.clone(),
+				position: *position,
 			})
 		}
 		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
@@ -442,7 +440,7 @@ pub(super) fn export_part_to_name_pair(
 	match item {
 		parser::declarations::export::ExportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: *position })
 			} else {
 				None
 			}
@@ -455,7 +453,7 @@ pub(super) fn export_part_to_name_pair(
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
 					parser::declarations::ImportExportName::Cursor(_) => todo!(),
 				},
-				position: position.clone(),
+				position: *position,
 			})
 		}
 		parser::declarations::export::ExportPart::PrefixComment(_, item, _) => {
@@ -540,7 +538,7 @@ fn get_annotation_from_declaration<
 	{
 		comment_as_type_annotation(
 			possible_declaration,
-			&position.clone().with_source(environment.get_source()),
+			&position.with_source(environment.get_source()),
 			environment,
 			checking_data,
 		)
@@ -548,7 +546,7 @@ fn get_annotation_from_declaration<
 		None
 	};
 
-	if let Some((ty, span)) = result.clone() {
+	if let Some((ty, span)) = result {
 		let get_position = declaration.get_position();
 		checking_data
 			.type_mappings

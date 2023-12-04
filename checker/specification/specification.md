@@ -229,6 +229,16 @@ function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
 
 - Cannot return { a: T, b: U } because the function is expected to return { a: U, b: U }
 
+#### Expected parameter from variable declaration
+
+> Technically works with inference but this method should be less overhead + produce better positioned errors
+
+```ts
+const x: (a: string) => number = a => a.to;
+```
+
+- No property 'to' on string
+
 ### Function calling
 
 #### Argument type against parameter
@@ -329,6 +339,30 @@ obj.getA() satisfies 6;
 ```
 
 - Expected 6, found 5
+
+#### This passed around
+
+```ts
+function getToUpperCase(s: string) {
+	return s.toUpperCase
+}
+
+(getToUpperCase("hi")() satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
+
+#### This as generic argument
+
+```ts
+function callToUpperCase(s: string) {
+	return s.toUpperCase()
+}
+
+(callToUpperCase("hi") satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
 
 ### Closures
 
@@ -1003,15 +1037,34 @@ interface X {
 	b: boolean
 }
 
-interface X {
-	c: number
+{
+	interface X {
+		c: number
+	}
+	
+	const x: X = { a: "field", b: false, c: false }
+	const y: X = { a: "field", b: false, c: 2 }
 }
-
-const x: X = { a: "field", b: false, c: false }
-const y: X = { a: "field", b: false, c: 2 }
 ```
 
 - Type { a: "field", b: false, c: false } is not assignable to type X
+
+#### Interfaces do not merge with aliases
+
+```ts
+type X = { a: string }
+
+{
+	interface X {
+		b: number
+	}
+
+	const x: X = { b: 3 } // Don't require 'a' here <-
+	const y: X = { b: "NaN" }
+}
+```
+
+- Type { b: "NaN" } is not assignable to type X
 
 ### Classes
 
@@ -1191,6 +1244,34 @@ const y: (a: 4) => string = (a: number) => "hi"
 - Type (a: number) => "hi" is not assignable to type (a: 4) => string
 
 > I think reasons contains more information
+
+#### Indexing into (fixed) type
+
+```ts
+interface ThePrimitives {
+	a: number,
+	b: string,
+	c: boolean
+}
+
+(2 satisfies ThePrimitives["b"]);
+```
+
+- Expected string, found 2
+
+#### Indexing into (generic) type
+
+```ts
+function getProp<T extends { prop: string, other: string }>(t: T): T["prop"] {
+	return t.other
+}
+
+function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
+	return t.other
+}
+```
+
+- Cannot return T["other"] because the function is expected to return T["prop"]
 
 ### Prototypes
 

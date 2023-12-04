@@ -125,7 +125,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 		interface_register_behavior: &mut B,
 	) {
 		for member in members {
-			match &member.get_ast_ref().on {
+			let member = member.get_ast_ref();
+			match &member.on {
 				InterfaceMember::Method {
 					header,
 					name,
@@ -136,11 +137,20 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					performs,
 					position,
 				} => {
-					let behavior = functions::FunctionBehavior::Method {
-						is_async: header.is_async(),
-						is_generator: header.is_generator(),
-						// TODO ...
-						free_this_id: TypeId::ERROR_TYPE,
+					// Fix for performing const annotations. TODO want to do better
+					let behavior = if member
+						.decorators
+						.iter()
+						.any(|a| a.name.first().cloned().as_deref() == Some("DoNotIncludeThis"))
+					{
+						functions::FunctionBehavior::ArrowFunction { is_async: header.is_async() }
+					} else {
+						functions::FunctionBehavior::Method {
+							is_async: header.is_async(),
+							is_generator: header.is_generator(),
+							// TODO ...
+							free_this_id: TypeId::ERROR_TYPE,
+						}
 					};
 					let getter = match header {
 						parser::functions::MethodHeader::Get(_) => GetterSetter::Getter,
@@ -154,7 +164,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						environment,
 						checking_data,
 						performs.as_ref().into(),
-						&position.clone().with_source(environment.get_source()),
+						&position.with_source(environment.get_source()),
 						behavior,
 						interface_register_behavior.interface_type(),
 					);
@@ -207,7 +217,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					performs,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Caller {
 					parameters,
@@ -217,7 +227,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface caller",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Rule {
 					parameter,
@@ -229,8 +239,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface rule",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
+				InterfaceMember::Comment(_, _) => {}
 			}
 		}
 	}

@@ -333,9 +333,8 @@ where
 					if let Type::FunctionReference(func_id, _) =
 						checking_data.types.get_type_by_id(expecting)
 					{
-						crate::utils::notify!("Here!!");
 						let f = checking_data.types.get_function_from_id(*func_id);
-						(Some(f.parameters.clone()), Some(f.return_type.clone()))
+						(Some(f.parameters.clone()), Some(f.return_type))
 					} else {
 						(None, None)
 					};

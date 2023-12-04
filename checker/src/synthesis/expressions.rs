@@ -123,7 +123,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
-								position.clone().with_source(environment.get_source()),
+								position.with_source(environment.get_source()),
 							);
 						}
 						crate::utils::notify!("Skipping spread");
@@ -248,10 +248,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				return TypeId::ERROR_TYPE;
 			}
 
-			let lhs_pos =
-				ASTNode::get_position(&**lhs).clone().with_source(environment.get_source());
-			let rhs_pos =
-				ASTNode::get_position(&**rhs).clone().with_source(environment.get_source());
+			let lhs_pos = ASTNode::get_position(&**lhs).with_source(environment.get_source());
+			let rhs_pos = ASTNode::get_position(&**rhs).with_source(environment.get_source());
 
 			let operator = match operator {
 				BinaryOperator::Add => MathematicalAndBitwise::Add.into(),
@@ -286,7 +284,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose => {
 					checking_data.raise_unimplemented_error(
 						"special operations",
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					);
 					return TypeId::ERROR_TYPE;
 				}
@@ -330,14 +328,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				UnaryOperator::Await => {
 					checking_data.raise_unimplemented_error(
 						"await",
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					);
 					return TypeId::ERROR_TYPE;
 				}
 				UnaryOperator::TypeOf => {
 					checking_data.raise_unimplemented_error(
 						"TypeOf",
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					);
 					return TypeId::ERROR_TYPE;
 				}
@@ -408,7 +406,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				UnaryOperator::Yield | UnaryOperator::DelegatedYield => {
 					checking_data.raise_unimplemented_error(
 						"yield expression",
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					);
 					return TypeId::ERROR_TYPE;
 				}
@@ -418,7 +416,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs: Assignable =
 				synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
 
-			let assignment_span = position.clone().with_source(environment.get_source());
+			let assignment_span = position.with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
 				crate::behavior::assignments::AssignmentKind::Assign,
@@ -437,7 +435,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 			));
 
-			let assignment_span = position.clone().with_source(environment.get_source());
+			let assignment_span = position.with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
 				operator_to_assignment_kind(*operator),
@@ -456,7 +454,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match operator {
 				UnaryPrefixAssignmentOperator::Invert => todo!(),
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
-					let assignment_span = position.clone().with_source(environment.get_source());
+					let assignment_span = position.with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
 						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
@@ -499,7 +497,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							crate::behavior::assignments::AssignmentReturnStatus::Previous,
 						);
 
-					let assignment_span = position.clone().with_source(environment.get_source());
+					let assignment_span = position.with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
 						operator,
@@ -513,7 +511,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::VariableReference(name, position) => {
 			let get_variable_or_alternatives = environment.get_variable_handle_error(
 				name.as_str(),
-				position.clone().with_source(environment.get_source()),
+				position.with_source(environment.get_source()),
 				checking_data,
 			);
 
@@ -531,7 +529,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					todo!()
 				};
 
-			let access_position = position.clone().with_source(environment.get_source());
+			let access_position = position.with_source(environment.get_source());
 			// TODO
 			let publicity = Publicity::Public;
 
@@ -558,7 +556,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				TypeId::ANY_TYPE,
 			);
 
-			let index_position = position.clone().with_source(environment.get_source());
+			let index_position = position.with_source(environment.get_source());
 			// TODO handle differently?
 			let result = environment.get_property_handle_errors(
 				being_indexed,
@@ -574,7 +572,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::ThisReference(pos) => {
-			let position = pos.clone().with_source(environment.get_source());
+			let position = pos.with_source(environment.get_source());
 			Instance::RValue(environment.get_value_of_this(&checking_data.types, &position))
 		}
 		Expression::SuperExpression(reference, position) => match reference {
@@ -646,7 +644,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				position,
 			);
 			if let Some(special) = special {
-				checking_data.type_mappings.special_expressions.push(position.clone(), special);
+				checking_data.type_mappings.special_expressions.push(*position, special);
 			}
 			Instance::RValue(result)
 		}
@@ -724,7 +722,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::AsExpression { value, type_annotation, .. } => {
 				checking_data.diagnostics_container.add_warning(
 					TypeCheckWarning::IgnoringAsExpression(
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					),
 				);
 
@@ -739,7 +737,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data.check_satisfies(
 					value,
 					satisfying,
-					ASTNode::get_position(expression).clone().with_source(environment.get_source()),
+					ASTNode::get_position(expression).with_source(environment.get_source()),
 					environment,
 				);
 
@@ -775,7 +773,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::DynamicImport { position, .. } => {
 			checking_data.raise_unimplemented_error(
 				"dynamic import",
-				position.clone().with_source(environment.get_source()),
+				position.with_source(environment.get_source()),
 			);
 			return TypeId::ERROR_TYPE;
 		}
@@ -784,7 +782,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 	};
 
-	let position = ASTNode::get_position(expression).clone().with_source(environment.get_source());
+	let position = ASTNode::get_position(expression).with_source(environment.get_source());
 
 	// TODO should be copy
 	checking_data.add_expression_mapping(position, instance.clone());
@@ -863,10 +861,7 @@ fn call_function<T: crate::ReadFromFS>(
 			.map(|generic_type_argument| {
 				(
 					synthesise_type_annotation(generic_type_argument, environment, checking_data),
-					generic_type_argument
-						.get_position()
-						.clone()
-						.with_source(environment.get_source()),
+					generic_type_argument.get_position().with_source(environment.get_source()),
 				)
 			})
 			.collect::<Vec<_>>()
@@ -882,7 +877,7 @@ fn call_function<T: crate::ReadFromFS>(
 		CallingInput {
 			called_with_new,
 			this_value: Default::default(),
-			call_site: call_site.clone().with_source(environment.get_source()),
+			call_site: call_site.with_source(environment.get_source()),
 			call_site_type_arguments: generic_type_arguments,
 		},
 		environment,
@@ -923,9 +918,7 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 				let ty = synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE);
 				Some(SynthesisedArgument::NonSpread {
 					ty,
-					position: ASTNode::get_position(expr)
-						.clone()
-						.with_source(environment.get_source()),
+					position: ASTNode::get_position(expr).with_source(environment.get_source()),
 				})
 			}
 			SpreadExpression::Empty => None,
@@ -956,7 +949,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 						key,
 						// TODO what about getters
 						crate::PropertyValue::Value(value),
-						Some(pos.clone().with_source(environment.get_source())),
+						Some(pos.with_source(environment.get_source())),
 					);
 				}
 			}
@@ -964,7 +957,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let key = PropertyKey::String(Cow::Owned(name.clone()));
 				let get_variable = environment.get_variable_handle_error(
 					name,
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 					checking_data,
 				);
 				let value = match get_variable {

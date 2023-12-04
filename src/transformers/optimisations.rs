@@ -31,15 +31,14 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 					let item = item.get_ast_mut();
 					if let ObjectLiteralMember::Method(method) = item {
 						let current_module = chain.get_module();
-						let get_position = method.get_position();
-						let function_id = FunctionId(current_module, get_position.start);
+						let position = *method.get_position();
+						let function_id = FunctionId(current_module, position.start);
 						if !data.type_mappings.called_functions.contains(&function_id) {
 							// Make it null for now to not break `Object.keys`
 							let name = method.name.clone();
-							let position = get_position.clone();
 							*item = ObjectLiteralMember::Property(
 								name,
-								Expression::Null(position.clone()),
+								Expression::Null(position),
 								position,
 							);
 						}
@@ -52,7 +51,7 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 					.called_functions
 					.contains(&FunctionId(chain.get_module(), func.get_position().start))
 				{
-					*item = Expression::Null(func.get_position().clone());
+					*item = Expression::Null(*func.get_position());
 				}
 			}
 			Expression::ExpressionFunction(func) => {
@@ -61,7 +60,7 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 					.called_functions
 					.contains(&FunctionId(chain.get_module(), func.get_position().start))
 				{
-					*item = Expression::Null(func.get_position().clone());
+					*item = Expression::Null(*func.get_position());
 				}
 			}
 			Expression::ClassExpression(cls) => {
@@ -103,7 +102,7 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 							parser::declarations::VariableDeclaration::LetDeclaration {
 								keyword: parser::Keyword::new(parser::Span::NULL_SPAN),
 								declarations: Vec::new(),
-								position: func.get_position().clone(),
+								position: *func.get_position(),
 							},
 						)
 					}
@@ -147,8 +146,8 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 						readonly_keyword: None,
 						key: func.name.clone(),
 						type_annotation: None,
-						value: Some(Box::new(Expression::Null(func.position.clone()))),
-						position: func.position.clone(),
+						value: Some(Box::new(Expression::Null(func.position))),
+						position: func.position,
 					},
 				);
 			}

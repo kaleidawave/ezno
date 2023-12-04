@@ -235,7 +235,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			SynthesisedParameter {
 				ty: parameter_type,
 				name,
-				position: parameter.position.clone().with_source(environment.get_source()),
+				position: parameter.position.with_source(environment.get_source()),
 				missing_value,
 			}
 		})
@@ -265,7 +265,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 		SynthesisedRestParameter {
 			item_type,
 			name: parameter.name.clone(),
-			position: parameter.position.clone().with_source(environment.get_source()),
+			position: parameter.position.with_source(environment.get_source()),
 		}
 	});
 
@@ -294,7 +294,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 					{
 						comment_as_type_annotation(
 							possible_declaration,
-							&position.clone().with_source(environment.get_source()),
+							&position.with_source(environment.get_source()),
 							environment,
 							checking_data,
 						)
@@ -326,7 +326,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			SynthesisedParameter {
 				name,
 				ty: param_type,
-				position: parameter.position.clone().with_source(environment.get_source()),
+				position: parameter.position.with_source(environment.get_source()),
 				missing_value,
 			}
 		})

@@ -114,6 +114,7 @@ pub trait ASTImplementation: Sized {
 		string: String,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError>;
 
+	#[allow(clippy::needless_lifetimes)]
 	fn synthesise_module<'a, T: crate::ReadFromFS>(
 		module: &Self::Module<'a>,
 		source_id: SourceId,
@@ -121,6 +122,7 @@ pub trait ASTImplementation: Sized {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	);
 
+	#[allow(clippy::needless_lifetimes)]
 	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
 		file: Self::DefinitionFile<'a>,
 		root: &RootContext,
@@ -415,6 +417,10 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
+	if checking_data.diagnostics_container.has_error() {
+		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
+	}
+
 	let entry_content = (checking_data.modules.file_reader)(entry_point.as_ref());
 	let module = if let Some(content) = entry_content {
 		let source =
@@ -440,10 +446,6 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		});
 		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
 	};
-
-	if checking_data.diagnostics_container.has_error() {
-		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
-	}
 
 	let CheckingData {
 		diagnostics_container,

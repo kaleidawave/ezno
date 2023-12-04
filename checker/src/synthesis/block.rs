@@ -69,13 +69,13 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 		}
 		Declaration::Class(class) => {
 			let constructor = synthesise_class_declaration(&class.on, environment, checking_data);
-			let position = class.on.position.clone().with_source(environment.get_source());
+			let position = class.on.position.with_source(environment.get_source());
 			if let Some(VariableIdentifier::Standard(name, ..)) =
 				class.on.name.as_option_variable_identifier()
 			{
 				let result = environment.declare_variable(
 					name,
-					position.clone(),
+					position,
 					constructor,
 					&mut checking_data.types,
 					None,
@@ -145,7 +145,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					if exported.default.is_some() {
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::DoubleDefaultExport(
-								position.clone().with_source(environment.get_source()),
+								position.with_source(environment.get_source()),
 							),
 						);
 					} else {
@@ -154,7 +154,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				} else {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::NonTopLevelExport(
-							position.clone().with_source(environment.get_source()),
+							position.with_source(environment.get_source()),
 						),
 					);
 				}

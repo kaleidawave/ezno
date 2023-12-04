@@ -82,8 +82,8 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 ) {
 	use crate::types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult};
 
-	let position = variable_declared_pos.clone();
-	let mut basic_subtyping = BasicEquality { add_property_restrictions: true, position };
+	let mut basic_subtyping =
+		BasicEquality { add_property_restrictions: true, position: variable_declared_pos };
 
 	let type_is_subtype = type_is_subtype(
 		variable_declared_type,
@@ -109,7 +109,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				value_site: expression_declared_pos.clone(),
+				value_site: expression_declared_pos,
 			},
 		);
 

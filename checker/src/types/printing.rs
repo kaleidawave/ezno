@@ -120,7 +120,7 @@ fn print_type_into_buf(
 				}
 				if matches!(
 					types.get_type_by_id(*on),
-					Type::NamedRooted { .. } | Type::Function { .. }
+					Type::Interface { .. } | Type::Function { .. }
 				) && !arguments.type_arguments.is_empty()
 				{
 					// TODO might be out of order ...
@@ -171,11 +171,19 @@ fn print_type_into_buf(
 				}
 			},
 			Constructor::Property { on, under, result } => {
-				// TODO inefficient
 				if crate::types::is_explicit_generic(*on, types) {
 					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
 					buf.push('[');
-					print_property_key_into_buf(buf, under, cycles, types, ctx, debug);
+					match under {
+						PropertyKey::String(s) => {
+							buf.push('"');
+							buf.push_str(s);
+							buf.push('"');
+						}
+						PropertyKey::Type(t) => {
+							print_type_into_buf(*t, buf, cycles, types, ctx, debug)
+						}
+					};
 					buf.push(']');
 				} else {
 					print_type_into_buf(*result, buf, cycles, types, ctx, debug)
@@ -186,7 +194,7 @@ fn print_type_into_buf(
 				print_type_into_buf(base, buf, cycles, types, ctx, debug);
 			}
 		},
-		Type::NamedRooted { name, parameters, nominal } => {
+		Type::Interface { name, parameters, nominal } => {
 			if debug {
 				write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
 			// buf.push_str("{ ");
@@ -227,7 +235,7 @@ fn print_type_into_buf(
 			if debug {
 				write!(
 					buf,
-					"[func {}, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
+					"[t{} func, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
 					id.0,
 					func.free_variables,
 					func.closed_over_variables,

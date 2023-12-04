@@ -47,7 +47,7 @@ pub(crate) fn create_object_for_type(
 		}
 		Type::RootPolyType(_) => todo!(),
 		Type::Constructor(_) => todo!(),
-		Type::NamedRooted { name, parameters, nominal } => {
+		Type::Interface { name, parameters, nominal } => {
 			let name = name.clone();
 
 			// TODO: Do we need positions for the following appends?

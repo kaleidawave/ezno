@@ -188,7 +188,7 @@ pub enum SynthesisedArgument {
 impl SynthesisedArgument {
 	pub(crate) fn get_position(&self) -> SpanWithSource {
 		match self {
-			SynthesisedArgument::NonSpread { ty: _, position } => position.clone(),
+			SynthesisedArgument::NonSpread { ty: _, position } => *position,
 		}
 	}
 

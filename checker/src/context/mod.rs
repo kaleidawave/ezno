@@ -24,7 +24,9 @@ use crate::{
 		operations::MathematicalAndBitwise,
 		variables::{VariableMutability, VariableOrImport},
 	},
-	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
+	diagnostics::{
+		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+	},
 	events::{Event, RootReference},
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
@@ -411,7 +413,7 @@ impl<T: ContextType> Context<T> {
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		if let Ok(ty) =
-			self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
+			self.register_variable(name, declared_at, behavior, &mut checking_data.types)
 		{
 			ty
 		} else {
@@ -1151,25 +1153,51 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends
-	pub fn new_interface<'a, A: crate::ASTImplementation>(
+	pub fn new_interface<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		nominal: bool,
 		parameters: Option<&'a [A::TypeParameter<'a>]>,
 		extends: Option<&'a [A::TypeAnnotation<'a>]>,
 		position: SpanWithSource,
-		types: &mut TypeStore,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
+		let existing = if let Some(id) = self.named_types.get(name) {
+			if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
+				checking_data
+					.diagnostics_container
+					.add_warning(TypeCheckWarning::MergingInterfaceInSameContext { position });
+
+				Some(*id)
+			} else {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::TypeAlreadyDeclared { name: name.to_owned(), position },
+				);
+				return TypeId::ERROR_TYPE;
+			}
+		} else {
+			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
+				|id| {
+					matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
+						.then_some(*id)
+				},
+			)
+		};
+
+		if let Some(existing) = existing {
+			return existing;
+		};
+
 		// TODO declare here
 		let parameters = parameters.map(|parameters| {
 			parameters
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
-						name: A::type_parameter_name(&parameter).to_owned(),
+						name: A::type_parameter_name(parameter).to_owned(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
-					types.register_type(ty)
+					checking_data.types.register_type(ty)
 				})
 				.collect()
 		});
@@ -1178,20 +1206,10 @@ impl<T: ContextType> Context<T> {
 			todo!("synthesise, fold into Type::And and create alias type")
 		}
 
-		let ty = Type::NamedRooted { nominal, name: name.to_owned(), parameters };
-
-		let interface_ty = types.register_type(ty);
-
-		// Interface merging!
-		let existing =
-			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied();
-
-		if let Some(existing) = existing {
-			existing
-		} else {
-			let existing_type = self.named_types.insert(name.to_owned(), interface_ty);
-			interface_ty
-		}
+		let ty = Type::Interface { nominal, name: name.to_owned(), parameters };
+		let interface_ty = checking_data.types.register_type(ty);
+		self.named_types.insert(name.to_owned(), interface_ty);
+		interface_ty
 	}
 
 	pub fn new_alias<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -1207,7 +1225,7 @@ impl<T: ContextType> Context<T> {
 			let parameters = parameters
 				.iter()
 				.map(|parameter| {
-					let name = A::type_parameter_name(&parameter).to_owned();
+					let name = A::type_parameter_name(parameter).to_owned();
 					let ty = Type::RootPolyType(PolyNature::Generic {
 						name: name.clone(),
 						eager_fixed: TypeId::ANY_TYPE,
@@ -1233,12 +1251,10 @@ impl<T: ContextType> Context<T> {
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
 		if existing_type.is_some() {
-			checking_data.diagnostics_container.add_error(
-				TypeCheckError::TypeAliasAlreadyDeclared {
-					name: name.to_owned(),
-					position: position.with_source(self.get_source()),
-				},
-			);
+			checking_data.diagnostics_container.add_error(TypeCheckError::TypeAlreadyDeclared {
+				name: name.to_owned(),
+				position: position.with_source(self.get_source()),
+			});
 			TypeId::ERROR_TYPE
 		} else {
 			alias_ty

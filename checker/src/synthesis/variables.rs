@@ -37,7 +37,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 			parser::VariableIdentifier::Standard(name, pos) => {
 				let ty = environment.register_variable_handle_error(
 					name,
-					pos.clone().with_source(environment.get_source()),
+					pos.with_source(environment.get_source()),
 					behavior,
 					checking_data,
 				);
@@ -117,10 +117,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 										&checking_data.types,
 										false,
 									),
-									site: name
-										.get_position()
-										.clone()
-										.with_source(environment.get_source()),
+									site: name.get_position().with_source(environment.get_source()),
 								});
 								TypeId::ERROR_TYPE
 							}
@@ -202,10 +199,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 										&checking_data.types,
 										false,
 									),
-									site: name
-										.get_position()
-										.clone()
-										.with_source(environment.get_source()),
+									site: name.get_position().with_source(environment.get_source()),
 								});
 								TypeId::ERROR_TYPE
 							}
@@ -246,7 +240,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		.type_mappings
 		.variable_restrictions
 		.get(&(environment.get_source(), get_position.start))
-		.map(|(ty, pos)| (*ty, pos.clone()));
+		.map(|(ty, pos)| (*ty, *pos));
 
 	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
 		let expecting = if let Some((var_ty, _)) = var_ty_and_pos.as_ref() {
@@ -309,10 +303,8 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 					ArrayDestructuringField::Name(variable_field, _) => {
 						let idx = PropertyKey::from_usize(idx);
 
-						let field_position = variable_field
-							.get_position()
-							.clone()
-							.with_source(environment.get_source());
+						let field_position =
+							variable_field.get_position().with_source(environment.get_source());
 
 						let value = environment.get_property(
 							value,
@@ -356,7 +348,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						};
 
 						let get_position_with_source =
-							get_position.clone().with_source(environment.get_source());
+							get_position.with_source(environment.get_source());
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
@@ -404,7 +396,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							key_ty,
 							&mut checking_data.types,
 							None,
-							position.clone().with_source(environment.get_source()),
+							position.with_source(environment.get_source()),
 						);
 
 						let value = match property_value {

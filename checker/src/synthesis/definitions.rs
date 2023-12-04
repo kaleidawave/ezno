@@ -35,13 +35,13 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	for statement in &definition.declarations {
 		match statement {
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = env.new_interface::<EznoParser>(
+				let ty = env.new_interface(
 					&interface.on.name,
 					interface.on.nominal_keyword.is_some(),
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
 					interface.on.position.with_source(source),
-					&mut checking_data.types,
+					checking_data,
 				);
 				idx_to_types.insert(interface.on.position.start, ty);
 			}

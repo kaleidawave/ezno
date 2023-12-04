@@ -482,7 +482,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				restriction_mode,
 			)
 		}
-		Type::NamedRooted { nominal: base_type_nominal, .. } => {
+		Type::Interface { nominal: base_type_nominal, .. } => {
 			// If type matched type it would have been cleared before. So looking at properties and
 			// prototypes here
 
@@ -570,7 +570,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						restriction_mode,
 					)
 				}
-				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
+				Type::AliasTo { .. } | Type::Interface { .. } => {
 					crate::utils::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
 					// TODO
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)

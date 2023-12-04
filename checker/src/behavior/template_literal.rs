@@ -98,7 +98,7 @@ where
 			},
 		);
 
-		let call_site = position.clone().with_source(environment.get_source());
+		let call_site = position.with_source(environment.get_source());
 		crate::types::calling::call_type_handle_errors(
 			tag,
 			CallingInput {

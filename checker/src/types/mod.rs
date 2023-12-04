@@ -108,7 +108,7 @@ pub enum Type {
 	/// For number and other rooted types
 	///
 	/// Although they all alias Object
-	NamedRooted {
+	Interface {
 		name: String,
 		// Whether only values under this type can be matched
 		nominal: bool,
@@ -167,7 +167,7 @@ pub enum ObjectNature {
 
 impl Type {
 	pub(crate) fn get_parameters(&self) -> Option<Vec<TypeId>> {
-		if let Type::NamedRooted { parameters, .. } | Type::AliasTo { parameters, .. } = self {
+		if let Type::Interface { parameters, .. } | Type::AliasTo { parameters, .. } = self {
 			parameters.clone()
 		} else {
 			None
@@ -185,7 +185,7 @@ impl Type {
 			// TODO what about if left or right
 			Type::And(_, _) | Type::Or(_, _) => false,
 			// TODO what about if it aliases
-			Type::AliasTo { .. } | Type::NamedRooted { .. } => {
+			Type::AliasTo { .. } | Type::Interface { .. } => {
 				// TODO not sure
 				false
 			}
@@ -296,7 +296,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 			| Type::Or(_, _)
 			| Type::RootPolyType(_)
 			| Type::Constructor(_)
-			| Type::NamedRooted { .. } => {
+			| Type::Interface { .. } => {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
 			}
@@ -356,7 +356,7 @@ impl SubtypeBehavior for SeedingContext {
 		restriction_mode: bool,
 	) -> Result<(), NonEqualityReason> {
 		// TODO
-		let (parameter_pos, parameter_idx) = self.argument_position_and_parameter_idx.clone();
+		let (parameter_pos, parameter_idx) = self.argument_position_and_parameter_idx;
 		self.set_id(parameter, (value, parameter_pos, parameter_idx), restriction_mode);
 		Ok(())
 	}
@@ -399,7 +399,7 @@ impl SubtypeBehavior for BasicEquality {
 	) {
 		let result = environment
 			.deferred_function_constraints
-			.insert(function_id, (function_type, self.position.clone()));
+			.insert(function_id, (function_type, self.position));
 
 		debug_assert!(result.is_none());
 	}
@@ -446,6 +446,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
+			|| matches!(under, PropertyKey::Type(under) if is_explicit_generic(*under, types))
 	} else {
 		false
 	}

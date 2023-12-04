@@ -211,6 +211,7 @@ pub enum InterfaceMember {
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
+	Comment(String, Span),
 }
 
 #[allow(clippy::similar_names)]
@@ -319,6 +320,14 @@ impl ASTNode for InterfaceMember {
 					type_parameters,
 					return_type,
 				})
+			}
+			token if token.is_comment() => {
+				let token = reader.next().unwrap();
+				if let Ok((comment, span)) = TSXToken::try_into_comment(token) {
+					Ok(InterfaceMember::Comment(comment, span))
+				} else {
+					unreachable!()
+				}
 			}
 			_ => {
 				let header = MethodHeader::from_reader(reader);

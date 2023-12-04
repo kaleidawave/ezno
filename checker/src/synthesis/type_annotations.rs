@@ -87,13 +87,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				if let Some(ty) = environment.get_type_from_name(name) {
 					// Warn if it requires parameters. e.g. Array
 					if let Type::AliasTo { parameters: Some(_), .. }
-					| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
+					| Type::Interface { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
 					{
 						// TODO check defaults...
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::TypeNeedsTypeArguments(
 								name,
-								pos.clone().with_source(environment.get_source()),
+								pos.with_source(environment.get_source()),
 							),
 						);
 						TypeId::ANY_TYPE
@@ -103,7 +103,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				} else {
 					checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
 						name,
-						pos.clone().with_source(environment.get_source()),
+						pos.with_source(environment.get_source()),
 					));
 					TypeId::ERROR_TYPE
 				}
@@ -166,7 +166,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						add_property_restrictions: true,
 						position: argument_type_annotation
 							.get_position()
-							.clone()
 							.with_source(environment.get_source()),
 					};
 
@@ -210,7 +209,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 					let with_source = argument_type_annotation
 						.get_position()
-						.clone()
 						.with_source(environment.get_source());
 
 					type_arguments.insert(parameter, (argument, with_source));
@@ -234,7 +232,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::TypeHasNoGenericParameters(
 						name.clone(),
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					),
 				);
 				TypeId::ERROR_TYPE
@@ -247,7 +245,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			position,
 			..
 		} => {
-			let position = position.clone().with_source(environment.get_source());
+			let position = position.with_source(environment.get_source());
 			let function_type = synthesise_function_annotation(
 				type_parameters,
 				parameters,
@@ -347,10 +345,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						let item_ty =
 							synthesise_type_annotation(type_annotation, environment, checking_data);
 
-						let ty_position = type_annotation
-							.get_position()
-							.clone()
-							.with_source(environment.get_source());
+						let ty_position =
+							type_annotation.get_position().with_source(environment.get_source());
 
 						obj.append(
 							environment,
@@ -392,22 +388,20 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			if let Some(base) = environment.get_poly_base(being_indexed, &checking_data.types) {
 				checking_data.types.new_property_constructor(being_indexed, indexer, base)
-			} else {
-				if let Some(prop) = environment.get_property_unbound(
-					being_indexed,
-					Publicity::Public,
-					under,
-					&checking_data.types,
-				) {
-					match prop {
-						crate::context::Logical::Pure(ty) => ty.as_get_type(),
-						crate::context::Logical::Or { .. } => todo!(),
-						crate::context::Logical::Implies { .. } => todo!(),
-					}
-				} else {
-					crate::utils::notify!("Error: no index on type annotation");
-					TypeId::ERROR_TYPE
+			} else if let Some(prop) = environment.get_property_unbound(
+				being_indexed,
+				Publicity::Public,
+				under,
+				&checking_data.types,
+			) {
+				match prop {
+					crate::context::Logical::Pure(ty) => ty.as_get_type(),
+					crate::context::Logical::Or { .. } => todo!(),
+					crate::context::Logical::Implies { .. } => todo!(),
 				}
+			} else {
+				crate::utils::notify!("Error: no index on type annotation");
+				TypeId::ERROR_TYPE
 			}
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),

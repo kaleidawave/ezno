@@ -48,7 +48,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				TypeId::UNDEFINED_TYPE
 			};
 
-			let position = return_statement.2.clone().with_source(environment.get_source());
+			let position = return_statement.2.with_source(environment.get_source());
 
 			environment.return_value(returned, position);
 		}
@@ -203,7 +203,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				checking_data,
 				TypeId::ANY_TYPE,
 			);
-			let thrown_position = stmt.2.clone().with_source(environment.get_source());
+			let thrown_position = stmt.2.with_source(environment.get_source());
 			environment.throw_value(thrown_value, thrown_position);
 		}
 		Statement::Labelled { position, name, statement } => {

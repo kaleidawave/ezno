@@ -23,11 +23,10 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 	while let Some(event) = iter.next() {
 		match event {
 			Event::Return { returned, returned_position } => {
-				if let Some((expected_return_type, annotation_span)) = expected_return_type.clone()
-				{
+				if let Some((expected_return_type, annotation_span)) = expected_return_type {
 					let mut behavior = crate::subtyping::BasicEquality {
 						add_property_restrictions: true,
-						position: annotation_span.clone(),
+						position: annotation_span,
 					};
 
 					let result = crate::subtyping::type_is_subtype(
@@ -55,8 +54,8 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 										&checking_data.types,
 										false,
 									),
-								annotation_position: annotation_span.clone(),
-								returned_position: returned_position.clone(),
+								annotation_position: annotation_span,
+								returned_position: *returned_position,
 							},
 						);
 					}
@@ -68,13 +67,13 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 					&mut events_if_truthy.iter(),
 					checking_data,
 					environment,
-					expected_return_type.clone(),
+					expected_return_type,
 				);
 				let else_return = get_return_from_events(
 					&mut else_events.iter(),
 					checking_data,
 					environment,
-					expected_return_type.clone(),
+					expected_return_type,
 				);
 
 				return match (return_if_truthy, else_return) {
