@@ -318,12 +318,15 @@ impl ASTNode for BlockOrSingleStatement {
 				block.to_string_from_buffer(buf, options, depth);
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if options.pretty {
+				if options.pretty && options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.add_gap(buf);
 					stmt.to_string_from_buffer(buf, options, depth + 1);
 				} else {
 					stmt.to_string_from_buffer(buf, options, depth);
+					if stmt.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 		}

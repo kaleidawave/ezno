@@ -156,6 +156,8 @@ pub struct ToStringOptions {
 	pub pretty: bool,
 	/// Blocks have trailing semicolons. Has no effect if pretty == false
 	pub trailing_semicolon: bool,
+	/// Single statements get put on the same line as their parent statement
+	pub single_statement_on_new_line: bool,
 	/// Include type annotation syntax
 	pub include_types: bool,
 	/// TODO not sure about this
@@ -172,6 +174,7 @@ impl Default for ToStringOptions {
 		ToStringOptions {
 			pretty: true,
 			include_types: false,
+			single_statement_on_new_line: true,
 			include_decorators: false,
 			comments: Comments::All,
 			expect_jsx: false,
@@ -520,6 +523,7 @@ pub enum NumberRepresentation {
 		value: u64,
 	},
 	Number {
+		original_length: Option<u8>,
 		elided_zero_before_point: bool,
 		trailing_point: bool,
 		/// TODO could do as something other than f64
@@ -573,7 +577,12 @@ impl From<f64> for NumberRepresentation {
 		} else if value.is_nan() {
 			Self::NaN
 		} else {
-			Self::Number { value, elided_zero_before_point: false, trailing_point: false }
+			Self::Number {
+				value,
+				elided_zero_before_point: false,
+				trailing_point: false,
+				original_length: None,
+			}
 		}
 	}
 }
@@ -585,6 +594,8 @@ impl FromStr for NumberRepresentation {
 		if s == "NaN" {
 			return Ok(Self::NaN);
 		}
+
+		let l = s.len() as u8;
 
 		if s.contains('_') {
 			return s.replace('_', "").parse();
@@ -607,11 +618,13 @@ impl FromStr for NumberRepresentation {
 					if s.len() == 2 {
 						Ok(Self::Number {
 							value: 0f64,
+							original_length: Some(l),
 							elided_zero_before_point: false,
 							trailing_point: true,
 						})
 					} else {
 						Ok(Self::Number {
+							original_length: Some(l),
 							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
 							elided_zero_before_point: false,
 							trailing_point: false,
@@ -653,7 +666,7 @@ impl FromStr for NumberRepresentation {
 					Ok(Self::Bin { identifier_uppercase, sign, value })
 				}
 				Some(c @ ('e' | 'E')) => {
-					let exponent: i32 = s[1..].parse().map_err(|_| s.clone())?;
+					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
 					Ok(Self::Exponential {
 						sign,
 						value: 0f64,
@@ -664,8 +677,19 @@ impl FromStr for NumberRepresentation {
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
+
+					if !uses_character && s.contains(['8', '9']) {
+						return Ok(Self::Number {
+							original_length: Some(l),
+							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+							elided_zero_before_point: false,
+							trailing_point: false,
+						});
+					}
+
 					// If it uses the the character then skip one, else skip zero
 					let start: usize = uses_character.into();
+
 					let mut value = 0u64;
 					for c in s[start..].as_bytes() {
 						value <<= 3; // 8=2^3
@@ -683,12 +707,14 @@ impl FromStr for NumberRepresentation {
 				}
 				None => Ok(Self::Number {
 					value: 0f64,
+					original_length: Some(l),
 					elided_zero_before_point: false,
 					trailing_point: false,
 				}),
 			}
 		} else if s.ends_with('.') {
 			Ok(Self::Number {
+				original_length: Some(l),
 				value: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: true,
@@ -698,6 +724,7 @@ impl FromStr for NumberRepresentation {
 			let digits = value.log10().floor() + 1f64;
 			let result = value * (10f64.powf(-digits));
 			Ok(Self::Number {
+				original_length: Some(l),
 				value: sign.apply(result),
 				elided_zero_before_point: true,
 				trailing_point: false,
@@ -712,6 +739,7 @@ impl FromStr for NumberRepresentation {
 			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: true })
 		} else {
 			Ok(Self::Number {
+				original_length: Some(l),
 				value: sign.apply(s.parse().map_err(|_| s.clone())?),
 				elided_zero_before_point: false,
 				trailing_point: false,
@@ -768,18 +796,22 @@ impl NumberRepresentation {
 				format!("{sign}0o{value:o}")
 			}
 			NumberRepresentation::Number {
-				value: internal,
+				original_length,
+				value,
 				elided_zero_before_point,
 				trailing_point,
 			} => {
-				let mut start = internal.to_string();
+				let mut buf = value.to_string();
+				if let Some(original_length) = original_length {
+					buf = format!("{}{buf}", "0".repeat(original_length as usize - buf.len()));
+				}
 				if elided_zero_before_point {
-					start.remove(0);
+					buf.remove(0);
 				}
 				if trailing_point {
-					start.push('.');
+					buf.push('.');
 				}
-				start
+				buf
 			}
 			NumberRepresentation::Exponential { sign, value, exponent, identifier_uppercase } => {
 				if identifier_uppercase {

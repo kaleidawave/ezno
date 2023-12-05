@@ -60,17 +60,18 @@ jobs:
         id: changes
         with:
           filters: |
+            src:
+              - 'src/**'
             parser:
               - 'parser/**'
             checker:
               - 'checker/**'
-            src:
-              - 'src/**'
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.src == 'true'
         with:
           packages: wasm-bindgen-cli@0.2.87
+
       - name: Check WASM
         if: steps.changes.outputs.src == 'true'
         run: |
@@ -79,6 +80,16 @@ jobs:
           npm ci
           npm run build
         working-directory: src/js-cli-and-library
+
+      - name: Build and test WASM
+        if: steps.changes.outputs.src == 'true'
+        run: |
+          npm ci
+          npm run test
+          node ./dist/cli.cjs info
+          deno run -A ./dist/cli.mjs info
+        working-directory: src/js-cli-and-library
+        shell: bash
 
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
@@ -104,8 +115,7 @@ jobs:
           packages: taplo-cli
 
       - name: Check TOML formatting with taplo
-        run: |
-          taplo fmt --check **/*/Cargo.toml
+        run: taplo fmt --check **/*/Cargo.toml
 
   tests:
     needs: validity
@@ -147,32 +157,13 @@ jobs:
 
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true'
-        run: cargo test -F ezno-parser
+        run: |
+          # Test checker with the parser features
+          cargo test -F ezno-parser 
         working-directory: checker
 
       - name: Run base tests
         run: cargo test
-
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: wasm-bindgen-cli@0.2.87
-          
-      - uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Build and test WASM
-        run: |
-          rustup target add wasm32-unknown-unknown
-          npm ci
-          npm run test
-          node ./dist/cli.cjs info
-          deno run -A ./dist/cli.mjs info
-        working-directory: src/js-cli-and-library
-        shell: bash
 
   fuzzing:
     needs: validity

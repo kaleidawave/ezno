@@ -88,20 +88,7 @@ impl ASTNode for DoWhileStatement {
 	) {
 		buf.push_str("do");
 		options.add_gap(buf);
-		{
-			let ref this = self.inner;
-			match this {
-				BlockOrSingleStatement::Braced(block) => {
-					block.to_string_from_buffer(buf, options, depth);
-				}
-				BlockOrSingleStatement::SingleStatement(stmt) => {
-					stmt.to_string_from_buffer(buf, options, depth);
-					if stmt.requires_semi_colon() {
-						buf.push(';');
-					}
-				}
-			}
-		};
+		self.inner.to_string_from_buffer(buf, options, depth);
 		options.add_gap(buf);
 		buf.push_str("while");
 		options.add_gap(buf);
