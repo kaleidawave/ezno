@@ -14,6 +14,7 @@ pub enum TemplateLiteralPart<'a, T> {
 	Dynamic(&'a T),
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn synthesise_template_literal<'a, T, A>(
 	tag: Option<TypeId>,
 	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
@@ -26,6 +27,7 @@ where
 	A: crate::ASTImplementation,
 	A::Expression<'a>: 'a,
 {
+	#[allow(clippy::needless_pass_by_value)]
 	fn part_to_type<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		first: TemplateLiteralPart<'a, A::Expression<'a>>,
 		environment: &mut Environment,

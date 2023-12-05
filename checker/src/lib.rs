@@ -264,7 +264,7 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 			environment: &mut Environment,
 			checking_data: &'a mut CheckingData<T, A>,
 		) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
-			let existing = checking_data.modules.files.get_source_at_path(&full_importer);
+			let existing = checking_data.modules.files.get_source_at_path(full_importer);
 			if let Some(existing) = existing {
 				Some(Ok(checking_data
 					.modules
@@ -272,7 +272,7 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 					.get(&existing)
 					.expect("existing file, but not synthesised")))
 			} else {
-				let content = (checking_data.modules.file_reader)(full_importer.as_ref());
+				let content = (checking_data.modules.file_reader)(full_importer);
 				if let Some(content) = content {
 					let source = checking_data
 						.modules

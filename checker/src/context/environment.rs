@@ -153,7 +153,7 @@ impl<'a> Environment<'a> {
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
-	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with Span::NULL ...? Maybe RHS type could be None to accommodate
+	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with [`Span::NULL ...?`] Maybe RHS type could be None to accommodate
 	pub fn assign_to_assignable_handle_errors<
 		'b,
 		T: crate::ReadFromFS,

@@ -499,6 +499,8 @@ impl std::fmt::Display for NumberSign {
 /// TODO a mix between runtime numbers and source syntax based number
 /// TODO hex cases lost in input :(
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
+///
+/// Some of these can't be parsed, but are there to make is so that a number can be generated from just a f64
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -523,11 +525,12 @@ pub enum NumberRepresentation {
 		value: u64,
 	},
 	Number {
-		original_length: Option<u8>,
-		elided_zero_before_point: bool,
-		trailing_point: bool,
 		/// TODO could do as something other than f64
 		value: f64,
+		/// To preserve formatting
+		before_point: u8,
+		/// To preserve formatting
+		after_point: Option<u8>,
 	},
 	Exponential {
 		sign: NumberSign,
@@ -568,6 +571,7 @@ impl TryFrom<NumberRepresentation> for f64 {
 	}
 }
 
+// For code generation
 impl From<f64> for NumberRepresentation {
 	fn from(value: f64) -> Self {
 		if value == f64::INFINITY {
@@ -579,9 +583,9 @@ impl From<f64> for NumberRepresentation {
 		} else {
 			Self::Number {
 				value,
-				elided_zero_before_point: false,
-				trailing_point: false,
-				original_length: None,
+				// These values should be fine
+				before_point: 0,
+				after_point: None,
 			}
 		}
 	}
@@ -594,8 +598,6 @@ impl FromStr for NumberRepresentation {
 		if s == "NaN" {
 			return Ok(Self::NaN);
 		}
-
-		let l = s.len() as u8;
 
 		if s.contains('_') {
 			return s.replace('_', "").parse();
@@ -615,19 +617,15 @@ impl FromStr for NumberRepresentation {
 			let next_char = s.chars().next();
 			match next_char {
 				Some('.') => {
+					let after_point = Some(s.len() as u8 - 1);
+					let before_point = 1;
 					if s.len() == 2 {
-						Ok(Self::Number {
-							value: 0f64,
-							original_length: Some(l),
-							elided_zero_before_point: false,
-							trailing_point: true,
-						})
+						Ok(Self::Number { value: 0f64, before_point, after_point })
 					} else {
 						Ok(Self::Number {
-							original_length: Some(l),
 							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
-							elided_zero_before_point: false,
-							trailing_point: false,
+							before_point,
+							after_point,
 						})
 					}
 				}
@@ -678,12 +676,16 @@ impl FromStr for NumberRepresentation {
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
 
-					if !uses_character && s.contains(['8', '9']) {
+					if !uses_character && s.contains(['8', '9', '.']) {
+						let (before_point, after_point) =
+							s.split_once('.').map_or((s.len() as u8 + 1, None), |(l, r)| {
+								(l.len() as u8 + 1, Some(r.len() as u8))
+							});
+
 						return Ok(Self::Number {
-							original_length: Some(l),
 							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
-							elided_zero_before_point: false,
-							trailing_point: false,
+							before_point,
+							after_point,
 						});
 					}
 
@@ -705,27 +707,20 @@ impl FromStr for NumberRepresentation {
 						identifier_uppercase: uses_character.then_some(c.is_uppercase()),
 					})
 				}
-				None => Ok(Self::Number {
-					value: 0f64,
-					original_length: Some(l),
-					elided_zero_before_point: false,
-					trailing_point: false,
-				}),
+				None => Ok(Self::Number { value: 0f64, before_point: 1, after_point: None }),
 			}
 		} else if s.starts_with('.') {
 			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
 			Ok(Self::Number {
-				original_length: Some(l),
 				value: sign.apply(value),
-				elided_zero_before_point: true,
-				trailing_point: false,
+				before_point: 0,
+				after_point: Some(s.len() as u8 - 1),
 			})
 		} else if let Some(s) = s.strip_suffix('.') {
 			Ok(Self::Number {
-				original_length: Some(l),
 				value: sign.apply(s.parse().map_err(|_| s.clone())?),
-				elided_zero_before_point: false,
-				trailing_point: true,
+				before_point: s.len() as u8 - 1,
+				after_point: Some(0),
 			})
 		} else if let Some((left, right)) = s.split_once('e') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
@@ -736,11 +731,14 @@ impl FromStr for NumberRepresentation {
 			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
 			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: true })
 		} else {
+			let (before_point, after_point) = s
+				.split_once('.')
+				.map_or((s.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
+
 			Ok(Self::Number {
-				original_length: Some(l),
 				value: sign.apply(s.parse().map_err(|_| s.clone())?),
-				elided_zero_before_point: false,
-				trailing_point: false,
+				before_point,
+				after_point,
 			})
 		}
 	}
@@ -793,23 +791,30 @@ impl NumberRepresentation {
 			NumberRepresentation::Octal { identifier_uppercase: Some(false), sign, value } => {
 				format!("{sign}0o{value:o}")
 			}
-			NumberRepresentation::Number {
-				original_length,
-				value,
-				elided_zero_before_point,
-				trailing_point,
-			} => {
-				let mut buf = value.to_string();
-				if let Some(original_length) = original_length {
-					if original_length as usize > buf.len() {
-						buf = format!("{}{buf}", "0".repeat(original_length as usize - buf.len()));
+			NumberRepresentation::Number { value, after_point, before_point } => {
+				let is_negative = value.is_sign_negative();
+				let mut buf = value.abs().to_string();
+
+				// TODO only `options.preserve_formatting`
+				let (bp, ap) = buf
+					.split_once('.')
+					.map_or((buf.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
+
+				// Remove leading zero
+				if bp > before_point {
+					let removed = buf.remove(0);
+					debug_assert_eq!(removed, '0');
+				}
+
+				(bp..before_point).for_each(|_| buf.insert(0, '0'));
+				if let Some(after_point) = after_point {
+					if ap.is_none() {
+						buf.push('.');
 					}
+					(ap.unwrap_or_default()..after_point).for_each(|_| buf.push('0'));
 				}
-				if elided_zero_before_point {
-					buf.remove(0);
-				}
-				if trailing_point {
-					buf.push('.');
+				if is_negative {
+					buf.insert(0, '-');
 				}
 				buf
 			}

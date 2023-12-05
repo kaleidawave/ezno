@@ -1411,7 +1411,7 @@ impl Expression {
 				}
 				if let Some(arguments) = arguments {
 					// Constructor calls can drop arguments if none
-					if !arguments.is_empty() {
+					if !arguments.is_empty() || options.pretty {
 						arguments_to_string(arguments, buf, options, depth);
 					}
 				}
