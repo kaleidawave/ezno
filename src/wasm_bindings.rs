@@ -7,8 +7,12 @@ extern "C" {
 	pub(crate) fn log(s: &str);
 }
 
-#[wasm_bindgen(js_name = build)]
-pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify: bool) -> JsValue {
+#[wasm_bindgen(js_name = experimental_build)]
+pub fn experimental_build_wasm(
+	entry_path: String,
+	fs_resolver_js: &js_sys::Function,
+	minify: bool,
+) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
@@ -16,14 +20,15 @@ pub fn build_wasm(entry_path: String, fs_resolver_js: &js_sys::Function, minify:
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let result = crate::commands::build(
+	let result = crate::build::build(
 		&fs_resolver,
 		Path::new(&entry_path),
 		None,
 		Path::new("out.js"),
-		&crate::commands::BuildConfig { strip_whitespace: minify },
+		&crate::build::BuildConfig { strip_whitespace: minify },
 		None,
 	);
+
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
@@ -36,7 +41,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (diagnostics, _) = crate::commands::check(&fs_resolver, Path::new(&entry_path), None);
+	let (diagnostics, _) = crate::check::check(&fs_resolver, Path::new(&entry_path), None);
 	// TODO also emit mappings
 	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
 }
@@ -44,8 +49,8 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsVa
 #[wasm_bindgen(js_name = run_cli)]
 pub fn run_cli_wasm(
 	cli_arguments: Box<[JsValue]>,
-	read_file: &js_sys::Function,
-	write_file: &js_sys::Function,
+	read_from_file: &js_sys::Function,
+	write_to_file: &js_sys::Function,
 	cli_input_resolver_js: &js_sys::Function,
 ) {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -53,13 +58,14 @@ pub fn run_cli_wasm(
 	let arguments = cli_arguments.into_iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
-	let read_file = |path: &std::path::Path| {
-		let res = read_file.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+	let read_from_file = |path: &std::path::Path| {
+		let res =
+			read_from_file.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
 
-	let write_file = |path: &std::path::Path, content: String| {
-		write_file
+	let write_to_file = |path: &std::path::Path, content: String| {
+		write_to_file
 			.call2(
 				&JsValue::null(),
 				&JsValue::from(path.display().to_string()),
@@ -76,7 +82,7 @@ pub fn run_cli_wasm(
 			.and_then(JsValue::as_string)
 	};
 
-	crate::run_cli(&arguments, &read_file, write_file, cli_input_resolver)
+	crate::run_cli(&arguments, &read_from_file, write_to_file, cli_input_resolver);
 }
 
 #[wasm_bindgen(js_name = parse_expression)]

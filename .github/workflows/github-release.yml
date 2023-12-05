@@ -21,12 +21,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-tags: true
       - name: Get version
         id: get-version
         run: |
-          version=$(git tag --list 'release/main-*' --sort=-taggerdate | tail -n 1)
-          echo "Releasing ${version:13}"
-          echo "new-ezno-version=${version:13}" >> $GITHUB_OUTPUT
+          tag=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
+          echo "Releasing ${tag:13}"
+          echo "new-ezno-version=${tag:13}" >> $GITHUB_OUTPUT
 
       - id: get-sponsors
         run: |
@@ -101,7 +103,7 @@ jobs:
 
     - name: Print artifacts
       run: |
-        echo "::group::Print Artifacts"
+        echo "::group::Build artifacts"
         ls -R build-artifacts
         echo "::endgroup::"
         

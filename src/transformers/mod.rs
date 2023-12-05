@@ -1,15 +1,20 @@
-use parser::{visiting::StatementOrDeclarationMut, Declaration, Module, StatementOrDeclaration};
+pub mod optimisations;
+
+use parser::{visiting::BlockItemMut, Declaration, Module, StatementOrDeclaration};
 
 pub struct ConstToLet;
 
-impl parser::visiting::VisitorMut<StatementOrDeclarationMut<'_>, ()> for ConstToLet {
+impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 	fn visit_mut(
 		&mut self,
-		item: &mut StatementOrDeclarationMut,
+		item: &mut BlockItemMut,
 		_data: &mut (),
 		_chain: &parser::visiting::Chain,
 	) {
-		if let StatementOrDeclarationMut::Declaration(Declaration::Variable(decl)) = item {
+		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
+			Declaration::Variable(decl),
+		)) = item
+		{
 			if let parser::declarations::VariableDeclaration::ConstDeclaration {
 				keyword,
 				declarations,
@@ -17,7 +22,7 @@ impl parser::visiting::VisitorMut<StatementOrDeclarationMut<'_>, ()> for ConstTo
 			} = decl
 			{
 				*decl = parser::declarations::VariableDeclaration::LetDeclaration {
-					keyword: parser::Keyword::new(keyword.get_position().clone()),
+					keyword: parser::Keyword::new(*keyword.get_position()),
 					declarations: declarations
 						.drain(..)
 						.map(|dec| parser::declarations::VariableDeclarationItem {
@@ -27,7 +32,7 @@ impl parser::visiting::VisitorMut<StatementOrDeclarationMut<'_>, ()> for ConstTo
 							position: dec.position,
 						})
 						.collect(),
-					position: position.clone(),
+					position: *position,
 				};
 			}
 		}

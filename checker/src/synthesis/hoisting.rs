@@ -2,8 +2,9 @@ use std::{collections::HashMap, iter};
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Statement, StatementOrDeclaration, VariableIdentifier,
-	WithComment,
+	tsx_keywords::Var,
+	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration, VariableIdentifier, WithComment,
 };
 use source_map::{Span, SpanWithSource};
 
@@ -41,28 +42,28 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				| parser::Declaration::Function(_) => {}
 				parser::Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
 					"enum",
-					r#enum.on.position.clone().with_source(environment.get_source()),
+					r#enum.on.position.with_source(environment.get_source()),
 				),
 				parser::Declaration::DeclareInterface(interface) => {
 					// TODO any difference bc declare?
-					let ty = environment.new_interface::<super::EznoParser>(
+					let ty = environment.new_interface(
 						&interface.name,
 						interface.nominal_keyword.is_some(),
 						interface.type_parameters.as_deref(),
 						interface.extends.as_deref(),
-						&interface.position.clone().with_source(environment.get_source()),
-						&mut checking_data.types,
+						interface.position.with_source(environment.get_source()),
+						checking_data,
 					);
 					idx_to_types.insert(interface.position.start, ty);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = environment.new_interface::<super::EznoParser>(
+					let ty = environment.new_interface(
 						&interface.on.name,
 						interface.on.nominal_keyword.is_some(),
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
-						&interface.on.position.clone().with_source(environment.get_source()),
-						&mut checking_data.types,
+						interface.on.position.with_source(environment.get_source()),
+						checking_data,
 					);
 					idx_to_types.insert(interface.on.position.start, ty);
 				}
@@ -71,6 +72,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						&alias.type_name.name,
 						alias.type_name.type_parameters.as_deref(),
 						&alias.type_expression,
+						*alias.get_position(),
 						checking_data,
 					);
 				}
@@ -85,7 +87,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(under, position) => {
 								crate::behavior::modules::ImportKind::All {
 									under,
-									position: position.clone(),
+									position: *position,
 								}
 							}
 							VariableIdentifier::Cursor(_, _) => todo!(),
@@ -93,15 +95,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					};
 					let default_import = import.default.as_ref().and_then(|default_identifier| {
 						match default_identifier {
-							VariableIdentifier::Standard(name, pos) => {
-								Some((name.as_str(), pos.clone()))
+							VariableIdentifier::Standard(name, position) => {
+								Some((name.as_str(), *position))
 							}
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
 					environment.import_items(
 						import.from.get_path().unwrap(),
-						import.position.clone(),
+						import.position,
 						default_import,
 						items,
 						checking_data,
@@ -114,8 +116,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						match exported {
 							Exportable::ImportAll { r#as, from } => {
 								let kind = match r#as {
-									Some(VariableIdentifier::Standard(name, pos)) => {
-										ImportKind::All { under: name, position: pos.clone() }
+									Some(VariableIdentifier::Standard(name, position)) => {
+										ImportKind::All { under: name, position: *position }
 									}
 									Some(VariableIdentifier::Cursor(_, _)) => todo!(),
 									None => ImportKind::Everything,
@@ -123,7 +125,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 								environment.import_items::<iter::Empty<_>, _, _>(
 									from.get_path().unwrap(),
-									position.clone(),
+									*position,
 									None,
 									kind,
 									checking_data,
@@ -135,7 +137,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 								environment.import_items(
 									from.get_path().unwrap(),
-									position.clone(),
+									*position,
 									None,
 									crate::behavior::modules::ImportKind::Parts(parts),
 									checking_data,
@@ -147,6 +149,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									&alias.type_name.name,
 									alias.type_name.type_parameters.as_deref(),
 									&alias.type_expression,
+									*alias.get_position(),
 									checking_data,
 								);
 
@@ -173,7 +176,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				if let Statement::VarVariable(_) = stmt {
 					checking_data.raise_unimplemented_error(
 						"var statement hoisting",
-						stmt.get_position().clone().with_source(environment.get_source()),
+						stmt.get_position().with_source(environment.get_source()),
 					);
 				}
 			}
@@ -187,16 +190,20 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						// TODO
 						mutability: crate::behavior::variables::VariableMutability::Constant,
 					};
-					environment.register_variable_handle_error(
-						func.on.name.as_str(),
-						func.get_position().clone().with_source(environment.get_source()),
-						behavior,
-						checking_data,
-					);
+					if let Some(VariableIdentifier::Standard(name, ..)) =
+						func.on.name.as_option_variable_identifier()
+					{
+						environment.register_variable_handle_error(
+							name,
+							func.get_position().with_source(environment.get_source()),
+							behavior,
+							checking_data,
+						);
+					}
 				}
 				parser::Declaration::DeclareFunction(func) => {
 					// TODO abstract
-					let declared_at = func.position.clone().with_source(environment.get_source());
+					let declared_at = func.position.with_source(environment.get_source());
 					let base = synthesise_function_annotation(
 						&func.type_parameters,
 						&func.parameters,
@@ -224,7 +231,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						crate::context::VariableRegisterBehavior::Declare { base, context: None };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
-						func.get_position().clone().with_source(environment.get_source()),
+						func.get_position().with_source(environment.get_source()),
 						behavior,
 						checking_data,
 					);
@@ -232,7 +239,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Enum(r#enum) => {
 					checking_data.raise_unimplemented_error(
 						"enum",
-						r#enum.position.clone().with_source(environment.get_source()),
+						r#enum.position.with_source(environment.get_source()),
 					);
 				}
 				parser::Declaration::Interface(interface) => {
@@ -284,17 +291,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								let behavior = crate::context::VariableRegisterBehavior::Register {
 									mutability,
 								};
-								let declared_at = func
-									.get_position()
-									.clone()
-									.with_source(environment.get_source());
+								let declared_at =
+									func.get_position().with_source(environment.get_source());
 
-								environment.register_variable_handle_error(
-									func.name.as_str(),
-									declared_at,
-									behavior,
-									checking_data,
-								);
+								if let Some(VariableIdentifier::Standard(name, ..)) =
+									func.name.as_option_variable_identifier()
+								{
+									environment.register_variable_handle_error(
+										name,
+										declared_at,
+										behavior,
+										checking_data,
+									);
+								}
 							}
 							Exportable::Variable(declaration) => {
 								// TODO mark exported
@@ -337,7 +346,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_generator = function.on.header.is_generator();
 				let location = function.on.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -365,7 +374,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_generator = function.header.is_generator();
 				let location = function.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Module(_) => "module".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -382,10 +391,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					environment.context_type.scope
 				{
 					// TODO check existing?
-					exported.named.push((
-						function.name.as_str().to_owned(),
-						(variable_id, VariableMutability::Constant),
-					));
+					if let Some(VariableIdentifier::Standard(name, ..)) =
+						function.name.as_option_variable_identifier()
+					{
+						exported
+							.named
+							.push((name.clone(), (variable_id, VariableMutability::Constant)));
+					}
 				}
 			}
 			_ => (),
@@ -397,7 +409,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 	match item {
 		parser::declarations::ImportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: *position })
 			} else {
 				None
 			}
@@ -410,7 +422,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 					parser::declarations::ImportExportName::Cursor(_) => todo!(),
 				},
 				r#as: name,
-				position: position.clone(),
+				position: *position,
 			})
 		}
 		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
@@ -428,7 +440,7 @@ pub(super) fn export_part_to_name_pair(
 	match item {
 		parser::declarations::export::ExportPart::Name(name) => {
 			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: position.clone() })
+				Some(NamePair { value: name, r#as: name, position: *position })
 			} else {
 				None
 			}
@@ -441,7 +453,7 @@ pub(super) fn export_part_to_name_pair(
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
 					parser::declarations::ImportExportName::Cursor(_) => todo!(),
 				},
-				position: position.clone(),
+				position: *position,
 			})
 		}
 		parser::declarations::export::ExportPart::PrefixComment(_, item, _) => {
@@ -517,16 +529,16 @@ fn get_annotation_from_declaration<
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
 		Some((
 			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().clone().with_source(environment.get_source()),
+			annotation.get_position().with_source(environment.get_source()),
 		))
 	}
 	// TODO only under config
 	else if let WithComment::PostfixComment(item, possible_declaration, position) =
 		&declaration.name
 	{
-		string_comment_to_type(
+		comment_as_type_annotation(
 			possible_declaration,
-			&position.clone().with_source(environment.get_source()),
+			&position.with_source(environment.get_source()),
 			environment,
 			checking_data,
 		)
@@ -534,7 +546,7 @@ fn get_annotation_from_declaration<
 		None
 	};
 
-	if let Some((ty, span)) = result.clone() {
+	if let Some((ty, span)) = result {
 		let get_position = declaration.get_position();
 		checking_data
 			.type_mappings
@@ -545,7 +557,7 @@ fn get_annotation_from_declaration<
 	result.map(|(value, _span)| value)
 }
 
-pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
+pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	possible_declaration: &String,
 	position: &source_map::SpanWithSource,
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
@@ -564,7 +576,7 @@ pub(crate) fn string_comment_to_type<T: crate::ReadFromFS>(
 	if let Ok(annotation) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
-			annotation.get_position().clone().with_source(source),
+			annotation.get_position().with_source(source),
 		))
 	} else {
 		// TODO warning

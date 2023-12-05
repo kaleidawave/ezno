@@ -105,7 +105,7 @@ fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 ) -> Assignable {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
-			Reference::Variable(name.clone(), pos.clone().with_source(environment.get_source())),
+			Reference::Variable(name.clone(), pos.with_source(environment.get_source())),
 		),
 		parser::VariableIdentifier::Cursor(..) => todo!(),
 	}
@@ -117,10 +117,9 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Reference {
 	match variable_or_property_access {
-		VariableOrPropertyAccess::Variable(ident, position) => Reference::Variable(
-			ident.clone(),
-			position.clone().with_source(environment.get_source()),
-		),
+		VariableOrPropertyAccess::Variable(ident, position) => {
+			Reference::Variable(ident.clone(), position.with_source(environment.get_source()))
+		}
 		VariableOrPropertyAccess::PropertyAccess { parent, property, position } => {
 			let parent_ty =
 				synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
@@ -133,7 +132,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 						with: crate::types::properties::PropertyKey::String(Cow::Owned(
 							property.clone(),
 						)),
-						span: position.clone().with_source(environment.get_source()),
+						span: position.with_source(environment.get_source()),
 						publicity,
 					}
 				}
@@ -155,7 +154,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					key_ty,
 					&checking_data.types,
 				),
-				span: position.clone().with_source(environment.get_source()),
+				span: position.with_source(environment.get_source()),
 				publicity: crate::context::facts::Publicity::Public,
 			}
 		}

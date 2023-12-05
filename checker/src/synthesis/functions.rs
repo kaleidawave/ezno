@@ -23,101 +23,13 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesise_expression, hoisting::string_comment_to_type, synthesise_block,
+	expressions::synthesise_expression, hoisting::comment_as_type_annotation, synthesise_block,
 	type_annotations::synthesise_type_annotation, variables::register_variable, Performs,
 };
-
-trait FunctionBasedItem: FunctionBased {
-	type ObjectTypeId;
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind;
-
-	fn location(func: &FunctionBase<Self>) -> Option<String> {
-		None
-	}
-}
-
-// TODO generic for these two
-impl FunctionBasedItem for parser::functions::bases::StatementFunctionBase {
-	type ObjectTypeId = ();
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	FunctionKind::StatementFunction {
-	// 		is_async: func.header.is_async(),
-	// 		generator: func.header.is_generator(),
-	// 	}
-	// }
-}
-
-impl FunctionBasedItem for parser::functions::bases::ExpressionFunctionBase {
-	type ObjectTypeId = ();
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	FunctionKind::StatementFunction {
-	// 		is_async: func.header.is_async(),
-	// 		generator: func.header.is_generator(),
-	// 	}
-	// }
-
-	fn location(func: &FunctionBase<Self>) -> Option<String> {
-		match &func.header {
-			parser::FunctionHeader::VirginFunctionHeader { location, .. }
-			| parser::FunctionHeader::ChadFunctionHeader { location, .. } => {
-				if let Some(parser::functions::FunctionLocationModifier::Server(_)) = location {
-					Some("server".to_owned())
-				} else {
-					// if let Some(StatementOrDeclaration::Statement(Statement::Expression(expr))) =
-					// 	func.body.0.first()
-					// {
-					// 	if matches!(expr, parser::expressions::MultipleExpression::Single(parser::Expression::StringLiteral(s, _, _)) if s == "use server")
-					// 	{
-					// 		return Some("server".to_owned());
-					// 	}
-					// }
-					None
-				}
-			}
-		}
-	}
-}
-
-impl FunctionBasedItem for parser::functions::bases::ArrowFunctionBase {
-	type ObjectTypeId = ();
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	let is_async = func.header.is_some();
-	// 	FunctionKind::ArrowFunction { is_async }
-	// }
-}
-
-impl FunctionBasedItem for parser::functions::bases::ObjectLiteralMethodBase {
-	type ObjectTypeId = Option<TypeId>;
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	FunctionKind::Method(From::from(&func.header))
-	// }
-}
-
-impl FunctionBasedItem for parser::functions::bases::ClassFunctionBase {
-	type ObjectTypeId = Option<TypeId>;
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	FunctionKind::Method(From::from(&func.header))
-	// }
-}
-
-impl FunctionBasedItem for parser::functions::bases::ClassConstructorBase {
-	type ObjectTypeId = Option<TypeId>;
-
-	// fn get_function_kind(func: &FunctionBase<Self>) -> FunctionKind {
-	// 	FunctionKind::ClassConstructor
-	// }
-}
 
 impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
 	for parser::FunctionBase<U>
 where
-	U: FunctionBasedItem,
 	U::Body: SynthesisableFunctionBody,
 {
 	fn id(&self, source_id: SourceId) -> FunctionId {
@@ -167,9 +79,14 @@ where
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
-		expected_parameters: Option<SynthesisedParameters>,
+		expected_parameters: Option<&SynthesisedParameters>,
 	) -> SynthesisedParameters {
-		synthesise_function_parameters(&self.parameters, environment, checking_data)
+		synthesise_function_parameters(
+			&self.parameters,
+			expected_parameters,
+			environment,
+			checking_data,
+		)
 	}
 
 	fn return_type_annotation<T: crate::ReadFromFS>(
@@ -180,7 +97,7 @@ where
 		self.return_type.as_ref().map(|reference| {
 			(
 				synthesise_type_annotation(reference, environment, checking_data),
-				reference.get_position().clone().with_source(environment.get_source()),
+				reference.get_position().with_source(environment.get_source()),
 			)
 		})
 	}
@@ -225,8 +142,7 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 				// TODO expecting
 				let returned =
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-				let position =
-					expression.get_position().clone().with_source(environment.get_source());
+				let position = expression.get_position().with_source(environment.get_source());
 				environment.return_value(returned, position);
 			}
 			ExpressionOrBlock::Block(block) => {
@@ -319,7 +235,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			SynthesisedParameter {
 				ty: parameter_type,
 				name,
-				position: parameter.position.clone().with_source(environment.get_source()),
+				position: parameter.position.with_source(environment.get_source()),
 				missing_value,
 			}
 		})
@@ -349,7 +265,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 		SynthesisedRestParameter {
 			item_type,
 			name: parameter.name.clone(),
-			position: parameter.position.clone().with_source(environment.get_source()),
+			position: parameter.position.with_source(environment.get_source()),
 		}
 	});
 
@@ -358,24 +274,27 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	ast_parameters: &parser::FunctionParameters,
+	expected_parameters: Option<&SynthesisedParameters>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> SynthesisedParameters {
 	let parameters: Vec<_> = ast_parameters
 		.parameters
 		.iter()
-		.map(|parameter| {
+		.enumerate()
+		.map(|(idx, parameter)| {
 			let annotation = parameter
 				.type_annotation
 				.as_ref()
 				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
 				.or_else(|| {
+					// See comments-as-type-annotation
 					if let WithComment::PostfixComment(item, possible_declaration, position) =
 						&parameter.name
 					{
-						string_comment_to_type(
+						comment_as_type_annotation(
 							possible_declaration,
-							&position.clone().with_source(environment.get_source()),
+							&position.with_source(environment.get_source()),
 							environment,
 							checking_data,
 						)
@@ -383,6 +302,10 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 					} else {
 						None
 					}
+				})
+				.or_else(|| {
+					// Try use expected type
+					expected_parameters.as_ref().and_then(|p| p.get_type_constraint_at_index(idx))
 				});
 
 			let param_type = register_variable(
@@ -403,7 +326,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			SynthesisedParameter {
 				name,
 				ty: param_type,
-				position: parameter.position.clone().with_source(environment.get_source()),
+				position: parameter.position.with_source(environment.get_source()),
 				missing_value,
 			}
 		})

@@ -191,7 +191,7 @@ impl<T: Visitable> Visitable for Decorated<T> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
@@ -202,7 +202,7 @@ impl<T: Visitable> Visitable for Decorated<T> {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &crate::VisitSettings,
+		options: &crate::VisitOptions,
 
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {

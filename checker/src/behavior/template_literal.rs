@@ -8,27 +8,30 @@ use crate::{
 	CheckingData, Constant, Environment, Instance, Type, TypeId,
 };
 
+#[derive(Copy, Clone)]
 pub enum TemplateLiteralPart<'a, T> {
 	Static(&'a str),
 	Dynamic(&'a T),
 }
 
-pub fn synthesise_template_literal<'a, T, M>(
+#[allow(clippy::needless_pass_by_value)]
+pub fn synthesise_template_literal<'a, T, A>(
 	tag: Option<TypeId>,
-	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, M::Expression>> + 'a,
+	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
 	position: &Span,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId
 where
 	T: crate::ReadFromFS,
-	M: crate::ASTImplementation,
-	M::Expression: 'a,
+	A: crate::ASTImplementation,
+	A::Expression<'a>: 'a,
 {
-	fn part_to_type<T: crate::ReadFromFS, M: crate::ASTImplementation>(
-		first: &TemplateLiteralPart<M::Expression>,
+	#[allow(clippy::needless_pass_by_value)]
+	fn part_to_type<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		first: TemplateLiteralPart<'a, A::Expression<'a>>,
 		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> crate::TypeId {
 		match first {
 			TemplateLiteralPart::Static(static_part) => {
@@ -36,7 +39,7 @@ where
 			}
 			TemplateLiteralPart::Dynamic(expression) => {
 				// TODO tidy
-				let value = M::synthesise_expression(
+				let value = A::synthesise_expression(
 					expression,
 					TypeId::ANY_TYPE,
 					environment,
@@ -67,7 +70,7 @@ where
 		for part in parts_iter {
 			match part {
 				p @ TemplateLiteralPart::Static(_) => {
-					let value = part_to_type(&p, environment, checking_data);
+					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
 						crate::context::facts::Publicity::Public,
@@ -79,7 +82,7 @@ where
 					static_part_count += 1;
 				}
 				p @ TemplateLiteralPart::Dynamic(_) => {
-					let ty = part_to_type(&p, environment, checking_data);
+					let ty = part_to_type(p, environment, checking_data);
 					arguments.push(SynthesisedArgument::NonSpread {
 						ty,
 						// TODO position
@@ -98,7 +101,7 @@ where
 			},
 		);
 
-		let call_site = position.clone().with_source(environment.get_source());
+		let call_site = position.with_source(environment.get_source());
 		crate::types::calling::call_type_handle_errors(
 			tag,
 			CallingInput {
@@ -115,9 +118,9 @@ where
 	} else {
 		// Bit weird but makes Rust happy
 		if let Some(first) = parts_iter.next() {
-			let mut acc = part_to_type(&first, environment, checking_data);
+			let mut acc = part_to_type(first, environment, checking_data);
 			for rest in parts_iter {
-				let other = part_to_type(&rest, environment, checking_data);
+				let other = part_to_type(rest, environment, checking_data);
 				let result = super::operations::evaluate_mathematical_operation(
 					acc,
 					crate::behavior::operations::MathematicalAndBitwise::Add,

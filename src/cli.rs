@@ -8,7 +8,9 @@ use std::{
 };
 
 use crate::{
-	commands::{BuildOutput, FailedBuildOutput},
+	build::{build, BuildOutput, FailedBuildOutput},
+	build::{BuildConfig, EznoParsePostCheckVisitors},
+	check::check,
 	error_handling::emit_ezno_diagnostic,
 	utilities::print_to_cli,
 };
@@ -25,9 +27,9 @@ struct TopLevel {
 #[argh(subcommand)]
 enum CompilerSubCommand {
 	Info(Info),
-	Build(BuildArguments),
 	ASTExplorer(crate::ast_explorer::ExplorerArguments),
 	Check(CheckArguments),
+	Experimental(ExperimentalArguments),
 	// Run(RunArguments),
 	#[cfg(not(target_family = "wasm"))]
 	Repl(crate::repl::ReplArguments),
@@ -40,20 +42,22 @@ enum CompilerSubCommand {
 #[argh(subcommand, name = "info")]
 struct Info {}
 
-// /// Generates binary form of a type definition module
-// #[derive(FromArgs, Debug)]
-// #[argh(subcommand, name = "pack")]
-// struct Pack {
-// 	/// path to module
-// 	#[argh(positional)]
-// 	input: PathBuf,
-// 	/// output path
-// 	#[argh(positional)]
-// 	output: PathBuf,
-// }
+/// Experimental Ezno features
+#[derive(FromArgs, Debug)]
+#[argh(subcommand, name = "experimental")]
+pub(crate) struct ExperimentalArguments {
+	#[argh(subcommand)]
+	nested: ExperimentalSubcommand,
+}
 
-// TODO definition file as list
+#[derive(FromArgs, Debug)]
+#[argh(subcommand)]
+pub(crate) enum ExperimentalSubcommand {
+	Build(BuildArguments),
+}
+
 /// Build project
+/// TODO definition file as list
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "build")]
 // TODO: Can be refactored with bit to reduce memory
@@ -160,16 +164,47 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		CompilerSubCommand::Info(_) => {
 			crate::utilities::print_info();
 		}
-		CompilerSubCommand::Build(build_config) => {
+		CompilerSubCommand::Check(check_arguments) => {
+			let CheckArguments { input, watch: _, definition_file } = check_arguments;
+			let (diagnostics, _others) = check(read_file, &input, definition_file.as_deref());
+
+			let fs = match _others {
+				Ok(data) => data.module_contents,
+				Err(data) => data,
+			};
+			if !diagnostics.has_error() {
+				print_to_cli(format_args!("No type errors found 🎉"))
+			}
+			for diagnostic in diagnostics.into_iter() {
+				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
+			}
+		}
+		CompilerSubCommand::Experimental(ExperimentalArguments {
+			nested: ExperimentalSubcommand::Build(build_config),
+		}) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
-			let output = crate::commands::build(
+
+			// TODO
+			let default_builders = EznoParsePostCheckVisitors {
+				expression_visitors_mut: vec![Box::new(
+					crate::transformers::optimisations::ExpressionOptimiser,
+				)],
+				statement_visitors_mut: vec![Box::new(
+					crate::transformers::optimisations::StatementOptimiser,
+				)],
+				variable_visitors_mut: Default::default(),
+				block_visitors_mut: Default::default(),
+			};
+
+			let output = build(
 				read_file,
 				&build_config.input,
 				build_config.definition_file.as_deref(),
 				&output_path,
-				&crate::commands::BuildConfig { strip_whitespace: build_config.minify },
-				None,
+				&BuildConfig { strip_whitespace: build_config.minify },
+				Some(default_builders),
 			);
+
 			match output {
 				Ok(BuildOutput { diagnostics, fs, outputs }) => {
 					for output in outputs {
@@ -178,6 +213,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for diagnostic in diagnostics {
 						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
 					}
+
+					print_to_cli(format_args!("Project built successfully 🎉"))
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
 					for diagnostic in diagnostics {
@@ -187,19 +224,6 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		}
 		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(read_file, cli_input_resolver),
-		CompilerSubCommand::Check(check_arguments) => {
-			let CheckArguments { input, watch: _, definition_file } = check_arguments;
-			let (diagnostics, others) =
-				crate::commands::check(read_file, &input, definition_file.as_deref());
-
-			let fs = match others {
-				Ok(data) => data.module_contents,
-				Err(data) => data,
-			};
-			for diagnostic in diagnostics {
-				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-			}
-		}
 		#[cfg(not(target_family = "wasm"))]
 		CompilerSubCommand::Repl(argument) => crate::repl::run_deno_repl(cli_input_resolver, argument),
 		// CompilerSubCommand::Run(run_arguments) => {

@@ -6,14 +6,15 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, VisitSettings,
-	Visitable,
+	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, TSXKeyword,
+	VisitOptions, Visitable,
 };
 
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[visit_self(under statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
@@ -53,11 +54,21 @@ impl ASTNode for StatementOrDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if Declaration::is_declaration_start(reader) {
+		if Declaration::is_declaration_start(reader, options) {
 			let dec = Declaration::from_reader(reader, state, options)?;
 			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
 		} else {
+			if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum | TSXKeyword::Type), _)) =
+				reader.peek()
+			{
+				if reader.peek_n(1).map_or(false, |t| !t.0.is_symbol()) {
+					return Ok(StatementOrDeclaration::Declaration(Declaration::from_reader(
+						reader, state, options,
+					)?));
+				}
+			}
+
 			let stmt = Statement::from_reader(reader, state, options)?;
 			Ok(StatementOrDeclaration::Statement(stmt))
 		}
@@ -167,18 +178,19 @@ impl Visitable for Block {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
-
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
-		{
-			visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
-		}
-		let iter = self.iter();
-		if options.reverse_statements {
-			iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
-		} else {
-			iter.for_each(|item| item.visit(visitors, data, options, chain));
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
+			}
+			let iter = self.iter();
+			if options.reverse_statements {
+				iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
+			} else {
+				iter.for_each(|item| item.visit(visitors, data, options, chain));
+			}
 		}
 	}
 
@@ -186,35 +198,82 @@ impl Visitable for Block {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
-
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
-		{
-			visitors.visit_block_mut(
-				&mut crate::block::BlockLikeMut { items: &mut self.0 },
-				data,
-				chain,
-			);
-		}
-		let iter_mut = self.iter_mut();
-		if options.reverse_statements {
-			iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
-		} else {
-			iter_mut
-				.rev()
-				.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block_mut(
+					&mut crate::block::BlockLikeMut { items: &mut self.0 },
+					data,
+					chain,
+				);
+			}
+			let iter_mut = self.iter_mut();
+			if options.reverse_statements {
+				iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			} else {
+				iter_mut
+					.rev()
+					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			}
 		}
 	}
 }
 
 /// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, EnumFrom)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
+}
+
+impl Visitable for BlockOrSingleStatement {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(b) => {
+				b.visit(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(s) => {
+				s.visit(visitors, data, options, chain);
+				visitors.visit_statement(
+					crate::visiting::BlockItem::SingleStatement(s),
+					data,
+					chain,
+				);
+			}
+		}
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(ref mut b) => {
+				b.visit_mut(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(ref mut s) => {
+				s.visit_mut(visitors, data, options, chain);
+				visitors.visit_statement_mut(
+					crate::visiting::BlockItemMut::SingleStatement(s),
+					data,
+					chain,
+				);
+			}
+		}
+	}
 }
 
 impl From<Statement> for BlockOrSingleStatement {
@@ -259,12 +318,15 @@ impl ASTNode for BlockOrSingleStatement {
 				block.to_string_from_buffer(buf, options, depth);
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if options.pretty {
+				if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.add_gap(buf);
 					stmt.to_string_from_buffer(buf, options, depth + 1);
 				} else {
 					stmt.to_string_from_buffer(buf, options, depth);
+					if stmt.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 		}
@@ -299,11 +361,13 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	depth: u8,
 ) {
 	for (at_end, item) in items.iter().endiate() {
-		if let StatementOrDeclaration::Statement(Statement::Expression(
-			crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
-		)) = item
-		{
-			continue;
+		if !options.pretty {
+			if let StatementOrDeclaration::Statement(Statement::Expression(
+				crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
+			)) = item
+			{
+				continue;
+			}
 		}
 
 		options.add_indent(depth, buf);

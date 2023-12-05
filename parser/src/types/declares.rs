@@ -79,13 +79,13 @@ impl DeclareVariableDeclaration {
 		let kw_position = token.get_span();
 		let keyword = match token {
 			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
-				DeclareVariableKeyword::Const(Keyword::new(kw_position.clone()))
+				DeclareVariableKeyword::Const(Keyword::new(kw_position))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Let), _) => {
-				DeclareVariableKeyword::Let(Keyword::new(kw_position.clone()))
+				DeclareVariableKeyword::Let(Keyword::new(kw_position))
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
-				DeclareVariableKeyword::Var(Keyword::new(kw_position.clone()))
+				DeclareVariableKeyword::Var(Keyword::new(kw_position))
 			}
 			token => {
 				return crate::throw_unexpected_token_with_token(

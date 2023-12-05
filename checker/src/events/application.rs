@@ -163,9 +163,9 @@ pub(crate) fn apply_event(
 			let with = with
 				.iter()
 				.map(|argument| match argument {
-					SynthesisedArgument::NonSpread { ty, position: pos } => {
+					SynthesisedArgument::NonSpread { ty, position } => {
 						let ty = substitute(*ty, type_arguments, environment, types);
-						SynthesisedArgument::NonSpread { ty, position: pos.clone() }
+						SynthesisedArgument::NonSpread { ty, position: *position }
 					}
 				})
 				.collect::<Vec<_>>();
@@ -348,6 +348,10 @@ pub(crate) fn apply_event(
 				types,
 			);
 		}
+		// TODO
+		Event::Break { position } => {}
+		// TODO
+		Event::Continue { position } => {}
 	}
 	None
 }

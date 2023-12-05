@@ -1,5 +1,5 @@
 import { createUnplugin } from "unplugin";
-import { build as ezno_build, just_imports } from "ezno/initialised";
+import { experimental_build as ezno_build, just_imports } from "ezno/initialised";
 import { readFileSync } from "node:fs";
 
 /// <reference path="types.d.ts"/>

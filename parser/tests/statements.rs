@@ -227,18 +227,21 @@ from "module-name" import defaultExport, * as name;
 #[cfg(feature = "extras")]
 #[test]
 fn function_custom_headers() {
-	let input = r"
+	use ezno_parser::ParseOptions;
+
+	let input = "
 function a() {}
 generator function a() {}
 generator server function a() {}
 generator server function a() {}
 async server function a() {}
-module function a() {}
+worker function a() {}
     "
 	.trim();
 
 	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+		Module::from_string(input.to_owned(), ParseOptions::all_features(), SourceId::NULL, None)
+			.unwrap();
 
 	eprintln!("Module: {module:#?}");
 

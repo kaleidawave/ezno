@@ -48,7 +48,7 @@ fn markdown_lines_append_test_to_rust(
 				writeln!(out, "}}").unwrap();
 			}
 			first_section = false;
-			let section_heading = heading_to_rust_name(section_heading);
+			let section_heading = heading_to_rust_identifier(section_heading);
 			writeln!(out, "mod {section_heading} {{").unwrap();
 			continue;
 		}
@@ -58,7 +58,7 @@ fn markdown_lines_append_test_to_rust(
 		}
 
 		let heading = line.strip_prefix("####").unwrap().trim_start();
-		let test_title = heading_to_rust_name(heading);
+		let test_title = heading_to_rust_identifier(heading);
 
 		let blocks = {
 			let mut blocks = Vec::new();
@@ -75,7 +75,7 @@ fn markdown_lines_append_test_to_rust(
 					if !code.trim().is_empty() {
 						blocks.push((
 							current_filename.unwrap_or(DEFAULT_FILE_PATH),
-							mem::take(&mut code).replace('"', "\\\""),
+							mem::take(&mut code),
 						));
 					}
 					current_filename = Some(path);
@@ -87,32 +87,31 @@ fn markdown_lines_append_test_to_rust(
 				code.push_str(line);
 				code.push('\n')
 			}
-			// Escape "
-			let code = code.replace('"', "\\\"");
 			blocks.push((current_filename.unwrap_or(DEFAULT_FILE_PATH), code));
 			blocks
 		};
 		let errors = {
 			let mut errors = Vec::new();
 			for (_, line) in lines.by_ref() {
-				if line.is_empty() || !line.starts_with('-') {
-					if !errors.is_empty() {
-						break;
-					}
-				} else {
+				if line.starts_with("#") {
+					panic!("block with no diagnostics or break between")
+				} else if line.starts_with('-') {
 					let error =
 						line.strip_prefix("- ").unwrap().replace('\\', "").replace('"', "\\\"");
 					errors.push(format!("\"{}\"", error))
+				} else if !errors.is_empty() {
+					break;
 				}
 			}
 			errors
 		};
 
 		let errors = errors.join(", ");
+
 		let heading_idx = heading_idx + 1;
 		let code = blocks
 			.into_iter()
-			.map(|(path, content)| format!("(\"{path}\",\"{content}\"),"))
+			.map(|(path, content)| format!("(\"{path}\",r#\"{content}\"#),"))
 			.fold(String::new(), |mut acc, cur| {
 				acc.push_str(&cur);
 				acc
@@ -132,7 +131,7 @@ fn markdown_lines_append_test_to_rust(
 	Ok(())
 }
 
-fn heading_to_rust_name(heading: &str) -> String {
+fn heading_to_rust_identifier(heading: &str) -> String {
 	heading
 		.replace([' ', '-', '&'], "_")
 		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")

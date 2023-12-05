@@ -189,4 +189,11 @@ impl ParseError {
 	}
 }
 
+impl std::error::Error for ParseError {}
+impl std::fmt::Display for ParseError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
+	}
+}
+
 pub type ParseResult<T> = Result<T, ParseError>;

@@ -3,7 +3,9 @@ use std::collections::HashSet;
 
 use crate::{
 	behavior::{
+		self,
 		assignments::{Assignable, AssignmentKind, Reference},
+		functions,
 		modules::{Exported, ImportKind, NamePair},
 		objects::ObjectBuilder,
 		operations::{
@@ -151,29 +153,31 @@ impl<'a> Environment<'a> {
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
 	///
-	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with `Span::NULL` ...? Maybe RHS type could be None to accommodate
-	pub fn assign_to_assignable_handle_errors<U: crate::ReadFromFS, M: crate::ASTImplementation>(
+	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with [`Span::NULL ...?`] Maybe RHS type could be None to accommodate
+	pub fn assign_to_assignable_handle_errors<
+		'b,
+		T: crate::ReadFromFS,
+		A: crate::ASTImplementation,
+	>(
 		&mut self,
 		lhs: Assignable,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
-		expression: Option<&M::Expression>,
+		expression: Option<&'b A::Expression<'b>>,
 		assignment_span: SpanWithSource,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		match lhs {
 			Assignable::Reference(reference) => {
 				/// Returns
-				fn get_reference<U: crate::ReadFromFS, M: crate::ASTImplementation>(
+				fn get_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 					env: &mut Environment,
 					reference: Reference,
-					checking_data: &mut CheckingData<U, M>,
+					checking_data: &mut CheckingData<U, A>,
 				) -> TypeId {
 					match reference {
 						Reference::Variable(name, position) => {
-							env.get_variable_handle_error(&name, position.clone(), checking_data)
-								.unwrap()
-								.1
+							env.get_variable_handle_error(&name, position, checking_data).unwrap().1
 						}
 						Reference::Property { on, with, publicity, span } => {
 							let get_property_handle_errors = env.get_property_handle_errors(
@@ -181,7 +185,7 @@ impl<'a> Environment<'a> {
 								publicity,
 								with,
 								checking_data,
-								span.clone(),
+								span,
 							);
 							match get_property_handle_errors {
 								Ok(i) => i.get_value(),
@@ -191,11 +195,11 @@ impl<'a> Environment<'a> {
 					}
 				}
 
-				fn set_reference<U: crate::ReadFromFS, M: ASTImplementation>(
+				fn set_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 					env: &mut Environment,
 					reference: Reference,
 					new: TypeId,
-					checking_data: &mut CheckingData<U, M>,
+					checking_data: &mut CheckingData<U, A>,
 				) -> Result<TypeId, SetPropertyError> {
 					match reference {
 						Reference::Variable(name, position) => Ok(env
@@ -248,7 +252,7 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = M::synthesise_expression(
+						let new = A::synthesise_expression(
 							expression.unwrap(),
 							TypeId::ANY_TYPE,
 							self,
@@ -276,10 +280,9 @@ impl<'a> Environment<'a> {
 						let existing = get_reference(self, reference.clone(), checking_data);
 
 						let expression = expression.unwrap();
-						let expression_pos = M::expression_position(expression)
-							.clone()
-							.with_source(self.get_source());
-						let rhs = M::synthesise_expression(
+						let expression_pos =
+							A::expression_position(expression).with_source(self.get_source());
+						let rhs = A::synthesise_expression(
 							expression,
 							TypeId::ANY_TYPE,
 							self,
@@ -361,7 +364,7 @@ impl<'a> Environment<'a> {
 						let expression = expression.unwrap();
 						let new = evaluate_logical_operation_with_expression(
 							existing,
-							&operator,
+							operator,
 							expression,
 							checking_data,
 							self,
@@ -392,12 +395,26 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn new_function<U, F, A>(
+		&mut self,
+		checking_data: &mut CheckingData<U, A>,
+		function: &F,
+		behavior: functions::FunctionRegisterBehavior<A>,
+	) -> crate::types::FunctionType
+	where
+		U: crate::ReadFromFS,
+		A: crate::ASTImplementation,
+		F: functions::SynthesisableFunction<A>,
+	{
+		functions::register_function(self, behavior, function, checking_data)
+	}
+
+	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		variable_name: &str,
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		let result = self.assign_to_variable(
 			variable_name,
@@ -432,7 +449,7 @@ impl<'a> Environment<'a> {
 				VariableOrImport::Variable { mutability, declared_at, context } => {
 					match mutability {
 						VariableMutability::Constant => {
-							Err(AssignmentError::Constant(declared_at.clone()))
+							Err(AssignmentError::Constant(*declared_at))
 						}
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
@@ -441,7 +458,7 @@ impl<'a> Environment<'a> {
 								// TODO tuple with position:
 								let mut basic_subtyping = BasicEquality {
 									add_property_restrictions: false,
-									position: declared_at.clone(),
+									position: *declared_at,
 								};
 								let result = type_is_subtype(
 									reassignment_constraint,
@@ -466,8 +483,8 @@ impl<'a> Environment<'a> {
 											false,
 										),
 										// TODO split
-										variable_site: assignment_position.clone(),
-										value_site: assignment_position.clone(),
+										variable_site: assignment_position,
+										value_site: assignment_position,
 									});
 								}
 							}
@@ -504,11 +521,6 @@ impl<'a> Environment<'a> {
 			GeneralContext::Syntax(syntax) => syntax.get_root(),
 			GeneralContext::Root(root) => root,
 		}
-	}
-
-	#[must_use]
-	pub fn get_environment_id(&self) -> super::ContextId {
-		self.context_id
 	}
 
 	pub(crate) fn get_environment_type(&self) -> &Scope {
@@ -589,22 +601,16 @@ impl<'a> Environment<'a> {
 		)
 	}
 
-	pub fn get_property_handle_errors<U: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn get_property_handle_errors<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
 		key: PropertyKey,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 		site: SpanWithSource,
 	) -> Result<Instance, ()> {
-		let get_property = self.get_property(
-			on,
-			publicity,
-			key.clone(),
-			&mut checking_data.types,
-			None,
-			site.clone(),
-		);
+		let get_property =
+			self.get_property(on, publicity, key.clone(), &mut checking_data.types, None, site);
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
@@ -638,11 +644,11 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn get_variable_handle_error<U: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn get_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		position: SpanWithSource,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
 			let this = self.get_variable_unbound(name);
@@ -809,16 +815,17 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T: crate::ReadFromFS, M, R>(
+	pub(crate) fn new_conditional_context<T, A, R>(
 		&mut self,
 		condition: TypeId,
-		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R,
-		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, M>) -> R>,
-		checking_data: &mut CheckingData<T, M>,
+		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
+		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> R
 	where
-		M: crate::ASTImplementation,
+		A: crate::ASTImplementation,
 		R: TypeCombinable,
+		T: crate::ReadFromFS,
 	{
 		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 			// TODO emit warning
@@ -914,14 +921,14 @@ impl<'a> Environment<'a> {
 		'b,
 		P: Iterator<Item = NamePair<'b>>,
 		T: crate::ReadFromFS,
-		M: ASTImplementation,
+		A: crate::ASTImplementation,
 	>(
 		&mut self,
 		partial_import_path: &str,
 		import_position: Span,
 		default_import: Option<(&str, Span)>,
 		kind: ImportKind<'b, P>,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 		also_export: bool,
 	) {
 		let current_source = self.get_source();
@@ -947,7 +954,7 @@ impl<'a> Environment<'a> {
 					let id = crate::VariableId(current_source, position.start);
 					let v = VariableOrImport::ConstantImport {
 						to: None,
-						import_specified_at: position.clone().with_source(current_source),
+						import_specified_at: position.with_source(current_source),
 					};
 					self.facts.variable_current_value.insert(id, *item);
 					let existing = self.variables.insert(default_name.to_owned(), v);
@@ -1002,7 +1009,6 @@ impl<'a> Environment<'a> {
 										constant,
 										import_specified_at: part
 											.position
-											.clone()
 											.with_source(self.get_source()),
 									};
 									let existing = self.variables.insert(part.r#as.to_owned(), v);
@@ -1031,7 +1037,7 @@ impl<'a> Environment<'a> {
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::FieldNotExported {
 									file: partial_import_path,
-									position: position.clone(),
+									position,
 									importing: part.value,
 								},
 							);

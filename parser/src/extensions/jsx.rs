@@ -18,7 +18,6 @@ pub enum JSXRoot {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[visit_self]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
 	pub tag_name: String,
@@ -273,7 +272,8 @@ impl ASTNode for JSXNode {
 			JSXNode::Element(element) => element.to_string_from_buffer(buf, options, depth + 1),
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
-				if !options.should_add_comment() && matches!(&**expression, Expression::Comment(..))
+				if !options.should_add_comment(false)
+					&& matches!(&**expression, Expression::Comment(..))
 				{
 					return;
 				}

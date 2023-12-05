@@ -4,10 +4,14 @@
 use std::fmt::Debug;
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, property_key::PropertyKey,
-	throw_unexpected_token_with_token, tokens::token_as_identifier, ASTNode, CursorId, Expression,
-	ImmutableVariableOrPropertyPart, MutableVariablePart, ParseError, ParseOptions, ParseResult,
-	Span, TSXToken, Token, VisitSettings, Visitable, WithComment,
+	errors::parse_lexing_error,
+	parse_bracketed,
+	property_key::PropertyKey,
+	throw_unexpected_token_with_token,
+	tokens::token_as_identifier,
+	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
+	ASTNode, CursorId, Expression, ParseError, ParseOptions, ParseResult, Span, TSXToken, Token,
+	VisitOptions, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -265,9 +269,31 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
-				let (items, end_pos) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-				Ok(Self::Array(items, start_pos.union(end_pos)))
+				let mut items: Vec<_> = Vec::new();
+				// No trailing comments
+				loop {
+					if let Some(token) =
+						reader.conditional_next(|token| *token == TSXToken::CloseBracket)
+					{
+						return Ok(Self::Array(items, start_pos.union(token.get_end())));
+					}
+
+					items.push(ArrayDestructuringField::from_reader(reader, state, options)?);
+
+					if !reader
+						.peek()
+						.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
+					{
+						reader.expect_next(TSXToken::Comma)?;
+						// TODO not great fix
+						if reader
+							.peek()
+							.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
+						{
+							items.push(ArrayDestructuringField::None);
+						}
+					}
+				}
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
 		}
@@ -357,7 +383,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 					if let Some(pos) = U::optional_expression_get_position(&default_value) {
 						key.get_position().union(pos)
 					} else {
-						key.get_position().clone()
+						*key.get_position()
 					};
 				Ok(Self::Map { from: key, name: variable_name, default_value, position })
 			} else if let PropertyKey::Ident(name, key_pos, ()) = key {
@@ -367,7 +393,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 					if let Some(pos) = U::optional_expression_get_position(&default_value) {
 						standard.get_position().union(pos)
 					} else {
-						standard.get_position().clone()
+						*standard.get_position()
 					};
 				Ok(Self::Name(standard, default_value, position))
 			} else {
@@ -466,7 +492,9 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 				name.to_string_from_buffer(buf, options, depth);
 				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
 			}
-			Self::None => {}
+			Self::None => {
+				options.add_gap(buf);
+			}
 		}
 	}
 
@@ -481,21 +509,21 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		// TODO map
 		match self {
 			VariableField::Name(id) => {
 				if let VariableIdentifier::Standard(name, pos) = id {
-					let item = ImmutableVariableOrPropertyPart::VariableFieldName(name, pos);
+					let item = ImmutableVariableOrProperty::VariableFieldName(name, pos);
 					visitors.visit_variable(&item, data, chain);
 				}
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields {
 					visitors.visit_variable(
-						&ImmutableVariableOrPropertyPart::ArrayDestructuringMember(field),
+						&ImmutableVariableOrProperty::ArrayDestructuringMember(field),
 						data,
 						chain,
 					);
@@ -512,7 +540,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			VariableField::Object(object_destructuring_fields, _) => {
 				for field in object_destructuring_fields {
 					visitors.visit_variable(
-						&ImmutableVariableOrPropertyPart::ObjectDestructuringMember(field),
+						&ImmutableVariableOrProperty::ObjectDestructuringMember(field),
 						data,
 						chain,
 					);
@@ -539,14 +567,14 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		options: &VisitSettings,
+		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		match self {
 			VariableField::Name(identifier) => {
 				if let VariableIdentifier::Standard(name, _span) = identifier {
 					visitors.visit_variable_mut(
-						&mut MutableVariablePart::VariableFieldName(name),
+						&mut MutableVariableOrProperty::VariableFieldName(name),
 						data,
 						chain,
 					);
@@ -555,7 +583,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields.iter_mut() {
 					visitors.visit_variable_mut(
-						&mut MutableVariablePart::ArrayDestructuringMember(field),
+						&mut MutableVariableOrProperty::ArrayDestructuringMember(field),
 						data,
 						chain,
 					);
@@ -572,7 +600,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			VariableField::Object(object_destructuring_fields, _) => {
 				for field in object_destructuring_fields.iter_mut() {
 					visitors.visit_variable_mut(
-						&mut MutableVariablePart::ObjectDestructuringMember(field),
+						&mut MutableVariableOrProperty::ObjectDestructuringMember(field),
 						data,
 						chain,
 					);

@@ -2,9 +2,9 @@ use std::iter;
 
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
+	functions::MethodHeader,
 	property_key::PublicOrPrivate,
-	Decorated, Expression, GenericTypeConstraint, MethodHeader, PropertyKey as ParserPropertyKey,
-	TypeAnnotation,
+	Decorated, Expression, GenericTypeConstraint, PropertyKey as ParserPropertyKey, TypeAnnotation,
 };
 
 use crate::{
@@ -110,7 +110,7 @@ pub(super) fn synthesise_class_declaration<
 				let property =
 					function_to_property(&getter_setter, method_ty, &mut checking_data.types);
 
-				let position = Some(method.position.clone().with_source(environment.get_source()));
+				let position = Some(method.position.with_source(environment.get_source()));
 				environment.facts.register_property(
 					class_prototype,
 					publicity,

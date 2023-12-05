@@ -71,7 +71,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
-			let constant = Constant::Number(f64::from(value.clone()).try_into().unwrap());
+			let constant = Constant::Number(
+				f64::try_from(value.clone()).expect("big int number type").try_into().unwrap(),
+			);
 			checking_data.types.new_constant_type(constant)
 		}
 		TypeAnnotation::BooleanLiteral(value, _) => {
@@ -85,13 +87,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				if let Some(ty) = environment.get_type_from_name(name) {
 					// Warn if it requires parameters. e.g. Array
 					if let Type::AliasTo { parameters: Some(_), .. }
-					| Type::NamedRooted { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
+					| Type::Interface { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
 					{
 						// TODO check defaults...
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::TypeNeedsTypeArguments(
 								name,
-								pos.clone().with_source(environment.get_source()),
+								pos.with_source(environment.get_source()),
 							),
 						);
 						TypeId::ANY_TYPE
@@ -101,7 +103,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				} else {
 					checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
 						name,
-						pos.clone().with_source(environment.get_source()),
+						pos.with_source(environment.get_source()),
 					));
 					TypeId::ERROR_TYPE
 				}
@@ -164,7 +166,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						add_property_restrictions: true,
 						position: argument_type_annotation
 							.get_position()
-							.clone()
 							.with_source(environment.get_source()),
 					};
 
@@ -200,7 +201,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							position: argument_type_annotation.get_position().clone().with_source(environment.get_source()),
+							position: argument_type_annotation.get_position().with_source(environment.get_source()),
 						};
 
 						checking_data.diagnostics_container.add_error(error);
@@ -208,7 +209,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 					let with_source = argument_type_annotation
 						.get_position()
-						.clone()
 						.with_source(environment.get_source());
 
 					type_arguments.insert(parameter, (argument, with_source));
@@ -232,7 +232,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::TypeHasNoGenericParameters(
 						name.clone(),
-						position.clone().with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					),
 				);
 				TypeId::ERROR_TYPE
@@ -245,7 +245,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			position,
 			..
 		} => {
-			let position = position.clone().with_source(environment.get_source());
+			let position = position.with_source(environment.get_source());
 			let function_type = synthesise_function_annotation(
 				type_parameters,
 				parameters,
@@ -288,8 +288,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
 			let item_type = synthesise_type_annotation(item_annotation, environment, checking_data);
-			let with_source =
-				item_annotation.get_position().clone().with_source(environment.get_source());
+			let with_source = item_annotation.get_position().with_source(environment.get_source());
 			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: TypeId::ARRAY_TYPE,
 				arguments: StructureGenericArguments {
@@ -346,10 +345,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						let item_ty =
 							synthesise_type_annotation(type_annotation, environment, checking_data);
 
-						let ty_position = type_annotation
-							.get_position()
-							.clone()
-							.with_source(environment.get_source());
+						let ty_position =
+							type_annotation.get_position().with_source(environment.get_source());
 
 						obj.append(
 							environment,
@@ -386,10 +383,15 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let being_indexed =
 				synthesise_type_annotation(being_indexed, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
-			if let Some(prop) = environment.get_property_unbound(
+			let under =
+				crate::types::properties::PropertyKey::from_type(indexer, &checking_data.types);
+
+			if let Some(base) = environment.get_poly_base(being_indexed, &checking_data.types) {
+				checking_data.types.new_property_constructor(being_indexed, indexer, base)
+			} else if let Some(prop) = environment.get_property_unbound(
 				being_indexed,
 				Publicity::Public,
-				crate::types::properties::PropertyKey::Type(indexer),
+				under,
 				&checking_data.types,
 			) {
 				match prop {
@@ -398,13 +400,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					crate::context::Logical::Implies { .. } => todo!(),
 				}
 			} else {
-				todo!("Error")
+				crate::utils::notify!("Error: no index on type annotation");
+				TypeId::ERROR_TYPE
 			}
-			// indexee.get_property_using_type_annotation(
-			//     &indexer,
-			//     checking_data,
-			//     crate::types::GetPropertySettings::HowAboutNo,
-			// ))
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {
@@ -451,7 +449,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	checking_data
 		.type_mappings
 		.types_to_types
-		.push(annotation.get_position().clone().with_source(environment.get_source()), ty);
+		.push(annotation.get_position().with_source(environment.get_source()), ty);
 
 	ty
 }

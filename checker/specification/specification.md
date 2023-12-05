@@ -229,6 +229,16 @@ function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
 
 - Cannot return { a: T, b: U } because the function is expected to return { a: U, b: U }
 
+#### Expected parameter from variable declaration
+
+> Technically works with inference but this method should be less overhead + produce better positioned errors
+
+```ts
+const x: (a: string) => number = a => a.to;
+```
+
+- No property 'to' on string
+
 ### Function calling
 
 #### Argument type against parameter
@@ -329,6 +339,30 @@ obj.getA() satisfies 6;
 ```
 
 - Expected 6, found 5
+
+#### This passed around
+
+```ts
+function getToUpperCase(s: string) {
+	return s.toUpperCase
+}
+
+(getToUpperCase("hi")() satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
+
+#### This as generic argument
+
+```ts
+function callToUpperCase(s: string) {
+	return s.toUpperCase()
+}
+
+(callToUpperCase("hi") satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
 
 ### Closures
 
@@ -631,17 +665,38 @@ const my_obj: { b: 3 } = { a: 2 }
 #### Getters
 
 ```ts
-const b = {
-	get c() {
-		return 2
+let global = 0;
+const object = {
+	get getValue() {
+		return global++
 	},
 }
-b.c satisfies string
+
+object.getValue satisfies string
+object.getValue satisfies boolean
 ```
 
-- Expected string, found 2
+> Also test that side effects work here
+
+- Expected string, found 0
+- Expected boolean, found 1
+
+#### Object spread
+
+```ts
+const obj1 = { a: 2, b: 3 };
+const obj2 = { b: 4, ...obj1, a: 6 };
+
+obj2.b satisfies 100;
+obj2.a satisfies boolean;
+```
+
+- Expected 100, found 3
+- Expected boolean, found 6
 
 #### Array pushing and pop-ing
+
+> TODO maybe separate
 
 ```ts
 const x = [1]
@@ -982,15 +1037,34 @@ interface X {
 	b: boolean
 }
 
-interface X {
-	c: number
+{
+	interface X {
+		c: number
+	}
+	
+	const x: X = { a: "field", b: false, c: false }
+	const y: X = { a: "field", b: false, c: 2 }
 }
-
-const x: X = { a: "field", b: false, c: false }
-const y: X = { a: "field", b: false, c: 2 }
 ```
 
 - Type { a: "field", b: false, c: false } is not assignable to type X
+
+#### Interfaces do not merge with aliases
+
+```ts
+type X = { a: string }
+
+{
+	interface X {
+		b: number
+	}
+
+	const x: X = { b: 3 } // Don't require 'a' here <-
+	const y: X = { b: "NaN" }
+}
+```
+
+- Type { b: "NaN" } is not assignable to type X
 
 ### Classes
 
@@ -1143,6 +1217,61 @@ getProp satisfies string
 ```
 
 - Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+
+#### Generic extends
+
+```ts
+function getA<T extends { a: string }>(p: T) {
+    return p.a
+}
+
+getA({ p: 2 })
+```
+
+- Argument of type { p: 2 } is not assignable to parameter of type T
+
+> I think reasons contains more information
+
+#### Function subtyping
+
+```ts
+// Perfectly fine
+const x: (a: number) => string = (a: 4) => "hi"
+// Bad
+const y: (a: 4) => string = (a: number) => "hi"
+```
+
+- Type (a: number) => "hi" is not assignable to type (a: 4) => string
+
+> I think reasons contains more information
+
+#### Indexing into (fixed) type
+
+```ts
+interface ThePrimitives {
+	a: number,
+	b: string,
+	c: boolean
+}
+
+(2 satisfies ThePrimitives["b"]);
+```
+
+- Expected string, found 2
+
+#### Indexing into (generic) type
+
+```ts
+function getProp<T extends { prop: string, other: string }>(t: T): T["prop"] {
+	return t.other
+}
+
+function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
+	return t.other
+}
+```
+
+- Cannot return T["other"] because the function is expected to return T["prop"]
 
 ### Prototypes
 

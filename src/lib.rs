@@ -1,5 +1,6 @@
 mod ast_explorer;
-mod commands;
+mod build;
+mod check;
 mod error_handling;
 mod repl;
 
@@ -8,8 +9,10 @@ pub(crate) mod utilities;
 pub mod cli;
 pub mod transformers;
 
+pub use build::build;
+pub use check::check;
 pub use checker::{Diagnostic, DiagnosticKind};
-pub use commands::{build, check};
+
 pub use parser::{source_map, ASTNode, ToStringOptions};
 use parser::{Module, ParseError};
 
@@ -48,7 +51,7 @@ impl<T> WriteToFS for T where T: Fn(&std::path::Path, String) {}
 mod wasm_bindings;
 
 #[cfg(target_family = "wasm")]
-pub use wasm_bindings::build_wasm;
+pub use wasm_bindings::experimental_build_wasm;
 
 #[cfg(target_family = "wasm")]
 pub use wasm_bindings::run_cli_wasm;

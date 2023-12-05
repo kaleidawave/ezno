@@ -31,7 +31,6 @@ pub use while_statement::{DoWhileStatement, WhileStatement};
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[partial_eq_ignore_types(Span)]
-#[visit_self(under statement)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Statement {
@@ -151,7 +150,7 @@ impl ASTNode for Statement {
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					let position = return_keyword.get_position().clone();
+					let position = *return_keyword.get_position();
 					Statement::Return(ReturnStatement(return_keyword, None, position))
 				} else {
 					let multiple_expression =
@@ -246,13 +245,13 @@ impl ASTNode for Statement {
 			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, options, depth),
 			Statement::TryCatchStatement(tcs) => tcs.to_string_from_buffer(buf, options, depth),
 			Statement::Comment(comment, _) => {
-				if options.should_add_comment() {
+				if options.should_add_comment(false) {
 					buf.push_str("//");
 					buf.push_str_contains_new_line(comment.as_str().trim_end());
 				}
 			}
 			Statement::MultiLineComment(comment, _) => {
-				if options.should_add_comment() {
+				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");

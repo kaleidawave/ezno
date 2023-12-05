@@ -1,11 +1,12 @@
 //! Contains wrappers for AST with comments
 
 use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
-use crate::{ParseOptions, Visitable};
+use crate::ParseOptions;
 
 use tokenizer_lib::Token;
+use visitable_derive::Visitable;
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Visitable)]
 pub enum WithComment<T> {
 	None(T),
 	PrefixComment(String, T, Span),
@@ -22,14 +23,8 @@ where
 		&self,
 		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
-		match self {
-			WithComment::None(item)
-			| WithComment::PrefixComment(_, item, _)
-			| WithComment::PostfixComment(item, _, _) => {
-				let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(item);
-				token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)));
-			}
-		}
+		let inner = self_rust_tokenize::SelfRustTokenize::to_tokens(self.get_ast_ref());
+		token_stream.extend(self_rust_tokenize::quote!(WithComment::None(#inner)));
 	}
 }
 
@@ -41,28 +36,6 @@ impl<T: serde::Serialize> serde::Serialize for WithComment<T> {
 		S: serde::Serializer,
 	{
 		self.get_ast_ref().serialize(serializer)
-	}
-}
-
-impl<T: Visitable> Visitable for WithComment<T> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &crate::VisitSettings,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		self.get_ast_ref().visit(visitors, data, options, chain);
-	}
-
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &crate::VisitSettings,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		self.get_ast_mut().visit_mut(visitors, data, options, chain);
 	}
 }
 
@@ -164,7 +137,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		match self {
 			Self::None(ast) => ast.to_string_from_buffer(buf, options, depth),
 			Self::PrefixComment(comment, ast, _) => {
-				if options.should_add_comment() {
+				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
@@ -173,7 +146,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			}
 			Self::PostfixComment(ast, comment, _) => {
 				ast.to_string_from_buffer(buf, options, depth);
-				if options.should_add_comment() {
+				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/");

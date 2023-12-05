@@ -10,7 +10,6 @@ use std::{
 };
 
 #[derive(Serialize, Debug)]
-#[serde(tag = "type")]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -19,7 +18,7 @@ pub enum DiagnosticKind {
 
 /// Contains information
 #[derive(Serialize, Debug)]
-#[serde(tag = "type")]
+#[serde(untagged)]
 pub enum Diagnostic {
 	/// Does not have positional information
 	Global {
@@ -292,6 +291,10 @@ mod defined_errors_and_warnings {
 		},
 		TypeNeedsTypeArguments(&'a str, SpanWithSource),
 		CannotFindType(&'a str, SpanWithSource),
+		TypeAlreadyDeclared {
+			name: String,
+			position: SpanWithSource,
+		},
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -471,7 +474,7 @@ mod defined_errors_and_warnings {
 					),
 					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
-						Some(annotation_position.clone()),
+						Some(annotation_position),
 					)],
 					position: returned_position,
 					kind,
@@ -488,7 +491,11 @@ mod defined_errors_and_warnings {
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
 				TypeCheckError::TypeIsNotIterable(_) => todo!(),
-				TypeCheckError::NonTopLevelExport(pos) => todo!(),
+				TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
+					reason: "Cannot export at not top level".to_owned(),
+					position,
+					kind,
+				},
 				TypeCheckError::FieldNotExported { file, importing, position } => {
 					Diagnostic::Position {
 						reason: format!("{importing} not exported from {file}"),
@@ -597,7 +604,12 @@ mod defined_errors_and_warnings {
 					reason: format!("Cannot find type {ty}"),
 					position,
 					kind,
-				}
+				},
+				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
+					reason: format!("Type {name} already declared"),
+					position,
+					kind,
+				},
 			}
 		}
 	}
@@ -617,6 +629,9 @@ mod defined_errors_and_warnings {
 		UselessExpression {
 			expression_span: SpanWithSource,
 			// TODO other branch information
+		},
+		MergingInterfaceInSameContext {
+			position: SpanWithSource,
 		},
 	}
 
@@ -652,6 +667,13 @@ mod defined_errors_and_warnings {
 					position: expression_span,
 					kind,
 				},
+				TypeCheckWarning::MergingInterfaceInSameContext { position } => {
+					Diagnostic::Position {
+						reason: "Merging interfaces in the same context".to_owned(),
+						position,
+						kind,
+					}
+				}
 			}
 		}
 	}

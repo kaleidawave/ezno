@@ -49,14 +49,14 @@ pub struct FunctionType {
 impl FunctionType {
 	pub(crate) fn new_auto_constructor<
 		T: crate::ReadFromFS,
-		M: crate::ASTImplementation,
+		A: crate::ASTImplementation,
 		S: ContextType,
 	>(
 		class_prototype: TypeId,
-		properties: ClassPropertiesToRegister<M>,
+		properties: ClassPropertiesToRegister<A>,
 		// TODO S overkill
 		context: &mut crate::context::Context<S>,
-		checking_data: &mut CheckingData<T, M>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> Self {
 		let scope = Scope::Function(FunctionScope::Constructor {
 			extends: false,
@@ -188,7 +188,7 @@ pub enum SynthesisedArgument {
 impl SynthesisedArgument {
 	pub(crate) fn get_position(&self) -> SpanWithSource {
 		match self {
-			SynthesisedArgument::NonSpread { ty: _, position } => position.clone(),
+			SynthesisedArgument::NonSpread { ty: _, position } => *position,
 		}
 	}
 

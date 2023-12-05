@@ -1,5 +1,5 @@
-import { build, check, parse_expression, get_version } from "./dist/initialised.mjs";
-import assert, { deepStrictEqual, equal } from "node:assert";
+import { check, parse_expression, get_version } from "./dist/initialised.mjs";
+import assert, { deepStrictEqual } from "node:assert";
 
 function buildTest() {
 	// TODO
@@ -12,20 +12,19 @@ function checkTest() {
 	const output = check("input.js", (_path) => example);
 	deepStrictEqual(output, [
 		{
-			type: "PositionWithAdditionLabels",
 			reason: "Type 2 is not assignable to type 4",
-			position: { start: 13, end: 14, source: 1 },
+			position: { start: 13, end: 14, source: 2 },
 			labels: [
 				[
 					"Variable declared with type 4",
 					{
 						end: 10,
-						source: 1,
+						source: 2,
 						start: 9,
 					},
 				],
 			],
-			kind: { type: "Error" }
+			kind: "Error"
 		},
 	],
 	);

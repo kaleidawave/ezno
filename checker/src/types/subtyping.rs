@@ -446,7 +446,24 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				result_union,
 			} => todo!(),
 			Constructor::FunctionResult { on, with, result } => todo!(),
-			Constructor::Property { on, under, result } => todo!(),
+			Constructor::Property { on, under, result: _ } => {
+				// Ezno custom behavior
+				// TODO might be based of T
+				if let Type::Constructor(Constructor::Property {
+					on: r_on,
+					under: r_under,
+					result: _,
+				}) = right_ty
+				{
+					if on == r_on && under == r_under {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				} else {
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				}
+			}
 			Constructor::StructureGenerics(_) => unreachable!(),
 		},
 		// TODO aliasing might work differently
@@ -465,7 +482,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				restriction_mode,
 			)
 		}
-		Type::NamedRooted { nominal: base_type_nominal, .. } => {
+		Type::Interface { nominal: base_type_nominal, .. } => {
 			// If type matched type it would have been cleared before. So looking at properties and
 			// prototypes here
 
@@ -553,7 +570,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						restriction_mode,
 					)
 				}
-				Type::AliasTo { .. } | Type::NamedRooted { .. } => {
+				Type::AliasTo { .. } | Type::Interface { .. } => {
 					crate::utils::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
 					// TODO
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)

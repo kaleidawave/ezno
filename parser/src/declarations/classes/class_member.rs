@@ -1,17 +1,19 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, mem};
 
-use crate::{errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords};
+use crate::{
+	errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords, visiting::Visitable,
+};
 use source_map::Span;
 use tokenizer_lib::{Token, TokenReader};
 use visitable_derive::Visitable;
 
 use crate::{
-	functions::FunctionBased, ASTNode, Block, Expression, FunctionBase, Keyword, MethodHeader,
-	ParseOptions, ParseResult, PropertyKey, TSXKeyword, TSXToken, TypeAnnotation, WithComment,
+	functions::{FunctionBased, MethodHeader},
+	ASTNode, Block, Expression, FunctionBase, Keyword, ParseOptions, ParseResult, PropertyKey,
+	TSXKeyword, TSXToken, TypeAnnotation, WithComment,
 };
 
-/// The variable id's of these is handled by their [`PropertyKey`]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ClassMember {
@@ -82,9 +84,36 @@ impl ASTNode for ClassMember {
 			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Readonly))
 			.map(|token| Keyword::new(token.get_span()));
 
-		let header = MethodHeader::from_reader(reader);
+		let mut header = MethodHeader::from_reader(reader);
 
-		let key = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
+		// Catch for named get or set :(
+		let is_named_get_set_or_async = matches!(
+			(reader.peek(), &header),
+			(
+				Some(Token(
+					TSXToken::OpenParentheses
+						| TSXToken::OpenChevron | TSXToken::Colon
+						| TSXToken::Comma | TSXToken::CloseBrace,
+					_
+				)),
+				MethodHeader::Get(..)
+					| MethodHeader::Set(..)
+					| MethodHeader::Regular { r#async: Some(_), .. }
+			)
+		);
+
+		let key = if is_named_get_set_or_async {
+			// Backtrack allowing `get` to be a key
+			let (name, position) = match mem::take(&mut header) {
+				MethodHeader::Get(kw) => ("get", kw.1),
+				MethodHeader::Set(kw) => ("set", kw.1),
+				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
+				MethodHeader::Regular { .. } => unreachable!(),
+			};
+			WithComment::None(PropertyKey::Ident(name.to_owned(), position, false))
+		} else {
+			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?
+		};
 
 		match reader.peek() {
 			Some(Token(TSXToken::OpenParentheses, _)) if readonly_keyword.is_none() => {
@@ -116,7 +145,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						readonly_keyword,
-						position: key.get_position().clone(),
+						position: *key.get_position(),
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
@@ -168,7 +197,7 @@ impl ASTNode for ClassMember {
 				block.to_string_from_buffer(buf, options, depth + 1);
 			}
 			Self::Comment(c, _) => {
-				if options.include_comments {
+				if options.should_add_comment(c.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(c);
 					buf.push_str("*/");
@@ -226,12 +255,32 @@ impl FunctionBased for ClassFunctionBase {
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		header.get_start()
 	}
+
+	fn visit_name<TData>(
+		name: &Self::Name,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit(visitors, data, options, chain);
+	}
+
+	fn visit_name_mut<TData>(
+		name: &mut Self::Name,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &crate::visiting::VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+		name.visit_mut(visitors, data, options, chain);
+	}
 }
 
 impl FunctionBased for ClassConstructorBase {
-	type Body = Block;
 	type Header = Keyword<tsx_keywords::Constructor>;
 	type Name = ();
+	type Body = Block;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
@@ -257,5 +306,23 @@ impl FunctionBased for ClassConstructorBase {
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		Some(header.get_position().get_start())
+	}
+
+	fn visit_name<TData>(
+		_: &Self::Name,
+		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
+
+	fn visit_name_mut<TData>(
+		_: &mut Self::Name,
+		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
 	}
 }

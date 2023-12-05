@@ -37,5 +37,5 @@ jobs:
               -w "\nUpdated-project: \n" \
               https://projects.kaleidawave.workers.dev/update-project;
           
-            echo "\`$name\` has $linesOfRustCode lines of code"Y;
+            echo "\`$name\` has $linesOfRustCode lines of code" >> $GITHUB_STEP_SUMMARY;
           done

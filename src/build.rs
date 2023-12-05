@@ -1,43 +1,13 @@
-use checker::{DiagnosticsContainer, PostCheckData};
-use parser::{
-	source_map::{MapFileStore, WithPathMap},
-	ASTNode, ParseOptions, ToStringOptions,
-};
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-pub type EznoCheckerData = PostCheckData<checker::synthesis::EznoParser>;
+use checker::DiagnosticsContainer;
+use parser::{
+	source_map::{MapFileStore, WithPathMap},
+	ToStringOptions,
+};
+use serde::Deserialize;
 
-pub fn check<T: crate::ReadFromFS>(
-	read_from_filesystem: &T,
-	input: &Path,
-	type_definition_module: Option<&Path>,
-) -> (checker::DiagnosticsContainer, Result<EznoCheckerData, MapFileStore<WithPathMap>>) {
-	let definitions = if let Some(tdm) = type_definition_module {
-		std::iter::once(tdm.into()).collect()
-	} else {
-		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
-	};
-
-	let read_from_fs = |path: &Path| {
-		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
-		} else {
-			read_from_filesystem.get_content_at_path(path)
-		}
-	};
-
-	let type_check_options = None;
-	let parsing_options = ParseOptions::default();
-
-	checker::check_project(
-		input.to_path_buf(),
-		definitions,
-		read_from_fs,
-		type_check_options,
-		parsing_options,
-	)
-}
+use crate::check::EznoCheckerData;
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
 pub struct Output {
@@ -81,8 +51,9 @@ pub fn build<T: crate::ReadFromFS>(
 	config: &BuildConfig,
 	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
-	// TODO parse settings + non_standard_library & non_standard_syntax
-	let (diagnostics, data_and_module) = check(fs_resolver, input_path, type_definition_module);
+	// TODO parse options + non_standard_library & non_standard_syntax
+	let (diagnostics, data_and_module) =
+		crate::check(fs_resolver, input_path, type_definition_module);
 
 	match data_and_module {
 		Ok(mut data) => {
@@ -99,7 +70,7 @@ pub fn build<T: crate::ReadFromFS>(
 			module.visit_mut::<EznoCheckerData>(
 				&mut transformers,
 				&mut data,
-				&parser::visiting::VisitSettings::default(),
+				&parser::visiting::VisitOptions::default(),
 			);
 
 			let to_string_options = if config.strip_whitespace {
@@ -108,7 +79,7 @@ pub fn build<T: crate::ReadFromFS>(
 				ToStringOptions::default()
 			};
 
-			let content = module.to_string(&to_string_options);
+			let content = parser::ASTNode::to_string(&module, &to_string_options);
 			let main_output = Output {
 				output_path: output_path.to_path_buf(),
 				content,

@@ -82,6 +82,11 @@ impl CallCheckingBehavior for Target {
 }
 
 impl Target {
+	/// TODO temp for loop unrolling
+	pub(crate) fn new_default() -> Self {
+		Target(Vec::new())
+	}
+
 	pub(crate) fn new_conditional_target(
 		&mut self,
 		cb: impl for<'a> FnOnce(&'a mut Target) -> EarlyReturn,

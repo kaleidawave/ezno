@@ -831,9 +831,9 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb0b3ebf1fb4d2927644205814029f7a831ac62a26f1244d0981111b6129cc41"
+checksum = "a0919459f4f8f556d70ae8b531e9ecbb07a596ec5d229fe372108c421350d8bd"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",

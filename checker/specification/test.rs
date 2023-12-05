@@ -26,7 +26,7 @@ mod specification {
 /// Called by each test
 fn check_errors(
 	heading: &'static str,
-	line: usize,
+	_line: usize,
 	// (Path, Content)
 	code: &[(&'static str, &'static str)],
 	expected_diagnostics: &[&'static str],
@@ -48,7 +48,6 @@ fn check_errors(
 
 	// TODO could test these
 	let type_check_options = None;
-	let parse_options = Default::default();
 
 	// eprintln!("{:?}", code);
 
@@ -69,7 +68,6 @@ fn check_errors(
 			}
 		},
 		type_check_options,
-		parse_options,
 	);
 	// });
 

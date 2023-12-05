@@ -2,7 +2,6 @@
 fn main() {
 	use ezno_checker::{check_project, synthesis};
 	use std::{
-		collections::HashSet,
 		env, fs,
 		path::{Path, PathBuf},
 	};
@@ -21,7 +20,6 @@ fn main() {
 			}
 		},
 		None,
-		Default::default(),
 	);
 
 	let args: Vec<_> = env::args().collect();

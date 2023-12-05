@@ -1,6 +1,6 @@
 use parser::{
 	types::interface::{InterfaceDeclaration, InterfaceMember},
-	Decorated, PropertyKey as ParserPropertyKey,
+	Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
 
 use crate::{
@@ -112,19 +112,20 @@ impl SynthesiseInterfaceBehavior for OnToType {
 
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
 	type_parameters: Option<&[parser::GenericTypeConstraint]>,
-	signatures: &[Decorated<InterfaceMember>],
+	signatures: &[WithComment<Decorated<InterfaceMember>>],
 	mut behavior: B,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> B {
 	/// TODO check members declared before
 	fn synthesise_members<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
-		members: &[Decorated<InterfaceMember>],
+		members: &[WithComment<Decorated<InterfaceMember>>],
 		environment: &mut Context<crate::context::environment::Syntax<'_>>,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		interface_register_behavior: &mut B,
 	) {
 		for member in members {
+			let member = member.get_ast_ref();
 			match &member.on {
 				InterfaceMember::Method {
 					header,
@@ -136,16 +137,25 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					performs,
 					position,
 				} => {
-					let behavior = functions::FunctionBehavior::Method {
-						is_async: header.is_async(),
-						is_generator: header.is_generator(),
-						// TODO ...
-						free_this_id: TypeId::ERROR_TYPE,
+					// Fix for performing const annotations. TODO want to do better
+					let behavior = if member
+						.decorators
+						.iter()
+						.any(|a| a.name.first().cloned().as_deref() == Some("DoNotIncludeThis"))
+					{
+						functions::FunctionBehavior::ArrowFunction { is_async: header.is_async() }
+					} else {
+						functions::FunctionBehavior::Method {
+							is_async: header.is_async(),
+							is_generator: header.is_generator(),
+							// TODO ...
+							free_this_id: TypeId::ERROR_TYPE,
+						}
 					};
 					let getter = match header {
-						parser::MethodHeader::Get(_) => GetterSetter::Getter,
-						parser::MethodHeader::Set(_) => GetterSetter::Setter,
-						parser::MethodHeader::Regular { .. } => GetterSetter::None,
+						parser::functions::MethodHeader::Get(_) => GetterSetter::Getter,
+						parser::functions::MethodHeader::Set(_) => GetterSetter::Setter,
+						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
 					};
 					let function = synthesise_function_annotation(
 						type_parameters,
@@ -154,7 +164,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						environment,
 						checking_data,
 						performs.as_ref().into(),
-						&position.clone().with_source(environment.get_source()),
+						&position.with_source(environment.get_source()),
 						behavior,
 						interface_register_behavior.interface_type(),
 					);
@@ -207,7 +217,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					performs,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Caller {
 					parameters,
@@ -217,7 +227,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface caller",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Rule {
 					parameter,
@@ -229,9 +239,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface rule",
-					position.clone().with_source(environment.get_source()),
+					position.with_source(environment.get_source()),
 				),
-				InterfaceMember::Comment(..) => {}
+				InterfaceMember::Comment(_, _) => {}
 			}
 		}
 	}

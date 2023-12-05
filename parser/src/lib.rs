@@ -51,15 +51,14 @@ pub use types::{
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{
-	Chain, ChainVariable, ImmutableVariableOrPropertyPart, MutableVariablePart, VisitSettings,
-	Visitable, VisitorMutReceiver, VisitorReceiver,
+	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
 
 use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
-use std::{borrow::Cow, ops::Neg, str::FromStr};
+use std::{borrow::Cow, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -79,7 +78,7 @@ impl Quoted {
 	}
 }
 
-/// Settings to customize parsing
+/// Options to customize parsing
 #[allow(unused)]
 #[derive(Copy, Clone)]
 // TODO: Can be refactored with bit to reduce memory
@@ -91,23 +90,26 @@ pub struct ParseOptions {
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
 	pub decorators: bool,
-	pub generator_keyword: bool,
 	/// Skip **all** comments from the AST
-	pub include_comments: bool,
+	pub comments: Comments,
 	/// See [crate::extensions::is_expression::IsExpression]
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
-	pub server_functions: bool,
-	/// Allows functions to be prefixed with 'module'
-	pub module_functions: bool,
+	pub custom_function_headers: bool,
 	/// For LSP allows incomplete AST for completions. TODO tidy up
 	pub slots: bool,
+	/// TODO temp for seeing how channel performs
+	pub buffer_size: usize,
+	/// TODO temp for seeing how channel performs
+	///
+	/// Has no effect on WASM
+	pub stack_size: Option<usize>,
 }
 
 impl ParseOptions {
 	fn get_lex_options(&self) -> LexerOptions {
 		LexerOptions {
-			include_comments: self.include_comments,
+			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
 		}
@@ -118,13 +120,13 @@ impl ParseOptions {
 		Self {
 			jsx: true,
 			special_jsx_attributes: true,
-			include_comments: true,
+			comments: Comments::All,
 			decorators: true,
 			slots: true,
-			generator_keyword: true,
-			server_functions: true,
-			module_functions: true,
+			custom_function_headers: true,
 			is_expressions: true,
+			buffer_size: 100,
+			stack_size: None,
 		}
 	}
 }
@@ -135,13 +137,13 @@ impl Default for ParseOptions {
 		Self {
 			jsx: true,
 			special_jsx_attributes: false,
-			include_comments: true,
+			comments: Comments::All,
 			decorators: true,
 			slots: false,
-			generator_keyword: true,
-			server_functions: false,
-			module_functions: false,
-			is_expressions: true,
+			custom_function_headers: false,
+			is_expressions: false,
+			buffer_size: 100,
+			stack_size: None,
 		}
 	}
 }
@@ -154,11 +156,13 @@ pub struct ToStringOptions {
 	pub pretty: bool,
 	/// Blocks have trailing semicolons. Has no effect if pretty == false
 	pub trailing_semicolon: bool,
+	/// Single statements get put on the same line as their parent statement
+	pub single_statement_on_new_line: bool,
 	/// Include type annotation syntax
 	pub include_types: bool,
 	/// TODO not sure about this
 	pub include_decorators: bool,
-	pub include_comments: bool,
+	pub comments: Comments,
 	pub indent_with: String,
 	/// If false, panics if sees JSX
 	pub expect_jsx: bool,
@@ -170,8 +174,9 @@ impl Default for ToStringOptions {
 		ToStringOptions {
 			pretty: true,
 			include_types: false,
+			single_statement_on_new_line: true,
 			include_decorators: false,
-			include_comments: true,
+			comments: Comments::All,
 			expect_jsx: false,
 			trailing_semicolon: false,
 			expect_cursors: false,
@@ -185,7 +190,7 @@ impl ToStringOptions {
 	pub fn minified() -> Self {
 		ToStringOptions {
 			pretty: false,
-			include_comments: false,
+			comments: Comments::None,
 			indent_with: String::new(),
 			..Default::default()
 		}
@@ -198,19 +203,29 @@ impl ToStringOptions {
 	}
 
 	/// Whether to include comment in source
-	pub(crate) fn should_add_comment(&self) -> bool {
-		self.pretty && self.include_comments
+	pub(crate) fn should_add_comment(&self, document_comment: bool) -> bool {
+		matches!(self.comments, Comments::All)
+			|| (matches!(self.comments, Comments::JustDocumentation) && document_comment)
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {
 		(0..indent).for_each(|_| buf.push_str(&self.indent_with));
 	}
 
+	/// Adds whitespace **conditionally** (based on pretty setting)
 	pub(crate) fn add_gap<T: source_map::ToString>(&self, buf: &mut T) {
 		if self.pretty {
 			buf.push(' ');
 		}
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Comments {
+	All,
+	/// Only multiline comments starting with `/**`
+	JustDocumentation,
+	None,
 }
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
@@ -267,22 +282,30 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	offset: Option<u32>,
 	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
-	let (mut sender, mut reader) = tokenizer_lib::ParallelTokenQueue::new();
+	let (mut sender, mut reader) =
+		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
 	let length = script.len() as u32;
-	let parsing_thread = std::thread::spawn(move || {
-		let mut state = ParsingState {
-			line_starts,
-			source,
-			length_of_source: length,
-			constant_imports: Default::default(),
-		};
-		let res = T::from_reader(&mut reader, &mut state, &options);
-		if res.is_ok() {
-			reader.expect_next(TSXToken::EOS)?;
-		}
-		res
-	});
+	let mut thread = std::thread::Builder::new().name("AST parsing".into());
+	if let Some(stack_size) = options.stack_size {
+		thread = thread.stack_size(stack_size);
+	}
+
+	let parsing_thread = thread
+		.spawn(move || {
+			let mut state = ParsingState {
+				line_starts,
+				source,
+				length_of_source: length,
+				constant_imports: Default::default(),
+			};
+			let res = T::from_reader(&mut reader, &mut state, &options);
+			if res.is_ok() {
+				reader.expect_next(TSXToken::EOS)?;
+			}
+			res
+		})
+		.unwrap();
 
 	let lex_result = lexer::lex_script(script, &mut sender, &lex_options, offset, cursors);
 	if let Err((reason, pos)) = lex_result {
@@ -428,7 +451,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&self,
 		visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitSettings,
+		_options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_keyword(&(self.0.into(), &self.1), data, chain);
@@ -438,7 +461,7 @@ impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
 		&mut self,
 		_visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
 		_data: &mut TData,
-		_options: &VisitSettings,
+		_options: &VisitOptions,
 		_chain: &mut Annex<Chain>,
 	) {
 		// TODO should this have a implementation?
@@ -476,6 +499,8 @@ impl std::fmt::Display for NumberSign {
 /// TODO a mix between runtime numbers and source syntax based number
 /// TODO hex cases lost in input :(
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
+///
+/// Some of these can't be parsed, but are there to make is so that a number can be generated from just a f64
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -483,15 +508,35 @@ pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
 	NaN,
-	Hex(NumberSign, u64),
-	Bin(NumberSign, u64),
-	// Last one is whether it was specified with a leading zero (boo)
-	Octal(NumberSign, u64, bool),
+	Hex {
+		sign: NumberSign,
+		identifier_uppercase: bool,
+		value: u64,
+	},
+	Bin {
+		sign: NumberSign,
+		identifier_uppercase: bool,
+		value: u64,
+	},
+	Octal {
+		sign: NumberSign,
+		/// None = leading 0 (boo 👎)
+		identifier_uppercase: Option<bool>,
+		value: u64,
+	},
 	Number {
-		elided_zero_before_point: bool,
-		trailing_point: bool,
 		/// TODO could do as something other than f64
-		internal: f64,
+		value: f64,
+		/// To preserve formatting
+		before_point: u8,
+		/// To preserve formatting
+		after_point: Option<u8>,
+	},
+	Exponential {
+		sign: NumberSign,
+		value: f64,
+		exponent: i32,
+		identifier_uppercase: bool,
 	},
 	BigInt(NumberSign, String),
 }
@@ -502,21 +547,31 @@ impl std::hash::Hash for NumberRepresentation {
 	}
 }
 
-impl From<NumberRepresentation> for f64 {
-	fn from(this: NumberRepresentation) -> f64 {
+impl TryFrom<NumberRepresentation> for f64 {
+	// BigInt!!
+	type Error = ();
+
+	fn try_from(this: NumberRepresentation) -> Result<Self, Self::Error> {
 		match this {
-			NumberRepresentation::Infinity => f64::INFINITY,
-			NumberRepresentation::NegativeInfinity => f64::NEG_INFINITY,
-			NumberRepresentation::NaN => f64::NAN,
-			NumberRepresentation::Number { internal, .. } => internal,
-			NumberRepresentation::Hex(sign, nat)
-			| NumberRepresentation::Bin(sign, nat)
-			| NumberRepresentation::Octal(sign, nat, _) => sign.apply(nat as f64),
-			NumberRepresentation::BigInt(..) => todo!(),
+			NumberRepresentation::Infinity => Ok(f64::INFINITY),
+			NumberRepresentation::NegativeInfinity => Ok(f64::NEG_INFINITY),
+			NumberRepresentation::NaN => Ok(f64::NAN),
+			NumberRepresentation::Number { value: internal, .. } => Ok(internal),
+			NumberRepresentation::Hex { sign, value, .. }
+			| NumberRepresentation::Bin { sign, value, .. }
+			| NumberRepresentation::Octal { sign, value, .. } => Ok(sign.apply(value as f64)),
+			NumberRepresentation::Exponential {
+				sign,
+				value,
+				exponent,
+				identifier_uppercase: _,
+			} => Ok(sign.apply(value * 10f64.powi(exponent))),
+			NumberRepresentation::BigInt(..) => Err(()),
 		}
 	}
 }
 
+// For code generation
 impl From<f64> for NumberRepresentation {
 	fn from(value: f64) -> Self {
 		if value == f64::INFINITY {
@@ -526,7 +581,12 @@ impl From<f64> for NumberRepresentation {
 		} else if value.is_nan() {
 			Self::NaN
 		} else {
-			Self::Number { internal: value, elided_zero_before_point: false, trailing_point: false }
+			Self::Number {
+				value,
+				// These values should be fine
+				before_point: 0,
+				after_point: None,
+			}
 		}
 	}
 }
@@ -557,101 +617,128 @@ impl FromStr for NumberRepresentation {
 			let next_char = s.chars().next();
 			match next_char {
 				Some('.') => {
-					if s.len() == 2 {
-						Ok(Self::Number {
-							internal: 0f64,
-							elided_zero_before_point: false,
-							trailing_point: true,
-						})
+					let after_point = Some(s.len() as u8 - 1);
+					let before_point = 1;
+					if s.len() == 1 {
+						Ok(Self::Number { value: 0f64, before_point, after_point })
 					} else {
 						Ok(Self::Number {
-							internal: sign.apply(s.parse().map_err(|_| s.to_owned())?),
-							elided_zero_before_point: false,
-							trailing_point: false,
+							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+							before_point,
+							after_point,
 						})
 					}
 				}
-				Some('X' | 'x') => {
-					let mut number = 0u64;
+				Some(c @ ('X' | 'x')) => {
+					let identifier_uppercase = c.is_uppercase();
+					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
-						number <<= 4; // 16=2^4
+						value <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
-								number += u64::from(c - b'0');
+								value += u64::from(c - b'0');
 							}
 							b'a'..=b'f' => {
-								number += u64::from(c - b'a') + 10;
+								value += u64::from(c - b'a') + 10;
 							}
 							b'A'..=b'F' => {
-								number += u64::from(c - b'A') + 10;
+								value += u64::from(c - b'A') + 10;
 							}
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Hex(sign, number))
+					Ok(Self::Hex { sign, identifier_uppercase, value })
 				}
-				Some('B' | 'b') => {
-					let mut number = 0u64;
+				Some(c @ ('B' | 'b')) => {
+					let identifier_uppercase = c.is_uppercase();
+					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
-						number <<= 1;
+						value <<= 1;
 						match c {
 							b'0' | b'1' => {
-								number += u64::from(c - b'0');
+								value += u64::from(c - b'0');
 							}
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Bin(sign, number))
+					Ok(Self::Bin { identifier_uppercase, sign, value })
+				}
+				Some(c @ ('e' | 'E')) => {
+					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
+					Ok(Self::Exponential {
+						sign,
+						value: 0f64,
+						exponent,
+						identifier_uppercase: c.is_uppercase(),
+					})
 				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
-					let start = if uses_character { 2 } else { 1 };
-					let mut number = 0u64;
+
+					if !uses_character && s.contains(['8', '9', '.']) {
+						let (before_point, after_point) =
+							s.split_once('.').map_or((s.len() as u8 + 1, None), |(l, r)| {
+								(l.len() as u8 + 1, Some(r.len() as u8))
+							});
+
+						return Ok(Self::Number {
+							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
+							before_point,
+							after_point,
+						});
+					}
+
+					// If it uses the the character then skip one, else skip zero
+					let start: usize = uses_character.into();
+
+					let mut value = 0u64;
 					for c in s[start..].as_bytes() {
-						number <<= 3; // 8=2^3
+						value <<= 3; // 8=2^3
 						if matches!(c, b'0'..=b'7') {
-							number += u64::from(c - b'0');
+							value += u64::from(c - b'0');
 						} else {
 							return Err(s.to_owned());
 						}
 					}
-					Ok(Self::Octal(sign, number, !uses_character))
+					Ok(Self::Octal {
+						sign,
+						value,
+						identifier_uppercase: uses_character.then_some(c.is_uppercase()),
+					})
 				}
-				None => Ok(Self::Number {
-					internal: 0f64,
-					elided_zero_before_point: false,
-					trailing_point: false,
-				}),
+				None => Ok(Self::Number { value: 0f64, before_point: 1, after_point: None }),
 			}
-		} else if s.ends_with('.') {
-			Ok(Self::Number {
-				internal: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
-				elided_zero_before_point: false,
-				trailing_point: true,
-			})
 		} else if s.starts_with('.') {
-			let value: f64 = s.strip_prefix('.').unwrap().parse().map_err(|_| s.clone())?;
-			let digits = value.log10().floor() + 1f64;
-			let result = value * (10f64.powf(-digits));
+			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
 			Ok(Self::Number {
-				internal: sign.apply(result),
-				elided_zero_before_point: true,
-				trailing_point: false,
+				value: sign.apply(value),
+				before_point: 0,
+				after_point: Some(s.len() as u8 - 1),
 			})
-		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
+		} else if let Some(s) = s.strip_suffix('.') {
+			Ok(Self::Number {
+				value: sign.apply(s.parse().map_err(|_| s.clone())?),
+				before_point: s.len() as u8,
+				after_point: Some(0),
+			})
+		} else if let Some((left, right)) = s.split_once('e') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
-			let expo: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Number {
-				internal: sign.apply(value * 10f64.powi(expo)),
-				elided_zero_before_point: false,
-				trailing_point: false,
-			})
+			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
+			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: false })
+		} else if let Some((left, right)) = s.split_once('E') {
+			let value: f64 = left.parse().map_err(|_| s.clone())?;
+			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
+			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: true })
 		} else {
+			let (before_point, after_point) = s
+				.split_once('.')
+				.map_or((s.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
+
 			Ok(Self::Number {
-				internal: sign.apply(s.parse().map_err(|_| s.clone())?),
-				elided_zero_before_point: false,
-				trailing_point: false,
+				value: sign.apply(s.parse().map_err(|_| s.clone())?),
+				before_point,
+				after_point,
 			})
 		}
 	}
@@ -665,13 +752,11 @@ impl std::fmt::Display for NumberRepresentation {
 
 impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			// TODO needs to do conversion
-			(Self::Bin(l0, l1), Self::Bin(r0, r1))
-			| (Self::Octal(l0, l1, _), Self::Octal(r0, r1, _))
-			| (Self::Hex(l0, l1), Self::Hex(r0, r1)) => l0 == r0 && l1 == r1,
-			(Self::Number { internal: l0, .. }, Self::Number { internal: r0, .. }) => l0 == r0,
-			_ => core::mem::discriminant(self) == core::mem::discriminant(other),
+		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
+			a == b
+		} else {
+			// TODO ...
+			false
 		}
 	}
 }
@@ -680,163 +765,69 @@ impl Eq for NumberRepresentation {}
 
 impl NumberRepresentation {
 	#[must_use]
-	pub fn negate(&self) -> Self {
-		f64::from(self.clone()).neg().into()
-	}
-
-	#[must_use]
 	pub fn as_js_string(self) -> String {
 		match self {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
 			NumberRepresentation::NegativeInfinity => "-Infinity".to_owned(),
 			NumberRepresentation::NaN => "NaN".to_owned(),
-			NumberRepresentation::Hex(sign, value) => format!("{sign}{value:#x}"),
-			NumberRepresentation::Bin(sign, value) => {
-				format!("{sign}0b{value:#b}")
+			NumberRepresentation::Hex { sign, identifier_uppercase: true, value, .. } => {
+				format!("{sign}0X{value:X}")
 			}
-			NumberRepresentation::Octal(sign, value, true) => {
+			NumberRepresentation::Hex { sign, identifier_uppercase: false, value, .. } => {
+				format!("{sign}0x{value:x}")
+			}
+			NumberRepresentation::Bin { sign, identifier_uppercase: true, value, .. } => {
+				format!("{sign}0B{value}")
+			}
+			NumberRepresentation::Bin { sign, identifier_uppercase: false, value, .. } => {
+				format!("{sign}0b{value}")
+			}
+			NumberRepresentation::Octal { identifier_uppercase: None, sign, value } => {
 				format!("{sign}0{value:o}")
 			}
-			NumberRepresentation::Octal(sign, value, false) => {
+			NumberRepresentation::Octal { identifier_uppercase: Some(true), sign, value } => {
+				format!("{sign}0O{value:o}")
+			}
+			NumberRepresentation::Octal { identifier_uppercase: Some(false), sign, value } => {
 				format!("{sign}0o{value:o}")
 			}
-			NumberRepresentation::Number { internal, elided_zero_before_point, trailing_point } => {
-				let mut start = internal.to_string();
-				if elided_zero_before_point {
-					start.remove(0);
+			NumberRepresentation::Number { value, after_point, before_point } => {
+				let is_negative = value.is_sign_negative();
+				let mut buf = value.abs().to_string();
+
+				// TODO only `options.preserve_formatting`
+				let (bp, ap) = buf
+					.split_once('.')
+					.map_or((buf.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
+
+				// Remove leading zero
+				if bp > before_point {
+					let removed = buf.remove(0);
+					debug_assert_eq!(removed, '0');
 				}
-				if trailing_point {
-					start.push('.');
+
+				(bp..before_point).for_each(|_| buf.insert(0, '0'));
+				if let Some(after_point) = after_point {
+					if ap.is_none() {
+						buf.push('.');
+					}
+					(ap.unwrap_or_default()..after_point).for_each(|_| buf.push('0'));
 				}
-				start
+				if is_negative {
+					buf.insert(0, '-');
+				}
+				buf
+			}
+			NumberRepresentation::Exponential { sign, value, exponent, identifier_uppercase } => {
+				if identifier_uppercase {
+					format!("{sign}{value}E{exponent}")
+				} else {
+					format!("{sign}{value}e{exponent}")
+				}
 			}
 			NumberRepresentation::BigInt(s, value) => format!("{s}{value}n"),
 		}
 	}
-}
-
-#[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum GeneratorSpecifier {
-	Star(Span),
-	#[cfg(feature = "extras")]
-	Keyword(Keyword<tsx_keywords::Generator>),
-}
-
-impl GeneratorSpecifier {
-	pub(crate) fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> Option<Self> {
-		match reader.peek() {
-			Some(Token(TSXToken::Multiply, _)) => {
-				Some(GeneratorSpecifier::Star(reader.next().unwrap().get_span()))
-			}
-			#[cfg(feature = "extras")]
-			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
-				Some(GeneratorSpecifier::Keyword(Keyword::new(reader.next().unwrap().get_span())))
-			}
-			_ => None,
-		}
-	}
-
-	fn get_start(&self) -> source_map::Start {
-		match self {
-			GeneratorSpecifier::Star(pos) => pos.get_start(),
-			#[cfg(feature = "extras")]
-			GeneratorSpecifier::Keyword(kw) => kw.get_position().get_start(),
-		}
-	}
-}
-
-/// This structure removes possible invalid combinations with async
-#[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum MethodHeader {
-	Get(Keyword<tsx_keywords::Get>),
-	Set(Keyword<tsx_keywords::Set>),
-	Regular { r#async: Option<Keyword<tsx_keywords::Async>>, generator: Option<GeneratorSpecifier> },
-}
-
-impl Default for MethodHeader {
-	fn default() -> Self {
-		Self::Regular { r#async: None, generator: None }
-	}
-}
-
-impl MethodHeader {
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		match self {
-			MethodHeader::Get(_) => buf.push_str("get "),
-			MethodHeader::Set(_) => buf.push_str("set "),
-			MethodHeader::Regular { r#async, generator } => {
-				if r#async.is_some() {
-					buf.push_str("async ");
-				}
-				if let Some(_generator) = generator {
-					buf.push('*');
-				}
-			}
-		}
-	}
-
-	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
-		match reader.peek() {
-			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span()))
-			}
-			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span()))
-			}
-			_ => {
-				let r#async = reader
-					.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-					.map(|tok| Keyword::new(tok.get_span()));
-
-				let generator = GeneratorSpecifier::from_reader(reader);
-
-				MethodHeader::Regular { r#async, generator }
-			}
-		}
-	}
-
-	pub(crate) fn get_start(&self) -> Option<source_map::Start> {
-		match self {
-			MethodHeader::Get(kw) => Some(kw.1.get_start()),
-			MethodHeader::Set(kw) => Some(kw.1.get_start()),
-			MethodHeader::Regular { r#async: Some(r#async), .. } => {
-				Some(r#async.get_position().get_start())
-			}
-			MethodHeader::Regular { generator: Some(generator), .. } => Some(generator.get_start()),
-			MethodHeader::Regular { .. } => None,
-		}
-	}
-
-	#[must_use]
-	pub fn is_async(&self) -> bool {
-		matches!(self, Self::Regular { r#async: Some(_), .. })
-	}
-
-	#[must_use]
-	pub fn is_generator(&self) -> bool {
-		matches!(self, Self::Regular { generator: Some(_), .. })
-	}
-
-	fn is_some(&self) -> bool {
-		!matches!(self, Self::Regular { r#async: None, generator: None })
-	}
-
-	// pub(crate) fn get_end(&self) -> source_map::End {
-	// 	match self {
-	// 		MethodHeader::Get(kw) => kw.1.get_end(),
-	// 		MethodHeader::Set(kw) => kw.1.get_end(),
-	// 		MethodHeader::Async(kw) => kw.1.get_end(),
-	// 		MethodHeader::GeneratorStar(_, a) => a.get_end(),
-	// 		#[cfg(feature = "extras")]
-	// 		MethodHeader::Generator(_, a) => a.1.get_end(),
-	// 	}
-	// }
 }
 
 /// Classes and `function` functions have two variants depending whether in statement position
@@ -844,79 +835,85 @@ impl MethodHeader {
 pub trait ExpressionOrStatementPosition:
 	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
 {
-	type Name: Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name>;
+	) -> ParseResult<Self>;
 
-	fn as_option_str(name: &Self::Name) -> Option<&str>;
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String>;
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
+
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier>;
+
+	fn as_option_str(&self) -> Option<&str> {
+		if let Some(VariableIdentifier::Standard(name, _)) = self.as_option_variable_identifier() {
+			Some(name)
+		} else {
+			None
+		}
+	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct StatementPosition;
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub struct StatementPosition(VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
-	type Name = VariableIdentifier;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name> {
-		VariableIdentifier::from_reader(reader, state, options)
+	) -> ParseResult<Self> {
+		VariableIdentifier::from_reader(reader, state, options).map(Self)
 	}
 
-	fn as_option_str(name: &Self::Name) -> Option<&str> {
-		if let VariableIdentifier::Standard(name, ..) = name {
-			Some(name)
-		} else {
-			None
-		}
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
+		Some(&self.0)
 	}
 
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String> {
-		if let VariableIdentifier::Standard(name, ..) = name {
-			Some(name)
-		} else {
-			None
-		}
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
+		Some(&mut self.0)
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ExpressionPosition;
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub struct ExpressionPosition(Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
-	type Name = Option<VariableIdentifier>;
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<Self::Name> {
-		if let Some(Token(TSXToken::OpenBrace, _)) | None = reader.peek() {
-			Ok(None)
+	) -> ParseResult<Self> {
+		if let Some(Token(
+			TSXToken::OpenBrace
+			| TSXToken::OpenParentheses
+			| TSXToken::Keyword(TSXKeyword::Extends),
+			_,
+		))
+		| None = reader.peek()
+		{
+			Ok(Self(None))
 		} else {
-			StatementPosition::from_reader(reader, state, options).map(Some)
+			Ok(Self(Some(VariableIdentifier::from_reader(reader, state, options)?)))
 		}
 	}
 
-	fn as_option_str(name: &Self::Name) -> Option<&str> {
-		name.as_ref().and_then(StatementPosition::as_option_str)
+	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
+		self.0.as_ref()
 	}
 
-	fn as_option_string_mut(name: &mut Self::Name) -> Option<&mut String> {
-		name.as_mut().and_then(StatementPosition::as_option_string_mut)
+	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
+		self.0.as_mut()
 	}
 }
 
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
-/// Supports trailing commas
+/// Supports trailing commas. But **does not create** *empty* like items afterwards
 pub(crate) fn parse_bracketed<T: ASTNode>(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
@@ -997,8 +994,7 @@ fn receiver_to_tokens(
 		}
 		let span = token.get_span();
 		let start = span.start;
-		let section =
-			(input.get(std::ops::Range::from(span.clone())).unwrap_or("?").to_owned(), true);
+		let section = (input.get(std::ops::Range::from(span)).unwrap_or("?").to_owned(), true);
 		if last == start {
 			last = span.end;
 			Some(section)
@@ -1063,12 +1059,12 @@ pub mod ast {
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
-			FunctionBase, FunctionHeader, FunctionParameters, Parameter, ParameterData,
-			SpreadParameter,
+			FunctionBase, FunctionHeader, FunctionParameters, MethodHeader, Parameter,
+			ParameterData, SpreadParameter,
 		},
 		statements::*,
-		Block, Decorated, Keyword, MethodHeader, NumberRepresentation, PropertyKey,
-		StatementOrDeclaration, VariableField, VariableIdentifier, WithComment,
+		Block, Decorated, Keyword, NumberRepresentation, PropertyKey, StatementOrDeclaration,
+		VariableField, VariableIdentifier, WithComment,
 	};
 
 	pub use source_map::{BaseSpan, SourceId};

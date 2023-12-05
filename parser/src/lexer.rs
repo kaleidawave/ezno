@@ -5,7 +5,7 @@
 use super::{Span, TSXToken};
 use crate::{
 	cursor::EmptyCursorId, errors::LexingErrors, html_tag_contains_literal_content,
-	html_tag_is_self_closing, Quoted,
+	html_tag_is_self_closing, Comments, Quoted,
 };
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
@@ -15,7 +15,7 @@ use derive_finite_automaton::{
 
 pub struct LexerOptions {
 	/// Whether to append tokens when lexing. If false will just ignore
-	pub include_comments: bool,
+	pub comments: Comments,
 	/// Whether to parse JSX. TypeScripts `<number> 2` breaks the lexer so this can be disabled to allow
 	/// for that syntax
 	pub lex_jsx: bool,
@@ -26,7 +26,7 @@ pub struct LexerOptions {
 impl Default for LexerOptions {
 	fn default() -> Self {
 		Self {
-			include_comments: true,
+			comments: Comments::All,
 			lex_jsx: true,
 			allow_unsupported_characters_in_jsx_attribute_keys: true,
 		}
@@ -156,6 +156,8 @@ pub fn lex_script(
 			escaped: bool,
 			/// aka on flags
 			after_last_slash: bool,
+			/// Forward slash while in `[...]` is allowed
+			in_set: bool,
 		},
 	}
 
@@ -328,6 +330,9 @@ pub fn lex_script(
 					{
 						*literal_type = NumberLiteralType::BigInt;
 					}
+					// `10e-5` is a valid literal
+					'-' if matches!(literal_type, NumberLiteralType::Exponent)
+						&& matches!(script[..idx].as_bytes().last(), Some(b'e' | b'E')) => {}
 					chr => {
 						if is_number_delimiter(chr) {
 							// Note not = as don't want to include chr
@@ -415,7 +420,7 @@ pub fn lex_script(
 					expect_expression = false;
 					continue;
 				}
-				'\\' => {
+				'\\' if !*escaped => {
 					*escaped = true;
 				}
 				_ => {
@@ -424,7 +429,7 @@ pub fn lex_script(
 			},
 			LexingState::Comment => {
 				if let '\n' = chr {
-					if options.include_comments {
+					if matches!(options.comments, Comments::All) {
 						push_token!(TSXToken::Comment(
 							script[(start + 2)..idx].trim_end().to_owned()
 						),);
@@ -435,10 +440,12 @@ pub fn lex_script(
 			}
 			LexingState::MultiLineComment { ref mut last_char_was_star } => match chr {
 				'/' if *last_char_was_star => {
-					if options.include_comments {
-						push_token!(TSXToken::MultiLineComment(
-							script[(start + 2)..(idx - 1)].to_owned()
-						));
+					let comment = &script[(start + 2)..(idx - 1)];
+					let include = matches!(options.comments, Comments::All)
+						|| (matches!(options.comments, Comments::JustDocumentation)
+							&& comment.starts_with('*'));
+					if include {
+						push_token!(TSXToken::MultiLineComment(comment.to_owned()));
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -447,7 +454,11 @@ pub fn lex_script(
 					*last_char_was_star = chr == '*';
 				}
 			},
-			LexingState::RegexLiteral { ref mut escaped, ref mut after_last_slash } => {
+			LexingState::RegexLiteral {
+				ref mut escaped,
+				ref mut after_last_slash,
+				ref mut in_set,
+			} => {
 				if *after_last_slash {
 					if !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y') {
 						if start != idx {
@@ -465,15 +476,24 @@ pub fn lex_script(
 							state = LexingState::MultiLineComment { last_char_was_star: false };
 							continue;
 						}
-						'/' if !*escaped => {
+						'/' if !*escaped && !*in_set => {
 							push_token!(TSXToken::RegexLiteral(
 								script[(start + 1)..idx].to_owned()
 							));
 							*after_last_slash = true;
 							start = idx + 1;
 						}
-						chr => {
-							*escaped = chr == '\\';
+						'\\' if !*escaped => {
+							*escaped = true;
+						}
+						'[' => {
+							*in_set = true;
+						}
+						']' if *in_set => {
+							*in_set = false;
+						}
+						_ => {
+							*escaped = false;
 						}
 					}
 				}
@@ -488,10 +508,12 @@ pub fn lex_script(
 					if idx > start + 1 {
 						push_token!(TSXToken::TemplateLiteralChunk(
 							script[start..(idx - 1)].to_owned()
-						),);
+						));
 					}
+					start = idx - 1;
 					push_token!(TSXToken::TemplateLiteralExpressionStart);
 					*interpolation_depth += 1;
+					*last_char_was_dollar = false;
 					state_stack.push(state);
 
 					start = idx + 1;
@@ -502,15 +524,18 @@ pub fn lex_script(
 					if idx > start + 1 {
 						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
 					}
+					start = idx;
 					push_token!(TSXToken::TemplateLiteralEnd);
 					start = idx + 1;
 					state = LexingState::None;
 					continue;
 				}
 				'\\' => {
+					*last_char_was_dollar = false;
 					*escaped = true;
 				}
 				_ => {
+					*last_char_was_dollar = false;
 					*escaped = false;
 				}
 			},
@@ -908,7 +933,6 @@ pub fn lex_script(
 						) => {
 							*interpolation_depth -= 1;
 							if *interpolation_depth == 0 {
-								start += 1;
 								push_token!(TSXToken::TemplateLiteralExpressionEnd);
 								start = idx + '}'.len_utf8();
 								state = state_stack.pop().unwrap();
@@ -971,6 +995,7 @@ pub fn lex_script(
 							state = LexingState::RegexLiteral {
 								escaped: false,
 								after_last_slash: false,
+								in_set: false,
 							};
 						}
 						(true, '.') => {

@@ -114,13 +114,13 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 				} else {
 					Err(ParseError::new(
 						crate::ParseErrors::InvalidLHSAssignment,
-						inner.get_position().clone(),
+						*inner.get_position(),
 					))
 				}
 			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
-				expression.get_position().clone(),
+				*expression.get_position(),
 			)),
 		}
 	}

@@ -59,12 +59,10 @@ impl FunctionBased for ArrowFunctionBase {
 			token => {
 				let (name, position) = token_as_identifier(token, "arrow function parameter")?;
 				let parameters = vec![Parameter {
-					name: WithComment::None(
-						VariableIdentifier::Standard(name, position.clone()).into(),
-					),
+					name: WithComment::None(VariableIdentifier::Standard(name, position).into()),
 					type_annotation: None,
 					additionally: None,
-					position: position.clone(),
+					position,
 				}];
 				Ok(FunctionParameters {
 					parameters,
@@ -107,6 +105,24 @@ impl FunctionBased for ArrowFunctionBase {
 	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
 		header.as_ref().map(|kw| kw.get_position().get_start())
 	}
+
+	fn visit_name<TData>(
+		_: &Self::Name,
+		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
+
+	fn visit_name_mut<TData>(
+		_: &mut Self::Name,
+		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		_: &mut TData,
+		_: &crate::visiting::VisitOptions,
+		_: &mut temporary_annex::Annex<crate::Chain>,
+	) {
+	}
 }
 
 impl ArrowFunction {
@@ -115,19 +131,20 @@ impl ArrowFunction {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 		first_parameter: (String, Span),
+		is_async: Option<Keyword<tsx_keywords::Async>>,
 	) -> ParseResult<Self> {
 		let parameters = vec![crate::Parameter {
 			name: WithComment::None(
-				VariableIdentifier::Standard(first_parameter.0, first_parameter.1.clone()).into(),
+				VariableIdentifier::Standard(first_parameter.0, first_parameter.1).into(),
 			),
 			type_annotation: None,
 			additionally: None,
-			position: first_parameter.1.clone(),
+			position: first_parameter.1,
 		}];
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		let arrow_function = FunctionBase {
-			header: None,
+			header: is_async,
 			position: first_parameter.1.union(body.get_position()),
 			name: (),
 			parameters: crate::FunctionParameters {

@@ -1,14 +1,16 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{block::BlockOrSingleStatement, ASTNode, Expression, TSXKeyword, TSXToken};
+use crate::{
+	ast::MultipleExpression, block::BlockOrSingleStatement, ASTNode, TSXKeyword, TSXToken,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct WhileStatement {
-	pub condition: Expression,
+	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
 }
@@ -25,7 +27,7 @@ impl ASTNode for WhileStatement {
 	) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = Expression::from_reader(reader, state, options)?;
+		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
@@ -53,7 +55,7 @@ impl ASTNode for WhileStatement {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DoWhileStatement {
-	pub condition: Expression,
+	pub condition: MultipleExpression,
 	// TODO not sure about true here
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
@@ -73,7 +75,7 @@ impl ASTNode for DoWhileStatement {
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = Expression::from_reader(reader, state, options)?;
+		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}

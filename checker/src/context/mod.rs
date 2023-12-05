@@ -24,7 +24,9 @@ use crate::{
 		operations::MathematicalAndBitwise,
 		variables::{VariableMutability, VariableOrImport},
 	},
-	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation},
+	diagnostics::{
+		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+	},
 	events::{Event, RootReference},
 	subtyping::{type_is_subtype, BasicEquality},
 	types::{
@@ -403,15 +405,15 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::ReadFromFS, M: crate::ASTImplementation>(
+	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		declared_at: SpanWithSource,
 		behavior: VariableRegisterBehavior,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		if let Ok(ty) =
-			self.register_variable(name, declared_at.clone(), behavior, &mut checking_data.types)
+			self.register_variable(name, declared_at, behavior, &mut checking_data.types)
 		{
 			ty
 		} else {
@@ -936,367 +938,10 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_function<U, F, M>(
+	pub fn new_try_context<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
-		checking_data: &mut CheckingData<U, M>,
-		function: &F,
-		behavior: FunctionRegisterBehavior<M>,
-	) -> FunctionType
-	where
-		U: crate::ReadFromFS,
-		M: crate::ASTImplementation,
-		F: behavior::functions::SynthesisableFunction<M>,
-	{
-		let is_async = behavior.is_async();
-		let is_generator = behavior.is_generator();
-
-		let (mut behavior, scope, constructor, location, expected_parameters, expected_return) =
-			match behavior {
-				FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => (
-					FunctionBehavior::Constructor {
-						non_super_prototype: super_type.is_some().then_some(prototype),
-						this_object_type: TypeId::ERROR_TYPE,
-					},
-					FunctionScope::Constructor {
-						extends: super_type.is_some(),
-						type_of_super: super_type,
-						this_object_type: TypeId::ERROR_TYPE,
-					},
-					Some((prototype, properties)),
-					None,
-					None,
-					None,
-				),
-				FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => (
-					FunctionBehavior::ArrowFunction { is_async },
-					// to set
-					FunctionScope::ArrowFunction { free_this_type: TypeId::ERROR_TYPE, is_async },
-					None,
-					None,
-					None,
-					None,
-				),
-				FunctionRegisterBehavior::ExpressionFunction {
-					expecting,
-					is_async,
-					is_generator,
-					location,
-				} => (
-					FunctionBehavior::Function {
-						is_async,
-						is_generator,
-						free_this_id: TypeId::ERROR_TYPE,
-					},
-					FunctionScope::Function {
-						is_generator,
-						is_async,
-						// to set
-						this_type: TypeId::ERROR_TYPE,
-						type_of_super: TypeId::ANY_TYPE,
-					},
-					None,
-					location,
-					None,
-					None,
-				),
-				FunctionRegisterBehavior::StatementFunction {
-					hoisted,
-					is_async,
-					is_generator,
-					location,
-				} => (
-					FunctionBehavior::Function {
-						is_async,
-						is_generator,
-						free_this_id: TypeId::ERROR_TYPE,
-					},
-					FunctionScope::Function {
-						is_generator,
-						is_async,
-						this_type: TypeId::ERROR_TYPE,
-						type_of_super: TypeId::ERROR_TYPE,
-					},
-					None,
-					location,
-					None,
-					None,
-				),
-				FunctionRegisterBehavior::ObjectMethod { is_async, is_generator } => (
-					FunctionBehavior::Method {
-						is_async,
-						is_generator,
-						free_this_id: TypeId::ERROR_TYPE,
-					},
-					FunctionScope::MethodFunction {
-						free_this_type: TypeId::ERROR_TYPE,
-						is_async,
-						is_generator,
-					},
-					None,
-					None,
-					None,
-					None,
-				),
-				FunctionRegisterBehavior::ClassMethod { is_async, is_generator, super_type } => (
-					FunctionBehavior::Method {
-						is_async,
-						is_generator,
-						free_this_id: TypeId::ERROR_TYPE,
-					},
-					// TODO eager super
-					FunctionScope::MethodFunction {
-						free_this_type: TypeId::ERROR_TYPE,
-						is_async,
-						is_generator,
-					},
-					None,
-					None,
-					None,
-					None,
-				),
-			};
-
-		let mut function_environment = self.new_lexical_environment(Scope::Function(scope));
-
-		let type_parameters = function.type_parameters(&mut function_environment, checking_data);
-
-		// TODO should be in function, but then requires mutable environment :(
-		let this_constraint = function.this_constraint(&mut function_environment, checking_data);
-		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
-			match scope {
-				FunctionScope::ArrowFunction { ref mut free_this_type, .. }
-				| FunctionScope::MethodFunction { ref mut free_this_type, .. } => {
-					let type_id = if let Some(tc) = this_constraint {
-						checking_data.types.register_type(Type::RootPolyType(
-							PolyNature::FreeVariable {
-								reference: RootReference::This,
-								based_on: tc,
-							},
-						))
-					} else {
-						TypeId::ANY_INFERRED_FREE_THIS
-					};
-					if let FunctionBehavior::Method { ref mut free_this_id, .. } = behavior {
-						*free_this_id = type_id;
-					}
-					*free_this_type = type_id;
-				}
-				FunctionScope::Function { ref mut this_type, .. } => {
-					// TODO this could be done conditionally to create less objects, but also doesn't introduce any bad side effects so
-					// TODO prototype needs to be a poly based on this.prototype. This also fixes inference
-
-					let (this_free_variable, this_constructed_object) =
-						if let Some(this_constraint) = this_constraint {
-							// TODO I don't whether NEW_TARGET_ARG should have a backer
-							let prototype = checking_data.types.register_type(Type::Constructor(
-								Constructor::Property {
-									on: TypeId::NEW_TARGET_ARG,
-									under: PropertyKey::String(Cow::Owned("value".to_owned())),
-									result: this_constraint,
-								},
-							));
-
-							let this_constructed_object = function_environment.facts.new_object(
-								Some(prototype),
-								&mut checking_data.types,
-								true,
-							);
-
-							let this_free_variable = checking_data.types.register_type(
-								Type::RootPolyType(PolyNature::FreeVariable {
-									reference: RootReference::This,
-									based_on: this_constraint,
-								}),
-							);
-
-							(this_free_variable, this_constructed_object)
-						} else {
-							// TODO inferred prototype
-							let this_constructed_object = function_environment.facts.new_object(
-								None,
-								&mut checking_data.types,
-								true,
-							);
-							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
-						};
-
-					if let FunctionBehavior::Function { ref mut free_this_id, .. } = behavior {
-						// TODO set object as well
-						*free_this_id = this_free_variable;
-					}
-
-					let new_conditional_type = checking_data.types.new_conditional_type(
-						TypeId::NEW_TARGET_ARG,
-						this_constructed_object,
-						this_free_variable,
-					);
-
-					// TODO set super type as well
-
-					// TODO what is the union, shouldn't it be the this_constraint?
-					*this_type = new_conditional_type;
-				}
-				FunctionScope::Constructor { extends, type_of_super, ref mut this_object_type } => {
-					crate::utils::notify!("Setting 'this' type here");
-					if let Some((prototype, properties)) = constructor {
-						let new_this_object_type = create_this_before_function_synthesis(
-							&mut checking_data.types,
-							&mut function_environment.facts,
-							prototype,
-						);
-
-						*this_object_type = new_this_object_type;
-						// TODO super/derived behavior
-						types::classes::register_properties_into_environment(
-							&mut function_environment,
-							new_this_object_type,
-							checking_data,
-							properties,
-						);
-						function_environment.can_reference_this =
-							CanReferenceThis::ConstructorCalled;
-
-						if let FunctionBehavior::Constructor { ref mut this_object_type, .. } =
-							behavior
-						{
-							crate::utils::notify!("Set this object type");
-							*this_object_type = new_this_object_type;
-						} else {
-							unreachable!()
-						}
-					} else {
-						unreachable!()
-					}
-				}
-			}
-		} else {
-			unreachable!()
-		}
-
-		// TODO reuse existing if hoisted or can be sent down
-		let synthesised_parameters =
-			function.parameters(&mut function_environment, checking_data, expected_parameters);
-
-		let return_type_annotation =
-			function.return_type_annotation(&mut function_environment, checking_data);
-
-		// TODO:
-		#[allow(clippy::no_effect_underscore_binding)]
-		let _expected_return_type: Option<TypeId> = expected_return;
-		function_environment.context_type.location = location;
-
-		let returned = if function.has_body() {
-			function.body(&mut function_environment, checking_data);
-			// Temporary move events to satisfy borrow checker
-			let mut events = mem::take(&mut function_environment.facts.events);
-
-			let returned = crate::events::helpers::get_return_from_events(
-				&mut events.iter(),
-				checking_data,
-				// TODO environment should be good enough, but needs environment not context
-				&mut function_environment,
-				return_type_annotation,
-			);
-			function_environment.facts.events = events;
-
-			match returned {
-				crate::events::helpers::ReturnedTypeFromBlock::ContinuedExecution => {
-					TypeId::UNDEFINED_TYPE
-				}
-				crate::events::helpers::ReturnedTypeFromBlock::ReturnedIf { when, returns } => {
-					checking_data.types.new_conditional_type(when, returns, TypeId::UNDEFINED_TYPE)
-				}
-				crate::events::helpers::ReturnedTypeFromBlock::Returned(ty) => ty,
-			}
-		} else {
-			return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |(left, _)| left)
-		};
-
-		let closes_over = function_environment
-			.context_type
-			.closed_over_references
-			.iter()
-			.map(|reference| {
-				let ty = match reference {
-					RootReference::Variable(on) => {
-						let get_value_of_variable = get_value_of_variable(
-							function_environment.facts_chain(),
-							*on,
-							None::<&crate::types::poly_types::FunctionTypeArguments>,
-						);
-						get_value_of_variable.expect("value not assigned?")
-					}
-					// TODO not sure
-					RootReference::This => TypeId::ANY_INFERRED_FREE_THIS,
-				};
-
-				(reference.clone(), ty)
-			})
-			.collect();
-
-		let Syntax { free_variables, closed_over_references: function_closes_over, .. } =
-			function_environment.context_type;
-
-		let facts = function_environment.facts;
-
-		self.variable_names.extend(function_environment.variable_names);
-
-		// TODO temp ...
-		for (on, mut properties) in facts.current_properties {
-			match self.facts.current_properties.entry(on) {
-				hash_map::Entry::Occupied(mut occupied) => {}
-				hash_map::Entry::Vacant(vacant) => {
-					vacant.insert(properties);
-				}
-			}
-		}
-
-		for (on, mut properties) in facts.closure_current_values {
-			match self.facts.closure_current_values.entry(on) {
-				hash_map::Entry::Occupied(mut occupied) => {}
-				hash_map::Entry::Vacant(vacant) => {
-					vacant.insert(properties);
-				}
-			}
-		}
-
-		if let Some(closed_over_variables) = self.context_type.get_closed_over_references() {
-			closed_over_variables.extend(free_variables.iter().cloned());
-			// TODO not sure, but fixes nesting
-			closed_over_variables.extend(function_closes_over.iter().cloned());
-		}
-
-		// TODO should references used in the function be counted in this scope
-		// might break the checking though
-
-		let free_variables = free_variables
-			.into_iter()
-			.map(|reference| {
-				// TODO get the restriction from the context type
-				(reference, TypeId::ANY_TYPE)
-			})
-			.collect();
-
-		let id = function.id(self.get_source());
-		FunctionType {
-			id,
-			constant_function: None,
-			behavior,
-			type_parameters,
-			parameters: synthesised_parameters,
-			return_type: returned,
-			effects: facts.events,
-			free_variables,
-			closed_over_variables: closes_over,
-		}
-
-		// register_behavior.afterwards(function, func_ty, self, &mut checking_data.types)
-	}
-
-	pub fn new_try_context<U: crate::ReadFromFS, M: crate::ASTImplementation>(
-		&mut self,
-		checking_data: &mut CheckingData<U, M>,
-		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>),
+		checking_data: &mut CheckingData<U, A>,
+		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>),
 	) -> TypeId {
 		let (thrown, ..) = self.new_lexical_environment_fold_into_parent(
 			Scope::TryBlock {},
@@ -1330,12 +975,12 @@ impl<T: ContextType> Context<T> {
 	pub fn new_lexical_environment_fold_into_parent<
 		U: crate::ReadFromFS,
 		Res,
-		M: crate::ASTImplementation,
+		A: crate::ASTImplementation,
 	>(
 		&mut self,
 		scope: Scope,
-		checking_data: &mut CheckingData<U, M>,
-		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, M>) -> Res,
+		checking_data: &mut CheckingData<U, A>,
+		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>) -> Res,
 	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
 		if matches!(scope, Scope::Conditional { .. }) {
 			unreachable!("Use Environment::new_conditional_context")
@@ -1382,23 +1027,17 @@ impl<T: ContextType> Context<T> {
 
 		// Run any truths through subtyping
 		let additional = match scope {
-			Scope::Conditional { .. } => {
-				crate::utils::notify!("TODO scoping stuff");
-				crate::utils::notify!("What about deferred function constraints");
-
-				todo!("events should be substituted");
-				None
-				// Some((events, closed_over_references))
-			}
-			Scope::Looping { .. } => todo!(),
-			Scope::Function { .. } | Scope::FunctionAnnotation {} => {
-				// self.proofs.merge(proofs);
-
-				// crate::utils::notify!(
-				// 	"Function properties settings temp, breaks interfaces nesting, otherwise fine"
-				// );
-				self.facts.current_properties.extend(facts.current_properties);
+			// TODO these might go
+			Scope::FunctionAnnotation {} => None,
+			// TODO temp
+			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Looping { .. } => {
 				Some((facts.events, used_parent_references))
+			}
+			Scope::Function { .. } => {
+				unreachable!("use new_function")
+			}
+			Scope::Conditional { .. } => {
+				unreachable!("use new_conditional")
 			}
 			// TODO Scope::Module ??
 			Scope::InterfaceEnvironment { .. }
@@ -1491,11 +1130,11 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U, M: crate::ASTImplementation>(
+	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
-		checking_data: &mut CheckingData<U, M>,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		if let Some(val) = self.get_type_from_name(name) {
 			val
@@ -1509,25 +1148,51 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends
-	pub fn new_interface<M: ASTImplementation>(
+	pub fn new_interface<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		nominal: bool,
-		parameters: Option<&[M::TypeParameter]>,
-		extends: Option<&[M::TypeAnnotation]>,
-		position: &SpanWithSource,
-		types: &mut TypeStore,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		extends: Option<&'a [A::TypeAnnotation<'a>]>,
+		position: SpanWithSource,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
+		let existing = if let Some(id) = self.named_types.get(name) {
+			if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
+				checking_data
+					.diagnostics_container
+					.add_warning(TypeCheckWarning::MergingInterfaceInSameContext { position });
+
+				Some(*id)
+			} else {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::TypeAlreadyDeclared { name: name.to_owned(), position },
+				);
+				return TypeId::ERROR_TYPE;
+			}
+		} else {
+			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
+				|id| {
+					matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
+						.then_some(*id)
+				},
+			)
+		};
+
+		if let Some(existing) = existing {
+			return existing;
+		};
+
 		// TODO declare here
 		let parameters = parameters.map(|parameters| {
 			parameters
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
-						name: M::type_parameter_name(parameter).to_owned(),
+						name: A::type_parameter_name(parameter).to_owned(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
-					types.register_type(ty)
+					checking_data.types.register_type(ty)
 				})
 				.collect()
 		});
@@ -1536,35 +1201,26 @@ impl<T: ContextType> Context<T> {
 			todo!("synthesise, fold into Type::And and create alias type")
 		}
 
-		let ty = Type::NamedRooted { nominal, name: name.to_owned(), parameters };
-
-		let interface_ty = types.register_type(ty);
-
-		// Interface merging!
-		let existing =
-			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied();
-
-		if let Some(existing) = existing {
-			existing
-		} else {
-			let existing_type = self.named_types.insert(name.to_owned(), interface_ty);
-			interface_ty
-		}
+		let ty = Type::Interface { nominal, name: name.to_owned(), parameters };
+		let interface_ty = checking_data.types.register_type(ty);
+		self.named_types.insert(name.to_owned(), interface_ty);
+		interface_ty
 	}
 
-	pub fn new_alias<U: crate::ReadFromFS, M: ASTImplementation>(
+	pub fn new_alias<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		parameters: Option<&[M::TypeParameter]>,
-		to: &M::TypeAnnotation,
-		checking_data: &mut CheckingData<U, M>,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		to: &'a A::TypeAnnotation<'a>,
+		position: Span,
+		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		let mut env = self.new_lexical_environment(Scope::TypeAlias);
 		let (parameters, to) = if let Some(parameters) = parameters {
 			let parameters = parameters
 				.iter()
 				.map(|parameter| {
-					let name = M::type_parameter_name(parameter).to_owned();
+					let name = A::type_parameter_name(parameter).to_owned();
 					let ty = Type::RootPolyType(PolyNature::Generic {
 						name: name.clone(),
 						eager_fixed: TypeId::ANY_TYPE,
@@ -1576,11 +1232,11 @@ impl<T: ContextType> Context<T> {
 				})
 				.collect();
 
-			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
 			(Some(parameters), to)
 		} else {
 			// TODO should just use self
-			let to = M::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
 			(None, to)
 		};
 
@@ -1590,7 +1246,11 @@ impl<T: ContextType> Context<T> {
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
 		if existing_type.is_some() {
-			panic!()
+			checking_data.diagnostics_container.add_error(TypeCheckError::TypeAlreadyDeclared {
+				name: name.to_owned(),
+				position: position.with_source(self.get_source()),
+			});
+			TypeId::ERROR_TYPE
 		} else {
 			alias_ty
 		}

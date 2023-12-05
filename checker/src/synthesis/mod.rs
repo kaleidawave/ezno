@@ -43,8 +43,21 @@ pub(super) fn parser_property_key_to_checker_property_key<
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
 		ParserPropertyKey::NumberLiteral(number, _) => {
-			// TODO
-			PropertyKey::from_usize(f64::from(number.clone()) as usize)
+			let result = f64::try_from(number.clone());
+			match result {
+				Ok(v) => {
+					// TODO is there a better way
+					#[allow(clippy::float_cmp)]
+					if v.floor() == v {
+						PropertyKey::from_usize(v as usize)
+					} else {
+						// TODO
+						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
+					}
+				}
+				// TODO
+				Err(()) => todo!(),
+			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
 			let key_type =
@@ -94,37 +107,40 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 
 pub struct EznoParser;
 
+// Clippy suggests a fix that breaks the code
+#[allow(clippy::needless_lifetimes)]
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
-	type Module = parser::Module;
+
+	type Module<'a> = parser::Module;
 	type OwnedModule = parser::Module;
-	type DefinitionFile = parser::TypeDefinitionModule;
-	type TypeAnnotation = parser::TypeAnnotation;
-	type TypeParameter = parser::GenericTypeConstraint;
-	type Expression = parser::Expression;
-	type ClassMethod = parser::FunctionBase<parser::ast::ClassFunctionBase>;
+
+	type TypeAnnotation<'a> = parser::TypeAnnotation;
+	type TypeParameter<'a> = parser::GenericTypeConstraint;
+	type Expression<'a> = parser::Expression;
+	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
 	fn module_from_string(
 		source_id: SourceId,
 		string: String,
-		options: &Self::ParseOptions,
-	) -> Result<Self::Module, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, *options, source_id, None)
+		options: Self::ParseOptions,
+	) -> Result<Self::Module<'static>, Self::ParseError> {
+		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
 			.map_err(|err| (err, source_id))
 	}
 
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
-	) -> Result<Self::DefinitionFile, Self::ParseError> {
+	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = Default::default();
 		parser::TypeDefinitionModule::from_string(&string, options, source_id)
 			.map_err(|err| (err, source_id))
 	}
 
-	fn synthesise_module<T: crate::ReadFromFS>(
-		module: &Self::Module,
+	fn synthesise_module<'a, T: crate::ReadFromFS>(
+		module: &Self::Module<'a>,
 		source_id: SourceId,
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -132,8 +148,8 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
-	fn synthesise_expression<U: crate::ReadFromFS>(
-		expression: &Self::Expression,
+	fn synthesise_expression<'a, U: crate::ReadFromFS>(
+		expression: &Self::Expression<'a>,
 		expecting: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U, Self>,
@@ -141,32 +157,39 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_expression(expression, environment, checking_data, expecting)
 	}
 
-	fn expression_position(expression: &Self::Expression) -> source_map::Span {
-		ASTNode::get_position(expression).clone()
+	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> source_map::Span {
+		*ASTNode::get_position(expression)
 	}
 
-	fn type_definition_file<T: crate::ReadFromFS>(
-		tdm: parser::TypeDefinitionModule,
-		root: &crate::RootContext,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> (Names, Facts) {
-		definitions::type_definition_file(tdm, checking_data, root)
-	}
-
-	fn type_parameter_name(parameter: &Self::TypeParameter) -> &str {
+	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {
 		parameter.name()
 	}
 
-	fn synthesise_type_annotation<T: crate::ReadFromFS>(
-		annotation: &Self::TypeAnnotation,
+	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
+		annotation: &Self::TypeAnnotation<'a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_type_annotation(annotation, environment, checking_data)
 	}
 
-	fn owned_module_from_module(module: Self::Module) -> Self::OwnedModule {
-		module
+	type DefinitionFile<'a> = parser::TypeDefinitionModule;
+
+	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'a>,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, Facts) {
+		definitions::type_definition_file(file, checking_data, root)
+	}
+
+	fn parse_options(_is_js: bool) -> Self::ParseOptions {
+		// TODO
+		parser::ParseOptions::default()
+	}
+
+	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
+		m
 	}
 }
 
@@ -199,7 +222,7 @@ pub mod interactive {
 			let mut root = RootContext::new_with_primitive_references();
 			let entry_point = PathBuf::from("CLI");
 			let mut checking_data =
-				CheckingData::new(Default::default(), resolver, Default::default(), None);
+				CheckingData::new(Default::default(), resolver, Default::default());
 
 			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 

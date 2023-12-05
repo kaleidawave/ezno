@@ -74,16 +74,16 @@ pub enum VariableMutability {
 #[derive(Clone, Debug)]
 pub struct VariableWithValue(pub VariableOrImport, pub TypeId);
 
-pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	(variable_declared_type, variable_declared_pos): (TypeId, SpanWithSource),
 	(expression_type, expression_declared_pos): (TypeId, SpanWithSource),
 	environment: &mut crate::context::Environment,
-	checking_data: &mut CheckingData<T, M>,
+	checking_data: &mut CheckingData<T, A>,
 ) {
 	use crate::types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult};
 
-	let position = variable_declared_pos.clone();
-	let mut basic_subtyping = BasicEquality { add_property_restrictions: true, position };
+	let mut basic_subtyping =
+		BasicEquality { add_property_restrictions: true, position: variable_declared_pos };
 
 	let type_is_subtype = type_is_subtype(
 		variable_declared_type,
@@ -109,7 +109,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, M: crate::ASTImplemen
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				value_site: expression_declared_pos.clone(),
+				value_site: expression_declared_pos,
 			},
 		);
 
