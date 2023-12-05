@@ -43,10 +43,11 @@ pub(super) fn parser_property_key_to_checker_property_key<
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
 		ParserPropertyKey::NumberLiteral(number, _) => {
-			// TODO
 			let result = f64::try_from(number.clone());
 			match result {
 				Ok(v) => {
+					// TODO is there a better way
+					#[allow(clippy::float_cmp)]
 					if v.floor() == v {
 						PropertyKey::from_usize(v as usize)
 					} else {
@@ -55,7 +56,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 					}
 				}
 				// TODO
-				Err(_) => todo!(),
+				Err(()) => todo!(),
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

@@ -712,22 +712,20 @@ impl FromStr for NumberRepresentation {
 					trailing_point: false,
 				}),
 			}
-		} else if s.ends_with('.') {
-			Ok(Self::Number {
-				original_length: Some(l),
-				value: sign.apply(s.strip_suffix('.').unwrap().parse().map_err(|_| s.clone())?),
-				elided_zero_before_point: false,
-				trailing_point: true,
-			})
 		} else if s.starts_with('.') {
-			let value: f64 = s.strip_prefix('.').unwrap().parse().map_err(|_| s.clone())?;
-			let digits = value.log10().floor() + 1f64;
-			let result = value * (10f64.powf(-digits));
+			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
 			Ok(Self::Number {
 				original_length: Some(l),
-				value: sign.apply(result),
+				value: sign.apply(value),
 				elided_zero_before_point: true,
 				trailing_point: false,
+			})
+		} else if let Some(s) = s.strip_suffix('.') {
+			Ok(Self::Number {
+				original_length: Some(l),
+				value: sign.apply(s.parse().map_err(|_| s.clone())?),
+				elided_zero_before_point: false,
+				trailing_point: true,
 			})
 		} else if let Some((left, right)) = s.split_once('e') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
@@ -803,7 +801,9 @@ impl NumberRepresentation {
 			} => {
 				let mut buf = value.to_string();
 				if let Some(original_length) = original_length {
-					buf = format!("{}{buf}", "0".repeat(original_length as usize - buf.len()));
+					if original_length as usize > buf.len() {
+						buf = format!("{}{buf}", "0".repeat(original_length as usize - buf.len()));
+					}
 				}
 				if elided_zero_before_point {
 					buf.remove(0);

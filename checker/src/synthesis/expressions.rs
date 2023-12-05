@@ -86,12 +86,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::Regexp(pattern.clone()));
 		}
 		Expression::NumberLiteral(value, ..) => {
-			let not_nan = match f64::try_from(value.clone()) {
-				Ok(v) => v.try_into().unwrap(),
-				Err(_) => {
-					crate::utils::notify!("TODO big int");
-					return TypeId::ERROR_TYPE;
-				}
+			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
+				v.try_into().unwrap()
+			} else {
+				crate::utils::notify!("TODO big int");
+				return TypeId::ERROR_TYPE;
 			};
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
 		}
@@ -641,7 +640,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Some(arguments),
 				environment,
 				checking_data,
-				position,
+				*position,
 			);
 			if let Some(special) = special {
 				checking_data.type_mappings.special_expressions.push(*position, special);
@@ -659,7 +658,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				arguments.as_ref(),
 				environment,
 				checking_data,
-				position,
+				*position,
 			);
 			Instance::RValue(result)
 		}
@@ -853,7 +852,7 @@ fn call_function<T: crate::ReadFromFS>(
 	mut arguments: Option<&Vec<SpreadExpression>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-	call_site: &parser::Span,
+	call_site: parser::Span,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let generic_type_arguments = type_arguments.as_ref().map(|type_arguments| {
 		type_arguments
@@ -935,7 +934,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	let mut object_builder =
 		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
 
-	for member in members.iter() {
+	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
 		match member.get_ast_ref() {
 			ObjectLiteralMember::Spread(spread, pos) => {

@@ -79,7 +79,7 @@ where
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
-		expected_parameters: Option<SynthesisedParameters>,
+		expected_parameters: Option<&SynthesisedParameters>,
 	) -> SynthesisedParameters {
 		synthesise_function_parameters(
 			&self.parameters,
@@ -274,7 +274,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	ast_parameters: &parser::FunctionParameters,
-	expected_parameters: Option<SynthesisedParameters>,
+	expected_parameters: Option<&SynthesisedParameters>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> SynthesisedParameters {

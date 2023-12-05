@@ -181,12 +181,12 @@ fn print_type_into_buf(
 							buf.push('"');
 						}
 						PropertyKey::Type(t) => {
-							print_type_into_buf(*t, buf, cycles, types, ctx, debug)
+							print_type_into_buf(*t, buf, cycles, types, ctx, debug);
 						}
 					};
 					buf.push(']');
 				} else {
-					print_type_into_buf(*result, buf, cycles, types, ctx, debug)
+					print_type_into_buf(*result, buf, cycles, types, ctx, debug);
 				}
 			}
 			constructor => {

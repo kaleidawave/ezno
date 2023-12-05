@@ -155,7 +155,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let getter = match header {
 						parser::functions::MethodHeader::Get(_) => GetterSetter::Getter,
 						parser::functions::MethodHeader::Set(_) => GetterSetter::Setter,
-						_ => GetterSetter::None,
+						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
 					};
 					let function = synthesise_function_annotation(
 						type_parameters,

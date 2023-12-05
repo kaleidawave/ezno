@@ -259,6 +259,50 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 		importing_path: &str,
 		environment: &mut Environment,
 	) -> Result<Result<Exported, InvalidModule>, CouldNotOpenFile> {
+		fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+			full_importer: &Path,
+			environment: &mut Environment,
+			checking_data: &'a mut CheckingData<T, A>,
+		) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
+			let existing = checking_data.modules.files.get_source_at_path(&full_importer);
+			if let Some(existing) = existing {
+				Some(Ok(checking_data
+					.modules
+					.synthesised_modules
+					.get(&existing)
+					.expect("existing file, but not synthesised")))
+			} else {
+				let content = (checking_data.modules.file_reader)(full_importer.as_ref());
+				if let Some(content) = content {
+					let source = checking_data
+						.modules
+						.files
+						.new_source_id(full_importer.to_path_buf(), content.clone());
+
+					let parse_options = A::parse_options(
+						full_importer
+							.extension()
+							.and_then(|s| s.to_str())
+							.map_or(false, |s| s.ends_with("ts")),
+					);
+
+					match A::module_from_string(source, content, parse_options) {
+						Ok(module) => {
+							let new_module_context = environment.get_root().new_module_context(
+								source,
+								module,
+								checking_data,
+							);
+							Some(Ok(new_module_context))
+						}
+						Err(err) => Some(Err(err)),
+					}
+				} else {
+					None
+				}
+			}
+		}
+
 		if importing_path.starts_with('.') {
 			let from_path = self.modules.files.get_file_path(from);
 			let from = PathBuf::from(importing_path);
@@ -267,58 +311,14 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 					.unwrap()
 					.to_path_buf();
 
-			fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
-				full_importer: PathBuf,
-				environment: &mut Environment,
-				checking_data: &'a mut CheckingData<T, A>,
-			) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
-				let existing = checking_data.modules.files.get_source_at_path(&full_importer);
-				if let Some(existing) = existing {
-					Some(Ok(checking_data
-						.modules
-						.synthesised_modules
-						.get(&existing)
-						.expect("existing file, but not synthesised")))
-				} else {
-					let content = (checking_data.modules.file_reader)(full_importer.as_ref());
-					if let Some(content) = content {
-						let source = checking_data
-							.modules
-							.files
-							.new_source_id(full_importer.to_path_buf(), content.clone());
-
-						let parse_options = A::parse_options(
-							full_importer
-								.extension()
-								.and_then(|s| s.to_str())
-								.map_or(false, |s| s.ends_with("ts")),
-						);
-
-						match A::module_from_string(source, content, parse_options) {
-							Ok(module) => {
-								let new_module_context = environment.get_root().new_module_context(
-									source,
-									module,
-									checking_data,
-								);
-								Some(Ok(new_module_context))
-							}
-							Err(err) => Some(Err(err)),
-						}
-					} else {
-						None
-					}
-				}
-			}
-
 			let result = if full_importer.extension().is_some() {
-				get_module(full_importer.clone(), environment, self)
+				get_module(&full_importer, environment, self)
 			} else {
 				let mut result = None;
 				for ext in ["ts", "tsx", "js"] {
 					full_importer.set_extension(ext);
 					// TODO change parse options based on extension
-					result = get_module(full_importer.clone(), environment, self);
+					result = get_module(&full_importer, environment, self);
 					if result.is_some() {
 						break;
 					}

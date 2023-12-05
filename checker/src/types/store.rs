@@ -336,6 +336,7 @@ impl TypeStore {
 		self.register_type(Type::Function(id, Default::default()))
 	}
 
+	#[allow(clippy::similar_names)]
 	pub(crate) fn new_property_constructor(
 		&mut self,
 		indexee: TypeId,

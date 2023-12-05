@@ -329,7 +329,7 @@ pub fn evaluate_equality_inequality_operation(
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Logical {
 	And,
 	Or,

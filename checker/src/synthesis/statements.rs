@@ -101,7 +101,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				last,
 				environment,
 				checking_data,
-			)
+			);
 		}
 		Statement::SwitchStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {

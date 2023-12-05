@@ -1,5 +1,5 @@
-import { build, check, parse_expression, get_version } from "./dist/initialised.mjs";
-import assert, { deepStrictEqual, equal } from "node:assert";
+import { check, parse_expression, get_version } from "./dist/initialised.mjs";
+import assert, { deepStrictEqual } from "node:assert";
 
 function buildTest() {
 	// TODO

@@ -8,6 +8,7 @@ use crate::{
 	CheckingData, Constant, Environment, Instance, Type, TypeId,
 };
 
+#[derive(Copy, Clone)]
 pub enum TemplateLiteralPart<'a, T> {
 	Static(&'a str),
 	Dynamic(&'a T),

@@ -84,7 +84,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					// TODO is this an issue?
 					checking_data
 						.diagnostics_container
-						.add_error(TypeCheckError::ReDeclaredVariable { name, position })
+						.add_error(TypeCheckError::ReDeclaredVariable { name, position });
 				}
 			}
 		}

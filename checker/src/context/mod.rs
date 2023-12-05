@@ -1030,19 +1030,14 @@ impl<T: ContextType> Context<T> {
 			// TODO these might go
 			Scope::FunctionAnnotation {} => None,
 			// TODO temp
-			Scope::Function(FunctionScope::Constructor { .. }) => {
+			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Looping { .. } => {
 				Some((facts.events, used_parent_references))
 			}
-
 			Scope::Function { .. } => {
 				unreachable!("use new_function")
 			}
 			Scope::Conditional { .. } => {
 				unreachable!("use new_conditional")
-			}
-			Scope::Looping { .. } => {
-				// TODO temp
-				Some((facts.events, used_parent_references))
 			}
 			// TODO Scope::Module ??
 			Scope::InterfaceEnvironment { .. }

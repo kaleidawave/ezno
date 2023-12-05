@@ -201,7 +201,7 @@ pub trait SynthesisableFunction<A: crate::ASTImplementation> {
 		&self,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
-		expected_parameters: Option<SynthesisedParameters>,
+		expected_parameters: Option<&SynthesisedParameters>,
 	) -> SynthesisedParameters;
 
 	fn return_type_annotation<T: ReadFromFS>(
@@ -218,7 +218,7 @@ pub trait SynthesisableFunction<A: crate::ASTImplementation> {
 	);
 }
 
-/// TODO might be generic if FunctionBehavior becomes generic
+/// TODO might be generic if [`FunctionBehavior`] becomes generic
 pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 	ArrowFunction {
 		expecting: TypeId,
@@ -260,6 +260,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 pub struct ClassPropertiesToRegister<'a, A: crate::ASTImplementation>(pub Vec<ClassValue<'a, A>>);
 
 impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
+	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {
 			FunctionRegisterBehavior::ArrowFunction { is_async, .. }
@@ -451,7 +452,7 @@ where
 				if let FunctionBehavior::Method { ref mut free_this_id, .. } = behavior {
 					*free_this_id = type_id;
 				}
-				*free_this_type = type_id
+				*free_this_type = type_id;
 			}
 			FunctionScope::Function { ref mut this_type, .. } => {
 				// TODO this could be done conditionally to create less objects, but also doesn't introduce any bad side effects so
@@ -543,12 +544,12 @@ where
 
 	// TODO reuse existing if hoisted or can be sent down
 	let synthesised_parameters =
-		function.parameters(&mut function_environment, checking_data, expected_parameters);
+		function.parameters(&mut function_environment, checking_data, expected_parameters.as_ref());
 
 	let return_type_annotation =
 		function.return_type_annotation(&mut function_environment, checking_data);
 
-	let _expected_return_type: Option<TypeId> = expected_return;
+	// let _expected_return_type: Option<TypeId> = expected_return;
 	function_environment.context_type.location = location;
 
 	let returned = if function.has_body() {
@@ -608,7 +609,7 @@ where
 	context.variable_names.extend(function_environment.variable_names);
 
 	// TODO temp ...
-	for (on, mut properties) in facts.current_properties.into_iter() {
+	for (on, mut properties) in facts.current_properties {
 		match context.facts.current_properties.entry(on) {
 			Entry::Occupied(mut occupied) => {}
 			Entry::Vacant(vacant) => {
@@ -617,7 +618,7 @@ where
 		}
 	}
 
-	for (on, mut properties) in facts.closure_current_values.into_iter() {
+	for (on, mut properties) in facts.closure_current_values {
 		match context.facts.closure_current_values.entry(on) {
 			Entry::Occupied(mut occupied) => {}
 			Entry::Vacant(vacant) => {
