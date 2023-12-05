@@ -545,8 +545,11 @@ impl Expression {
 				Expression::TemplateLiteral(template_literal)
 			}
 			Token(TSXToken::Keyword(kw), start)
-				if (kw.is_special_function_header() && kw.is_in_function_header())
-					|| kw.is_in_function_header() =>
+				if (kw.is_special_function_header()
+					&& reader.peek().map_or(
+						false,
+						|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+					)) || kw.is_in_function_header() =>
 			{
 				let token = Token(TSXToken::Keyword(kw), start);
 				let (async_keyword, token) =
@@ -576,6 +579,7 @@ impl Expression {
 						state,
 						options,
 						(name, position),
+						async_keyword,
 					)?;
 					return Ok(Expression::ArrowFunction(function));
 				}
@@ -825,6 +829,7 @@ impl Expression {
 							state,
 							options,
 							(name, position),
+							None,
 						)?;
 						Expression::ArrowFunction(function)
 					} else {

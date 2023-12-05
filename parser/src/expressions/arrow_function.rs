@@ -131,6 +131,7 @@ impl ArrowFunction {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 		first_parameter: (String, Span),
+		is_async: Option<Keyword<tsx_keywords::Async>>,
 	) -> ParseResult<Self> {
 		let parameters = vec![crate::Parameter {
 			name: WithComment::None(
@@ -143,7 +144,7 @@ impl ArrowFunction {
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		let arrow_function = FunctionBase {
-			header: None,
+			header: is_async,
 			position: first_parameter.1.union(body.get_position()),
 			name: (),
 			parameters: crate::FunctionParameters {

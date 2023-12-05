@@ -71,6 +71,14 @@ jobs:
         if: steps.changes.outputs.src == 'true'
         with:
           packages: wasm-bindgen-cli@0.2.87
+      - uses: denoland/setup-deno@v1
+        if: steps.changes.outputs.src == 'true'
+        with:
+          deno-version: v1.x
+      - uses: actions/setup-node@v3
+        if: steps.changes.outputs.src == 'true'
+        with:
+          node-version: 18
 
       - name: Check WASM
         if: steps.changes.outputs.src == 'true'
