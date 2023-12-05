@@ -14,7 +14,6 @@ use crate::{
 		get_value_of_variable, CanReferenceThis, Context, ContextType, Syntax,
 	},
 	events::{Event, RootReference},
-	synthesis::classes,
 	types::{
 		self,
 		classes::ClassValue,

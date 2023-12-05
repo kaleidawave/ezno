@@ -269,9 +269,31 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
-				let (items, end_pos) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-				Ok(Self::Array(items, start_pos.union(end_pos)))
+				let mut items: Vec<_> = Vec::new();
+				// No trailing comments
+				loop {
+					if let Some(token) =
+						reader.conditional_next(|token| *token == TSXToken::CloseBracket)
+					{
+						return Ok(Self::Array(items, start_pos.union(token.get_end())));
+					}
+
+					items.push(ArrayDestructuringField::from_reader(reader, state, options)?);
+
+					if !reader
+						.peek()
+						.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
+					{
+						reader.expect_next(TSXToken::Comma)?;
+						// TODO not great fix
+						if reader
+							.peek()
+							.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
+						{
+							items.push(ArrayDestructuringField::None);
+						}
+					}
+				}
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
 		}
@@ -470,7 +492,9 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 				name.to_string_from_buffer(buf, options, depth);
 				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
 			}
-			Self::None => {}
+			Self::None => {
+				options.add_gap(buf);
+			}
 		}
 	}
 

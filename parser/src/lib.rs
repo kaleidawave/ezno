@@ -619,7 +619,7 @@ impl FromStr for NumberRepresentation {
 				Some('.') => {
 					let after_point = Some(s.len() as u8 - 1);
 					let before_point = 1;
-					if s.len() == 2 {
+					if s.len() == 1 {
 						Ok(Self::Number { value: 0f64, before_point, after_point })
 					} else {
 						Ok(Self::Number {
