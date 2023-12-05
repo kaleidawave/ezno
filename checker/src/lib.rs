@@ -96,6 +96,7 @@ pub trait ASTImplementation: Sized {
 	type TypeAnnotation<'a>;
 	type TypeParameter<'a>;
 	type Expression<'a>;
+	type MultipleExpression<'a>;
 
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
@@ -132,6 +133,14 @@ pub trait ASTImplementation: Sized {
 	/// Expected is used for eagerly setting function parameters
 	fn synthesise_expression<'a, T: crate::ReadFromFS>(
 		expression: &'a Self::Expression<'a>,
+		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId;
+
+	/// Expected is used for eagerly setting function parameters
+	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
+		expression: &'a Self::MultipleExpression<'a>,
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,

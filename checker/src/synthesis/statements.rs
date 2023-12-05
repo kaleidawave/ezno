@@ -2,8 +2,10 @@ use super::{
 	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
 };
 use crate::{
-	behavior::{assignments::Reference, operations::CanonicalEqualityAndInequality},
-	context::{calling::Target, ClosedOverReferencesInScope, ContextId, Scope},
+	behavior::{
+		assignments::Reference, loops::evaluate_loop, operations::CanonicalEqualityAndInequality,
+	},
+	context::{calling::Target, environment, ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
 	events::{apply_event, Event, RootReference},
 	synthesis::EznoParser,
@@ -109,18 +111,22 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				at: stmt.get_position().with_source(environment.get_source()),
 			});
 		}
-		Statement::WhileStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "While statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-		}
-		Statement::DoWhileStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "Do while statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-		}
+		Statement::WhileStatement(stmt) => evaluate_loop(
+			crate::behavior::loops::LoopBehavior::While(&stmt.condition),
+			environment,
+			checking_data,
+			|environment, checking_data| {
+				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
+			},
+		),
+		Statement::DoWhileStatement(stmt) => evaluate_loop(
+			crate::behavior::loops::LoopBehavior::DoWhile(&stmt.condition),
+			environment,
+			checking_data,
+			|environment, checking_data| {
+				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
+			},
+		),
 		Statement::ForLoopStatement(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "For statement",

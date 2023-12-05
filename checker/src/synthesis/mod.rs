@@ -28,7 +28,10 @@ use crate::{
 	CheckingData, Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
 
-use self::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
+use self::{
+	expressions::{synthesise_expression, synthesise_multiple_expression},
+	type_annotations::synthesise_type_annotation,
+};
 
 pub(super) fn parser_property_key_to_checker_property_key<
 	P: parser::property_key::PropertyKeyKind,
@@ -119,6 +122,7 @@ impl crate::ASTImplementation for EznoParser {
 	type TypeAnnotation<'a> = parser::TypeAnnotation;
 	type TypeParameter<'a> = parser::GenericTypeConstraint;
 	type Expression<'a> = parser::Expression;
+	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
 	fn module_from_string(
@@ -190,6 +194,15 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
 		m
+	}
+
+	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
+		expression: &'a Self::MultipleExpression<'a>,
+		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
 	}
 }
 
