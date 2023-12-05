@@ -913,7 +913,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
-/// Supports trailing commas
+/// Supports trailing commas. But **does not create** *empty* like items afterwards
 pub(crate) fn parse_bracketed<T: ASTNode>(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,

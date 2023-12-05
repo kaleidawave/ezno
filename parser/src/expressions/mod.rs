@@ -379,8 +379,32 @@ impl Expression {
 							rhs: Box::new(rhs),
 						}
 					} else {
-						let (items, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
+						let mut items: Vec<_> = Vec::new();
+						let end;
+						// No trailing comments
+						loop {
+							if let Some(token) =
+								reader.conditional_next(|token| *token == TSXToken::CloseBracket)
+							{
+								end = token.get_end();
+								break;
+							}
+
+							items.push(SpreadExpression::from_reader(reader, state, options)?);
+
+							if !reader
+								.peek()
+								.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
+							{
+								reader.expect_next(TSXToken::Comma)?;
+								// TODO not great fix
+								if reader.peek().map_or(false, |Token(t, _)| {
+									matches!(t, TSXToken::CloseBracket)
+								}) {
+									items.push(SpreadExpression::Empty);
+								}
+							}
+						}
 						Expression::ArrayLiteral(items, start.union(end))
 					}
 				} else {

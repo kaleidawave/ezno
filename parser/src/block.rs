@@ -361,11 +361,13 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	depth: u8,
 ) {
 	for (at_end, item) in items.iter().endiate() {
-		if let StatementOrDeclaration::Statement(Statement::Expression(
-			crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
-		)) = item
-		{
-			continue;
+		if !options.pretty {
+			if let StatementOrDeclaration::Statement(Statement::Expression(
+				crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
+			)) = item
+			{
+				continue;
+			}
 		}
 
 		options.add_indent(depth, buf);

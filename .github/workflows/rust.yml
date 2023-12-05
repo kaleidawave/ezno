@@ -46,6 +46,7 @@ jobs:
 
   extras:
     runs-on: ubuntu-latest
+    needs: validity
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
