@@ -17,7 +17,7 @@ declare function compile_type_to_object<T>(): any performs const compile_type_to
 declare var undefined: undefined;
 
 interface nominal Array<T> {
-    [index: number]: T;
+    [index: number]: T | undefined;
     
     length: number;
 
@@ -62,6 +62,8 @@ interface Math {
 }
 
 interface nominal string {
+    [index: number]: string | undefined;
+
     toUpperCase(): string performs const uppercase;
     toLowerCase(): string performs const lowercase;
 

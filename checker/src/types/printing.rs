@@ -1,5 +1,4 @@
 use iterator_endiate::EndiateIteratorExt;
-use parser::property_key;
 use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeId, TypeStore};
@@ -15,7 +14,6 @@ use crate::{
 pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bool) -> String {
 	let mut buf = String::new();
 	print_type_into_buf(id, &mut buf, &mut HashSet::new(), types, ctx, debug);
-
 	buf
 }
 

@@ -239,7 +239,8 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				restriction_mode,
 			);
 			let left = print_type(base_type, types, &environment.as_general_context(), true);
-			crate::utils::notify!("Left {}", left);
+
+			// crate::utils::notify!("Left object {}", left);
 
 			if let SubTypeResult::IsNotSubType(..) = result {
 				result

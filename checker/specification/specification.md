@@ -579,7 +579,7 @@ const z: false = true || 4
 - Expected number, found true
 - Expected string, found true
 
-#### String operations
+#### String operations (constant functions can use `this`)
 
 ```ts
 "hi".toUpperCase() satisfies number
@@ -1066,8 +1066,6 @@ type X = { a: string }
 
 ### Classes
 
-> TODO privacy
-
 #### Constructor
 
 ```ts
@@ -1103,8 +1101,6 @@ global satisfies string;
 - Expected string, found 1
 
 #### Properties
-
-> TODO check timing
 
 ```ts
 let global: number = 0;

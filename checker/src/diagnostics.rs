@@ -38,6 +38,12 @@ pub enum Diagnostic {
 	},
 }
 
+/// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
+pub struct TDZ {
+	pub variable_name: String,
+	pub position: SpanWithSource,
+}
+
 impl Diagnostic {
 	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
 		use either::{Left, Right};
@@ -190,7 +196,7 @@ mod defined_errors_and_warnings {
 	use crate::Diagnostic;
 	use std::path;
 
-	use super::{PropertyRepresentation, TypeStringRepresentation};
+	use super::{PropertyRepresentation, TypeStringRepresentation, TDZ};
 
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
 	/// e.g. cannot Call, cannot equate, duplicate key etc
@@ -295,6 +301,7 @@ mod defined_errors_and_warnings {
 			name: String,
 			position: SpanWithSource,
 		},
+		TDZ(TDZ),
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -407,8 +414,19 @@ mod defined_errors_and_warnings {
 					},
 					FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position { reason: format!("no logic for constant function {name}"), kind, position },
 					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
+					FunctionCallingError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+						reason: format!("Variable {variable_name} used before declaration"),
+						position,
+						kind,
+					},
+					FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position } => Diagnostic::Position {
+						reason: format!(
+							"Type {value_type} does not meet property constraint {property_type}"
+						),
+						position: assignment_position,
+						kind,
+					}
 				},
-				//  => ,
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
@@ -610,6 +628,11 @@ mod defined_errors_and_warnings {
 					position,
 					kind,
 				},
+				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+					reason: format!("Variable {variable_name} used before declaration"),
+					position,
+					kind,
+				}
 			}
 		}
 	}

@@ -8,8 +8,9 @@ use crate::{
 	},
 	context::{
 		calling::CheckThings, get_value_of_variable, CallCheckingBehavior, Environment, Logical,
+		SetPropertyError,
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{apply_event, Event, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
@@ -115,10 +116,6 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 			types,
 		)
 	} else {
-		// pub enum Callable {
-		// 	Function()
-		// }
-
 		let callable = get_logical_callable_from_type(on, types);
 
 		if let Some(logical) = callable {
@@ -334,6 +331,12 @@ pub enum FunctionCallingError {
 	CyclicRecursion(FunctionId, SpanWithSource),
 	NoLogicForIdentifier(String, SpanWithSource),
 	NeedsToBeCalledWithNewKeyword(SpanWithSource),
+	TDZ(TDZ),
+	SetPropertyConstraint {
+		property_type: TypeStringRepresentation,
+		value_type: TypeStringRepresentation,
+		assignment_position: SpanWithSource,
+	},
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -693,9 +696,21 @@ impl FunctionType {
 
 			let mut return_result = None;
 
+			// Apply events here
 			for event in self.effects.clone() {
-				let result =
-					apply_event(event, this_value, &mut type_arguments, environment, target, types);
+				let result = apply_event(
+					event,
+					this_value,
+					&mut type_arguments,
+					environment,
+					target,
+					types,
+					&mut errors,
+				);
+
+				if !errors.is_empty() {
+					crate::utils::notify!("Got {} application errors", errors.len());
+				}
 
 				if let value @ Some(_) = result {
 					return_result = value;
@@ -718,6 +733,11 @@ impl FunctionType {
 
 			return_result
 		});
+
+		// From application errors, might be okay just returning the value anyway
+		if !errors.is_empty() {
+			return Err(errors);
+		}
 
 		if let CalledWithNew::New { .. } = called_with_new {
 			// TODO ridiculous early return primitive rule

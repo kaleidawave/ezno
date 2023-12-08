@@ -14,7 +14,7 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{Event, RootReference},
 	subtyping::BasicEquality,
 	types::{
@@ -801,7 +801,7 @@ impl<'a> Environment<'a> {
 					of,
 					None::<&crate::types::poly_types::FunctionTypeArguments>,
 				)
-				.expect("variable not assigned yet");
+				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
 			}
 
@@ -809,9 +809,17 @@ impl<'a> Environment<'a> {
 				self.facts_chain(),
 				og_var.get_id(),
 				None::<&crate::types::poly_types::FunctionTypeArguments>,
-			)
-			.expect("variable not assigned yet");
-			Ok(VariableWithValue(og_var.clone(), current_value))
+			);
+			match current_value {
+				Some(current_value) => Ok(VariableWithValue(og_var.clone(), current_value)),
+				None => {
+					checking_data.diagnostics_container.add_error(TypeCheckError::TDZ(TDZ {
+						variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
+						position,
+					}));
+					Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
+				}
+			}
 		}
 	}
 

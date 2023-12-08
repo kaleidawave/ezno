@@ -135,12 +135,29 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Property { on, under, .. } => {
-				crate::utils::notify!(
-					"Constructor::Property ({:?}[{:?}]) should be covered by events",
-					on,
-					under
-				);
-				id
+				let id = environment.get_poly_base(on, types).unwrap_or(on);
+
+				if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+					on: TypeId::ARRAY_TYPE,
+					arguments,
+				})) = types.get_type_by_id(id)
+				{
+					if under.as_number().is_some() {
+						crate::utils::notify!("Temp array index property get");
+						let value = arguments.get_argument(TypeId::T_TYPE).unwrap();
+						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
+					} else {
+						crate::utils::notify!("Here :??");
+						id
+					}
+				} else {
+					crate::utils::notify!(
+						"Constructor::Property ({:?}[{:?}]) should be covered by events",
+						on,
+						under
+					);
+					id
+				}
 			}
 			Constructor::Image { .. } => {
 				crate::utils::notify!("Constructor::Image should be covered by events");

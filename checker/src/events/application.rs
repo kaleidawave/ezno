@@ -2,7 +2,8 @@ use super::{CallingTiming, EarlyReturn, Event, PrototypeArgument, RootReference}
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{calling::Target, get_value_of_variable, CallCheckingBehavior},
+	context::{calling::Target, get_value_of_variable, CallCheckingBehavior, SetPropertyError},
+	diagnostics::{TypeStringRepresentation, TDZ},
 	types::{
 		curry_arguments,
 		functions::SynthesisedArgument,
@@ -21,6 +22,8 @@ pub(crate) fn apply_event(
 	environment: &mut Environment,
 	target: &mut Target,
 	types: &mut TypeStore,
+	// TODO WIP
+	errors: &mut Vec<crate::types::calling::FunctionCallingError>,
 ) -> EarlyReturn {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency, position } => {
@@ -35,7 +38,10 @@ pub(crate) fn apply_event(
 						if let Some(ty) = value {
 							ty
 						} else {
-							crate::utils::notify!("emit a tdz error");
+							errors.push(crate::types::calling::FunctionCallingError::TDZ(TDZ {
+								variable_name: environment.get_variable_name(id).to_owned(),
+								position,
+							}));
 							TypeId::ERROR_TYPE
 						}
 					}
@@ -144,16 +150,45 @@ pub(crate) fn apply_event(
 					.get_top_level_facts(environment)
 					.register_property(on, publicity, under, new, true, position);
 			} else {
-				let returned =
-					set_property(on, publicity, &under, &new, environment, target, types, position)
-						.unwrap();
+				let result =
+					set_property(on, publicity, &under, &new, environment, target, types, position);
 
+				let value = match result {
+					Ok(result) => {
+						crate::utils::notify!("Okay assignment");
+						// TODO when is this `None`
+						result.unwrap_or(TypeId::UNDEFINED_TYPE)
+					}
+					Err(err) => {
+						if let SetPropertyError::DoesNotMeetConstraint(constraint, reason) = err {
+							let value_type = if let PropertyValue::Value(id) = new {
+								TypeStringRepresentation::from_type_id(
+									id,
+									&environment.as_general_context(),
+									types,
+									false,
+								)
+							} else {
+								todo!()
+							};
+							let property_type = TypeStringRepresentation::from_type_id(
+								constraint,
+								&environment.as_general_context(),
+								types,
+								false,
+							);
+
+							crate::utils::notify!("Pushing error");
+
+							errors.push(crate::types::calling::FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position: position.unwrap() });
+							TypeId::ERROR_TYPE
+						} else {
+							unreachable!()
+						}
+					}
+				};
 				if let Some(id) = reflects_dependency {
-					type_arguments.set_id_from_reference(
-						id,
-						returned.unwrap_or(TypeId::UNDEFINED_TYPE),
-						types,
-					);
+					type_arguments.set_id_from_reference(id, value, types);
 				}
 			}
 		}
@@ -196,7 +231,10 @@ pub(crate) fn apply_event(
 								);
 							}
 						}
-						Err(_) => todo!("inference and or checking failed at function"),
+						Err(mut calling_errors) => {
+							crate::utils::notify!("inference and or checking failed at function");
+							errors.append(&mut calling_errors);
+						}
 					}
 				}
 				// TODO different
@@ -237,9 +275,15 @@ pub(crate) fn apply_event(
 			if let Decidable::Known(result) = is_type_truthy_falsy(condition, types) {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
 				for event in to_evaluate.iter().cloned() {
-					if let Some(early) =
-						apply_event(event, this_value, type_arguments, environment, target, types)
-					{
+					if let Some(early) = apply_event(
+						event,
+						this_value,
+						type_arguments,
+						environment,
+						target,
+						types,
+						errors,
+					) {
 						return Some(early);
 					}
 				}
@@ -257,6 +301,7 @@ pub(crate) fn apply_event(
 								environment,
 								target,
 								types,
+								errors,
 							) {
 								return Some(early);
 							}
@@ -274,6 +319,7 @@ pub(crate) fn apply_event(
 								environment,
 								target,
 								types,
+								errors,
 							) {
 								return Some(early);
 							}

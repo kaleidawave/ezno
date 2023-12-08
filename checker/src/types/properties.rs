@@ -60,6 +60,14 @@ impl<'a> PropertyKey<'a> {
 			PropertyKey::Type(ty)
 		}
 	}
+
+	pub(crate) fn as_number(&self) -> Option<usize> {
+		match self {
+			PropertyKey::String(s) => s.parse::<usize>().ok(),
+			// TODO
+			PropertyKey::Type(_) => None,
+		}
+	}
 }
 
 impl crate::serialization::BinarySerializable for PropertyKey<'static> {
@@ -310,6 +318,19 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		}
 	}
 
+	// TODO explain what happens around non constant strings
+	if let Type::Constant(Constant::String(s)) = types.get_type_by_id(on) {
+		if let Some(n) = under.as_number() {
+			return match s.chars().nth(n) {
+				Some(s) => Some((
+					PropertyKind::Direct,
+					types.new_constant_type(Constant::String(s.to_string())),
+				)),
+				None => None,
+			};
+		}
+	}
+
 	let result = environment.get_property_unbound(on, publicity, under, types)?;
 
 	resolve_property_on_logical(result, types, on, environment, behavior)
@@ -452,6 +473,8 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	for constraint in object_constraint {
 		let property_constraint =
 			environment.get_property_unbound(constraint, publicity, under.clone(), types);
+
+		// crate::utils::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
 		// crate::utils::notify!(
 		// 	"Re-assignment constraint {}, prop={} {:?}",

@@ -1,5 +1,7 @@
 Currently implementing:
 
+### Loops
+
 #### While loop unrolling
 
 ```ts
@@ -90,3 +92,86 @@ loop(1);
 ```
 
 - Expected 8, found 32
+
+### Events
+
+#### TDZ in a function
+
+```ts
+function getX() {
+    return x
+}
+
+(getX satisfies () => number);
+
+getX();
+
+let x: number = 5;
+```
+
+- Variable x used before declaration
+
+#### Assignment to union
+
+> Solves the common subtyping issue between read and write properties
+
+```ts
+let myObject: { a: number } = { a: 4 }
+
+function setAtoString(someObject: { a: number | string }) {
+    someObject.a = "hi";
+}
+
+setAtoString({ a: 6 });
+setAtoString(myObject);
+```
+
+- Type "hi" does not meet property constraint number
+
+### Statements
+
+#### TDZ in statements
+
+```ts
+let x = y;
+
+let y = 2;
+```
+
+- Variable y used before declaration
+
+### Types
+
+#### Index into dependent array
+
+```ts
+function getFirst(array: number[]) {
+    return array[0]
+}
+
+(getFirst satisfies boolean);
+```
+
+- Expected boolean, found (array: Array\<number>) => number | undefined
+
+#### Index into dependent string
+
+```ts
+function getSecondCharacter(s: string) {
+    return s[1]
+}
+
+(getSecondCharacter satisfies boolean);
+(getSecondCharacter("string") satisfies "b");
+```
+
+- Expected boolean, found (s: string) => string | undefined
+- Expected "b", found "t"
+
+#### Index into string
+
+```ts
+("something"[2] satisfies number);
+```
+
+- Expected number, found "m"

@@ -216,6 +216,8 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 					environment,
 					&mut crate::context::calling::Target::new_default(),
 					&mut checking_data.types,
+					// Shouldn't matter
+					&mut Vec::new(),
 				);
 			}
 		}
