@@ -42,10 +42,6 @@ impl CallCheckingBehavior for CheckThings {
 }
 
 pub(crate) struct Target(Vec<TargetKind>);
-//  {
-// 	// facts: Facts,
-// 	// function_id: Vec<FunctionId>,
-// }
 
 pub(crate) enum TargetKind {
 	Conditional(Facts),

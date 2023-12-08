@@ -465,7 +465,7 @@ pub(super) fn export_part_to_name_pair(
 	}
 }
 
-fn hoist_variable_declaration<T: ReadFromFS>(
+pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 	declaration: &parser::declarations::VariableDeclaration,
 	environment: &mut crate::context::Context<crate::context::environment::Syntax<'_>>,
 	checking_data: &mut CheckingData<T, super::EznoParser>,

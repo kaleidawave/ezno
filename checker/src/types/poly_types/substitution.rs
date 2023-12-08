@@ -134,8 +134,17 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { .. } | Constructor::FunctionResult { .. } => {
-				unreachable!("this should have covered by event specialisation");
+			Constructor::Property { on, under, .. } => {
+				crate::utils::notify!(
+					"Constructor::Property ({:?}[{:?}]) should be covered by events",
+					on,
+					under
+				);
+				id
+			}
+			Constructor::Image { .. } => {
+				crate::utils::notify!("Constructor::Image should be covered by events");
+				id
 
 				// let on = substitute(on, arguments, environment);
 

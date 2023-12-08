@@ -280,7 +280,6 @@ impl TypeStore {
 				on,
 				arguments,
 			})) => {
-				crate::utils::notify!("Here StructureGenerics");
 				// TODO could drop some of with here
 				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
 				fact_opt.map(|fact| Logical::Implies {

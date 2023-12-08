@@ -445,7 +445,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				else_result,
 				result_union,
 			} => todo!(),
-			Constructor::FunctionResult { on, with, result } => todo!(),
+			Constructor::Image { on, with, result } => todo!(),
 			Constructor::Property { on, under, result: _ } => {
 				// Ezno custom behavior
 				// TODO might be based of T

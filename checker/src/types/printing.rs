@@ -1,11 +1,12 @@
 use iterator_endiate::EndiateIteratorExt;
+use parser::property_key;
 use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeId, TypeStore};
 use crate::{
-	context::{facts::Publicity, get_on_ctx},
+	context::{facts::Publicity, get_on_ctx, Logical},
 	types::{Constructor, StructureGenerics},
-	Constant, GeneralContext,
+	Constant, GeneralContext, PropertyValue,
 };
 
 /// TODO temp, needs recursion safe, reuse buffer
@@ -155,7 +156,7 @@ fn print_type_into_buf(
 				Constructor::UnaryOperator { operator, operand } => todo!(),
 				Constructor::TypeOperator(_) => todo!(),
 				Constructor::TypeRelationOperator(_) => todo!(),
-				Constructor::FunctionResult { on, with, result } => {
+				Constructor::Image { on, with, result } => {
 					// TODO arguments and stuff
 					buf.push_str("[func result] ");
 					print_type_into_buf(*result, buf, cycles, types, ctx, debug);
@@ -280,6 +281,26 @@ fn print_type_into_buf(
 				write!(buf, "[obj {}]", id.0).unwrap();
 			}
 			if let Some(prototype) = get_on_ctx!(ctx.facts.prototypes.get(&id)) {
+				if *prototype == TypeId::ARRAY_TYPE && !debug {
+					if let Some(n) = get_array_length(ctx, id, types) {
+						buf.push('[');
+						for i in 0..(n.into_inner() as usize) {
+							if i != 0 {
+								buf.push_str(", ");
+							}
+							let value =
+								get_simple_value(ctx, id, PropertyKey::from_usize(i), types)
+									.expect("Trying to print complex array type");
+							print_type_into_buf(value, buf, cycles, types, ctx, debug);
+						}
+						buf.push(']');
+					} else {
+						// TODO get property
+						write!(buf, "Array").unwrap();
+					}
+					return;
+				}
+
 				buf.push('[');
 				print_type_into_buf(*prototype, buf, cycles, types, ctx, debug);
 				buf.push_str("] ");
@@ -335,6 +356,39 @@ fn print_type_into_buf(
 	}
 
 	cycles.remove(&id);
+}
+
+fn get_simple_value(
+	ctx: &GeneralContext,
+	on: TypeId,
+	property: PropertyKey,
+	types: &TypeStore,
+) -> Option<TypeId> {
+	get_on_ctx!(ctx.get_property_unbound(on, Publicity::Public, property, types)).and_then(|v| {
+		if let Logical::Pure(PropertyValue::Value(t)) = v {
+			Some(t)
+		} else {
+			None
+		}
+	})
+}
+
+fn get_array_length(
+	ctx: &GeneralContext,
+	on: TypeId,
+	types: &TypeStore,
+) -> Option<ordered_float::NotNan<f64>> {
+	let id = get_simple_value(
+		ctx,
+		on,
+		PropertyKey::String(std::borrow::Cow::Borrowed("length")),
+		types,
+	)?;
+	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
+		Some(*n)
+	} else {
+		None
+	}
 }
 
 #[must_use]

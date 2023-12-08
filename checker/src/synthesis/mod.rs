@@ -29,8 +29,11 @@ use crate::{
 };
 
 use self::{
+	declarations::synthesise_variable_declaration,
 	expressions::{synthesise_expression, synthesise_multiple_expression},
+	hoisting::hoist_variable_declaration,
 	type_annotations::synthesise_type_annotation,
+	variables::register_variable,
 };
 
 pub(super) fn parser_property_key_to_checker_property_key<
@@ -125,6 +128,8 @@ impl crate::ASTImplementation for EznoParser {
 	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
+	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
+
 	fn module_from_string(
 		source_id: SourceId,
 		string: String,
@@ -203,6 +208,22 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
+	}
+
+	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
+		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		match for_loop_initialiser {
+			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
+				// TODO is this correct & the best
+				hoist_variable_declaration(declaration, environment, checking_data);
+				synthesise_variable_declaration(declaration, environment, checking_data, false)
+			}
+			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
+			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
+		}
 	}
 }
 

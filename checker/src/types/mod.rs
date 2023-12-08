@@ -226,8 +226,8 @@ pub enum Constructor {
 		else_result: TypeId,
 		result_union: TypeId,
 	},
-	///
-	FunctionResult {
+	/// output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
+	Image {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
 		with: Box<[SynthesisedArgument]>,
@@ -246,7 +246,7 @@ impl Constructor {
 	fn get_base(&self) -> Option<TypeId> {
 		match self {
 			Constructor::ConditionalResult { result_union: result, .. }
-			| Constructor::FunctionResult { result, .. } => Some(*result),
+			| Constructor::Image { result, .. } => Some(*result),
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
 			| Constructor::UnaryOperator { .. }

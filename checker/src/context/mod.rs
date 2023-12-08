@@ -573,7 +573,7 @@ impl<T: ContextType> Context<T> {
 							Some(TypeId::STRING_TYPE)
 						} else {
 							// TODO new conditional
-							todo!("needs conditional {:?} {:?}", lhs, rhs)
+							todo!("Based on conditional {:?} + {:?}", lhs, rhs)
 						}
 					} else {
 						Some(TypeId::NUMBER_TYPE)
@@ -596,7 +596,7 @@ impl<T: ContextType> Context<T> {
 					// 	Some(*constraint)
 					// }
 				}
-				Constructor::FunctionResult { on, with, result } => {
+				Constructor::Image { on, with, result } => {
 					Some(result)
 					// TODO temp
 					// if let PolyPointer::Fixed(result) = result {
@@ -981,7 +981,7 @@ impl<T: ContextType> Context<T> {
 		scope: Scope,
 		checking_data: &mut CheckingData<U, A>,
 		cb: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>) -> Res,
-	) -> (Res, Option<(Vec<Event>, ClosedOverReferencesInScope)>, ContextId) {
+	) -> (Res, Option<(Facts, ClosedOverReferencesInScope)>, ContextId) {
 		if matches!(scope, Scope::Conditional { .. }) {
 			unreachable!("Use Environment::new_conditional_context")
 		}
@@ -1031,7 +1031,7 @@ impl<T: ContextType> Context<T> {
 			Scope::FunctionAnnotation {} => None,
 			// TODO temp
 			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Looping { .. } => {
-				Some((facts.events, used_parent_references))
+				Some((facts, used_parent_references))
 			}
 			Scope::Function { .. } => {
 				unreachable!("use new_function")
@@ -1052,6 +1052,7 @@ impl<T: ContextType> Context<T> {
 				if matches!(scope, Scope::PassThrough { .. }) {
 					self.variables.extend(variables);
 					self.facts.variable_current_value.extend(facts.variable_current_value);
+					None
 				} else {
 					// TODO for LSP
 					// let shell = ExistingContext {
@@ -1061,33 +1062,34 @@ impl<T: ContextType> Context<T> {
 					// 	scope: scope.clone(),
 					// };
 					// checking_data.existing_contexts.existing_environments.insert(context_id, shell);
-				}
 
-				// 	// TODO temp
-				// 	self.context_type
-				// 		.get_closed_over_references_mut()
-				// 		.extend(closed_over_references.into_iter());
+					// 	// TODO temp
+					// 	self.context_type
+					// 		.get_closed_over_references_mut()
+					// 		.extend(closed_over_references.into_iter());
 
-				self.deferred_function_constraints.extend(deferred_function_constraints);
+					self.deferred_function_constraints.extend(deferred_function_constraints);
 
-				self.can_reference_this = can_reference_this;
+					self.can_reference_this = can_reference_this;
 
-				for (on, mut properties) in facts.current_properties {
-					match self.facts.current_properties.entry(on) {
-						hash_map::Entry::Occupied(mut occupied) => {
-							occupied.get_mut().append(&mut properties);
-						}
-						hash_map::Entry::Vacant(vacant) => {
-							vacant.insert(properties);
+					// TODO clone
+					for (on, mut properties) in facts.current_properties.clone() {
+						match self.facts.current_properties.entry(on) {
+							hash_map::Entry::Occupied(mut occupied) => {
+								occupied.get_mut().append(&mut properties);
+							}
+							hash_map::Entry::Vacant(vacant) => {
+								vacant.insert(properties);
+							}
 						}
 					}
-				}
 
-				if self.context_type.get_parent().is_some() {
-					self.facts.events.append(&mut facts.events);
-					None
-				} else {
-					Some((facts.events, Default::default()))
+					if self.context_type.get_parent().is_some() {
+						self.facts.events.append(&mut facts.events);
+						None
+					} else {
+						Some((facts, Default::default()))
+					}
 				}
 			}
 		};

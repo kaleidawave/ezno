@@ -97,6 +97,7 @@ pub trait ASTImplementation: Sized {
 	type TypeParameter<'a>;
 	type Expression<'a>;
 	type MultipleExpression<'a>;
+	type ForStatementInitiliser<'a>;
 
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
@@ -151,6 +152,13 @@ pub trait ASTImplementation: Sized {
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
+
+	/// Don't need to return anything. All information recorded via changed to `environment`
+	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
+		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	);
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 

@@ -42,13 +42,26 @@ do {
 
 - Expected 8, found 3
 
+#### For loop (conditional)
+
+```ts
+let a: string = "";
+for (let i: number = 0; i < 10; i++) {
+    a = a + i;
+}
+
+(a satisfies number)
+```
+
+- Expected number, found "0123456789"
+
 #### While loop dependent
 
 ```ts
 declare let i: number;
 let a = 0;
 while (i < 5) {
-    i--;
+    i++;
     a++;
 }
 

@@ -105,7 +105,6 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	}
 
 	if let Some(constraint) = environment.get_poly_base(on, types) {
-		crate::utils::notify!("Evaluating generic call");
 		create_generic_function_call(
 			constraint,
 			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
@@ -156,7 +155,6 @@ fn call_logical<E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	crate::utils::notify!("Calling logical");
 	match logical {
 		Logical::Pure((func, this_value)) => {
 			if let Some(function_type) = types.functions.get(&func) {
@@ -275,7 +273,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 			return Ok(result);
 		}
 
-		let constructor = Constructor::FunctionResult {
+		let constructor = Constructor::Image {
 			// TODO on or to
 			on,
 			with: with.clone(),
@@ -477,11 +475,8 @@ impl FunctionType {
 
 				// TODO pass down
 				let on = types.register_type(Type::Function(self.id, this_value));
-				let new_type = Type::Constructor(Constructor::FunctionResult {
-					on,
-					with: with.clone(),
-					result,
-				});
+				let new_type =
+					Type::Constructor(Constructor::Image { on, with: with.clone(), result });
 
 				let ty = types.register_type(new_type);
 

@@ -3,7 +3,9 @@ use super::{
 };
 use crate::{
 	behavior::{
-		assignments::Reference, loops::evaluate_loop, operations::CanonicalEqualityAndInequality,
+		assignments::Reference,
+		iteration::{evaluate_iteration, IterationBehavior},
+		operations::CanonicalEqualityAndInequality,
 	},
 	context::{calling::Target, environment, ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
@@ -111,77 +113,49 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				at: stmt.get_position().with_source(environment.get_source()),
 			});
 		}
-		Statement::WhileStatement(stmt) => evaluate_loop(
-			crate::behavior::loops::LoopBehavior::While(&stmt.condition),
+		Statement::WhileStatement(stmt) => evaluate_iteration(
+			IterationBehavior::While(&stmt.condition),
 			environment,
 			checking_data,
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
 			},
 		),
-		Statement::DoWhileStatement(stmt) => evaluate_loop(
-			crate::behavior::loops::LoopBehavior::DoWhile(&stmt.condition),
+		Statement::DoWhileStatement(stmt) => evaluate_iteration(
+			IterationBehavior::DoWhile(&stmt.condition),
 			environment,
 			checking_data,
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
 			},
 		),
-		Statement::ForLoopStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "For statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-			// let mut environment = environment.new_lexical_environment(ScopeType::Conditional {});
-			// match &for_statement.condition {
-			// 	ForLoopCondition::ForOf { keyword, variable, of } => {
-			// 		todo!()
-			// 		// let of_expression_instance =
-			// 		//     synthesise_expression(of, &mut environment, checking_data);
-			// 		// let iterator_result = get_type_iterator_with_error_handler(
-			// 		//     of_expression_instance.get_type(),
-			// 		//     &mut checking_data.diagnostics_container,
-			// 		//     Some(&mut checking_data.type_mappings.implementors_of_generic),
-			// 		//     of.get_position(),
-			// 		// )
-			// 		// .get_iterator_type();
-			// 		// synthesise_variable_field(
-			// 		//     variable.get_ast_mut(),
-			// 		//     &iterator_result,
-			// 		//     matches!(keyword, parser::statements::VariableKeyword::Const(_)),
-			// 		//     &mut environment,
-			// 		//     checking_data,
-			// 		//
-			// 		//
-			// 		// );
-			// 	}
-			// 	ForLoopCondition::ForIn { keyword, variable: _, in_condition: _ } => todo!(),
-			// 	ForLoopCondition::Statements { initializer, condition, final_expression } => {
-			// 		match initializer {
-			// 			parser::statements::ForLoopStatementInitializer::Statement(statement) => {
-			// 				synthesise_variable_declaration_statement(
-			// 					statement,
-			// 					&mut environment,
-			// 					checking_data,
-			//
-			// 				);
-			// 			}
-			// 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
-			// 		}
-			// 		// synthesise_variable_declaration(
-			// 		//     initializer,
-			// 		//     *constant,
-			// 		//     &mut environment,
-			// 		//     checking_data,
-			// 		//
-			// 		//
-			// 		// );
-			// 		synthesise_expression(condition, &mut environment, checking_data);
-			// 		synthesise_expression(final_expression, &mut environment, checking_data);
-			// 	}
-			// };
-			// synthesise_block(&for_statement.statements, &mut environment, checking_data);
-		}
+		Statement::ForLoopStatement(stmt) => match &stmt.condition {
+			parser::statements::ForLoopCondition::ForOf { keyword, variable, of, position } => {
+				checking_data.raise_unimplemented_error(
+					"for of and in",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			parser::statements::ForLoopCondition::ForIn { keyword, variable, r#in, position } => {
+				checking_data.raise_unimplemented_error(
+					"for of and in",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			parser::statements::ForLoopCondition::Statements {
+				initialiser,
+				condition,
+				afterthought,
+				position,
+			} => evaluate_iteration(
+				IterationBehavior::For { initialiser, condition, afterthought },
+				environment,
+				checking_data,
+				|environment, checking_data| {
+					synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
+				},
+			),
+		},
 		Statement::Block(ref block) => {
 			let (result, _, _) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Block {},
@@ -189,10 +163,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
-		Statement::Debugger(_pos) => {
-			// yay!
-		}
-		// TODO acknowledge '@ts-ignore' statements but error
 		Statement::Cursor(cursor_id, _) => {
 			todo!("Dump environment data somewhere")
 		}
@@ -255,10 +225,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		Statement::Empty(_) | Statement::Comment(..) | Statement::MultiLineComment(..) => {}
+		Statement::Comment(..) | Statement::MultiLineComment(..) => {
+			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+		}
+		Statement::Debugger(_) | Statement::Empty(_) => {}
 	}
 }
 
+/// Expects that this caller has already create a context for this to run in
 fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
@@ -272,9 +246,4 @@ fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 			synthesise_statement(statement, environment, checking_data);
 		}
 	}
-	// environment.new_lexical_environment_fold_into_parent(
-	// 	scope,
-	// 	checking_data,
-	// 	|environment, checking_data|
-	// )
 }

@@ -94,12 +94,10 @@ const my_wrapped: Wrapper<number> = { internal: "hi" }
 
 ```ts
 const numbers1: Array<number> = [1, 2, "3"]
-const numbers2: Array<string> = [ "hi", "3"]
+const numbers2: Array<string> = ["hi", "3"]
 ```
 
-> Printing is a bit wack here
-
-- Type [Array] { 0: 1, 1: 2, 2: "3", length: 3 } is not assignable to type Array\<number>
+- Type [1, 2, "3"] is not assignable to type Array\<number>
 
 ### Function checking
 

@@ -8,7 +8,7 @@
 pub mod assignments;
 pub mod constant_functions;
 pub mod functions;
-pub mod loops;
+pub mod iteration;
 pub mod modules;
 pub mod objects;
 pub mod operations;
