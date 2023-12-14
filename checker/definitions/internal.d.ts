@@ -2,6 +2,7 @@
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
 declare function debug_type(t: any): void performs const debug_type;
+declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
 declare function debug_effects(t: () => {}): void performs const debug_effects;
 declare function is_dependent(t: any): void performs const is_dependent;
 

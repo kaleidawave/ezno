@@ -208,6 +208,7 @@ impl FunctionId {
 	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
 }
 
+#[derive(Debug)]
 pub enum Decidable<T> {
 	Known(T),
 	/// Points to poly type
@@ -559,5 +560,11 @@ impl TypeCombinable for TypeId {
 
 	fn default() -> Self {
 		TypeId::UNDEFINED_TYPE
+	}
+}
+
+impl<A: crate::ASTImplementation> PostCheckData<A> {
+	pub fn is_function_called(&self, function_id: FunctionId) -> bool {
+		self.types.called_functions.contains(&function_id)
 	}
 }

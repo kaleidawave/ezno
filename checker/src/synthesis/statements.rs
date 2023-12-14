@@ -4,7 +4,7 @@ use super::{
 use crate::{
 	behavior::{
 		assignments::Reference,
-		iteration::{evaluate_iteration, IterationBehavior},
+		iteration::{synthesise_iteration, IterationBehavior},
 		operations::CanonicalEqualityAndInequality,
 	},
 	context::{calling::Target, environment, ClosedOverReferencesInScope, ContextId, Scope},
@@ -113,7 +113,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				at: stmt.get_position().with_source(environment.get_source()),
 			});
 		}
-		Statement::WhileStatement(stmt) => evaluate_iteration(
+		Statement::WhileStatement(stmt) => synthesise_iteration(
 			IterationBehavior::While(&stmt.condition),
 			environment,
 			checking_data,
@@ -121,7 +121,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data)
 			},
 		),
-		Statement::DoWhileStatement(stmt) => evaluate_iteration(
+		Statement::DoWhileStatement(stmt) => synthesise_iteration(
 			IterationBehavior::DoWhile(&stmt.condition),
 			environment,
 			checking_data,
@@ -147,7 +147,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				condition,
 				afterthought,
 				position,
-			} => evaluate_iteration(
+			} => synthesise_iteration(
 				IterationBehavior::For { initialiser, condition, afterthought },
 				environment,
 				checking_data,
@@ -166,12 +166,10 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		Statement::Cursor(cursor_id, _) => {
 			todo!("Dump environment data somewhere")
 		}
-		Statement::Continue(..) | Statement::Break(..) => {
-			checking_data.raise_unimplemented_error(
-				"continue and break statements",
-				statement.get_position().with_source(environment.get_source()),
-			);
+		Statement::Continue(label, position) => {
+			environment.add_continue(label.as_deref(), *position)
 		}
+		Statement::Break(label, position) => environment.add_break(label.as_deref(), *position),
 		Statement::Throw(stmt) => {
 			let thrown_value = synthesise_multiple_expression(
 				&stmt.1,

@@ -60,7 +60,6 @@ impl Facts {
 				on,
 				under,
 				new: to,
-				reflects_dependency: None,
 				initialization: true,
 				publicity,
 				position,

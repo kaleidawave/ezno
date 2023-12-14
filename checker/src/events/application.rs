@@ -1,4 +1,4 @@
-use super::{CallingTiming, EarlyReturn, Event, PrototypeArgument, RootReference};
+use super::{CallingTiming, Event, EventResult, PrototypeArgument, RootReference};
 
 use crate::{
 	behavior::functions::ThisValue,
@@ -7,14 +7,15 @@ use crate::{
 	types::{
 		curry_arguments,
 		functions::SynthesisedArgument,
-		is_type_truthy_falsy,
-		poly_types::FunctionTypeArguments,
+		get_constraint, is_type_truthy_falsy,
+		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		properties::{get_property, set_property, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
 	Decidable, Environment, Type,
 };
 
+#[must_use]
 pub(crate) fn apply_event(
 	event: Event,
 	this_value: ThisValue,
@@ -24,7 +25,7 @@ pub(crate) fn apply_event(
 	types: &mut TypeStore,
 	// TODO WIP
 	errors: &mut Vec<crate::types::calling::FunctionCallingError>,
-) -> EarlyReturn {
+) -> Option<EventResult> {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency, position } => {
 			if let Some(id) = reflects_dependency {
@@ -38,10 +39,13 @@ pub(crate) fn apply_event(
 						if let Some(ty) = value {
 							ty
 						} else {
-							errors.push(crate::types::calling::FunctionCallingError::TDZ(TDZ {
-								variable_name: environment.get_variable_name(id).to_owned(),
-								position,
-							}));
+							errors.push(crate::types::calling::FunctionCallingError::TDZ {
+								error: TDZ {
+									variable_name: environment.get_variable_name(id).to_owned(),
+									position,
+								},
+								call_site: None,
+							});
 							TypeId::ERROR_TYPE
 						}
 					}
@@ -89,15 +93,7 @@ pub(crate) fn apply_event(
 				type_arguments.set_id_from_reference(id, value, types);
 			}
 		}
-		Event::Setter {
-			on,
-			under,
-			new,
-			reflects_dependency,
-			initialization,
-			publicity,
-			position,
-		} => {
+		Event::Setter { on, under, new, initialization, publicity, position } => {
 			let on = substitute(on, type_arguments, environment, types);
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
@@ -153,42 +149,32 @@ pub(crate) fn apply_event(
 				let result =
 					set_property(on, publicity, &under, &new, environment, target, types, position);
 
-				let value = match result {
-					Ok(result) => {
-						crate::utils::notify!("Okay assignment");
-						// TODO when is this `None`
-						result.unwrap_or(TypeId::UNDEFINED_TYPE)
-					}
-					Err(err) => {
-						if let SetPropertyError::DoesNotMeetConstraint(constraint, reason) = err {
-							let value_type = if let PropertyValue::Value(id) = new {
-								TypeStringRepresentation::from_type_id(
-									id,
-									&environment.as_general_context(),
-									types,
-									false,
-								)
-							} else {
-								todo!()
-							};
-							let property_type = TypeStringRepresentation::from_type_id(
-								constraint,
+				if let Err(err) = result {
+					if let SetPropertyError::DoesNotMeetConstraint { property_constraint, reason } =
+						err
+					{
+						let value_type = if let PropertyValue::Value(id) = new {
+							TypeStringRepresentation::from_type_id(
+								id,
 								&environment.as_general_context(),
 								types,
 								false,
-							);
-
-							crate::utils::notify!("Pushing error");
-
-							errors.push(crate::types::calling::FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position: position.unwrap() });
-							TypeId::ERROR_TYPE
+							)
 						} else {
-							unreachable!()
-						}
+							todo!()
+						};
+
+						errors.push(
+							crate::types::calling::FunctionCallingError::SetPropertyConstraint {
+								property_type: property_constraint,
+								value_type,
+								assignment_position: position.unwrap(),
+								call_site: None,
+							},
+						);
+					} else {
+						unreachable!()
 					}
-				};
-				if let Some(id) = reflects_dependency {
-					type_arguments.set_id_from_reference(id, value, types);
 				}
 			}
 		}
@@ -264,15 +250,17 @@ pub(crate) fn apply_event(
 
 			target.get_top_level_facts(environment).throw_value(substituted_thrown, position);
 
-			if substituted_thrown != TypeId::ERROR_TYPE {
-				return None;
-			}
+			// TODO write down why result isn't added here
+			return Some(EventResult::Throw);
 		}
 		// TODO extract
 		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
-			if let Decidable::Known(result) = is_type_truthy_falsy(condition, types) {
+			let result = is_type_truthy_falsy(condition, types);
+			// crate::utils::notify!("Condition {:?}", result);
+
+			if let Decidable::Known(result) = result {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
 				for event in to_evaluate.iter().cloned() {
 					if let Some(early) = apply_event(
@@ -357,11 +345,7 @@ pub(crate) fn apply_event(
 		}
 		Event::Return { returned, returned_position } => {
 			let substituted_returned = substitute(returned, type_arguments, environment, types);
-			if substituted_returned != TypeId::ERROR_TYPE {
-				return Some(substituted_returned);
-			}
-
-			crate::utils::notify!("event returned error so skipped");
+			return Some(EventResult::Return(substituted_returned, returned_position));
 		}
 		// TODO Needs a position (or not?)
 		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
@@ -394,10 +378,101 @@ pub(crate) fn apply_event(
 				types,
 			);
 		}
-		// TODO
-		Event::Break { position } => {}
-		// TODO
-		Event::Continue { position } => {}
+		Event::Break { position, label } => return Some(EventResult::Break { label }),
+		Event::Continue { position, label } => return Some(EventResult::Continue { label }),
+		Event::Iterate { iterate_over, initial } => {
+			// let _condition = substitute(condition, type_arguments, environment, types);
+
+			let initial = initial
+				.into_iter()
+				.map(|(v, (t, p))| (v, (substitute(t, type_arguments, environment, types), p)))
+				.collect();
+
+			crate::utils::notify!("{:?}", initial);
+
+			// TODO temp
+			crate::behavior::iteration::evaluate_iterations(
+				1000,
+				&iterate_over.to_vec(),
+				initial,
+				Some(type_arguments.to_structural_generic_arguments()),
+				environment,
+				types,
+			)?;
+		}
 	}
 	None
+}
+
+/// For loops and recursion
+#[must_use]
+pub(crate) fn apply_event_unknown(
+	event: Event,
+	this_value: ThisValue,
+	type_arguments: &mut FunctionTypeArguments,
+	environment: &mut Environment,
+	target: &mut Target,
+	types: &mut TypeStore,
+) {
+	match event {
+		// TODO maybe mark as read
+		Event::ReadsReference { .. } => {}
+		Event::Getter { on, under, reflects_dependency, publicity, position } => {
+			crate::utils::notify!("Run getters");
+		}
+		Event::SetsVariable(variable, value, _) => {
+			let new_value = get_constraint(value, types)
+				.map(|value| {
+					types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)))
+				})
+				.unwrap_or(value);
+			environment.facts.variable_current_value.insert(variable, new_value);
+		}
+		Event::Setter { on, under, new, initialization, publicity, position } => {
+			let on = substitute(on, type_arguments, environment, types);
+			let new_value = match new {
+				PropertyValue::Value(new) => {
+					let new = get_constraint(new, types)
+						.map(|value| {
+							types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(
+								value,
+							)))
+						})
+						.unwrap_or(new);
+					PropertyValue::Value(new)
+				}
+				PropertyValue::Getter(_) | PropertyValue::Setter(_) | PropertyValue::Deleted => new,
+			};
+			match under {
+				crate::types::properties::PropertyKey::String(_) => {
+					environment
+						.facts
+						.register_property(on, publicity, under, new_value, false, position);
+				}
+				crate::types::properties::PropertyKey::Type(_) => todo!(),
+			}
+		}
+		Event::CallsType { on, with, reflects_dependency, timing, called_with_new, position } => {
+			todo!()
+		}
+		Event::Throw(_, _) => todo!(),
+		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
+			// TODO think this is correct...?
+			for event in events_if_truthy.into_vec() {
+				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
+			}
+			for event in else_events.into_vec() {
+				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
+			}
+		}
+		Event::Return { returned, returned_position } => todo!(),
+		Event::CreateObject { prototype, referenced_in_scope_as, position } => todo!(),
+		Event::Break { position, label } => {
+			// TODO conditionally
+		}
+		Event::Continue { position, label } => {
+			// TODO conditionally
+		}
+		Event::Iterate { iterate_over, initial } => todo!(),
+	}
 }

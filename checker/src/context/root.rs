@@ -25,6 +25,10 @@ impl ContextType for Root {
 		false
 	}
 
+	fn is_conditional(&self) -> bool {
+		false
+	}
+
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		None
 	}

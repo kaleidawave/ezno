@@ -7,11 +7,11 @@ use crate::{
 		functions::{FunctionBehavior, ThisValue},
 	},
 	context::{
-		calling::CheckThings, get_value_of_variable, CallCheckingBehavior, Environment, Logical,
-		SetPropertyError,
+		calling::CheckThings, get_value_of_variable, CallCheckingBehavior, ContextType,
+		Environment, Logical, SetPropertyError,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{apply_event, Event, RootReference},
+	events::{apply_event, Event, EventResult, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
@@ -22,6 +22,7 @@ use crate::{
 };
 
 use super::{
+	get_constraint,
 	poly_types::{
 		generic_type_arguments::StructureGenericArguments, FunctionTypeArguments, SeedingContext,
 	},
@@ -68,9 +69,6 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 				);
 			}
 
-			if let Some(called) = called {
-				checking_data.type_mappings.called_functions.insert(called);
-			}
 			(returned_type, special)
 		}
 		Err(errors) => {
@@ -105,7 +103,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 		});
 	}
 
-	if let Some(constraint) = environment.get_poly_base(on, types) {
+	if let Some(constraint) = get_constraint(on, types) {
 		create_generic_function_call(
 			constraint,
 			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
@@ -331,11 +329,17 @@ pub enum FunctionCallingError {
 	CyclicRecursion(FunctionId, SpanWithSource),
 	NoLogicForIdentifier(String, SpanWithSource),
 	NeedsToBeCalledWithNewKeyword(SpanWithSource),
-	TDZ(TDZ),
+	TDZ {
+		error: TDZ,
+		/// Should be set
+		call_site: Option<SpanWithSource>,
+	},
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
+		/// Should be set
+		call_site: Option<SpanWithSource>,
 	},
 }
 
@@ -392,6 +396,12 @@ impl FunctionType {
 			});
 			// let reason = FunctionCallingError::Recursed(self.id, call_site);
 			// return Err(vec![reason])
+		}
+
+		if !(environment.context_type.is_conditional()
+			|| environment.context_type.is_dynamic_boundary())
+		{
+			types.called_functions.insert(self.id);
 		}
 
 		if let (Some(const_fn_ident), true) = (self.constant_function.as_deref(), call_constant) {
@@ -698,6 +708,7 @@ impl FunctionType {
 
 			// Apply events here
 			for event in self.effects.clone() {
+				let current_errors = errors.len();
 				let result = apply_event(
 					event,
 					this_value,
@@ -708,8 +719,17 @@ impl FunctionType {
 					&mut errors,
 				);
 
-				if !errors.is_empty() {
-					crate::utils::notify!("Got {} application errors", errors.len());
+				// Adjust call sites. (because they aren't currently passed down)
+				for d in &mut errors[current_errors..] {
+					if let FunctionCallingError::TDZ { call_site: ref mut c, .. } = d {
+						*c = Some(call_site);
+					} else if let FunctionCallingError::SetPropertyConstraint {
+						call_site: ref mut c,
+						..
+					} = d
+					{
+						*c = Some(call_site);
+					}
 				}
 
 				if let value @ Some(_) = result {
@@ -734,8 +754,8 @@ impl FunctionType {
 			return_result
 		});
 
-		// From application errors, might be okay just returning the value anyway
 		if !errors.is_empty() {
+			crate::utils::notify!("Got {} application errors", errors.len());
 			return Err(errors);
 		}
 
@@ -777,7 +797,7 @@ impl FunctionType {
 		}
 
 		// set events should cover property specialisation here:
-		let returned_type = if let Some(returned_type) = early_return {
+		let returned_type = if let Some(EventResult::Return(returned_type, _)) = early_return {
 			returned_type
 		} else {
 			substitute(self.return_type, &mut type_arguments, environment, types)

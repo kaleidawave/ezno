@@ -30,8 +30,8 @@ use crate::{
 use super::{
 	calling::CheckThings,
 	facts::{Facts, Publicity},
-	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
-	Environment, GeneralContext, SetPropertyError,
+	get_on_ctx, get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context,
+	ContextType, Environment, GeneralContext, SetPropertyError,
 };
 
 pub type ContextLocation = Option<String>;
@@ -64,6 +64,10 @@ impl<'a> ContextType for Syntax<'a> {
 
 	fn is_dynamic_boundary(&self) -> bool {
 		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
+	}
+
+	fn is_conditional(&self) -> bool {
+		matches!(self.scope, Scope::Conditional { .. })
 	}
 
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
@@ -224,7 +228,7 @@ impl<'a> Environment<'a> {
 
 				fn set_property_error_to_type_check_error(
 					ctx: &GeneralContext,
-					error: &SetPropertyError,
+					error: SetPropertyError,
 					assignment_span: SpanWithSource,
 					types: &TypeStore,
 					new: TypeId,
@@ -233,20 +237,16 @@ impl<'a> Environment<'a> {
 						SetPropertyError::NotWriteable => {
 							TypeCheckError::PropertyNotWriteable(assignment_span)
 						}
-						SetPropertyError::DoesNotMeetConstraint(constraint, _) => {
-							TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
-								property_type: TypeStringRepresentation::from_type_id(
-									*constraint,
-									ctx,
-									types,
-									false,
-								),
-								value_type: TypeStringRepresentation::from_type_id(
-									new, ctx, types, false,
-								),
-								assignment_position: assignment_span,
-							})
-						}
+						SetPropertyError::DoesNotMeetConstraint {
+							property_constraint,
+							reason: _,
+						} => TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
+							property_constraint,
+							value_type: TypeStringRepresentation::from_type_id(
+								new, ctx, types, false,
+							),
+							assignment_position: assignment_span,
+						}),
 					}
 				}
 
@@ -264,7 +264,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -302,7 +302,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -348,7 +348,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -378,7 +378,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -559,7 +559,6 @@ impl<'a> Environment<'a> {
 			on,
 			under,
 			new: PropertyValue::Deleted,
-			reflects_dependency: None,
 			initialization: false,
 			publicity: Publicity::Public,
 			position: None,
@@ -717,11 +716,13 @@ impl<'a> Environment<'a> {
 							// TODO temp
 							if matches!(ty, Type::Function(..)) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
-							} else if let Type::RootPolyType(PolyNature::Open(ot)) = ty {
-								crate::utils::notify!(
-									"Open poly type treated as immutable free variable"
-								);
-								return Ok(VariableWithValue(og_var.clone(), *ot));
+							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
+								// crate::utils::notify!(
+								// 	"Open poly type treated as immutable free variable"
+								// );
+								return Ok(VariableWithValue(og_var.clone(), current_value));
+							} else if let Type::Constant(_) = ty {
+								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							crate::utils::notify!("Free variable!");
@@ -737,6 +738,19 @@ impl<'a> Environment<'a> {
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
+					// TODO is there a nicer way to do this
+					// Look for reassignments
+					for p in self.parents_iter() {
+						if let Some(value) =
+							get_on_ctx!(p.facts.variable_current_value.get(&og_var.get_id()))
+						{
+							return Ok(VariableWithValue(og_var.clone(), *value));
+						}
+						if get_on_ctx!(p.context_type.is_dynamic_boundary()) {
+							break;
+						}
+					}
+
 					if let Some(constraint) = reassignment_constraint {
 						constraint
 					} else {

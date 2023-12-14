@@ -12,14 +12,13 @@ use crate::{
 };
 
 use super::{
+	get_constraint,
 	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
 	properties::PropertyKey,
-	Constructor, PolyNature, StructureGenerics, Type,
+	Constructor, PolyNature, StructureGenerics, Type, TypeArguments,
 };
 
 pub use super::{BasicEquality, NonEqualityReason, PropertyError, SubTypeResult, SubtypeBehavior};
-
-type TypeArguments = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
 
 /// `base_type :>= ty` (`ty <=: base_type`)
 ///
@@ -54,9 +53,9 @@ fn set_object_restriction(environment: &mut Environment, object: TypeId, restric
 /// TODO integrate `set_restriction`, but it can't create a type ? maybe object restriction should be logically.
 /// maybe sub function
 pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
-	property: Logical<PropertyValue>,
+	property: &Logical<PropertyValue>,
 	// TODO chain with annex
-	property_generics: Option<&StructureGenericArguments>,
+	property_generics: Option<&TypeArguments>,
 	ty: TypeId,
 	behavior: &mut T,
 	environment: &mut Environment,
@@ -66,7 +65,7 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 		Logical::Pure(prop) => type_is_subtype2(
 			prop.as_set_type(),
 			ty,
-			None,
+			property_generics,
 			None,
 			behavior,
 			environment,
@@ -75,7 +74,7 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 		),
 		Logical::Or { left, right } => {
 			let left_result = type_is_subtype_of_property(
-				*left,
+				left,
 				property_generics,
 				ty,
 				behavior,
@@ -86,7 +85,7 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 				left_result
 			} else {
 				type_is_subtype_of_property(
-					*right,
+					right,
 					property_generics,
 					ty,
 					behavior,
@@ -99,7 +98,14 @@ pub fn type_is_subtype_of_property<T: SubtypeBehavior>(
 			if property_generics.is_some() {
 				todo!("nesting of generics");
 			}
-			type_is_subtype_of_property(*on, Some(&antecedent), ty, behavior, environment, types)
+			type_is_subtype_of_property(
+				on,
+				Some(&antecedent.type_arguments),
+				ty,
+				behavior,
+				environment,
+				types,
+			)
 		}
 	}
 }
@@ -338,7 +344,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					}
 				}
 
-				let constraint = environment.get_poly_base(base_type, types).unwrap();
+				let constraint = get_constraint(base_type, types).unwrap();
 				if let SubTypeResult::IsNotSubType(reasons) = type_is_subtype2(
 					constraint,
 					ty,
@@ -380,7 +386,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 								continue;
 							}
 							PropertyKey::String(a) => {
-								crate::utils::notify!("looking at prototype {}", a);
+								crate::utils::notify!("looking at property {}", a);
 							}
 							PropertyKey::Type(_) => (),
 						}
@@ -591,7 +597,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 							restriction_mode,
 						)
 					} else {
-						let to = environment.get_poly_base(ty, types).unwrap();
+						let to = get_constraint(ty, types).unwrap();
 
 						if to == TypeId::ANY_TYPE {
 							crate::utils::notify!("Modify constraint for equality");

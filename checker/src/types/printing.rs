@@ -1,26 +1,43 @@
 use iterator_endiate::EndiateIteratorExt;
-use std::collections::HashSet;
-
-use super::{properties::PropertyKey, PolyNature, Type, TypeId, TypeStore};
-use crate::{
-	context::{facts::Publicity, get_on_ctx, Logical},
-	types::{Constructor, StructureGenerics},
-	Constant, GeneralContext, PropertyValue,
+use std::{
+	collections::{HashMap, HashSet},
+	fmt::Write,
 };
 
-/// TODO temp, needs recursion safe, reuse buffer
+use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, TypeStore};
+use crate::{
+	context::{facts::Publicity, get_on_ctx, Logical},
+	events::Event,
+	types::{get_constraint, Constructor, StructureGenerics},
+	Constant, GeneralContext, PropertyValue,
+};
 
 #[must_use]
 pub fn print_type(id: TypeId, types: &TypeStore, ctx: &GeneralContext, debug: bool) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(id, &mut buf, &mut HashSet::new(), types, ctx, debug);
+	print_type_into_buf(id, &mut buf, &mut HashSet::new(), None, types, ctx, debug);
 	buf
 }
 
+#[must_use]
+pub fn print_type_with_generics(
+	id: TypeId,
+	type_arguments: Option<&TypeArguments>,
+	types: &TypeStore,
+	ctx: &GeneralContext,
+	debug: bool,
+) -> String {
+	let mut buf = String::new();
+	print_type_into_buf(id, &mut buf, &mut HashSet::new(), type_arguments, types, ctx, debug);
+	buf
+}
+
+/// Recursion safe + reuses buffer
 fn print_type_into_buf(
 	id: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
+	args: Option<&TypeArguments>,
 	types: &TypeStore,
 	ctx: &GeneralContext,
 	debug: bool,
@@ -29,7 +46,7 @@ fn print_type_into_buf(
 
 	let not_in_cycle = cycles.insert(id);
 	if !not_in_cycle {
-		buf.push_str("cyclic");
+		buf.push_str("*cycle*");
 		return;
 	}
 
@@ -39,45 +56,49 @@ fn print_type_into_buf(
 			buf.push_str(name);
 		}
 		Type::And(a, b) => {
-			print_type_into_buf(*a, buf, cycles, types, ctx, debug);
+			print_type_into_buf(*a, buf, cycles, args, types, ctx, debug);
 			buf.push_str(" & ");
-			print_type_into_buf(*b, buf, cycles, types, ctx, debug);
+			print_type_into_buf(*b, buf, cycles, args, types, ctx, debug);
 		}
 		Type::Or(a, b) => {
-			print_type_into_buf(*a, buf, cycles, types, ctx, debug);
+			print_type_into_buf(*a, buf, cycles, args, types, ctx, debug);
 			buf.push_str(" | ");
-			print_type_into_buf(*b, buf, cycles, types, ctx, debug);
+			print_type_into_buf(*b, buf, cycles, args, types, ctx, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, eager_fixed } => {
-				if debug {
-					// TODO restriction
-					write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
-					print_type_into_buf(*eager_fixed, buf, cycles, types, ctx, debug);
-					buf.push(']');
+				if let Some(value) = args.and_then(|a| a.get(&id).map(|(t, _)| *t)) {
+					print_type_into_buf(value, buf, cycles, args, types, ctx, debug)
 				} else {
-					buf.push_str(name);
+					if debug {
+						// TODO restriction
+						write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
+						print_type_into_buf(*eager_fixed, buf, cycles, args, types, ctx, debug);
+						buf.push(']');
+					} else {
+						buf.push_str(name);
+					}
 				}
 			}
 			PolyNature::FreeVariable { based_on: to, reference, .. } => {
 				if debug {
 					let name = reference.get_name(ctx);
 					// FV = free variable
-					write!(buf, "[FV {} {}]", name, id.0).unwrap();
+					write!(buf, "[FV '{}' {}] fixed to ", name, id.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*to, buf, cycles, args, types, ctx, debug);
 			}
 			PolyNature::Parameter { fixed_to: to } => {
 				if debug {
-					write!(buf, "[param {}]", id.0).unwrap();
+					write!(buf, "[param {}] fixed to ", id.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*to, buf, cycles, args, types, ctx, debug);
 			}
 			PolyNature::Open(to) => {
 				if debug {
-					write!(buf, "[open {}]", id.0).unwrap();
+					write!(buf, "[open {}] ", id.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*to, buf, cycles, args, types, ctx, debug);
 			}
 			PolyNature::RecursiveFunction(_, _) => {
 				todo!()
@@ -99,20 +120,20 @@ fn print_type_into_buf(
 			} => {
 				if debug {
 					write!(buf, "[? {id:? }").unwrap();
-					print_type_into_buf(*condition, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*condition, buf, cycles, args, types, ctx, debug);
 					buf.push(']');
 				}
-				print_type_into_buf(*truthy_result, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*truthy_result, buf, cycles, args, types, ctx, debug);
 				buf.push_str(if debug { " : " } else { " | " });
-				print_type_into_buf(*else_result, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*else_result, buf, cycles, args, types, ctx, debug);
 			}
 			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 				if debug {
 					buf.push_str("SG (");
-					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push(')');
 				} else {
-					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 				}
 				if debug && !arguments.closures.is_empty() {
 					write!(buf, " [closures {:?}]", arguments.closures).unwrap();
@@ -125,7 +146,7 @@ fn print_type_into_buf(
 					// TODO might be out of order ...
 					buf.push('<');
 					for (not_at_end, (arg, _)) in arguments.type_arguments.values().nendiate() {
-						print_type_into_buf(*arg, buf, cycles, types, ctx, debug);
+						print_type_into_buf(*arg, buf, cycles, args, types, ctx, debug);
 						if not_at_end {
 							buf.push_str(", ");
 						}
@@ -135,21 +156,21 @@ fn print_type_into_buf(
 			}
 			constructor if debug => match constructor {
 				Constructor::BinaryOperator { lhs, operator, rhs } => {
-					print_type_into_buf(*lhs, buf, cycles, types, ctx, debug);
-					buf.push_str(" + ");
-					print_type_into_buf(*rhs, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*lhs, buf, cycles, args, types, ctx, debug);
+					buf.write_fmt(format_args!(" {operator:?} ")).unwrap();
+					print_type_into_buf(*rhs, buf, cycles, args, types, ctx, debug);
 				}
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
-					print_type_into_buf(*lhs, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*lhs, buf, cycles, args, types, ctx, debug);
 					match operator {
 							crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
 								buf.push_str(" === ");
 							}
 							crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
-								buf.push_str(" > ");
+								buf.push_str(" < ");
 							}
 						}
-					print_type_into_buf(*rhs, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*rhs, buf, cycles, args, types, ctx, debug);
 				}
 				Constructor::UnaryOperator { operator, operand } => todo!(),
 				Constructor::TypeOperator(_) => todo!(),
@@ -157,12 +178,12 @@ fn print_type_into_buf(
 				Constructor::Image { on, with, result } => {
 					// TODO arguments and stuff
 					buf.push_str("[func result] ");
-					print_type_into_buf(*result, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
 				}
 				Constructor::Property { on, under, result: _ } => {
-					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
-					print_property_key_into_buf(buf, under, cycles, types, ctx, debug);
+					print_property_key_into_buf(buf, under, cycles, args, types, ctx, debug);
 					buf.push(']');
 				}
 				Constructor::StructureGenerics { .. } | Constructor::ConditionalResult { .. } => {
@@ -171,7 +192,7 @@ fn print_type_into_buf(
 			},
 			Constructor::Property { on, under, result } => {
 				if crate::types::is_explicit_generic(*on, types) {
-					print_type_into_buf(*on, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
 					match under {
 						PropertyKey::String(s) => {
@@ -180,43 +201,29 @@ fn print_type_into_buf(
 							buf.push('"');
 						}
 						PropertyKey::Type(t) => {
-							print_type_into_buf(*t, buf, cycles, types, ctx, debug);
+							print_type_into_buf(*t, buf, cycles, args, types, ctx, debug);
 						}
 					};
 					buf.push(']');
 				} else {
-					print_type_into_buf(*result, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
 				}
 			}
 			constructor => {
-				let base = get_on_ctx!(ctx.get_poly_base(id, types)).unwrap();
-				print_type_into_buf(base, buf, cycles, types, ctx, debug);
+				let base = get_constraint(id, types).unwrap();
+				print_type_into_buf(base, buf, cycles, args, types, ctx, debug);
 			}
 		},
 		Type::Interface { name, parameters, nominal } => {
-			if debug {
+			if debug && id.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
 				write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
-			// buf.push_str("{ ");
-			// let properties = get_on_ctx!(ctx.get_properties_on_type(id));
-			// for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
-			// 	if let PublicityKind::Private = publicity {
-			// 		buf.push('#');
-			// 	}
-			// 	print_property_key_into_buf(buf, &key, cycles, types, ctx, debug);
-			// 	buf.push_str(": ");
-			// 	print_type_into_buf(value, buf, cycles, types, ctx, debug);
-			// 	if not_at_end {
-			// 		buf.push_str(", ");
-			// 	}
-			// }
-			// buf.push_str(" }")
 			} else {
 				buf.push_str(name);
 			}
 			if let (true, Some(parameters)) = (debug, parameters) {
 				buf.push('<');
 				for param in parameters {
-					print_type_into_buf(*param, buf, cycles, types, ctx, debug);
+					print_type_into_buf(*param, buf, cycles, args, types, ctx, debug);
 					buf.push_str(", ");
 				}
 				buf.push('>');
@@ -266,13 +273,13 @@ fn print_type_into_buf(
 			for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
 				buf.push_str(&param.name);
 				buf.push_str(": ");
-				print_type_into_buf(param.ty, buf, cycles, types, ctx, debug);
+				print_type_into_buf(param.ty, buf, cycles, args, types, ctx, debug);
 				if not_at_end {
 					buf.push_str(", ");
 				}
 			}
 			buf.push_str(") => ");
-			print_type_into_buf(func.return_type, buf, cycles, types, ctx, debug);
+			print_type_into_buf(func.return_type, buf, cycles, args, types, ctx, debug);
 		}
 		Type::Object(..) => {
 			if debug {
@@ -289,7 +296,7 @@ fn print_type_into_buf(
 							let value =
 								get_simple_value(ctx, id, PropertyKey::from_usize(i), types)
 									.expect("Trying to print complex array type");
-							print_type_into_buf(value, buf, cycles, types, ctx, debug);
+							print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 						}
 						buf.push(']');
 					} else {
@@ -300,7 +307,7 @@ fn print_type_into_buf(
 				}
 
 				buf.push('[');
-				print_type_into_buf(*prototype, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*prototype, buf, cycles, args, types, ctx, debug);
 				buf.push_str("] ");
 			}
 			buf.push_str("{ ");
@@ -309,9 +316,9 @@ fn print_type_into_buf(
 				if let Publicity::Private = publicity {
 					buf.push('#');
 				}
-				print_property_key_into_buf(buf, &key, cycles, types, ctx, debug);
+				print_property_key_into_buf(buf, &key, cycles, args, types, ctx, debug);
 				buf.push_str(": ");
-				print_type_into_buf(value, buf, cycles, types, ctx, debug);
+				print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 				if not_at_end {
 					buf.push_str(", ");
 				}
@@ -324,9 +331,9 @@ fn print_type_into_buf(
 			crate::behavior::objects::SpecialObjects::Proxy { handler, over } => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
-				print_type_into_buf(*over, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*over, buf, cycles, args, types, ctx, debug);
 				buf.push_str(", ");
-				print_type_into_buf(*handler, buf, cycles, types, ctx, debug);
+				print_type_into_buf(*handler, buf, cycles, args, types, ctx, debug);
 				buf.push_str(" ]");
 			}
 			crate::behavior::objects::SpecialObjects::Import(exports) => {
@@ -338,7 +345,7 @@ fn print_type_into_buf(
 						crate::behavior::variables::VariableMutability::Constant => {
 							let value =
 								get_on_ctx!(ctx.get_value_of_constant_import_variable(*variable));
-							print_type_into_buf(value, buf, cycles, types, ctx, debug);
+							print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 						}
 						crate::behavior::variables::VariableMutability::Mutable {
 							reassignment_constraint,
@@ -397,7 +404,7 @@ pub fn print_property_key(
 	debug: bool,
 ) -> String {
 	let mut string = String::new();
-	print_property_key_into_buf(&mut string, key, &mut HashSet::new(), types, ctx, debug);
+	print_property_key_into_buf(&mut string, key, &mut HashSet::new(), None, types, ctx, debug);
 	string
 }
 
@@ -405,12 +412,135 @@ pub(crate) fn print_property_key_into_buf(
 	buf: &mut String,
 	key: &PropertyKey,
 	cycles: &mut HashSet<TypeId>,
+	args: Option<&TypeArguments>,
 	types: &TypeStore,
 	ctx: &GeneralContext,
 	debug: bool,
 ) {
 	match key {
 		PropertyKey::String(s) => buf.push_str(s),
-		PropertyKey::Type(t) => print_type_into_buf(*t, buf, cycles, types, ctx, debug),
+		PropertyKey::Type(t) => {
+			buf.push('[');
+			print_type_into_buf(*t, buf, cycles, args, types, ctx, debug);
+			buf.push(']');
+		}
+	}
+}
+
+pub fn debug_effects(
+	mut buf: &mut String,
+	events: &[Event],
+	types: &TypeStore,
+	ctx: &GeneralContext,
+	debug: bool,
+) {
+	for event in events {
+		match event {
+			Event::ReadsReference { reference, reflects_dependency, position } => {
+				let name = reference.get_name(ctx);
+				buf.write_fmt(format_args!("read '{name}' into {reflects_dependency:?}")).unwrap();
+			}
+			Event::SetsVariable(variable, value, _) => {
+				let on = get_on_ctx!(ctx.get_variable_name(*variable));
+				buf.push_str(on);
+				buf.push_str(" = ");
+				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
+			}
+			Event::Getter { on, under, reflects_dependency, publicity, position } => {
+				buf.push_str("read ");
+				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
+				if let PropertyKey::String(_) = under {
+					buf.push('.');
+				}
+				print_property_key_into_buf(
+					buf,
+					under,
+					&mut HashSet::new(),
+					None,
+					types,
+					ctx,
+					debug,
+				);
+				buf.write_fmt(format_args!("  into {reflects_dependency:?}")).unwrap();
+			}
+			Event::Setter { on, under, new, initialization, publicity, position } => {
+				if *initialization {
+				} else {
+					print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
+					buf.push('[');
+					print_property_key_into_buf(
+						buf,
+						under,
+						&mut HashSet::default(),
+						None,
+						types,
+						ctx,
+						debug,
+					);
+					buf.push_str("] = ");
+					if let PropertyValue::Value(new) = new {
+						print_type_into_buf(
+							*new,
+							buf,
+							&mut HashSet::new(),
+							None,
+							types,
+							ctx,
+							debug,
+						);
+					}
+				}
+			}
+			Event::CallsType {
+				on,
+				with,
+				reflects_dependency,
+				timing,
+				called_with_new,
+				position,
+			} => {
+				buf.push_str("call ");
+				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
+				buf.push_str(match timing {
+					crate::events::CallingTiming::Synchronous => "now",
+					crate::events::CallingTiming::QueueTask => "queue",
+					crate::events::CallingTiming::AtSomePointManyTimes => "sometime",
+				});
+				// TODO args
+			}
+			Event::Throw(value, _) => {
+				buf.push_str("throw ");
+				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
+			}
+			Event::Conditionally { condition, events_if_truthy, else_events, position } => {
+				buf.push_str("if ");
+				print_type_into_buf(*condition, buf, &mut HashSet::new(), None, types, ctx, debug);
+				buf.push_str(" then ");
+				debug_effects(buf, &events_if_truthy, types, ctx, debug);
+				if !else_events.is_empty() {
+					buf.push_str(" else ");
+					debug_effects(buf, &else_events, types, ctx, debug);
+				}
+			}
+			Event::Return { returned, returned_position } => {
+				buf.push_str("return ");
+				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
+			}
+			Event::CreateObject { prototype, referenced_in_scope_as, position } => {
+				buf.write_fmt(format_args!("create object as {referenced_in_scope_as:?}")).unwrap();
+			}
+			Event::Break { position, label } => {
+				buf.push_str("break");
+			}
+			Event::Continue { position, label } => {
+				buf.push_str("continue");
+			}
+			Event::Iterate { iterate_over, initial: _ } => {
+				buf.push_str("iterate\n");
+				debug_effects(buf, &iterate_over, types, ctx, debug);
+				buf.push_str("end");
+			}
+		}
+		buf.push_str("\n");
 	}
 }

@@ -5,6 +5,7 @@ use crate::{
 	subtyping::check_satisfies,
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
+		printing::debug_effects,
 	},
 	types::{poly_types::FunctionTypeArguments, printing::print_type, Type, TypeStore},
 	Constant, Environment, TypeId,
@@ -119,6 +120,22 @@ pub(crate) fn call_constant_function(
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
+		"debug_effects_rust" => {
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.to_type()
+				.map_err(|()| ConstantFunctionError::BadCall)?;
+			if let Type::Function(func, _) | Type::FunctionReference(func, _) =
+				types.get_type_by_id(ty)
+			{
+				let effects =
+					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
+				Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+			} else {
+				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
+			}
+		}
 		"debug_effects" => {
 			let ty = arguments
 				.first()
@@ -130,8 +147,9 @@ pub(crate) fn call_constant_function(
 			{
 				let effects =
 					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
-				// TODO print using a different function
-				Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+				let mut buf = String::new();
+				debug_effects(&mut buf, effects, types, &environment.as_general_context(), true);
+				Ok(ConstantOutput::Diagnostic(buf))
 			} else {
 				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
 			}

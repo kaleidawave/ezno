@@ -57,13 +57,12 @@ for (let i: number = 0; i < 10; i++) {
 
 - Expected number, found "0123456789"
 
-#### While loop dependent
+#### While loop unknown iterations
 
 ```ts
 declare let i: number;
-let a = 0;
-while (i < 5) {
-    i++;
+let a: number = 0;
+while (a < i) {
     a++;
 }
 
@@ -77,7 +76,7 @@ while (i < 5) {
 #### While loop unrolling across function
 
 ```ts
-let a = 2;
+let a: number = 2;
 
 function loop(i: number) {
     while (i < 5) {
@@ -92,6 +91,23 @@ loop(1);
 ```
 
 - Expected 8, found 32
+
+#### While loop break
+
+```ts
+let a = 2;
+let i = 0;
+while (i++ < 10) {
+    a *= 2;
+    if (a > 5) {
+        break;
+    }
+}
+
+(a satisfies 2);
+```
+
+- Expected 2, found 8
 
 ### Events
 
@@ -126,7 +142,9 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-- Type "hi" does not meet property constraint number
+> Error is a little different here
+
+- Assignment mismatch
 
 ### Statements
 

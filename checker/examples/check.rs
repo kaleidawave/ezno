@@ -1,6 +1,6 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
-	use ezno_checker::{check_project, synthesis};
+	use ezno_checker::{check_project, synthesis, Diagnostic};
 	use std::{
 		env, fs,
 		path::{Path, PathBuf},
@@ -30,8 +30,8 @@ fn main() {
 	if let Ok(mut post_check_data) = post_check_data {
 		if args.iter().any(|arg| arg == "--types") {
 			eprintln!("Types:");
-			for item in post_check_data.types.into_vec_temp() {
-				eprintln!("\t{item:?}");
+			for (type_id, item) in post_check_data.types.into_vec_temp() {
+				eprintln!("\t{type_id:?}: {item:?}");
 			}
 		}
 		if args.iter().any(|arg| arg == "--events") {
@@ -52,6 +52,11 @@ fn main() {
 		eprintln!("Diagnostics:");
 		for diagnostic in diagnostics {
 			eprintln!("\t{}", diagnostic.reason());
+			if let Diagnostic::PositionWithAdditionalLabels { labels, .. } = diagnostic {
+				for (label, _) in labels.iter() {
+					eprintln!("\t\t({})", label);
+				}
+			}
 		}
 	}
 }

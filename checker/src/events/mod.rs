@@ -8,6 +8,7 @@ use crate::{
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
+		TypeArguments,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
@@ -36,6 +37,19 @@ impl RootReference {
 			Self::This => "this",
 		}
 	}
+}
+
+pub enum EventResult {
+	Return(TypeId, SpanWithSource),
+	Break {
+		label: Option<String>,
+	},
+	/// from `continue` statements, which should be called `skip`.
+	/// TODO maybe this can be abstracted
+	Continue {
+		label: Option<String>,
+	},
+	Throw,
 }
 
 /// Events which happen
@@ -72,7 +86,6 @@ pub enum Event {
 		under: PropertyKey<'static>,
 		// Can be a getter through define property
 		new: PropertyValue,
-		reflects_dependency: Option<TypeId>,
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
@@ -80,7 +93,6 @@ pub enum Event {
 		publicity: Publicity,
 		position: Option<SpanWithSource>,
 	},
-
 	/// This includes closed over variables, anything dependent
 	CallsType {
 		on: TypeId,
@@ -99,8 +111,19 @@ pub enum Event {
 		else_events: Box<[Event]>,
 		position: Option<SpanWithSource>,
 	},
+	/// Run events multiple times
+	Iterate {
+		/// TODO for of and in variants here:
+		// condition: TypeId,
+		iterate_over: Box<[Event]>,
+		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
+		initial: TypeArguments,
+	},
 	/// TODO not sure but whatever
-	Return { returned: TypeId, returned_position: SpanWithSource },
+	Return {
+		returned: TypeId,
+		returned_position: SpanWithSource,
+	},
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -124,10 +147,15 @@ pub enum Event {
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
 	},
-	/// TODO label
-	Break { position: Option<SpanWithSource> },
-	/// TODO label
-	Continue { position: Option<SpanWithSource> },
+	Break {
+		position: Option<SpanWithSource>,
+		label: Option<String>,
+	},
+	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
+	Continue {
+		position: Option<SpanWithSource>,
+		label: Option<String>,
+	},
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -144,5 +172,3 @@ pub enum CallingTiming {
 	/// TODO could use above mechanism at some point
 	AtSomePointManyTimes,
 }
-
-pub(crate) type EarlyReturn = Option<TypeId>;

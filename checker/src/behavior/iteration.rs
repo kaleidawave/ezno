@@ -1,9 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
+use source_map::{BaseSpan, SpanWithSource};
+
 use crate::{
 	behavior::{operations::CanonicalEqualityAndInequality, variables::VariableOrImport},
-	events::{apply_event, Event, RootReference},
-	types::{poly_types::FunctionTypeArguments, Constructor, PolyNature, TypeStore},
+	context::get_value_of_variable,
+	events::{application::apply_event_unknown, apply_event, Event, EventResult, RootReference},
+	types::{
+		poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
+		Constructor, PolyNature, TypeArguments, TypeStore,
+	},
 	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
 };
 
@@ -18,13 +24,15 @@ pub enum IterationBehavior<'a, A: crate::ASTImplementation> {
 	},
 }
 
-pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+pub fn synthesise_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	behavior: IterationBehavior<'a, A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 	loop_body: impl FnOnce(&mut Environment, &mut CheckingData<T, A>),
 ) {
-	let (condition, facts, loop_variables) = match behavior {
+	let is_do_while = matches!(behavior, IterationBehavior::DoWhile(..));
+
+	let (condition, result, loop_variables) = match behavior {
 		IterationBehavior::While(condition) => {
 			let (condition, events, ..) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Looping {},
@@ -37,12 +45,14 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 						checking_data,
 					);
 
-					environment.facts.events.push(Event::Conditionally {
+					// TODO not always needed
+					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Box::new([Event::Break { position: None }]),
-						else_events: Default::default(),
+						events_if_truthy: Default::default(),
+						else_events: Box::new([Event::Break { position: None, label: None }]),
 						position: None,
-					});
+					};
+					environment.facts.events.push(break_event);
 
 					loop_body(environment, checking_data);
 
@@ -66,12 +76,14 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 						checking_data,
 					);
 
-					environment.facts.events.push(Event::Conditionally {
+					// TODO not always needed
+					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Box::new([Event::Break { position: None }]),
-						else_events: Default::default(),
+						events_if_truthy: Default::default(),
+						else_events: Box::new([Event::Break { position: None, label: None }]),
 						position: None,
-					});
+					};
+					environment.facts.events.push(break_event);
 
 					condition
 				},
@@ -125,12 +137,17 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 									TypeId::TRUE
 								};
 
-								environment.facts.events.push(Event::Conditionally {
+								// TODO not always needed
+								let break_event = Event::Conditionally {
 									condition,
-									events_if_truthy: Box::new([Event::Break { position: None }]),
-									else_events: Default::default(),
+									events_if_truthy: Default::default(),
+									else_events: Box::new([Event::Break {
+										position: None,
+										label: None,
+									}]),
 									position: None,
-								});
+								};
+								environment.facts.events.push(break_event);
 
 								loop_body(environment, checking_data);
 
@@ -171,9 +188,10 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 		}
 	};
 
-	let Facts { variable_current_value, current_properties, events, .. } = facts.unwrap().0;
+	let (Facts { variable_current_value, current_properties, mut events, .. }, _closes_over) =
+		result.unwrap();
 
-	let result = calculate_iterations(
+	let fixed_iterations = calculate_maximum_iterations(
 		condition,
 		&loop_variables,
 		environment,
@@ -181,17 +199,22 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 		Values { variables: variable_current_value, properties: current_properties },
 	);
 
-	crate::utils::notify!("events in iteration = {:?}", events);
+	// let mut buf = String::new();
+	// crate::types::printing::debug_effects(
+	// 	&mut buf,
+	// 	&events,
+	// 	&checking_data.types,
+	// 	&environment.as_general_context(),
+	// 	true,
+	// );
+	// crate::utils::notify!("events in iteration = {}", buf);
 
-	if let Some((start, increment, end)) = result {
-		let iterations = (end - start) / increment;
-		crate::utils::notify!(
-			"Evaluating iteration: start={}, end={}, increment={}, iterations={}",
-			start,
-			end,
-			increment,
-			iterations
-		);
+	// TODO abstract for event application
+	if let Some(mut iterations) = fixed_iterations {
+		// These bodies always run at least once. TODO is there a better way?
+		if is_do_while {
+			iterations += 1;
+		}
 
 		// TODO temp fix
 		if let Some(loop_variables) = loop_variables {
@@ -200,25 +223,24 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 			}
 		}
 
-		let mut arguments = FunctionTypeArguments {
-			structure_arguments: Default::default(),
-			local_arguments: map_vec::Map::new(),
-			closure_id: Default::default(),
-		};
+		let result = evaluate_iterations(
+			iterations,
+			&events,
+			TypeArguments::new(),
+			None,
+			environment,
+			&mut checking_data.types,
+		);
 
-		// Think this is okay?
-		for _ in 0..(iterations.into_inner() as usize) {
-			for event in events.clone().into_iter() {
-				apply_event(
-					event,
-					crate::behavior::functions::ThisValue::UseParent,
-					&mut arguments,
-					environment,
-					&mut crate::context::calling::Target::new_default(),
-					&mut checking_data.types,
-					// Shouldn't matter
-					&mut Vec::new(),
-				);
+		if let Some(result) = result {
+			match result {
+				EventResult::Return(returned, returned_position) => {
+					environment.return_value(returned, returned_position);
+				}
+				// Already added
+				EventResult::Throw => {}
+				EventResult::Break { label } => todo!(),
+				EventResult::Continue { label } => todo!(),
 			}
 		}
 	} else {
@@ -228,22 +250,104 @@ pub fn evaluate_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>
 			closure_id: Default::default(),
 		};
 
-		todo!("apply events with special general target (same as recursion cases)");
+		// TODO maybe treat the same way as closures
+		let mut initial = map_vec::Map::new();
+		let mut filtered_events = Vec::new();
+		for event in events.clone() {
+			// TODO also nested events right?
+			if let Event::ReadsReference { reference, reflects_dependency, position } = event {
+				if let Some(reflects_dependency) = reflects_dependency {
+					if let RootReference::Variable(id) = reference {
+						let value = get_value_of_variable(
+							environment.facts_chain(),
+							id,
+							None::<&crate::types::poly_types::FunctionTypeArguments>,
+						)
+						.unwrap();
+						initial.insert(reflects_dependency, (value, position));
+					}
+				}
+			} else {
+				filtered_events.push(event);
+			}
+		}
 
-		// TODO generate loop event
+		environment
+			.facts
+			.events
+			.push(Event::Iterate { initial, iterate_over: filtered_events.into_boxed_slice() });
+		
+		// TODO can skip if at the end of a function
+		for event in events {
+			let result = apply_event_unknown(
+				event,
+				crate::behavior::functions::ThisValue::UseParent,
+				&mut arguments,
+				environment,
+				&mut crate::context::calling::Target::new_default(),
+				&mut checking_data.types,
+			);
+		}
 
-		// for event in events.clone().into_iter() {
-		// 	// TODO temp
-		// 	apply_event(
-		// 		event,
-		// 		crate::behavior::functions::ThisValue::UseParent,
-		// 		&mut arguments,
-		// 		environment,
-		// 		&mut crate::context::calling::Target::new_default(),
-		// 		&mut checking_data.types,
-		// 	);
-		// }
 	}
+}
+
+#[must_use]
+pub(crate) fn evaluate_iterations(
+	iterations: usize,
+	events: &Vec<Event>,
+	initial: TypeArguments,
+	structure_arguments: Option<StructureGenericArguments>,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> Option<EventResult> {
+	let mut arguments = FunctionTypeArguments {
+		structure_arguments,
+		local_arguments: initial,
+		closure_id: Default::default(),
+	};
+	'main_iterations: for _ in 0..iterations {
+		'inner_loop: for event in events.clone().into_iter() {
+			let mut errors = Vec::new();
+			let result = apply_event(
+				event,
+				crate::behavior::functions::ThisValue::UseParent,
+				&mut arguments,
+				environment,
+				&mut crate::context::calling::Target::new_default(),
+				types,
+				// Shouldn't matter
+				&mut errors,
+			);
+
+			if !errors.is_empty() {
+				unreachable!()
+			}
+
+			if let Some(result) = result {
+				match result {
+					EventResult::Continue { label } => {
+						if let Some(label) = label {
+							crate::utils::notify!("TODO labels");
+						}
+						break 'inner_loop;
+					}
+					EventResult::Break { label } => {
+						if let Some(label) = label {
+							crate::utils::notify!("TODO labels");
+						}
+						break 'main_iterations;
+					}
+					e @ EventResult::Return(..) => return Some(e),
+					EventResult::Throw => {
+						break 'main_iterations;
+					}
+				}
+			}
+		}
+	}
+
+	None
 }
 
 struct Values {
@@ -258,15 +362,17 @@ struct Values {
 	>,
 }
 
+/// Calculates the maximum amount of times the loop iterates
+///
 /// TODO doesn't handle breaks etc
 /// TODO look at properties as well
-fn calculate_iterations(
+fn calculate_maximum_iterations(
 	condition: TypeId,
 	loop_variables: &Option<HashMap<VariableId, (TypeId, TypeId)>>,
 	parent_environment: &Environment,
 	types: &TypeStore,
 	loop_facts: Values,
-) -> Option<(ordered_float::NotNan<f64>, ordered_float::NotNan<f64>, ordered_float::NotNan<f64>)> {
+) -> Option<usize> {
 	let condition_ty = types.get_type_by_id(condition);
 
 	crate::utils::notify!("condition is {:?}", condition_ty);
@@ -281,10 +387,10 @@ fn calculate_iterations(
 	{
 		// TODO sort by constant. Assumed here that dependent is on the LHS
 
-		if let Type::RootPolyType(PolyNature::FreeVariable { reference, based_on }) =
-			types.get_type_by_id(*lhs)
-		{
-			if let Type::Constant(Constant::Number(lhs_less_than)) = types.get_type_by_id(*rhs) {
+		let lhs_ty = types.get_type_by_id(*lhs);
+		if let Type::RootPolyType(PolyNature::FreeVariable { reference, based_on }) = lhs_ty {
+			let less_than_ty = types.get_type_by_id(*rhs);
+			if let Type::Constant(Constant::Number(roof)) = less_than_ty {
 				if let RootReference::Variable(v) = reference {
 					let value_after_running_expressions_in_loop = types.get_type_by_id(
 						if let Some((_start, end)) =
@@ -309,7 +415,7 @@ fn calculate_iterations(
 					}) = value_after_running_expressions_in_loop
 					{
 						debug_assert!(lhs == assignment, "incrementor not the same as condition?");
-						if let Type::Constant(Constant::Number(incrementor)) =
+						if let Type::Constant(Constant::Number(increment)) =
 							types.get_type_by_id(*rhs)
 						{
 							// Some(*n)
@@ -329,12 +435,25 @@ fn calculate_iterations(
 							if let crate::Type::Constant(Constant::Number(start)) =
 								types.get_type_by_id(start)
 							{
-								return Some((*start, *incrementor, *lhs_less_than));
+								let end = *roof;
+								let iterations = (end - start) / increment;
+								crate::utils::notify!(
+									"Evaluating iteration: start={}, end={}, increment={}, iterations={}",
+									start,
+									end,
+									increment,
+									iterations
+								);
+								return Some(iterations.ceil() as usize);
 							}
 						}
 					}
 				}
+			} else {
+				crate::utils::notify!("{:?} has no max", less_than_ty);
 			}
+		} else {
+			crate::utils::notify!("LHS {:?} is not free variable ", lhs_ty);
 		}
 	}
 	None

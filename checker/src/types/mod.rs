@@ -37,6 +37,8 @@ use self::{
 };
 use crate::FunctionId;
 
+pub type TypeArguments = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
+
 /// References [Type]
 ///
 /// TODO maybe u32 or u64
@@ -449,5 +451,202 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 			|| matches!(under, PropertyKey::Type(under) if is_explicit_generic(*under, types))
 	} else {
 		false
+	}
+}
+
+/// Finds the constraint of poly types
+pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+	match types.get_type_by_id(on) {
+		Type::RootPolyType(nature) => {
+			let based_on = match nature {
+				PolyNature::Parameter { fixed_to } => fixed_to,
+				PolyNature::Generic { name, eager_fixed } => eager_fixed,
+				PolyNature::Open(ty) => ty,
+				PolyNature::FreeVariable { reference, based_on } => based_on,
+				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
+			};
+
+			// TODO not sure
+
+			Some(*based_on)
+
+			// // TODO into function
+			// match nature.get_poly_pointer() {
+			// 	PolyPointer::Fixed(to) => Some(PolyBase::Fixed {
+			// 		to,
+			// 		is_open_poly: matches!(nature, PolyNature::Open(..)),
+			// 	}),
+			// 	PolyPointer::Inferred(boundary) => {
+			// 		let to = self
+			// 			.parents_iter()
+			// 			.find_map(|ctx| get_on_ctx!(ctx.bases.get_local_type_base(on)))
+			// 			// TODO temp
+			// 			.unwrap_or_else(|| {
+			// 				crate::utils::notify!("No type base on inferred poly type");
+			// 				TypeId::ANY_TYPE
+			// 			});
+
+			// 		Some(PolyBase::Dynamic { to, boundary })
+			// 	}
+			// }
+
+			// if let Some(to) = .m {
+			// 	Some(PolyBase::Fixed {
+			// 		to,
+			// 		is_open_poly: matches!(nature, PolyNature::Open(_)),
+			// 	})
+			// } else {
+			// 	Some(PolyBase::Dynamic { to: (), boundary: () })
+
+			// 	// let modified_base =
+			// 	// 	self.parents_iter().find_map(|env| get_on_ctx!(env.bases.get(&on)).copied());
+
+			// 	// let aliases = modified_base.unwrap_or(*aliases);
+
+			// 	// Some(if constraint_is_mutable {
+			// 	// 	PolyBase::Dynamic(aliases)
+			// 	// } else {
+			// 	// })
+			// }
+		}
+		Type::Constructor(constructor) => match constructor.clone() {
+			Constructor::BinaryOperator { lhs, operator, rhs } => {
+				if let MathematicalAndBitwise::Add = operator {
+					let lhs = get_thingy(lhs, types);
+					let rhs = get_thingy(rhs, types);
+					// TODO these need to be generated
+					if let (TypeId::NUMBER_TYPE, TypeId::NUMBER_TYPE) = (lhs, rhs) {
+						Some(TypeId::NUMBER_TYPE)
+					} else if let (TypeId::STRING_TYPE, _) | (_, TypeId::STRING_TYPE) = (lhs, rhs) {
+						Some(TypeId::STRING_TYPE)
+					} else {
+						// TODO new conditional
+						todo!("Based on conditional {:?} + {:?}", lhs, rhs)
+					}
+				} else {
+					Some(TypeId::NUMBER_TYPE)
+				}
+			}
+			Constructor::UnaryOperator { operand, operator } => {
+				todo!()
+				// if *constraint == TypeId::ANY_TYPE && mutable_context {
+				// 	let (operand, operator) = (operand.clone(), operator.clone());
+				// 	let constraint = to(self, data);
+				// 	self.modify_type(
+				// 		on,
+				// 		Some(Type::Constructor(Constructor::UnaryOperator {
+				// 			operator,
+				// 			operand,
+				// 								// 		})),
+				// 	);
+				// 	Some(constraint)
+				// } else {
+				// 	Some(*constraint)
+				// }
+			}
+			Constructor::Image { on, with, result } => {
+				Some(result)
+				// TODO temp
+				// if let PolyPointer::Fixed(result) = result {
+				// 	Some(PolyBase::Fixed { to: result, is_open_poly: true })
+				// } else {
+				// 	let on_base_function = self.get_poly_base(on, types);
+				// 	if let Some(base) = on_base_function {
+				// 		let (boundary, is_open_poly, ty) = base.unravel();
+				// 		if let Type::Function(func, _) = types.get_type_by_id(ty) {
+				// 			Some(func.return_type)
+				// 		} else {
+				// 			todo!()
+				// 		}
+				// 	} else {
+				// 		// TODO record ahead of time, rather than recalculating here
+				// 		let is_open_poly = with
+				// 			.iter()
+				// 			.filter_map(|arg| {
+				// 				self.get_poly_base(arg.into_type().unwrap(), types)
+				// 			})
+				// 			.all(|base| base.is_open_poly());
+
+				// 		let ty = types.get_type_by_id(on);
+				// 		if let Type::Function(func, _) = ty {
+				// 			// TODO
+				// 			Some(func.return_type)
+				// 		} else {
+				// 			let on = crate::types::printing::print_type(
+				// 				on,
+				// 				types,
+				// 				&self.into_general_context(),
+				// 				true,
+				// 			);
+				// 			unreachable!("Getting function on {}", on);
+				// 		}
+				// 	}
+				// }
+			}
+			Constructor::Property { on, under, result } => {
+				Some(result)
+
+				// `on` or `under` will be poly, but one of them may be a non-poly
+				// type and so it can be expected to be `None` here.
+				// TODO needs better primitives for controlling this
+				// let on_constraint = self.get_poly_base(on, types).unwrap_or(on);
+				// let property = match under {
+				// 	PropertyKey::Type(ty) => {
+				// 		PropertyKey::Type(self.get_poly_base(ty, types).unwrap_or(ty))
+				// 	}
+				// 	prop => prop,
+				// };
+
+				// Bad
+				// let is_open_poly =
+				// 	on_constraint.as_ref().map(PolyBase::is_open_poly).unwrap_or(true)
+				// 		&& property_constraint
+				// 			.as_ref()
+				// 			.map(PolyBase::is_open_poly)
+				// 			.unwrap_or(true);
+
+				// let on_base = on_constraint.unwrap_or(on);
+				// let property_base = property_constraint.unwrap_or(under);
+
+				// TODO abstract to function
+				// let (on_boundary, _, on_constraint) = on_base.unravel();
+				// let (property_fixed, _, property_constraint) = property_base.unravel();
+
+				// TODO temp
+				// let result = result self
+				// 	.get_property_unbound(on_constraint, PublicityKind::Public, property, types)
+				// 	.map(|property| match property {
+				// 		Logical::Pure(PropertyValue::Value(v)) => v,
+				// 		// TODO not sure?
+				// 		Logical::Pure(PropertyValue::Getter(g)) => g.return_type,
+				// 		result => todo!("{:?}", result),
+				// 	})
+				// 	.expect("Inference failed");
+			}
+			Constructor::ConditionalResult { result_union, .. } => {
+				// TODO dynamic and open poly
+				Some(result_union)
+			}
+			Constructor::TypeOperator(_) | Constructor::CanonicalRelationOperator { .. } => {
+				// TODO open poly
+				Some(TypeId::BOOLEAN_TYPE)
+			}
+			Constructor::TypeRelationOperator(op) => match op {
+				crate::types::TypeRelationOperator::Extends { .. } => Some(TypeId::BOOLEAN_TYPE),
+			},
+			// TODO sure?
+			Constructor::StructureGenerics { .. } => None,
+		},
+		_ => None,
+	}
+}
+
+fn get_thingy(on: TypeId, types: &TypeStore) -> TypeId {
+	if let Some(poly_base) = get_constraint(on, types) {
+		poly_base
+	} else if let Type::Constant(cst) = types.get_type_by_id(on) {
+		cst.get_backing_type_id()
+	} else {
+		on
 	}
 }
