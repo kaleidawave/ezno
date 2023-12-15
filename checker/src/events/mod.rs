@@ -52,6 +52,9 @@ pub enum EventResult {
 	Throw,
 }
 
+/// For iterations. TODO up for debate
+pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
+
 /// Events which happen
 ///
 /// Used for getting values and states
@@ -62,7 +65,7 @@ pub enum EventResult {
 /// TODO store positions?
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Event {
-	/// Reads variable
+	/// Reads a reference (as a free variable or `this`)
 	///
 	/// Can be used for DCE reasons, or finding variables in context
 	ReadsReference {
@@ -117,7 +120,7 @@ pub enum Event {
 		// condition: TypeId,
 		iterate_over: Box<[Event]>,
 		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
-		initial: TypeArguments,
+		initial: InitialVariables,
 	},
 	/// TODO not sure but whatever
 	Return {
@@ -146,6 +149,8 @@ pub enum Event {
 		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
+		/// Debug only
+		is_function_this: bool,
 	},
 	Break {
 		position: Option<SpanWithSource>,

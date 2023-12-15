@@ -457,38 +457,42 @@ where
 				// TODO this could be done conditionally to create less objects, but also doesn't introduce any bad side effects so
 				// TODO prototype needs to be a poly based on this.prototype. This also fixes inference
 
-				let (this_free_variable, this_constructed_object) = if let Some(this_constraint) =
-					this_constraint
-				{
-					// TODO I don't whether NEW_TARGET_ARG should have a backer
-					let prototype = checking_data.types.register_type(Type::Constructor(
-						Constructor::Property {
-							on: TypeId::NEW_TARGET_ARG,
-							under: PropertyKey::String(Cow::Owned("value".to_owned())),
-							result: this_constraint,
-						},
-					));
+				let (this_free_variable, this_constructed_object) =
+					if let Some(this_constraint) = this_constraint {
+						// TODO I don't whether NEW_TARGET_ARG should have a backer
+						let prototype = checking_data.types.register_type(Type::Constructor(
+							Constructor::Property {
+								on: TypeId::NEW_TARGET_ARG,
+								under: PropertyKey::String(Cow::Owned("value".to_owned())),
+								result: this_constraint,
+							},
+						));
 
-					let this_constructed_object = function_environment.facts.new_object(
-						Some(prototype),
-						&mut checking_data.types,
-						true,
-					);
+						let this_constructed_object = function_environment.facts.new_object(
+							Some(prototype),
+							&mut checking_data.types,
+							true,
+							true,
+						);
 
-					let this_free_variable = checking_data.types.register_type(Type::RootPolyType(
-						PolyNature::FreeVariable {
-							reference: RootReference::This,
-							based_on: this_constraint,
-						},
-					));
+						let this_free_variable = checking_data.types.register_type(
+							Type::RootPolyType(PolyNature::FreeVariable {
+								reference: RootReference::This,
+								based_on: this_constraint,
+							}),
+						);
 
-					(this_free_variable, this_constructed_object)
-				} else {
-					// TODO inferred prototype
-					let this_constructed_object =
-						function_environment.facts.new_object(None, &mut checking_data.types, true);
-					(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
-				};
+						(this_free_variable, this_constructed_object)
+					} else {
+						// TODO inferred prototype
+						let this_constructed_object = function_environment.facts.new_object(
+							None,
+							&mut checking_data.types,
+							true,
+							true,
+						);
+						(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
+					};
 
 				if let FunctionBehavior::Function { ref mut free_this_id, .. } = behavior {
 					// TODO set object as well

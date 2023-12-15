@@ -79,6 +79,7 @@ impl RootContext {
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			facts: Default::default(),
+			possibly_mutated_objects: Default::default(),
 		}
 	}
 

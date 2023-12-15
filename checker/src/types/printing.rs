@@ -461,10 +461,22 @@ pub fn debug_effects(
 					ctx,
 					debug,
 				);
-				buf.write_fmt(format_args!("  into {reflects_dependency:?}")).unwrap();
+				buf.write_fmt(format_args!(" into {reflects_dependency:?}")).unwrap();
 			}
 			Event::Setter { on, under, new, initialization, publicity, position } => {
 				if *initialization {
+					buf.write_fmt(format_args!("initialise {:?} with ", *on)).unwrap();
+					if let PropertyValue::Value(new) = new {
+						print_type_into_buf(
+							*new,
+							buf,
+							&mut HashSet::new(),
+							None,
+							types,
+							ctx,
+							debug,
+						);
+					}
 				} else {
 					print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
 					buf.push('[');
@@ -526,8 +538,18 @@ pub fn debug_effects(
 				buf.push_str("return ");
 				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
-			Event::CreateObject { prototype, referenced_in_scope_as, position } => {
-				buf.write_fmt(format_args!("create object as {referenced_in_scope_as:?}")).unwrap();
+			Event::CreateObject {
+				prototype,
+				referenced_in_scope_as,
+				position,
+				is_function_this,
+			} => {
+				if *is_function_this {
+					buf.write_fmt(format_args!("create this function object")).unwrap();
+				} else {
+					buf.write_fmt(format_args!("create object as {referenced_in_scope_as:?}"))
+						.unwrap();
+				}
 			}
 			Event::Break { position, label } => {
 				buf.push_str("break");

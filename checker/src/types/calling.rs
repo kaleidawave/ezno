@@ -15,7 +15,7 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		printing::print_type, substitute,
+		printing::print_type, substitute, ObjectNature,
 	},
 	types::{FunctionType, Type},
 	FunctionId, SpecialExpressions, TypeId,
@@ -87,7 +87,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
 	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	environment: &mut Environment,
+	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
@@ -109,7 +109,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 			arguments,
 			on,
-			environment,
+			top_environment,
 			behavior,
 			types,
 		)
@@ -124,14 +124,14 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 				CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
 				structure_generics,
 				arguments,
-				environment,
+				top_environment,
 				behavior,
 			)
 		} else {
 			Err(vec![FunctionCallingError::NotCallable {
 				calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					on,
-					&environment.as_general_context(),
+					&top_environment.as_general_context(),
 					types,
 					false,
 				),
@@ -225,7 +225,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
 	on: TypeId,
-	environment: &mut Environment,
+	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
@@ -234,70 +234,100 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 		// TODO clone
 		arguments.clone(),
-		environment,
+		top_environment,
 		behavior,
 		types,
 	)?;
 
+	// TODO can skip for pure functions (or open polys) and references that aren't used later
+	for argument in &arguments {
+		// TODO need to do in a function
+		// All properties
+		// Functions free variables etc
+		let ty = match argument {
+			SynthesisedArgument::NonSpread { ty, position } => {
+				match types.get_type_by_id(*ty) {
+					Type::Interface { .. }
+					| Type::AliasTo { .. }
+					| Type::And(_, _)
+					| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+					| Type::FunctionReference(_, _)
+					| Type::Or(_, _) => {
+						crate::utils::notify!("Unreachable");
+					}
+					Type::RootPolyType(_) | Type::Constructor(_) | Type::Constant(_) => {
+						// All dependent anyway
+					}
+					Type::Function(_, _) => {
+						crate::utils::notify!("TODO record that this could be called");
+					}
+					Type::Object(ObjectNature::RealDeal) => {
+						top_environment.possibly_mutated_objects.insert(*ty);
+						crate::utils::notify!("TODO record functions");
+					}
+					Type::SpecialObject(_) => {
+						crate::utils::notify!("TODO record stuff if mutable");
+					}
+				}
+			}
+		};
+	}
+
 	let with = arguments.into_boxed_slice();
 
-	// TODO work this out
-	let is_open_poly = false;
-
-	let reflects_dependency = if is_open_poly {
-		None
-	} else {
-		// Skip constant types
-		if matches!(result.returned_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
-			|| matches!(
-				types.get_type_by_id(result.returned_type),
-				Type::Constant(..)
-					| Type::Object(super::ObjectNature::RealDeal)
-					| Type::SpecialObject(..)
-			) {
-			// TODO nearest fact
-			environment.facts.events.push(Event::CallsType {
-				on,
-				with,
-				timing: crate::events::CallingTiming::Synchronous,
-				called_with_new, // Don't care about output.
-				reflects_dependency: None,
-				position: call_site,
-			});
-
-			return Ok(result);
-		}
-
-		let constructor = Constructor::Image {
-			// TODO on or to
+	// Skip constant returned reflects types
+	if matches!(result.returned_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
+		|| matches!(
+			types.get_type_by_id(result.returned_type),
+			Type::Constant(..)
+				| Type::Object(super::ObjectNature::RealDeal)
+				| Type::SpecialObject(..)
+		) {
+		behavior.get_latests_facts(top_environment).events.push(Event::CallsType {
 			on,
-			with: with.clone(),
-			// TODO unwrap
-			result: result.returned_type,
+			with,
+			timing: crate::events::CallingTiming::Synchronous,
+			called_with_new, // Don't care about output.
+			reflects_dependency: None,
+			position: call_site,
+		});
+
+		Ok(result)
+	} else {
+		// TODO work this out
+		let is_open_poly = false;
+		let reflects_dependency = if is_open_poly {
+			None
+		} else {
+			let constructor = Constructor::Image {
+				// TODO on or to
+				on,
+				with: with.clone(),
+				// TODO unwrap
+				result: result.returned_type,
+			};
+
+			let constructor_return = types.register_type(Type::Constructor(constructor));
+
+			Some(constructor_return)
 		};
+		behavior.get_latests_facts(top_environment).events.push(Event::CallsType {
+			on,
+			with,
+			timing: crate::events::CallingTiming::Synchronous,
+			called_with_new,
+			reflects_dependency,
+			position: call_site,
+		});
 
-		let constructor_return = types.register_type(Type::Constructor(constructor));
-
-		Some(constructor_return)
-	};
-
-	// TODO nearest fact
-	environment.facts.events.push(Event::CallsType {
-		on,
-		with,
-		timing: crate::events::CallingTiming::Synchronous,
-		called_with_new,
-		reflects_dependency,
-		position: call_site,
-	});
-
-	// TODO should wrap result in open poly
-	Ok(FunctionCallResult {
-		called: result.called,
-		returned_type: reflects_dependency.unwrap_or(result.returned_type),
-		warnings: result.warnings,
-		special: None,
-	})
+		// TODO should wrap result in open poly
+		Ok(FunctionCallResult {
+			called: result.called,
+			returned_type: reflects_dependency.unwrap_or(result.returned_type),
+			warnings: result.warnings,
+			special: None,
+		})
+	}
 }
 
 /// Errors from trying to call a function
@@ -409,7 +439,6 @@ impl FunctionType {
 				types.get_type_by_id(arg.to_type().expect("dependent spread types")).is_dependent()
 			}) || matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
 
-			// TODO temp, need a better solution
 			let call_anyway = matches!(
 				const_fn_ident,
 				"debug_type"
@@ -461,7 +490,7 @@ impl FunctionType {
 					}
 					Err(ConstantFunctionError::BadCall) => {
 						crate::utils::notify!(
-							"Constant function calling failed, not constant params"
+							"Constant function calling failed, non constant params"
 						);
 					}
 				}
@@ -493,7 +522,7 @@ impl FunctionType {
 
 				let ty = types.register_type(new_type);
 
-				behavior.get_top_level_facts(environment).events.push(Event::CallsType {
+				behavior.get_latests_facts(environment).events.push(Event::CallsType {
 					on,
 					with: arguments.to_vec().into_boxed_slice(),
 					reflects_dependency: Some(ty),

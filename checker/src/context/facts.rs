@@ -80,7 +80,9 @@ impl Facts {
 		&mut self,
 		prototype: Option<TypeId>,
 		types: &mut crate::types::TypeStore,
+		// TODO if this on environment instead it could be worked out?
 		is_under_dyn: bool,
+		is_function_this: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 		// crate::utils::notify!("New object created under {:?}", ty);
@@ -97,8 +99,12 @@ impl Facts {
 			// TODO maybe register the environment if function ...
 			// TODO register properties
 			// TODO Needs a position (or not?)
-			let value =
-				Event::CreateObject { referenced_in_scope_as: ty, prototype, position: None };
+			let value = Event::CreateObject {
+				referenced_in_scope_as: ty,
+				prototype,
+				position: None,
+				is_function_this,
+			};
 			self.events.push(value);
 		}
 

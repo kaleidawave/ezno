@@ -253,6 +253,17 @@ impl TypeStore {
 					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
+			Type::FunctionReference(_, _) => {
+				let on_function = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				// TODO undecided on this
+				on_function.or_else(|| {
+					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
+				})
+			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = ctx
 					.parents_iter()
@@ -278,6 +289,7 @@ impl TypeStore {
 				}
 			}
 			Type::RootPolyType(_nature) => {
+				// TODO None here
 				let aliases = get_constraint(on, self).unwrap();
 				// Don't think any properties exist on this poly type
 				self.get_fact_about_type(ctx, aliases, resolver, data)
@@ -295,6 +307,7 @@ impl TypeStore {
 			}
 			Type::Constructor(constructor) => {
 				// Don't think any properties exist on this poly type
+				// TODO None here
 				let constraint = get_constraint(on, self).unwrap();
 				// TODO might need to send more information here, rather than forgetting via .get_type
 				self.get_fact_about_type(ctx, on, resolver, data)
@@ -320,7 +333,6 @@ impl TypeStore {
 				.or_else(|| {
 					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
 				}),
-			Type::FunctionReference(_, _) => todo!(),
 			Type::SpecialObject(_) => todo!(),
 		}
 	}

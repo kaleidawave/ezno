@@ -106,6 +106,7 @@ pub(crate) fn call_constant_function(
 				});
 				Ok(ConstantOutput::Value(result))
 			} else {
+				// This can occur!!
 				Err(ConstantFunctionError::BadCall)
 			}
 		}

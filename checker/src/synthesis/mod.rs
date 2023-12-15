@@ -128,6 +128,8 @@ impl crate::ASTImplementation for EznoParser {
 	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
+	type VariableField<'a> = parser::VariableField<parser::VariableFieldInSourceCode>;
+
 	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
 
 	fn module_from_string(

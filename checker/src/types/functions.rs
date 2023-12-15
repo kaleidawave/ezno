@@ -120,6 +120,8 @@ pub(crate) fn create_this_before_function_synthesis(
 		referenced_in_scope_as: ty,
 		prototype: crate::events::PrototypeArgument::Yeah(prototype),
 		position: None,
+		// TODO right?
+		is_function_this: true,
 	};
 	facts.events.push(value);
 

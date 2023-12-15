@@ -70,6 +70,14 @@ impl FunctionTypeArguments {
 	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId, types: &TypeStore) {
 		self.local_arguments.insert(id, (value, SpanWithSource::NULL_SPAN));
 	}
+
+	pub(crate) fn new() -> Self {
+		Self {
+			structure_arguments: Default::default(),
+			local_arguments: SmallMap::new(),
+			closure_id: Default::default(),
+		}
+	}
 }
 
 pub(crate) trait TypeArgumentStore {

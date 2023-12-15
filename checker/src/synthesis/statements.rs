@@ -131,16 +131,32 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		),
 		Statement::ForLoopStatement(stmt) => match &stmt.condition {
 			parser::statements::ForLoopCondition::ForOf { keyword, variable, of, position } => {
-				checking_data.raise_unimplemented_error(
-					"for of and in",
-					stmt.get_position().with_source(environment.get_source()),
-				);
+				synthesise_iteration(
+					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
+					environment,
+					checking_data,
+					|environment, checking_data| {
+						synthesise_block_or_single_statement(
+							&stmt.inner,
+							environment,
+							checking_data,
+						)
+					},
+				)
 			}
 			parser::statements::ForLoopCondition::ForIn { keyword, variable, r#in, position } => {
-				checking_data.raise_unimplemented_error(
-					"for of and in",
-					stmt.get_position().with_source(environment.get_source()),
-				);
+				synthesise_iteration(
+					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
+					environment,
+					checking_data,
+					|environment, checking_data| {
+						synthesise_block_or_single_statement(
+							&stmt.inner,
+							environment,
+							checking_data,
+						)
+					},
+				)
 			}
 			parser::statements::ForLoopCondition::Statements {
 				initialiser,
@@ -223,9 +239,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		Statement::Comment(..) | Statement::MultiLineComment(..) => {
+		Statement::Comment(s, _) if s.starts_with("@ts") => {
 			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
 		}
+		Statement::MultiLineComment(s, _) if s.starts_with('*') => {
+			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+		}
+		Statement::Comment(..) | Statement::MultiLineComment(..) => {}
 		Statement::Debugger(_) | Statement::Empty(_) => {}
 	}
 }

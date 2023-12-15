@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
+	context::{environment, facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
 	subtyping::{type_is_subtype, type_is_subtype_of_property, SubTypeResult},
@@ -143,7 +143,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	publicity: Publicity,
 	under: PropertyKey,
 	with: Option<TypeId>,
-	environment: &mut Environment,
+	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
@@ -154,10 +154,13 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		FromAObject(TypeId),
 	}
 
-	// || under == TypeId::ERROR_TYPE
-	if on == TypeId::ERROR_TYPE {
+	if on == TypeId::ERROR_TYPE
+		|| matches!(under, PropertyKey::Type(under) if under == TypeId::ERROR_TYPE)
+	{
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
+
+	// TODO rearrange here
 
 	let value: GetResult = if let Some(constraint) = get_constraint(on, types) {
 		GetResult::AccessIntroducesDependence(evaluate_get_on_poly(
@@ -166,7 +169,26 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			publicity,
 			under.clone(),
 			with,
-			environment,
+			top_environment,
+			behavior,
+			types,
+		)?)
+	} else if top_environment.possibly_mutated_objects.contains(&on) {
+		let items = top_environment.get_object_constraints(on);
+		let constraint = if items.len() == 1 {
+			items.into_iter().next().unwrap()
+		} else if items.len() == 0 {
+			todo!("inference")
+		} else {
+			todo!("build and type")
+		};
+		GetResult::AccessIntroducesDependence(evaluate_get_on_poly(
+			constraint,
+			on,
+			publicity,
+			under.clone(),
+			with,
+			top_environment,
 			behavior,
 			types,
 		)?)
@@ -175,7 +197,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		// 	todo!()
 		// }
 		// TODO
-		return get_from_an_object(on, publicity, under, environment, behavior, types);
+		return get_from_an_object(on, publicity, under, top_environment, behavior, types);
 	};
 
 	let reflects_dependency = match value {
@@ -183,7 +205,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		GetResult::FromAObject(_) => None,
 	};
 
-	behavior.get_top_level_facts(environment).events.push(Event::Getter {
+	behavior.get_latests_facts(top_environment).events.push(Event::Getter {
 		on,
 		under: under.into_owned(),
 		reflects_dependency,
@@ -480,7 +502,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// }
 
 	// if E::CHECK_PARAMETERS {
-	let object_constraint = environment.get_object_constraint(on);
+	let object_constraint = environment.get_object_constraints(on);
 
 	for constraint in object_constraint {
 		let property_constraint =
@@ -559,7 +581,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		match fact {
 			Logical::Pure(og) => match og {
 				PropertyValue::Deleted | PropertyValue::Value(..) => {
-					let facts = behavior.get_top_level_facts(environment);
+					let facts = behavior.get_latests_facts(environment);
 					facts.current_properties.entry(on).or_default().push((
 						publicity,
 						under.into_owned(),
@@ -582,7 +604,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: implies_on, antecedent } => {
 				crate::utils::notify!("Check that `implies_on` could be a setter here");
-				let facts = behavior.get_top_level_facts(environment);
+				let facts = behavior.get_latests_facts(environment);
 				facts.current_properties.entry(on).or_default().push((
 					publicity,
 					under.into_owned(),
@@ -602,7 +624,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		// TODO abstract
 		// TODO only if dependent?
 		let register_setter_event = true;
-		behavior.get_top_level_facts(environment).register_property(
+		behavior.get_latests_facts(environment).register_property(
 			on,
 			publicity,
 			under.into_owned(),

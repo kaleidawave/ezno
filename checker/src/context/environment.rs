@@ -1,5 +1,5 @@
 use source_map::{SourceId, Span, SpanWithSource};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
 	behavior::{
@@ -49,7 +49,7 @@ pub struct Syntax<'a> {
 	/// Not to be confused with `used_parent_references`
 	pub closed_over_references: ClosedOverReferencesInScope,
 
-	/// TODO WIP!
+	/// TODO WIP! server, client, worker etc
 	pub location: ContextLocation,
 }
 

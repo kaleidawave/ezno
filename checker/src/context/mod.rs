@@ -182,6 +182,9 @@ pub struct Context<T: ContextType> {
 	/// TODO replace with facts.value_of_this
 	pub(crate) can_reference_this: CanReferenceThis,
 
+	/// When a objects `TypeId` is in here getting a property returns a constructor rather than
+	pub possibly_mutated_objects: HashSet<TypeId>,
+
 	// pub (crate) facts: Facts,
 	pub facts: Facts,
 }
@@ -564,7 +567,9 @@ impl<T: ContextType> Context<T> {
 	/// Get all properties on a type (for printing and other non one property uses)
 	///
 	/// - TODO make aware of ands and aliases
+	/// - TODO prototypes
 	/// - TODO could this be an iterator
+	/// - TODO return whether it is fixed
 	pub fn get_properties_on_type(
 		&self,
 		base: TypeId,
@@ -722,6 +727,7 @@ impl<T: ContextType> Context<T> {
 			facts: Default::default(),
 			object_constraints: Default::default(),
 			bases: Default::default(),
+			possibly_mutated_objects: Default::default(),
 		}
 	}
 
@@ -796,11 +802,13 @@ impl<T: ContextType> Context<T> {
 			object_constraints,
 			deferred_function_constraints,
 			mut facts,
+			possibly_mutated_objects,
 		} = new_environment;
 
 		self.bases.merge(bases, self.context_id);
 
 		self.variable_names.extend(variable_names);
+		self.possibly_mutated_objects.extend(possibly_mutated_objects);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
@@ -1085,7 +1093,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO speed up
-	pub(crate) fn get_object_constraint(&self, on: TypeId) -> Vec<TypeId> {
+	pub(crate) fn get_object_constraints(&self, on: TypeId) -> Vec<TypeId> {
 		self.parents_iter()
 			.flat_map(|env| {
 				get_on_ctx!(env.object_constraints.get(&on))
@@ -1124,7 +1132,7 @@ impl<T: ContextType> Context<T> {
 						_ => None,
 					}
 				} else {
-					crate::utils::notify!("TODO get root type, returning Error for now");
+					crate::utils::notify!("TODO get root this type, returning ERROR_TYPE for now");
 					Some(TypeId::ERROR_TYPE)
 				}
 			})

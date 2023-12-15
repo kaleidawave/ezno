@@ -99,6 +99,9 @@ pub trait ASTImplementation: Sized {
 	type MultipleExpression<'a>;
 	type ForStatementInitiliser<'a>;
 
+	/// Used in `for of`, `for in` and function parameters
+	type VariableField<'a>;
+
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
 	/// # Errors

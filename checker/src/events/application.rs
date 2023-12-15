@@ -59,7 +59,7 @@ pub(crate) fn apply_event(
 
 			// if not closed over!!
 			// TODO temp assigns to many contexts, which is bad
-			let facts = target.get_top_level_facts(environment);
+			let facts = target.get_latests_facts(environment);
 			for closure_id in type_arguments
 				.closure_id
 				.iter()
@@ -94,7 +94,11 @@ pub(crate) fn apply_event(
 			}
 		}
 		Event::Setter { on, under, new, initialization, publicity, position } => {
+			let was = on;
 			let on = substitute(on, type_arguments, environment, types);
+
+			crate::utils::notify!("was {:?} now {:?}", was, on);
+
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
@@ -143,7 +147,7 @@ pub(crate) fn apply_event(
 						on
 					};
 				target
-					.get_top_level_facts(environment)
+					.get_latests_facts(environment)
 					.register_property(on, publicity, under, new, true, position);
 			} else {
 				let result =
@@ -248,7 +252,7 @@ pub(crate) fn apply_event(
 		Event::Throw(thrown, position) => {
 			let substituted_thrown = substitute(thrown, type_arguments, environment, types);
 
-			target.get_top_level_facts(environment).throw_value(substituted_thrown, position);
+			target.get_latests_facts(environment).throw_value(substituted_thrown, position);
 
 			// TODO write down why result isn't added here
 			return Some(EventResult::Throw);
@@ -323,7 +327,7 @@ pub(crate) fn apply_event(
 				// - variable and property values (these aren't read from events)
 				// - immutable, mutable, prototypes etc
 				// }
-				let facts = target.get_top_level_facts(environment);
+				let facts = target.get_latests_facts(environment);
 				for (var, truth) in truthy_facts.variable_current_value {
 					let entry = facts.variable_current_value.entry(var);
 					entry.and_modify(|existing| {
@@ -335,7 +339,7 @@ pub(crate) fn apply_event(
 					});
 				}
 
-				target.get_top_level_facts(environment).events.push(Event::Conditionally {
+				target.get_latests_facts(environment).events.push(Event::Conditionally {
 					condition,
 					events_if_truthy: truthy_facts.events.into_boxed_slice(),
 					else_events: else_facts.events.into_boxed_slice(),
@@ -348,33 +352,45 @@ pub(crate) fn apply_event(
 			return Some(EventResult::Return(substituted_returned, returned_position));
 		}
 		// TODO Needs a position (or not?)
-		Event::CreateObject { referenced_in_scope_as, prototype, position } => {
+		Event::CreateObject { referenced_in_scope_as, prototype, position, is_function_this } => {
+			// TODO
 			let is_under_dyn = true;
 
 			let new_object_id = match prototype {
 				PrototypeArgument::Yeah(prototype) => {
 					let prototype = substitute(prototype, type_arguments, environment, types);
-					target.get_top_level_facts(environment).new_object(
+					target.get_latests_facts(environment).new_object(
 						Some(prototype),
 						types,
 						is_under_dyn,
+						is_function_this,
 					)
 				}
-				PrototypeArgument::None => {
-					target.get_top_level_facts(environment).new_object(None, types, is_under_dyn)
-				}
+				PrototypeArgument::None => target.get_latests_facts(environment).new_object(
+					None,
+					types,
+					is_under_dyn,
+					is_function_this,
+				),
 				PrototypeArgument::Function(id) => {
 					types.register_type(crate::Type::Function(id, this_value))
 				}
 			};
 
 			// TODO conditionally if any properties are structurally generic
-			let new_object_id_with_curried_arguments =
-				curry_arguments(type_arguments, types, new_object_id);
+			// let new_object_id_with_curried_arguments =
+			// 	curry_arguments(type_arguments, types, new_object_id);
+
+			// crate::utils::notify!(
+			// 	"Setting {:?} to {:?}",
+			// 	referenced_in_scope_as,
+			// 	new_object_id_with_curried_arguments
+			// );
 
 			type_arguments.set_id_from_reference(
 				referenced_in_scope_as,
-				new_object_id_with_curried_arguments,
+				new_object_id,
+				// new_object_id_with_curried_arguments,
 				types,
 			);
 		}
@@ -383,22 +399,23 @@ pub(crate) fn apply_event(
 		Event::Iterate { iterate_over, initial } => {
 			// let _condition = substitute(condition, type_arguments, environment, types);
 
-			let initial = initial
-				.into_iter()
-				.map(|(v, (t, p))| (v, (substitute(t, type_arguments, environment, types), p)))
-				.collect();
+			// TODO this might clash
+			for (id, value) in initial {
+				let value = substitute(value, type_arguments, environment, types);
+				target.get_latests_facts(environment).variable_current_value.insert(id, value);
+			}
 
-			crate::utils::notify!("{:?}", initial);
-
-			// TODO temp
 			crate::behavior::iteration::evaluate_iterations(
+				// TODO temp
 				1000,
 				&iterate_over.to_vec(),
-				initial,
-				Some(type_arguments.to_structural_generic_arguments()),
+				// Yeah
+				type_arguments,
 				environment,
 				types,
 			)?;
+
+			crate::utils::notify!("Loop did not exit");
 		}
 	}
 	None
@@ -466,7 +483,9 @@ pub(crate) fn apply_event_unknown(
 			}
 		}
 		Event::Return { returned, returned_position } => todo!(),
-		Event::CreateObject { prototype, referenced_in_scope_as, position } => todo!(),
+		Event::CreateObject { prototype, referenced_in_scope_as, position, is_function_this } => {
+			todo!()
+		}
 		Event::Break { position, label } => {
 			// TODO conditionally
 		}

@@ -130,6 +130,8 @@ pub enum Type {
 }
 
 /// TODO difference between untyped and typed parameters and what about parameter based for any
+///
+/// Most of the difference here is just for debugging, printing etc
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PolyNature {
 	Parameter {
@@ -140,14 +142,13 @@ pub enum PolyNature {
 		eager_fixed: TypeId,
 	},
 	Open(TypeId),
-	/// For functions and for loops where something in the scope can mutate (so not constant)
-	/// between runs.
+	/// For functions and for loops where something in the scope can mutate
+	/// (so not constant) between runs.
 	FreeVariable {
 		reference: RootReference,
 		based_on: TypeId,
 	},
 	RecursiveFunction(FunctionId, TypeId),
-	// Object
 }
 
 // TODO
@@ -159,6 +160,7 @@ pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	false
 }
 
+/// TODO split
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum ObjectNature {
 	/// Actual allocated object
@@ -455,6 +457,8 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 }
 
 /// Finds the constraint of poly types
+///
+/// **Also looks at possibly mutated things
 pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
 		Type::RootPolyType(nature) => {
@@ -512,8 +516,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
 				if let MathematicalAndBitwise::Add = operator {
-					let lhs = get_thingy(lhs, types);
-					let rhs = get_thingy(rhs, types);
+					let lhs = get_larger_type(lhs, types);
+					let rhs = get_larger_type(rhs, types);
 					// TODO these need to be generated
 					if let (TypeId::NUMBER_TYPE, TypeId::NUMBER_TYPE) = (lhs, rhs) {
 						Some(TypeId::NUMBER_TYPE)
@@ -637,11 +641,15 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			// TODO sure?
 			Constructor::StructureGenerics { .. } => None,
 		},
+		Type::Object(ObjectNature::RealDeal) => {
+			crate::utils::notify!("Might be missing some obj here");
+			None
+		}
 		_ => None,
 	}
 }
 
-fn get_thingy(on: TypeId, types: &TypeStore) -> TypeId {
+fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	if let Some(poly_base) = get_constraint(on, types) {
 		poly_base
 	} else if let Type::Constant(cst) = types.get_type_by_id(on) {

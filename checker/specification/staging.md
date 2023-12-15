@@ -1,11 +1,11 @@
 Currently implementing:
 
-### Loops
+### Iteration
 
 #### While loop unrolling
 
 ```ts
-let a = 2;
+let a = 1;
 let i = 0;
 while (i < 5) {
     a *= 2;
@@ -15,12 +15,12 @@ while (i < 5) {
 (a satisfies 8);
 ```
 
-- Expected 8, found 64
+- Expected 8, found 32
 
-#### While loop condition effects
+#### While loop event in the condition
 
 ```ts
-let a = 2;
+let a = 1;
 let i = 0;
 while (i++ < 5) {
     a *= 2;
@@ -29,7 +29,7 @@ while (i++ < 5) {
 (a satisfies 8);
 ```
 
-- Expected 8, found 64
+- Expected 8, found 32
 
 #### Do while loop
 
@@ -44,7 +44,7 @@ do {
 
 - Expected 8, found 3
 
-#### For loop (conditional)
+#### For loop with initialiser and condition
 
 ```ts
 let a: string = "";
@@ -57,7 +57,7 @@ for (let i: number = 0; i < 10; i++) {
 
 - Expected number, found "0123456789"
 
-#### While loop unknown iterations
+#### While loop with unknown number of iterations
 
 ```ts
 declare let i: number;
@@ -73,26 +73,24 @@ while (a < i) {
 
 > Important that type is widened to 'number' (think it is an open poly in this case)
 
-#### While loop unrolling across function
+#### While loop unrolling as an effect
 
 ```ts
-let a: number = 2;
-
-function loop(i: number) {
-    while (i < 5) {
-        a *= 2;
-        i++;
+function loop(n: number, c: string) {
+    let a: string = c;
+    let i: number = 0;
+    while (i++ < n) {
+        a += c
     }
+    return a
 }
 
-loop(1);
-
-(a satisfies 8);
+(loop(10, "!") satisfies number);
 ```
 
-- Expected 8, found 32
+- Expected number, found "!!!!!!!!!!"
 
-#### While loop break
+#### Break in a while loop
 
 ```ts
 let a = 2;
@@ -109,9 +107,28 @@ while (i++ < 10) {
 
 - Expected 2, found 8
 
+#### Continue in a while loop
+
+> With the continue the update to `a` only happens on even runs (5 times)
+
+```ts
+let a = 2;
+let i = 0;
+while (i++ < 10) {
+    if (i % 2) {
+        continue;
+    }
+    a *= 2;
+}
+
+(a satisfies 2);
+```
+
+- Expected 2, found 64
+
 ### Events
 
-#### TDZ in a function
+#### TDZ from free variable (across function)
 
 ```ts
 function getX() {
@@ -142,9 +159,28 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-> Error is a little different here
+> Error could be better. Full one contains labels with more information
 
 - Assignment mismatch
+
+#### Mutating an object by a function
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: { x: number }) => any) {
+    const obj: { x: number } = { x: 8 };
+    callback(obj);
+    (obj.x satisfies 8);
+    return obj;
+}
+
+const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
+(object.x satisfies string);
+```
+
+- Expected 8, found number
+- Expected string, found 2
 
 ### Statements
 

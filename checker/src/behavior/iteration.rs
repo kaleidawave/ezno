@@ -8,7 +8,8 @@ use crate::{
 	events::{application::apply_event_unknown, apply_event, Event, EventResult, RootReference},
 	types::{
 		poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
-		Constructor, PolyNature, TypeArguments, TypeStore,
+		printing::print_type,
+		Constructor, ObjectNature, PolyNature, TypeArguments, TypeStore,
 	},
 	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
 };
@@ -21,6 +22,14 @@ pub enum IterationBehavior<'a, A: crate::ASTImplementation> {
 		initialiser: &'a Option<A::ForStatementInitiliser<'a>>,
 		condition: &'a Option<A::MultipleExpression<'a>>,
 		afterthought: &'a Option<A::MultipleExpression<'a>>,
+	},
+	ForIn {
+		lhs: &'a A::VariableField<'a>,
+		rhs: &'a A::MultipleExpression<'a>,
+	},
+	ForOf {
+		lhs: &'a A::VariableField<'a>,
+		rhs: &'a A::Expression<'a>,
 	},
 }
 
@@ -186,6 +195,26 @@ pub fn synthesise_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementatio
 
 			result
 		}
+		IterationBehavior::ForIn { lhs, rhs } => {
+			// TODO for of Object.keys ???
+			let result = A::synthesise_multiple_expression(
+				rhs,
+				TypeId::ANY_TYPE,
+				environment,
+				checking_data,
+			);
+			if let Type::Object(ObjectNature::RealDeal) = checking_data.types.get_type_by_id(result)
+			{
+				for (publicity, property, _value) in environment.get_properties_on_type(result) {
+					// TODO enumerable
+					crate::utils::notify!("Property: {:?}", property);
+				}
+				return;
+			} else {
+				todo!("dependent in")
+			}
+		}
+		IterationBehavior::ForOf { lhs, rhs } => todo!(),
 	};
 
 	let (Facts { variable_current_value, current_properties, mut events, .. }, _closes_over) =
@@ -226,8 +255,8 @@ pub fn synthesise_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementatio
 		let result = evaluate_iterations(
 			iterations,
 			&events,
-			TypeArguments::new(),
-			None,
+			// TODO temp
+			&mut FunctionTypeArguments::new(),
 			environment,
 			&mut checking_data.types,
 		);
@@ -244,51 +273,58 @@ pub fn synthesise_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementatio
 			}
 		}
 	} else {
-		let mut arguments = FunctionTypeArguments {
-			structure_arguments: Default::default(),
-			local_arguments: map_vec::Map::new(),
-			closure_id: Default::default(),
-		};
-
 		// TODO maybe treat the same way as closures
 		let mut initial = map_vec::Map::new();
-		let mut filtered_events = Vec::new();
-		for event in events.clone() {
+
+		for event in &events {
 			// TODO also nested events right?
 			if let Event::ReadsReference { reference, reflects_dependency, position } = event {
-				if let Some(reflects_dependency) = reflects_dependency {
-					if let RootReference::Variable(id) = reference {
-						let value = get_value_of_variable(
+				if let Some(free_variable_id) = reflects_dependency {
+					if let RootReference::Variable(variable_id) = reference {
+						let value_before_iterations = get_value_of_variable(
 							environment.facts_chain(),
-							id,
+							*variable_id,
 							None::<&crate::types::poly_types::FunctionTypeArguments>,
 						)
 						.unwrap();
-						initial.insert(reflects_dependency, (value, position));
+						crate::utils::notify!(
+							"'{}' has initial type {}",
+							environment.get_variable_name(*variable_id),
+							print_type(
+								value_before_iterations,
+								&checking_data.types,
+								&environment.as_general_context(),
+								true
+							)
+						);
+						initial.insert(*variable_id, value_before_iterations);
+						// initial.insert(free_variable_id, (value_before_iterations, position));
+
+						environment
+							.facts
+							.variable_current_value
+							.insert(*variable_id, *free_variable_id);
 					}
 				}
-			} else {
-				filtered_events.push(event);
 			}
 		}
 
 		environment
 			.facts
 			.events
-			.push(Event::Iterate { initial, iterate_over: filtered_events.into_boxed_slice() });
-		
-		// TODO can skip if at the end of a function
-		for event in events {
-			let result = apply_event_unknown(
-				event,
-				crate::behavior::functions::ThisValue::UseParent,
-				&mut arguments,
-				environment,
-				&mut crate::context::calling::Target::new_default(),
-				&mut checking_data.types,
-			);
-		}
+			.push(Event::Iterate { initial, iterate_over: events.into_boxed_slice() });
 
+		// TODO can skip if at the end of a function
+		// for event in events {
+		// 	let result = apply_event_unknown(
+		// 		event,
+		// 		crate::behavior::functions::ThisValue::UseParent,
+		// 		&mut arguments,
+		// 		environment,
+		// 		&mut crate::context::calling::Target::new_default(),
+		// 		&mut checking_data.types,
+		// 	);
+		// }
 	}
 }
 
@@ -296,23 +332,17 @@ pub fn synthesise_iteration<'a, T: crate::ReadFromFS, A: crate::ASTImplementatio
 pub(crate) fn evaluate_iterations(
 	iterations: usize,
 	events: &Vec<Event>,
-	initial: TypeArguments,
-	structure_arguments: Option<StructureGenericArguments>,
+	arguments: &mut FunctionTypeArguments,
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> Option<EventResult> {
-	let mut arguments = FunctionTypeArguments {
-		structure_arguments,
-		local_arguments: initial,
-		closure_id: Default::default(),
-	};
 	'main_iterations: for _ in 0..iterations {
 		'inner_loop: for event in events.clone().into_iter() {
 			let mut errors = Vec::new();
 			let result = apply_event(
 				event,
 				crate::behavior::functions::ThisValue::UseParent,
-				&mut arguments,
+				arguments,
 				environment,
 				&mut crate::context::calling::Target::new_default(),
 				types,
