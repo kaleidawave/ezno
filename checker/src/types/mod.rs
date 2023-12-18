@@ -160,6 +160,16 @@ pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
 	false
 }
 
+/// not full constant but
+#[must_use]
+pub fn is_type_constant(ty: TypeId, types: &TypeStore) -> bool {
+	matches!(ty, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
+		|| matches!(
+			types.get_type_by_id(ty),
+			Type::Constant(..) | Type::Object(ObjectNature::RealDeal) | Type::SpecialObject(..)
+		)
+}
+
 /// TODO split
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum ObjectNature {
@@ -524,6 +534,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 					} else if let (TypeId::STRING_TYPE, _) | (_, TypeId::STRING_TYPE) = (lhs, rhs) {
 						Some(TypeId::STRING_TYPE)
 					} else {
+						crate::utils::notify!("lhs = {:?}", types.get_type_by_id(lhs));
 						// TODO new conditional
 						todo!("Based on conditional {:?} + {:?}", lhs, rhs)
 					}
@@ -588,6 +599,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// }
 			}
 			Constructor::Property { on, under, result } => {
+				crate::utils::notify!("Here, result of a property get");
 				Some(result)
 
 				// `on` or `under` will be poly, but one of them may be a non-poly

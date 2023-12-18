@@ -121,6 +121,15 @@ pub(crate) fn call_constant_function(
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
+		"debug_type_rust" => {
+			let id = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.to_type()
+				.map_err(|()| ConstantFunctionError::BadCall)?;
+			let ty = types.get_type_by_id(id);
+			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
+		}
 		"debug_effects_rust" => {
 			let ty = arguments
 				.first()

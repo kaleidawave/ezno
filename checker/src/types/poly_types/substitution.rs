@@ -60,6 +60,9 @@ pub(crate) fn substitute(
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
 				id
+			} else if let PolyNature::Generic { .. } = nature {
+				crate::utils::notify!("Could not find argument generic");
+				id
 			} else {
 				// Other root poly types cases handled by the early return
 				let on = crate::types::printing::print_type(
@@ -80,7 +83,7 @@ pub(crate) fn substitute(
 				let rhs = substitute(rhs, arguments, environment, types);
 
 				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
-					Ok(res) => res,
+					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
 							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
@@ -271,7 +274,7 @@ pub(crate) fn substitute(
 				let rhs = substitute(rhs, arguments, environment, types);
 
 				match evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false) {
-					Ok(res) => res,
+					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
 							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"

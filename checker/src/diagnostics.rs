@@ -1,6 +1,9 @@
 //! Contains type checking errors, warnings and related structures
 
+#![allow(clippy::upper_case_acronyms)]
+
 use crate::{
+	context::environment::Label,
 	diagnostics,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
@@ -47,6 +50,11 @@ pub enum Diagnostic {
 /// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
 pub struct TDZ {
 	pub variable_name: String,
+	pub position: SpanWithSource,
+}
+
+pub struct NotInLoopOrCouldNotFindLabel {
+	pub label: Label,
 	pub position: SpanWithSource,
 }
 
@@ -208,7 +216,7 @@ impl TypeStringRepresentation {
 				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
 					(left, right)
 				{
-					l.extend(r.chars());
+					l.push_str(&r);
 					TypeStringRepresentation::Type(l)
 				} else {
 					unreachable!()
@@ -253,7 +261,9 @@ mod defined_errors_and_warnings {
 	use crate::Diagnostic;
 	use std::path;
 
-	use super::{PropertyRepresentation, TypeStringRepresentation, TDZ};
+	use super::{
+		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeStringRepresentation, TDZ,
+	};
 
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
 	/// e.g. cannot Call, cannot equate, duplicate key etc
@@ -264,6 +274,7 @@ mod defined_errors_and_warnings {
 			property: PropertyRepresentation,
 			site: SpanWithSource,
 		},
+		NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 		RestParameterAnnotationShouldBeArrayType(SpanWithSource),
 		CouldNotFindVariable {
 			variable: &'a str,
@@ -710,6 +721,7 @@ mod defined_errors_and_warnings {
 					position,
 					kind,
 				},
+				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
 			}
 		}
 	}

@@ -3,7 +3,7 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	behavior::functions::ThisValue,
+	behavior::{functions::ThisValue, iteration::IterationKind},
 	context::{calling::Target, facts::Publicity, get_on_ctx, CallCheckingBehavior},
 	types::{
 		calling::CalledWithNew,
@@ -39,15 +39,16 @@ impl RootReference {
 	}
 }
 
+/// If `carry == 0` then break
 pub enum EventResult {
 	Return(TypeId, SpanWithSource),
 	Break {
-		label: Option<String>,
+		carry: u8,
 	},
 	/// from `continue` statements, which should be called `skip`.
 	/// TODO maybe this can be abstracted
 	Continue {
-		label: Option<String>,
+		carry: u8,
 	},
 	Throw,
 }
@@ -116,6 +117,7 @@ pub enum Event {
 	},
 	/// Run events multiple times
 	Iterate {
+		kind: IterationKind,
 		/// TODO for of and in variants here:
 		// condition: TypeId,
 		iterate_over: Box<[Event]>,
@@ -154,12 +156,12 @@ pub enum Event {
 	},
 	Break {
 		position: Option<SpanWithSource>,
-		label: Option<String>,
+		carry: u8,
 	},
 	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
 	Continue {
 		position: Option<SpanWithSource>,
-		label: Option<String>,
+		carry: u8,
 	},
 }
 

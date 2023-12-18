@@ -50,9 +50,9 @@ struct AddElseClause;
 
 impl VisitorMut<BlockItemMut<'_>, ()> for AddElseClause {
 	fn visit_mut(&mut self, item: &mut BlockItemMut, _data: &mut (), _chain: &Chain) {
-		if let BlockItemMut::SingleStatement(Statement::IfStatement(if_statement))
+		if let BlockItemMut::SingleStatement(Statement::If(if_statement))
 		| BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Statement(
-			Statement::IfStatement(if_statement),
+			Statement::If(if_statement),
 		)) = item
 		{
 			if if_statement.trailing_else.is_none() {

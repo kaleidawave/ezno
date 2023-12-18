@@ -567,6 +567,7 @@ impl TypeCombinable for TypeId {
 }
 
 impl<A: crate::ASTImplementation> PostCheckData<A> {
+	#[must_use]
 	pub fn is_function_called(&self, function_id: FunctionId) -> bool {
 		self.types.called_functions.contains(&function_id)
 	}

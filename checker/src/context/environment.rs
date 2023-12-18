@@ -14,7 +14,7 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
+	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{Event, RootReference},
 	subtyping::BasicEquality,
 	types::{
@@ -115,6 +115,8 @@ pub enum FunctionScope {
 	},
 }
 
+pub type Label = Option<String>;
+
 /// TODO name of structure
 /// TODO conditionals should have conditional proofs (separate from the ones on context)
 #[derive(Debug, Clone)]
@@ -128,10 +130,12 @@ pub enum Scope {
 	Conditional {
 		/// Something that is truthy for this to run
 		antecedent: TypeId,
+
+		is_switch: Option<Label>,
 	},
 	/// Variables here are dependent on the iteration,
 	Looping {
-		// TODO on: Proofs,
+		label: Label, // TODO on: Proofs,
 	},
 	TryBlock {},
 	// Just blocks and modules
@@ -824,15 +828,14 @@ impl<'a> Environment<'a> {
 				og_var.get_id(),
 				None::<&crate::types::poly_types::FunctionTypeArguments>,
 			);
-			match current_value {
-				Some(current_value) => Ok(VariableWithValue(og_var.clone(), current_value)),
-				None => {
-					checking_data.diagnostics_container.add_error(TypeCheckError::TDZ(TDZ {
-						variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
-						position,
-					}));
-					Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
-				}
+			if let Some(current_value) = current_value {
+				Ok(VariableWithValue(og_var.clone(), current_value))
+			} else {
+				checking_data.diagnostics_container.add_error(TypeCheckError::TDZ(TDZ {
+					variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
+					position,
+				}));
+				Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
 			}
 		}
 	}
@@ -861,8 +864,10 @@ impl<'a> Environment<'a> {
 		}
 
 		let (truthy_result, truthy_events) = {
-			let mut truthy_environment =
-				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
+			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
+				antecedent: condition,
+				is_switch: None,
+			});
 
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
@@ -872,6 +877,7 @@ impl<'a> Environment<'a> {
 		if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
+				is_switch: None,
 			});
 
 			let falsy_result = else_evaluate(&mut falsy_environment, checking_data);
@@ -915,6 +921,44 @@ impl<'a> Environment<'a> {
 		self.facts.events.push(Event::Return { returned, returned_position });
 	}
 
+	pub fn add_continue(
+		&mut self,
+		label: Option<&str>,
+		position: Span,
+	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
+		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
+			self.facts.events.push(Event::Continue {
+				position: Some(position.with_source(self.get_source())),
+				carry,
+			});
+			Ok(())
+		} else {
+			Err(NotInLoopOrCouldNotFindLabel {
+				label: label.map(ToOwned::to_owned),
+				position: position.with_source(self.get_source()),
+			})
+		}
+	}
+
+	pub fn add_break(
+		&mut self,
+		label: Option<&str>,
+		position: Span,
+	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
+		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
+			self.facts.events.push(Event::Break {
+				position: Some(position.with_source(self.get_source())),
+				carry,
+			});
+			Ok(())
+		} else {
+			Err(NotInLoopOrCouldNotFindLabel {
+				label: label.map(ToOwned::to_owned),
+				position: position.with_source(self.get_source()),
+			})
+		}
+	}
+
 	/// Updates **a existing property**
 	///
 	/// Returns the result of the setter... TODO could return new else
@@ -937,6 +981,52 @@ impl<'a> Environment<'a> {
 			types,
 			setter_position,
 		)
+	}
+
+	/// `continue` has different behavior to `break` right?
+	fn find_label_or_conditional_count(
+		&self,
+		looking_for_label: Option<&str>,
+		is_continue: bool,
+	) -> Option<u8> {
+		let mut falling_through_structures = 0;
+		for ctx in self.parents_iter() {
+			if let GeneralContext::Syntax(ctx) = ctx {
+				let scope = &ctx.context_type.scope;
+
+				match scope {
+					Scope::Function(_)
+					| Scope::InterfaceEnvironment { .. }
+					| Scope::FunctionAnnotation {}
+					| Scope::Module { .. }
+					| Scope::DefinitionModule { .. }
+					| Scope::TypeAlias
+					| Scope::StaticBlock {} => {
+						break;
+					}
+					Scope::Looping { ref label } => {
+						if looking_for_label.is_none() {
+							return Some(falling_through_structures);
+						} else if let Some(label) = label {
+							if label == looking_for_label.unwrap() {
+								return Some(falling_through_structures);
+							}
+							falling_through_structures += 1;
+						}
+					}
+					Scope::Conditional { is_switch: Some(label @ Some(_)), .. }
+						if !is_continue && looking_for_label.is_some() =>
+					{
+						todo!("switch break")
+					}
+					Scope::PassThrough { .. }
+					| Scope::Conditional { .. }
+					| Scope::TryBlock {}
+					| Scope::Block {} => {}
+				}
+			}
+		}
+		None
 	}
 
 	pub(crate) fn import_items<

@@ -196,6 +196,20 @@ let y = 2;
 
 ### Types
 
+#### Assigning to parameter observed via effect
+
+```ts
+function add_property(obj: { prop: number }) {
+    obj.prop += 2;
+}
+
+const obj = { prop: 4 };
+add_property(obj);
+(obj.prop satisfies 8);
+```
+
+- Expected 8, found 6
+
 #### Index into dependent array
 
 ```ts

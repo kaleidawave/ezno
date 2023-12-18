@@ -1170,24 +1170,6 @@ impl<T: ContextType> Context<T> {
 			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
 			.unwrap()
 	}
-
-	/// TODO check whether valid for context
-	pub(crate) fn add_continue(&mut self, label: Option<&str>, position: Span) {
-		self.facts.events.push(Event::Continue {
-			position: Some(position.with_source(self.get_source())),
-			// TODO lookup int marker rather than storing string
-			label: label.map(ToOwned::to_owned),
-		});
-	}
-
-	/// TODO check whether valid for context
-	pub(crate) fn add_break(&mut self, label: Option<&str>, position: Span) {
-		self.facts.events.push(Event::Break {
-			position: Some(position.with_source(self.get_source())),
-			// TODO lookup int marker rather than storing string
-			label: label.map(ToOwned::to_owned),
-		});
-	}
 }
 
 pub enum AssignmentError {

@@ -106,7 +106,7 @@ pub fn evaluate_mathematical_operation(
 ) -> Result<TypeId, ()> {
 	fn attempt_constant_math_operator(
 		lhs: TypeId,
-		operator: &MathematicalAndBitwise,
+		operator: MathematicalAndBitwise,
 		rhs: TypeId,
 		types: &mut TypeStore,
 		strict_casts: bool,
@@ -177,7 +177,7 @@ pub fn evaluate_mathematical_operation(
 		return Ok(types.register_type(crate::Type::Constructor(constructor)));
 	}
 
-	attempt_constant_math_operator(lhs, &operator, rhs, types, strict_casts)
+	attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 }
 
 /// Not canonical / reducible
@@ -265,16 +265,15 @@ pub fn evaluate_equality_inequality_operation(
 					rhs: op_rhs,
 				}) = types.get_type_by_id(lhs)
 				{
-					if let MathematicalAndBitwise::Add = operator {
-						if let (
-							Type::Constant(Constant::Number(add)),
-							Type::Constant(Constant::Number(lt)),
-						) = (types.get_type_by_id(*op_rhs), types.get_type_by_id(rhs))
-						{
-							crate::utils::notify!("Shifted LT");
-							lhs = *op_lhs;
-							rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
-						}
+					if let (
+						Type::Constant(Constant::Number(add)),
+						MathematicalAndBitwise::Add,
+						Type::Constant(Constant::Number(lt)),
+					) = (types.get_type_by_id(*op_rhs), operator, types.get_type_by_id(rhs))
+					{
+						crate::utils::notify!("Shifted LT");
+						lhs = *op_lhs;
+						rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
 					}
 				}
 				let constructor = Constructor::CanonicalRelationOperator {

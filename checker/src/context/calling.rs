@@ -6,7 +6,7 @@ pub(crate) trait CallCheckingBehavior {
 	// TODO
 	const CHECK_PARAMETERS: bool;
 
-	fn get_latests_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
+	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
 
@@ -22,7 +22,7 @@ pub struct CheckThings;
 impl CallCheckingBehavior for CheckThings {
 	const CHECK_PARAMETERS: bool = true;
 
-	fn get_latests_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
+	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
 		&mut environment.facts
 	}
 
@@ -51,7 +51,7 @@ pub(crate) enum TargetKind {
 impl CallCheckingBehavior for Target {
 	const CHECK_PARAMETERS: bool = false;
 
-	fn get_latests_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
+	fn get_latest_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
 		self.0
 			.iter_mut()
 			.rev()

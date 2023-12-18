@@ -68,16 +68,14 @@ fn print_type_into_buf(
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, eager_fixed } => {
 				if let Some(value) = args.and_then(|a| a.get(&id).map(|(t, _)| *t)) {
-					print_type_into_buf(value, buf, cycles, args, types, ctx, debug)
+					print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
+				} else if debug {
+					// TODO restriction
+					write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
+					print_type_into_buf(*eager_fixed, buf, cycles, args, types, ctx, debug);
+					buf.push(']');
 				} else {
-					if debug {
-						// TODO restriction
-						write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
-						print_type_into_buf(*eager_fixed, buf, cycles, args, types, ctx, debug);
-						buf.push(']');
-					} else {
-						buf.push_str(name);
-					}
+					buf.push_str(name);
 				}
 			}
 			PolyNature::FreeVariable { based_on: to, reference, .. } => {
@@ -241,7 +239,7 @@ fn print_type_into_buf(
 			if debug {
 				write!(
 					buf,
-					"[t{} func, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
+					"[FR #{} func, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
 					id.0,
 					func.free_variables,
 					func.closed_over_variables,
@@ -528,10 +526,10 @@ pub fn debug_effects(
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), None, types, ctx, debug);
 				buf.push_str(" then ");
-				debug_effects(buf, &events_if_truthy, types, ctx, debug);
+				debug_effects(buf, events_if_truthy, types, ctx, debug);
 				if !else_events.is_empty() {
 					buf.push_str(" else ");
-					debug_effects(buf, &else_events, types, ctx, debug);
+					debug_effects(buf, else_events, types, ctx, debug);
 				}
 			}
 			Event::Return { returned, returned_position } => {
@@ -551,18 +549,18 @@ pub fn debug_effects(
 						.unwrap();
 				}
 			}
-			Event::Break { position, label } => {
+			Event::Break { .. } => {
 				buf.push_str("break");
 			}
-			Event::Continue { position, label } => {
+			Event::Continue { .. } => {
 				buf.push_str("continue");
 			}
-			Event::Iterate { iterate_over, initial: _ } => {
+			Event::Iterate { iterate_over, initial: _, kind } => {
 				buf.push_str("iterate\n");
-				debug_effects(buf, &iterate_over, types, ctx, debug);
+				debug_effects(buf, iterate_over, types, ctx, debug);
 				buf.push_str("end");
 			}
 		}
-		buf.push_str("\n");
+		buf.push('\n');
 	}
 }

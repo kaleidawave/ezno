@@ -67,7 +67,7 @@ pub(crate) struct FunctionTypeArguments {
 }
 
 impl FunctionTypeArguments {
-	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId, types: &TypeStore) {
+	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId) {
 		self.local_arguments.insert(id, (value, SpanWithSource::NULL_SPAN));
 	}
 

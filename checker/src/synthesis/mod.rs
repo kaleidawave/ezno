@@ -221,7 +221,7 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
-				synthesise_variable_declaration(declaration, environment, checking_data, false)
+				synthesise_variable_declaration(declaration, environment, checking_data, false);
 			}
 			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),

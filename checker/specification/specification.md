@@ -350,18 +350,6 @@ function getToUpperCase(s: string) {
 
 - Expected "HEY", found "HI"
 
-#### This as generic argument
-
-```ts
-function callToUpperCase(s: string) {
-	return s.toUpperCase()
-}
-
-(callToUpperCase("hi") satisfies "HEY")
-```
-
-- Expected "HEY", found "HI"
-
 ### Closures
 
 #### Reading variable
@@ -434,7 +422,9 @@ value.getValue() satisfies 6
 ```ts
 let a: number = 0
 function func() {
-	a = 4
+	a = 4;
+	// Important that subsequent reads use the new value, not the same free variable
+	a satisfies 4;
 }
 
 func()

@@ -420,9 +420,26 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					}
 
 					SubTypeResult::IsSubType
+				} else if let Type::Constructor(Constructor::StructureGenerics(
+					StructureGenerics { on: TypeId::ARRAY_TYPE, arguments: right_arguments },
+				)) = right_ty
+				{
+					let left_arg = arguments.get_local_argument(TypeId::T_TYPE).unwrap();
+					let right_arg = right_arguments.get_local_argument(TypeId::T_TYPE).unwrap();
+					// TODO unsure about arguments here
+					type_is_subtype2(
+						left_arg,
+						right_arg,
+						base_type_arguments,
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						restriction_mode,
+					)
 				} else {
-					crate::utils::notify!("Else here :?");
-					todo!("get right type structure generics match parameters");
+					crate::utils::notify!("Not array-ish");
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			} else {
 				if base_type_arguments.is_some() {

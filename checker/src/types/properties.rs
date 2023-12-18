@@ -7,8 +7,9 @@ use crate::{
 	events::Event,
 	subtyping::{type_is_subtype, type_is_subtype_of_property, SubTypeResult},
 	types::{
-		calling::CallingInput, get_constraint, printing::print_type, substitute, FunctionType,
-		ObjectNature, StructureGenerics,
+		calling::CallingInput, get_constraint,
+		poly_types::generic_type_arguments::StructureGenericArguments, printing::print_type,
+		substitute, FunctionType, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
@@ -177,7 +178,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		let items = top_environment.get_object_constraints(on);
 		let constraint = if items.len() == 1 {
 			items.into_iter().next().unwrap()
-		} else if items.len() == 0 {
+		} else if items.is_empty() {
 			todo!("inference")
 		} else {
 			todo!("build and type")
@@ -205,7 +206,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		GetResult::FromAObject(_) => None,
 	};
 
-	behavior.get_latests_facts(top_environment).events.push(Event::Getter {
+	behavior.get_latest_facts(top_environment).events.push(Event::Getter {
 		on,
 		under: under.into_owned(),
 		reflects_dependency,
@@ -336,6 +337,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 			Logical::Implies { on: log_on, mut antecedent } => {
 				let (kind, ty) =
 					resolve_property_on_logical(*log_on, types, on, environment, behavior)?;
+
+				crate::utils::notify!("Specialising implies");
 				let ty = substitute(ty, &mut antecedent, environment, types);
 				Some((kind, ty))
 			}
@@ -345,13 +348,9 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	// TODO explain what happens around non constant strings
 	if let Type::Constant(Constant::String(s)) = types.get_type_by_id(on) {
 		if let Some(n) = under.as_number() {
-			return match s.chars().nth(n) {
-				Some(s) => Some((
-					PropertyKind::Direct,
-					types.new_constant_type(Constant::String(s.to_string())),
-				)),
-				None => None,
-			};
+			return s.chars().nth(n).map(|s| {
+				(PropertyKind::Direct, types.new_constant_type(Constant::String(s.to_string())))
+			});
 		}
 	}
 
@@ -376,6 +375,8 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		fact: Logical<PropertyValue>,
 		on: TypeId,
 		under: PropertyKey,
+		// TODO generic chain
+		arguments: Option<&StructureGenericArguments>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 	) -> Option<TypeId> {
@@ -389,22 +390,52 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								let depends_on_this =
 									types.get_function_from_id(*func).behavior.can_be_bound();
 
-								if depends_on_this {
-									let with_this = types.register_type(Type::Function(
-										*func,
-										ThisValue::Passed(on),
-									));
-									Some(with_this)
+								let result = if depends_on_this {
+									types
+										.register_type(Type::Function(*func, ThisValue::Passed(on)))
+								} else {
+									value
+								};
+
+								// TODO wrap in constructor property
+								if let Some(arguments) = arguments {
+									// TODO not always..., func.inherits_generics maybe?
+									Some(types.register_type(Type::Constructor(
+										Constructor::StructureGenerics(StructureGenerics {
+											on: result,
+											arguments: arguments.clone(),
+										}),
+									)))
 								} else {
 									Some(value)
 								}
 							}
-							Type::Function(..) => todo!(),
-							Type::And(_, _)
-							| Type::RootPolyType(_)
-							| Type::Constructor(_)
+							t @ (Type::And(_, _)
 							| Type::Or(_, _)
-							| Type::AliasTo { .. }
+							| Type::RootPolyType(_)
+							| Type::Constructor(_)) => {
+								let result = if let Some(arguments) = arguments {
+									substitute(
+										value,
+										&mut arguments.type_arguments.clone(),
+										environment,
+										types,
+									)
+								} else {
+									crate::utils::notify!("Here, getting property on {:?}", t);
+									value
+								};
+								let constructor_result =
+									types.register_type(Type::Constructor(Constructor::Property {
+										on,
+										under: under.into_owned(),
+										result,
+									}));
+
+								Some(constructor_result)
+							}
+							Type::Function(..) => todo!(),
+							Type::AliasTo { .. }
 							| Type::Object(ObjectNature::AnonymousTypeAnnotation)
 							| Type::Interface { .. } => {
 								let constructor_result =
@@ -440,8 +471,16 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 				}
 			}
 			Logical::Or { left, right } => {
-				let left = resolve_logical_with_poly(*left, on, under.clone(), environment, types);
-				let right = resolve_logical_with_poly(*right, on, under, environment, types);
+				let left = resolve_logical_with_poly(
+					*left,
+					on,
+					under.clone(),
+					arguments,
+					environment,
+					types,
+				);
+				let right =
+					resolve_logical_with_poly(*right, on, under, arguments, environment, types);
 
 				if let (Some(lhs), Some(rhs)) = (left, right) {
 					crate::utils::notify!("TODO how does conditionality work");
@@ -452,23 +491,18 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 				}
 			}
 			Logical::Implies { on: implies_on, antecedent } => {
-				// TODO maybe pass down arguments ...
-				let general_property =
-					resolve_logical_with_poly(*implies_on, on, under.clone(), environment, types)?;
+				if arguments.is_some() {
+					todo!("generics chain")
+				}
 
-				let specialised_property_value = substitute(
-					general_property,
-					&mut antecedent.type_arguments.clone(),
+				resolve_logical_with_poly(
+					*implies_on,
+					on,
+					under.clone(),
+					Some(&antecedent),
 					environment,
 					types,
-				);
-
-				crate::utils::notify!(
-					"general {:?} specialised_property_value {:?}",
-					general_property,
-					specialised_property_value
-				);
-				Some(specialised_property_value)
+				)
 			}
 		}
 	}
@@ -477,7 +511,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
-	resolve_logical_with_poly(fact, on, under, environment, types)
+	resolve_logical_with_poly(fact, on, under, None, environment, types)
 }
 
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
@@ -581,7 +615,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		match fact {
 			Logical::Pure(og) => match og {
 				PropertyValue::Deleted | PropertyValue::Value(..) => {
-					let facts = behavior.get_latests_facts(environment);
+					let facts = behavior.get_latest_facts(environment);
 					facts.current_properties.entry(on).or_default().push((
 						publicity,
 						under.into_owned(),
@@ -604,7 +638,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: implies_on, antecedent } => {
 				crate::utils::notify!("Check that `implies_on` could be a setter here");
-				let facts = behavior.get_latests_facts(environment);
+				let facts = behavior.get_latest_facts(environment);
 				facts.current_properties.entry(on).or_default().push((
 					publicity,
 					under.into_owned(),
@@ -624,7 +658,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		// TODO abstract
 		// TODO only if dependent?
 		let register_setter_event = true;
-		behavior.get_latests_facts(environment).register_property(
+		behavior.get_latest_facts(environment).register_property(
 			on,
 			publicity,
 			under.into_owned(),

@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-	get_constraint,
+	get_constraint, is_type_constant,
 	poly_types::{
 		generic_type_arguments::StructureGenericArguments, FunctionTypeArguments, SeedingContext,
 	},
@@ -95,6 +95,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 		|| arguments.iter().any(|arg| match arg {
 			SynthesisedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
 		}) {
+		crate::utils::notify!("Exiting earlier because of ERROR_TYPE fail");
 		return Ok(FunctionCallResult {
 			called: None,
 			returned_type: TypeId::ERROR_TYPE,
@@ -229,6 +230,8 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+	crate::utils::notify!("On {:?}", types.get_type_by_id(constraint));
+
 	let result = call_type(
 		constraint,
 		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
@@ -239,12 +242,14 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		types,
 	)?;
 
+	crate::utils::notify!("Got {:?} out", result.returned_type);
+
 	// TODO can skip for pure functions (or open polys) and references that aren't used later
 	for argument in &arguments {
 		// TODO need to do in a function
 		// All properties
 		// Functions free variables etc
-		let ty = match argument {
+		match argument {
 			SynthesisedArgument::NonSpread { ty, position } => {
 				match types.get_type_by_id(*ty) {
 					Type::Interface { .. }
@@ -255,35 +260,33 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 					| Type::Or(_, _) => {
 						crate::utils::notify!("Unreachable");
 					}
-					Type::RootPolyType(_) | Type::Constructor(_) | Type::Constant(_) => {
+					Type::Constant(_) => {}
+					Type::RootPolyType(_) | Type::Constructor(_) => {
 						// All dependent anyway
+						crate::utils::notify!("TODO if any properties set etc");
 					}
 					Type::Function(_, _) => {
-						crate::utils::notify!("TODO record that this could be called");
+						crate::utils::notify!("TODO record that function could be called");
 					}
 					Type::Object(ObjectNature::RealDeal) => {
 						top_environment.possibly_mutated_objects.insert(*ty);
-						crate::utils::notify!("TODO record functions");
+						crate::utils::notify!("TODO record methods could be called here as well");
 					}
 					Type::SpecialObject(_) => {
 						crate::utils::notify!("TODO record stuff if mutable");
 					}
 				}
 			}
-		};
+		}
 	}
 
 	let with = arguments.into_boxed_slice();
 
 	// Skip constant returned reflects types
-	if matches!(result.returned_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
-		|| matches!(
-			types.get_type_by_id(result.returned_type),
-			Type::Constant(..)
-				| Type::Object(super::ObjectNature::RealDeal)
-				| Type::SpecialObject(..)
-		) {
-		behavior.get_latests_facts(top_environment).events.push(Event::CallsType {
+	if is_type_constant(result.returned_type, types) {
+		crate::utils::notify!("Adding calls type here");
+
+		behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
 			on,
 			with,
 			timing: crate::events::CallingTiming::Synchronous,
@@ -296,6 +299,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	} else {
 		// TODO work this out
 		let is_open_poly = false;
+
 		let reflects_dependency = if is_open_poly {
 			None
 		} else {
@@ -311,7 +315,8 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 
 			Some(constructor_return)
 		};
-		behavior.get_latests_facts(top_environment).events.push(Event::CallsType {
+
+		behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
 			on,
 			with,
 			timing: crate::events::CallingTiming::Synchronous,
@@ -442,7 +447,8 @@ impl FunctionType {
 			let call_anyway = matches!(
 				const_fn_ident,
 				"debug_type"
-					| "print_type" | "debug_effects"
+					| "debug_type_rust" | "print_type"
+					| "debug_effects" | "debug_effects_rust"
 					| "satisfies" | "is_dependent"
 					| "bind" | "create_proxy"
 			);
@@ -497,23 +503,28 @@ impl FunctionType {
 			} else if has_dependent_argument {
 				let with = arguments.to_vec().into_boxed_slice();
 				// TODO with cloned!!
-				let result = self
-					.call(
-						CallingInput {
-							called_with_new,
-							this_value,
-							call_site_type_arguments,
-							call_site,
-						},
-						parent_type_arguments,
-						arguments,
-						environment,
-						behavior,
-						types,
-						// Very important!
-						false,
-					)?
-					.returned_type;
+				let calling_input = CallingInput {
+					called_with_new,
+					this_value,
+					call_site_type_arguments,
+					call_site,
+				};
+				let call = self.call(
+					calling_input,
+					parent_type_arguments,
+					arguments,
+					environment,
+					behavior,
+					types,
+					// Very important!
+					false,
+				);
+
+				if let Err(ref err) = call {
+					crate::utils::notify!("Calling function with dependent argument failed");
+				}
+
+				let result = call?.returned_type;
 
 				// TODO pass down
 				let on = types.register_type(Type::Function(self.id, this_value));
@@ -522,7 +533,9 @@ impl FunctionType {
 
 				let ty = types.register_type(new_type);
 
-				behavior.get_latests_facts(environment).events.push(Event::CallsType {
+				crate::utils::notify!("Here");
+
+				behavior.get_latest_facts(environment).events.push(Event::CallsType {
 					on,
 					with: arguments.to_vec().into_boxed_slice(),
 					reflects_dependency: Some(ty),
@@ -564,8 +577,12 @@ impl FunctionType {
 		match self.behavior {
 			FunctionBehavior::ArrowFunction { is_async } => {}
 			FunctionBehavior::Method { free_this_id, .. } => {
-				let value_of_this =
-					this_value.get_passed().expect("method has no 'this' passed :?");
+				let value_of_this = if let Some(value) = this_value.get_passed() {
+					value
+				} else {
+					crate::utils::notify!("method has no 'this' passed :?");
+					TypeId::UNDEFINED_TYPE
+				};
 
 				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
 
@@ -768,6 +785,8 @@ impl FunctionType {
 			}
 
 			if let Some(closure_id) = type_arguments.closure_id {
+				crate::utils::notify!("Setting closure variables");
+
 				// Set closed over values
 				self.closed_over_variables.iter().for_each(|(reference, value)| {
 					let value = substitute(*value, &mut type_arguments, environment, types);
@@ -829,6 +848,7 @@ impl FunctionType {
 		let returned_type = if let Some(EventResult::Return(returned_type, _)) = early_return {
 			returned_type
 		} else {
+			crate::utils::notify!("Substituting return type (no return)");
 			substitute(self.return_type, &mut type_arguments, environment, types)
 		};
 
