@@ -326,8 +326,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	resolve_property_on_logical(result, types, on, environment, behavior)
 }
 
-// https://github.com/kaleidawave/ezno/pull/88
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::needless_pass_by_value)]
 fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,

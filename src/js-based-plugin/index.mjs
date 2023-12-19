@@ -11,7 +11,7 @@ function emitDiagnostics(on, diagnostics, plugin) {
 		lineSplits.push(lineSplits.at(-1) + line.length + 1)
 	}
 	for (const diagnostic of diagnostics) {
-		const line = lineSplits.findIndex(count => count >= diagnostic.position.start);
+		const line = lineSplits.findIndex(count => count > diagnostic.position.start);
 		const column = diagnostic.position.start - lineSplits[line - 1];
 		// Unfortunately don't get to set an end point, level or any labels
 		plugin.warn(diagnostic.reason, { line, column })

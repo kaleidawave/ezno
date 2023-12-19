@@ -1,6 +1,6 @@
 ## Specification
 
-See [./README.md](README.md) for details
+See [./README.md](README.md) for details about how `specification.md` works
 
 ### Variables
 

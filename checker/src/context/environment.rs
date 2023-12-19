@@ -523,6 +523,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
+	#[must_use]
 	pub fn get_environment_type(&self) -> &Scope {
 		&self.context_type.scope
 	}

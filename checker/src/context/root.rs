@@ -112,6 +112,7 @@ impl RootContext {
 
 	/// TODO working things out:
 	/// - strings could reference a big string
+	#[must_use]
 	pub fn serialize(self) -> Vec<u8> {
 		todo!()
 	}
