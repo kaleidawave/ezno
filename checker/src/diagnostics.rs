@@ -7,11 +7,11 @@ use crate::{
 	diagnostics,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_generics, StructureGenerics,
+		printing::print_type_with_generics,
 	},
 };
 use serde::Serialize;
-use source_map::{SourceId, Span, SpanWithSource};
+use source_map::{SourceId, SpanWithSource};
 use std::{
 	fmt::{self, Debug, Display},
 	iter,
@@ -213,6 +213,8 @@ impl TypeStringRepresentation {
 			crate::context::Logical::Or { left, right } => {
 				let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
 				let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+
+				#[allow(irrefutable_let_patterns)]
 				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
 					(left, right)
 				{
@@ -243,7 +245,7 @@ impl Display for TypeStringRepresentation {
 pub(crate) struct NoEnvironmentSpecified;
 
 impl From<NoEnvironmentSpecified> for Diagnostic {
-	fn from(error: NoEnvironmentSpecified) -> Self {
+	fn from(_error: NoEnvironmentSpecified) -> Self {
 		Diagnostic::Global { reason: "No environment".to_owned(), kind: DiagnosticKind::Error }
 	}
 }
@@ -252,14 +254,12 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{
-		behavior::{self, operations::MathematicalAndBitwise},
-		context::AssignmentError,
+		behavior::operations::MathematicalAndBitwise, context::AssignmentError,
 		types::calling::FunctionCallingError,
 	};
-	use source_map::{Span, SpanWithSource};
+	use source_map::SpanWithSource;
 
 	use crate::Diagnostic;
-	use std::path;
 
 	use super::{
 		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeStringRepresentation, TDZ,
@@ -267,6 +267,7 @@ mod defined_errors_and_warnings {
 
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
 	/// e.g. cannot Call, cannot equate, duplicate key etc
+	#[allow(unused)]
 	pub(crate) enum TypeCheckError<'a> {
 		FunctionCallingError(FunctionCallingError),
 		PropertyDoesNotExist {
@@ -382,7 +383,7 @@ mod defined_errors_and_warnings {
 		fn from(error: TypeCheckError<'_>) -> Self {
 			let kind = super::DiagnosticKind::Error;
 			match error {
-				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
+				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
 					Diagnostic::Position {
 						reason: format!(
 							"Could not find variable {variable} in scope",
@@ -454,7 +455,7 @@ mod defined_errors_and_warnings {
 							)],
 						}
 					}
-					FunctionCallingError::ExcessArguments { count, position } => {
+					FunctionCallingError::ExcessArguments { count: _, position } => {
 						Diagnostic::Position {
 							reason: "Excess argument".into(),
 							position,
@@ -469,9 +470,9 @@ mod defined_errors_and_warnings {
 						}
 					}
 					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-						reference,
-						requirement,
-						found,
+						reference: _,
+						requirement: _,
+						found: _,
 					} => todo!(),
 					// Diagnostic::Position {
 					// 	reason: format!(
@@ -554,7 +555,7 @@ mod defined_errors_and_warnings {
 					attribute_name,
 					attribute_type,
 					value_type,
-					attribute_type_site: variable_site,
+					attribute_type_site: _variable_site,
 					value_site,
 				} => Diagnostic::Position {
 					reason: format!(
@@ -604,9 +605,9 @@ mod defined_errors_and_warnings {
 					}
 				}
 				TypeCheckError::InvalidJSXInterpolatedValue {
-					interpolation_site,
-					expected,
-					found,
+					interpolation_site: _,
+					expected: _,
+					found: _,
 				} => todo!(),
 				TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
 					Diagnostic::Position {
@@ -620,7 +621,7 @@ mod defined_errors_and_warnings {
 					position: at,
 					kind,
 				},
-				TypeCheckError::ReDeclaredVariable { name, position: pos } => todo!(),
+				TypeCheckError::ReDeclaredVariable { name: _, position: _pos } => todo!(),
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,

@@ -26,7 +26,7 @@ impl CallCheckingBehavior for CheckThings {
 		&mut environment.facts
 	}
 
-	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
+	fn in_recursive_cycle(&self, _function_id: FunctionId) -> bool {
 		// cannot get in a loop from checking
 		false
 	}

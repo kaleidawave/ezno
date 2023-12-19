@@ -1,12 +1,9 @@
 use parser::{
-	declarations::VariableDeclaration, Declaration, ExpressionOrStatementPosition, Statement,
-	StatementOrDeclaration, VariableIdentifier,
+	Declaration, ExpressionOrStatementPosition, Statement, StatementOrDeclaration,
+	VariableIdentifier,
 };
 
-use crate::{
-	behavior::modules::Exported, context::Environment, diagnostics::TypeCheckError, CheckingData,
-	Scope, TypeId,
-};
+use crate::{context::Environment, diagnostics::TypeCheckError, CheckingData, Scope, TypeId};
 
 use super::{
 	classes::synthesise_class_declaration, declarations::synthesise_variable_declaration,
@@ -80,7 +77,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					&mut checking_data.types,
 					None,
 				);
-				if let Err(err) = result {
+				if let Err(_err) = result {
 					// TODO is this an issue?
 					checking_data
 						.diagnostics_container
@@ -97,7 +94,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 		| Declaration::TypeAlias(_)
 		| Declaration::Import(_) => {}
 		Declaration::Export(exported) => match &exported.on {
-			parser::declarations::ExportDeclaration::Variable { exported, position } => {
+			parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 				match exported {
 					// Skipped as this is done earlier
 					parser::declarations::export::Exportable::Class(class) => {

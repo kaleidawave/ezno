@@ -24,7 +24,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 		}
 		VariableDeclaration::LetDeclaration {
 			declarations,
-			keyword: parser::Keyword(_, position),
+			keyword: parser::Keyword(_, _position),
 			..
 		} => {
 			for variable_declaration in declarations {

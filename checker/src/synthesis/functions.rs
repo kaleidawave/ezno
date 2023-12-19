@@ -1,13 +1,10 @@
 //! Function tings. Contains parameter synthesis, function body synthesis
 
-use std::{env, mem};
-
 use parser::{
-	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBase, FunctionBased,
-	GenericTypeConstraint, Statement, StatementOrDeclaration, TypeAnnotation, VariableField,
-	VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBased, GenericTypeConstraint,
+	TypeAnnotation, VariableField, VariableIdentifier, WithComment,
 };
-use source_map::{SourceId, Span, SpanWithSource};
+use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	behavior::functions::{FunctionBehavior, SynthesisableFunction},
@@ -181,7 +178,7 @@ pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
 				)
 			}
 			GenericTypeConstraint::ExtendsKeyOf(_, _) => todo!(),
-			GenericTypeConstraint::Spread { name, default } => todo!(),
+			GenericTypeConstraint::Spread { name: _, default: _ } => todo!(),
 		})
 		.collect()
 }
@@ -256,7 +253,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				unreachable!()
 			}
 		} else {
-			todo!();
+			crate::utils::notify!("rest parameter should be array error");
 			// checking_data.diagnostics_container.add_error(
 			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 			// );
@@ -289,7 +286,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
 				.or_else(|| {
 					// See comments-as-type-annotation
-					if let WithComment::PostfixComment(item, possible_declaration, position) =
+					if let WithComment::PostfixComment(_item, possible_declaration, position) =
 						&parameter.name
 					{
 						comment_as_type_annotation(
@@ -332,7 +329,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 		})
 		.collect();
 
-	for parameter in &ast_parameters.rest_parameter {
+	for _parameter in &ast_parameters.rest_parameter {
 		todo!()
 		// super::variables::hoist_variable_identifier(&parameter.name, environment, is_constant);
 	}
@@ -359,7 +356,7 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 ) -> String {
 	match parameter {
 		VariableField::Name(name) => name.as_str().to_owned(),
-		VariableField::Array(items, _) => "todo".to_owned(),
+		VariableField::Array(_items, _) => "todo".to_owned(),
 		VariableField::Object(_, _) => "todo".to_owned(),
 	}
 }

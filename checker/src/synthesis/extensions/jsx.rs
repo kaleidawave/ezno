@@ -2,23 +2,13 @@
 
 use std::borrow::Cow;
 
-use parser::{
-	ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot,
-	PropertyKey as ParserPropertyKey,
-};
+use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
 	call_type_handle_errors,
-	context::Logical,
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::expressions::synthesise_expression,
-	types::{
-		calling::CallingInput,
-		properties::PropertyKey,
-		subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
-		SynthesisedArgument,
-	},
+	types::{calling::CallingInput, properties::PropertyKey, SynthesisedArgument},
 	CheckingData, Constant, Environment, TypeId,
 };
 
@@ -42,7 +32,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// TODO temp, to be worked out
 	const JSX_NAME: &str = "JSXH";
 
-	let tag_name = element.tag_name.as_str();
+	let _tag_name = element.tag_name.as_str();
 
 	let tag_name_as_cst_ty =
 		checking_data.types.new_constant_type(Constant::String(element.tag_name.clone()));
@@ -368,7 +358,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
-		JSXNode::InterpolatedExpression(expression, expression_position) => {
+		JSXNode::InterpolatedExpression(expression, _expression_position) => {
 			if matches!(&**expression, Expression::Comment(..)) {
 				return TypeId::UNDEFINED_TYPE;
 			}
@@ -425,10 +415,10 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 ) -> (PropertyKey<'static>, TypeId) {
 	let (key, value) = match attribute {
 		// TODO check property exists ...?
-		JSXAttribute::Static(name, value, attribute_id) => {
+		JSXAttribute::Static(name, value, _attribute_id) => {
 			(name, checking_data.types.new_constant_type(crate::Constant::String(value.clone())))
 		}
-		JSXAttribute::Dynamic(name, expression, attribute_id) => {
+		JSXAttribute::Dynamic(name, expression, _attribute_id) => {
 			if let Expression::ExpressionFunction(_) = &**expression {
 				// TODO temp context
 				environment.context_type.location = Some("client".to_owned());

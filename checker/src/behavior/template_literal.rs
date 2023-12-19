@@ -1,11 +1,9 @@
-use std::marker::PhantomData;
-
 use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::objects::ObjectBuilder,
 	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
-	CheckingData, Constant, Environment, Instance, Type, TypeId,
+	CheckingData, Constant, Environment, Type, TypeId,
 };
 
 #[derive(Copy, Clone)]

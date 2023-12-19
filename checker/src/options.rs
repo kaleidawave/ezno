@@ -1,5 +1,3 @@
-use std::any::Any;
-
 /// Options for type checking
 /// TODO figure out compat with tsc
 #[derive(serde::Deserialize)]

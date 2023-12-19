@@ -18,24 +18,21 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::{
-		self,
-		functions::{ClosureChain, ClosureId, FunctionBehavior, FunctionRegisterBehavior},
+		functions::ClosureChain,
 		modules::Exported,
-		operations::MathematicalAndBitwise,
 		variables::{VariableMutability, VariableOrImport},
 	},
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 	},
-	events::{Event, RootReference},
-	subtyping::{type_is_subtype, BasicEquality},
+	events::RootReference,
 	types::{
-		self, create_this_before_function_synthesis, get_constraint,
-		poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
+		get_constraint,
+		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		Constructor, FunctionType, PolyNature, Type, TypeId, TypeStore,
+		FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, FunctionId, ReadFromFS, VariableId,
+	CheckingData, FunctionId, VariableId,
 };
 
 use self::{
@@ -44,9 +41,8 @@ use self::{
 };
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
-use map_vec::Map;
+
 use std::{
-	borrow::Cow,
 	collections::{
 		hash_map::{self, Entry},
 		HashMap, HashSet,
@@ -362,8 +358,8 @@ impl<T: ContextType> Context<T> {
 				let variable =
 					VariableOrImport::Variable { mutability, declared_at, context: None };
 				let entry = self.variables.entry(name.to_owned());
-				if let Entry::Vacant(empty) = entry {
-					let existing_variable = self.variables.insert(name.to_owned(), variable);
+				if let Entry::Vacant(_empty) = entry {
+					let _existing_variable = self.variables.insert(name.to_owned(), variable);
 					let parameter_ty = if let Some(annotation) = annotation {
 						if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
 							// TODO this can only be used once, two parameters cannot have same type as the can
@@ -498,7 +494,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Only on current environment, doesn't walk
-	fn get_this_constraint(&self) -> Option<TypeId> {
+	fn _get_this_constraint(&self) -> Option<TypeId> {
 		match self.as_general_context() {
 			GeneralContext::Syntax(syn) => match &syn.context_type.scope {
 				// Special handling here
@@ -518,7 +514,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::DefinitionModule { .. }
 				| Scope::Module { .. } => None,
 			},
-			GeneralContext::Root(root) => None,
+			GeneralContext::Root(_root) => None,
 		}
 	}
 
@@ -577,7 +573,7 @@ impl<T: ContextType> Context<T> {
 		let reversed_flattened_properties = self
 			.parents_iter()
 			.filter_map(|ctx| {
-				let id = get_on_ctx!(ctx.context_id);
+				let _id = get_on_ctx!(ctx.context_id);
 				let properties = get_on_ctx!(ctx.facts.current_properties.get(&base));
 				properties.map(|v| v.iter().rev())
 			})
@@ -608,7 +604,7 @@ impl<T: ContextType> Context<T> {
 	) -> Option<Logical<PropertyValue>> {
 		fn get_property(
 			env: &GeneralContext,
-			types: &TypeStore,
+			_types: &TypeStore,
 			on: TypeId,
 			under: (Publicity, &PropertyKey),
 		) -> Option<PropertyValue> {
@@ -656,7 +652,7 @@ impl<T: ContextType> Context<T> {
 
 		// TODO need actual method for these, aka lowest
 
-		if let Type::SpecialObject(obj) = types.get_type_by_id(on) {
+		if let Type::SpecialObject(_obj) = types.get_type_by_id(on) {
 			todo!()
 		} else {
 			let under = match under {
@@ -690,7 +686,7 @@ impl<T: ContextType> Context<T> {
 
 	// TODO temp declaration
 	// TODO should check the TypeId::is_primitive... via aliases + open_poly
-	pub(crate) fn is_immutable(&self, value: TypeId) -> bool {
+	pub(crate) fn _is_immutable(&self, _value: TypeId) -> bool {
 		todo!()
 		// let is_frozen = self.is_frozen(value);
 
@@ -784,12 +780,11 @@ impl<T: ContextType> Context<T> {
 
 		let mut new_environment = self.new_lexical_environment(scope);
 		let res = cb(&mut new_environment, checking_data);
-		let context_id = new_environment.context_id;
 
 		let super::Environment {
 			context_id,
 			variables,
-			named_types,
+			named_types: _,
 			context_type:
 				environment::Syntax {
 					scope,
@@ -802,7 +797,7 @@ impl<T: ContextType> Context<T> {
 			can_reference_this,
 			bases,
 			variable_names,
-			object_constraints,
+			object_constraints: _,
 			deferred_function_constraints,
 			mut facts,
 			possibly_mutated_objects,
@@ -997,7 +992,7 @@ impl<T: ContextType> Context<T> {
 				.collect()
 		});
 
-		if let Some(extends) = extends {
+		if let Some(_extends) = extends {
 			todo!("synthesise, fold into Type::And and create alias type")
 		}
 
@@ -1115,8 +1110,8 @@ impl<T: ContextType> Context<T> {
 
 	pub(crate) fn get_value_of_this(
 		&mut self,
-		types: &TypeStore,
-		position: &SpanWithSource,
+		_types: &TypeStore,
+		_position: &SpanWithSource,
 	) -> TypeId {
 		self.parents_iter()
 			.find_map(|env| {
@@ -1224,18 +1219,6 @@ impl<'a, T: Clone> Logical<&'a T> {
 	}
 }
 
-// TODO temp
-impl Logical<TypeId> {
-	#[allow(clippy::wrong_self_convention)]
-	pub(crate) fn to_type(self) -> TypeId {
-		match self {
-			Logical::Pure(ty) => ty,
-			Logical::Or { .. } => todo!(),
-			Logical::Implies { .. } => todo!(),
-		}
-	}
-}
-
 pub enum SetPropertyError {
 	NotWriteable,
 	DoesNotMeetConstraint {
@@ -1246,7 +1229,7 @@ pub enum SetPropertyError {
 
 /// TODO mutable let imports
 pub(crate) fn get_value_of_variable<'a>(
-	mut facts: impl Iterator<Item = &'a Facts>,
+	facts: impl Iterator<Item = &'a Facts>,
 	on: VariableId,
 	closures: Option<&impl ClosureChain>,
 ) -> Option<TypeId> {

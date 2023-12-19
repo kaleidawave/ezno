@@ -20,20 +20,19 @@
 
 use std::{convert::TryInto, iter::FromIterator};
 
-use indexmap::IndexSet;
 use parser::{
 	type_annotations::{
 		AnnotationWithBinder, CommonTypes, SpreadKind, TypeCondition, TypeConditionResult,
 	},
 	ASTNode, TypeAnnotation,
 };
-use source_map::{SourceId, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	behavior::objects::ObjectBuilder,
 	context::facts::Publicity,
-	diagnostics::{TypeCheckError, TypeCheckWarning},
-	subtyping::{self, type_is_subtype, BasicEquality, SubTypeResult},
+	diagnostics::TypeCheckError,
+	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
 		get_constraint,
@@ -44,8 +43,6 @@ use crate::{
 	types::{Constructor, TypeId},
 	CheckingData, Environment,
 };
-
-use crate::context::{Context, ContextType};
 
 /// Turns a [`parser::TypeAnnotation`] into [`TypeId`]
 ///
@@ -112,7 +109,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		},
 		TypeAnnotation::Union(type_annotations, _) => {
 			// TODO remove duplicates here maybe
-			let mut iterator = type_annotations
+			let iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
 					synthesise_type_annotation(type_annotation, environment, checking_data)
@@ -125,7 +122,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.expect("Empty union")
 		}
 		TypeAnnotation::Intersection(type_annotations, _) => {
-			let mut iterator = type_annotations
+			let iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
 					synthesise_type_annotation(type_annotation, environment, checking_data)
@@ -188,7 +185,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						&checking_data.types,
 					);
 
-					if let SubTypeResult::IsNotSubType(matches) = result {
+					if let SubTypeResult::IsNotSubType(_matches) = result {
 						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
 							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
 								*parameter_restriction,
@@ -270,7 +267,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			)
 		}
 		TypeAnnotation::Readonly(type_annotation, _) => {
-			let underlying_type =
+			let _underlying_type =
 				synthesise_type_annotation(type_annotation, environment, checking_data);
 
 			todo!();
@@ -307,7 +304,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			parameters: _,
 			return_type: _,
 			new_keyword: _,
-			position,
+			position: _,
 		} => unimplemented!(),
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
@@ -406,7 +403,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
-		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position } => {
+		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
 			fn synthesise_condition(result: &TypeConditionResult) -> &TypeAnnotation {
 				match result {
 					TypeConditionResult::Reference(reference) => reference,
@@ -461,9 +458,9 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
 	match condition {
-		TypeCondition::Extends { ty, extends, position } => {
-			let item = synthesise_type_annotation(ty, environment, checking_data);
-			let extends = synthesise_type_annotation(extends, environment, checking_data);
+		TypeCondition::Extends { ty, extends, position: _ } => {
+			let _item = synthesise_type_annotation(ty, environment, checking_data);
+			let _extends = synthesise_type_annotation(extends, environment, checking_data);
 			todo!();
 			// let ty = Type::Constructor(Constructor::BinaryOperator {
 			// 	operator: crate::structures::operators::CanonicalBinaryOperator::InstanceOf,
@@ -473,6 +470,6 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 			// checking_data.types.register_type(ty)
 		}
 		// TODO requires a kind of strict instance of ???
-		TypeCondition::Is { ty, is, position } => todo!(),
+		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),
 	}
 }

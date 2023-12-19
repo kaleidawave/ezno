@@ -1,8 +1,8 @@
-use super::{facts::Facts, ClosedOverReferencesInScope, Context, ContextId, ContextType};
+use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
 	behavior::modules::{Exported, SynthesisedModule},
 	types::TypeId,
-	CheckingData, Environment, GeneralContext,
+	CheckingData, GeneralContext,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
@@ -38,11 +38,11 @@ impl ContextType for Root {
 	}
 }
 
-const HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
+const _CONTEXT_FILE_HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
 
 impl RootContext {
 	/// Merges two [`RootEnvironments`]. May be used for multiple `.d.ts` files
-	pub(crate) fn union(&mut self, other: Self) {
+	pub(crate) fn _union(&mut self, other: Self) {
 		// TODO this is bad, some things need to merge, inserting over existing will be bad
 		self.variables.extend(other.variables);
 		todo!()
@@ -112,11 +112,11 @@ impl RootContext {
 
 	/// TODO working things out:
 	/// - strings could reference a big string
-	pub(crate) fn serialize(self) -> Vec<u8> {
+	pub fn serialize(self) -> Vec<u8> {
 		todo!()
 	}
 
-	pub(crate) fn deserialize(source: &[u8], backing_source: SourceId) -> Result<Self, String> {
+	pub fn deserialize(_source: &[u8], _backing_source: SourceId) -> Result<Self, String> {
 		todo!()
 		// let mut ctx = Root::new_with_primitive_references();
 

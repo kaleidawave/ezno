@@ -1,17 +1,12 @@
 use std::collections::HashMap;
 
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	behavior::functions::{ClassPropertiesToRegister, FunctionBehavior},
-	context::{
-		environment::{self, FunctionScope},
-		facts::Publicity,
-		Context, ContextType,
-	},
+	context::{environment::FunctionScope, ContextType},
 	events::{Event, RootReference},
-	CheckingData, Environment, Facts, FunctionId, GenericTypeParameters, PropertyValue, Scope,
-	Type, TypeId,
+	CheckingData, Facts, FunctionId, GenericTypeParameters, Scope, Type, TypeId,
 };
 
 use super::{classes::register_properties_into_environment, TypeStore};
@@ -90,7 +85,7 @@ impl FunctionType {
 		let behavior =
 			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
 
-		let (facts, free_variables) = env_data.unwrap();
+		let (facts, _free_variables) = env_data.unwrap();
 		Self {
 			id: crate::FunctionId::AUTO_CONSTRUCTOR,
 			constant_function: None,

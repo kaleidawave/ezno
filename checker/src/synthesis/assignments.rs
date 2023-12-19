@@ -1,16 +1,14 @@
 use std::borrow::Cow;
 
-use ordered_float::NotNan;
 use parser::{
-	ast::LHSOfAssignment, expressions::assignments::VariableOrPropertyAccess, ASTNode,
-	VariableIdentifier,
+	ast::LHSOfAssignment, expressions::assignments::VariableOrPropertyAccess, VariableIdentifier,
 };
 
 use crate::{
 	behavior::assignments::{Assignable, Reference},
 	context::{facts::Publicity, Environment},
 	synthesis::expressions::synthesise_expression,
-	types::{properties::PropertyKey, Constant},
+	types::properties::PropertyKey,
 	CheckingData, TypeId,
 };
 
@@ -47,8 +45,8 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 					parser::ObjectDestructuringField::Map {
 						from,
 						name,
-						default_value,
-						position,
+						default_value: _,
+						position: _,
 					} => {
 						// TODO into function
 						match name.get_ast_ref() {
@@ -100,7 +98,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 
 fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
-	checking_data: &CheckingData<T, super::EznoParser>,
+	_checking_data: &CheckingData<T, super::EznoParser>,
 	environment: &crate::context::Context<crate::context::Syntax<'_>>,
 ) -> Assignable {
 	match name {

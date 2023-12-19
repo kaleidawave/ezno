@@ -1,13 +1,10 @@
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	context::get_on_ctx,
 	subtyping::check_satisfies,
-	types::{
-		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		printing::debug_effects,
-	},
-	types::{poly_types::FunctionTypeArguments, printing::print_type, Type, TypeStore},
+	types::{functions::SynthesisedArgument, printing::debug_effects},
+	types::{printing::print_type, Type, TypeStore},
 	Constant, Environment, TypeId,
 };
 
@@ -181,7 +178,7 @@ pub(crate) fn call_constant_function(
 		}
 		"set_prototype" => {
 			if let [first, second] = arguments {
-				let prototype = environment
+				let _prototype = environment
 					.facts
 					.prototypes
 					.insert(first.to_type().unwrap(), second.to_type().unwrap());

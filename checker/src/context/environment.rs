@@ -1,13 +1,11 @@
 use source_map::{SourceId, Span, SpanWithSource};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{
 	behavior::{
-		self,
 		assignments::{Assignable, AssignmentKind, Reference},
 		functions,
 		modules::{Exported, ImportKind, NamePair},
-		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
@@ -23,15 +21,13 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeStore,
 	},
-	ASTImplementation, CheckingData, Decidable, Instance, RootContext, TypeCombinable, TypeId,
-	VariableId,
+	CheckingData, Decidable, Instance, RootContext, TypeCombinable, TypeId,
 };
 
 use super::{
-	calling::CheckThings,
-	facts::{Facts, Publicity},
-	get_on_ctx, get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context,
-	ContextType, Environment, GeneralContext, SetPropertyError,
+	calling::CheckThings, facts::Publicity, get_on_ctx, get_value_of_variable, AssignmentError,
+	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
+	SetPropertyError,
 };
 
 pub type ContextLocation = Option<String>;
@@ -450,7 +446,7 @@ impl<'a> Environment<'a> {
 
 		if let Some((_, _, variable)) = variable_in_map {
 			match variable {
-				VariableOrImport::Variable { mutability, declared_at, context } => {
+				VariableOrImport::Variable { mutability, declared_at, context: _ } => {
 					match mutability {
 						VariableMutability::Constant => {
 							Err(AssignmentError::Constant(*declared_at))
@@ -472,7 +468,7 @@ impl<'a> Environment<'a> {
 									store,
 								);
 
-								if let SubTypeResult::IsNotSubType(mismatches) = result {
+								if let SubTypeResult::IsNotSubType(_mismatches) = result {
 									return Err(AssignmentError::DoesNotMeetConstraint {
 										variable_type: TypeStringRepresentation::from_type_id(
 											reassignment_constraint,
@@ -527,8 +523,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn get_environment_type(&self) -> &Scope {
+	pub fn get_environment_type(&self) -> &Scope {
 		&self.context_type.scope
+	}
+
+	pub fn get_environment_type_mut(&mut self) -> &mut Scope {
+		&mut self.context_type.scope
 	}
 
 	/// TODO decidable & private?
@@ -569,10 +569,6 @@ impl<'a> Environment<'a> {
 		});
 
 		existing
-	}
-
-	pub(crate) fn get_environment_type_mut(&mut self) -> &mut Scope {
-		&mut self.context_type.scope
 	}
 
 	pub(crate) fn get_parent(&self) -> GeneralContext {
@@ -697,7 +693,7 @@ impl<'a> Environment<'a> {
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
 		// TODO in_root temp fix
-		if let (Some(boundary), false) = (crossed_boundary, in_root) {
+		if let (Some(_boundary), false) = (crossed_boundary, in_root) {
 			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
 					let constraint = checking_data
@@ -772,7 +768,7 @@ impl<'a> Environment<'a> {
 				if let Event::ReadsReference {
 					reference: other_reference,
 					reflects_dependency: Some(dep),
-					position,
+					position: _,
 				} = event
 				{
 					if reference == *other_reference {
@@ -811,7 +807,7 @@ impl<'a> Environment<'a> {
 			Ok(VariableWithValue(og_var.clone(), type_id))
 		} else {
 			// TODO recursively in
-			if let VariableOrImport::MutableImport { of, constant: false, import_specified_at } =
+			if let VariableOrImport::MutableImport { of, constant: false, import_specified_at: _ } =
 				og_var.clone()
 			{
 				let current_value = get_value_of_variable(
@@ -1014,7 +1010,7 @@ impl<'a> Environment<'a> {
 							falling_through_structures += 1;
 						}
 					}
-					Scope::Conditional { is_switch: Some(label @ Some(_)), .. }
+					Scope::Conditional { is_switch: Some(_label @ Some(_)), .. }
 						if !is_continue && looking_for_label.is_some() =>
 					{
 						todo!("switch break")
@@ -1070,7 +1066,7 @@ impl<'a> Environment<'a> {
 					};
 					self.facts.variable_current_value.insert(id, *item);
 					let existing = self.variables.insert(default_name.to_owned(), v);
-					if let Some(existing) = existing {
+					if let Some(_existing) = existing {
 						todo!("diagnostic")
 					}
 				} else {
@@ -1111,9 +1107,9 @@ impl<'a> Environment<'a> {
 											self.facts.variable_current_value.insert(k, v);
 											true
 										}
-										VariableMutability::Mutable { reassignment_constraint } => {
-											false
-										}
+										VariableMutability::Mutable {
+											reassignment_constraint: _,
+										} => false,
 									};
 
 									let v = VariableOrImport::MutableImport {
@@ -1124,7 +1120,7 @@ impl<'a> Environment<'a> {
 											.with_source(self.get_source()),
 									};
 									let existing = self.variables.insert(part.r#as.to_owned(), v);
-									if let Some(existing) = existing {
+									if let Some(_existing) = existing {
 										todo!("diagnostic")
 									}
 									if also_export {

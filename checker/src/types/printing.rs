@@ -1,8 +1,5 @@
 use iterator_endiate::EndiateIteratorExt;
-use std::{
-	collections::{HashMap, HashSet},
-	fmt::Write,
-};
+use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, TypeStore};
 use crate::{
@@ -52,7 +49,7 @@ fn print_type_into_buf(
 
 	let ty = types.get_type_by_id(id);
 	match ty {
-		Type::AliasTo { to, name, parameters } => {
+		Type::AliasTo { to: _, name, parameters: _ } => {
 			buf.push_str(name);
 		}
 		Type::And(a, b) => {
@@ -114,7 +111,7 @@ fn print_type_into_buf(
 				condition,
 				truthy_result,
 				else_result,
-				result_union,
+				result_union: _,
 			} => {
 				if debug {
 					write!(buf, "[? {id:? }").unwrap();
@@ -170,10 +167,10 @@ fn print_type_into_buf(
 						}
 					print_type_into_buf(*rhs, buf, cycles, args, types, ctx, debug);
 				}
-				Constructor::UnaryOperator { operator, operand } => todo!(),
+				Constructor::UnaryOperator { operator: _, operand: _ } => todo!(),
 				Constructor::TypeOperator(_) => todo!(),
 				Constructor::TypeRelationOperator(_) => todo!(),
-				Constructor::Image { on, with, result } => {
+				Constructor::Image { on: _, with: _, result } => {
 					// TODO arguments and stuff
 					buf.push_str("[func result] ");
 					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
@@ -207,7 +204,7 @@ fn print_type_into_buf(
 					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
 				}
 			}
-			constructor => {
+			_constructor => {
 				let base = get_constraint(id, types).unwrap();
 				print_type_into_buf(base, buf, cycles, args, types, ctx, debug);
 			}
@@ -258,7 +255,7 @@ fn print_type_into_buf(
 					// 	// let ty = memory.get_fixed_constraint(constraint);
 					// 	// TypeDisplay::fmt(ty, buf, indent, cycles, memory);
 					// }
-					if let Some(ref default) = param.default {
+					if let Some(ref _default) = param.default {
 						todo!()
 					}
 					if not_at_end {
@@ -324,8 +321,8 @@ fn print_type_into_buf(
 			buf.push_str(" }");
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			crate::behavior::objects::SpecialObjects::Promise { events } => todo!(),
-			crate::behavior::objects::SpecialObjects::Generator { position } => todo!(),
+			crate::behavior::objects::SpecialObjects::Promise { events: () } => todo!(),
+			crate::behavior::objects::SpecialObjects::Generator { position: () } => todo!(),
 			crate::behavior::objects::SpecialObjects::Proxy { handler, over } => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
@@ -346,7 +343,7 @@ fn print_type_into_buf(
 							print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 						}
 						crate::behavior::variables::VariableMutability::Mutable {
-							reassignment_constraint,
+							reassignment_constraint: _,
 						} => todo!(),
 					};
 					if not_at_end {
@@ -426,15 +423,17 @@ pub(crate) fn print_property_key_into_buf(
 }
 
 pub fn debug_effects(
-	mut buf: &mut String,
+	buf: &mut String,
 	events: &[Event],
 	types: &TypeStore,
 	ctx: &GeneralContext,
 	debug: bool,
 ) {
+	use std::fmt::Write;
+
 	for event in events {
 		match event {
-			Event::ReadsReference { reference, reflects_dependency, position } => {
+			Event::ReadsReference { reference, reflects_dependency, position: _ } => {
 				let name = reference.get_name(ctx);
 				buf.write_fmt(format_args!("read '{name}' into {reflects_dependency:?}")).unwrap();
 			}
@@ -444,7 +443,7 @@ pub fn debug_effects(
 				buf.push_str(" = ");
 				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
-			Event::Getter { on, under, reflects_dependency, publicity, position } => {
+			Event::Getter { on, under, reflects_dependency, publicity: _, position: _ } => {
 				buf.push_str("read ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
 				if let PropertyKey::String(_) = under {
@@ -461,7 +460,7 @@ pub fn debug_effects(
 				);
 				buf.write_fmt(format_args!(" into {reflects_dependency:?}")).unwrap();
 			}
-			Event::Setter { on, under, new, initialization, publicity, position } => {
+			Event::Setter { on, under, new, initialization, publicity: _, position: _ } => {
 				if *initialization {
 					buf.write_fmt(format_args!("initialise {:?} with ", *on)).unwrap();
 					if let PropertyValue::Value(new) = new {
@@ -503,11 +502,11 @@ pub fn debug_effects(
 			}
 			Event::CallsType {
 				on,
-				with,
-				reflects_dependency,
+				with: _,
+				reflects_dependency: _,
 				timing,
-				called_with_new,
-				position,
+				called_with_new: _,
+				position: _,
 			} => {
 				buf.push_str("call ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
@@ -522,7 +521,7 @@ pub fn debug_effects(
 				buf.push_str("throw ");
 				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
-			Event::Conditionally { condition, events_if_truthy, else_events, position } => {
+			Event::Conditionally { condition, events_if_truthy, else_events, position: _ } => {
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), None, types, ctx, debug);
 				buf.push_str(" then ");
@@ -532,14 +531,14 @@ pub fn debug_effects(
 					debug_effects(buf, else_events, types, ctx, debug);
 				}
 			}
-			Event::Return { returned, returned_position } => {
+			Event::Return { returned, returned_position: _ } => {
 				buf.push_str("return ");
 				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
 			Event::CreateObject {
-				prototype,
+				prototype: _,
 				referenced_in_scope_as,
-				position,
+				position: _,
 				is_function_this,
 			} => {
 				if *is_function_this {
@@ -555,7 +554,7 @@ pub fn debug_effects(
 			Event::Continue { .. } => {
 				buf.push_str("continue");
 			}
-			Event::Iterate { iterate_over, initial: _, kind } => {
+			Event::Iterate { iterate_over, initial: _, kind: _ } => {
 				buf.push_str("iterate\n");
 				debug_effects(buf, iterate_over, types, ctx, debug);
 				buf.push_str("end");

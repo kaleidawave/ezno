@@ -1,8 +1,6 @@
 use crate::{
-	behavior::functions::{ClassPropertiesToRegister, GetterSetter},
-	context::facts::Publicity,
-	events::Event,
-	ASTImplementation, CheckingData, Environment, PropertyValue, TypeId,
+	behavior::functions::ClassPropertiesToRegister, context::facts::Publicity, events::Event,
+	CheckingData, Environment, PropertyValue, TypeId,
 };
 
 use super::properties::PropertyKey;
@@ -45,7 +43,7 @@ pub struct RegisterClassPropertiesEvent {
 	pub class_prototype: TypeId,
 }
 
-fn register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+fn _register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	class_prototype: TypeId,
 	properties: ClassPropertiesToRegister<'_, A>,
@@ -70,7 +68,7 @@ fn register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementat
 			);
 		},
 	);
-	let (events, free_variables) = result.unwrap();
+	let (_events, _free_variables) = result.unwrap();
 
 	// Store events ...
 	todo!()

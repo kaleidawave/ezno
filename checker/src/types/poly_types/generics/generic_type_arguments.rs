@@ -4,12 +4,11 @@
 use crate::{
 	behavior::functions::{ClosureChain, ClosureId},
 	context::facts::Facts,
-	types::TypeStore,
-	CheckingData, TypeId,
+	TypeId,
 };
 
 use map_vec::Map as SmallMap;
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use std::{fmt::Debug, iter::FromIterator};
 
@@ -98,7 +97,7 @@ pub(crate) trait TypeArgumentStore {
 }
 
 impl ClosureChain for FunctionTypeArguments {
-	fn get_fact_from_closure<T, R>(&self, fact: &Facts, mut cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, _fact: &Facts, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
@@ -161,7 +160,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 // TODO temp: for type alias specialisation
 impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
 	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.get(&id).map(|(value, pos)| *value)
+		self.get(&id).map(|(value, _pos)| *value)
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
@@ -195,7 +194,7 @@ impl TypeArgumentStore for StructureGenericArguments {
 		self.type_arguments.get(&id).map(|(ty, _)| *ty)
 	}
 
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
+	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
 		None
 	}
 

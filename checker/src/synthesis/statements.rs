@@ -2,24 +2,14 @@ use super::{
 	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
 };
 use crate::{
-	behavior::{
-		assignments::Reference,
-		iteration::{synthesise_iteration, IterationBehavior},
-		operations::CanonicalEqualityAndInequality,
-	},
-	context::{calling::Target, environment, ClosedOverReferencesInScope, ContextId, Scope},
+	behavior::iteration::{synthesise_iteration, IterationBehavior},
+	context::Scope,
 	diagnostics::TypeCheckError,
-	events::{apply_event, Event, RootReference},
 	synthesis::EznoParser,
-	types::{poly_types::FunctionTypeArguments, Constructor, PolyNature},
-	CheckingData, Constant, Environment, TypeId,
+	CheckingData, Environment, TypeId,
 };
-use map_vec::Map;
-use parser::{
-	expressions::MultipleExpression,
-	statements::{ConditionalElseStatement, UnconditionalElseStatement},
-	ASTNode, BlockOrSingleStatement, Expression, Statement,
-};
+
+use parser::{expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement};
 use std::collections::HashMap;
 
 pub type ExportedItems = HashMap<String, crate::behavior::variables::VariableOrImport>;
@@ -137,7 +127,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			},
 		),
 		Statement::ForLoop(stmt) => match &stmt.condition {
-			parser::statements::ForLoopCondition::ForOf { keyword, variable, of, position } => {
+			parser::statements::ForLoopCondition::ForOf {
+				keyword: _,
+				variable,
+				of,
+				position: _,
+			} => {
 				synthesise_iteration(
 					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
 					information.and_then(|info| info.label),
@@ -152,7 +147,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					},
 				);
 			}
-			parser::statements::ForLoopCondition::ForIn { keyword, variable, r#in, position } => {
+			parser::statements::ForLoopCondition::ForIn {
+				keyword: _,
+				variable,
+				r#in,
+				position: _,
+			} => {
 				synthesise_iteration(
 					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
 					information.and_then(|info| info.label),
@@ -171,7 +171,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				initialiser,
 				condition,
 				afterthought,
-				position,
+				position: _,
 			} => synthesise_iteration(
 				IterationBehavior::For { initialiser, condition, afterthought },
 				information.and_then(|info| info.label),
@@ -183,13 +183,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			),
 		},
 		Statement::Block(ref block) => {
-			let (result, _, _) = environment.new_lexical_environment_fold_into_parent(
+			let (_result, _, _) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Block {},
 				checking_data,
 				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
-		Statement::Cursor(cursor_id, _) => {
+		Statement::Cursor(_cursor_id, _) => {
 			todo!("Dump environment data somewhere")
 		}
 		Statement::Continue(label, position) => {
@@ -216,7 +216,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			let thrown_position = stmt.2.with_source(environment.get_source());
 			environment.throw_value(thrown_value, thrown_position);
 		}
-		Statement::Labelled { position, name, statement } => {
+		Statement::Labelled { position: _, name, statement } => {
 			// Labels on invalid statements is caught at parse time
 
 			synthesise_statement(
@@ -244,7 +244,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					crate::Scope::Block {},
 					checking_data,
 					|environment, checking_data| {
-						if let Some((clause, r#type)) = &stmt.exception_var {
+						if let Some((clause, _type)) = &stmt.exception_var {
 							// TODO clause.type_annotation
 							register_variable(
 								clause.get_ast_ref(),

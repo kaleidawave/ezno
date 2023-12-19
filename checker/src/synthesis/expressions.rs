@@ -1,24 +1,18 @@
-use std::{borrow::Cow, convert::TryInto, marker::PhantomData};
+use std::{borrow::Cow, convert::TryInto};
 
 use parser::{
 	expressions::{
-		assignments::LHSOfAssignment,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		MultipleExpression, SpecialOperators, SpreadExpression, SuperReference, TemplateLiteral,
 	},
 	functions::MethodHeader,
-	operators::{
-		BinaryAssignmentOperator, BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator,
-	},
+	operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 	ASTNode, Expression,
 };
 
 use crate::{
 	behavior::{
-		functions::{
-			register_arrow_function, register_expression_function, FunctionRegisterBehavior,
-			SynthesisableFunction,
-		},
+		functions::{register_arrow_function, register_expression_function},
 		variables::VariableWithValue,
 	},
 	synthesis::parser_property_key_to_checker_property_key,
@@ -38,10 +32,9 @@ use crate::{
 		template_literal::synthesise_template_literal,
 	},
 	context::facts::Publicity,
-	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	events::Event,
+	diagnostics::TypeCheckWarning,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
-	types::{properties::PropertyKind, Constant, TypeId},
+	types::{Constant, TypeId},
 	CheckingData, Environment, Instance, SpecialExpressions,
 };
 
@@ -81,7 +74,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::StringLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
-		Expression::RegexLiteral { pattern, flags, position } => {
+		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
 			// TODO flags
 			return checking_data.types.new_constant_type(Constant::Regexp(pattern.clone()));
 		}
@@ -118,7 +111,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							expression_type,
 						)
 					}
-					SpreadExpression::Spread(expr, position) => {
+					SpreadExpression::Spread(_expr, position) => {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -195,7 +188,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			expecting,
 		)),
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
-			let mut parts_iter = parts.iter().map(|part| match part {
+			let parts_iter = parts.iter().map(|part| match part {
 				parser::expressions::TemplateLiteralPart::Static(value) => {
 					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
 				}
@@ -351,7 +344,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					// TODO synthesise anyway? and use mappings
 					// TODO more expressions
 					match &**operand {
-						Expression::PropertyAccess { parent, property, is_optional, position } => {
+						Expression::PropertyAccess {
+							parent,
+							property,
+							is_optional: _,
+							position: _,
+						} => {
 							let on = synthesise_expression(
 								parent,
 								environment,
@@ -372,7 +370,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								parser::PropertyReference::Cursor(_) => todo!(),
 							}
 						}
-						Expression::Index { indexee, indexer, is_optional, position } => {
+						Expression::Index { indexee, indexer, is_optional: _, position: _ } => {
 							let being_indexed = synthesise_expression(
 								indexee,
 								environment,
@@ -425,9 +423,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 		}
 		Expression::BinaryAssignmentOperation { lhs, operator, rhs, position } => {
-			use crate::behavior::assignments::AssignmentKind;
-			use parser::operators::BinaryAssignmentOperator;
-
 			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
 				lhs,
 				environment,
@@ -574,8 +569,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let position = pos.with_source(environment.get_source());
 			Instance::RValue(environment.get_value_of_this(&checking_data.types, &position))
 		}
-		Expression::SuperExpression(reference, position) => match reference {
-			SuperReference::Call { arguments } => {
+		Expression::SuperExpression(reference, _position) => match reference {
+			SuperReference::Call { arguments: _ } => {
 				todo!();
 
 				// let constructor =
@@ -626,8 +621,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				// Instance::RValue(ty)
 			}
-			SuperReference::PropertyAccess { property } => todo!(),
-			SuperReference::Index { indexer } => todo!(),
+			SuperReference::PropertyAccess { property: _ } => todo!(),
+			SuperReference::Index { indexer: _ } => todo!(),
 		},
 		Expression::NewTarget(..) => todo!(),
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
@@ -716,9 +711,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ClassExpression(class) => {
 			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
 		}
-		Expression::Cursor { cursor_id, position } => todo!(),
+		Expression::Cursor { cursor_id: _, position: _ } => todo!(),
 		Expression::SpecialOperators(operator, position) => match operator {
-			SpecialOperators::AsExpression { value, type_annotation, .. } => {
+			SpecialOperators::AsExpression { value, .. } => {
 				checking_data.diagnostics_container.add_warning(
 					TypeCheckWarning::IgnoringAsExpression(
 						position.with_source(environment.get_source()),
@@ -727,7 +722,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return synthesise_expression(value, environment, checking_data, expecting);
 			}
-			SpecialOperators::IsExpression { value, is_keyword, type_annotation } => todo!(),
+			SpecialOperators::IsExpression { value: _, is_keyword: _, type_annotation: _ } => {
+				todo!()
+			}
 			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
 				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
@@ -894,7 +891,7 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 	arguments
 		.iter()
 		.filter_map(|argument| match argument {
-			SpreadExpression::Spread(expr, _) => {
+			SpreadExpression::Spread(_expr, _) => {
 				todo!()
 				// Some(synthesisedFunctionArgument::Spread(synthesise_expression(
 				//     expr,
@@ -905,7 +902,7 @@ fn synthesise_arguments<T: crate::ReadFromFS>(
 				// )))
 			}
 			SpreadExpression::NonSpread(expr) => {
-				let non_param = expr.get_non_parenthesized();
+				let _non_param = expr.get_non_parenthesized();
 				// if matches!(
 				// 	non_param,
 				// 	Expression::ArrowFunction(_)

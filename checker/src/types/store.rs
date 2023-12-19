@@ -1,14 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	behavior::{
-		functions::{ClosureId, FunctionBehavior},
-		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise},
-	},
+	behavior::functions::{ClosureId, FunctionBehavior},
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	Constant, FunctionId, GeneralContext, TypeId,
+	FunctionId, GeneralContext, TypeId,
 };
 
 use super::{
@@ -22,9 +19,10 @@ pub struct TypeStore {
 	types: Vec<Type>,
 	pub(crate) functions: HashMap<FunctionId, FunctionType>,
 
-	pub(crate) dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
-
-	pub(crate) specialisations: HashMap<TypeId, Vec<TypeId>>,
+	// TODO
+	pub(crate) _dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
+	// TODO
+	pub(crate) _specialisations: HashMap<TypeId, Vec<TypeId>>,
 
 	/// can be used for tree shaking
 	pub called_functions: HashSet<FunctionId>,
@@ -36,7 +34,7 @@ pub struct TypeStore {
 impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
-		let mut types = vec![
+		let types = vec![
 			Type::Interface { name: "error".to_owned(), parameters: None, nominal: true },
 			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
 			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
@@ -93,8 +91,8 @@ impl Default for TypeStore {
 		Self {
 			types: types.clone(),
 			functions: HashMap::new(),
-			dependent_dependencies: Default::default(),
-			specialisations: Default::default(),
+			_dependent_dependencies: Default::default(),
+			_specialisations: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
 		}
@@ -305,10 +303,10 @@ impl TypeStore {
 					antecedent: arguments.clone(),
 				})
 			}
-			Type::Constructor(constructor) => {
+			Type::Constructor(_constructor) => {
 				// Don't think any properties exist on this poly type
 				// TODO None here
-				let constraint = get_constraint(on, self).unwrap();
+				let _constraint = get_constraint(on, self).unwrap();
 				// TODO might need to send more information here, rather than forgetting via .get_type
 				self.get_fact_about_type(ctx, on, resolver, data)
 			}

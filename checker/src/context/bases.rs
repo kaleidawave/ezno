@@ -10,17 +10,17 @@ pub struct Boundary(pub(crate) ContextId);
 ///
 /// TODO generic as only environments should have mutable bases
 #[derive(Default, Debug)]
-pub(crate) struct Bases {
+pub struct Bases {
 	pub(crate) immutable_bases: HashMap<TypeId, TypeId>,
 	pub(crate) mutable_bases: HashMap<TypeId, (Boundary, TypeId)>,
 }
 
 impl Bases {
-	pub(crate) fn does_type_have_mutable_base(&self, on: TypeId) -> bool {
+	pub(crate) fn _does_type_have_mutable_base(&self, _on: TypeId) -> bool {
 		todo!()
 	}
 
-	pub(crate) fn merge(&mut self, mut bases: Bases, context_id: ContextId) {
+	pub(crate) fn merge(&mut self, bases: Bases, context_id: ContextId) {
 		self.immutable_bases.extend(bases.immutable_bases);
 		for (ty, (ctx_ceil, base)) in bases.mutable_bases {
 			let existing = if ctx_ceil.0 == context_id {
@@ -35,7 +35,8 @@ impl Bases {
 	}
 
 	/// INTERFACE extends HAPPEN AFTER THE TYPE HAS BEEN CRATED
-	pub(crate) fn connect_extends(&mut self, on: TypeId, ty: TypeId) {
+	#[allow(unused)]
+	pub fn connect_extends(&mut self, on: TypeId, ty: TypeId) {
 		let res = self.immutable_bases.insert(on, ty);
 		debug_assert!(res.is_none());
 	}

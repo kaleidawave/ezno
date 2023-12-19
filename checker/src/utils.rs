@@ -1,61 +1,3 @@
-pub(crate) fn format_list<D: Display>(mut iterator: impl ExactSizeIterator<Item = D>) -> String {
-	use std::fmt::Write;
-
-	match iterator.len() {
-		0 => String::new(),
-		1 => iterator.next().unwrap().to_string(),
-		2 => format!("{} and {}", iterator.next().unwrap(), iterator.next().unwrap()),
-		val => {
-			let mut buf = String::new();
-			for value in iterator.by_ref().take(val - 1) {
-				write!(&mut buf, "{value}, ").unwrap();
-			}
-			write!(&mut buf, "and {}", iterator.next().unwrap()).unwrap();
-			buf
-		}
-	}
-}
-
-// A trait for special handing when displaying user readable types
-// pub trait TypeDisplay {
-// 	/// TODO might need environment information rather than memory...?
-// 	/// - type ids -> names (maybe that goes on memory..., prefer environment)
-// 	/// -
-// 	fn fmt(
-// 		&self,
-// 		buf: &mut String,
-// 		indent: usize,
-// 		cycles: &mut HashSet<usize>,
-// 		environment: &GeneralContext,
-// 		store: &TypeStore,
-// 	) {
-// 		// TODO temp
-// 		todo!("fmt not implemented")
-// 	}
-
-// 	fn to_string(&self, environment: &GeneralContext) -> String {
-// 		let mut buf = String::new();
-// 		TypeDisplay::fmt(self, &mut buf, 0, &mut HashSet::new(), environment);
-// 		buf
-// 	}
-// }
-
-// impl<T: TypeDisplay> TypeDisplay for Option<T> {
-// 	fn fmt(
-// 		&self,
-// 		buf: &mut String,
-// 		indent: usize,
-// 		cycles: &mut HashSet<usize>,
-// 		environment: &GeneralContext,
-// 		store: &TypeStore,
-// 	) {
-// 		match self {
-// 			Some(ty) => TypeDisplay::fmt(ty, buf, indent, cycles, environment),
-// 			None => buf.push_str("any"),
-// 		}
-// 	}
-// }
-
 static IS_DEBUG_MODE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
 pub(crate) fn is_debug_mode() -> bool {
@@ -64,6 +6,7 @@ pub(crate) fn is_debug_mode() -> bool {
 	})
 }
 
+/// For `notify!` macro below
 pub fn shorten(s: &str) -> &str {
 	&s[s.find("src").expect("file not under 'src' folder")..]
 }
@@ -90,8 +33,6 @@ macro_rules! notify {
 		}
     };
 }
-use std::fmt::Display;
-
 pub(crate) use notify;
 
 pub trait ExtendedZipTrait: Iterator + Sized {
