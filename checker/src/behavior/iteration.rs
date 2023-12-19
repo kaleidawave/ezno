@@ -5,7 +5,10 @@ use source_map::{BaseSpan, SpanWithSource};
 use crate::{
 	behavior::{operations::CanonicalEqualityAndInequality, variables::VariableOrImport},
 	context::{calling::Target, environment::Label, get_value_of_variable, CallCheckingBehavior},
-	events::{apply_event, Event, EventResult, InitialVariables, RootReference},
+	events::{
+		application::ErrorsAndInfo, apply_event, Event, EventResult, InitialVariables,
+		RootReference,
+	},
 	types::{
 		poly_types::{
 			generic_type_arguments::{StructureGenericArguments, TypeArgumentStore},
@@ -97,6 +100,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut FunctionTypeArguments::new(),
 				environment,
 				&mut crate::context::calling::Target::new_default(),
+				// TODO shouldn't be needed
+				&mut Default::default(),
 				&mut checking_data.types,
 			) {
 				todo!()
@@ -157,6 +162,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut FunctionTypeArguments::new(),
 				environment,
 				&mut crate::context::calling::Target::new_default(),
+				// TODO shouldn't be needed
+				&mut Default::default(),
 				&mut checking_data.types,
 			) {
 				todo!()
@@ -286,6 +293,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut FunctionTypeArguments::new(),
 				environment,
 				&mut crate::context::calling::Target::new_default(),
+				// TODO shouldn't be needed
+				&mut Default::default(),
 				&mut checking_data.types,
 			) {
 				todo!()
@@ -317,6 +326,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut FunctionTypeArguments::new(),
 				environment,
 				&mut crate::context::calling::Target::new_default(),
+				// TODO shouldn't be needed
+				&mut Default::default(),
 				&mut checking_data.types,
 			) {
 				todo!()
@@ -343,6 +354,7 @@ pub enum IterationKind {
 	Iterator(TypeId),
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_iteration_block(
 	condition: IterationKind,
 	events: Vec<Event>,
@@ -350,6 +362,7 @@ pub(crate) fn run_iteration_block(
 	type_arguments: &mut FunctionTypeArguments,
 	environment: &mut Environment,
 	target: &mut Target,
+	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<EventResult> {
 	/// TODO via config
@@ -393,28 +406,15 @@ pub(crate) fn run_iteration_block(
 					crate::utils::notify!("Here ??");
 				}
 
-				let result = evaluate_iterations(
+				evaluate_iterations(
 					iterations,
 					&events,
 					type_arguments,
 					environment,
 					target,
+					errors,
 					types,
-				);
-
-				if let Some(result) = result {
-					match result {
-						EventResult::Return(returned, returned_position) => {
-							environment.return_value(returned, returned_position);
-							None
-						}
-						e @ (EventResult::Throw
-						| EventResult::Break { .. }
-						| EventResult::Continue { .. }) => Some(e),
-					}
-				} else {
-					None
-				}
+				)
 			} else {
 				let initial = match initial {
 					InitialVariablesInput::Calculated(initial) => {
@@ -513,11 +513,16 @@ fn evaluate_iterations(
 	arguments: &mut FunctionTypeArguments,
 	environment: &mut Environment,
 	target: &mut Target,
+	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<EventResult> {
+	// TODO temp fix
+	if !errors.errors.is_empty() {
+		return None;
+	}
+
 	'main_iterations: for _ in 0..iterations {
 		'inner_loop: for event in events {
-			let mut errors = Vec::new();
 			let result = apply_event(
 				event.clone(),
 				crate::behavior::functions::ThisValue::UseParent,
@@ -527,10 +532,10 @@ fn evaluate_iterations(
 				target,
 				types,
 				// Shouldn't matter
-				&mut errors,
+				errors,
 			);
 
-			if !errors.is_empty() {
+			if !errors.errors.is_empty() {
 				unreachable!("errors when calling loop")
 			}
 

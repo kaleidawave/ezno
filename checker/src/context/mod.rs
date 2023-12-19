@@ -673,7 +673,10 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
-		self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))).unwrap()
+		// TODO map_or temp
+		self.parents_iter()
+			.find_map(|env| get_on_ctx!(env.variable_names.get(&id)))
+			.map_or("could not find", String::as_str)
 	}
 
 	pub fn as_general_context(&self) -> GeneralContext {

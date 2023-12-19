@@ -110,9 +110,8 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		// TODO second argument Rust
-		"print_type" | "debug_type" => {
-			let debug = id == "debug_type";
+		"print_type" | "debug_type" | "debug_type_independent" => {
+			let debug = id.starts_with("debug");
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
@@ -121,7 +120,7 @@ pub(crate) fn call_constant_function(
 			let ty_as_string = print_type(ty, types, &environment.as_general_context(), debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
 		}
-		"debug_type_rust" => {
+		"debug_type_rust" | "debug_type_rust_independent" => {
 			let id = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?

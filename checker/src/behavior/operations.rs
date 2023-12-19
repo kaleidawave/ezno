@@ -458,7 +458,7 @@ pub fn evaluate_logical_operation_with_expression<
 	}
 }
 
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
 	LogicalNot,
 	Negation,

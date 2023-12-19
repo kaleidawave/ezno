@@ -40,6 +40,7 @@ impl RootReference {
 }
 
 /// If `carry == 0` then break
+#[derive(Debug)]
 pub enum EventResult {
 	Return(TypeId, SpanWithSource),
 	Break {

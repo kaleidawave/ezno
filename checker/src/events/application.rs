@@ -18,6 +18,12 @@ use crate::{
 	Decidable, Environment, Type,
 };
 
+#[derive(Default)]
+pub struct ErrorsAndInfo {
+	pub errors: Vec<crate::types::calling::FunctionCallingError>,
+	pub warnings: Vec<crate::types::calling::InfoDiagnostic>,
+}
+
 #[must_use]
 pub(crate) fn apply_event(
 	event: Event,
@@ -26,8 +32,7 @@ pub(crate) fn apply_event(
 	environment: &mut Environment,
 	target: &mut Target,
 	types: &mut TypeStore,
-	// TODO WIP
-	errors: &mut Vec<crate::types::calling::FunctionCallingError>,
+	errors: &mut ErrorsAndInfo,
 ) -> Option<EventResult> {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency, position } => {
@@ -42,7 +47,7 @@ pub(crate) fn apply_event(
 						if let Some(ty) = value {
 							ty
 						} else {
-							errors.push(crate::types::calling::FunctionCallingError::TDZ {
+							errors.errors.push(crate::types::calling::FunctionCallingError::TDZ {
 								error: TDZ {
 									variable_name: environment.get_variable_name(id).to_owned(),
 									position,
@@ -171,7 +176,7 @@ pub(crate) fn apply_event(
 							todo!()
 						};
 
-						errors.push(
+						errors.errors.push(
 							crate::types::calling::FunctionCallingError::SetPropertyConstraint {
 								property_type: property_constraint,
 								value_type,
@@ -215,7 +220,8 @@ pub(crate) fn apply_event(
 						types,
 					);
 					match result {
-						Ok(result) => {
+						Ok(mut result) => {
+							errors.warnings.append(&mut result.warnings);
 							if let Some(reflects_dependency) = reflects_dependency {
 								type_arguments.set_id_from_reference(
 									reflects_dependency,
@@ -225,7 +231,7 @@ pub(crate) fn apply_event(
 						}
 						Err(mut calling_errors) => {
 							crate::utils::notify!("inference and or checking failed at function");
-							errors.append(&mut calling_errors);
+							errors.errors.append(&mut calling_errors);
 						}
 					}
 				}
@@ -413,15 +419,21 @@ pub(crate) fn apply_event(
 				}
 			};
 
-			iteration::run_iteration_block(
+			let early_result = iteration::run_iteration_block(
 				kind,
 				iterate_over.to_vec(),
 				iteration::InitialVariablesInput::Calculated(initial),
 				type_arguments,
 				environment,
 				target,
+				errors,
 				types,
-			)?;
+			);
+
+			if let Some(early_result) = early_result {
+				// crate::utils::notify!("got out {:?}", early_result);
+				return Some(early_result);
+			}
 		}
 	}
 	None

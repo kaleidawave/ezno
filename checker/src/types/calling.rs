@@ -11,7 +11,7 @@ use crate::{
 		Environment, Logical, SetPropertyError,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{apply_event, Event, EventResult, RootReference},
+	events::{application::ErrorsAndInfo, apply_event, Event, EventResult, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
@@ -58,7 +58,13 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 		&mut checking_data.types,
 	);
 	match result {
-		Ok(FunctionCallResult { returned_type, warnings, called, special }) => {
+		Ok(FunctionCallResult {
+			returned_type,
+			warnings,
+			called,
+			special,
+			found_dependent_argument: _,
+		}) => {
 			for warning in warnings {
 				checking_data.diagnostics_container.add_info(
 					crate::diagnostics::Diagnostic::Position {
@@ -101,6 +107,7 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 			returned_type: TypeId::ERROR_TYPE,
 			warnings: Vec::new(),
 			special: None,
+			found_dependent_argument: false,
 		});
 	}
 
@@ -316,14 +323,17 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 			Some(constructor_return)
 		};
 
-		behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
-			on,
-			with,
-			timing: crate::events::CallingTiming::Synchronous,
-			called_with_new,
-			reflects_dependency,
-			position: call_site,
-		});
+		// Event already added if dependent argument
+		if !result.found_dependent_argument {
+			behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
+				on,
+				with,
+				timing: crate::events::CallingTiming::Synchronous,
+				called_with_new,
+				reflects_dependency,
+				position: call_site,
+			});
+		}
 
 		// TODO should wrap result in open poly
 		Ok(FunctionCallResult {
@@ -331,6 +341,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 			returned_type: reflects_dependency.unwrap_or(result.returned_type),
 			warnings: result.warnings,
 			special: None,
+			found_dependent_argument: result.found_dependent_argument,
 		})
 	}
 }
@@ -387,6 +398,7 @@ pub struct FunctionCallResult {
 	// TODO
 	pub warnings: Vec<InfoDiagnostic>,
 	pub special: Option<SpecialExpressions>,
+	pub found_dependent_argument: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, binary_serialize_derive::BinarySerializable)]
@@ -428,6 +440,7 @@ impl FunctionType {
 				warnings: Vec::new(),
 				// TODO ?
 				special: None,
+				found_dependent_argument: false,
 			});
 			// let reason = FunctionCallingError::Recursed(self.id, call_site);
 			// return Err(vec![reason])
@@ -478,14 +491,17 @@ impl FunctionType {
 							returned_type: value,
 							warnings: Default::default(),
 							called: None,
+							found_dependent_argument: false,
 							special,
 						});
 					}
 					Ok(ConstantOutput::Diagnostic(diagnostic)) => {
+						crate::utils::notify!("Here, constant output");
 						return Ok(FunctionCallResult {
 							returned_type: TypeId::UNDEFINED_TYPE,
 							warnings: vec![InfoDiagnostic(diagnostic)],
 							called: None,
+							found_dependent_argument: false,
 							// TODO!!
 							special: Some(SpecialExpressions::Marker),
 						});
@@ -549,11 +565,12 @@ impl FunctionType {
 					warnings: Default::default(),
 					called: None,
 					special: None,
+					found_dependent_argument: true,
 				});
 			}
 		}
 
-		let (mut errors, mut warnings) = (Vec::new(), Vec::<()>::new());
+		let mut errors = ErrorsAndInfo::default();
 
 		// Type arguments of the function
 		let local_type_argument_as_restrictions: map_vec::Map<
@@ -620,7 +637,9 @@ impl FunctionType {
 			}
 			FunctionBehavior::Constructor { non_super_prototype, this_object_type } => {
 				if let CalledWithNew::None = called_with_new {
-					errors.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
+					errors
+						.errors
+						.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
 				}
 			}
 		}
@@ -668,13 +687,12 @@ impl FunctionType {
 		// take the found and inject back into what it resolved
 		let mut result_type_arguments = map_vec::Map::new();
 
-		found.into_iter().for_each(|(item, values)| {
-			let mut into_iter = values.into_iter();
+		for (item, values) in found {
+			// TODO only first ??
 			let (mut value, argument_position, param) =
-				into_iter.next().expect("no type argument ...?");
+				values.into_iter().next().expect("no type argument ...?");
 
-			let restrictions_for_item = type_restrictions.get(&item);
-			if let Some(restrictions_for_item) = restrictions_for_item {
+			if let Some(restrictions_for_item) = type_restrictions.get(&item) {
 				for (restriction, restriction_position) in restrictions_for_item {
 					let mut behavior = BasicEquality {
 						add_property_restrictions: false,
@@ -707,7 +725,7 @@ impl FunctionType {
 							false,
 						);
 
-						errors.push(FunctionCallingError::InvalidArgumentType {
+						errors.errors.push(FunctionCallingError::InvalidArgumentType {
 							argument_type,
 							argument_position,
 							parameter_type,
@@ -720,12 +738,7 @@ impl FunctionType {
 
 			// TODO position is just the first
 			result_type_arguments.insert(item, (value, argument_position));
-		});
-		// for (item, restrictions) in type_restrictions.iter() {
-		// 	for (restriction, pos) in restrictions {
-		// 		// TODO
-		// 	}
-		// }
+		}
 
 		let mut type_arguments = FunctionTypeArguments {
 			structure_arguments: parent_type_arguments,
@@ -737,8 +750,8 @@ impl FunctionType {
 			// TODO check free variables from inference
 		}
 
-		if !errors.is_empty() {
-			return Err(errors);
+		if !errors.errors.is_empty() {
+			return Err(errors.errors);
 		}
 
 		// Evaluate effects directly into environment
@@ -754,7 +767,7 @@ impl FunctionType {
 
 			// Apply events here
 			for event in self.effects.clone() {
-				let current_errors = errors.len();
+				let current_errors = errors.errors.len();
 				let result = apply_event(
 					event,
 					this_value,
@@ -766,7 +779,7 @@ impl FunctionType {
 				);
 
 				// Adjust call sites. (because they aren't currently passed down)
-				for d in &mut errors[current_errors..] {
+				for d in &mut errors.errors[current_errors..] {
 					if let FunctionCallingError::TDZ { call_site: ref mut c, .. } = d {
 						*c = Some(call_site);
 					} else if let FunctionCallingError::SetPropertyConstraint {
@@ -802,9 +815,9 @@ impl FunctionType {
 			return_result
 		});
 
-		if !errors.is_empty() {
-			crate::utils::notify!("Got {} application errors", errors.len());
-			return Err(errors);
+		if !errors.errors.is_empty() {
+			crate::utils::notify!("Got {} application errors", errors.errors.len());
+			return Err(errors.errors);
 		}
 
 		if let CalledWithNew::New { .. } = called_with_new {
@@ -821,9 +834,10 @@ impl FunctionType {
 
 					return Ok(FunctionCallResult {
 						returned_type: new_instance_type,
-						warnings: Default::default(),
+						warnings: errors.warnings,
 						called: Some(self.id),
 						special: None,
+						found_dependent_argument: false,
 					});
 				}
 				FunctionBehavior::Constructor { non_super_prototype, this_object_type } => {
@@ -836,9 +850,10 @@ impl FunctionType {
 
 					return Ok(FunctionCallResult {
 						returned_type: new_instance_type,
-						warnings: Default::default(),
+						warnings: errors.warnings,
 						called: Some(self.id),
 						special: None,
+						found_dependent_argument: false,
 					});
 				}
 			}
@@ -854,9 +869,10 @@ impl FunctionType {
 
 		Ok(FunctionCallResult {
 			returned_type,
-			warnings: Default::default(),
+			warnings: errors.warnings,
 			called: Some(self.id),
 			special: None,
+			found_dependent_argument: false,
 		})
 	}
 
@@ -866,7 +882,7 @@ impl FunctionType {
 		mut seeding_context: SeedingContext,
 		environment: &mut Environment,
 		types: &TypeStore,
-		errors: &mut Vec<FunctionCallingError>,
+		errors: &mut ErrorsAndInfo,
 		call_site: &source_map::BaseSpan<SourceId>,
 	) -> SeedingContext {
 		for (parameter_idx, parameter) in self.parameters.parameters.iter().enumerate() {
@@ -911,7 +927,7 @@ impl FunctionType {
 					);
 
 					if let SubTypeResult::IsNotSubType(reasons) = result {
-						errors.push(FunctionCallingError::InvalidArgumentType {
+						errors.errors.push(FunctionCallingError::InvalidArgumentType {
 							parameter_type: TypeStringRepresentation::from_type_id(
 								parameter.ty,
 								&environment.as_general_context(),
@@ -946,7 +962,7 @@ impl FunctionType {
 				);
 			} else {
 				// TODO group
-				errors.push(FunctionCallingError::MissingArgument {
+				errors.errors.push(FunctionCallingError::MissingArgument {
 					parameter_position: parameter.position,
 					call_site: *call_site,
 				});
@@ -956,7 +972,7 @@ impl FunctionType {
 			// 	if auto_inserted_arg {
 			// 		todo!("different error");
 			// 	} else {
-			// 		errors.push(FunctionCallingError::InvalidArgumentType {
+			// 		errors.errors.push(FunctionCallingError::InvalidArgumentType {
 			// 			parameter_index: idx,
 			// 			argument_type: argument_type.into_owned(),
 			// 			parameter_type: parameter_type.clone(),
@@ -965,7 +981,7 @@ impl FunctionType {
 			// 	}
 			// }
 			// } else {
-			// 	errors.push(FunctionCallingError::MissingArgument {
+			// 	errors.errors.push(FunctionCallingError::MissingArgument {
 			// 		parameter_pos: parameter.2.clone().unwrap(),
 			// 	});
 			// }
@@ -1007,7 +1023,7 @@ impl FunctionType {
 						);
 
 						if let SubTypeResult::IsNotSubType(reasons) = result {
-							errors.push(FunctionCallingError::InvalidArgumentType {
+							errors.errors.push(FunctionCallingError::InvalidArgumentType {
 								parameter_type: TypeStringRepresentation::from_type_id(
 									rest_parameter.item_type,
 									&environment.as_general_context(),
@@ -1048,7 +1064,7 @@ impl FunctionType {
 				} else {
 					first.get_position()
 				};
-				errors.push(FunctionCallingError::ExcessArguments { count, position });
+				errors.errors.push(FunctionCallingError::ExcessArguments { count, position });
 			}
 		}
 		seeding_context

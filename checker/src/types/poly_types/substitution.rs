@@ -3,7 +3,10 @@
 use crate::{
 	behavior::{
 		functions::{ClosureId, ThisValue},
-		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
+		operations::{
+			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
+			evaluate_pure_unary_operator,
+		},
 	},
 	types::{
 		get_constraint, is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type,
@@ -92,16 +95,18 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
-				todo!()
-				// evaluate_unary_operator(
-				// 	operator,
-				// 	operand,
-				// 	environment,
-				// 	// Restrictions should have been made ahead of time
-				// 	false,
-				// 	types,
-				// )
-				// .unwrap()
+				match evaluate_pure_unary_operator(
+					operator, operand, types,
+					// Restrictions should have been made ahead of time
+					false,
+				) {
+					Ok(result) => result,
+					Err(()) => {
+						unreachable!(
+							"Cannot {operand:?} {operator:?} (restriction or something failed)"
+						);
+					}
+				}
 			}
 			Constructor::ConditionalResult {
 				condition,
