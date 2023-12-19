@@ -1,16 +1,13 @@
-use std::{
-	collections::{HashMap, HashSet},
-	path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 
-use source_map::{SourceId, Span, SpanWithSource};
+use source_map::{SourceId, SpanWithSource};
 
 use super::range_map::RangeMap;
 
 use crate::{
 	behavior::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
-	FunctionId, GeneralContext, VariableId,
+	GeneralContext, VariableId,
 };
 /// [`TypeMappings`] is used to retaining information between passes, including the synthesise and checking passes
 /// This for use in the both use in the compiler and compiler plugins
@@ -48,9 +45,9 @@ impl TypeMappings {
 	#[must_use]
 	pub fn print_type_mappings(
 		&self,
-		source: &str,
-		env: &GeneralContext,
-		types: &TypeStore,
+		_source: &str,
+		_env: &GeneralContext,
+		_types: &TypeStore,
 	) -> String {
 		todo!()
 		// let mut buf = "Expression type mappings:\n".to_owned();

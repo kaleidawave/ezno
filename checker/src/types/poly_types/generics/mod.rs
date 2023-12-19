@@ -4,16 +4,12 @@ pub mod generic_structure;
 pub mod generic_type_arguments;
 pub mod generic_type_parameters;
 
-use std::collections::HashMap;
-
 pub use generic_structure::*;
 pub(crate) use generic_type_arguments::FunctionTypeArguments;
 pub use generic_type_parameters::*;
 use source_map::SpanWithSource;
 
-use crate::{types::FunctionType, CheckingData, FunctionId, TypeId};
-
-pub(crate) struct UnmatchedGenericsError;
+use crate::{types::FunctionType, FunctionId, TypeId};
 
 /// When comparing parameters to arguments this sets type arguments
 pub(crate) struct SeedingContext {
@@ -54,11 +50,5 @@ impl SeedingContext {
 		} else {
 			self.type_arguments.insert(on, vec![arg]);
 		};
-	}
-
-	/// TODO remove
-	pub(crate) fn set_this(&mut self, arg: TypeId) {
-		self.type_arguments
-			.insert(TypeId::ANY_INFERRED_FREE_THIS, vec![(arg, SpanWithSource::NULL_SPAN, 0)]);
 	}
 }

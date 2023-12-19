@@ -1,21 +1,18 @@
-use source_map::{SourceId, Span, SpanWithSource};
-use std::{collections::HashMap, iter, vec};
+use source_map::{SourceId, SpanWithSource};
+use std::vec;
 
 use crate::{
 	behavior::{
 		constant_functions::{call_constant_function, ConstantFunctionError, ConstantOutput},
 		functions::{FunctionBehavior, ThisValue},
 	},
-	context::{
-		calling::CheckThings, get_value_of_variable, CallCheckingBehavior, ContextType,
-		Environment, Logical, SetPropertyError,
-	},
+	context::{calling::CheckThings, CallCheckingBehavior, ContextType, Environment, Logical},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{application::ErrorsAndInfo, apply_event, Event, EventResult, RootReference},
-	subtyping::{type_is_subtype, BasicEquality, NonEqualityReason, SubTypeResult},
+	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		printing::print_type, substitute, ObjectNature,
+		substitute, ObjectNature,
 	},
 	types::{FunctionType, Type},
 	FunctionId, SpecialExpressions, TypeId,
@@ -61,7 +58,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 		Ok(FunctionCallResult {
 			returned_type,
 			warnings,
-			called,
+			called: _,
 			special,
 			found_dependent_argument: _,
 		}) => {
@@ -179,7 +176,7 @@ fn call_logical<E: CallCheckingBehavior>(
 				todo!("recursive function type")
 			}
 		}
-		Logical::Or { left, right } => todo!(),
+		Logical::Or { left: _, right: _ } => todo!(),
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
 			types,
@@ -216,7 +213,7 @@ fn get_logical_callable_from_type(
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => todo!(),
 
-		Type::AliasTo { to, name, parameters } => {
+		Type::AliasTo { to, name: _, parameters } => {
 			if parameters.is_some() {
 				todo!()
 			}
@@ -257,7 +254,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		// All properties
 		// Functions free variables etc
 		match argument {
-			SynthesisedArgument::NonSpread { ty, position } => {
+			SynthesisedArgument::NonSpread { ty, position: _ } => {
 				match types.get_type_by_id(*ty) {
 					Type::Interface { .. }
 					| Type::AliasTo { .. }
@@ -422,7 +419,7 @@ impl FunctionType {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
-		CallingInput { called_with_new, mut this_value, call_site_type_arguments, call_site }: CallingInput,
+		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 		parent_type_arguments: Option<StructureGenericArguments>,
 		arguments: &[SynthesisedArgument],
 		environment: &mut Environment,
@@ -536,7 +533,7 @@ impl FunctionType {
 					false,
 				);
 
-				if let Err(ref err) = call {
+				if let Err(ref _err) = call {
 					crate::utils::notify!("Calling function with dependent argument failed");
 				}
 
@@ -592,7 +589,7 @@ impl FunctionType {
 		};
 
 		match self.behavior {
-			FunctionBehavior::ArrowFunction { is_async } => {}
+			FunctionBehavior::ArrowFunction { is_async: _ } => {}
 			FunctionBehavior::Method { free_this_id, .. } => {
 				let value_of_this = if let Some(value) = this_value.get_passed() {
 					value
@@ -608,9 +605,9 @@ impl FunctionType {
 					.type_arguments
 					.insert(free_this_id, vec![(value_of_this, SpanWithSource::NULL_SPAN, 0)]);
 			}
-			FunctionBehavior::Function { is_async, is_generator, free_this_id } => {
+			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
 				match called_with_new {
-					CalledWithNew::New { on } => {
+					CalledWithNew::New { on: _ } => {
 						crate::utils::notify!("TODO set prototype");
 						// if let Some(prototype) = non_super_prototype {
 						// let this_ty = environment.create_this(prototype, types);
@@ -623,7 +620,7 @@ impl FunctionType {
 							vec![(value_of_this, SpanWithSource::NULL_SPAN, 0)],
 						);
 					}
-					CalledWithNew::SpecialSuperCall { this_type } => todo!(),
+					CalledWithNew::SpecialSuperCall { this_type: _ } => todo!(),
 					CalledWithNew::None => {
 						// TODO
 						let value_of_this = this_value.get(environment, types, &call_site);
@@ -635,7 +632,7 @@ impl FunctionType {
 					}
 				}
 			}
-			FunctionBehavior::Constructor { non_super_prototype, this_object_type } => {
+			FunctionBehavior::Constructor { non_super_prototype: _, this_object_type: _ } => {
 				if let CalledWithNew::None = called_with_new {
 					errors
 						.errors
@@ -671,9 +668,9 @@ impl FunctionType {
 		}
 
 		let SeedingContext {
-			type_arguments: mut found,
-			mut type_restrictions,
-			mut locally_held_functions,
+			type_arguments: found,
+			type_restrictions,
+			locally_held_functions: _,
 			argument_position_and_parameter_idx: _,
 		} = self.synthesise_arguments::<E>(
 			arguments,
@@ -689,7 +686,7 @@ impl FunctionType {
 
 		for (item, values) in found {
 			// TODO only first ??
-			let (mut value, argument_position, param) =
+			let (value, argument_position, param) =
 				values.into_iter().next().expect("no type argument ...?");
 
 			if let Some(restrictions_for_item) = type_restrictions.get(&item) {
@@ -702,7 +699,7 @@ impl FunctionType {
 					let result =
 						type_is_subtype(*restriction, value, &mut behavior, environment, types);
 
-					if let SubTypeResult::IsNotSubType(err) = result {
+					if let SubTypeResult::IsNotSubType(_err) = result {
 						let argument_type = TypeStringRepresentation::from_type_id(
 							value,
 							&environment.as_general_context(),
@@ -755,7 +752,7 @@ impl FunctionType {
 		}
 
 		// Evaluate effects directly into environment
-		let mut early_return = behavior.new_function_target(self.id, |target| {
+		let early_return = behavior.new_function_target(self.id, |target| {
 			type_arguments.closure_id = if self.closed_over_variables.is_empty() {
 				None
 			} else {
@@ -823,9 +820,9 @@ impl FunctionType {
 		if let CalledWithNew::New { .. } = called_with_new {
 			// TODO ridiculous early return primitive rule
 			match self.behavior {
-				FunctionBehavior::ArrowFunction { is_async } => todo!(),
-				FunctionBehavior::Method { is_async, is_generator, .. } => todo!(),
-				FunctionBehavior::Function { is_async, is_generator, free_this_id } => {
+				FunctionBehavior::ArrowFunction { is_async: _ } => todo!(),
+				FunctionBehavior::Method { .. } => todo!(),
+				FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
 					let new_instance_type = type_arguments
 						.local_arguments
 						.remove(&free_this_id)
@@ -840,7 +837,7 @@ impl FunctionType {
 						found_dependent_argument: false,
 					});
 				}
-				FunctionBehavior::Constructor { non_super_prototype, this_object_type } => {
+				FunctionBehavior::Constructor { non_super_prototype: _, this_object_type } => {
 					crate::utils::notify!("Registered this {:?}", this_object_type);
 					let new_instance_type = type_arguments
 						.local_arguments
@@ -892,6 +889,7 @@ impl FunctionType {
 			let argument = arguments.get(parameter_idx);
 
 			let argument_type_and_pos = argument.map(|argument| {
+				#[allow(irrefutable_let_patterns)]
 				if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
 					(ty, pos)
 				} else {
@@ -926,7 +924,7 @@ impl FunctionType {
 						types,
 					);
 
-					if let SubTypeResult::IsNotSubType(reasons) = result {
+					if let SubTypeResult::IsNotSubType(_reasons) = result {
 						errors.errors.push(FunctionCallingError::InvalidArgumentType {
 							parameter_type: TypeStringRepresentation::from_type_id(
 								parameter.ty,
@@ -988,9 +986,10 @@ impl FunctionType {
 		}
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
-				for (idx, argument) in
+				for (_idx, argument) in
 					arguments.iter().enumerate().skip(self.parameters.parameters.len())
 				{
+					#[allow(irrefutable_let_patterns)]
 					let SynthesisedArgument::NonSpread {
 						ty: argument_type,
 						position: argument_pos,
@@ -1022,7 +1021,7 @@ impl FunctionType {
 							types,
 						);
 
-						if let SubTypeResult::IsNotSubType(reasons) = result {
+						if let SubTypeResult::IsNotSubType(_reasons) = result {
 							errors.errors.push(FunctionCallingError::InvalidArgumentType {
 								parameter_type: TypeStringRepresentation::from_type_id(
 									rest_parameter.item_type,

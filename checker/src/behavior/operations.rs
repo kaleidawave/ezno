@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
 use derive_enum_from_into::EnumFrom;
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
@@ -9,7 +7,7 @@ use crate::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
 		StructureGenerics, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, Decidable, Environment, Type, TypeId,
+	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
 
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
@@ -57,7 +55,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 			);
 			match result {
 				Ok(result) => result,
-				Err(err) => {
+				Err(_err) => {
 					let ctx = &environment.as_general_context();
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::InvalidMathematicalOrBitwiseOperation {
@@ -386,41 +384,6 @@ pub fn evaluate_logical_operation_with_expression<
 	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
-	enum TypeOrSynthesisable<'a, A: crate::ASTImplementation> {
-		Type(TypeId),
-		Expression(&'a A::Expression<'a>),
-	}
-
-	// impl<'a, A: crate::ASTImplementation> SynthesisableConditional<M> for TypeOrSynthesisable<'a, M> {
-	// 	type ExpressionResult = TypeId;
-
-	// 	fn synthesise_condition<T: crate::ReadFromFS>(
-	// 		self,
-	// 		environment: &mut Environment,
-	// 		checking_data: &mut CheckingData<T, A>,
-	// 	) -> Self::ExpressionResult {
-	// 		match self {
-	// 			TypeOrSynthesisable::Type(ty) => ty,
-	// 			TypeOrSynthesisable::Expression(expr, _) => {
-	// 				A::synthesise_expression(expr, TypeId::ANY_TYPE, environment, checking_data)
-	// 			}
-	// 		}
-	// 	}
-
-	// 	fn conditional_expression_result(
-	// 		condition: TypeId,
-	// 		truthy_result: Self::ExpressionResult,
-	// 		falsy_result: Self::ExpressionResult,
-	// 		types: &mut TypeStore,
-	// 	) -> Self::ExpressionResult {
-	// 		types.new_conditional_type(condition, truthy_result, falsy_result)
-	// 	}
-
-	// 	fn default_result() -> Self::ExpressionResult {
-	// 		unreachable!()
-	// 	}
-	// }
-
 	match operator {
 		Logical::And => Ok(environment.new_conditional_context(
 			lhs,

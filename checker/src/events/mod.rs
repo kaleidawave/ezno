@@ -3,12 +3,11 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	behavior::{functions::ThisValue, iteration::IterationKind},
-	context::{calling::Target, facts::Publicity, get_on_ctx, CallCheckingBehavior},
+	behavior::iteration::IterationKind,
+	context::{facts::Publicity, get_on_ctx},
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
-		TypeArguments,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
@@ -16,12 +15,8 @@ use crate::{
 pub(crate) mod application;
 pub(crate) mod helpers;
 pub(crate) use application::apply_event;
-use source_map::Span;
 
-use crate::{
-	types::functions::SynthesisedArgument,
-	types::{poly_types::FunctionTypeArguments, TypeId},
-};
+use crate::{types::functions::SynthesisedArgument, types::TypeId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
 pub enum RootReference {

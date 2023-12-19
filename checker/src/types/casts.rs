@@ -44,6 +44,6 @@ pub(crate) fn cast_as_boolean(cst: &Constant, strict_casts: bool) -> Result<bool
 		Constant::Regexp(_) => true,
 		Constant::Boolean(value) => *value,
 		Constant::NaN | Constant::Undefined | Constant::Null => false,
-		Constant::Symbol { key } => todo!(),
+		Constant::Symbol { key: _ } => todo!(),
 	})
 }

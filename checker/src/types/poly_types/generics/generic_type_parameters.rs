@@ -102,7 +102,7 @@ impl PartialEq for GenericTypeParameter {
 // }
 
 /// TODO remove intermediate function
-fn get_type_from_arguments_using_generic_type_parameter_id(
+fn _get_type_from_arguments_using_generic_type_parameter_id(
 	type_id: TypeId,
 	type_arguments: &FunctionTypeArguments,
 ) -> TypeId {

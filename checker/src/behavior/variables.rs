@@ -1,4 +1,4 @@
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::context::{environment::ContextLocation, AssignmentError};
 use crate::{types::TypeId, CheckingData, VariableId};
@@ -43,11 +43,10 @@ impl VariableOrImport {
 
 	pub(crate) fn get_mutability(&self) -> VariableMutability {
 		match self {
-			VariableOrImport::Variable { mutability, declared_at, .. } => *mutability,
-			VariableOrImport::MutableImport { of, constant, import_specified_at } => {
-				VariableMutability::Constant
-			}
-			VariableOrImport::ConstantImport { to, import_specified_at } => {
+			VariableOrImport::Variable { mutability, .. } => *mutability,
+			// TODO I think ?
+			VariableOrImport::MutableImport { of: _, constant: _, import_specified_at: _ }
+			| VariableOrImport::ConstantImport { to: _, import_specified_at: _ } => {
 				VariableMutability::Constant
 			}
 		}
@@ -93,7 +92,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 		&checking_data.types,
 	);
 
-	if let SubTypeResult::IsNotSubType(matches) = type_is_subtype {
+	if let SubTypeResult::IsNotSubType(_matches) = type_is_subtype {
 		let error = crate::diagnostics::TypeCheckError::AssignmentError(
 			AssignmentError::DoesNotMeetConstraint {
 				variable_type: crate::diagnostics::TypeStringRepresentation::from_type_id(

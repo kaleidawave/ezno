@@ -1,10 +1,7 @@
 use super::variables::VariableMutability;
-use crate::{
-	behavior::variables::VariableOrImport, context::facts::Facts, Diagnostic, TypeId, VariableId,
-};
-use derive_enum_from_into::EnumFrom;
+use crate::{context::facts::Facts, TypeId, VariableId};
+
 use source_map::Span;
-use std::{collections::HashMap, default, path::PathBuf};
 
 #[derive(Debug)]
 pub struct NamePair<'a> {

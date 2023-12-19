@@ -5,13 +5,9 @@ use parser::{
 
 use crate::{
 	behavior::functions::{self, GetterSetter, ThisValue},
-	context::{
-		facts::Publicity,
-		Environment, {Context, ContextType},
-	},
+	context::{facts::Publicity, Context, Environment},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		poly_types::GenericTypeParameter,
 		properties::{PropertyKey, PropertyValue},
 		FunctionType, Type,
 	},
@@ -22,7 +18,7 @@ use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
 
-fn get_extends<T: crate::ReadFromFS>(
+fn _get_extends<T: crate::ReadFromFS>(
 	interface: &InterfaceDeclaration,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -58,7 +54,7 @@ pub(crate) enum InterfaceValue {
 
 pub(crate) enum ParserPropertyKeyType<'a> {
 	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
-	ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
+	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
 	Type(TypeId),
 }
 
@@ -81,10 +77,10 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				},
 				parser_property_key_to_checker_property_key(key, environment, checking_data),
 			),
-			ParserPropertyKeyType::ObjectProperty(key) => (
-				Publicity::Public,
-				parser_property_key_to_checker_property_key(key, environment, checking_data),
-			),
+			// ParserPropertyKeyType::ObjectProperty(key) => (
+			// 	Publicity::Public,
+			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
+			// ),
 			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
 		let ty = match value {
@@ -133,7 +129,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					type_parameters,
 					parameters,
 					return_type,
-					is_optional,
+					is_optional: _,
 					performs,
 					position,
 				} => {
@@ -178,9 +174,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				InterfaceMember::Property {
 					name,
 					type_annotation,
-					is_readonly,
-					is_optional,
-					position,
+					is_readonly: _,
+					is_optional: _,
+					position: _,
 				} => {
 					let value =
 						synthesise_type_annotation(type_annotation, environment, checking_data);
@@ -192,11 +188,11 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 				}
 				InterfaceMember::Indexer {
-					name,
+					name: _,
 					indexer_type,
 					return_type,
-					is_readonly,
-					position,
+					is_readonly: _,
+					position: _,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
@@ -209,33 +205,33 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 				}
 				InterfaceMember::Constructor {
-					parameters,
-					type_parameters,
-					return_type,
-					is_readonly,
+					parameters: _,
+					type_parameters: _,
+					return_type: _,
+					is_readonly: _,
 					position,
-					performs,
+					performs: _,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
 					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Caller {
-					parameters,
-					type_parameters,
-					return_type,
-					is_readonly,
+					parameters: _,
+					type_parameters: _,
+					return_type: _,
+					is_readonly: _,
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface caller",
 					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Rule {
-					parameter,
-					rule,
-					matching_type,
-					optionality,
-					is_readonly,
-					output_type,
+					parameter: _,
+					rule: _,
+					matching_type: _,
+					optionality: _,
+					is_readonly: _,
+					output_type: _,
 					position,
 				} => checking_data.raise_unimplemented_error(
 					"interface rule",

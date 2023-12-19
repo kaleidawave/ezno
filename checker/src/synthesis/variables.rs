@@ -1,18 +1,17 @@
 use std::borrow::Cow;
 
-use ordered_float::NotNan;
 use parser::{
 	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField,
 	ObjectDestructuringField, VariableField, VariableIdentifier,
 };
 
-use super::{expressions::synthesise_expression, type_annotations::synthesise_type_annotation};
+use super::expressions::synthesise_expression;
 use crate::{
 	behavior::variables::VariableMutability,
 	context::{facts::Publicity, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{printing::print_type, properties::PropertyKey, Constant},
+	types::{printing::print_type, properties::PropertyKey},
 	CheckingData, Environment, PropertyValue, TypeId,
 };
 
@@ -61,8 +60,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 		parser::VariableField::Array(items, _) => {
 			for (idx, field) in items.iter().enumerate() {
 				match field {
-					ArrayDestructuringField::Spread(pos, variable) => {
-						let ty = register_variable_identifier(
+					ArrayDestructuringField::Spread(_pos, variable) => {
+						let _ty = register_variable_identifier(
 							variable,
 							environment,
 							checking_data,
@@ -94,8 +93,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 										value
 									}
 									crate::context::Logical::Pure(_) => todo!(),
-									crate::context::Logical::Or { left, right } => todo!(),
-									crate::context::Logical::Implies { on, antecedent } => todo!(),
+									crate::context::Logical::Or { left: _, right: _ } => todo!(),
+									crate::context::Logical::Implies { on: _, antecedent: _ } => {
+										todo!()
+									}
 								}
 							} else {
 								checking_data
@@ -147,14 +148,14 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, ..)
 					| ObjectDestructuringField::Spread(variable, _) => {
-						let ty = register_variable_identifier(
+						let _ty = register_variable_identifier(
 							variable,
 							environment,
 							checking_data,
 							behavior.clone(),
 							constraint,
 						);
-						if let Some(constraint) = constraint {
+						if let Some(_constraint) = constraint {
 							// TODO
 							// checking_data
 							// 	.type_mappings
@@ -163,8 +164,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							// 	.insert(crate::VariableId(pos.source, pos.start), constraint);
 						}
 					}
-					ObjectDestructuringField::Map { from, name, default_value, position } => {
-						let property_constraint = constraint.map(|constraint| {
+					ObjectDestructuringField::Map { from, name, default_value: _, position: _ } => {
+						let _property_constraint = constraint.map(|constraint| {
 							let under = parser_property_key_to_checker_property_key(
 								from,
 								environment,
@@ -183,8 +184,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 										value
 									}
 									crate::context::Logical::Pure(_) => todo!(),
-									crate::context::Logical::Or { left, right } => todo!(),
-									crate::context::Logical::Implies { on, antecedent } => todo!(),
+									crate::context::Logical::Or { left: _, right: _ } => todo!(),
+									crate::context::Logical::Implies { on: _, antecedent: _ } => {
+										todo!()
+									}
 								}
 							} else {
 								checking_data
@@ -244,7 +247,7 @@ pub(super) fn synthesise_variable_declaration_item<
 >(
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
-	is_constant: bool,
+	_is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
 ) {

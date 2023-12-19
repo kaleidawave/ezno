@@ -1,21 +1,16 @@
-use std::collections::{HashMap, HashSet};
-
-use source_map::{BaseSpan, SpanWithSource};
+use std::collections::HashMap;
 
 use crate::{
-	behavior::{operations::CanonicalEqualityAndInequality, variables::VariableOrImport},
+	behavior::operations::CanonicalEqualityAndInequality,
 	context::{calling::Target, environment::Label, get_value_of_variable, CallCheckingBehavior},
 	events::{
 		application::ErrorsAndInfo, apply_event, Event, EventResult, InitialVariables,
 		RootReference,
 	},
 	types::{
-		poly_types::{
-			generic_type_arguments::{StructureGenericArguments, TypeArgumentStore},
-			FunctionTypeArguments,
-		},
+		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		printing::print_type,
-		substitute, Constructor, ObjectNature, PolyNature, TypeArguments, TypeStore,
+		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
 	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
 };
@@ -75,14 +70,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				},
 			);
 
-			let (
-				Facts { variable_current_value, current_properties, mut events, .. },
-				_closes_over,
-			) = result.unwrap();
+			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
+				result.unwrap();
 
 			let loop_facts = Values {
 				variable_values: variable_current_value,
-				properties_values: current_properties,
+				_properties_values: current_properties,
 			};
 
 			let fixed_iterations = calculate_result_of_loop(
@@ -137,14 +130,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				},
 			);
 
-			let (
-				Facts { variable_current_value, current_properties, mut events, .. },
-				_closes_over,
-			) = result.unwrap();
+			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
+				result.unwrap();
 
 			let loop_facts = Values {
 				variable_values: variable_current_value,
-				properties_values: current_properties,
+				_properties_values: current_properties,
 			};
 
 			let fixed_iterations = calculate_result_of_loop(
@@ -264,14 +255,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					},
 				);
 
-			let (
-				Facts { variable_current_value, current_properties, mut events, .. },
-				_closes_over,
-			) = result.unwrap();
+			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
+				result.unwrap();
 
 			let loop_facts = Values {
 				variable_values: variable_current_value,
-				properties_values: current_properties,
+				_properties_values: current_properties,
 			};
 
 			let fixed_iterations = calculate_result_of_loop(
@@ -300,7 +289,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				todo!()
 			}
 		}
-		IterationBehavior::ForIn { lhs, rhs } => {
+		IterationBehavior::ForIn { lhs: _, rhs } => {
 			// TODO for of Object.keys ???
 			let on = A::synthesise_multiple_expression(
 				rhs,
@@ -333,7 +322,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				todo!()
 			}
 		}
-		IterationBehavior::ForOf { lhs, rhs } => todo!(),
+		IterationBehavior::ForOf { lhs: _, rhs: _ } => todo!(),
 	}
 }
 
@@ -436,7 +425,7 @@ pub(crate) fn run_iteration_block(
 							if let Event::ReadsReference {
 								reference: RootReference::Variable(variable_id),
 								reflects_dependency: Some(free_variable_id),
-								position,
+								position: _,
 							} = event
 							{
 								let value_before_iterations = get_value_of_variable(
@@ -493,7 +482,7 @@ pub(crate) fn run_iteration_block(
 		}
 		IterationKind::Properties(on) => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				for (publicity, property, _value) in environment.get_properties_on_type(on) {
+				for (_publicity, property, _value) in environment.get_properties_on_type(on) {
 					// TODO enumerable
 					crate::utils::notify!("Property: {:?}", property);
 				}
@@ -566,7 +555,7 @@ fn evaluate_iterations(
 /// TODO Cow
 struct Values {
 	pub variable_values: HashMap<VariableId, TypeId>,
-	pub properties_values: HashMap<
+	pub _properties_values: HashMap<
 		TypeId,
 		Vec<(
 			crate::context::facts::Publicity,
@@ -653,7 +642,7 @@ fn calculate_result_of_loop(
 		// TODO what about properties etc
 		if let Type::RootPolyType(PolyNature::FreeVariable {
 			reference: less_than_reference,
-			based_on,
+			based_on: _,
 		}) = reference_ty
 		{
 			if let RootReference::Variable(possible_changing_variable_id) = less_than_reference {
@@ -661,10 +650,10 @@ fn calculate_result_of_loop(
 				// TODO temp
 				let roof: TypeId = if let Type::RootPolyType(PolyNature::FreeVariable {
 					reference: RootReference::Variable(roof_id),
-					based_on,
+					based_on: _,
 				}) = roof_ty
 				{
-					let changed = if let Some((_start, end)) =
+					let changed = if let Some((_start, _end)) =
 						loop_variables.as_ref().and_then(|vs| vs.get(roof_id).copied())
 					{
 						crate::utils::notify!("Found loop variables");
@@ -717,7 +706,7 @@ fn calculate_result_of_loop(
 				// Looking at incrementor
 				if let Type::Constructor(Constructor::BinaryOperator {
 					lhs: assignment,
-					operator,
+					operator: _,
 					rhs: increments_by,
 				}) = value_after_running_expressions_in_loop
 				{

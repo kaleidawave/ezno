@@ -1,5 +1,5 @@
 use super::generic_type_arguments::FunctionTypeArguments;
-use crate::{CheckingData, DiagnosticsContainer, TypeId};
+use crate::TypeId;
 
 /// A instance of a generic typed object
 #[derive(Clone, Debug)]
@@ -32,12 +32,7 @@ impl From<Option<TypeId>> for GenericStructureArgumentValue {
 	}
 }
 
-impl GenericStructureTypeArguments {
-	pub(crate) fn get_value_for_id(&self, id: TypeId) -> Option<&GenericStructureTypeArgument> {
-		self.0.iter().find(|item| item.matching_id == id)
-	}
-}
-
+#[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct GenericStructureTypeArgument {
 	pub(crate) matching_id: TypeId,
@@ -47,7 +42,7 @@ pub struct GenericStructureTypeArgument {
 }
 
 impl From<GenericStructureTypeArguments> for FunctionTypeArguments {
-	fn from(instance_of_generics_arguments: GenericStructureTypeArguments) -> Self {
+	fn from(_instance_of_generics_arguments: GenericStructureTypeArguments) -> Self {
 		todo!()
 		// TypeArguments {
 		// 	structure_arguments: todo!(),

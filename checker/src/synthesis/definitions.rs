@@ -2,16 +2,16 @@ use parser::ASTNode;
 
 use crate::{
 	context::{Names, RootContext},
-	synthesis::{functions::synthesise_function_annotation, EznoParser},
+	synthesis::{
+		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
+	},
 	Environment, Facts, TypeId,
 };
-
-const DEFINITION_VAR_IS_CONSTANT: bool = true;
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
-	mut definition: parser::TypeDefinitionModule,
+	definition: parser::TypeDefinitionModule,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
 ) -> (Names, Facts) {
@@ -20,10 +20,6 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	use parser::{
 		declarations::{DeclareVariableDeclaration, TypeAlias},
 		TypeDeclaration, TypeDefinitionModuleDeclaration,
-	};
-
-	use crate::{
-		diagnostics::TypeCheckError, synthesis::type_annotations::synthesise_type_annotation,
 	};
 
 	let mut idx_to_types = HashMap::new();
@@ -45,7 +41,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 				idx_to_types.insert(interface.on.position.start, ty);
 			}
-			TypeDefinitionModuleDeclaration::Class(class) => {
+			TypeDefinitionModuleDeclaration::Class(_class) => {
 				todo!();
 				// (
 				// 	class.type_id,
@@ -98,7 +94,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					context: decorators_to_context(&func.decorators),
 				};
 
-				let res = env.register_variable_handle_error(
+				let _res = env.register_variable_handle_error(
 					func.name.as_str(),
 					// TODO
 					func.get_position().with_source(source),
@@ -107,9 +103,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 			}
 			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
-				keyword,
+				keyword: _,
 				declarations,
-				position,
+				position: _,
 				decorators,
 			}) => {
 				for declaration in &declarations {
@@ -145,15 +141,15 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			// TODO handle locals differently, (maybe squash ast as well)
 			TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias {
 				type_name,
-				type_expression,
+				type_expression: _,
 				..
 			})
 			| TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias {
 				type_name,
-				type_expression,
+				type_expression: _,
 				..
 			}) => {
-				let TypeDeclaration { name, type_parameters, .. } = &type_name;
+				let TypeDeclaration { type_parameters, .. } = &type_name;
 
 				// To remove when implementing
 				#[allow(clippy::redundant_pattern_matching)]
@@ -186,8 +182,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => {
 				unimplemented!()
 			}
-			TypeDefinitionModuleDeclaration::Comment(comment) => {}
-			TypeDefinitionModuleDeclaration::Class(class) => {
+			TypeDefinitionModuleDeclaration::Comment(_comment) => {}
+			TypeDefinitionModuleDeclaration::Class(_class) => {
 				todo!();
 				// let existing_type =
 				//     checking_data.type_mappings.get_type_declaration(&class.type_id).unwrap();

@@ -8,10 +8,9 @@ use crate::{
 	context::{calling::Target, get_value_of_variable, CallCheckingBehavior, SetPropertyError},
 	diagnostics::{TypeStringRepresentation, TDZ},
 	types::{
-		curry_arguments,
 		functions::SynthesisedArgument,
-		get_constraint, is_type_truthy_falsy,
-		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
+		is_type_truthy_falsy,
+		poly_types::FunctionTypeArguments,
 		properties::{get_property, set_property, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
@@ -129,7 +128,7 @@ pub(crate) fn apply_event(
 				}
 			};
 
-			let gc = environment.as_general_context();
+			let _gc = environment.as_general_context();
 
 			// crate::utils::notify!(
 			// 	"[Event::Setter] {}[{}] = {}",
@@ -162,8 +161,10 @@ pub(crate) fn apply_event(
 					set_property(on, publicity, &under, &new, environment, target, types, position);
 
 				if let Err(err) = result {
-					if let SetPropertyError::DoesNotMeetConstraint { property_constraint, reason } =
-						err
+					if let SetPropertyError::DoesNotMeetConstraint {
+						property_constraint,
+						reason: _,
+					} = err
 					{
 						let value_type = if let PropertyValue::Value(id) = new {
 							TypeStringRepresentation::from_type_id(
@@ -190,7 +191,14 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::CallsType { on, with, reflects_dependency, timing, called_with_new, position } => {
+		Event::CallsType {
+			on,
+			with,
+			reflects_dependency,
+			timing,
+			called_with_new,
+			position: _,
+		} => {
 			let on = substitute(on, type_arguments, environment, types);
 
 			let with = with
@@ -360,7 +368,12 @@ pub(crate) fn apply_event(
 			return Some(EventResult::Return(substituted_returned, returned_position));
 		}
 		// TODO Needs a position (or not?)
-		Event::CreateObject { referenced_in_scope_as, prototype, position, is_function_this } => {
+		Event::CreateObject {
+			referenced_in_scope_as,
+			prototype,
+			position: _,
+			is_function_this,
+		} => {
 			// TODO
 			let is_under_dyn = true;
 
@@ -397,8 +410,8 @@ pub(crate) fn apply_event(
 
 			type_arguments.set_id_from_reference(referenced_in_scope_as, new_object_id);
 		}
-		Event::Break { position, carry } => return Some(EventResult::Break { carry }),
-		Event::Continue { position, carry } => return Some(EventResult::Continue { carry }),
+		Event::Break { position: _, carry } => return Some(EventResult::Break { carry }),
+		Event::Continue { position: _, carry } => return Some(EventResult::Continue { carry }),
 		Event::Iterate { kind, iterate_over, initial } => {
 			// TODO this might clash
 			let initial = initial

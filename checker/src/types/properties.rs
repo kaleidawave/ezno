@@ -2,20 +2,19 @@ use std::borrow::Cow;
 
 use crate::{
 	behavior::functions::ThisValue,
-	context::{environment, facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
+	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
-	subtyping::{type_is_subtype, type_is_subtype_of_property, SubTypeResult},
+	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
 		calling::CallingInput, get_constraint,
-		poly_types::generic_type_arguments::StructureGenericArguments, printing::print_type,
-		substitute, FunctionType, ObjectNature, StructureGenerics,
+		poly_types::generic_type_arguments::StructureGenericArguments, substitute, FunctionType,
+		ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
 
-use ordered_float::NotNan;
-use source_map::{SourceId, Span, SpanWithSource};
+use source_map::{SourceId, SpanWithSource};
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
@@ -54,7 +53,7 @@ impl<'a> PropertyKey<'a> {
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
 				Constant::Boolean(_) => todo!(),
 				Constant::Regexp(_) => todo!(),
-				Constant::Symbol { key } => todo!(),
+				Constant::Symbol { key: _ } => todo!(),
 				Constant::Undefined => todo!(),
 				Constant::Null => todo!(),
 				Constant::NaN => todo!(),
@@ -74,11 +73,11 @@ impl<'a> PropertyKey<'a> {
 }
 
 impl crate::serialization::BinarySerializable for PropertyKey<'static> {
-	fn serialize(self, buf: &mut Vec<u8>) {
+	fn serialize(self, _buf: &mut Vec<u8>) {
 		todo!()
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
 		todo!()
 	}
 }
@@ -149,22 +148,14 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	types: &mut TypeStore,
 	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
-	enum GetResult {
-		AccessIntroducesDependence(TypeId),
-		/// These always return the same value
-		FromAObject(TypeId),
-	}
-
 	if on == TypeId::ERROR_TYPE
 		|| matches!(under, PropertyKey::Type(under) if under == TypeId::ERROR_TYPE)
 	{
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
-	// TODO rearrange here
-
-	let value: GetResult = if let Some(constraint) = get_constraint(on, types) {
-		GetResult::AccessIntroducesDependence(evaluate_get_on_poly(
+	if let Some(constraint) = get_constraint(on, types) {
+		evaluate_get_on_poly(
 			constraint,
 			on,
 			publicity,
@@ -173,7 +164,8 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			top_environment,
 			behavior,
 			types,
-		)?)
+			position,
+		)
 	} else if top_environment.possibly_mutated_objects.contains(&on) {
 		let items = top_environment.get_object_constraints(on);
 		let constraint = if items.len() == 1 {
@@ -183,7 +175,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		} else {
 			todo!("build and type")
 		};
-		GetResult::AccessIntroducesDependence(evaluate_get_on_poly(
+		evaluate_get_on_poly(
 			constraint,
 			on,
 			publicity,
@@ -192,40 +184,15 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			top_environment,
 			behavior,
 			types,
-		)?)
+			position,
+		)
 	} else {
 		// if environment.get_poly_base(under, types).is_some() {
 		// 	todo!()
 		// }
 		// TODO
-		return get_from_an_object(on, publicity, under, top_environment, behavior, types);
-	};
-
-	let reflects_dependency = match value {
-		GetResult::AccessIntroducesDependence(s) => Some(s),
-		GetResult::FromAObject(_) => None,
-	};
-
-	behavior.get_latest_facts(top_environment).events.push(Event::Getter {
-		on,
-		under: under.into_owned(),
-		reflects_dependency,
-		publicity,
-		position,
-	});
-
-	let (GetResult::AccessIntroducesDependence(value) | GetResult::FromAObject(value)) = value
-	else {
-		unreachable!()
-	};
-
-	// Carry the frozen part
-	// if let Some(frozen) = environment.is_frozen(on) {
-	// 	environment.facts.frozen.insert(value, frozen);
-	// }
-
-	// TODO generic
-	Some((PropertyKind::Direct, value))
+		get_from_an_object(on, publicity, under, top_environment, behavior, types)
+	}
 }
 
 fn get_from_an_object<E: CallCheckingBehavior>(
@@ -251,12 +218,12 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						let ty = types.get_type_by_id(value);
 						match ty {
 							// TODO function :: bind_this
-							Type::Function(func, state) => {
+							Type::Function(func, _state) => {
 								let func = types
 									.register_type(Type::Function(*func, ThisValue::Passed(on)));
 								Some((PropertyKind::Direct, func))
 							}
-							Type::FunctionReference(func, this_argument) => {
+							Type::FunctionReference(func, _this_argument) => {
 								crate::utils::notify!("TODO temp reference function business");
 								let func = types.register_type(Type::FunctionReference(
 									*func,
@@ -282,7 +249,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								StructureGenerics { on: sg_on, arguments },
 							)) => {
 								// TODO not great... need less overhead
-								if let Type::Function(f, p) = types.get_type_by_id(*sg_on) {
+								if let Type::Function(f, _p) = types.get_type_by_id(*sg_on) {
 									let arguments = arguments.clone();
 									let f = types
 										.register_type(Type::Function(*f, ThisValue::Passed(on)));
@@ -300,7 +267,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							Type::Constructor(constructor) => {
 								unreachable!("Interesting property on {:?}", constructor);
 							}
-							Type::AliasTo { to, name, parameters } => {
+							Type::AliasTo { to: _, name: _, parameters: _ } => {
 								todo!()
 							}
 						}
@@ -359,18 +326,19 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	resolve_property_on_logical(result, types, on, environment, behavior)
 }
 
-// https://github.com/kaleidawave/ezno/pull/88
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::needless_pass_by_value)]
 fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	constraint: TypeId,
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
-	with: Option<TypeId>,
-	environment: &mut Environment,
-	behavior: &E,
+	_with: Option<TypeId>,
+	top_environment: &mut Environment,
+	behavior: &mut E,
 	types: &mut TypeStore,
-) -> Option<TypeId> {
+	position: SpanWithSource,
+) -> Option<(PropertyKind, TypeId)> {
 	fn resolve_logical_with_poly(
 		fact: Logical<PropertyValue>,
 		on: TypeId,
@@ -507,11 +475,21 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
-	let fact = environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
+	let fact = top_environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
-	resolve_logical_with_poly(fact, on, under, None, environment, types)
+	let value = resolve_logical_with_poly(fact, on, under.clone(), None, top_environment, types)?;
+
+	behavior.get_latest_facts(top_environment).events.push(Event::Getter {
+		on,
+		under: under.into_owned(),
+		reflects_dependency: Some(value),
+		publicity,
+		position,
+	});
+
+	Some((PropertyKind::Direct, value))
 }
 
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
@@ -636,7 +614,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				}
 			},
 			Logical::Or { .. } => todo!(),
-			Logical::Implies { on: implies_on, antecedent } => {
+			Logical::Implies { on: _implies_on, antecedent: _ } => {
 				crate::utils::notify!("Check that `implies_on` could be a setter here");
 				let facts = behavior.get_latest_facts(environment);
 				facts.current_properties.entry(on).or_default().push((

@@ -4,16 +4,14 @@ use std::{
 	mem,
 };
 
-use source_map::{SourceId, Span, SpanWithSource};
+use source_map::{SourceId, SpanWithSource};
 
-use super::variables::VariableMutability;
 use crate::{
 	context::{
-		environment::FunctionScope,
-		facts::{Facts, Publicity},
-		get_value_of_variable, CanReferenceThis, Context, ContextType, Syntax,
+		environment::FunctionScope, facts::Facts, get_value_of_variable, CanReferenceThis,
+		ContextType, Syntax,
 	},
-	events::{Event, RootReference},
+	events::RootReference,
 	types::{
 		self,
 		classes::ClassValue,
@@ -22,8 +20,7 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		Constructor, FunctionType, PolyNature, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId,
-	VariableId,
+	CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -307,10 +304,10 @@ where
 	A: crate::ASTImplementation,
 	F: SynthesisableFunction<A>,
 {
-	let is_async = behavior.is_async();
-	let is_generator = behavior.is_generator();
+	let _is_async = behavior.is_async();
+	let _is_generator = behavior.is_generator();
 
-	let (mut behavior, scope, constructor, location, expected_parameters, expected_return) =
+	let (mut behavior, scope, constructor, location, expected_parameters, _expected_return) =
 		match behavior {
 			FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => (
 				FunctionBehavior::Constructor {
@@ -350,7 +347,7 @@ where
 				)
 			}
 			FunctionRegisterBehavior::ExpressionFunction {
-				expecting,
+				expecting: _,
 				is_async,
 				is_generator,
 				location,
@@ -373,7 +370,7 @@ where
 				None,
 			),
 			FunctionRegisterBehavior::StatementFunction {
-				hoisted,
+				hoisted: _,
 				is_async,
 				is_generator,
 				location,
@@ -394,23 +391,8 @@ where
 				None,
 				None,
 			),
-			FunctionRegisterBehavior::ObjectMethod { is_async, is_generator } => (
-				FunctionBehavior::Method {
-					is_async,
-					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
-				},
-				FunctionScope::MethodFunction {
-					free_this_type: TypeId::ERROR_TYPE,
-					is_async,
-					is_generator,
-				},
-				None,
-				None,
-				None,
-				None,
-			),
-			FunctionRegisterBehavior::ClassMethod { is_async, is_generator, super_type } => (
+			FunctionRegisterBehavior::ClassMethod { is_async, is_generator, super_type: _ }
+			| FunctionRegisterBehavior::ObjectMethod { is_async, is_generator } => (
 				FunctionBehavior::Method {
 					is_async,
 					is_generator,
@@ -510,7 +492,11 @@ where
 				// TODO what is the union, shouldn't it be the this_constraint?
 				*this_type = new_conditional_type;
 			}
-			FunctionScope::Constructor { extends, type_of_super, ref mut this_object_type } => {
+			FunctionScope::Constructor {
+				extends: _,
+				type_of_super: _,
+				ref mut this_object_type,
+			} => {
 				crate::utils::notify!("Setting 'this' type here");
 				if let Some((prototype, properties)) = constructor {
 					let new_this_object_type = types::create_this_before_function_synthesis(
@@ -558,7 +544,7 @@ where
 	let returned = if function.has_body() {
 		function.body(&mut function_environment, checking_data);
 		// Temporary move events to satisfy borrow checker
-		let mut events = mem::take(&mut function_environment.facts.events);
+		let events = mem::take(&mut function_environment.facts.events);
 
 		let returned = crate::events::helpers::get_return_from_events(
 			&mut events.iter(),
@@ -612,18 +598,18 @@ where
 	context.variable_names.extend(function_environment.variable_names);
 
 	// TODO temp ...
-	for (on, mut properties) in facts.current_properties {
+	for (on, properties) in facts.current_properties {
 		match context.facts.current_properties.entry(on) {
-			Entry::Occupied(mut occupied) => {}
+			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
 			}
 		}
 	}
 
-	for (on, mut properties) in facts.closure_current_values {
+	for (on, properties) in facts.closure_current_values {
 		match context.facts.closure_current_values.entry(on) {
-			Entry::Occupied(mut occupied) => {}
+			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
 			}

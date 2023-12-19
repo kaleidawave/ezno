@@ -1,16 +1,5 @@
 #![doc = include_str!("../README.md")]
-#![allow(
-	unreachable_code,
-	unused_variables,
-	unused_imports,
-	unused_mut,
-	dead_code,
-	irrefutable_let_patterns,
-	deprecated,
-	clippy::new_without_default,
-	clippy::too_many_lines,
-	clippy::result_unit_err
-)]
+#![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
 
 pub mod behavior;
 pub mod context;
@@ -30,7 +19,7 @@ pub const INTERNAL_DEFINITION_FILE: &str = include_str!("../definitions/internal
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use context::{environment, Names};
+use context::Names;
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
@@ -38,17 +27,14 @@ use behavior::{
 	functions::SynthesisableFunction,
 	modules::{Exported, InvalidModule, SynthesisedModule},
 };
-use indexmap::IndexMap;
+
 use source_map::{FileSystem, MapFileStore, SpanWithSource, WithPathMap};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 };
 
-use types::{
-	subtyping::{check_satisfies, type_is_subtype, BasicEquality, SubTypeResult},
-	TypeStore,
-};
+use types::{subtyping::check_satisfies, TypeStore};
 
 pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
@@ -72,13 +58,13 @@ pub use source_map::{self, SourceId, Span};
 /// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
 pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
 	pub(crate) file_reader: &'a FileReader,
-	pub(crate) current_working_directory: PathBuf,
+	pub(crate) _current_working_directory: PathBuf,
 	/// Set after started
 	pub(crate) entry_point: Option<SourceId>,
 	/// Contains the text content of files (for source maps and diagnostics)
 	pub(crate) files: MapFileStore<WithPathMap>,
 	/// To catch cyclic imports
-	pub(crate) currently_checking_modules: HashSet<PathBuf>,
+	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
 	/// The result of checking. Includes exported variables and facts
 	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST::OwnedModule>>,
 }
@@ -174,7 +160,7 @@ pub trait ASTImplementation: Sized {
 
 impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, ModuleAST> {
 	pub(crate) fn new(
-		mut file_resolver: &'a T,
+		file_resolver: &'a T,
 		current_working_directory: PathBuf,
 		files: Option<MapFileStore<WithPathMap>>,
 	) -> Self {
@@ -182,10 +168,10 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 			files: files.unwrap_or_default(),
 			entry_point: None,
 			synthesised_modules: Default::default(),
-			currently_checking_modules: Default::default(),
+			_currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
 			file_reader: file_resolver,
-			current_working_directory,
+			_current_working_directory: current_working_directory,
 		}
 	}
 
@@ -443,7 +429,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	}
 
 	let entry_content = (checking_data.modules.file_reader)(entry_point.as_ref());
-	let module = if let Some(content) = entry_content {
+	let _module = if let Some(content) = entry_content {
 		let source =
 			checking_data.modules.files.new_source_id(entry_point.clone(), content.clone());
 
@@ -472,9 +458,9 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		diagnostics_container,
 		type_mappings,
 		modules,
-		options,
+		options: _,
 		types,
-		unimplemented_items,
+		unimplemented_items: _,
 	} = checking_data;
 
 	if diagnostics_container.has_error() {

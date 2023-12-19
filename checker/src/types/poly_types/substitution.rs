@@ -2,7 +2,7 @@
 
 use crate::{
 	behavior::{
-		functions::{ClosureId, ThisValue},
+		functions::ThisValue,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -46,7 +46,7 @@ pub(crate) fn substitute(
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(f, t) => curry_arguments(arguments, types, id),
+		Type::FunctionReference(_f, _t) => curry_arguments(arguments, types, id),
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
@@ -112,7 +112,7 @@ pub(crate) fn substitute(
 				condition,
 				truthy_result,
 				else_result,
-				result_union,
+				result_union: _,
 			} => {
 				let condition = substitute(condition, arguments, environment, types);
 
@@ -234,7 +234,7 @@ pub(crate) fn substitute(
 			}
 			Constructor::StructureGenerics(StructureGenerics {
 				on,
-				arguments: mut structure_arguments,
+				arguments: structure_arguments,
 			}) => {
 				let type_arguments = structure_arguments
 					.type_arguments
@@ -290,8 +290,8 @@ pub(crate) fn substitute(
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { ty, extends } => {
-					let ty = substitute(ty, arguments, environment, types);
-					let extends = substitute(extends, arguments, environment, types);
+					let _ty = substitute(ty, arguments, environment, types);
+					let _extends = substitute(extends, arguments, environment, types);
 
 					todo!();
 					// TODO special behavior that doesn't have errors...

@@ -1,21 +1,18 @@
 //! Type subtyping / order / subtype checking.
 
-use source_map::{BaseSpan, SourceId, Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	context::{Environment, GeneralContext, Logical},
 	types::{
-		poly_types::generic_type_arguments::TypeArgumentStore, printing::print_type, FunctionType,
-		TypeStore,
+		poly_types::generic_type_arguments::TypeArgumentStore, printing::print_type, TypeStore,
 	},
-	FunctionId, PropertyValue, TypeId,
+	PropertyValue, TypeId,
 };
 
 use super::{
-	get_constraint,
-	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
-	properties::PropertyKey,
-	Constructor, PolyNature, StructureGenerics, Type, TypeArguments,
+	get_constraint, properties::PropertyKey, Constructor, PolyNature, StructureGenerics, Type,
+	TypeArguments,
 };
 
 pub use super::{BasicEquality, NonEqualityReason, PropertyError, SubTypeResult, SubtypeBehavior};
@@ -244,7 +241,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				environment,
 				restriction_mode,
 			);
-			let left = print_type(base_type, types, &environment.as_general_context(), true);
+			let _left = print_type(base_type, types, &environment.as_general_context(), true);
 
 			// crate::utils::notify!("Left object {}", left);
 
@@ -379,7 +376,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 
 				// TODO temp fix for general parameters
 				if let Type::Object(_) = right_ty {
-					for (publicity, property, value) in environment.get_properties_on_type(ty) {
+					for (_publicity, property, value) in environment.get_properties_on_type(ty) {
 						// Assume every property on itself is either number or 'length'
 						match property {
 							PropertyKey::String(a) if a == "length" => {
@@ -464,12 +461,12 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 			Constructor::TypeOperator(_) => todo!(),
 			Constructor::TypeRelationOperator(_) => todo!(),
 			Constructor::ConditionalResult {
-				condition,
-				truthy_result,
-				else_result,
-				result_union,
+				condition: _,
+				truthy_result: _,
+				else_result: _,
+				result_union: _,
 			} => todo!(),
-			Constructor::Image { on, with, result } => todo!(),
+			Constructor::Image { on: _, with: _, result: _ } => todo!(),
 			Constructor::Property { on, under, result: _ } => {
 				// Ezno custom behavior
 				// TODO might be based of T
@@ -550,7 +547,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 				Type::And(_, _) => todo!(),
-				Type::Or(left, right) => {
+				Type::Or(_left, _right) => {
 					unreachable!()
 					// TODO fails if RHS is also OR type :(
 					// let right = *right;
@@ -718,13 +715,8 @@ fn check_properties<T: SubtypeBehavior>(
 	}
 }
 
-type ReadableSubTypeErrorMessage = Vec<String>;
-
 impl NonEqualityReason {
-	pub(crate) fn into_error_message(
-		self,
-		environment: &GeneralContext,
-	) -> ReadableSubTypeErrorMessage {
+	pub(crate) fn _into_error_message(self, _environment: &GeneralContext) -> Vec<String> {
 		match self {
 			NonEqualityReason::GenericParameterMismatch
 			| NonEqualityReason::MissingParameter

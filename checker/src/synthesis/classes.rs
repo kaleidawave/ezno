@@ -1,34 +1,20 @@
-use std::iter;
-
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
 	functions::MethodHeader,
-	property_key::PublicOrPrivate,
-	Decorated, Expression, GenericTypeConstraint, PropertyKey as ParserPropertyKey, TypeAnnotation,
+	PropertyKey as ParserPropertyKey,
 };
 
 use crate::{
 	behavior::functions::{
 		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter,
 	},
-	context::{
-		environment,
-		facts::Publicity,
-		Environment, {Context, ContextType},
-	},
-	synthesis::{
-		parser_property_key_to_checker_property_key, type_annotations::synthesise_type_annotation,
-	},
-	types::{
-		classes::{ClassValue, PropertyFunctionProperty},
-		poly_types::GenericTypeParameters,
-		properties::PropertyKey,
-		FunctionType, SynthesisedParameters,
-	},
-	ASTImplementation, CheckingData, PropertyValue, Scope, Type, TypeId,
+	context::{facts::Publicity, Environment},
+	synthesis::parser_property_key_to_checker_property_key,
+	types::{classes::ClassValue, properties::PropertyKey, FunctionType},
+	CheckingData, PropertyValue, Scope, Type, TypeId,
 };
 
-use super::{block::synthesise_block, expressions::synthesise_expression, EznoParser};
+use super::{block::synthesise_block, expressions::synthesise_expression};
 
 /// Doesn't have any metadata yet
 ///
@@ -43,7 +29,7 @@ pub(super) fn synthesise_class_declaration<
 ) -> TypeId {
 	{
 		// TODO what about no name
-		let name = P::as_option_str(&class.name).unwrap().to_owned();
+		let _name = P::as_option_str(&class.name).unwrap().to_owned();
 		// TODO type needs to be hoisted
 		// let parameters =
 		// 	if let Some(ref type_parameters) = class.type_parameters { todo!() } else { None };
@@ -61,7 +47,7 @@ pub(super) fn synthesise_class_declaration<
 	let class_prototype =
 		checking_data.types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-	let mut class_constructor = class.members.iter().find_map(|member| {
+	let class_constructor = class.members.iter().find_map(|member| {
 		if let ClassMember::Constructor(c) = &member.on {
 			Some(c)
 		} else {
@@ -74,7 +60,7 @@ pub(super) fn synthesise_class_declaration<
 	// Property keys on `static` items
 	let mut static_property_keys: Vec<PropertyKey<'static>> = Vec::new();
 
-	for (idx, member) in class.members.iter().enumerate() {
+	for (_idx, member) in class.members.iter().enumerate() {
 		match &member.on {
 			ClassMember::Method(None, method) => {
 				let publicity = match method.name.get_ast_ref() {

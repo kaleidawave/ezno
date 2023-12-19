@@ -15,13 +15,13 @@ use derive_debug_extras::DebugExtras;
 pub(crate) use poly_types::substitution::*;
 
 pub(crate) use casts::*;
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
 	behavior::{
-		functions::{ClosureId, ThisValue},
+		functions::ThisValue,
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
@@ -33,7 +33,6 @@ pub use self::functions::*;
 use self::{
 	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
 	properties::PropertyKey,
-	subtyping::type_is_subtype,
 };
 use crate::FunctionId;
 
@@ -153,7 +152,7 @@ pub enum PolyNature {
 
 // TODO
 #[must_use]
-pub fn is_primitive(ty: TypeId, types: &TypeStore) -> bool {
+pub fn is_primitive(ty: TypeId, _types: &TypeStore) -> bool {
 	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
 		return true;
 	}
@@ -456,7 +455,7 @@ pub enum PropertyError {
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 	if let Type::RootPolyType(PolyNature::Generic { .. }) = types.get_type_by_id(on) {
 		true
-	} else if let Type::Constructor(Constructor::Property { on, under, result }) =
+	} else if let Type::Constructor(Constructor::Property { on, under, result: _ }) =
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
@@ -474,9 +473,9 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		Type::RootPolyType(nature) => {
 			let based_on = match nature {
 				PolyNature::Parameter { fixed_to } => fixed_to,
-				PolyNature::Generic { name, eager_fixed } => eager_fixed,
+				PolyNature::Generic { name: _, eager_fixed } => eager_fixed,
 				PolyNature::Open(ty) => ty,
-				PolyNature::FreeVariable { reference, based_on } => based_on,
+				PolyNature::FreeVariable { reference: _, based_on } => based_on,
 				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
 			};
 
@@ -542,7 +541,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 					Some(TypeId::NUMBER_TYPE)
 				}
 			}
-			Constructor::UnaryOperator { operand, operator } => {
+			Constructor::UnaryOperator { operand: _, operator: _ } => {
 				todo!()
 				// if *constraint == TypeId::ANY_TYPE && mutable_context {
 				// 	let (operand, operator) = (operand.clone(), operator.clone());
@@ -559,7 +558,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	Some(*constraint)
 				// }
 			}
-			Constructor::Image { on, with, result } => {
+			Constructor::Image { on: _, with: _, result } => {
 				Some(result)
 				// TODO temp
 				// if let PolyPointer::Fixed(result) = result {
@@ -598,7 +597,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	}
 				// }
 			}
-			Constructor::Property { on, under, result } => {
+			Constructor::Property { on: _, under: _, result } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
 

@@ -2,21 +2,18 @@ use std::{collections::HashMap, iter};
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
-	tsx_keywords::Var,
 	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
 	StatementOrDeclaration, VariableIdentifier, WithComment,
 };
-use source_map::{Span, SpanWithSource};
 
 use crate::{
 	behavior::{
 		functions::synthesise_hoisted_statement_function,
-		modules::{Exported, ImportKind, NamePair},
+		modules::{ImportKind, NamePair},
 		variables::VariableMutability,
 	},
 	context::Environment,
-	diagnostics::TypeCheckError,
-	CheckingData, Constant, ReadFromFS, TypeId,
+	CheckingData, ReadFromFS, TypeId,
 };
 
 use super::{
@@ -170,7 +167,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Second stage
-	for (idx, item) in items.iter().enumerate() {
+	for (_idx, item) in items.iter().enumerate() {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(_) = stmt {
@@ -255,8 +252,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::DeclareVariable(DeclareVariableDeclaration {
 					keyword: _,
 					declarations,
-					position,
-					decorators,
+					position: _,
+					decorators: _,
 				}) => {
 					for declaration in declarations {
 						let constraint = get_annotation_from_declaration(
@@ -282,7 +279,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 
 				parser::Declaration::Export(exported) => match &exported.on {
-					parser::declarations::ExportDeclaration::Variable { exported, position } => {
+					parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 						match exported {
 							Exportable::Function(func) => {
 								// TODO unsynthesised function? ...
@@ -472,9 +469,9 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 ) {
 	match declaration {
 		parser::declarations::VariableDeclaration::ConstDeclaration {
-			keyword,
+			keyword: _,
 			declarations,
-			position,
+			position: _,
 		} => {
 			for declaration in declarations {
 				let constraint =
@@ -494,9 +491,9 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			}
 		}
 		parser::declarations::VariableDeclaration::LetDeclaration {
-			keyword,
+			keyword: _,
 			declarations,
-			position,
+			position: _,
 		} => {
 			for declaration in declarations {
 				let constraint =
@@ -533,7 +530,7 @@ fn get_annotation_from_declaration<
 		))
 	}
 	// TODO only under config
-	else if let WithComment::PostfixComment(item, possible_declaration, position) =
+	else if let WithComment::PostfixComment(_item, possible_declaration, position) =
 		&declaration.name
 	{
 		comment_as_type_annotation(
@@ -563,8 +560,6 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
-	use parser::ASTNode;
-
 	let source = environment.get_source();
 	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
 	let annotation = parser::TypeAnnotation::from_string(

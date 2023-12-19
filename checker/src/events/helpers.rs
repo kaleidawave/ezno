@@ -1,9 +1,5 @@
 use super::Event;
-use crate::{
-	context::environment,
-	types::{new_logical_or_type, TypeStore},
-	CheckingData, Environment, TypeId,
-};
+use crate::{types::new_logical_or_type, CheckingData, Environment, TypeId};
 
 pub(crate) enum ReturnedTypeFromBlock {
 	// aka no return
@@ -62,7 +58,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 				}
 				return ReturnedTypeFromBlock::Returned(*returned);
 			}
-			Event::Conditionally { condition: on, events_if_truthy, else_events, position } => {
+			Event::Conditionally { condition: on, events_if_truthy, else_events, position: _ } => {
 				let return_if_truthy = get_return_from_events(
 					&mut events_if_truthy.iter(),
 					checking_data,
@@ -85,7 +81,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 					}
 					(
 						ReturnedTypeFromBlock::ContinuedExecution,
-						ReturnedTypeFromBlock::ReturnedIf { when, returns },
+						ReturnedTypeFromBlock::ReturnedIf { when: _, returns: _ },
 					) => {
 						todo!("Expend rest of iterator")
 						// ReturnedTypeFromBlock::ReturnedIf {
@@ -100,23 +96,23 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 						todo!()
 					}
 					(
-						v @ ReturnedTypeFromBlock::ReturnedIf { .. },
+						_v @ ReturnedTypeFromBlock::ReturnedIf { .. },
 						ReturnedTypeFromBlock::ContinuedExecution,
 					) => {
 						todo!()
 						// return v
 					}
 					(
-						ReturnedTypeFromBlock::ReturnedIf { when, returns },
+						ReturnedTypeFromBlock::ReturnedIf { when: _, returns: _ },
 						ReturnedTypeFromBlock::ReturnedIf { .. },
 					) => todo!(),
 					(
-						ReturnedTypeFromBlock::ReturnedIf { when, returns },
+						ReturnedTypeFromBlock::ReturnedIf { when: _, returns: _ },
 						ReturnedTypeFromBlock::Returned(_),
 					) => todo!(),
 					(
-						ReturnedTypeFromBlock::Returned(true_returned),
-						ReturnedTypeFromBlock::ReturnedIf { when, returns },
+						ReturnedTypeFromBlock::Returned(_true_returned),
+						ReturnedTypeFromBlock::ReturnedIf { when: _, returns: _ },
 					) => {
 						todo!("expend iterator")
 						// TODO could be simpler, aka a chain
@@ -187,7 +183,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
 	let mut new_events = Vec::new();
 	for event in events {
-		if let Event::Throw(value, position) = event {
+		if let Event::Throw(value, _position) = event {
 			thrown.push(value);
 		} else {
 			// TODO nested grouping

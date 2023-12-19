@@ -1,8 +1,6 @@
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
-use crate::{
-	context::facts::Publicity, types::properties::PropertyKey, CheckingData, Environment, TypeId,
-};
+use crate::{context::facts::Publicity, types::properties::PropertyKey, TypeId};
 
 use super::operations::{Logical, MathematicalAndBitwise};
 

@@ -48,15 +48,16 @@ cargo run -p ezno-parser --example lex path/to/file.ts
 - Check source is valid with `cargo check --workspace`
 - Check that code is formatted in accordance with the specification with `cargo fmt --all --check`
 - Run all tests `cargo test --workspace --verbose`
+- Use `cargo clippy -- --allow warnings` to find blocking lints
 
 ### The notify! macro
 
 The checker crate has the `crate::utils::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
+
 ## *Rules* for contributions
 
-- Won't merge PRs that introduce new errors. However will merge PRs which pick up or find existing issues
 - Code **must** be formatted with `cargo format` inline with the current format configuration
-- Use `cargo clippy` as guidance for design but warning lints are not a blocker
+- It **must** pass `cargo clippy -- --allow warnings`. In many cases adding `allow` to items is fine
 
 ## Oxc
 

@@ -22,10 +22,8 @@ use parser::{ASTNode, PropertyKey as ParserPropertyKey};
 use source_map::SourceId;
 
 use crate::{
-	behavior::modules::Exported,
-	context::{environment, Context, ContextType, Names},
-	types::{properties::PropertyKey, TypeStore},
-	CheckingData, Constant, Diagnostic, Environment, Facts, RootContext, TypeId,
+	context::Names, types::properties::PropertyKey, CheckingData, Diagnostic, Environment, Facts,
+	RootContext, TypeId,
 };
 
 use self::{
@@ -33,7 +31,6 @@ use self::{
 	expressions::{synthesise_expression, synthesise_multiple_expression},
 	hoisting::hoist_variable_declaration,
 	type_annotations::synthesise_type_annotation,
-	variables::register_variable,
 };
 
 pub(super) fn parser_property_key_to_checker_property_key<
@@ -99,11 +96,11 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
 		match value {
 			Some(parser::types::AnnotationPerforms::PerformsConst {
-				performs_keyword,
+				performs_keyword: _,
 				identifier,
 			}) => Performs::Const(identifier.clone()),
 			Some(parser::types::AnnotationPerforms::PerformsStatements {
-				performs_keyword,
+				performs_keyword: _,
 				statements,
 			}) => Performs::Block(statements),
 			None => Performs::None,
@@ -152,7 +149,7 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn synthesise_module<'a, T: crate::ReadFromFS>(
 		module: &Self::Module<'a>,
-		source_id: SourceId,
+		_source_id: SourceId,
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
@@ -239,11 +236,7 @@ pub mod interactive {
 		DiagnosticsContainer, RootContext, TypeId,
 	};
 
-	use super::{
-		block::{synthesise_block, synthesise_declaration},
-		expressions::{synthesise_expression, synthesise_multiple_expression},
-		statements::synthesise_statement,
-	};
+	use super::{block::synthesise_block, expressions::synthesise_multiple_expression};
 
 	pub struct State<'a, T: crate::ReadFromFS> {
 		checking_data: CheckingData<'a, T, super::EznoParser>,
@@ -256,7 +249,7 @@ pub mod interactive {
 			type_definition_files: HashSet<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
-			let entry_point = PathBuf::from("CLI");
+			let _entry_point = PathBuf::from("CLI");
 			let mut checking_data =
 				CheckingData::new(Default::default(), resolver, Default::default());
 
