@@ -13,7 +13,7 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{printing::print_type, properties::PropertyKey, Constant},
-	CheckingData, Environment, TypeId,
+	CheckingData, Environment, PropertyValue, TypeId,
 };
 
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
@@ -89,7 +89,14 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 								&checking_data.types,
 							);
 							if let Some(value) = property_constraint {
-								value.prop_to_type()
+								match value {
+									crate::context::Logical::Pure(PropertyValue::Value(value)) => {
+										value
+									}
+									crate::context::Logical::Pure(_) => todo!(),
+									crate::context::Logical::Or { left, right } => todo!(),
+									crate::context::Logical::Implies { on, antecedent } => todo!(),
+								}
 							} else {
 								checking_data
 									.diagnostics_container
@@ -171,7 +178,14 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 								&checking_data.types,
 							);
 							if let Some(value) = property_constraint {
-								value.prop_to_type()
+								match value {
+									crate::context::Logical::Pure(PropertyValue::Value(value)) => {
+										value
+									}
+									crate::context::Logical::Pure(_) => todo!(),
+									crate::context::Logical::Or { left, right } => todo!(),
+									crate::context::Logical::Implies { on, antecedent } => todo!(),
+								}
 							} else {
 								checking_data
 									.diagnostics_container

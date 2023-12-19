@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use checker::{synthesis::EznoParser, FunctionId, PostCheckData};
 use parser::{
 	declarations::{
@@ -30,10 +28,9 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 				for item in literal.members.iter_mut() {
 					let item = item.get_ast_mut();
 					if let ObjectLiteralMember::Method(method) = item {
-						let current_module = chain.get_module();
 						let position = *method.get_position();
-						let function_id = FunctionId(current_module, position.start);
-						if !data.type_mappings.called_functions.contains(&function_id) {
+						let function_id = FunctionId(chain.get_module(), position.start);
+						if !data.is_function_called(function_id) {
 							// Make it null for now to not break `Object.keys`
 							let name = method.name.clone();
 							*item = ObjectLiteralMember::Property(
@@ -47,24 +44,20 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 			}
 			Expression::ArrowFunction(func) => {
 				if !data
-					.type_mappings
-					.called_functions
-					.contains(&FunctionId(chain.get_module(), func.get_position().start))
+					.is_function_called(FunctionId(chain.get_module(), func.get_position().start))
 				{
 					*item = Expression::Null(*func.get_position());
 				}
 			}
 			Expression::ExpressionFunction(func) => {
 				if !data
-					.type_mappings
-					.called_functions
-					.contains(&FunctionId(chain.get_module(), func.get_position().start))
+					.is_function_called(FunctionId(chain.get_module(), func.get_position().start))
 				{
 					*item = Expression::Null(*func.get_position());
 				}
 			}
 			Expression::ClassExpression(cls) => {
-				shake_class(cls, &data.type_mappings.called_functions, chain.get_module());
+				shake_class(cls, data, chain.get_module());
 			}
 			_ => {}
 		}
@@ -91,13 +84,13 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 					// TODO remove if never read
 				}
 				parser::Declaration::Function(func) => {
-					if !data
-						.type_mappings
-						.called_functions
-						.contains(&FunctionId(chain.get_module(), func.get_position().start))
-					{
+					if !data.is_function_called(FunctionId(
+						chain.get_module(),
+						func.get_position().start,
+					)) {
 						// Replace with property to not break Object.keys for now
-						// TODO replacing this with variable isn't great but is the unfortunate design of `StatementOrDeclarationMut`
+						// TODO replacing this with variable isn't great but
+						// is the unfortunate design of `StatementOrDeclarationMut`
 						*declaration = parser::Declaration::Variable(
 							parser::declarations::VariableDeclaration::LetDeclaration {
 								keyword: parser::Keyword::new(parser::Span::NULL_SPAN),
@@ -108,11 +101,7 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 					}
 				}
 				parser::Declaration::Class(cls) => {
-					shake_class(
-						&mut cls.on,
-						&data.type_mappings.called_functions,
-						chain.get_module(),
-					);
+					shake_class(&mut cls.on, data, chain.get_module());
 				}
 				parser::Declaration::Import(_) => {
 					// TODO imported items
@@ -132,13 +121,13 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 /// TODO properties and even entire class
 fn shake_class<T: ExpressionOrStatementPosition>(
 	class: &mut ClassDeclaration<T>,
-	called_functions: &HashSet<FunctionId>,
+	data: &PostCheckData<EznoParser>,
 	source: SourceId,
 ) {
 	for item in class.members.iter_mut() {
 		if let ClassMember::Method(static_kw, func) = &item.on {
 			let id = FunctionId(source, func.position.start);
-			if !called_functions.contains(&id) {
+			if !data.is_function_called(id) {
 				// Replace with property to not break Object.keys for now
 				item.on = ClassMember::Property(
 					static_kw.clone(),

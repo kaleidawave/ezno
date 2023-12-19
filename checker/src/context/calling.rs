@@ -1,12 +1,12 @@
 use super::facts::Facts;
-use crate::{events::EarlyReturn, Environment, FunctionId};
+use crate::{events::EventResult, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub(crate) trait CallCheckingBehavior {
 	// TODO
 	const CHECK_PARAMETERS: bool;
 
-	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
+	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
 
@@ -22,7 +22,7 @@ pub struct CheckThings;
 impl CallCheckingBehavior for CheckThings {
 	const CHECK_PARAMETERS: bool = true;
 
-	fn get_top_level_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
+	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
 		&mut environment.facts
 	}
 
@@ -42,10 +42,6 @@ impl CallCheckingBehavior for CheckThings {
 }
 
 pub(crate) struct Target(Vec<TargetKind>);
-//  {
-// 	// facts: Facts,
-// 	// function_id: Vec<FunctionId>,
-// }
 
 pub(crate) enum TargetKind {
 	Conditional(Facts),
@@ -55,7 +51,7 @@ pub(crate) enum TargetKind {
 impl CallCheckingBehavior for Target {
 	const CHECK_PARAMETERS: bool = false;
 
-	fn get_top_level_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
+	fn get_latest_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
 		self.0
 			.iter_mut()
 			.rev()
@@ -89,8 +85,8 @@ impl Target {
 
 	pub(crate) fn new_conditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> EarlyReturn,
-	) -> (Facts, EarlyReturn) {
+		cb: impl for<'a> FnOnce(&'a mut Target) -> Option<EventResult>,
+	) -> (Facts, Option<EventResult>) {
 		self.0.push(TargetKind::Conditional(Facts::default()));
 		let result = cb(self);
 		if let Some(TargetKind::Conditional(facts)) = self.0.pop() {

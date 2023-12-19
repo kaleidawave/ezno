@@ -1,19 +1,3 @@
-### Function calling
-
-#### TDZ (temporary dead zone)
-
-> `b` is a free variable and hoisted, so `getB` can only be used once it is defined
-
-```ts
-function getB() {
-    return b
-}
-
-getB();
-const b = 2;
-getB();
-```
-
 ### Types
 
 #### Resolving value by property on dependent
@@ -30,6 +14,19 @@ getProperty("c") satisfies 2
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
 
+#### Set property on dependent observed
+
+```ts
+function add_property(obj: { prop: number }) {
+    obj.prop = 2;
+    (obj.prop satisfies 4);
+}
+```
+
+> Not number
+
+- Expected 4, found 2
+
 #### Calling on or type
 
 ```ts
@@ -43,6 +40,20 @@ print_type(callFunc)
 ```
 
 - Expected "a" | "b" | "c" found "d"
+
+#### This as generic argument
+
+> Was working, now broken for some reason :(
+
+```ts
+function callToUpperCase(s: string) {
+	return s.toUpperCase()
+}
+
+(callToUpperCase("hi") satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
 
 #### Symmetric or
 
@@ -101,6 +112,20 @@ print_type(callFunc)
 ```
 
 - Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+
+#### Generics pass down
+
+> Too many generics here, doesn't get caught for some reason?
+
+```ts
+let c: Array<number> = []
+
+function add() {
+    c.push("hi")
+}
+```
+
+- Type "hi" is not assignable to argument of type number
 
 ### Narrowing
 
@@ -306,17 +331,6 @@ a.prop3 satisfies "prop2"
 
 ### Collections
 
-#### Push to array
-
-> Currently panics on set property diagnostic not being able to be register in apply event :(
-
-```ts
-const myArray: Array<number> = [];
-myArray.push("hi")
-```
-
-- Type "hi" is not assignable to type number
-
 #### Simple array map
 
 ```ts
@@ -403,14 +417,24 @@ array2[2] satisfies string;
 
 - Expected string, found 3
 
-#### Index into array
+### Classes
+
+> TODO extends
+
+#### Privacy
 
 ```ts
-function getFirst(a: Array<string>) {
-	return a[3]
+class MyClass {
+	#a = 2;
+
+	getA(this: { #a: any }) {
+		return this.#a
+	}
 }
 
-print_type(getFirst)
+(new MyClass).#a;
+((new MyClass).getA() satisfies 3);
 ```
 
-- TODO
+- Cannot get private property "#a"
+- Expected 3, found 2

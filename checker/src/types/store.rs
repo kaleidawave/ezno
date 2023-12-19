@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	behavior::functions::{ClosureId, FunctionBehavior},
+	behavior::{
+		functions::{ClosureId, FunctionBehavior},
+		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise},
+	},
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	FunctionId, GeneralContext, TypeId,
+	Constant, FunctionId, GeneralContext, TypeId,
 };
 
-use super::{properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator};
+use super::{
+	get_constraint, properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator,
+};
 
 /// Holds all the types. Eventually may be split across modules
 #[derive(Debug)]
@@ -19,10 +24,10 @@ pub struct TypeStore {
 
 	pub(crate) dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
 
-	// TODO merge into type
-	// pub(crate) functions_on_type: HashMap<TypeId, FunctionType>,
-	// pub(crate) proxies: HashMap<TypeId, Proxy>,
 	pub(crate) specialisations: HashMap<TypeId, Vec<TypeId>>,
+
+	/// can be used for tree shaking
+	pub called_functions: HashSet<FunctionId>,
 
 	/// TODO not best place but is passed through everything so
 	pub(crate) closure_counter: u32,
@@ -90,6 +95,7 @@ impl Default for TypeStore {
 			functions: HashMap::new(),
 			dependent_dependencies: Default::default(),
 			specialisations: Default::default(),
+			called_functions: Default::default(),
 			closure_counter: 0,
 		}
 	}
@@ -247,6 +253,17 @@ impl TypeStore {
 					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
+			Type::FunctionReference(_, _) => {
+				let on_function = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				// TODO undecided on this
+				on_function.or_else(|| {
+					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
+				})
+			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = ctx
 					.parents_iter()
@@ -272,7 +289,8 @@ impl TypeStore {
 				}
 			}
 			Type::RootPolyType(_nature) => {
-				let aliases = ctx.get_poly_base(on, self).unwrap();
+				// TODO None here
+				let aliases = get_constraint(on, self).unwrap();
 				// Don't think any properties exist on this poly type
 				self.get_fact_about_type(ctx, aliases, resolver, data)
 			}
@@ -280,7 +298,6 @@ impl TypeStore {
 				on,
 				arguments,
 			})) => {
-				crate::utils::notify!("Here StructureGenerics");
 				// TODO could drop some of with here
 				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
 				fact_opt.map(|fact| Logical::Implies {
@@ -290,7 +307,8 @@ impl TypeStore {
 			}
 			Type::Constructor(constructor) => {
 				// Don't think any properties exist on this poly type
-				let constraint = ctx.get_poly_base(on, self).unwrap();
+				// TODO None here
+				let constraint = get_constraint(on, self).unwrap();
 				// TODO might need to send more information here, rather than forgetting via .get_type
 				self.get_fact_about_type(ctx, on, resolver, data)
 			}
@@ -315,7 +333,6 @@ impl TypeStore {
 				.or_else(|| {
 					self.get_fact_about_type(ctx, cst.get_backing_type_id(), resolver, data)
 				}),
-			Type::FunctionReference(_, _) => todo!(),
 			Type::SpecialObject(_) => todo!(),
 		}
 	}

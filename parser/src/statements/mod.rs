@@ -40,12 +40,12 @@ pub enum Statement {
 	// TODO as keyword
 	Debugger(Span),
 	// Loops and "condition-aries"
-	IfStatement(IfStatement),
-	ForLoopStatement(ForLoopStatement),
-	SwitchStatement(SwitchStatement),
-	WhileStatement(WhileStatement),
-	DoWhileStatement(DoWhileStatement),
-	TryCatchStatement(TryCatchStatement),
+	If(IfStatement),
+	ForLoop(ForLoopStatement),
+	Switch(SwitchStatement),
+	WhileLoop(WhileStatement),
+	DoWhileLoop(DoWhileStatement),
+	TryCatch(TryCatchStatement),
 	// Control flow
 	Return(ReturnStatement),
 	// TODO maybe an actual label struct:
@@ -238,12 +238,12 @@ impl ASTNode for Statement {
 					expression.to_string_from_buffer(buf, options, depth);
 				}
 			}
-			Statement::IfStatement(is) => is.to_string_from_buffer(buf, options, depth),
-			Statement::ForLoopStatement(fl) => fl.to_string_from_buffer(buf, options, depth),
-			Statement::SwitchStatement(ss) => ss.to_string_from_buffer(buf, options, depth),
-			Statement::WhileStatement(ws) => ws.to_string_from_buffer(buf, options, depth),
-			Statement::DoWhileStatement(dws) => dws.to_string_from_buffer(buf, options, depth),
-			Statement::TryCatchStatement(tcs) => tcs.to_string_from_buffer(buf, options, depth),
+			Statement::If(is) => is.to_string_from_buffer(buf, options, depth),
+			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, depth),
+			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, depth),
+			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, depth),
+			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, depth),
+			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, depth),
 			Statement::Comment(comment, _) => {
 				if options.should_add_comment(false) {
 					buf.push_str("//");
@@ -304,7 +304,7 @@ impl Statement {
 			self,
 			Statement::VarVariable(_)
 				| Statement::Expression(_)
-				| Statement::DoWhileStatement(_)
+				| Statement::DoWhileLoop(_)
 				| Statement::Continue(..)
 				| Statement::Break(..)
 				| Statement::Return(..)

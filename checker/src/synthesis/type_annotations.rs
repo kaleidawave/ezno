@@ -36,6 +36,7 @@ use crate::{
 	subtyping::{self, type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
+		get_constraint,
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constant, PolyNature, StructureGenerics, Type,
@@ -386,7 +387,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let under =
 				crate::types::properties::PropertyKey::from_type(indexer, &checking_data.types);
 
-			if let Some(base) = environment.get_poly_base(being_indexed, &checking_data.types) {
+			if let Some(base) = get_constraint(being_indexed, &checking_data.types) {
 				checking_data.types.new_property_constructor(being_indexed, indexer, base)
 			} else if let Some(prop) = environment.get_property_unbound(
 				being_indexed,

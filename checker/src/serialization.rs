@@ -36,6 +36,16 @@ impl BinarySerializable for () {
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {}
 }
 
+impl BinarySerializable for u8 {
+	fn serialize(self, buf: &mut Vec<u8>) {
+		buf.push(self);
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		iter.next().unwrap()
+	}
+}
+
 impl<T: BinarySerializable> BinarySerializable for Option<T> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		if let Some(item) = self {

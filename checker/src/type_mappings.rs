@@ -27,8 +27,6 @@ pub struct TypeMappings {
 	/// Data to a AST mapping. For classes this points to the shape
 	pub types_to_types: RangeMap<TypeId>,
 	pub import_statements_to_pointing_path: RangeMap<PathBuf>,
-	/// can be used for tree shaking
-	pub called_functions: HashSet<FunctionId>,
 
 	/// Variable restriction. Cached after hoisting pass. TODO temp needs tidy
 	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, SpanWithSource)>,
@@ -47,18 +45,6 @@ pub struct VariablesToTypes(pub(crate) HashMap<VariableId, TypeId>);
 
 // TODO these are temp
 impl TypeMappings {
-	#[must_use]
-	pub fn print_called_functions(&self, source: &str) -> String {
-		let mut buf = "Called functions:\n".to_owned();
-		for func_id in &self.called_functions {
-			buf.push_str(
-				source.get((func_id.1 as usize)..(func_id.1 as usize + 10)).unwrap_or_default(),
-			);
-			buf.push('\n');
-		}
-		buf
-	}
-
 	#[must_use]
 	pub fn print_type_mappings(
 		&self,

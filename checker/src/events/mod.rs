@@ -3,11 +3,12 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	behavior::functions::ThisValue,
+	behavior::{functions::ThisValue, iteration::IterationKind},
 	context::{calling::Target, facts::Publicity, get_on_ctx, CallCheckingBehavior},
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
+		TypeArguments,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
@@ -38,6 +39,24 @@ impl RootReference {
 	}
 }
 
+/// If `carry == 0` then break
+#[derive(Debug)]
+pub enum EventResult {
+	Return(TypeId, SpanWithSource),
+	Break {
+		carry: u8,
+	},
+	/// from `continue` statements, which should be called `skip`.
+	/// TODO maybe this can be abstracted
+	Continue {
+		carry: u8,
+	},
+	Throw,
+}
+
+/// For iterations. TODO up for debate
+pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
+
 /// Events which happen
 ///
 /// Used for getting values and states
@@ -48,7 +67,7 @@ impl RootReference {
 /// TODO store positions?
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Event {
-	/// Reads variable
+	/// Reads a reference (as a free variable or `this`)
 	///
 	/// Can be used for DCE reasons, or finding variables in context
 	ReadsReference {
@@ -72,7 +91,6 @@ pub enum Event {
 		under: PropertyKey<'static>,
 		// Can be a getter through define property
 		new: PropertyValue,
-		reflects_dependency: Option<TypeId>,
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
 		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
@@ -80,7 +98,6 @@ pub enum Event {
 		publicity: Publicity,
 		position: Option<SpanWithSource>,
 	},
-
 	/// This includes closed over variables, anything dependent
 	CallsType {
 		on: TypeId,
@@ -99,8 +116,20 @@ pub enum Event {
 		else_events: Box<[Event]>,
 		position: Option<SpanWithSource>,
 	},
+	/// Run events multiple times
+	Iterate {
+		kind: IterationKind,
+		/// TODO for of and in variants here:
+		// condition: TypeId,
+		iterate_over: Box<[Event]>,
+		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
+		initial: InitialVariables,
+	},
 	/// TODO not sure but whatever
-	Return { returned: TypeId, returned_position: SpanWithSource },
+	Return {
+		returned: TypeId,
+		returned_position: SpanWithSource,
+	},
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -123,11 +152,18 @@ pub enum Event {
 		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
 		position: Option<SpanWithSource>,
+		/// Debug only
+		is_function_this: bool,
 	},
-	/// TODO label
-	Break { position: Option<SpanWithSource> },
-	/// TODO label
-	Continue { position: Option<SpanWithSource> },
+	Break {
+		position: Option<SpanWithSource>,
+		carry: u8,
+	},
+	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
+	Continue {
+		position: Option<SpanWithSource>,
+		carry: u8,
+	},
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -144,5 +180,3 @@ pub enum CallingTiming {
 	/// TODO could use above mechanism at some point
 	AtSomePointManyTimes,
 }
-
-pub(crate) type EarlyReturn = Option<TypeId>;

@@ -96,6 +96,11 @@ pub trait ASTImplementation: Sized {
 	type TypeAnnotation<'a>;
 	type TypeParameter<'a>;
 	type Expression<'a>;
+	type MultipleExpression<'a>;
+	type ForStatementInitiliser<'a>;
+
+	/// Used in `for of`, `for in` and function parameters
+	type VariableField<'a>;
 
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
@@ -137,11 +142,26 @@ pub trait ASTImplementation: Sized {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
 
+	/// Expected is used for eagerly setting function parameters
+	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
+		expression: &'a Self::MultipleExpression<'a>,
+		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId;
+
 	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
 		annotation: &'a Self::TypeAnnotation<'a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
+
+	/// Don't need to return anything. All information recorded via changed to `environment`
+	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
+		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	);
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
@@ -191,6 +211,7 @@ impl FunctionId {
 	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
 }
 
+#[derive(Debug)]
 pub enum Decidable<T> {
 	Known(T),
 	/// Points to poly type
@@ -542,5 +563,12 @@ impl TypeCombinable for TypeId {
 
 	fn default() -> Self {
 		TypeId::UNDEFINED_TYPE
+	}
+}
+
+impl<A: crate::ASTImplementation> PostCheckData<A> {
+	#[must_use]
+	pub fn is_function_called(&self, function_id: FunctionId) -> bool {
+		self.types.called_functions.contains(&function_id)
 	}
 }

@@ -2,9 +2,7 @@
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
 declare function debug_type(t: any): void performs const debug_type;
-declare function debug_type_independent(t: any): void performs const debug_type_independent;
 declare function debug_type_rust(t: any): void performs const debug_type_rust;
-declare function debug_type_rust_independent(t: any): void performs const debug_type_rust_independent;
 declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
 declare function debug_effects(t: () => {}): void performs const debug_effects;
 declare function is_dependent(t: any): void performs const is_dependent;
@@ -38,6 +36,76 @@ interface nominal Array<T> {
             delete this[this.length];
             return value
         }
+    }
+
+    map<U>(cb: (t: T) => U): Array<U> performs {
+        const { length } = this, u: Array<U> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i++];
+            u.push(cb(value))
+        }
+        return u;
+    }
+
+    filter(cb: (t: T) => boolean): Array<T> performs {
+        const { length } = this, filtered: Array<T> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i++];
+            if (cb(value)) {
+                filtered.push(value)
+            }
+        }
+        return filtered;
+    }
+
+    find(cb: (t: T) => boolean): T | undefined performs {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i++];
+            if (cb(value)) {
+                return value
+            }
+        }
+    }
+
+    every(cb: (t: T) => boolean): boolean performs {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i++];
+            if (!cb(value)) {
+                return false
+            }
+        }
+        // Vacuous truth
+        return true
+    }
+
+    some(cb: (t: T) => boolean): boolean performs {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i++];
+            if (cb(value)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    includes(searchElement: T, fromIndex?: number): boolean performs {
+        const { length } = this;
+        let i: number = fromIndex ?? 0;
+        while (i < length) {
+            const value = this[i++];
+            if (value === searchElement) {
+                return true
+            }
+        }
+        return false
     }
 
     // last() performs {

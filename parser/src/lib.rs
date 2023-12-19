@@ -718,7 +718,7 @@ impl FromStr for NumberRepresentation {
 			})
 		} else if let Some(s) = s.strip_suffix('.') {
 			Ok(Self::Number {
-				value: sign.apply(s.parse().map_err(|_| s.clone())?),
+				value: sign.apply(s.parse().map_err(|_| s)?),
 				before_point: s.len() as u8,
 				after_point: Some(0),
 			})

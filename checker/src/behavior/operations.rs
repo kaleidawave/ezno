@@ -4,15 +4,15 @@ use derive_enum_from_into::EnumFrom;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	diagnostics::TypeCheckError,
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	types::{
-		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type,
+		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
 		StructureGenerics, TypeStore,
 	},
 	ASTImplementation, CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
 
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum MathematicalAndBitwise {
 	Add,
 	Subtract,
@@ -28,7 +28,7 @@ pub enum MathematicalAndBitwise {
 	BitwiseOr,
 }
 
-#[derive(Clone, Debug, EnumFrom)]
+#[derive(Clone, Copy, Debug, EnumFrom)]
 pub enum PureBinaryOperation {
 	MathematicalAndBitwise(MathematicalAndBitwise),
 	// Some of these can be reduced
@@ -58,7 +58,28 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 			match result {
 				Ok(result) => result,
 				Err(err) => {
-					// checking_data.diagnostics_container.add_error(TypeCheckError::)
+					let ctx = &environment.as_general_context();
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+							operator,
+							lhs: TypeStringRepresentation::from_type_id(
+								lhs,
+								ctx,
+								&checking_data.types,
+								false,
+							),
+							rhs: TypeStringRepresentation::from_type_id(
+								rhs,
+								ctx,
+								&checking_data.types,
+								false,
+							),
+							position: lhs_pos
+								.without_source()
+								.union(rhs_pos.without_source())
+								.with_source(environment.get_source()),
+						},
+					);
 					TypeId::ERROR_TYPE
 				}
 			}
@@ -85,7 +106,7 @@ pub fn evaluate_mathematical_operation(
 ) -> Result<TypeId, ()> {
 	fn attempt_constant_math_operator(
 		lhs: TypeId,
-		operator: &MathematicalAndBitwise,
+		operator: MathematicalAndBitwise,
 		rhs: TypeId,
 		types: &mut TypeStore,
 		strict_casts: bool,
@@ -156,11 +177,11 @@ pub fn evaluate_mathematical_operation(
 		return Ok(types.register_type(crate::Type::Constructor(constructor)));
 	}
 
-	attempt_constant_math_operator(lhs, &operator, rhs, types, strict_casts)
+	attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 }
 
 /// Not canonical / reducible
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum EqualityAndInequality {
 	StrictEqual,
 	StrictNotEqual,
@@ -173,16 +194,16 @@ pub enum EqualityAndInequality {
 }
 
 /// Canonical / irreducible
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum CanonicalEqualityAndInequality {
 	StrictEqual,
 	LessThan,
 }
 
 pub fn evaluate_equality_inequality_operation(
-	lhs: TypeId,
+	mut lhs: TypeId,
 	operator: &EqualityAndInequality,
-	rhs: TypeId,
+	mut rhs: TypeId,
 	types: &mut TypeStore,
 	strict_casts: bool,
 ) -> Result<TypeId, ()> {
@@ -238,7 +259,24 @@ pub fn evaluate_equality_inequality_operation(
 				|| types.get_type_by_id(rhs).is_dependent();
 
 			if is_dependent {
-				let constructor = crate::types::Constructor::CanonicalRelationOperator {
+				if let Type::Constructor(Constructor::BinaryOperator {
+					lhs: op_lhs,
+					operator,
+					rhs: op_rhs,
+				}) = types.get_type_by_id(lhs)
+				{
+					if let (
+						Type::Constant(Constant::Number(add)),
+						MathematicalAndBitwise::Add,
+						Type::Constant(Constant::Number(lt)),
+					) = (types.get_type_by_id(*op_rhs), operator, types.get_type_by_id(rhs))
+					{
+						crate::utils::notify!("Shifted LT");
+						lhs = *op_lhs;
+						rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
+					}
+				}
+				let constructor = Constructor::CanonicalRelationOperator {
 					lhs,
 					operator: CanonicalEqualityAndInequality::LessThan,
 					rhs,
@@ -420,7 +458,7 @@ pub fn evaluate_logical_operation_with_expression<
 	}
 }
 
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
 	LogicalNot,
 	Negation,

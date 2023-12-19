@@ -160,9 +160,16 @@ jobs:
         working-directory: parser
 
       - name: Run checker specification
-        if: steps.changes.outputs.checker == 'true'
+        if: steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request'
         run: cargo test
         working-directory: checker/specification
+      
+      - name: Run checker specification (w/ staging)
+        if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
+        run: cargo test -F staging
+        working-directory: checker/specification
+        env:
+          EZNO_DEBUG: 1
 
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true'

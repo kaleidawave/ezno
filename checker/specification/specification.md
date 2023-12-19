@@ -94,12 +94,10 @@ const my_wrapped: Wrapper<number> = { internal: "hi" }
 
 ```ts
 const numbers1: Array<number> = [1, 2, "3"]
-const numbers2: Array<string> = [ "hi", "3"]
+const numbers2: Array<string> = ["hi", "3"]
 ```
 
-> Printing is a bit wack here
-
-- Type [Array] { 0: 1, 1: 2, 2: "3", length: 3 } is not assignable to type Array\<number>
+- Type [1, 2, "3"] is not assignable to type Array\<number>
 
 ### Function checking
 
@@ -352,18 +350,6 @@ function getToUpperCase(s: string) {
 
 - Expected "HEY", found "HI"
 
-#### This as generic argument
-
-```ts
-function callToUpperCase(s: string) {
-	return s.toUpperCase()
-}
-
-(callToUpperCase("hi") satisfies "HEY")
-```
-
-- Expected "HEY", found "HI"
-
 ### Closures
 
 #### Reading variable
@@ -436,7 +422,9 @@ value.getValue() satisfies 6
 ```ts
 let a: number = 0
 function func() {
-	a = 4
+	a = 4;
+	// Important that subsequent reads use the new value, not the same free variable
+	a satisfies 4;
 }
 
 func()
@@ -459,7 +447,7 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Property updates object inside function
+#### Free variable property update object inside function
 
 ```ts
 const obj: { a: number } = { a: 2 }
@@ -523,6 +511,74 @@ out satisfies string
 
 - Expected string, found 3
 
+#### TDZ from free variable (across function)
+
+```ts
+function getX() {
+    return x
+}
+
+(getX satisfies () => number);
+
+getX();
+
+let x: number = 5;
+```
+
+- Variable x used before declaration
+
+#### Assignment to union
+
+> Solves the common subtyping issue between read and write properties
+
+```ts
+let myObject: { a: number } = { a: 4 }
+
+function setAtoString(someObject: { a: number | string }) {
+    someObject.a = "hi";
+}
+
+setAtoString({ a: 6 });
+setAtoString(myObject);
+```
+
+> Error could be better. Full one contains labels with more information
+
+- Assignment mismatch
+
+#### Mutating an object by a function
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: { x: number }) => any) {
+    const obj: { x: number } = { x: 8 };
+    callback(obj);
+    (obj.x satisfies 8);
+    return obj;
+}
+
+const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
+(object.x satisfies string);
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Assigning to parameter observed via effect
+
+```ts
+function add_property(obj: { prop: number }) {
+    obj.prop += 2;
+}
+
+const obj = { prop: 4 };
+add_property(obj);
+(obj.prop satisfies 8);
+```
+
+- Expected 8, found 6
+
 ### Constant evaluation
 
 #### Arithmetic
@@ -581,7 +637,7 @@ const z: false = true || 4
 - Expected number, found true
 - Expected string, found true
 
-#### String operations
+#### String operations (constant functions can use `this`)
 
 ```ts
 "hi".toUpperCase() satisfies number
@@ -867,6 +923,132 @@ func satisfies (a: boolean) => 5;
 
 - Expected (a: boolean) => 5, found (a: boolean) => 2 | undefined
 
+### Iteration
+
+#### While loop unrolling
+
+```ts
+let a = 1;
+let i = 0;
+while (i < 5) {
+    a *= 2;
+    i++;
+}
+
+(a satisfies 8);
+```
+
+- Expected 8, found 32
+
+#### While loop event in the condition
+
+```ts
+let a = 1;
+let i = 0;
+while (i++ < 5) {
+    a *= 2;
+}
+
+(a satisfies 8);
+```
+
+- Expected 8, found 32
+
+#### Do while loop
+
+```ts
+let a = 0;
+do {
+    a++
+} while (a < 3)
+
+(a satisfies 8);
+```
+
+- Expected 8, found 3
+
+#### For loop with initialiser and condition
+
+```ts
+let a: string = "";
+for (let i: number = 0; i < 10; i++) {
+    a = a + i;
+}
+
+(a satisfies number)
+```
+
+- Expected number, found "0123456789"
+
+#### While loop with unknown number of iterations
+
+```ts
+declare let i: number;
+let a: number = 0;
+while (a < i) {
+    a++;
+}
+
+(a satisfies string)
+```
+
+- Expected string, found number
+
+> Important that type is widened to 'number' (think it is an open poly in this case)
+
+#### While loop unrolling as an effect
+
+```ts
+function loop(n: number, c: string) {
+    let a: string = c;
+    let i: number = 0;
+    while (i++ < n) {
+        a += c
+    }
+    return a
+}
+
+(loop(10, "!") satisfies number);
+```
+
+- Expected number, found "!!!!!!!!!!"
+
+#### Break in a while loop
+
+```ts
+let a = 2;
+let i = 0;
+while (i++ < 10) {
+    a *= 2;
+    if (a > 5) {
+        break;
+    }
+}
+
+(a satisfies 2);
+```
+
+- Expected 2, found 8
+
+#### Continue in a while loop
+
+> With the continue the update to `a` only happens on even runs (5 times)
+
+```ts
+let a = 2;
+let i = 0;
+while (i++ < 10) {
+    if (i % 2) {
+        continue;
+    }
+    a *= 2;
+}
+
+(a satisfies 2);
+```
+
+- Expected 2, found 64
+
 ### Statements, declarations and expressions
 
 > Some of these are part of synthesis, rather than checking
@@ -1066,9 +1248,17 @@ type X = { a: string }
 
 - Type { b: "NaN" } is not assignable to type X
 
-### Classes
+#### TDZ in statements
 
-> TODO privacy
+```ts
+let x = y;
+
+let y = 2;
+```
+
+- Variable y used before declaration
+
+### Classes
 
 #### Constructor
 
@@ -1105,8 +1295,6 @@ global satisfies string;
 - Expected string, found 1
 
 #### Properties
-
-> TODO check timing
 
 ```ts
 let global: number = 0;
@@ -1272,6 +1460,40 @@ function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
 ```
 
 - Cannot return T["other"] because the function is expected to return T["prop"]
+
+#### Index into dependent array
+
+```ts
+function getFirst(array: number[]) {
+    return array[0]
+}
+
+(getFirst satisfies boolean);
+```
+
+- Expected boolean, found (array: Array\<number>) => number | undefined
+
+#### Index into dependent string
+
+```ts
+function getSecondCharacter(s: string) {
+    return s[1]
+}
+
+(getSecondCharacter satisfies boolean);
+(getSecondCharacter("string") satisfies "b");
+```
+
+- Expected boolean, found (s: string) => string | undefined
+- Expected "b", found "t"
+
+#### Index into string
+
+```ts
+("something"[2] satisfies number);
+```
+
+- Expected number, found "m"
 
 ### Prototypes
 

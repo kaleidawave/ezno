@@ -131,7 +131,7 @@ pub enum ForLoopCondition {
 		position: Span,
 	},
 	Statements {
-		initializer: Option<ForLoopStatementInitializer>,
+		initialiser: Option<ForLoopStatementInitializer>,
 		condition: Option<MultipleExpression>,
 		afterthought: Option<MultipleExpression>,
 		position: Span,
@@ -268,7 +268,7 @@ impl ASTNode for ForLoopCondition {
 					.as_ref()
 					.map_or(semi_colon_two, |expr| expr.get_position().get_end());
 				let position = start.union(end);
-				Self::Statements { initializer, condition, afterthought, position }
+				Self::Statements { initialiser: initializer, condition, afterthought, position }
 			}
 		};
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -301,7 +301,7 @@ impl ASTNode for ForLoopCondition {
 				buf.push_str(" in ");
 				r#in.to_string_from_buffer(buf, options, depth);
 			}
-			Self::Statements { initializer, condition, afterthought, position: _ } => {
+			Self::Statements { initialiser: initializer, condition, afterthought, position: _ } => {
 				if let Some(initializer) = initializer {
 					match initializer {
 						ForLoopStatementInitializer::VariableDeclaration(stmt) => {

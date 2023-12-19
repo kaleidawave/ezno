@@ -90,7 +90,7 @@ impl FunctionType {
 		let behavior =
 			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
 
-		let (events, free_variables) = env_data.unwrap();
+		let (facts, free_variables) = env_data.unwrap();
 		Self {
 			id: crate::FunctionId::AUTO_CONSTRUCTOR,
 			constant_function: None,
@@ -98,7 +98,7 @@ impl FunctionType {
 			parameters: SynthesisedParameters::default(),
 			// Only needed for printing
 			return_type: on,
-			effects: events,
+			effects: facts.events,
 			behavior,
 			// TODO ???
 			free_variables: Default::default(),
@@ -120,6 +120,8 @@ pub(crate) fn create_this_before_function_synthesis(
 		referenced_in_scope_as: ty,
 		prototype: crate::events::PrototypeArgument::Yeah(prototype),
 		position: None,
+		// TODO right?
+		is_function_this: true,
 	};
 	facts.events.push(value);
 

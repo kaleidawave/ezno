@@ -26,7 +26,7 @@ pub(crate) fn emit_ezno_diagnostic(
 			labels: vec![Label::primary(position.source, position).with_message(reason)],
 			notes: Vec::default(),
 		},
-		checker::Diagnostic::PositionWithAdditionLabels { reason, position, labels, kind } => {
+		checker::Diagnostic::PositionWithAdditionalLabels { reason, position, labels, kind } => {
 			let (labels, notes) =
 				labels.into_iter().partition::<Vec<_>, _>(|(_, value)| value.is_some());
 

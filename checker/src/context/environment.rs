@@ -1,5 +1,5 @@
 use source_map::{SourceId, Span, SpanWithSource};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
 	behavior::{
@@ -14,7 +14,7 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{Event, RootReference},
 	subtyping::BasicEquality,
 	types::{
@@ -30,8 +30,8 @@ use crate::{
 use super::{
 	calling::CheckThings,
 	facts::{Facts, Publicity},
-	get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context, ContextType,
-	Environment, GeneralContext, SetPropertyError,
+	get_on_ctx, get_value_of_variable, AssignmentError, ClosedOverReferencesInScope, Context,
+	ContextType, Environment, GeneralContext, SetPropertyError,
 };
 
 pub type ContextLocation = Option<String>;
@@ -49,7 +49,7 @@ pub struct Syntax<'a> {
 	/// Not to be confused with `used_parent_references`
 	pub closed_over_references: ClosedOverReferencesInScope,
 
-	/// TODO WIP!
+	/// TODO WIP! server, client, worker etc
 	pub location: ContextLocation,
 }
 
@@ -64,6 +64,10 @@ impl<'a> ContextType for Syntax<'a> {
 
 	fn is_dynamic_boundary(&self) -> bool {
 		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
+	}
+
+	fn is_conditional(&self) -> bool {
+		matches!(self.scope, Scope::Conditional { .. })
 	}
 
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
@@ -111,6 +115,8 @@ pub enum FunctionScope {
 	},
 }
 
+pub type Label = Option<String>;
+
 /// TODO name of structure
 /// TODO conditionals should have conditional proofs (separate from the ones on context)
 #[derive(Debug, Clone)]
@@ -124,10 +130,12 @@ pub enum Scope {
 	Conditional {
 		/// Something that is truthy for this to run
 		antecedent: TypeId,
+
+		is_switch: Option<Label>,
 	},
 	/// Variables here are dependent on the iteration,
 	Looping {
-		// TODO on: Proofs,
+		label: Label, // TODO on: Proofs,
 	},
 	TryBlock {},
 	// Just blocks and modules
@@ -224,7 +232,7 @@ impl<'a> Environment<'a> {
 
 				fn set_property_error_to_type_check_error(
 					ctx: &GeneralContext,
-					error: &SetPropertyError,
+					error: SetPropertyError,
 					assignment_span: SpanWithSource,
 					types: &TypeStore,
 					new: TypeId,
@@ -233,20 +241,16 @@ impl<'a> Environment<'a> {
 						SetPropertyError::NotWriteable => {
 							TypeCheckError::PropertyNotWriteable(assignment_span)
 						}
-						SetPropertyError::DoesNotMeetConstraint(constraint, _) => {
-							TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
-								property_type: TypeStringRepresentation::from_type_id(
-									*constraint,
-									ctx,
-									types,
-									false,
-								),
-								value_type: TypeStringRepresentation::from_type_id(
-									new, ctx, types, false,
-								),
-								assignment_position: assignment_span,
-							})
-						}
+						SetPropertyError::DoesNotMeetConstraint {
+							property_constraint,
+							reason: _,
+						} => TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
+							property_constraint,
+							value_type: TypeStringRepresentation::from_type_id(
+								new, ctx, types, false,
+							),
+							assignment_position: assignment_span,
+						}),
 					}
 				}
 
@@ -264,7 +268,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -302,7 +306,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -348,7 +352,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -378,7 +382,7 @@ impl<'a> Environment<'a> {
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
-									&error,
+									error,
 									assignment_span,
 									&checking_data.types,
 									new,
@@ -559,7 +563,6 @@ impl<'a> Environment<'a> {
 			on,
 			under,
 			new: PropertyValue::Deleted,
-			reflects_dependency: None,
 			initialization: false,
 			publicity: Publicity::Public,
 			position: None,
@@ -717,11 +720,13 @@ impl<'a> Environment<'a> {
 							// TODO temp
 							if matches!(ty, Type::Function(..)) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
-							} else if let Type::RootPolyType(PolyNature::Open(ot)) = ty {
-								crate::utils::notify!(
-									"Open poly type treated as immutable free variable"
-								);
-								return Ok(VariableWithValue(og_var.clone(), *ot));
+							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
+								// crate::utils::notify!(
+								// 	"Open poly type treated as immutable free variable"
+								// );
+								return Ok(VariableWithValue(og_var.clone(), current_value));
+							} else if let Type::Constant(_) = ty {
+								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							crate::utils::notify!("Free variable!");
@@ -737,6 +742,19 @@ impl<'a> Environment<'a> {
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
+					// TODO is there a nicer way to do this
+					// Look for reassignments
+					for p in self.parents_iter() {
+						if let Some(value) =
+							get_on_ctx!(p.facts.variable_current_value.get(&og_var.get_id()))
+						{
+							return Ok(VariableWithValue(og_var.clone(), *value));
+						}
+						if get_on_ctx!(p.context_type.is_dynamic_boundary()) {
+							break;
+						}
+					}
+
 					if let Some(constraint) = reassignment_constraint {
 						constraint
 					} else {
@@ -801,7 +819,7 @@ impl<'a> Environment<'a> {
 					of,
 					None::<&crate::types::poly_types::FunctionTypeArguments>,
 				)
-				.expect("variable not assigned yet");
+				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
 			}
 
@@ -809,9 +827,16 @@ impl<'a> Environment<'a> {
 				self.facts_chain(),
 				og_var.get_id(),
 				None::<&crate::types::poly_types::FunctionTypeArguments>,
-			)
-			.expect("variable not assigned yet");
-			Ok(VariableWithValue(og_var.clone(), current_value))
+			);
+			if let Some(current_value) = current_value {
+				Ok(VariableWithValue(og_var.clone(), current_value))
+			} else {
+				checking_data.diagnostics_container.add_error(TypeCheckError::TDZ(TDZ {
+					variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
+					position,
+				}));
+				Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
+			}
 		}
 	}
 
@@ -839,8 +864,10 @@ impl<'a> Environment<'a> {
 		}
 
 		let (truthy_result, truthy_events) = {
-			let mut truthy_environment =
-				self.new_lexical_environment(Scope::Conditional { antecedent: condition });
+			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
+				antecedent: condition,
+				is_switch: None,
+			});
 
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
@@ -850,6 +877,7 @@ impl<'a> Environment<'a> {
 		if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
+				is_switch: None,
 			});
 
 			let falsy_result = else_evaluate(&mut falsy_environment, checking_data);
@@ -893,6 +921,44 @@ impl<'a> Environment<'a> {
 		self.facts.events.push(Event::Return { returned, returned_position });
 	}
 
+	pub fn add_continue(
+		&mut self,
+		label: Option<&str>,
+		position: Span,
+	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
+		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
+			self.facts.events.push(Event::Continue {
+				position: Some(position.with_source(self.get_source())),
+				carry,
+			});
+			Ok(())
+		} else {
+			Err(NotInLoopOrCouldNotFindLabel {
+				label: label.map(ToOwned::to_owned),
+				position: position.with_source(self.get_source()),
+			})
+		}
+	}
+
+	pub fn add_break(
+		&mut self,
+		label: Option<&str>,
+		position: Span,
+	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
+		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
+			self.facts.events.push(Event::Break {
+				position: Some(position.with_source(self.get_source())),
+				carry,
+			});
+			Ok(())
+		} else {
+			Err(NotInLoopOrCouldNotFindLabel {
+				label: label.map(ToOwned::to_owned),
+				position: position.with_source(self.get_source()),
+			})
+		}
+	}
+
 	/// Updates **a existing property**
 	///
 	/// Returns the result of the setter... TODO could return new else
@@ -915,6 +981,52 @@ impl<'a> Environment<'a> {
 			types,
 			setter_position,
 		)
+	}
+
+	/// `continue` has different behavior to `break` right?
+	fn find_label_or_conditional_count(
+		&self,
+		looking_for_label: Option<&str>,
+		is_continue: bool,
+	) -> Option<u8> {
+		let mut falling_through_structures = 0;
+		for ctx in self.parents_iter() {
+			if let GeneralContext::Syntax(ctx) = ctx {
+				let scope = &ctx.context_type.scope;
+
+				match scope {
+					Scope::Function(_)
+					| Scope::InterfaceEnvironment { .. }
+					| Scope::FunctionAnnotation {}
+					| Scope::Module { .. }
+					| Scope::DefinitionModule { .. }
+					| Scope::TypeAlias
+					| Scope::StaticBlock {} => {
+						break;
+					}
+					Scope::Looping { ref label } => {
+						if looking_for_label.is_none() {
+							return Some(falling_through_structures);
+						} else if let Some(label) = label {
+							if label == looking_for_label.unwrap() {
+								return Some(falling_through_structures);
+							}
+							falling_through_structures += 1;
+						}
+					}
+					Scope::Conditional { is_switch: Some(label @ Some(_)), .. }
+						if !is_continue && looking_for_label.is_some() =>
+					{
+						todo!("switch break")
+					}
+					Scope::PassThrough { .. }
+					| Scope::Conditional { .. }
+					| Scope::TryBlock {}
+					| Scope::Block {} => {}
+				}
+			}
+		}
+		None
 	}
 
 	pub(crate) fn import_items<

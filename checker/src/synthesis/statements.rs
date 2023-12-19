@@ -2,8 +2,12 @@ use super::{
 	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
 };
 use crate::{
-	behavior::{assignments::Reference, operations::CanonicalEqualityAndInequality},
-	context::{calling::Target, ClosedOverReferencesInScope, ContextId, Scope},
+	behavior::{
+		assignments::Reference,
+		iteration::{synthesise_iteration, IterationBehavior},
+		operations::CanonicalEqualityAndInequality,
+	},
+	context::{calling::Target, environment, ClosedOverReferencesInScope, ContextId, Scope},
 	diagnostics::TypeCheckError,
 	events::{apply_event, Event, RootReference},
 	synthesis::EznoParser,
@@ -21,8 +25,13 @@ use std::collections::HashMap;
 pub type ExportedItems = HashMap<String, crate::behavior::variables::VariableOrImport>;
 pub type ReturnResult = Option<TypeId>;
 
+pub struct StatementInformation {
+	label: Option<String>,
+}
+
 pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 	statement: &Statement,
+	information: Option<StatementInformation>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
@@ -52,7 +61,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 
 			environment.return_value(returned, position);
 		}
-		Statement::IfStatement(if_statement) => {
+		Statement::If(if_statement) => {
 			fn run_condition<T: crate::ReadFromFS>(
 				current: (&MultipleExpression, &BlockOrSingleStatement),
 				others: &[(&MultipleExpression, &BlockOrSingleStatement)],
@@ -103,79 +112,76 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				checking_data,
 			);
 		}
-		Statement::SwitchStatement(stmt) => {
+		Statement::Switch(stmt) => {
 			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
 				thing: "Switch statement",
 				at: stmt.get_position().with_source(environment.get_source()),
 			});
 		}
-		Statement::WhileStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "While statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-		}
-		Statement::DoWhileStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "Do while statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-		}
-		Statement::ForLoopStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "For statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
-			// let mut environment = environment.new_lexical_environment(ScopeType::Conditional {});
-			// match &for_statement.condition {
-			// 	ForLoopCondition::ForOf { keyword, variable, of } => {
-			// 		todo!()
-			// 		// let of_expression_instance =
-			// 		//     synthesise_expression(of, &mut environment, checking_data);
-			// 		// let iterator_result = get_type_iterator_with_error_handler(
-			// 		//     of_expression_instance.get_type(),
-			// 		//     &mut checking_data.diagnostics_container,
-			// 		//     Some(&mut checking_data.type_mappings.implementors_of_generic),
-			// 		//     of.get_position(),
-			// 		// )
-			// 		// .get_iterator_type();
-			// 		// synthesise_variable_field(
-			// 		//     variable.get_ast_mut(),
-			// 		//     &iterator_result,
-			// 		//     matches!(keyword, parser::statements::VariableKeyword::Const(_)),
-			// 		//     &mut environment,
-			// 		//     checking_data,
-			// 		//
-			// 		//
-			// 		// );
-			// 	}
-			// 	ForLoopCondition::ForIn { keyword, variable: _, in_condition: _ } => todo!(),
-			// 	ForLoopCondition::Statements { initializer, condition, final_expression } => {
-			// 		match initializer {
-			// 			parser::statements::ForLoopStatementInitializer::Statement(statement) => {
-			// 				synthesise_variable_declaration_statement(
-			// 					statement,
-			// 					&mut environment,
-			// 					checking_data,
-			//
-			// 				);
-			// 			}
-			// 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
-			// 		}
-			// 		// synthesise_variable_declaration(
-			// 		//     initializer,
-			// 		//     *constant,
-			// 		//     &mut environment,
-			// 		//     checking_data,
-			// 		//
-			// 		//
-			// 		// );
-			// 		synthesise_expression(condition, &mut environment, checking_data);
-			// 		synthesise_expression(final_expression, &mut environment, checking_data);
-			// 	}
-			// };
-			// synthesise_block(&for_statement.statements, &mut environment, checking_data);
-		}
+		Statement::WhileLoop(stmt) => synthesise_iteration(
+			IterationBehavior::While(&stmt.condition),
+			information.and_then(|info| info.label),
+			environment,
+			checking_data,
+			|environment, checking_data| {
+				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
+			},
+		),
+		Statement::DoWhileLoop(stmt) => synthesise_iteration(
+			IterationBehavior::DoWhile(&stmt.condition),
+			information.and_then(|info| info.label),
+			environment,
+			checking_data,
+			|environment, checking_data| {
+				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
+			},
+		),
+		Statement::ForLoop(stmt) => match &stmt.condition {
+			parser::statements::ForLoopCondition::ForOf { keyword, variable, of, position } => {
+				synthesise_iteration(
+					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
+					information.and_then(|info| info.label),
+					environment,
+					checking_data,
+					|environment, checking_data| {
+						synthesise_block_or_single_statement(
+							&stmt.inner,
+							environment,
+							checking_data,
+						);
+					},
+				);
+			}
+			parser::statements::ForLoopCondition::ForIn { keyword, variable, r#in, position } => {
+				synthesise_iteration(
+					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
+					information.and_then(|info| info.label),
+					environment,
+					checking_data,
+					|environment, checking_data| {
+						synthesise_block_or_single_statement(
+							&stmt.inner,
+							environment,
+							checking_data,
+						);
+					},
+				);
+			}
+			parser::statements::ForLoopCondition::Statements {
+				initialiser,
+				condition,
+				afterthought,
+				position,
+			} => synthesise_iteration(
+				IterationBehavior::For { initialiser, condition, afterthought },
+				information.and_then(|info| info.label),
+				environment,
+				checking_data,
+				|environment, checking_data| {
+					synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
+				},
+			),
+		},
 		Statement::Block(ref block) => {
 			let (result, _, _) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Block {},
@@ -183,18 +189,22 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
-		Statement::Debugger(_pos) => {
-			// yay!
-		}
-		// TODO acknowledge '@ts-ignore' statements but error
 		Statement::Cursor(cursor_id, _) => {
 			todo!("Dump environment data somewhere")
 		}
-		Statement::Continue(..) | Statement::Break(..) => {
-			checking_data.raise_unimplemented_error(
-				"continue and break statements",
-				statement.get_position().with_source(environment.get_source()),
-			);
+		Statement::Continue(label, position) => {
+			if let Err(err) = environment.add_continue(label.as_deref(), *position) {
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err));
+			}
+		}
+		Statement::Break(label, position) => {
+			if let Err(err) = environment.add_break(label.as_deref(), *position) {
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err));
+			}
 		}
 		Statement::Throw(stmt) => {
 			let thrown_value = synthesise_multiple_expression(
@@ -207,11 +217,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			environment.throw_value(thrown_value, thrown_position);
 		}
 		Statement::Labelled { position, name, statement } => {
-			checking_data.raise_unimplemented_error(
-				"labelled statements",
-				statement.get_position().with_source(environment.get_source()),
+			// Labels on invalid statements is caught at parse time
+
+			synthesise_statement(
+				statement,
+				Some(StatementInformation { label: Some(name.clone()) }),
+				environment,
+				checking_data,
 			);
-			synthesise_statement(statement, environment, checking_data);
 		}
 		Statement::VarVariable(_) => {
 			checking_data.raise_unimplemented_error(
@@ -219,7 +232,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				statement.get_position().with_source(environment.get_source()),
 			);
 		}
-		Statement::TryCatchStatement(stmt) => {
+		Statement::TryCatch(stmt) => {
 			let throw_type: TypeId =
 				environment.new_try_context(checking_data, |environment, checking_data| {
 					synthesise_block(&stmt.try_inner.0, environment, checking_data);
@@ -249,10 +262,21 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		Statement::Empty(_) | Statement::Comment(..) | Statement::MultiLineComment(..) => {}
+		// TODO do these higher up in the block. To set relevant information
+		Statement::Comment(s, _) if s.starts_with("@ts") => {
+			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+		}
+		Statement::MultiLineComment(s, _) if s.starts_with('*') => {
+			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+		}
+		Statement::Comment(..)
+		| Statement::MultiLineComment(..)
+		| Statement::Debugger(_)
+		| Statement::Empty(_) => {}
 	}
 }
 
+/// Expects that this caller has already create a context for this to run in
 fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 	block_or_single_statement: &BlockOrSingleStatement,
 	environment: &mut Environment,
@@ -263,12 +287,7 @@ fn synthesise_block_or_single_statement<T: crate::ReadFromFS>(
 			synthesise_block(&block.0, environment, checking_data);
 		}
 		BlockOrSingleStatement::SingleStatement(statement) => {
-			synthesise_statement(statement, environment, checking_data);
+			synthesise_statement(statement, None, environment, checking_data);
 		}
 	}
-	// environment.new_lexical_environment_fold_into_parent(
-	// 	scope,
-	// 	checking_data,
-	// 	|environment, checking_data|
-	// )
 }

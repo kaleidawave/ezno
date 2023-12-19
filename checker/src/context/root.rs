@@ -25,6 +25,10 @@ impl ContextType for Root {
 		false
 	}
 
+	fn is_conditional(&self) -> bool {
+		false
+	}
+
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		None
 	}
@@ -75,6 +79,7 @@ impl RootContext {
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			facts: Default::default(),
+			possibly_mutated_objects: Default::default(),
 		}
 	}
 

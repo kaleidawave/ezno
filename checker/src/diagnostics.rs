@@ -1,6 +1,15 @@
 //! Contains type checking errors, warnings and related structures
 
-use crate::diagnostics;
+#![allow(clippy::upper_case_acronyms)]
+
+use crate::{
+	context::environment::Label,
+	diagnostics,
+	types::{
+		poly_types::generic_type_arguments::StructureGenericArguments,
+		printing::print_type_with_generics, StructureGenerics,
+	},
+};
 use serde::Serialize;
 use source_map::{SourceId, Span, SpanWithSource};
 use std::{
@@ -30,12 +39,23 @@ pub enum Diagnostic {
 		position: SpanWithSource,
 		kind: DiagnosticKind,
 	},
-	PositionWithAdditionLabels {
+	PositionWithAdditionalLabels {
 		reason: String,
 		position: SpanWithSource,
 		labels: Vec<(String, Option<SpanWithSource>)>,
 		kind: DiagnosticKind,
 	},
+}
+
+/// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
+pub struct TDZ {
+	pub variable_name: String,
+	pub position: SpanWithSource,
+}
+
+pub struct NotInLoopOrCouldNotFindLabel {
+	pub label: Label,
+	pub position: SpanWithSource,
 }
 
 impl Diagnostic {
@@ -44,7 +64,7 @@ impl Diagnostic {
 		match self {
 			Diagnostic::Global { .. } => Left(Left(iter::empty())),
 			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source))),
-			Diagnostic::PositionWithAdditionLabels { position: pos, labels, .. } => {
+			Diagnostic::PositionWithAdditionalLabels { position: pos, labels, .. } => {
 				Right(iter::once(pos.source).chain(
 					labels.iter().filter_map(|(_, span)| span.as_ref().map(|span| span.source)),
 				))
@@ -57,7 +77,7 @@ impl Diagnostic {
 		match self {
 			Diagnostic::Global { reason, .. }
 			| Diagnostic::Position { reason, .. }
-			| Diagnostic::PositionWithAdditionLabels { reason, .. } => reason,
+			| Diagnostic::PositionWithAdditionalLabels { reason, .. } => reason,
 		}
 	}
 
@@ -66,7 +86,7 @@ impl Diagnostic {
 		match self {
 			Diagnostic::Global { reason, .. } => (reason, None),
 			Diagnostic::Position { reason, position, .. }
-			| Diagnostic::PositionWithAdditionLabels { reason, position, .. } => (reason, Some(position)),
+			| Diagnostic::PositionWithAdditionalLabels { reason, position, .. } => (reason, Some(position)),
 		}
 	}
 }
@@ -163,6 +183,53 @@ impl TypeStringRepresentation {
 		let value = print_type(id, types, ctx, debug_mode);
 		Self::Type(value)
 	}
+
+	/// TODO working it out
+	pub(crate) fn from_property_constraint(
+		property_constraint: crate::context::Logical<crate::PropertyValue>,
+		// TODO chain
+		generics: Option<&StructureGenericArguments>,
+		ctx: &GeneralContext,
+		types: &TypeStore,
+		debug_mode: bool,
+	) -> TypeStringRepresentation {
+		match property_constraint {
+			crate::context::Logical::Pure(p) => match p {
+				crate::PropertyValue::Value(v) => {
+					// TODO pass down generics!!!
+					let value = print_type_with_generics(
+						v,
+						generics.map(|g| &g.type_arguments),
+						types,
+						ctx,
+						debug_mode,
+					);
+					Self::Type(value)
+				}
+				crate::PropertyValue::Getter(_) => todo!(),
+				crate::PropertyValue::Setter(_) => todo!(),
+				crate::PropertyValue::Deleted => todo!(),
+			},
+			crate::context::Logical::Or { left, right } => {
+				let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
+				let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
+					(left, right)
+				{
+					l.push_str(&r);
+					TypeStringRepresentation::Type(l)
+				} else {
+					unreachable!()
+				}
+			}
+			crate::context::Logical::Implies { on, antecedent } => {
+				if generics.is_some() {
+					todo!("chaining")
+				}
+				Self::from_property_constraint(*on, Some(&antecedent), ctx, types, debug_mode)
+			}
+		}
+	}
 }
 
 impl Display for TypeStringRepresentation {
@@ -184,13 +251,19 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contains known internal errors and warnings
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
-	use crate::{behavior, context::AssignmentError, types::calling::FunctionCallingError};
+	use crate::{
+		behavior::{self, operations::MathematicalAndBitwise},
+		context::AssignmentError,
+		types::calling::FunctionCallingError,
+	};
 	use source_map::{Span, SpanWithSource};
 
 	use crate::Diagnostic;
 	use std::path;
 
-	use super::{PropertyRepresentation, TypeStringRepresentation};
+	use super::{
+		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeStringRepresentation, TDZ,
+	};
 
 	/// Reasons for errors, intermediate type for generating [Diagnostic]s
 	/// e.g. cannot Call, cannot equate, duplicate key etc
@@ -201,6 +274,7 @@ mod defined_errors_and_warnings {
 			property: PropertyRepresentation,
 			site: SpanWithSource,
 		},
+		NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 		RestParameterAnnotationShouldBeArrayType(SpanWithSource),
 		CouldNotFindVariable {
 			variable: &'a str,
@@ -295,6 +369,13 @@ mod defined_errors_and_warnings {
 			name: String,
 			position: SpanWithSource,
 		},
+		TDZ(TDZ),
+		InvalidMathematicalOrBitwiseOperation {
+			operator: MathematicalAndBitwise,
+			lhs: TypeStringRepresentation,
+			rhs: TypeStringRepresentation,
+			position: SpanWithSource,
+		},
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -335,7 +416,7 @@ mod defined_errors_and_warnings {
 						restriction,
 					} => {
 						if let Some((restriction_pos, restriction)) = restriction {
-							Diagnostic::PositionWithAdditionLabels {
+							Diagnostic::PositionWithAdditionalLabels {
 								reason: format!(
 									"Argument of type {argument_type} is not assignable to parameter of type {restriction}" 
 								),
@@ -349,7 +430,7 @@ mod defined_errors_and_warnings {
 								kind,
 							}
 						} else {
-							Diagnostic::PositionWithAdditionLabels {
+							Diagnostic::PositionWithAdditionalLabels {
 								reason: format!(
 									"Argument of type {argument_type} is not assignable to parameter of type {parameter_type}",
 								),
@@ -363,7 +444,7 @@ mod defined_errors_and_warnings {
 						}
 					}
 					FunctionCallingError::MissingArgument { parameter_position, call_site } => {
-						Diagnostic::PositionWithAdditionLabels {
+						Diagnostic::PositionWithAdditionalLabels {
 							reason: "Missing argument".into(),
 							position: call_site,
 							kind,
@@ -407,15 +488,34 @@ mod defined_errors_and_warnings {
 					},
 					FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position { reason: format!("no logic for constant function {name}"), kind, position },
 					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
+					FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => Diagnostic::PositionWithAdditionalLabels {
+						reason: format!("Variable {variable_name} used before declaration"),
+						position: call_site.unwrap(),
+						kind,
+						labels: vec![(
+							"Variable referenced here".to_owned(),
+							Some(position),
+						)],
+					},
+					FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position, call_site } => Diagnostic::PositionWithAdditionalLabels {
+						reason: "Assignment mismatch".to_owned(),
+						position: call_site.unwrap(),
+						kind,
+						labels: vec![(
+							format!(
+								"Type {value_type} does not meet property constraint {property_type}"
+							),
+							Some(assignment_position),
+						)],
+					}
 				},
-				//  => ,
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
 						variable_site,
 						value_type,
 						value_site,
-					} => Diagnostic::PositionWithAdditionLabels {
+					} => Diagnostic::PositionWithAdditionalLabels {
 						reason: format!(
 							"Type {value_type} is not assignable to type {variable_type}",
 						),
@@ -427,7 +527,7 @@ mod defined_errors_and_warnings {
 						kind,
 					},
 					AssignmentError::PropertyConstraint {
-						property_type,
+						property_constraint: property_type,
 						value_type,
 						assignment_position,
 					} => Diagnostic::Position {
@@ -468,7 +568,7 @@ mod defined_errors_and_warnings {
 					returned_position,
 					expected_return_type,
 					returned_type,
-				} => Diagnostic::PositionWithAdditionLabels {
+				} => Diagnostic::PositionWithAdditionalLabels {
 					reason: format!(
 						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
 					),
@@ -610,6 +710,18 @@ mod defined_errors_and_warnings {
 					position,
 					kind,
 				},
+				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+					reason: format!("Variable {variable_name} used before declaration"),
+					position,
+					kind,
+				},
+				TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
+					// TODO temp
+					reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+					position,
+					kind,
+				},
+				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
 			}
 		}
 	}

@@ -3,9 +3,15 @@
 use crate::{
 	behavior::{
 		functions::{ClosureId, ThisValue},
-		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
+		operations::{
+			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
+			evaluate_pure_unary_operator,
+		},
 	},
-	types::{is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type, TypeStore},
+	types::{
+		get_constraint, is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type,
+		TypeStore,
+	},
 	Decidable, Environment, TypeId,
 };
 
@@ -41,13 +47,24 @@ pub(crate) fn substitute(
 			curry_arguments(arguments, types, id)
 		}
 		Type::FunctionReference(f, t) => curry_arguments(arguments, types, id),
-		Type::Constant(_)
-		| Type::AliasTo { .. }
-		| Type::And(_, _)
-		| Type::Or(_, _)
-		| Type::Interface { .. } => id,
+		Type::And(lhs, rhs) => {
+			let rhs = *rhs;
+			let lhs = substitute(*lhs, arguments, environment, types);
+			let rhs = substitute(rhs, arguments, environment, types);
+			types.register_type(Type::And(lhs, rhs))
+		}
+		Type::Or(lhs, rhs) => {
+			let rhs = *rhs;
+			let lhs = substitute(*lhs, arguments, environment, types);
+			let rhs = substitute(rhs, arguments, environment, types);
+			types.register_type(Type::Or(lhs, rhs))
+		}
+		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
+				id
+			} else if let PolyNature::Generic { .. } = nature {
+				crate::utils::notify!("Could not find argument generic");
 				id
 			} else {
 				// Other root poly types cases handled by the early return
@@ -58,7 +75,7 @@ pub(crate) fn substitute(
 					true,
 				);
 				crate::utils::notify!("Could not find argument for {}", on);
-				id
+				TypeId::ERROR_TYPE
 			}
 		}
 
@@ -68,20 +85,28 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_mathematical_operation(lhs, operator, rhs, types, false)
-					.expect("restriction about binary operator failed")
+				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
+					Ok(result) => result,
+					Err(()) => {
+						unreachable!(
+							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
+						);
+					}
+				}
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
-				todo!()
-				// evaluate_unary_operator(
-				// 	operator,
-				// 	operand,
-				// 	environment,
-				// 	// Restrictions should have been made ahead of time
-				// 	false,
-				// 	types,
-				// )
-				// .unwrap()
+				match evaluate_pure_unary_operator(
+					operator, operand, types,
+					// Restrictions should have been made ahead of time
+					false,
+				) {
+					Ok(result) => result,
+					Err(()) => {
+						unreachable!(
+							"Cannot {operand:?} {operator:?} (restriction or something failed)"
+						);
+					}
+				}
 			}
 			Constructor::ConditionalResult {
 				condition,
@@ -134,8 +159,51 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { .. } | Constructor::FunctionResult { .. } => {
-				unreachable!("this should have covered by event specialisation");
+			Constructor::Property { on, under, result } => {
+				let id = get_constraint(on, types).unwrap_or(on);
+
+				if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+					on: TypeId::ARRAY_TYPE,
+					arguments,
+				})) = types.get_type_by_id(id)
+				{
+					// Try get the constant
+					if under.as_number().is_some() {
+						crate::utils::notify!("Temp array index property get");
+						let value = arguments.get_argument(TypeId::T_TYPE).unwrap();
+						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
+					} else {
+						let mut structure_generic_arguments = arguments.clone();
+						let new_result = substitute(
+							result,
+							// TODO
+							&mut structure_generic_arguments,
+							environment,
+							types,
+						);
+						crate::utils::notify!(
+							"Specialising the constraint {:?} to {:?} using {:?} (which is strange)",
+							result,
+							new_result,
+							structure_generic_arguments
+						);
+						types.register_type(Type::Constructor(Constructor::Property {
+							on,
+							under,
+							result: new_result,
+						}))
+					}
+				} else {
+					todo!(
+						"Constructor::Property ({:?}[{:?}]) should be covered by events",
+						on,
+						under
+					);
+				}
+			}
+			Constructor::Image { .. } => {
+				todo!("Constructor::Image should be covered by events");
+				// id
 
 				// let on = substitute(on, arguments, environment);
 
@@ -210,8 +278,14 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
-					.expect("restriction about binary operator failed")
+				match evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false) {
+					Ok(result) => result,
+					Err(()) => {
+						unreachable!(
+							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
+						);
+					}
+				}
 			}
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {

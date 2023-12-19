@@ -67,8 +67,16 @@ pub(crate) struct FunctionTypeArguments {
 }
 
 impl FunctionTypeArguments {
-	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId, types: &TypeStore) {
+	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId) {
 		self.local_arguments.insert(id, (value, SpanWithSource::NULL_SPAN));
+	}
+
+	pub(crate) fn new() -> Self {
+		Self {
+			structure_arguments: Default::default(),
+			local_arguments: SmallMap::new(),
+			closure_id: Default::default(),
+		}
 	}
 }
 
@@ -166,7 +174,8 @@ impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
 	}
 
 	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
-		todo!("This shouldn't be needed");
+		crate::utils::notify!("to_structural_generic_arguments shouldn't be needed");
+		StructureGenericArguments { type_arguments: self.clone(), closures: Vec::new() }
 	}
 
 	fn is_empty(&self) -> bool {

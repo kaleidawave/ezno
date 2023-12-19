@@ -21,7 +21,7 @@ impl ObjectBuilder {
 	pub fn new(prototype: Option<TypeId>, types: &mut TypeStore, facts: &mut Facts) -> Self {
 		// TODO is_under_dyn bad
 		let is_under_dyn = true;
-		Self { object: facts.new_object(prototype, types, is_under_dyn) }
+		Self { object: facts.new_object(prototype, types, is_under_dyn, false) }
 	}
 
 	pub fn append(

@@ -1,13 +1,16 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
-	use ezno_checker::{check_project, synthesis};
+	use ezno_checker::{check_project, synthesis, Diagnostic};
 	use std::{
 		env, fs,
 		path::{Path, PathBuf},
+		time::Instant,
 	};
 
 	let name = env::args().nth(1).unwrap_or_else(|| "examples/test.ts".to_string());
 	let path = Path::new(&name);
+
+	let now = Instant::now();
 
 	let (diagnostics, post_check_data) = check_project::<_, synthesis::EznoParser>(
 		path.to_path_buf(),
@@ -27,8 +30,8 @@ fn main() {
 	if let Ok(mut post_check_data) = post_check_data {
 		if args.iter().any(|arg| arg == "--types") {
 			eprintln!("Types:");
-			for item in post_check_data.types.into_vec_temp() {
-				eprintln!("\t{item:?}");
+			for (type_id, item) in post_check_data.types.into_vec_temp() {
+				eprintln!("\t{type_id:?}: {item:?}");
 			}
 		}
 		if args.iter().any(|arg| arg == "--events") {
@@ -41,9 +44,20 @@ fn main() {
 		}
 	}
 
-	eprintln!("Diagnostics:");
-	for diagnostic in diagnostics {
-		eprintln!("\t{}", diagnostic.reason());
+	if args.iter().any(|arg| arg == "--time") {
+		let end = now.elapsed();
+		let count = diagnostics.into_iter().len();
+		eprintln!("Found {count} diagnostics in {end:?}");
+	} else {
+		eprintln!("Diagnostics:");
+		for diagnostic in diagnostics {
+			eprintln!("\t{}", diagnostic.reason());
+			if let Diagnostic::PositionWithAdditionalLabels { labels, .. } = diagnostic {
+				for (label, _) in labels.iter() {
+					eprintln!("\t\t({})", label);
+				}
+			}
+		}
 	}
 }
 
