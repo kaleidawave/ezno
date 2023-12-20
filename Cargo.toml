@@ -30,7 +30,7 @@ result_unit_err = "allow"
 name = "ezno"
 description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.17"
+version = "0.0.18"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -64,13 +64,13 @@ serde_json = "1.0.107"
 
 [dependencies.checker]
 path = "./checker"
-version = "0.0.12"
+version = "0.0.13"
 features = ["ezno-parser"]
 package = "ezno-checker"
 
 [dependencies.parser]
 path = "./parser"
-version = "0.1.1"
+version = "0.1.2"
 features = ["extras"]
 package = "ezno-parser"
 
