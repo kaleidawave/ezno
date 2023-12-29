@@ -105,6 +105,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						items,
 						checking_data,
 						false,
+						import.type_keyword.is_some(),
 					);
 				}
 				parser::Declaration::Export(export) => {
@@ -127,9 +128,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									kind,
 									checking_data,
 									true,
+									// TODO
+									false,
 								);
 							}
-							Exportable::ImportParts { parts, from, .. } => {
+							Exportable::ImportParts { parts, from, type_keyword, .. } => {
 								let parts = parts.iter().filter_map(export_part_to_name_pair);
 
 								environment.import_items(
@@ -139,6 +142,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									crate::behavior::modules::ImportKind::Parts(parts),
 									checking_data,
 									true,
+									type_keyword.is_some(),
 								);
 							}
 							Exportable::TypeAlias(alias) => {
@@ -158,6 +162,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										.push((alias.type_name.name.clone(), export));
 								}
 							}
+							// Other exported things are skipped
 							_ => {}
 						}
 					}

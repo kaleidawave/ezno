@@ -64,7 +64,7 @@ pub(crate) fn substitute(
 			if let PolyNature::Open(_) = nature {
 				id
 			} else if let PolyNature::Generic { .. } = nature {
-				crate::utils::notify!("Could not find argument generic");
+				crate::utils::notify!("Could not find argument for explicit generic");
 				id
 			} else {
 				// Other root poly types cases handled by the early return

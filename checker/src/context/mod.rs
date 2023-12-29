@@ -36,7 +36,7 @@ use crate::{
 };
 
 use self::{
-	environment::FunctionScope,
+	environment::{DynamicBoundaryKind, FunctionScope},
 	facts::{Facts, Publicity},
 };
 pub use environment::Scope;
@@ -125,7 +125,7 @@ pub trait ContextType: Sized {
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
 	/// Variables **above** this scope may change *between runs*
-	fn is_dynamic_boundary(&self) -> bool;
+	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind>;
 
 	/// Branch might not be run
 	fn is_conditional(&self) -> bool;
@@ -450,7 +450,7 @@ impl<T: ContextType> Context<T> {
 					Scope::InterfaceEnvironment { .. } => "interface",
 					Scope::FunctionAnnotation {} => "function reference",
 					Scope::Conditional { .. } => "conditional",
-					Scope::Looping { .. } => "looping",
+					Scope::Iteration { .. } => "iteration",
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
@@ -504,7 +504,7 @@ impl<T: ContextType> Context<T> {
 				}
 				Scope::FunctionAnnotation {} => todo!(),
 				Scope::Conditional { .. }
-				| Scope::Looping { .. }
+				| Scope::Iteration { .. }
 				| Scope::StaticBlock { .. }
 				| Scope::Function(_)
 				| Scope::TryBlock { .. }
@@ -550,7 +550,16 @@ impl<T: ContextType> Context<T> {
 			*/
 
 			let is_dynamic_boundary = self.context_type.is_dynamic_boundary();
-			let boundary = if is_dynamic_boundary && parent_boundary.is_none() {
+
+			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
+				if !self.facts_chain().any(|f| f.variable_current_value.contains_key(&var.get_id()))
+				{
+					// Cannot use yet in loop
+					return None;
+				}
+			}
+
+			let boundary = if is_dynamic_boundary.is_some() && parent_boundary.is_none() {
 				let boundary = Boundary(get_on_ctx!(parent.context_id));
 				Some(boundary)
 			} else {
@@ -820,10 +829,23 @@ impl<T: ContextType> Context<T> {
 
 		// Run any truths through subtyping
 		let additional = match scope {
-			// TODO these might go
-			Scope::FunctionAnnotation {} => None,
+			// TODO might go
+			Scope::FunctionAnnotation {} => {
+				// For anonymous objects only
+				for (on, mut properties) in facts.current_properties.clone() {
+					match self.facts.current_properties.entry(on) {
+						hash_map::Entry::Occupied(mut occupied) => {
+							occupied.get_mut().append(&mut properties);
+						}
+						hash_map::Entry::Vacant(vacant) => {
+							vacant.insert(properties);
+						}
+					}
+				}
+				None
+			}
 			// TODO temp
-			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Looping { .. } => {
+			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Iteration { .. } => {
 				Some((facts, used_parent_references))
 			}
 			Scope::Function { .. } => {
@@ -1060,7 +1082,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO remove types
-	pub(crate) fn declare_variable<'a>(
+	pub fn declare_variable<'a>(
 		&mut self,
 		name: &'a str,
 		declared_at: SpanWithSource,
@@ -1108,11 +1130,8 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
 	}
 
-	pub(crate) fn get_value_of_this(
-		&mut self,
-		_types: &TypeStore,
-		_position: &SpanWithSource,
-	) -> TypeId {
+	/// TODO is this the generic?
+	pub fn get_value_of_this(&mut self, _types: &TypeStore, _position: &SpanWithSource) -> TypeId {
 		self.parents_iter()
 			.find_map(|env| {
 				if let GeneralContext::Syntax(ctx) = env {
@@ -1137,7 +1156,7 @@ impl<T: ContextType> Context<T> {
 			.unwrap()
 	}
 
-	pub(crate) fn get_source(&self) -> source_map::SourceId {
+	pub fn get_source(&self) -> source_map::SourceId {
 		self.parents_iter()
 			.find_map(|ctx| {
 				if let GeneralContext::Syntax(Context {
@@ -1167,6 +1186,12 @@ impl<T: ContextType> Context<T> {
 			.parents_iter()
 			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
 			.unwrap()
+	}
+
+	pub(crate) fn is_possibly_uncalled(&self) -> bool {
+		self.parents_iter().any(|c| {
+			matches!(c, GeneralContext::Syntax(s) if (s.context_type.is_conditional() || s.context_type.is_dynamic_boundary().is_some()))
+		})
 	}
 }
 

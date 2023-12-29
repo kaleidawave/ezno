@@ -59,8 +59,6 @@ pub use source_map::{self, SourceId, Span};
 pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
 	pub(crate) file_reader: &'a FileReader,
 	pub(crate) _current_working_directory: PathBuf,
-	/// Set after started
-	pub(crate) entry_point: Option<SourceId>,
 	/// Contains the text content of files (for source maps and diagnostics)
 	pub(crate) files: MapFileStore<WithPathMap>,
 	/// To catch cyclic imports
@@ -153,7 +151,7 @@ pub trait ASTImplementation: Sized {
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
-	fn parse_options(is_js: bool) -> Self::ParseOptions;
+	fn parse_options(is_js: bool, parse_comments: bool) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 }
@@ -166,7 +164,6 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 	) -> Self {
 		Self {
 			files: files.unwrap_or_default(),
-			entry_point: None,
 			synthesised_modules: Default::default(),
 			_currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
@@ -286,12 +283,13 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 						.files
 						.new_source_id(full_importer.to_path_buf(), content.clone());
 
-					let parse_options = A::parse_options(
-						full_importer
-							.extension()
-							.and_then(|s| s.to_str())
-							.map_or(false, |s| s.ends_with("ts")),
-					);
+					let is_js = full_importer
+						.extension()
+						.and_then(|s| s.to_str())
+						.map_or(false, |s| s.starts_with("ts"));
+
+					let parse_options =
+						A::parse_options(is_js, checking_data.options.parse_comments);
 
 					match A::module_from_string(source, content, parse_options) {
 						Ok(module) => {
@@ -409,11 +407,10 @@ pub struct PostCheckData<A: crate::ASTImplementation> {
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
-	pub entry_source: SourceId,
 }
 
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	entry_point: PathBuf,
+	entry_points: Vec<PathBuf>,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
 	options: Option<TypeCheckOptions>,
@@ -428,31 +425,33 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
 	}
 
-	let entry_content = (checking_data.modules.file_reader)(entry_point.as_ref());
-	let _module = if let Some(content) = entry_content {
-		let source =
-			checking_data.modules.files.new_source_id(entry_point.clone(), content.clone());
+	for point in &entry_points {
+		let entry_content = (checking_data.modules.file_reader)(&point);
+		if let Some(content) = entry_content {
+			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
 
-		checking_data.modules.entry_point = Some(source);
+			// TODO abstract using similar to import logic
+			let is_js =
+				point.extension().and_then(|s| s.to_str()).map_or(false, |s| s.starts_with("ts"));
 
-		let is_js = false;
-		let parse_options = A::parse_options(is_js);
+			let parse_options = A::parse_options(is_js, checking_data.options.parse_comments);
 
-		let module = A::module_from_string(source, content, parse_options);
-		match module {
-			Ok(module) => Some(root.new_module_context(source, module, &mut checking_data)),
-			Err(err) => {
-				checking_data.diagnostics_container.add_error(err);
-				return (checking_data.diagnostics_container, Err(checking_data.modules.files));
+			let module = A::module_from_string(source, content, parse_options);
+			match module {
+				Ok(module) => {
+					root.new_module_context(source, module, &mut checking_data);
+				}
+				Err(err) => {
+					checking_data.diagnostics_container.add_error(err);
+				}
 			}
+		} else {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
+				file: CouldNotOpenFile(point.clone()),
+				position: None,
+			});
 		}
-	} else {
-		checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
-			file: CouldNotOpenFile(entry_point),
-			position: None,
-		});
-		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
-	};
+	}
 
 	let CheckingData {
 		diagnostics_container,
@@ -471,7 +470,6 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			types,
 			module_contents: modules.files,
 			modules: modules.synthesised_modules,
-			entry_source: modules.entry_point.unwrap(),
 		});
 		(diagnostics_container, post_check_data)
 	}

@@ -191,9 +191,15 @@ impl crate::ASTImplementation for EznoParser {
 		definitions::type_definition_file(file, checking_data, root)
 	}
 
-	fn parse_options(_is_js: bool) -> Self::ParseOptions {
-		// TODO
-		parser::ParseOptions::default()
+	fn parse_options(_is_js: bool, parse_comments: bool) -> Self::ParseOptions {
+		parser::ParseOptions {
+			comments: if parse_comments {
+				parser::Comments::JustDocumentation
+			} else {
+				parser::Comments::None
+			},
+			..Default::default()
+		}
 	}
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
@@ -229,7 +235,7 @@ impl crate::ASTImplementation for EznoParser {
 pub mod interactive {
 	use std::{collections::HashSet, mem, path::PathBuf};
 
-	use source_map::{MapFileStore, SourceId, WithPathMap};
+	use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
 	use crate::{
 		add_definition_files_to_root, types::printing::print_type, CheckingData,
@@ -241,6 +247,7 @@ pub mod interactive {
 	pub struct State<'a, T: crate::ReadFromFS> {
 		checking_data: CheckingData<'a, T, super::EznoParser>,
 		root: RootContext,
+		source: SourceId,
 	}
 
 	impl<'a, T: crate::ReadFromFS> State<'a, T> {
@@ -249,7 +256,6 @@ pub mod interactive {
 			type_definition_files: HashSet<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
-			let _entry_point = PathBuf::from("CLI");
 			let mut checking_data =
 				CheckingData::new(Default::default(), resolver, Default::default());
 
@@ -258,7 +264,9 @@ pub mod interactive {
 			if checking_data.diagnostics_container.has_error() {
 				Err((checking_data.diagnostics_container, checking_data.modules.files))
 			} else {
-				Ok(Self { checking_data, root })
+				let source =
+					checking_data.modules.files.new_source_id("CLI.tsx".into(), String::default());
+				Ok(Self { checking_data, root, source })
 			}
 		}
 
@@ -266,9 +274,8 @@ pub mod interactive {
 			&mut self,
 			item: &parser::Module,
 		) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
-			let source = self.checking_data.modules.entry_point.unwrap();
 			let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
-				crate::Scope::PassThrough { source },
+				crate::Scope::PassThrough { source: self.source },
 				&mut self.checking_data,
 				|environment, checking_data| {
 					if let Some(parser::StatementOrDeclaration::Statement(
@@ -294,7 +301,6 @@ pub mod interactive {
 						))
 					} else {
 						synthesise_block(&item.items, environment, checking_data);
-
 						None
 					}
 				},
@@ -308,17 +314,17 @@ pub mod interactive {
 		}
 
 		#[must_use]
+		pub fn get_source_id(&self) -> SourceId {
+			self.source
+		}
+
+		#[must_use]
 		pub fn get_fs_ref(&self) -> &MapFileStore<WithPathMap> {
 			&self.checking_data.modules.files
 		}
 
 		pub fn get_fs_mut(&mut self) -> &mut MapFileStore<WithPathMap> {
 			&mut self.checking_data.modules.files
-		}
-
-		#[must_use]
-		pub fn get_source_id(&self) -> SourceId {
-			self.checking_data.modules.entry_point.unwrap()
 		}
 	}
 }

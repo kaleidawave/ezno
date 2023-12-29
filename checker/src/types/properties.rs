@@ -52,7 +52,6 @@ impl<'a> PropertyKey<'a> {
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
 				Constant::Boolean(_) => todo!(),
-				Constant::Regexp(_) => todo!(),
 				Constant::Symbol { key: _ } => todo!(),
 				Constant::Undefined => todo!(),
 				Constant::Null => todo!(),

@@ -9,7 +9,6 @@ use crate::{
 	},
 	types::{
 		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
-		printing::print_type,
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
 	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
@@ -45,7 +44,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	match behavior {
 		IterationBehavior::While(condition) => {
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					let condition = A::synthesise_multiple_expression(
@@ -105,7 +104,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			// Same as above but condition is evaluated at end. Don't know whether events should be evaluated once...?
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					loop_body(environment, checking_data);
@@ -194,7 +193,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 						let ((condition, dependent_variables), events, ..) = environment
 							.new_lexical_environment_fold_into_parent(
-								Scope::Looping { label },
+								Scope::Iteration { label },
 								checking_data,
 								|environment, checking_data| {
 									let condition = if let Some(condition) = condition {
@@ -299,7 +298,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			);
 
 			let ((), result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					loop_body(environment, checking_data);
@@ -438,7 +437,7 @@ pub(crate) fn run_iteration_block(
 								crate::utils::notify!(
 									"setting '{}' to have initial type {}",
 									environment.get_variable_name(*variable_id),
-									print_type(
+									crate::types::printing::print_type(
 										value_before_iterations,
 										types,
 										&environment.as_general_context(),

@@ -12,8 +12,6 @@ pub enum Constant {
 	Number(ordered_float::NotNan<f64>),
 	String(String),
 	Boolean(bool),
-	/// TODO alternative parser representation == JS spec
-	Regexp(String),
 	Symbol {
 		key: String,
 	},
@@ -33,7 +31,6 @@ impl Constant {
 			Constant::String(value) => value.clone(),
 			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
 			Constant::Symbol { key } => format!("Symbol({key})"),
-			Constant::Regexp(value) => format!("/{value}/"),
 			Constant::Undefined => "undefined".to_owned(),
 			Constant::Null => "null".to_owned(),
 			Constant::NaN => "NaN".to_owned(),
@@ -49,8 +46,6 @@ impl Constant {
 			Constant::String(value) => format!("\"{value}\""),
 			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
 			Constant::Symbol { key } => format!("Symbol({key})"),
-			// TODO
-			Constant::Regexp(value) => format!("/{value}/"),
 			Constant::Undefined => "undefined".to_owned(),
 			Constant::Null => "null".to_owned(),
 			Constant::NaN => "NaN".to_owned(),
@@ -62,7 +57,6 @@ impl Constant {
 		match self {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,
 			Constant::String(_) => TypeId::STRING_TYPE,
-			Constant::Regexp(_) => TypeId::REGEXP_TYPE,
 			Constant::Boolean(_) => TypeId::BOOLEAN_TYPE,
 			Constant::Undefined => TypeId::UNDEFINED_TYPE,
 			Constant::Null => TypeId::NULL_TYPE,

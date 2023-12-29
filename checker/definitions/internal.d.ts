@@ -18,7 +18,7 @@ declare function satisfies<T>(t: T): T performs const satisfies;
 declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
 // ↑↑ Ezno Functions ↑↑
 
-declare var undefined: undefined;
+// declare var undefined: undefined;
 
 interface nominal Array<T> {
     [index: number]: T | undefined;

@@ -53,7 +53,7 @@ fn check_errors(
 
 	// let result = panic::catch_unwind(|| {
 	let result = checker::check_project::<_, EznoParser>(
-		PathBuf::from("main.ts"),
+		vec![PathBuf::from("main.ts")],
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path| {
 			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {

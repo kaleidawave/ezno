@@ -31,27 +31,36 @@ pub struct SynthesisedModule<M> {
 #[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
 pub struct Exported {
 	pub default: Option<TypeId>,
+	/// Mutability purely for the mutation thingy
 	pub named: Vec<(String, (VariableId, VariableMutability))>,
 	pub named_types: Vec<(String, TypeId)>,
 }
 
+pub type ExportedVariable = (VariableId, VariableMutability);
+
 pub enum TypeOrVariable {
-	ExportedVariable((VariableId, VariableMutability)),
+	ExportedVariable(),
 	Type(TypeId),
 }
 
 impl Exported {
-	pub(crate) fn get_export(&self, want: &str) -> Option<TypeOrVariable> {
-		self.named
-			.iter()
-			.find_map(|(export, value)| {
-				(export == want).then_some(TypeOrVariable::ExportedVariable((value.0, value.1)))
-			})
-			.or_else(|| {
-				self.named_types.iter().find_map(|(export, value)| {
-					(export == want).then_some(TypeOrVariable::Type(*value))
-				})
-			})
+	pub(crate) fn get_export(
+		&self,
+		want: &str,
+		type_only: bool,
+	) -> (Option<ExportedVariable>, Option<TypeId>) {
+		let variable = if type_only {
+			None
+		} else {
+			self.named
+				.iter()
+				.find_map(|(export, value)| (export == want).then_some((value.0, value.1)))
+		};
+
+		let r#type =
+			self.named_types.iter().find_map(|(export, value)| (export == want).then_some(*value));
+
+		(variable, r#type)
 	}
 }
 

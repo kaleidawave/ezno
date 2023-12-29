@@ -132,21 +132,6 @@ func satisfies () => string
 
 - Expected () => string, found () => 2
 
-#### Generic type argument restriction
-
-```ts
-function map<T, U>(a: T, b: (t: T) => U) {
-	return b(a)
-}
-
-map(2, Math.sin)
-map("string", Math.sin)
-```
-
-- Argument of type "string" is not assignable to parameter of type number
-
-> Because `Math.sin` set T to number
-
 #### Parameters are always considered generic
 
 ```ts
@@ -1079,11 +1064,32 @@ type MyNumber = number;
 #### Declare variable
 
 ```ts
-declare var global_number: number
+declare const global_number: number
 const my_number: string = global_number
 ```
 
 - Type number is not assignable to type string
+
+#### Function (and interface) hoisting
+
+> Using functions and interface **before** their position of declaration in the source
+
+```ts
+getFive() satisfies 4;
+
+function getFive() {
+	return 5
+}
+
+let x: X = { a: 3 }
+
+interface X {
+	a: 2
+}
+```
+
+- Expected 4, found 5
+- Type { a: 3 } is not assignable to type X
 
 #### (untagged) Template literal
 
@@ -1420,16 +1426,16 @@ getA({ p: 2 })
 
 > I think reasons contains more information
 
-#### Function subtyping
+#### Function parameter subtyping
 
 ```ts
 // Perfectly fine
-const x: (a: number) => string = (a: 4) => "hi"
+const x: (a: number) => string = (p: string | number) => "hi"
 // Bad
-const y: (a: 4) => string = (a: number) => "hi"
+const y: (a: number | string) => string = (p: number) => "hi"
 ```
 
-- Type (a: number) => "hi" is not assignable to type (a: 4) => string
+- Type (p: number) => "hi" is not assignable to type (a: number | string) => string
 
 > I think reasons contains more information
 
@@ -1490,7 +1496,7 @@ function getSecondCharacter(s: string) {
 #### Index into string
 
 ```ts
-("something"[2] satisfies number);
+("something"[2]) satisfies number;
 ```
 
 - Expected number, found "m"
@@ -1516,7 +1522,7 @@ const p = { b: 2 }
 Object.setPrototypeOf(x, p);
 const p_of_x = Object.getPrototypeOf(x);
 // ('a' in p_of_x.a) satisfies false;
-p === p_of_x satisfies string;
+(p === p_of_x) satisfies string;
 ```
 
 - Expected string, found true
@@ -1583,6 +1589,21 @@ export type MyNumber = string;
 ```
 
 - Expected MyNumber, found 2
+
+#### Import type and variable
+
+```ts
+import { MyNumber } from "./types";
+2 satisfies MyNumber;
+MyNumber satisfies boolean;
+
+// in types.ts
+export type MyNumber = string;
+export const MyNumber = 6;
+```
+
+- Expected MyNumber, found 2
+- Expected boolean, found 6
 
 #### Export let
 

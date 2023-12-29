@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: build-artifacts-${{ matrix.os }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 1
@@ -96,9 +96,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    
     - uses: actions/download-artifact@v3
       with:
-        name: build-artifacts
+        name: build-artifacts-windows-latest
+        path: build-artifacts
+    - uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts-ubuntu-latest
         path: build-artifacts
 
     - name: Print artifacts

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Write};
 
 use ezno_parser::{
 	visiting::{VisitOptions, Visitors},
@@ -7,7 +7,10 @@ use ezno_parser::{
 use source_map::SourceId;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let path = std::env::args().nth(1).ok_or("expected argument")?;
+	let mut args = std::env::args().skip(1);
+	let path = args.next().ok_or("expected path to markdown file")?;
+	let out = args.next();
+
 	let content = std::fs::read_to_string(&path)?;
 
 	let filters: HashSet<&str> = HashSet::from_iter(["import", "export"]);
@@ -84,11 +87,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	eprintln!("{:?} blocks", final_blocks.len());
 
-	for (_items, block) in final_blocks {
-		// eprintln!("block includes: {:?}", items);
-		// eprintln!("{}", block);
-		// eprintln!("---");
-		println!("{{\n{block}}};")
+	if let Some(out) = out {
+		let mut out = std::fs::File::create(out).expect("Cannot open file");
+		for (_items, block) in final_blocks {
+			writeln!(out, "() => {{\n{block}}};").unwrap();
+		}
+	} else {
+		let mut out = std::io::stdout();
+		for (_items, block) in final_blocks {
+			// eprintln!("block includes: {items:?}\n{block}\n---");
+			writeln!(out, "() => {{\n{block}}};").unwrap();
+		}
 	}
 
 	Ok(())

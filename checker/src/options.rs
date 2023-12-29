@@ -1,7 +1,6 @@
 /// Options for type checking
 /// TODO figure out compat with tsc
 #[derive(serde::Deserialize)]
-// TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 pub struct TypeCheckOptions {
 	/// Parameters cannot be reassigned
@@ -15,6 +14,9 @@ pub struct TypeCheckOptions {
 	pub strict_casts: bool,
 	/// Any types displayed will be in debug view
 	pub debug_types: bool,
+
+	/// TODO WIP
+	pub parse_comments: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -24,9 +26,9 @@ impl Default for TypeCheckOptions {
 			allow_elided_arguments: false,
 			allow_extra_arguments: false,
 			constant_function_declarations: true,
-			// TODO middle value
-			strict_casts: false,
 			debug_types: false,
+			parse_comments: true,
+			strict_casts: false,
 		}
 	}
 }

@@ -175,10 +175,10 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					match right_func.parameters.get_type_constraint_at_index(idx) {
 						Some(right_param_ty) => {
 							let result = type_is_subtype2(
-								lhs_param.ty,
 								right_param_ty,
-								base_type_arguments,
+								lhs_param.ty,
 								right_type_arguments,
+								base_type_arguments,
 								behavior,
 								environment,
 								types,
@@ -201,17 +201,21 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				}
 				// TODO optional and rest parameters
 
-				// TODO NonEqualityReason::InvalidReturnType
-				type_is_subtype2(
-					left_func.return_type,
-					right_func.return_type,
-					base_type_arguments,
-					right_type_arguments,
-					behavior,
-					environment,
-					types,
-					restriction_mode,
-				)
+				// `void` return type means anything goes here
+				if TypeId::VOID_TYPE == left_func.return_type {
+					SubTypeResult::IsSubType
+				} else {
+					type_is_subtype2(
+						left_func.return_type,
+						right_func.return_type,
+						base_type_arguments,
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						restriction_mode,
+					)
+				}
 			} else {
 				crate::utils::notify!("Not function!!");
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)

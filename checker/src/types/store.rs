@@ -65,7 +65,7 @@ impl Default for TypeStore {
 			Type::Constant(crate::Constant::Number(0.into())),
 			// one
 			Type::Constant(crate::Constant::Number(1.into())),
-			// NaNFreeVariable
+			// NaN
 			Type::Constant(crate::Constant::NaN),
 			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
@@ -83,6 +83,8 @@ impl Default for TypeStore {
 				name: "SymbolToPrimitive".into(),
 				parameters: None,
 			},
+			// `void` type. Does not block sometimes
+			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -361,5 +363,12 @@ impl TypeStore {
 		let under = PropertyKey::from_type(indexer, self);
 		let ty = Type::Constructor(Constructor::Property { on: indexee, under, result: base });
 		self.register_type(ty)
+	}
+
+	/// TODO flags
+	pub fn new_regex(&mut self, pattern: String) -> TypeId {
+		self.register_type(Type::SpecialObject(crate::behavior::objects::SpecialObjects::Regexp(
+			pattern,
+		)))
 	}
 }

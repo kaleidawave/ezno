@@ -115,6 +115,9 @@ pub(crate) struct CheckArguments {
 	/// whether to re-check on file changes
 	#[argh(switch)]
 	pub watch: bool,
+	/// whether to display check time
+	#[argh(switch)]
+	pub timings: bool,
 }
 
 // /// Run project using Deno
@@ -165,8 +168,18 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			crate::utilities::print_info();
 		}
 		CompilerSubCommand::Check(check_arguments) => {
-			let CheckArguments { input, watch: _, definition_file } = check_arguments;
-			let (diagnostics, _others) = check(read_file, &input, definition_file.as_deref());
+			let CheckArguments { input, watch: _, definition_file, timings } = check_arguments;
+			let entry_points = vec![input];
+
+			#[cfg(not(target_family = "wasm"))]
+			let start = timings.then(|| std::time::Instant::now());
+
+			let (diagnostics, _others) = check(entry_points, read_file, definition_file.as_deref());
+
+			#[cfg(not(target_family = "wasm"))]
+			if let Some(start) = start {
+				eprintln!("Checked in {:?}", start.elapsed());
+			};
 
 			let fs = match _others {
 				Ok(data) => data.module_contents,
@@ -196,9 +209,11 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				block_visitors_mut: Default::default(),
 			};
 
+			let input_paths = vec![build_config.input];
+
 			let output = build(
+				input_paths,
 				read_file,
-				&build_config.input,
 				build_config.definition_file.as_deref(),
 				&output_path,
 				&BuildConfig { strip_whitespace: build_config.minify },

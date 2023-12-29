@@ -60,6 +60,7 @@ impl TypeId {
 	pub const STRING_TYPE: Self = Self(5);
 
 	pub const UNDEFINED_TYPE: Self = Self(6);
+	pub const VOID_TYPE: Self = Self(22);
 	pub const NULL_TYPE: Self = Self(7);
 
 	/// This is the inner version
@@ -87,7 +88,7 @@ impl TypeId {
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 22;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 23;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]

@@ -17,7 +17,7 @@ pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, 
 			}
 		},
 		Constant::Boolean(val) => Ok(if *val { 1f64 } else { 0f64 }),
-		Constant::Regexp(_) | Constant::NaN | Constant::Undefined => Ok(f64::NAN),
+		Constant::NaN | Constant::Undefined => Ok(f64::NAN),
 		Constant::Null => Ok(0f64),
 		Constant::Symbol { key: _ } => todo!(),
 	}
@@ -41,7 +41,6 @@ pub(crate) fn cast_as_boolean(cst: &Constant, strict_casts: bool) -> Result<bool
 	Ok(match cst {
 		Constant::Number(number) => number.into_inner() != 0.,
 		Constant::String(value) => !value.is_empty(),
-		Constant::Regexp(_) => true,
 		Constant::Boolean(value) => *value,
 		Constant::NaN | Constant::Undefined | Constant::Null => false,
 		Constant::Symbol { key: _ } => todo!(),

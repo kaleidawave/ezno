@@ -6,7 +6,7 @@ use crate::{
 		constant_functions::{call_constant_function, ConstantFunctionError, ConstantOutput},
 		functions::{FunctionBehavior, ThisValue},
 	},
-	context::{calling::CheckThings, CallCheckingBehavior, ContextType, Environment, Logical},
+	context::{calling::CheckThings, CallCheckingBehavior, Environment, Logical},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{application::ErrorsAndInfo, apply_event, Event, EventResult, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
@@ -246,8 +246,6 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		types,
 	)?;
 
-	crate::utils::notify!("Got {:?} out", result.returned_type);
-
 	// TODO can skip for pure functions (or open polys) and references that aren't used later
 	for argument in &arguments {
 		// TODO need to do in a function
@@ -307,12 +305,18 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		let reflects_dependency = if is_open_poly {
 			None
 		} else {
+			// TODO does this need a recursive implementation?
+			let returned_type_space = if TypeId::VOID_TYPE == result.returned_type {
+				TypeId::ANY_TYPE
+			} else {
+				result.returned_type
+			};
+
 			let constructor = Constructor::Image {
 				// TODO on or to
 				on,
 				with: with.clone(),
-				// TODO unwrap
-				result: result.returned_type,
+				result: returned_type_space,
 			};
 
 			let constructor_return = types.register_type(Type::Constructor(constructor));
@@ -443,9 +447,7 @@ impl FunctionType {
 			// return Err(vec![reason])
 		}
 
-		if !(environment.context_type.is_conditional()
-			|| environment.context_type.is_dynamic_boundary())
-		{
+		if !environment.is_possibly_uncalled() {
 			types.called_functions.insert(self.id);
 		}
 

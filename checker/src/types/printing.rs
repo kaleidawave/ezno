@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, TypeStore};
 use crate::{
+	behavior::objects::SpecialObjects,
 	context::{facts::Publicity, get_on_ctx, Logical},
 	events::Event,
 	types::{get_constraint, Constructor, StructureGenerics},
@@ -321,9 +322,9 @@ fn print_type_into_buf(
 			buf.push_str(" }");
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			crate::behavior::objects::SpecialObjects::Promise { events: () } => todo!(),
-			crate::behavior::objects::SpecialObjects::Generator { position: () } => todo!(),
-			crate::behavior::objects::SpecialObjects::Proxy { handler, over } => {
+			SpecialObjects::Promise { events: () } => todo!(),
+			SpecialObjects::Generator { position: () } => todo!(),
+			SpecialObjects::Proxy { handler, over } => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
 				print_type_into_buf(*over, buf, cycles, args, types, ctx, debug);
@@ -331,7 +332,7 @@ fn print_type_into_buf(
 				print_type_into_buf(*handler, buf, cycles, args, types, ctx, debug);
 				buf.push_str(" ]");
 			}
-			crate::behavior::objects::SpecialObjects::Import(exports) => {
+			SpecialObjects::Import(exports) => {
 				buf.push_str("{ ");
 				for (not_at_end, (key, (variable, mutability))) in exports.named.iter().nendiate() {
 					buf.push_str(key);
@@ -351,6 +352,11 @@ fn print_type_into_buf(
 					}
 				}
 				buf.push_str(" }");
+			}
+			SpecialObjects::Regexp(exp) => {
+				buf.push('/');
+				buf.push_str(exp);
+				buf.push('/');
 			}
 		},
 	}

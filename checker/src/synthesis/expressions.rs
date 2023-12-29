@@ -75,8 +75,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
-			// TODO flags
-			return checking_data.types.new_constant_type(Constant::Regexp(pattern.clone()));
+			return checking_data.types.new_regex(pattern.clone());
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {

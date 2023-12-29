@@ -49,6 +49,19 @@ pub struct Syntax<'a> {
 	pub location: ContextLocation,
 }
 
+/// Code under a dynamic boundary can run more than once
+#[derive(Debug, Clone, Copy)]
+pub enum DynamicBoundaryKind {
+	Loop,
+	Function,
+}
+
+impl DynamicBoundaryKind {
+	pub fn can_use_variable_before_definition(self) -> bool {
+		matches!(self, Self::Function)
+	}
+}
+
 impl<'a> ContextType for Syntax<'a> {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
@@ -58,8 +71,12 @@ impl<'a> ContextType for Syntax<'a> {
 		Some(&self.parent)
 	}
 
-	fn is_dynamic_boundary(&self) -> bool {
-		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
+	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
+		match &self.scope {
+			Scope::Function { .. } => Some(DynamicBoundaryKind::Function),
+			Scope::Iteration { .. } => Some(DynamicBoundaryKind::Loop),
+			_ => None,
+		}
 	}
 
 	fn is_conditional(&self) -> bool {
@@ -130,7 +147,7 @@ pub enum Scope {
 		is_switch: Option<Label>,
 	},
 	/// Variables here are dependent on the iteration,
-	Looping {
+	Iteration {
 		label: Label, // TODO on: Proofs,
 	},
 	TryBlock {},
@@ -747,7 +764,7 @@ impl<'a> Environment<'a> {
 						{
 							return Ok(VariableWithValue(og_var.clone(), *value));
 						}
-						if get_on_ctx!(p.context_type.is_dynamic_boundary()) {
+						if get_on_ctx!(p.context_type.is_dynamic_boundary()).is_some() {
 							break;
 						}
 					}
@@ -837,7 +854,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T, A, R>(
+	pub fn new_conditional_context<T, A, R>(
 		&mut self,
 		condition: TypeId,
 		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
@@ -1001,7 +1018,7 @@ impl<'a> Environment<'a> {
 					| Scope::StaticBlock {} => {
 						break;
 					}
-					Scope::Looping { ref label } => {
+					Scope::Iteration { ref label } => {
 						if looking_for_label.is_none() {
 							return Some(falling_through_structures);
 						} else if let Some(label) = label {
@@ -1026,7 +1043,7 @@ impl<'a> Environment<'a> {
 		None
 	}
 
-	pub(crate) fn import_items<
+	pub fn import_items<
 		'b,
 		P: Iterator<Item = NamePair<'b>>,
 		T: crate::ReadFromFS,
@@ -1039,6 +1056,7 @@ impl<'a> Environment<'a> {
 		kind: ImportKind<'b, P>,
 		checking_data: &mut CheckingData<T, A>,
 		also_export: bool,
+		type_only: bool,
 	) {
 		let current_source = self.get_source();
 		if !matches!(self.context_type.scope, crate::Scope::Module { .. }) {
@@ -1091,57 +1109,10 @@ impl<'a> Environment<'a> {
 			ImportKind::Parts(parts) => {
 				for part in parts {
 					if let Ok(Ok(ref exports)) = exports {
-						if let Some(export) = exports.get_export(part.value) {
-							match export {
-								crate::behavior::modules::TypeOrVariable::ExportedVariable((
-									variable,
-									mutability,
-								)) => {
-									let constant = match mutability {
-										VariableMutability::Constant => {
-											let k = crate::VariableId(
-												current_source,
-												part.position.start,
-											);
-											let v = self
-												.get_value_of_constant_import_variable(variable);
-											self.facts.variable_current_value.insert(k, v);
-											true
-										}
-										VariableMutability::Mutable {
-											reassignment_constraint: _,
-										} => false,
-									};
+						let (exported_variable, exported_type) =
+							exports.get_export(part.value, type_only);
 
-									let v = VariableOrImport::MutableImport {
-										of: variable,
-										constant,
-										import_specified_at: part
-											.position
-											.with_source(self.get_source()),
-									};
-									let existing = self.variables.insert(part.r#as.to_owned(), v);
-									if let Some(_existing) = existing {
-										todo!("diagnostic")
-									}
-									if also_export {
-										if let Scope::Module { ref mut exported, .. } =
-											self.context_type.scope
-										{
-											exported.named.push((
-												part.r#as.to_owned(),
-												(variable, mutability),
-											));
-										}
-									}
-								}
-								crate::behavior::modules::TypeOrVariable::Type(ty) => {
-									let existing =
-										self.named_types.insert(part.r#as.to_owned(), ty);
-									assert!(existing.is_none(), "TODO exception");
-								}
-							}
-						} else {
+						if exported_variable.is_none() && exported_type.is_none() {
 							let position = part.position.with_source(current_source);
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::FieldNotExported {
@@ -1163,7 +1134,43 @@ impl<'a> Environment<'a> {
 								checking_data,
 							);
 						}
+						if let Some((variable, mutability)) = exported_variable {
+							let constant = match mutability {
+								VariableMutability::Constant => {
+									let k = crate::VariableId(current_source, part.position.start);
+									let v = self.get_value_of_constant_import_variable(variable);
+									self.facts.variable_current_value.insert(k, v);
+									true
+								}
+								VariableMutability::Mutable { reassignment_constraint: _ } => false,
+							};
+
+							let v = VariableOrImport::MutableImport {
+								of: variable,
+								constant,
+								import_specified_at: part.position.with_source(self.get_source()),
+							};
+							let existing = self.variables.insert(part.r#as.to_owned(), v);
+							if let Some(_existing) = existing {
+								todo!("diagnostic")
+							}
+							if also_export {
+								if let Scope::Module { ref mut exported, .. } =
+									self.context_type.scope
+								{
+									exported
+										.named
+										.push((part.r#as.to_owned(), (variable, mutability)));
+								}
+							}
+						}
+
+						if let Some(ty) = exported_type {
+							let existing = self.named_types.insert(part.r#as.to_owned(), ty);
+							assert!(existing.is_none(), "TODO exception");
+						}
 					} else {
+						// This happens if imported is an invalid file (syntax issue, doesn't exist etc)
 						let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
 							value: TypeId::ERROR_TYPE,
 						};
