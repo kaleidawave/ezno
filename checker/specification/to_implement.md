@@ -27,6 +27,21 @@ function add_property(obj: { prop: number }) {
 
 - Expected 4, found 2
 
+#### Generic type argument restriction
+
+```ts
+function map<T, U>(a: T, b: (t: T) => U) {
+	return b(a)
+}
+
+map(2, Math.sin)
+map("string", Math.sin)
+```
+
+- Argument of type "string" is not assignable to parameter of type number
+
+> Because `Math.sin` set T to number
+
 #### Calling on or type
 
 ```ts
@@ -199,6 +214,39 @@ x() satisfies 3
 
 - Expected 3, found 2
 
+### Iteration
+
+> TODO for in
+
+#### For-in fixed object
+
+```ts
+let properties: string = "";
+for (const property in { a: 1, b: 2, c: 3 }) {
+    properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found "abc"
+
+#### For-in non fixed object
+
+> TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
+> properties than defined
+
+```ts
+declare const myObject: { a: 1, b: 2, c: 3 };
+
+let properties: string = "";
+for (const property in myObject) {
+    properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found string
+
 ### Inference
 
 #### Parameter property
@@ -238,7 +286,7 @@ x = 0
 call() satisfies 2
 ```
 
-- Cannot call ...
+- Cannot call TODO
 - Expected 2 found 1
 
 #### Property restriction
@@ -254,7 +302,7 @@ print_type(call)
 
 ### Asynchronous functions and promises
 
-#TODO promise
+> TODO Promise properties
 
 #### Async function
 
@@ -300,13 +348,11 @@ function x*() {
 (await x) satisfies string;
 ```
 
-- #TODO
+- TODO
 
-### Proxy and Object
+### `Proxy` and `Object`
 
-#TODO effects
-#TODO traps
-#TODO Object.defineProperty
+> TODO effects, different traps and `Object.defineProperty`
 
 #### Proxy object with default callback
 
@@ -341,6 +387,8 @@ function mapper(a: Array<string>) {
 print_type(mapper)
 ```
 
+- TODO
+
 #### Generic array map
 
 ```ts
@@ -350,6 +398,8 @@ function mapper<T, U>(a: Array<T>, func: T => U) {
 
 print_type(mapper)
 ```
+
+- TODO
 
 ### Expressions
 
@@ -388,7 +438,7 @@ function map(a: (a: number) => number) {}
 map(a => a.t)
 ```
 
-> No property t on string
+- No property t on string
 
 #### Spread arguments
 
@@ -403,7 +453,7 @@ function spread(main, ...others) {
 spread(1, 2, 3) satisfies string
 ```
 
-- TODO...
+- TODO
 
 #### Array spread
 

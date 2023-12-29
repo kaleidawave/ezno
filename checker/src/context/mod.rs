@@ -165,7 +165,7 @@ pub struct Context<T: ContextType> {
 	pub(crate) variables: HashMap<String, VariableOrImport>,
 	pub(crate) named_types: HashMap<String, TypeId>,
 
-	/// For debugging only
+	/// For debugging AND noting what contexts contain what variables
 	pub(crate) variable_names: HashMap<VariableId, String>,
 
 	/// TODO not sure if needed
@@ -357,6 +357,7 @@ impl<T: ContextType> Context<T> {
 				};
 				let variable =
 					VariableOrImport::Variable { mutability, declared_at, context: None };
+
 				let entry = self.variables.entry(name.to_owned());
 				if let Entry::Vacant(_empty) = entry {
 					let _existing_variable = self.variables.insert(name.to_owned(), variable);
@@ -366,9 +367,19 @@ impl<T: ContextType> Context<T> {
 							// also not be equal thing to be inline with ts...
 							annotation
 						} else {
-							types.register_type(Type::RootPolyType(
+							let parameter_ty = types.register_type(Type::RootPolyType(
 								crate::types::PolyNature::Parameter { fixed_to: annotation },
-							))
+							));
+
+							// TODO might be temp if get a better assigning to poly ...?
+							if matches!(
+								annotation,
+								TypeId::STRING_TYPE | TypeId::NUMBER_TYPE | TypeId::BOOLEAN_TYPE
+							) {
+								self.object_constraints.insert(parameter_ty, vec![annotation]);
+							}
+
+							parameter_ty
 						}
 					} else {
 						let fixed_to = TypeId::ANY_TYPE;
@@ -659,17 +670,12 @@ impl<T: ContextType> Context<T> {
 			})
 		}
 
-		// TODO need actual method for these, aka lowest
+		let under = match under {
+			PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
+			under @ PropertyKey::String(_) => under,
+		};
 
-		if let Type::SpecialObject(_obj) = types.get_type_by_id(on) {
-			todo!()
-		} else {
-			let under = match under {
-				PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-				under @ PropertyKey::String(_) => under,
-			};
-			types.get_fact_about_type(self, on, &get_property, (publicity, &under))
-		}
+		types.get_fact_about_type(self, on, &get_property, (publicity, &under))
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -681,7 +687,7 @@ impl<T: ContextType> Context<T> {
 		// TODO map_or temp
 		self.parents_iter()
 			.find_map(|env| get_on_ctx!(env.variable_names.get(&id)))
-			.map_or("could not find", String::as_str)
+			.map_or("error", String::as_str)
 	}
 
 	pub fn as_general_context(&self) -> GeneralContext {

@@ -107,7 +107,7 @@ impl FunctionBased for ArrowFunctionBase {
 	}
 
 	fn visit_name<TData>(
-		_: &Self::Name,
+		(): &Self::Name,
 		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		_: &mut TData,
 		_: &crate::visiting::VisitOptions,
@@ -116,12 +116,16 @@ impl FunctionBased for ArrowFunctionBase {
 	}
 
 	fn visit_name_mut<TData>(
-		_: &mut Self::Name,
+		(): &mut Self::Name,
 		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		_: &mut TData,
 		_: &crate::visiting::VisitOptions,
 		_: &mut temporary_annex::Annex<crate::Chain>,
 	) {
+	}
+
+	fn get_name((): &Self::Name) -> Option<&str> {
+		None
 	}
 }
 

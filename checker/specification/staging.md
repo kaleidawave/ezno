@@ -1,6 +1,6 @@
 Currently implementing:
 
-### Things
+### Iterations
 
 #### Limit to iterations
 
@@ -15,6 +15,22 @@ a satisfies string;
 > function that evaluates `a = a + 1` a million times. There also should be per project, per module, per loop configuration
 
 - Expected string, found number
+
+### Functions
+
+#### Assignment to parameter
+
+```ts
+function alterParameter(a: number, b: { prop: string }) {
+    a = 2;
+    a = "hi";
+    b.prop = 6;
+}
+```
+
+> Assigning straight to `a` might be disallowed by an option in the future. Right now it is allowed by JavaScript and so is allowed
+
+- Type \"hi\" is not assignable to type number
 
 ### Statements
 
@@ -77,50 +93,6 @@ runWithCallback(() => 3)
 
 ### Not sure
 
-#### For-in fixed object
-
-```ts
-let properties: string = "";
-for (const property in { a: 1, b: 2, c: 3 }) {
-    properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
-
-#### For-in non fixed object
-
-> TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
-> properties than defined
-
-```ts
-declare const myObject: { a: 1, b: 2, c: 3 };
-
-let properties: string = "";
-for (const property in myObject) {
-    properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found string
-
-#### Generic type argument restriction
-
-```ts
-function map<T, U>(a: T, b: (t: T) => U) {
-	return b(a)
-}
-
-map(2, Math.sin)
-map("string", Math.sin)
-```
-
-- Argument of type "string" is not assignable to parameter of type number
-
-> Because `Math.sin` set T to number
-
 #### Set property on dependent observed
 
 ```ts
@@ -134,30 +106,18 @@ function add_property(obj: { prop: number }) {
 
 - Expected 4, found 2
 
-#### Calling on or type
+### To fix
+
+#### Constant call and operation with a parameter
+
+> An example of the generic constructor type  (namely call and operation)
 
 ```ts
-type Func1 = () => 3;
-type Func2 = () => 2;
-function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
-	return func()
+function floorPlusB(a: number, b: number) {
+	return Math.floor(a) + b
 }
 
-print_type(callFunc)
+floorPlusB(100.22, 5) satisfies 8
 ```
 
-- Expected "a" | "b" | "c" found "d"
-
-#### This as generic argument
-
-> Was working, now broken for some reason :(
-
-```ts
-function callToUpperCase(s: string) {
-	return s.toUpperCase()
-}
-
-(callToUpperCase("hi") satisfies "HEY")
-```
-
-- Expected "HEY", found "HI"
+- Expected 8, found 105

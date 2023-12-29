@@ -735,15 +735,18 @@ impl<'a> Environment<'a> {
 							if matches!(ty, Type::Function(..)) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-								// crate::utils::notify!(
-								// 	"Open poly type treated as immutable free variable"
-								// );
+								crate::utils::notify!(
+									"Open poly type '{}' treated as immutable free variable",
+									name
+								);
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::Constant(_) = ty {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							crate::utils::notify!("Free variable!");
+						} else {
+							crate::utils::notify!("No current value");
 						}
 					}
 

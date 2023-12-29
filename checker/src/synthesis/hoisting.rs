@@ -17,8 +17,10 @@ use crate::{
 };
 
 use super::{
-	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
-	variables::register_variable, EznoParser,
+	functions::synthesise_function_annotation,
+	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
+	variables::register_variable,
+	EznoParser,
 };
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
@@ -557,29 +559,4 @@ fn get_annotation_from_declaration<
 	}
 
 	result.map(|(value, _span)| value)
-}
-
-pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
-	possible_declaration: &String,
-	position: &source_map::SpanWithSource,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Option<(TypeId, source_map::SpanWithSource)> {
-	let source = environment.get_source();
-	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
-	let annotation = parser::TypeAnnotation::from_string(
-		possible_declaration.clone(),
-		Default::default(),
-		source,
-		offset,
-	);
-	if let Ok(annotation) = annotation {
-		Some((
-			synthesise_type_annotation(&annotation, environment, checking_data),
-			annotation.get_position().with_source(source),
-		))
-	} else {
-		// TODO warning
-		None
-	}
 }

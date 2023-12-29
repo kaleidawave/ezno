@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let content = std::fs::read_to_string(&path)?;
 
-	let filters: HashSet<&str> = HashSet::from_iter(["import", "export"]);
+	let filters: Vec<&str> = vec!["import", "export", "declare"];
 
 	let blocks = if path.ends_with(".md") {
 		let mut blocks = Vec::new();
@@ -21,16 +21,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut lines = content.lines();
 		while let Some(line) = lines.next() {
 			if line.starts_with("```ts") {
-				let code = lines.by_ref().take_while(|line| !line.starts_with("```")).fold(
-					String::new(),
-					|mut a, s| {
+				let mut indented_code = lines
+					.by_ref()
+					.take_while(|line| !line.starts_with("```"))
+					.fold("\t".to_owned(), |mut a, s| {
 						a.push_str(s);
-						a.push('\n');
+						a.push_str("\n\t");
 						a
-					},
-				);
-				if !filters.iter().any(|filter| code.contains(filter)) {
-					blocks.push(code);
+					});
+
+				debug_assert_eq!(indented_code.pop(), Some('\t'));
+
+				if !filters.iter().any(|filter| indented_code.contains(filter)) {
+					blocks.push(indented_code);
 				}
 			}
 		}
@@ -41,11 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
 	for code in blocks {
-		let module =
-			match Module::from_string(code.clone(), Default::default(), SourceId::NULL, None) {
-				Ok(module) => module,
-				Err(err) => return Err(Box::new(err)),
-			};
+		let module = Module::from_string(code.clone(), Default::default(), SourceId::NULL, None)
+			.map_err(Box::new)?;
 
 		let mut names = HashSet::new();
 
@@ -55,15 +55,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			variable_visitors: vec![Box::new(NameFinder)],
 			block_visitors: Default::default(),
 		};
+
 		module.visit::<HashSet<String>>(
 			&mut visitors,
 			&mut names,
 			&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
 		);
 
-		// TODO quick fix
-		for s in module.items {
-			match s {
+		// TODO quick fix to also register interface and type alias names to prevent conflicts
+		for item in module.items {
+			match item {
 				StatementOrDeclaration::Declaration(Declaration::TypeAlias(t)) => {
 					names.insert(t.type_name.name.clone());
 				}
@@ -78,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
 		{
 			items.extend(names.into_iter());
-			block.push('\n');
+			block.push_str("\n");
 			block.push_str(&code);
 		} else {
 			final_blocks.push((names, code));
@@ -90,13 +91,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	if let Some(out) = out {
 		let mut out = std::fs::File::create(out).expect("Cannot open file");
 		for (_items, block) in final_blocks {
-			writeln!(out, "() => {{\n{block}}};").unwrap();
+			writeln!(out, "() => {{\n{block}}};\n").unwrap();
 		}
 	} else {
 		let mut out = std::io::stdout();
 		for (_items, block) in final_blocks {
 			// eprintln!("block includes: {items:?}\n{block}\n---");
-			writeln!(out, "() => {{\n{block}}};").unwrap();
+			writeln!(out, "() => {{\n{block}}};\n").unwrap();
 		}
 	}
 

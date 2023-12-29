@@ -20,8 +20,11 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesise_expression, hoisting::comment_as_type_annotation, synthesise_block,
-	type_annotations::synthesise_type_annotation, variables::register_variable, Performs,
+	expressions::synthesise_expression,
+	synthesise_block,
+	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
+	variables::register_variable,
+	Performs,
 };
 
 impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
@@ -31,6 +34,10 @@ where
 {
 	fn id(&self, source_id: SourceId) -> FunctionId {
 		FunctionId(source_id, self.get_position().start)
+	}
+
+	fn get_name(&self) -> Option<&str> {
+		U::get_name(&self.name)
 	}
 
 	fn has_body(&self) -> bool {
@@ -312,6 +319,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				crate::context::VariableRegisterBehavior::FunctionParameter { annotation },
 				annotation,
 			);
+
 			let name = param_name_to_string(parameter.name.get_ast_ref());
 
 			let missing_value = match &parameter.additionally {
@@ -490,53 +498,4 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 			},
 		)
 		.0
-}
-
-#[cfg(test)]
-mod tests {
-
-	use crate::{context::RootContext, TypeMappings};
-
-	fn _get_base_environment() -> (RootContext, TypeMappings) {
-		todo!()
-		// let mut type_mappings = TypeMappings::default();
-		// let environment = type_definition_file(
-		//     TypeDefinitionModule::from_string(
-		//         include_str!("..\\..\\definitions\\simple.d.ts").to_owned(),
-		//         Default::default(),
-		//         SourceId::new_null(),
-		//         Vec::new(),
-		//     )
-		//     .unwrap(),
-		//     &DiagnosticsContainer::default(),
-		//     todo!()
-		// );
-		// (environment, type_mappings)
-	}
-
-	// TODO temp
-	// #[test]
-	// fn synthesis_test() {
-	//     let function = "function add(x, y) {
-	//         return x + y;
-	//     }";
-	//     let mut function = FunctionDeclaration::from_string(
-	//         function.to_owned(),
-	//         Default::default(),
-	//         SourceId::new_null(),
-	//         None,
-	//     )
-	//     .unwrap();
-	//     let (environment, type_mappings) = get_base_environment();
-
-	//     let function_type = synthesise_function(
-	//         &function.base,
-	//         &environment,
-	//         &Default::default(),
-	//         &type_mappings,
-	//         None
-	//     );
-
-	//     todo!("{:#?}", function_type);
-	// }
 }

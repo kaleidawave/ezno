@@ -172,11 +172,11 @@ fn print_type_into_buf(
 				Constructor::TypeOperator(_) => todo!(),
 				Constructor::TypeRelationOperator(_) => todo!(),
 				Constructor::Image { on: _, with: _, result } => {
-					// TODO arguments and stuff
-					buf.push_str("[func result] ");
+					buf.write_fmt(format_args!("[func result {}] ", id.0)).unwrap();
+					// TODO arguments
 					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
 				}
-				Constructor::Property { on, under, result: _ } => {
+				Constructor::Property { on, under, result: _, bind_this: _ } => {
 					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
 					print_property_key_into_buf(buf, under, cycles, args, types, ctx, debug);
@@ -186,7 +186,7 @@ fn print_type_into_buf(
 					unreachable!()
 				}
 			},
-			Constructor::Property { on, under, result } => {
+			Constructor::Property { on, under, result, bind_this: _ } => {
 				if crate::types::is_explicit_generic(*on, types) {
 					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
@@ -509,13 +509,14 @@ pub fn debug_effects(
 			Event::CallsType {
 				on,
 				with: _,
-				reflects_dependency: _,
+				reflects_dependency,
 				timing,
 				called_with_new: _,
 				position: _,
 			} => {
 				buf.push_str("call ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
+				buf.write_fmt(format_args!(" into {reflects_dependency:?} ")).unwrap();
 				buf.push_str(match timing {
 					crate::events::CallingTiming::Synchronous => "now",
 					crate::events::CallingTiming::QueueTask => "queue",

@@ -251,6 +251,8 @@ pub enum Constructor {
 		on: TypeId,
 		under: PropertyKey<'static>,
 		result: TypeId,
+		/// See issue #98
+		bind_this: bool,
 	},
 	/// Might not be best place but okay.
 	StructureGenerics(StructureGenerics),
@@ -456,7 +458,7 @@ pub enum PropertyError {
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 	if let Type::RootPolyType(PolyNature::Generic { .. }) = types.get_type_by_id(on) {
 		true
-	} else if let Type::Constructor(Constructor::Property { on, under, result: _ }) =
+	} else if let Type::Constructor(Constructor::Property { on, under, result: _, bind_this: _ }) =
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
@@ -598,7 +600,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	}
 				// }
 			}
-			Constructor::Property { on: _, under: _, result } => {
+			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
 

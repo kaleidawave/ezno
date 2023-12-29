@@ -35,7 +35,6 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
-		get_constraint,
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constant, PolyNature, StructureGenerics, Type,
@@ -381,26 +380,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let being_indexed =
 				synthesise_type_annotation(being_indexed, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
-			let under =
-				crate::types::properties::PropertyKey::from_type(indexer, &checking_data.types);
 
-			if let Some(base) = get_constraint(being_indexed, &checking_data.types) {
-				checking_data.types.new_property_constructor(being_indexed, indexer, base)
-			} else if let Some(prop) = environment.get_property_unbound(
+			checking_data.types.new_property_on_type_annotation(
 				being_indexed,
-				Publicity::Public,
-				under,
-				&checking_data.types,
-			) {
-				match prop {
-					crate::context::Logical::Pure(ty) => ty.as_get_type(),
-					crate::context::Logical::Or { .. } => todo!(),
-					crate::context::Logical::Implies { .. } => todo!(),
-				}
-			} else {
-				crate::utils::notify!("Error: no index on type annotation");
-				TypeId::ERROR_TYPE
-			}
+				indexer,
+				&environment,
+			)
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
@@ -471,5 +456,35 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 		}
 		// TODO requires a kind of strict instance of ???
 		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),
+	}
+}
+
+/// Comment as type annotation
+pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
+	possible_declaration: &str,
+	position: &source_map::SpanWithSource,
+	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> Option<(TypeId, source_map::SpanWithSource)> {
+	let source = environment.get_source();
+	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
+
+	let possible_declaration =
+		possible_declaration.strip_prefix("*").unwrap_or(possible_declaration);
+
+	let annotation = parser::TypeAnnotation::from_string(
+		possible_declaration.to_owned(),
+		Default::default(),
+		source,
+		offset,
+	);
+	if let Ok(annotation) = annotation {
+		Some((
+			synthesise_type_annotation(&annotation, environment, checking_data),
+			annotation.get_position().with_source(source),
+		))
+	} else {
+		// TODO warning
+		None
 	}
 }

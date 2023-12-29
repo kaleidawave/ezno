@@ -164,11 +164,11 @@ impl ASTNode for Block {
 }
 
 impl Block {
-	pub fn iter(&self) -> core::slice::Iter<'_, StatementOrDeclaration> {
+	pub fn items(&self) -> core::slice::Iter<'_, StatementOrDeclaration> {
 		self.0.iter()
 	}
 
-	pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, StatementOrDeclaration> {
+	pub fn items_mut(&mut self) -> core::slice::IterMut<'_, StatementOrDeclaration> {
 		self.0.iter_mut()
 	}
 }
@@ -185,11 +185,11 @@ impl Visitable for Block {
 			{
 				visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
 			}
-			let iter = self.iter();
+			let items = self.items();
 			if options.reverse_statements {
-				iter.rev().for_each(|item| item.visit(visitors, data, options, chain));
+				items.rev().for_each(|item| item.visit(visitors, data, options, chain));
 			} else {
-				iter.for_each(|item| item.visit(visitors, data, options, chain));
+				items.for_each(|item| item.visit(visitors, data, options, chain));
 			}
 		}
 	}
@@ -209,11 +209,11 @@ impl Visitable for Block {
 					chain,
 				);
 			}
-			let iter_mut = self.iter_mut();
+			let items = self.items_mut();
 			if options.reverse_statements {
-				iter_mut.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+				items.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
 			} else {
-				iter_mut
+				items
 					.rev()
 					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
 			}

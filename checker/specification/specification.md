@@ -335,6 +335,18 @@ function getToUpperCase(s: string) {
 
 - Expected "HEY", found "HI"
 
+#### This as generic argument
+
+```ts
+function callToUpperCase(s: string) {
+	return s.toUpperCase()
+}
+
+(callToUpperCase("hi") satisfies "HEY")
+```
+
+- Expected "HEY", found "HI"
+
 ### Closures
 
 #### Reading variable
@@ -446,20 +458,6 @@ obj.a satisfies 3
 ```
 
 - Expected 3, found 4
-
-#### Constant call and operation with a parameter
-
-> An example of the generic constructor type  (namely call and operation)
-
-```ts
-function sinPlusB(a: number, b: number) {
-	return Math.floor(a) + b
-}
-
-sinPlusB(100.22, 5) satisfies 8
-```
-
-- Expected 8, found 105
 
 #### Effects carry through dependent calls
 

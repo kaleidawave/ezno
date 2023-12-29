@@ -159,7 +159,7 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { on, under, result } => {
+			Constructor::Property { on, under, result, bind_this } => {
 				let id = get_constraint(on, types).unwrap_or(on);
 
 				if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
@@ -191,6 +191,7 @@ pub(crate) fn substitute(
 							on,
 							under,
 							result: new_result,
+							bind_this,
 						}))
 					}
 				} else {

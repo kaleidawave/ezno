@@ -350,75 +350,53 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		match fact {
 			Logical::Pure(og) => {
 				match og {
-					PropertyValue::Value(value) => {
-						match types.get_type_by_id(value) {
-							Type::FunctionReference(func, _) => {
-								// TODO only want to do sometimes, or even never as it can be pulled using the poly chain
-								let depends_on_this =
-									types.get_function_from_id(*func).behavior.can_be_bound();
+					PropertyValue::Value(value) => match types.get_type_by_id(value) {
+						t @ (Type::And(_, _)
+						| Type::Or(_, _)
+						| Type::RootPolyType(_)
+						| Type::Constructor(_)) => {
+							let result = if let Some(arguments) = arguments {
+								substitute(
+									value,
+									&mut arguments.type_arguments.clone(),
+									environment,
+									types,
+								)
+							} else {
+								crate::utils::notify!("Here, getting property on {:?}", t);
+								value
+							};
+							let constructor_result =
+								types.register_type(Type::Constructor(Constructor::Property {
+									on,
+									under: under.into_owned(),
+									result,
+									// TODO #98
+									bind_this: true,
+								}));
 
-								let result = if depends_on_this {
-									types
-										.register_type(Type::Function(*func, ThisValue::Passed(on)))
-								} else {
-									value
-								};
-
-								// TODO wrap in constructor property
-								if let Some(arguments) = arguments {
-									// TODO not always..., func.inherits_generics maybe?
-									Some(types.register_type(Type::Constructor(
-										Constructor::StructureGenerics(StructureGenerics {
-											on: result,
-											arguments: arguments.clone(),
-										}),
-									)))
-								} else {
-									Some(value)
-								}
-							}
-							t @ (Type::And(_, _)
-							| Type::Or(_, _)
-							| Type::RootPolyType(_)
-							| Type::Constructor(_)) => {
-								let result = if let Some(arguments) = arguments {
-									substitute(
-										value,
-										&mut arguments.type_arguments.clone(),
-										environment,
-										types,
-									)
-								} else {
-									crate::utils::notify!("Here, getting property on {:?}", t);
-									value
-								};
-								let constructor_result =
-									types.register_type(Type::Constructor(Constructor::Property {
-										on,
-										under: under.into_owned(),
-										result,
-									}));
-
-								Some(constructor_result)
-							}
-							Type::Function(..) => todo!(),
-							Type::AliasTo { .. }
-							| Type::Object(ObjectNature::AnonymousTypeAnnotation)
-							| Type::Interface { .. } => {
-								let constructor_result =
-									types.register_type(Type::Constructor(Constructor::Property {
-										on,
-										under: under.into_owned(),
-										result: value,
-									}));
-
-								Some(constructor_result)
-							}
-							Type::Constant(_)
-							| Type::Object(ObjectNature::RealDeal)
-							| Type::SpecialObject(..) => Some(value),
+							Some(constructor_result)
 						}
-					}
+						Type::Function(..) => unreachable!(),
+						Type::FunctionReference(..)
+						| Type::AliasTo { .. }
+						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+						| Type::Interface { .. } => {
+							let constructor_result =
+								types.register_type(Type::Constructor(Constructor::Property {
+									on,
+									under: under.into_owned(),
+									result: value,
+									// TODO #98
+									bind_this: true,
+								}));
+
+							Some(constructor_result)
+						}
+						Type::Constant(_)
+						| Type::Object(ObjectNature::RealDeal)
+						| Type::SpecialObject(..) => Some(value),
+					},
 					PropertyValue::Getter(getter) => {
 						// if is_open_poly {
 						// 	crate::utils::notify!("TODO evaluate getter...");
@@ -430,6 +408,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							on,
 							under: under.into_owned(),
 							result: getter.return_type,
+							bind_this: false,
 						})))
 					}
 					PropertyValue::Setter(_) => todo!("error"),
@@ -494,9 +473,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
-
-// https://github.com/kaleidawave/ezno/pull/88
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)] // https://github.com/kaleidawave/ezno/pull/88
 pub(crate) fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
@@ -585,6 +562,8 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// );
 
 	let current_property = environment.get_property_unbound(on, publicity, under.clone(), types);
+
+	// crate::utils::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
 	let new = PropertyValue::Value(new.as_get_type());
 

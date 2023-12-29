@@ -5,7 +5,7 @@ use crate::{
 	context::{get_on_ctx, Context, ContextType, Logical},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	FunctionId, GeneralContext, TypeId,
+	Environment, FunctionId, GeneralContext, TypeId,
 };
 
 use super::{
@@ -272,9 +272,11 @@ impl TypeStore {
 
 				property_on_self.or_else(|| self.get_fact_about_type(ctx, *to, resolver, data))
 			}
+
 			Type::And(left, right) => self
 				.get_fact_about_type(ctx, *left, resolver, data)
 				.or_else(|| self.get_fact_about_type(ctx, *right, resolver, data)),
+
 			Type::Or(left, right) => {
 				// TODO temp
 				let left = self.get_fact_about_type(ctx, *left, resolver, data);
@@ -298,8 +300,8 @@ impl TypeStore {
 				on,
 				arguments,
 			})) => {
-				// TODO could drop some of with here
 				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
+
 				fact_opt.map(|fact| Logical::Implies {
 					on: Box::new(fact),
 					antecedent: arguments.clone(),
@@ -308,9 +310,9 @@ impl TypeStore {
 			Type::Constructor(_constructor) => {
 				// Don't think any properties exist on this poly type
 				// TODO None here
-				let _constraint = get_constraint(on, self).unwrap();
+				let constraint = get_constraint(on, self).unwrap();
 				// TODO might need to send more information here, rather than forgetting via .get_type
-				self.get_fact_about_type(ctx, on, resolver, data)
+				self.get_fact_about_type(ctx, constraint, resolver, data)
 			}
 			Type::Object(..) | Type::Interface { .. } => ctx
 				.parents_iter()
@@ -353,16 +355,38 @@ impl TypeStore {
 		self.register_type(Type::Function(id, Default::default()))
 	}
 
+	/// TODO WIP
 	#[allow(clippy::similar_names)]
-	pub(crate) fn new_property_constructor(
+	pub(crate) fn new_property_on_type_annotation(
 		&mut self,
 		indexee: TypeId,
 		indexer: TypeId,
-		base: TypeId,
+		environment: &Environment,
 	) -> TypeId {
-		let under = PropertyKey::from_type(indexer, self);
-		let ty = Type::Constructor(Constructor::Property { on: indexee, under, result: base });
-		self.register_type(ty)
+		if let Some(base) = get_constraint(indexee, self) {
+			let under = PropertyKey::from_type(indexer, self);
+			let ty = Type::Constructor(Constructor::Property {
+				on: indexee,
+				under,
+				result: base,
+				bind_this: true,
+			});
+			self.register_type(ty)
+		} else if let Some(prop) = environment.get_property_unbound(
+			indexee,
+			crate::context::facts::Publicity::Public,
+			PropertyKey::from_type(indexer, self),
+			&self,
+		) {
+			match prop {
+				crate::context::Logical::Pure(ty) => ty.as_get_type(),
+				crate::context::Logical::Or { .. } => todo!(),
+				crate::context::Logical::Implies { .. } => todo!(),
+			}
+		} else {
+			crate::utils::notify!("Error: no index on type annotation");
+			TypeId::ERROR_TYPE
+		}
 	}
 
 	/// TODO flags

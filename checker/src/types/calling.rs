@@ -246,36 +246,48 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 		types,
 	)?;
 
-	// TODO can skip for pure functions (or open polys) and references that aren't used later
-	for argument in &arguments {
-		// TODO need to do in a function
-		// All properties
-		// Functions free variables etc
-		match argument {
-			SynthesisedArgument::NonSpread { ty, position: _ } => {
-				match types.get_type_by_id(*ty) {
-					Type::Interface { .. }
-					| Type::AliasTo { .. }
-					| Type::And(_, _)
-					| Type::Object(ObjectNature::AnonymousTypeAnnotation)
-					| Type::FunctionReference(_, _)
-					| Type::Or(_, _) => {
-						crate::utils::notify!("Unreachable");
-					}
-					Type::Constant(_) => {}
-					Type::RootPolyType(_) | Type::Constructor(_) => {
-						// All dependent anyway
-						crate::utils::notify!("TODO if any properties set etc");
-					}
-					Type::Function(_, _) => {
-						crate::utils::notify!("TODO record that function could be called");
-					}
-					Type::Object(ObjectNature::RealDeal) => {
-						top_environment.possibly_mutated_objects.insert(*ty);
-						crate::utils::notify!("TODO record methods could be called here as well");
-					}
-					Type::SpecialObject(_) => {
-						crate::utils::notify!("TODO record stuff if mutable");
+	// TODO temp position, this should be added in `call_type`. TODO if open poly...? or pure
+	let can_skip = if let Type::FunctionReference(f, _) = types.get_type_by_id(constraint) {
+		let func = types.functions.get(f).unwrap();
+		// TODO or some events that don't modify etc
+		func.constant_function.is_some()
+	} else {
+		false
+	};
+
+	if !can_skip {
+		for argument in &arguments {
+			// TODO need to do in a function
+			// All properties
+			// Functions free variables etc
+			match argument {
+				SynthesisedArgument::NonSpread { ty, position: _ } => {
+					match types.get_type_by_id(*ty) {
+						Type::Interface { .. }
+						| Type::AliasTo { .. }
+						| Type::And(_, _)
+						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+						| Type::FunctionReference(_, _)
+						| Type::Or(_, _) => {
+							crate::utils::notify!("Unreachable");
+						}
+						Type::Constant(_) => {}
+						Type::RootPolyType(_) | Type::Constructor(_) => {
+							// All dependent anyway
+							crate::utils::notify!("TODO if any properties set etc");
+						}
+						Type::Function(_, _) => {
+							crate::utils::notify!("TODO record that function could be called");
+						}
+						Type::Object(ObjectNature::RealDeal) => {
+							top_environment.possibly_mutated_objects.insert(*ty);
+							crate::utils::notify!(
+								"TODO record methods could be called here as well"
+							);
+						}
+						Type::SpecialObject(_) => {
+							crate::utils::notify!("TODO record stuff if mutable");
+						}
 					}
 				}
 			}
@@ -547,8 +559,6 @@ impl FunctionType {
 					Type::Constructor(Constructor::Image { on, with: with.clone(), result });
 
 				let ty = types.register_type(new_type);
-
-				crate::utils::notify!("Here");
 
 				behavior.get_latest_facts(environment).events.push(Event::CallsType {
 					on,

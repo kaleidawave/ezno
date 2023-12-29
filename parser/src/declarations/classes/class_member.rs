@@ -275,6 +275,14 @@ impl FunctionBased for ClassFunctionBase {
 	) {
 		name.visit_mut(visitors, data, options, chain);
 	}
+
+	fn get_name(name: &Self::Name) -> Option<&str> {
+		if let PropertyKey::Ident(name, ..) = name.get_ast_ref() {
+			Some(name.as_str())
+		} else {
+			None
+		}
+	}
 }
 
 impl FunctionBased for ClassConstructorBase {
@@ -309,7 +317,7 @@ impl FunctionBased for ClassConstructorBase {
 	}
 
 	fn visit_name<TData>(
-		_: &Self::Name,
+		(): &Self::Name,
 		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		_: &mut TData,
 		_: &crate::visiting::VisitOptions,
@@ -318,11 +326,15 @@ impl FunctionBased for ClassConstructorBase {
 	}
 
 	fn visit_name_mut<TData>(
-		_: &mut Self::Name,
+		(): &mut Self::Name,
 		_: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		_: &mut TData,
 		_: &crate::visiting::VisitOptions,
 		_: &mut temporary_annex::Annex<crate::Chain>,
 	) {
+	}
+
+	fn get_name((): &Self::Name) -> Option<&str> {
+		None
 	}
 }

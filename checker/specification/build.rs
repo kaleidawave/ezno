@@ -94,7 +94,7 @@ fn markdown_lines_append_test_to_rust(
 			let mut errors = Vec::new();
 			for (_, line) in lines.by_ref() {
 				if line.starts_with("#") {
-					panic!("block with no diagnostics or break between")
+					panic!("block with no diagnostics or break between in {test_title}")
 				} else if line.starts_with('-') {
 					let error =
 						line.strip_prefix("- ").unwrap().replace('\\', "").replace('"', "\\\"");
