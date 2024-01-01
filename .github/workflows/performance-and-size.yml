@@ -44,20 +44,25 @@ jobs:
 
           echo "<details>
           <summary>Input</summary>
+
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
           cat demo.ts >> $GITHUB_STEP_SUMMARY
-          echo -e "\`\`\`\n</details>" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`
+          </details>" >> $GITHUB_STEP_SUMMARY
 
           NO_COLOR=1
         
           echo "<details>
           <summary>Diagnostics</summary>
+
           \`\`\`shell" >> $GITHUB_STEP_SUMMARY
           ./target/release/ezno check demo.ts &>> $GITHUB_STEP_SUMMARY
-          echo -e "\`\`\`\n</details>" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`
+          </details>" >> $GITHUB_STEP_SUMMARY
           
-          echo -e "### Checking\n\`\`\`shell" >> $GITHUB_STEP_SUMMARY
+          echo "### Checking
+          \`\`\`shell" >> $GITHUB_STEP_SUMMARY
           hyperfine './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
@@ -66,8 +71,8 @@ jobs:
         run: |
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
 
-          echo "### Parsing and minifying `react-dom`">> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`shell">> $GITHUB_STEP_SUMMARY
+          echo "### Parsing and minifying `react-dom`
+          \`\`\`shell">> $GITHUB_STEP_SUMMARY
           hyperfine './target/release/ezno ast-explorer --file react.js uglifier' >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 

@@ -95,7 +95,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: ${{ github.event.inputs.ezno-version != 'none' }}
         with:
-          packages: wasm-bindgen-cli@0.2.87
+          packages: wasm-bindgen-cli@0.2.89
 
       - name: Set NPM package version & build
         id: set-npm-version
