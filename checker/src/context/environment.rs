@@ -13,7 +13,7 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
 	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{Event, RootReference},
+	events::{Event, FinalEvent, RootReference},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -57,6 +57,7 @@ pub enum DynamicBoundaryKind {
 }
 
 impl DynamicBoundaryKind {
+	#[must_use]
 	pub fn can_use_variable_before_definition(self) -> bool {
 		matches!(self, Self::Function)
 	}
@@ -871,6 +872,7 @@ impl<'a> Environment<'a> {
 	{
 		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 			// TODO emit warning
+			crate::utils::notify!("Constant result {:?}", result);
 			return if result {
 				then_evaluate(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
@@ -903,10 +905,11 @@ impl<'a> Environment<'a> {
 				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
 
 			let falsy_events = falsy_environment.facts.events;
+
 			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
 			self.facts.events.push(Event::Conditionally {
 				condition,
-				events_if_truthy: truthy_events.into_boxed_slice(),
+				true_events: truthy_events.into_boxed_slice(),
 				else_events: falsy_events.into_boxed_slice(),
 				position: None,
 			});
@@ -919,7 +922,7 @@ impl<'a> Environment<'a> {
 		} else {
 			self.facts.events.push(Event::Conditionally {
 				condition,
-				events_if_truthy: truthy_events.into_boxed_slice(),
+				true_events: truthy_events.into_boxed_slice(),
 				else_events: Default::default(),
 				position: None,
 			});
@@ -930,12 +933,13 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
-		self.facts.events.push(Event::Throw(value, position));
+	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
+		self.facts.events.push(FinalEvent::Throw { thrown, position }.into());
 	}
 
 	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
-		self.facts.events.push(Event::Return { returned, returned_position });
+		crate::utils::notify!("Returning value here");
+		self.facts.events.push(FinalEvent::Return { returned, returned_position }.into());
 	}
 
 	pub fn add_continue(
@@ -944,10 +948,13 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
-			self.facts.events.push(Event::Continue {
-				position: Some(position.with_source(self.get_source())),
-				carry,
-			});
+			self.facts.events.push(
+				FinalEvent::Continue {
+					position: Some(position.with_source(self.get_source())),
+					carry,
+				}
+				.into(),
+			);
 			Ok(())
 		} else {
 			Err(NotInLoopOrCouldNotFindLabel {
@@ -963,10 +970,14 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
-			self.facts.events.push(Event::Break {
-				position: Some(position.with_source(self.get_source())),
-				carry,
-			});
+			crate::utils::notify!("Carry is {}", carry);
+			self.facts.events.push(
+				FinalEvent::Break {
+					position: Some(position.with_source(self.get_source())),
+					carry,
+				}
+				.into(),
+			);
 			Ok(())
 		} else {
 			Err(NotInLoopOrCouldNotFindLabel {
@@ -992,7 +1003,7 @@ impl<'a> Environment<'a> {
 			on,
 			publicity,
 			under,
-			&PropertyValue::Value(new),
+			PropertyValue::Value(new),
 			self,
 			&mut CheckThings,
 			types,
@@ -1028,8 +1039,8 @@ impl<'a> Environment<'a> {
 							if label == looking_for_label.unwrap() {
 								return Some(falling_through_structures);
 							}
-							falling_through_structures += 1;
 						}
+						falling_through_structures += 1;
 					}
 					Scope::Conditional { is_switch: Some(_label @ Some(_)), .. }
 						if !is_continue && looking_for_label.is_some() =>
@@ -1046,6 +1057,7 @@ impl<'a> Environment<'a> {
 		None
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn import_items<
 		'b,
 		P: Iterator<Item = NamePair<'b>>,

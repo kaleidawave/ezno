@@ -21,7 +21,7 @@ use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 pub enum PropertyKind {
 	Direct,
 	Getter,
-	/// TODO not sure
+	/// TODO unsure
 	Generic,
 }
 
@@ -113,7 +113,7 @@ impl PropertyValue {
 		match self {
 			PropertyValue::Value(value) => *value,
 			PropertyValue::Getter(getter) => getter.return_type,
-			// TODO not sure about these two
+			// TODO unsure about these two
 			PropertyValue::Setter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 		}
@@ -124,7 +124,7 @@ impl PropertyValue {
 		match self {
 			PropertyValue::Value(value) => *value,
 			PropertyValue::Setter(setter) => setter.return_type,
-			// TODO not sure about these two
+			// TODO unsure about these two
 			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 		}
@@ -153,9 +153,18 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
-	if let Some(constraint) = get_constraint(on, types) {
+	if get_constraint(on, types).is_some() {
+		// // TODO temp fix for assigning to a poly type. What about unions etc
+		// if let Some(value) = top_environment.facts_chain().find_map(|f| {
+		// 	f.current_properties.get(&on).and_then(|props| {
+		// 		props.iter().find_map(|(_publicity, key, value)| (key == &under).then_some(value))
+		// 	})
+		// }) {
+		// 	return Some((PropertyKind::Direct, value.as_get_type()));
+		// }
+
 		evaluate_get_on_poly(
-			constraint,
+			// constraint,
 			on,
 			publicity,
 			under.clone(),
@@ -174,9 +183,9 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		} else {
 			todo!("build and type")
 		};
+		// TODO ...
 		evaluate_get_on_poly(
 			constraint,
-			on,
 			publicity,
 			under.clone(),
 			with,
@@ -328,7 +337,6 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::needless_pass_by_value)]
 fn evaluate_get_on_poly<E: CallCheckingBehavior>(
-	constraint: TypeId,
 	on: TypeId,
 	publicity: Publicity,
 	under: PropertyKey,
@@ -453,7 +461,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
-	let fact = top_environment.get_property_unbound(constraint, publicity, under.clone(), types)?;
+	let fact = top_environment.get_property_unbound(on, publicity, under.clone(), types)?;
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
@@ -478,7 +486,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: &PropertyKey,
-	new: &PropertyValue,
+	new: PropertyValue,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &TypeStore,
@@ -518,7 +526,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 					let result = type_is_subtype_of_property(
 						&property_constraint,
 						None,
-						*value,
+						value,
 						&mut basic_subtyping,
 						environment,
 						types,
@@ -565,7 +573,35 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	// crate::utils::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
-	let new = PropertyValue::Value(new.as_get_type());
+	// Cascade if it is a union (unsure tho)
+	if let Type::Constructor(Constructor::ConditionalResult {
+		truthy_result,
+		else_result,
+		condition: _,
+		result_union: _,
+	}) = types.get_type_by_id(on)
+	{
+		set_property(
+			*truthy_result,
+			publicity,
+			under,
+			new.clone(),
+			environment,
+			behavior,
+			types,
+			setter_position,
+		)?;
+		return set_property(
+			*else_result,
+			publicity,
+			under,
+			new,
+			environment,
+			behavior,
+			types,
+			setter_position,
+		);
+	}
 
 	if let Some(fact) = current_property {
 		match fact {

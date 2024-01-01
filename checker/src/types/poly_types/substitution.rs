@@ -145,7 +145,7 @@ pub(crate) fn substitute(
 						substitute(else_result, arguments, environment, types)
 					}
 				} else {
-					crate::utils::notify!("{:?} not decidable", condition);
+					crate::utils::notify!("{:?} is undecidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
 					let else_result = substitute(else_result, arguments, environment, types);
 					// TODO result_union
@@ -203,7 +203,7 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Image { .. } => {
-				todo!("Constructor::Image should be covered by events");
+				todo!("Constructor::Image {id:?} should be covered by events");
 				// id
 
 				// let on = substitute(on, arguments, environment);

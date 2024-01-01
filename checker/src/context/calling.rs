@@ -1,5 +1,5 @@
 use super::facts::Facts;
-use crate::{events::EventResult, Environment, FunctionId};
+use crate::{events::FinalEvent, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub(crate) trait CallCheckingBehavior {
@@ -46,6 +46,7 @@ pub(crate) struct Target(Vec<TargetKind>);
 pub(crate) enum TargetKind {
 	Conditional(Facts),
 	Function(FunctionId),
+	LoopIteration,
 }
 
 impl CallCheckingBehavior for Target {
@@ -79,14 +80,14 @@ impl CallCheckingBehavior for Target {
 
 impl Target {
 	/// TODO temp for loop unrolling
-	pub(crate) fn new_default() -> Self {
+	pub(crate) fn new_empty() -> Self {
 		Target(Vec::new())
 	}
 
 	pub(crate) fn new_conditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> Option<EventResult>,
-	) -> (Facts, Option<EventResult>) {
+		cb: impl for<'a> FnOnce(&'a mut Target) -> Option<FinalEvent>,
+	) -> (Facts, Option<FinalEvent>) {
 		self.0.push(TargetKind::Conditional(Facts::default()));
 		let result = cb(self);
 		if let Some(TargetKind::Conditional(facts)) = self.0.pop() {
@@ -94,5 +95,22 @@ impl Target {
 		} else {
 			unreachable!()
 		}
+	}
+
+	pub(crate) fn new_loop_iteration<T>(
+		&mut self,
+		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+	) -> T {
+		self.0.push(TargetKind::LoopIteration);
+		let value = cb(self);
+		self.0.pop();
+		value
+	}
+
+	pub(crate) fn get_iteration_depth(&self) -> u8 {
+		let depth = self.0.iter().filter(|p| matches!(p, TargetKind::LoopIteration)).count() as u8;
+		// TODO can this every go > 1
+		crate::utils::notify!("Iteration depth {}", depth);
+		depth
 	}
 }

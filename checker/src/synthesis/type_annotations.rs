@@ -381,11 +381,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				synthesise_type_annotation(being_indexed, environment, checking_data);
 			let indexer = synthesise_type_annotation(indexer, environment, checking_data);
 
-			checking_data.types.new_property_on_type_annotation(
-				being_indexed,
-				indexer,
-				&environment,
-			)
+			checking_data.types.new_property_on_type_annotation(being_indexed, indexer, environment)
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
@@ -470,7 +466,7 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
 
 	let possible_declaration =
-		possible_declaration.strip_prefix("*").unwrap_or(possible_declaration);
+		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
 
 	let annotation = parser::TypeAnnotation::from_string(
 		possible_declaration.to_owned(),

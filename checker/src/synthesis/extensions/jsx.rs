@@ -332,7 +332,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			&None,
 	// 			// 			checking_data,
 	// 			// 			environment,
-	// 			// 			// TODO not sure, this won't work for classes right...
+	// 			// 			// TODO unsure, this won't work for classes right...
 	// 			// 			crate::events::CalledWithNew::None,
 	// 			// 		)
 	// 			// 		.unwrap()

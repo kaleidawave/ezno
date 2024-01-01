@@ -28,5 +28,5 @@ pub fn check<T: crate::ReadFromFS>(
 
 	let type_check_options = None;
 
-	checker::check_project(entry_points, definitions, read_from_fs, type_check_options)
+	checker::check_project(entry_points, definitions, read_from_fs, type_check_options, ())
 }

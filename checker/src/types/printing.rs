@@ -5,7 +5,7 @@ use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, Ty
 use crate::{
 	behavior::objects::SpecialObjects,
 	context::{facts::Publicity, get_on_ctx, Logical},
-	events::Event,
+	events::{Event, FinalEvent},
 	types::{get_constraint, Constructor, StructureGenerics},
 	Constant, GeneralContext, PropertyValue,
 };
@@ -524,11 +524,12 @@ pub fn debug_effects(
 				});
 				// TODO args
 			}
-			Event::Throw(value, _) => {
-				buf.push_str("throw ");
-				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
-			}
-			Event::Conditionally { condition, events_if_truthy, else_events, position: _ } => {
+			Event::Conditionally {
+				condition,
+				true_events: events_if_truthy,
+				else_events,
+				position: _,
+			} => {
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), None, types, ctx, debug);
 				buf.push_str(" then ");
@@ -538,10 +539,7 @@ pub fn debug_effects(
 					debug_effects(buf, else_events, types, ctx, debug);
 				}
 			}
-			Event::Return { returned, returned_position: _ } => {
-				buf.push_str("return ");
-				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
-			}
+
 			Event::CreateObject {
 				prototype: _,
 				referenced_in_scope_as,
@@ -555,16 +553,24 @@ pub fn debug_effects(
 						.unwrap();
 				}
 			}
-			Event::Break { .. } => {
-				buf.push_str("break");
-			}
-			Event::Continue { .. } => {
-				buf.push_str("continue");
-			}
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {
 				buf.push_str("iterate\n");
 				debug_effects(buf, iterate_over, types, ctx, debug);
 				buf.push_str("end");
+			}
+			Event::FinalEvent(FinalEvent::Throw { thrown, .. }) => {
+				buf.push_str("throw ");
+				print_type_into_buf(*thrown, buf, &mut HashSet::new(), None, types, ctx, debug);
+			}
+			Event::FinalEvent(FinalEvent::Break { .. }) => {
+				buf.push_str("break");
+			}
+			Event::FinalEvent(FinalEvent::Continue { .. }) => {
+				buf.push_str("continue");
+			}
+			Event::FinalEvent(FinalEvent::Return { returned, returned_position: _ }) => {
+				buf.push_str("return ");
+				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
 		}
 		buf.push('\n');

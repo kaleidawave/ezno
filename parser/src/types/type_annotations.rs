@@ -615,7 +615,7 @@ impl TypeAnnotation {
 			return Ok(reference);
 		};
 		// Array shorthand & indexing type references. Loops as number[][]
-		// Not sure if index type can be looped
+		// unsure if index type can be looped
 		while reader.conditional_next(|tok| *tok == TSXToken::OpenBracket).is_some() {
 			let start = reference.get_position();
 			if let Some(Token(TSXToken::CloseBracket, _)) = reader.peek() {

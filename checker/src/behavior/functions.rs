@@ -587,15 +587,14 @@ where
 						*on,
 						None::<&crate::types::poly_types::FunctionTypeArguments>,
 					);
-					match get_value_of_variable {
-						Some(value) => value,
-						None => {
-							let name = base_environment.get_variable_name(*on);
-							panic!("Could not find value for closed over reference '{name}' ({on:?}) in {:?}", function.get_name());
-						}
+					if let Some(value) = get_value_of_variable {
+						value
+					} else {
+						let name = base_environment.get_variable_name(*on);
+						panic!("Could not find value for closed over reference '{name}' ({on:?}) in {:?}", function.get_name());
 					}
 				}
-				// TODO not sure
+				// TODO unsure
 				RootReference::This => TypeId::ANY_INFERRED_FREE_THIS,
 			};
 
@@ -643,7 +642,7 @@ where
 				// Keep if body does not contain id
 				let contains = base_environment
 					.parents_iter()
-					.any(|c| get_on_ctx!(&c.variable_names).contains_key(&id));
+					.any(|c| get_on_ctx!(&c.variable_names).contains_key(id));
 
 				crate::utils::notify!("v-id {:?} con {:?}", id, contains);
 				contains

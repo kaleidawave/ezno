@@ -38,10 +38,10 @@ const b: string = a
 ```ts
 let a = 2
 a = "not a number"
-let b: number = a
+let b: boolean = a
 ```
 
-- Type "not a number" is not assignable to type number
+- Type "not a number" is not assignable to type boolean
 
 #### Variable references does not exist
 
@@ -221,6 +221,20 @@ const x: (a: string) => number = a => a.to;
 ```
 
 - No property 'to' on string
+
+#### Assignment to parameter
+
+```ts
+function alterParameter(a: number, b: { prop: string }) {
+    a = 2;
+    a = "hi";
+    b.prop = 6;
+}
+```
+
+> Assigning straight to `a` might be disallowed by an option in the future. Right now it is allowed by JavaScript and so is allowed
+
+- Type \"hi\" is not assignable to type number
 
 ### Function calling
 
@@ -420,7 +434,8 @@ value.getValue() satisfies 6
 let a: number = 0
 function func() {
 	a = 4;
-	// Important that subsequent reads use the new value, not the same free variable
+	// Important that subsequent reads use the 
+	// new value, not the same free variable
 	a satisfies 4;
 }
 
@@ -528,6 +543,20 @@ setAtoString(myObject);
 > Error could be better. Full one contains labels with more information
 
 - Assignment mismatch
+
+#### Property assignment from conditional
+
+```ts
+function getObject(condition: boolean) {
+    const mainObject = { a: 2 };
+    const object = condition ? mainObject : { b: 3 };
+    object.c = 4;
+    mainObject.c satisfies string;
+    return mainObject
+}
+```
+
+- Expected string, found 4
 
 #### Mutating an object by a function
 
@@ -979,6 +1008,20 @@ while (a < i) {
 
 > Important that type is widened to 'number' (think it is an open poly in this case)
 
+#### Limit to iterations
+
+```ts
+let a: number = 0;
+while (a++ < 1_000_000) {}
+
+a satisfies string;
+```
+
+> The important part is that it doesn't run the loop. Eventually this might be run in a way that is not calling the assign to variable
+> function that evaluates `a = a + 1` a million times. There also should be per project, per module, per loop configuration
+
+- Expected string, found number
+
 #### While loop unrolling as an effect
 
 ```ts
@@ -1012,6 +1055,29 @@ while (i++ < 10) {
 ```
 
 - Expected 2, found 8
+
+#### Break with label
+
+```ts
+let a: number = 0;
+let result;
+
+top: while (a++ < 10) {
+    let b: number = 0;
+    while (b++ < 10) {
+        if (a === 3 && b === 2) {
+            result = a * b;
+            break top
+        }
+    }
+}
+
+a satisfies string;
+result satisfies boolean;
+```
+
+- Expected string, found 3
+- Expected boolean, found 6
 
 #### Continue in a while loop
 
@@ -1088,6 +1154,35 @@ interface X {
 
 - Expected 4, found 5
 - Type { a: 3 } is not assignable to type X
+
+#### RegExp
+
+> RegExp = Regular expression
+> In the future, their definition could be considered and evaluated at runtime
+
+```ts
+/hi/ satisfies string;
+```
+
+- Expected string, found /hi/
+
+#### Null and undefined
+
+```ts
+undefined satisfies null;
+null satisfies undefined;
+```
+
+- Expected null, found undefined
+- Expected undefined, found null
+
+#### void operator
+
+```ts
+(void 2) satisfies string;
+```
+
+- Expected string, found undefined
 
 #### (untagged) Template literal
 
@@ -1436,6 +1531,34 @@ const y: (a: number | string) => string = (p: number) => "hi"
 - Type (p: number) => "hi" is not assignable to type (a: number | string) => string
 
 > I think reasons contains more information
+
+#### Function return type subtyping
+
+```ts
+const x: (a: number) => number = p => 4
+const y: (a: number) => number = p => "a number"
+```
+
+- Type (p: number) => "a number" is not assignable to type (a: number) => number
+
+#### `void` return type
+
+> This works similarly to undefined except that it accepts any function return type
+
+```ts
+function runWithCallback(cb: () => void): void {
+    cb() satisfies string;
+
+    return 5;
+}
+
+runWithCallback(() => 3)
+```
+
+> Here argument is fine. In the body the return type is `any` (inferred constraint, but doesn't matter)
+
+- Expected string, found any
+- Cannot return 5 because the function is expected to return void
 
 #### Indexing into (fixed) type
 

@@ -22,7 +22,7 @@ pub struct FunctionType {
 	/// If async, generator and what to do with `this`
 	pub behavior: FunctionBehavior,
 
-	/// TODO not sure about this field and how it tails with Pi Types
+	/// TODO unsure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesisedParameters,
 	/// This is just aesthetic TODO also throw

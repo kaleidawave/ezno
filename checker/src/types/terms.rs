@@ -6,7 +6,7 @@ use super::TypeId;
 /// - `BigInt` (<https://github.com/rust-num/num-bigint>)
 /// - Separate `NotNull` term, and implement js subtyping
 ///
-/// TODO not sure about some of these
+/// TODO unsure about some of these
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Constant {
 	Number(ordered_float::NotNan<f64>),

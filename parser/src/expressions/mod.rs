@@ -1225,7 +1225,7 @@ impl Expression {
             | Self::SuperExpression(..)
             | Self::NewTarget(..)
             | Self::ClassExpression(..)
-            // TODO not sure about this one...?
+            // TODO unsure about this one...?
             | Self::DynamicImport { .. }
             | Self::Cursor { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
             Self::BinaryOperation { operator, .. } => operator.precedence(),
@@ -1245,10 +1245,10 @@ impl Expression {
             Self::PrefixComment(_, expression, _) | Self::PostfixComment(expression, _, _) => {
                 expression.get_precedence()
             }
-            Self::Comment(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO not sure about this
+            Self::Comment(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
 			// All these are relational and have the same precedence
             Self::SpecialOperators(..) => RELATION_PRECEDENCE,
-			// TODO not sure about this one...?
+			// TODO unsure about this one...?
 			#[cfg(feature = "extras")]
             Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
         }

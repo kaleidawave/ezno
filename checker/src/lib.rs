@@ -8,7 +8,6 @@ pub mod events;
 mod options;
 pub mod range_map;
 mod serialization;
-pub mod structures;
 mod type_mappings;
 pub mod types;
 mod utils;
@@ -39,7 +38,6 @@ use types::{subtyping::check_satisfies, TypeStore};
 pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
-pub use structures::jsx::*;
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
 
 pub use type_mappings::*;
@@ -56,19 +54,23 @@ pub use source_map::{self, SourceId, Span};
 /// Contains all the modules and mappings for import statements
 ///
 /// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
-pub struct ModuleData<'a, FileReader, ModuleAST: ASTImplementation> {
+pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
 	pub(crate) file_reader: &'a FileReader,
+	pub(crate) parser_requirements: AST::ParserRequirements,
 	pub(crate) _current_working_directory: PathBuf,
 	/// Contains the text content of files (for source maps and diagnostics)
 	pub(crate) files: MapFileStore<WithPathMap>,
 	/// To catch cyclic imports
 	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
 	/// The result of checking. Includes exported variables and facts
-	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<ModuleAST::OwnedModule>>,
+	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
 }
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
+	/// Custom allocator etc
+	type ParserRequirements;
+
 	type ParseError: Into<Diagnostic>;
 
 	type Module<'a>;
@@ -88,19 +90,17 @@ pub trait ASTImplementation: Sized {
 
 	type ClassMethod<'a>: SynthesisableFunction<Self>;
 
-	/// # Errors
-	/// TODO
 	fn module_from_string(
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
+		parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::Module<'static>, Self::ParseError>;
 
-	/// # Errors
-	/// TODO
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
+		parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError>;
 
 	#[allow(clippy::needless_lifetimes)]
@@ -156,11 +156,16 @@ pub trait ASTImplementation: Sized {
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 }
 
-impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, ModuleAST> {
+impl<'a, T, A> ModuleData<'a, T, A>
+where
+	T: crate::ReadFromFS,
+	A: ASTImplementation,
+{
 	pub(crate) fn new(
 		file_resolver: &'a T,
 		current_working_directory: PathBuf,
 		files: Option<MapFileStore<WithPathMap>>,
+		parser_requirements: A::ParserRequirements,
 	) -> Self {
 		Self {
 			files: files.unwrap_or_default(),
@@ -169,6 +174,7 @@ impl<'a, T: crate::ReadFromFS, ModuleAST: ASTImplementation> ModuleData<'a, T, M
 			// custom_module_resolvers,
 			file_reader: file_resolver,
 			_current_working_directory: current_working_directory,
+			parser_requirements,
 		}
 	}
 
@@ -236,16 +242,21 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 #[derive(Debug, Clone)]
 pub struct CouldNotOpenFile(pub PathBuf);
 
-impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, A> {
+impl<'a, T, A> CheckingData<'a, T, A>
+where
+	T: crate::ReadFromFS,
+	A: crate::ASTImplementation,
+{
 	// TODO improve on this function
 	pub fn new(
 		options: TypeCheckOptions,
 		resolver: &'a T,
 		existing_files: Option<MapFileStore<WithPathMap>>,
+		parser_requirements: A::ParserRequirements,
 	) -> Self {
 		// let custom_file_resolvers = HashMap::default();
 		let cwd = Default::default();
-		let modules = ModuleData::new(resolver, cwd, existing_files);
+		let modules = ModuleData::new(resolver, cwd, existing_files, parser_requirements);
 
 		Self {
 			options,
@@ -291,7 +302,13 @@ impl<'a, T: crate::ReadFromFS, A: crate::ASTImplementation> CheckingData<'a, T, 
 					let parse_options =
 						A::parse_options(is_js, checking_data.options.parse_comments);
 
-					match A::module_from_string(source, content, parse_options) {
+					let module_from_string = A::module_from_string(
+						source,
+						content,
+						parse_options,
+						&mut checking_data.modules.parser_requirements,
+					);
+					match module_from_string {
 						Ok(module) => {
 							let new_module_context = environment.get_root().new_module_context(
 								source,
@@ -409,13 +426,20 @@ pub struct PostCheckData<A: crate::ASTImplementation> {
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
 	options: Option<TypeCheckOptions>,
+	parser_requirements: A::ParserRequirements,
 ) -> (crate::DiagnosticsContainer, Result<PostCheckData<A>, MapFileStore<WithPathMap>>) {
-	let mut checking_data = CheckingData::<T, A>::new(options.unwrap_or_default(), &resolver, None);
+	let mut checking_data = CheckingData::<T, A>::new(
+		options.unwrap_or_default(),
+		&resolver,
+		None,
+		parser_requirements,
+	);
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
@@ -426,7 +450,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	}
 
 	for point in &entry_points {
-		let entry_content = (checking_data.modules.file_reader)(&point);
+		let entry_content = (checking_data.modules.file_reader)(point);
 		if let Some(content) = entry_content {
 			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
 
@@ -436,7 +460,12 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let parse_options = A::parse_options(is_js, checking_data.options.parse_comments);
 
-			let module = A::module_from_string(source, content, parse_options);
+			let module = A::module_from_string(
+				source,
+				content,
+				parse_options,
+				&mut checking_data.modules.parser_requirements,
+			);
 			match module {
 				Ok(module) => {
 					root.new_module_context(source, module, &mut checking_data);
@@ -491,7 +520,11 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 
 		// TODO U::new_tdm_from_string
 
-		let result = A::definition_module_from_string(source_id, content);
+		let result = A::definition_module_from_string(
+			source_id,
+			content,
+			&mut checking_data.modules.parser_requirements,
+		);
 
 		match result {
 			Ok(tdm) => {

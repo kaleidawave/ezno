@@ -56,7 +56,7 @@ impl ASTNode for WhileStatement {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DoWhileStatement {
 	pub condition: MultipleExpression,
-	// TODO not sure about true here
+	// TODO unsure about true here
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
 }

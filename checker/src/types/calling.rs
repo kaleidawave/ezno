@@ -8,7 +8,7 @@ use crate::{
 	},
 	context::{calling::CheckThings, CallCheckingBehavior, Environment, Logical},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{application::ErrorsAndInfo, apply_event, Event, EventResult, RootReference},
+	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
@@ -94,14 +94,22 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	if on == TypeId::ERROR_TYPE
-		|| arguments.iter().any(|arg| match arg {
-			SynthesisedArgument::NonSpread { ty, .. } => *ty == TypeId::ERROR_TYPE,
-		}) {
-		crate::utils::notify!("Exiting earlier because of ERROR_TYPE fail");
+	let never_or_error_type =
+		matches!(on, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(on).or_else(|| {
+			arguments.iter().find_map(|a| match a {
+				SynthesisedArgument::NonSpread { ty, .. } => {
+					matches!(*ty, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(*ty)
+				}
+			})
+		});
+
+	if let Some(never_or_error_type) = never_or_error_type {
+		crate::utils::notify!(
+			"Exiting earlier because of Never or Error being called or as argument"
+		);
 		return Ok(FunctionCallResult {
 			called: None,
-			returned_type: TypeId::ERROR_TYPE,
+			returned_type: never_or_error_type,
 			warnings: Vec::new(),
 			special: None,
 			found_dependent_argument: false,
@@ -234,7 +242,7 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	crate::utils::notify!("On {:?}", types.get_type_by_id(constraint));
+	// crate::utils::notify!("On {:?}", types.get_type_by_id(constraint));
 
 	let result = call_type(
 		constraint,
@@ -324,16 +332,20 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 				result.returned_type
 			};
 
-			let constructor = Constructor::Image {
-				// TODO on or to
-				on,
-				with: with.clone(),
-				result: returned_type_space,
-			};
+			if result.found_dependent_argument {
+				Some(returned_type_space)
+			} else {
+				let constructor = Constructor::Image {
+					// TODO on or to
+					on,
+					with: with.clone(),
+					result: returned_type_space,
+				};
 
-			let constructor_return = types.register_type(Type::Constructor(constructor));
+				let constructor_return = types.register_type(Type::Constructor(constructor));
 
-			Some(constructor_return)
+				Some(constructor_return)
+			}
 		};
 
 		// Event already added if dependent argument
@@ -507,7 +519,7 @@ impl FunctionType {
 						});
 					}
 					Ok(ConstantOutput::Diagnostic(diagnostic)) => {
-						crate::utils::notify!("Here, constant output");
+						// crate::utils::notify!("Here, constant output");
 						return Ok(FunctionCallResult {
 							returned_type: TypeId::UNDEFINED_TYPE,
 							warnings: vec![InfoDiagnostic(diagnostic)],
@@ -868,9 +880,20 @@ impl FunctionType {
 			}
 		}
 
-		// set events should cover property specialisation here:
-		let returned_type = if let Some(EventResult::Return(returned_type, _)) = early_return {
-			returned_type
+		let returned_type = if let Some(early_return) = early_return {
+			match early_return {
+				FinalEvent::Break { .. } | FinalEvent::Continue { .. } => {
+					unreachable!("function ended on continue / break")
+				}
+				FinalEvent::Throw { thrown: value, position } => {
+					behavior.get_latest_facts(environment).throw_value_in_facts(value, position);
+					TypeId::NEVER_TYPE
+				}
+				FinalEvent::Return { returned, returned_position: _ } => {
+					// set events should cover property specialisation here:
+					returned
+				}
+			}
 		} else {
 			crate::utils::notify!("Substituting return type (no return)");
 			substitute(self.return_type, &mut type_arguments, environment, types)

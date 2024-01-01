@@ -137,11 +137,19 @@ impl TypeStore {
 	}
 
 	pub fn new_or_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		if lhs == rhs {
+			return lhs;
+		}
+
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)
 	}
 
 	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		if lhs == rhs {
+			return lhs;
+		}
+
 		// TODO distribute or types
 		let ty = Type::And(lhs, rhs);
 		self.register_type(ty)
@@ -291,28 +299,48 @@ impl TypeStore {
 				}
 			}
 			Type::RootPolyType(_nature) => {
-				// TODO None here
-				let aliases = get_constraint(on, self).unwrap();
-				// Don't think any properties exist on this poly type
-				self.get_fact_about_type(ctx, aliases, resolver, data)
+				// Can assign to properties on parameters etc
+				let on_root_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				on_root_type.or_else(|| {
+					let aliases = get_constraint(on, self).expect("poly type with no constraint");
+					self.get_fact_about_type(ctx, aliases, resolver, data)
+				})
 			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on,
+				on: sg_base,
 				arguments,
 			})) => {
-				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
+				let on_sg_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
 
-				fact_opt.map(|fact| Logical::Implies {
-					on: Box::new(fact),
-					antecedent: arguments.clone(),
+				on_sg_type.or_else(|| {
+					let fact_opt = self.get_fact_about_type(ctx, *sg_base, resolver, data);
+
+					fact_opt.map(|fact| Logical::Implies {
+						on: Box::new(fact),
+						antecedent: arguments.clone(),
+					})
 				})
 			}
 			Type::Constructor(_constructor) => {
-				// Don't think any properties exist on this poly type
-				// TODO None here
-				let constraint = get_constraint(on, self).unwrap();
-				// TODO might need to send more information here, rather than forgetting via .get_type
-				self.get_fact_about_type(ctx, constraint, resolver, data)
+				let on_constructor_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				on_constructor_type.or_else(|| {
+					// TODO implies ???
+					let constraint =
+						get_constraint(on, self).expect("no constraint for constructor");
+					// TODO might need to send more information here, rather than forgetting via .get_type
+					self.get_fact_about_type(ctx, constraint, resolver, data)
+				})
 			}
 			Type::Object(..) | Type::Interface { .. } => ctx
 				.parents_iter()
@@ -376,7 +404,7 @@ impl TypeStore {
 			indexee,
 			crate::context::facts::Publicity::Public,
 			PropertyKey::from_type(indexer, self),
-			&self,
+			self,
 		) {
 			match prop {
 				crate::context::Logical::Pure(ty) => ty.as_get_type(),

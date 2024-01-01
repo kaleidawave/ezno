@@ -33,81 +33,6 @@ use self::{
 	type_annotations::synthesise_type_annotation,
 };
 
-pub(super) fn parser_property_key_to_checker_property_key<
-	P: parser::property_key::PropertyKeyKind,
-	T: crate::ReadFromFS,
->(
-	property_key: &ParserPropertyKey<P>,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, EznoParser>,
-) -> PropertyKey<'static> {
-	match property_key {
-		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
-			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
-		}
-		ParserPropertyKey::NumberLiteral(number, _) => {
-			let result = f64::try_from(number.clone());
-			match result {
-				Ok(v) => {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if v.floor() == v {
-						PropertyKey::from_usize(v as usize)
-					} else {
-						// TODO
-						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-					}
-				}
-				// TODO
-				Err(()) => todo!(),
-			}
-		}
-		ParserPropertyKey::Computed(expression, _) => {
-			let key_type =
-				synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-			PropertyKey::from_type(key_type, &checking_data.types)
-		}
-	}
-}
-
-impl From<(parser::ParseError, SourceId)> for Diagnostic {
-	fn from(parse_error: (parser::ParseError, SourceId)) -> Self {
-		Diagnostic::Position {
-			reason: parse_error.0.reason,
-			position: parse_error.0.position.with_source(parse_error.1),
-			kind: crate::diagnostics::DiagnosticKind::Error,
-		}
-	}
-}
-
-pub enum Performs<'a> {
-	Block(&'a parser::Block),
-	Const(String),
-	None,
-}
-
-impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
-	fn get_name(&self) -> &str {
-		self.name()
-	}
-}
-
-impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
-	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
-		match value {
-			Some(parser::types::AnnotationPerforms::PerformsConst {
-				performs_keyword: _,
-				identifier,
-			}) => Performs::Const(identifier.clone()),
-			Some(parser::types::AnnotationPerforms::PerformsStatements {
-				performs_keyword: _,
-				statements,
-			}) => Performs::Block(statements),
-			None => Performs::None,
-		}
-	}
-}
-
 pub struct EznoParser;
 
 // Clippy suggests a fix that breaks the code
@@ -115,6 +40,7 @@ pub struct EznoParser;
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
+	type ParserRequirements = ();
 
 	type Module<'a> = parser::Module;
 	type OwnedModule = parser::Module;
@@ -133,6 +59,7 @@ impl crate::ASTImplementation for EznoParser {
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
+		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
 		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
 			.map_err(|err| (err, source_id))
@@ -141,6 +68,7 @@ impl crate::ASTImplementation for EznoParser {
 	fn definition_module_from_string(
 		source_id: SourceId,
 		string: String,
+		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = Default::default();
 		parser::TypeDefinitionModule::from_string(&string, options, source_id)
@@ -232,6 +160,82 @@ impl crate::ASTImplementation for EznoParser {
 	}
 }
 
+pub(super) fn parser_property_key_to_checker_property_key<
+	P: parser::property_key::PropertyKeyKind,
+	T: crate::ReadFromFS,
+>(
+	property_key: &ParserPropertyKey<P>,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, EznoParser>,
+) -> PropertyKey<'static> {
+	match property_key {
+		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
+			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
+		}
+		ParserPropertyKey::NumberLiteral(number, _) => {
+			let result = f64::try_from(number.clone());
+			match result {
+				Ok(v) => {
+					// TODO is there a better way
+					#[allow(clippy::float_cmp)]
+					if v.floor() == v {
+						PropertyKey::from_usize(v as usize)
+					} else {
+						// TODO
+						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
+					}
+				}
+				// TODO
+				Err(()) => todo!(),
+			}
+		}
+		ParserPropertyKey::Computed(expression, _) => {
+			let key_type =
+				synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
+			PropertyKey::from_type(key_type, &checking_data.types)
+		}
+	}
+}
+
+impl From<(parser::ParseError, SourceId)> for Diagnostic {
+	fn from(parse_error: (parser::ParseError, SourceId)) -> Self {
+		Diagnostic::Position {
+			reason: parse_error.0.reason,
+			position: parse_error.0.position.with_source(parse_error.1),
+			kind: crate::diagnostics::DiagnosticKind::Error,
+		}
+	}
+}
+
+pub enum Performs<'a> {
+	Block(&'a parser::Block),
+	Const(String),
+	None,
+}
+
+impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
+	fn get_name(&self) -> &str {
+		self.name()
+	}
+}
+
+impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
+	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
+		match value {
+			Some(parser::types::AnnotationPerforms::PerformsConst {
+				performs_keyword: _,
+				identifier,
+			}) => Performs::Const(identifier.clone()),
+			Some(parser::types::AnnotationPerforms::PerformsStatements {
+				performs_keyword: _,
+				statements,
+			}) => Performs::Block(statements),
+			None => Performs::None,
+		}
+	}
+}
+
+/// For the REPL in Ezno's CLI
 pub mod interactive {
 	use std::{collections::HashSet, mem, path::PathBuf};
 
@@ -257,7 +261,7 @@ pub mod interactive {
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let mut checking_data =
-				CheckingData::new(Default::default(), resolver, Default::default());
+				CheckingData::new(Default::default(), resolver, Default::default(), ());
 
 			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 

@@ -189,18 +189,6 @@ join(["a", "b", "c"]) satisfies "cba"
 
 ### This
 
-#### Calling new on a function
-
-```ts
-function MyClass(value) {
-	this.value = value
-}
-
-new MyClass("hi").value satisfies "hello"
-```
-
-- Expected "hello", found "hi"
-
 #### Bind function
 
 ```ts

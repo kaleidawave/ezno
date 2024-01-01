@@ -1,4 +1,4 @@
-use super::Event;
+use super::{Event, FinalEvent};
 use crate::{types::new_logical_or_type, CheckingData, Environment, TypeId};
 
 pub(crate) enum ReturnedTypeFromBlock {
@@ -18,7 +18,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 ) -> ReturnedTypeFromBlock {
 	while let Some(event) = iter.next() {
 		match event {
-			Event::Return { returned, returned_position } => {
+			Event::FinalEvent(FinalEvent::Return { returned, returned_position }) => {
 				if let Some((expected_return_type, annotation_span)) = expected_return_type {
 					let mut behavior = crate::subtyping::BasicEquality {
 						add_property_restrictions: true,
@@ -58,9 +58,10 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 				}
 				return ReturnedTypeFromBlock::Returned(*returned);
 			}
-			Event::Conditionally { condition: on, events_if_truthy, else_events, position: _ } => {
+			// TODO and for
+			Event::Conditionally { condition: on, true_events, else_events, position: _ } => {
 				let return_if_truthy = get_return_from_events(
-					&mut events_if_truthy.iter(),
+					&mut true_events.iter(),
 					checking_data,
 					environment,
 					expected_return_type,
@@ -167,7 +168,7 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 					}
 				};
 			}
-			Event::Throw(_, _) => {
+			Event::FinalEvent(FinalEvent::Throw { .. }) => {
 				// TODO ReturnedTypeFromBlock::Thrown? however this does work
 				return ReturnedTypeFromBlock::Returned(TypeId::NEVER_TYPE);
 			}
@@ -180,11 +181,15 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 /// TODO improve
 ///
 /// This actually removes the events as they are caught
-pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut Vec<TypeId>) -> Vec<Event> {
+pub(crate) fn extract_throw_events(events: Vec<Event>, thrown: &mut TypeId) -> Vec<Event> {
 	let mut new_events = Vec::new();
 	for event in events {
-		if let Event::Throw(value, _position) = event {
-			thrown.push(value);
+		if let Event::FinalEvent(FinalEvent::Throw { thrown: value, position: _ }) = event {
+			*thrown = value;
+		} else if let Event::Conditionally { .. } = event {
+			todo!()
+		} else if let Event::Iterate { .. } = event {
+			todo!()
 		} else {
 			// TODO nested grouping
 			new_events.push(event);

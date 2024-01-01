@@ -4,8 +4,7 @@ use crate::{
 	behavior::operations::CanonicalEqualityAndInequality,
 	context::{calling::Target, environment::Label, get_value_of_variable, CallCheckingBehavior},
 	events::{
-		application::ErrorsAndInfo, apply_event, Event, EventResult, InitialVariables,
-		RootReference,
+		application::ErrorsAndInfo, apply_event, Event, FinalEvent, InitialVariables, RootReference,
 	},
 	types::{
 		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
@@ -57,13 +56,17 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					// TODO not always needed
 					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Default::default(),
-						else_events: Box::new([Event::Break { position: None, carry: 0 }]),
+						true_events: Default::default(),
+						else_events: Box::new([
+							FinalEvent::Break { position: None, carry: 0 }.into()
+						]),
 						position: None,
 					};
 					environment.facts.events.push(break_event);
 
 					loop_body(environment, checking_data);
+
+					crate::utils::notify!("Loop does {:#?}", environment.facts.events);
 
 					condition
 				},
@@ -85,18 +88,32 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_facts,
 			);
 
-			if let Some(_value) = run_iteration_block(
+			let mut errors_and_info = ErrorsAndInfo::default();
+
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
-				// TODO shouldn't be needed
-				&mut Default::default(),
+				&mut crate::context::calling::Target::new_empty(),
+				&mut errors_and_info,
 				&mut checking_data.types,
 			) {
-				todo!()
+				crate::utils::notify!("Loop returned {:?}", early_return);
+				environment.facts.events.push(Event::FinalEvent(early_return));
+			}
+
+			// TODO for other blocks
+			for warning in errors_and_info.warnings {
+				checking_data.diagnostics_container.add_info(
+					crate::diagnostics::Diagnostic::Position {
+						reason: warning.0,
+						// TODO temp
+						position: source_map::SpanWithSource::NULL_SPAN,
+						kind: crate::diagnostics::DiagnosticKind::Info,
+					},
+				);
 			}
 		}
 		IterationBehavior::DoWhile(condition) => {
@@ -119,8 +136,10 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					// TODO not always needed
 					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Default::default(),
-						else_events: Box::new([Event::Break { position: None, carry: 0 }]),
+						true_events: Default::default(),
+						else_events: Box::new([
+							FinalEvent::Break { position: None, carry: 0 }.into()
+						]),
 						position: None,
 					};
 					environment.facts.events.push(break_event);
@@ -145,18 +164,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_facts,
 			);
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut crate::context::calling::Target::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::For { initialiser, condition, afterthought } => {
@@ -210,11 +229,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 									// TODO not always needed
 									let break_event = Event::Conditionally {
 										condition,
-										events_if_truthy: Default::default(),
-										else_events: Box::new([Event::Break {
+										true_events: Default::default(),
+										else_events: Box::new([FinalEvent::Break {
 											position: None,
 											carry: 0,
-										}]),
+										}
+										.into()]),
 										position: None,
 									};
 									environment.facts.events.push(break_event);
@@ -274,18 +294,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				environment.facts.variable_current_value.insert(var, start);
 			}
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut crate::context::calling::Target::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::ForIn { lhs: _, rhs } => {
@@ -307,18 +327,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let events = result.unwrap().0.events;
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Properties(on),
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut crate::context::calling::Target::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::ForOf { lhs: _, rhs: _ } => todo!(),
@@ -352,7 +372,7 @@ pub(crate) fn run_iteration_block(
 	target: &mut Target,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
-) -> Option<EventResult> {
+) -> Option<FinalEvent> {
 	/// TODO via config
 	const MAX_ITERATIONS: usize = 1000;
 
@@ -368,6 +388,7 @@ pub(crate) fn run_iteration_block(
 			// );
 			// crate::utils::notify!("events in iteration = {}", buf);
 
+			// TODO if depends on something maybe limit to 10?
 			let non_exorbitant_amount_of_iterations = under
 				.and_then(|under| under.calculate_iterations(types).ok())
 				.and_then(|iterations| (iterations < MAX_ITERATIONS).then_some(iterations));
@@ -390,8 +411,6 @@ pub(crate) fn run_iteration_block(
 							.variable_current_value
 							.insert(*variable_id, *initial_value);
 					}
-				} else {
-					crate::utils::notify!("Here ??");
 				}
 
 				evaluate_iterations(
@@ -503,7 +522,7 @@ fn evaluate_iterations(
 	target: &mut Target,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
-) -> Option<EventResult> {
+) -> Option<FinalEvent> {
 	// TODO temp fix
 	if !errors.errors.is_empty() {
 		return None;
@@ -511,17 +530,17 @@ fn evaluate_iterations(
 
 	'main_iterations: for _ in 0..iterations {
 		'inner_loop: for event in events {
-			let result = apply_event(
-				event.clone(),
-				crate::behavior::functions::ThisValue::UseParent,
-				arguments,
-				environment,
-				// TODO new nested target
-				target,
-				types,
-				// Shouldn't matter
-				errors,
-			);
+			let result = target.new_loop_iteration(|target| {
+				apply_event(
+					event.clone(),
+					crate::behavior::functions::ThisValue::UseParent,
+					arguments,
+					environment,
+					target,
+					types,
+					errors,
+				)
+			});
 
 			if !errors.errors.is_empty() {
 				unreachable!("errors when calling loop")
@@ -529,19 +548,19 @@ fn evaluate_iterations(
 
 			if let Some(result) = result {
 				match result {
-					EventResult::Continue { carry: 0 } => {
+					FinalEvent::Continue { carry: 0, position: _ } => {
 						break 'inner_loop;
 					}
-					EventResult::Break { carry: 0 } => {
+					FinalEvent::Break { carry: 0, position: _ } => {
 						break 'main_iterations;
 					}
-					EventResult::Continue { carry } => {
-						return Some(EventResult::Continue { carry: carry - 1 })
+					FinalEvent::Continue { carry, position } => {
+						return Some(FinalEvent::Continue { carry: carry - 1, position })
 					}
-					EventResult::Break { carry } => {
-						return Some(EventResult::Break { carry: carry - 1 })
+					FinalEvent::Break { carry, position } => {
+						return Some(FinalEvent::Break { carry: carry - 1, position })
 					}
-					e @ (EventResult::Return(..) | EventResult::Throw) => return Some(e),
+					e @ (FinalEvent::Return { .. } | FinalEvent::Throw { .. }) => return Some(e),
 				}
 			}
 		}

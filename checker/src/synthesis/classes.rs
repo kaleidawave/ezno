@@ -60,7 +60,7 @@ pub(super) fn synthesise_class_declaration<
 	// Property keys on `static` items
 	let mut static_property_keys: Vec<PropertyKey<'static>> = Vec::new();
 
-	for (_idx, member) in class.members.iter().enumerate() {
+	for member in &class.members {
 		match &member.on {
 			ClassMember::Method(None, method) => {
 				let publicity = match method.name.get_ast_ref() {

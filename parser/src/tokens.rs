@@ -325,7 +325,7 @@ pub enum TSXKeyword {
     Private, Public, Protected,
     // TS Keywords
     As, Declare, Readonly, Infer, Is, Satisfies, Namespace, KeyOf,
-	// TODO not sure
+	// TODO unsure
 	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
     #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker, 

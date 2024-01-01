@@ -432,7 +432,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 	}
 }
 
-/// TODO not sure about the positions here, is potential duplication if `T::OptionalExpression` is none
+/// TODO unsure about the positions here, is potential duplication if `T::OptionalExpression` is none
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]

@@ -1,4 +1,4 @@
-use super::{CallingTiming, Event, EventResult, PrototypeArgument, RootReference};
+use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
 
 use crate::{
 	behavior::{
@@ -32,7 +32,7 @@ pub(crate) fn apply_event(
 	target: &mut Target,
 	types: &mut TypeStore,
 	errors: &mut ErrorsAndInfo,
-) -> Option<EventResult> {
+) -> Option<FinalEvent> {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency, position } => {
 			if let Some(id) = reflects_dependency {
@@ -157,8 +157,16 @@ pub(crate) fn apply_event(
 					.get_latest_facts(environment)
 					.register_property(on, publicity, under, new, true, position);
 			} else {
-				let result =
-					set_property(on, publicity, &under, &new, environment, target, types, position);
+				let result = set_property(
+					on,
+					publicity,
+					&under,
+					new.clone(),
+					environment,
+					target,
+					types,
+					position,
+				);
 
 				if let Err(err) = result {
 					if let SetPropertyError::DoesNotMeetConstraint {
@@ -246,7 +254,7 @@ pub(crate) fn apply_event(
 				// TODO different
 				CallingTiming::QueueTask | CallingTiming::AtSomePointManyTimes => {
 					todo!()
-					// TODO not sure whether need function id here
+					// TODO unsure whether need function id here
 					// if let Some(Constant::FunctionReference(function)) =
 					// 	environment.get_constant_type(on)
 					// {
@@ -265,20 +273,17 @@ pub(crate) fn apply_event(
 				}
 			}
 		}
-		Event::Throw(thrown, position) => {
-			let substituted_thrown = substitute(thrown, type_arguments, environment, types);
-
-			target.get_latest_facts(environment).throw_value(substituted_thrown, position);
-
-			// TODO write down why result isn't added here
-			return Some(EventResult::Throw);
-		}
 		// TODO extract
-		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
+		Event::Conditionally {
+			condition,
+			true_events: events_if_truthy,
+			else_events,
+			position,
+		} => {
 			let condition = substitute(condition, type_arguments, environment, types);
 
 			let result = is_type_truthy_falsy(condition, types);
-			// crate::utils::notify!("Condition {:?}", result);
+			// crate::utils::notify!("Condition {:?} {:?}", types.get_type_by_id(condition), result);
 
 			if let Decidable::Known(result) = result {
 				let to_evaluate = if result { events_if_truthy } else { else_events };
@@ -299,7 +304,7 @@ pub(crate) fn apply_event(
 				// TODO early returns
 
 				// TODO could inject proofs but probably already worked out
-				let (truthy_facts, _early_return) =
+				let (mut truthy_facts, truthy_early_return) =
 					target.new_conditional_target(|target: &mut Target| {
 						for event in events_if_truthy.into_vec() {
 							if let Some(early) = apply_event(
@@ -317,7 +322,7 @@ pub(crate) fn apply_event(
 						None
 					});
 
-				let (mut else_facts, _early_return) =
+				let (mut else_facts, else_early_return) =
 					target.new_conditional_target(|target: &mut Target| {
 						for event in else_events.into_vec() {
 							if let Some(early) = apply_event(
@@ -335,37 +340,62 @@ pub(crate) fn apply_event(
 						None
 					});
 
-				// TODO early return
+				// TODO what about two early returns?
+				// crate::utils::notify!("TER {:?}, EER {:?}", truthy_early_return, else_early_return);
 
-				// crate::utils::notify!("TF {:?}\n EF {:?}", truthy_facts, else_facts);
+				if let Some(truthy_early_return) = truthy_early_return {
+					truthy_facts.events.push(truthy_early_return.into());
+				}
+
+				if let Some(else_early_return) = else_early_return {
+					else_facts.events.push(else_early_return.into());
+				}
 
 				// TODO all things that are
 				// - variable and property values (these aren't read from events)
 				// - immutable, mutable, prototypes etc
 				// }
 				let facts = target.get_latest_facts(environment);
+
+				// Merge variable current values conditionally. TODO other facts...?
 				for (var, truth) in truthy_facts.variable_current_value {
 					let entry = facts.variable_current_value.entry(var);
 					entry.and_modify(|existing| {
-						*existing = types.new_conditional_type(
-							condition,
-							truth,
-							else_facts.variable_current_value.remove(&var).unwrap_or(*existing),
-						);
+						let else_result =
+							else_facts.variable_current_value.remove(&var).unwrap_or(*existing);
+
+						*existing = types.new_conditional_type(condition, truth, else_result);
 					});
 				}
 
-				target.get_latest_facts(environment).events.push(Event::Conditionally {
+				facts.events.push(Event::Conditionally {
 					condition,
-					events_if_truthy: truthy_facts.events.into_boxed_slice(),
+					true_events: truthy_facts.events.into_boxed_slice(),
 					else_events: else_facts.events.into_boxed_slice(),
 					position,
 				});
 			}
 		}
-		Event::Return { returned, returned_position } => {
-			let substituted_returned = substitute(returned, type_arguments, environment, types);
-			return Some(EventResult::Return(substituted_returned, returned_position));
+		Event::FinalEvent(final_event) => {
+			return Some(match final_event {
+				e @ (FinalEvent::Break { carry: 0, position: _ }
+				| FinalEvent::Continue { carry: 0, position: _ }) => e,
+				FinalEvent::Break { carry, position } => {
+					FinalEvent::Break { carry: carry - target.get_iteration_depth(), position }
+				}
+				FinalEvent::Continue { carry, position } => {
+					FinalEvent::Continue { carry: carry - target.get_iteration_depth(), position }
+				}
+				FinalEvent::Throw { thrown, position } => {
+					let substituted_thrown = substitute(thrown, type_arguments, environment, types);
+					FinalEvent::Throw { thrown: substituted_thrown, position }
+				}
+				FinalEvent::Return { returned, returned_position } => {
+					let substituted_returned =
+						substitute(returned, type_arguments, environment, types);
+					FinalEvent::Return { returned: substituted_returned, returned_position }
+				}
+			});
 		}
 		// TODO Needs a position (or not?)
 		Event::CreateObject {
@@ -410,8 +440,6 @@ pub(crate) fn apply_event(
 
 			type_arguments.set_id_from_reference(referenced_in_scope_as, new_object_id);
 		}
-		Event::Break { position: _, carry } => return Some(EventResult::Break { carry }),
-		Event::Continue { position: _, carry } => return Some(EventResult::Continue { carry }),
 		Event::Iterate { kind, iterate_over, initial } => {
 			// TODO this might clash
 			let initial = initial

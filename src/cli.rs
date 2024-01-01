@@ -172,7 +172,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let entry_points = vec![input];
 
 			#[cfg(not(target_family = "wasm"))]
-			let start = timings.then(|| std::time::Instant::now());
+			let start = timings.then(std::time::Instant::now);
 
 			let (diagnostics, _others) = check(entry_points, read_file, definition_file.as_deref());
 

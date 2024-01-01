@@ -168,7 +168,7 @@ pub struct Context<T: ContextType> {
 	/// For debugging AND noting what contexts contain what variables
 	pub(crate) variable_names: HashMap<VariableId, String>,
 
-	/// TODO not sure if needed
+	/// TODO unsure if needed
 	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
 	pub(crate) bases: bases::Bases,
 
@@ -755,25 +755,17 @@ impl<T: ContextType> Context<T> {
 			checking_data,
 			|env, cd| {
 				func(env, cd);
-				let mut thrown = Vec::new();
+				let mut thrown = TypeId::NEVER_TYPE;
 				let events = mem::take(&mut env.facts.events);
+
 				env.facts.events =
 					crate::events::helpers::extract_throw_events(events, &mut thrown);
+
 				thrown
 			},
 		);
 
-		let mut thrown = thrown.into_iter();
-
-		if let Some(first) = thrown.next() {
-			let mut acc = first;
-			for next in thrown {
-				acc = checking_data.types.new_or_type(acc, next);
-			}
-			acc
-		} else {
-			TypeId::NEVER_TYPE
-		}
+		thrown
 	}
 
 	/// TODO
@@ -1104,7 +1096,7 @@ impl<T: ContextType> Context<T> {
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);
 
-			// TODO not sure ...
+			// TODO unsure ...
 			let ty = if let Type::Function(..) = types.get_type_by_id(variable_ty) {
 				variable_ty
 			} else {

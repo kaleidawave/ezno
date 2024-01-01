@@ -9,7 +9,7 @@ use std::{
 
 use source_map::{SourceId, SpanWithSource};
 
-/// TODO not sure about iterator
+/// TODO unsure about iterator
 /// This is automated by the derive macro TODO link
 pub(crate) trait BinarySerializable {
 	fn serialize(self, buf: &mut Vec<u8>);

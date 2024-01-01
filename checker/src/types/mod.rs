@@ -200,7 +200,7 @@ impl Type {
 			Type::And(_, _) | Type::Or(_, _) => false,
 			// TODO what about if it aliases
 			Type::AliasTo { .. } | Type::Interface { .. } => {
-				// TODO not sure
+				// TODO unsure
 				false
 			}
 			Type::Constant(_)
@@ -482,7 +482,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
 			};
 
-			// TODO not sure
+			// TODO unsure
 
 			Some(*based_on)
 
@@ -635,7 +635,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	.get_property_unbound(on_constraint, PublicityKind::Public, property, types)
 				// 	.map(|property| match property {
 				// 		Logical::Pure(PropertyValue::Value(v)) => v,
-				// 		// TODO not sure?
+				// 		// TODO unsure?
 				// 		Logical::Pure(PropertyValue::Getter(g)) => g.return_type,
 				// 		result => todo!("{:?}", result),
 				// 	})

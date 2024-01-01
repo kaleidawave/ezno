@@ -174,7 +174,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Second stage
-	for (_idx, item) in items.iter().enumerate() {
+	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(_) = stmt {
