@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
 
 use crate::{
-	behavior::objects::ObjectBuilder,
 	call_type_handle_errors,
+	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{calling::CallingInput, properties::PropertyKey, SynthesisedArgument},
 	CheckingData, Constant, Environment, TypeId,

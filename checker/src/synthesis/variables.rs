@@ -7,9 +7,9 @@ use parser::{
 
 use super::expressions::synthesise_expression;
 use crate::{
-	behavior::variables::VariableMutability,
 	context::{facts::Publicity, Context, ContextType},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	features::variables::VariableMutability,
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{printing::print_type, properties::PropertyKey},
 	CheckingData, Environment, PropertyValue, TypeId,
@@ -270,7 +270,7 @@ pub(super) fn synthesise_variable_declaration_item<
 			super::expressions::synthesise_expression(value, environment, checking_data, expecting);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
-			crate::behavior::variables::check_variable_initialization(
+			crate::features::variables::check_variable_initialization(
 				(var_ty, ta_pos),
 				(value_ty, value.get_position().with_source(environment.get_source())),
 				environment,

@@ -11,7 +11,7 @@ use parser::{
 };
 
 use crate::{
-	behavior::{
+	features::{
 		functions::{register_arrow_function, register_expression_function},
 		variables::VariableWithValue,
 	},
@@ -21,7 +21,9 @@ use crate::{
 };
 
 use crate::{
-	behavior::{
+	context::facts::Publicity,
+	diagnostics::TypeCheckWarning,
+	features::{
 		assignments::Assignable,
 		objects::ObjectBuilder,
 		operations::{
@@ -31,8 +33,6 @@ use crate::{
 		},
 		template_literal::synthesise_template_literal,
 	},
-	context::facts::Publicity,
-	diagnostics::TypeCheckWarning,
 	types::{calling::CalledWithNew, functions::SynthesisedArgument},
 	types::{Constant, TypeId},
 	CheckingData, Environment, Instance, SpecialExpressions,
@@ -189,10 +189,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
 			let parts_iter = parts.iter().map(|part| match part {
 				parser::expressions::TemplateLiteralPart::Static(value) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
+					crate::features::template_literal::TemplateLiteralPart::Static(value.as_str())
 				}
 				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
+					crate::features::template_literal::TemplateLiteralPart::Dynamic(&**expr)
 				}
 			});
 			let tag = tag.as_ref().map(|expr| {
@@ -215,10 +215,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			| BinaryOperator::NullCoalescing = operator
 			{
 				let operator = match operator {
-					BinaryOperator::LogicalAnd => crate::behavior::operations::Logical::And,
-					BinaryOperator::LogicalOr => crate::behavior::operations::Logical::Or,
+					BinaryOperator::LogicalAnd => crate::features::operations::Logical::And,
+					BinaryOperator::LogicalOr => crate::features::operations::Logical::Or,
 					BinaryOperator::NullCoalescing => {
-						crate::behavior::operations::Logical::NullCoalescing
+						crate::features::operations::Logical::NullCoalescing
 					}
 					_ => unreachable!(),
 				};
@@ -415,7 +415,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let assignment_span = position.with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
-				crate::behavior::assignments::AssignmentKind::Assign,
+				crate::features::assignments::AssignmentKind::Assign,
 				Some(&**rhs),
 				assignment_span,
 				checking_data,
@@ -450,16 +450,16 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					let assignment_span = position.with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
-						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
+						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							match direction {
 								parser::operators::IncrementOrDecrement::Increment => {
-									crate::behavior::assignments::IncrementOrDecrement::Increment
+									crate::features::assignments::IncrementOrDecrement::Increment
 								}
 								parser::operators::IncrementOrDecrement::Decrement => {
-									crate::behavior::assignments::IncrementOrDecrement::Decrement
+									crate::features::assignments::IncrementOrDecrement::Decrement
 								}
 							},
-							crate::behavior::assignments::AssignmentReturnStatus::New,
+							crate::features::assignments::AssignmentReturnStatus::New,
 						),
 						None::<&Expression>,
 						assignment_span,
@@ -478,16 +478,16 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				parser::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
 						parser::operators::IncrementOrDecrement::Increment => {
-							crate::behavior::assignments::IncrementOrDecrement::Increment
+							crate::features::assignments::IncrementOrDecrement::Increment
 						}
 						parser::operators::IncrementOrDecrement::Decrement => {
-							crate::behavior::assignments::IncrementOrDecrement::Decrement
+							crate::features::assignments::IncrementOrDecrement::Decrement
 						}
 					};
 					let operator =
-						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
+						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							direction,
-							crate::behavior::assignments::AssignmentReturnStatus::Previous,
+							crate::features::assignments::AssignmentReturnStatus::Previous,
 						);
 
 					let assignment_span = position.with_source(environment.get_source());
@@ -787,19 +787,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 fn operator_to_assignment_kind(
 	operator: parser::operators::BinaryAssignmentOperator,
-) -> crate::behavior::assignments::AssignmentKind {
-	use crate::behavior::assignments::AssignmentKind;
+) -> crate::features::assignments::AssignmentKind {
+	use crate::features::assignments::AssignmentKind;
 	use parser::operators::BinaryAssignmentOperator;
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::And)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::And)
 		}
 		BinaryAssignmentOperator::LogicalOrAssign => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::Or)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::Or)
 		}
 		BinaryAssignmentOperator::LogicalNullishAssignment => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::NullCoalescing)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::NullCoalescing)
 		}
 		BinaryAssignmentOperator::AddAssign
 		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
@@ -1020,7 +1020,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
-				let behavior = crate::behavior::functions::FunctionRegisterBehavior::ObjectMethod {
+				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {
 					is_async: method.header.is_async(),
 					is_generator: method.header.is_generator(),
 				};

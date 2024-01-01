@@ -2,13 +2,13 @@ use source_map::{SourceId, SpanWithSource};
 use std::vec;
 
 use crate::{
-	behavior::{
+	context::{invocation::CheckThings, CallCheckingBehavior, Environment, Logical},
+	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
+	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
+	features::{
 		constant_functions::{call_constant_function, ConstantFunctionError, ConstantOutput},
 		functions::{FunctionBehavior, ThisValue},
 	},
-	context::{calling::CheckThings, CallCheckingBehavior, Environment, Logical},
-	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	types::{
 		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
@@ -776,7 +776,7 @@ impl FunctionType {
 		}
 
 		// Evaluate effects directly into environment
-		let early_return = behavior.new_function_target(self.id, |target| {
+		let early_return = behavior.new_function_context(self.id, |target| {
 			type_arguments.closure_id = if self.closed_over_variables.is_empty() {
 				None
 			} else {

@@ -4,8 +4,8 @@ use parser::{
 };
 
 use crate::{
-	behavior::functions::{self, GetterSetter, ThisValue},
 	context::{facts::Publicity, Context, Environment},
+	features::functions::{self, GetterSetter, ThisValue},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		properties::{PropertyKey, PropertyValue},

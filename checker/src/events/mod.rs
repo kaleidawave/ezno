@@ -3,8 +3,8 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	behavior::iteration::IterationKind,
 	context::{facts::Publicity, get_on_ctx},
+	features::iteration::IterationKind,
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},

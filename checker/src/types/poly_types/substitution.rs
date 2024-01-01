@@ -1,7 +1,7 @@
 //! How type parameters are resolved
 
 use crate::{
-	behavior::{
+	features::{
 		functions::ThisValue,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
@@ -269,11 +269,11 @@ pub(crate) fn substitute(
 			// }
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
-					crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
-						crate::behavior::operations::EqualityAndInequality::StrictEqual
+					crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
+						crate::features::operations::EqualityAndInequality::StrictEqual
 					}
-					crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
-						crate::behavior::operations::EqualityAndInequality::LessThan
+					crate::features::operations::CanonicalEqualityAndInequality::LessThan => {
+						crate::features::operations::EqualityAndInequality::LessThan
 					}
 				};
 				let lhs = substitute(lhs, arguments, environment, types);

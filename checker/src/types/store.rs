@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	behavior::functions::{ClosureId, FunctionBehavior},
 	context::{get_on_ctx, Context, ContextType, Logical},
+	features::functions::{ClosureId, FunctionBehavior},
 	types::FunctionType,
 	types::{PolyNature, Type},
 	Environment, FunctionId, GeneralContext, TypeId,
@@ -231,7 +231,7 @@ impl TypeStore {
 	/// Doesn't do constant compilation
 	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
 		let ty = Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::behavior::operations::PureUnary::LogicalNot,
+			operator: crate::features::operations::PureUnary::LogicalNot,
 			operand,
 		});
 		self.register_type(ty)
@@ -419,7 +419,7 @@ impl TypeStore {
 
 	/// TODO flags
 	pub fn new_regex(&mut self, pattern: String) -> TypeId {
-		self.register_type(Type::SpecialObject(crate::behavior::objects::SpecialObjects::Regexp(
+		self.register_type(Type::SpecialObject(crate::features::objects::SpecialObjects::Regexp(
 			pattern,
 		)))
 	}

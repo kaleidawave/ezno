@@ -3,9 +3,9 @@ use std::collections::HashSet;
 
 use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, TypeStore};
 use crate::{
-	behavior::objects::SpecialObjects,
 	context::{facts::Publicity, get_on_ctx, Logical},
 	events::{Event, FinalEvent},
+	features::objects::SpecialObjects,
 	types::{get_constraint, Constructor, StructureGenerics},
 	Constant, GeneralContext, PropertyValue,
 };
@@ -159,10 +159,10 @@ fn print_type_into_buf(
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, ctx, debug);
 					match operator {
-							crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
+							crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
 								buf.push_str(" === ");
 							}
-							crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
+							crate::features::operations::CanonicalEqualityAndInequality::LessThan => {
 								buf.push_str(" < ");
 							}
 						}
@@ -338,12 +338,12 @@ fn print_type_into_buf(
 					buf.push_str(key);
 					buf.push_str(": ");
 					match mutability {
-						crate::behavior::variables::VariableMutability::Constant => {
+						crate::features::variables::VariableMutability::Constant => {
 							let value =
 								get_on_ctx!(ctx.get_value_of_constant_import_variable(*variable));
 							print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 						}
-						crate::behavior::variables::VariableMutability::Mutable {
+						crate::features::variables::VariableMutability::Mutable {
 							reassignment_constraint: _,
 						} => todo!(),
 					};

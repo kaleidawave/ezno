@@ -1,12 +1,15 @@
 use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
 
 use crate::{
-	behavior::{
+	context::{
+		get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior,
+		SetPropertyError,
+	},
+	diagnostics::{TypeStringRepresentation, TDZ},
+	features::{
 		functions::ThisValue,
 		iteration::{self, IterationKind},
 	},
-	context::{calling::Target, get_value_of_variable, CallCheckingBehavior, SetPropertyError},
-	diagnostics::{TypeStringRepresentation, TDZ},
 	types::{
 		functions::SynthesisedArgument,
 		is_type_truthy_falsy,
@@ -29,7 +32,7 @@ pub(crate) fn apply_event(
 	this_value: ThisValue,
 	type_arguments: &mut FunctionTypeArguments,
 	environment: &mut Environment,
-	target: &mut Target,
+	target: &mut InvocationContext,
 	types: &mut TypeStore,
 	errors: &mut ErrorsAndInfo,
 ) -> Option<FinalEvent> {
@@ -305,7 +308,7 @@ pub(crate) fn apply_event(
 
 				// TODO could inject proofs but probably already worked out
 				let (mut truthy_facts, truthy_early_return) =
-					target.new_conditional_target(|target: &mut Target| {
+					target.new_conditional_target(|target: &mut InvocationContext| {
 						for event in events_if_truthy.into_vec() {
 							if let Some(early) = apply_event(
 								event,
@@ -323,7 +326,7 @@ pub(crate) fn apply_event(
 					});
 
 				let (mut else_facts, else_early_return) =
-					target.new_conditional_target(|target: &mut Target| {
+					target.new_conditional_target(|target: &mut InvocationContext| {
 						for event in else_events.into_vec() {
 							if let Some(early) = apply_event(
 								event,

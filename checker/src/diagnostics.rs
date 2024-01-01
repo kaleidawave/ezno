@@ -254,7 +254,7 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{
-		behavior::operations::MathematicalAndBitwise, context::AssignmentError,
+		context::AssignmentError, features::operations::MathematicalAndBitwise,
 		types::calling::FunctionCallingError,
 	};
 	use source_map::SpanWithSource;
@@ -287,7 +287,7 @@ mod defined_errors_and_warnings {
 		AssignmentError(AssignmentError),
 		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
 		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
-		InvalidUnaryOperation(crate::behavior::operations::PureUnary, TypeStringRepresentation),
+		InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 		ReturnedTypeDoesNotMatch {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,

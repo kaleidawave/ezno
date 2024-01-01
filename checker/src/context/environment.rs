@@ -2,7 +2,9 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
-	behavior::{
+	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
+	events::{Event, FinalEvent, RootReference},
+	features::{
 		assignments::{Assignable, AssignmentKind, Reference},
 		functions,
 		modules::{Exported, ImportKind, NamePair},
@@ -12,8 +14,6 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{Event, FinalEvent, RootReference},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -25,7 +25,7 @@ use crate::{
 };
 
 use super::{
-	calling::CheckThings, facts::Publicity, get_on_ctx, get_value_of_variable, AssignmentError,
+	facts::Publicity, get_on_ctx, get_value_of_variable, invocation::CheckThings, AssignmentError,
 	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
 	SetPropertyError,
 };
@@ -341,10 +341,10 @@ impl<'a> Environment<'a> {
 						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
 							match direction {
-								crate::behavior::assignments::IncrementOrDecrement::Increment => {
+								crate::features::assignments::IncrementOrDecrement::Increment => {
 									MathematicalAndBitwise::Add
 								}
-								crate::behavior::assignments::IncrementOrDecrement::Decrement => {
+								crate::features::assignments::IncrementOrDecrement::Decrement => {
 									MathematicalAndBitwise::Subtract
 								}
 							}
@@ -358,10 +358,10 @@ impl<'a> Environment<'a> {
 
 						match result {
 							Ok(new) => match return_kind {
-								crate::behavior::assignments::AssignmentReturnStatus::Previous => {
+								crate::features::assignments::AssignmentReturnStatus::Previous => {
 									existing
 								}
-								crate::behavior::assignments::AssignmentReturnStatus::New => new,
+								crate::features::assignments::AssignmentReturnStatus::New => new,
 							},
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
@@ -1202,7 +1202,7 @@ impl<'a> Environment<'a> {
 			ImportKind::All { under, position } => {
 				if let Ok(Ok(ref exports)) = exports {
 					let value = checking_data.types.register_type(Type::SpecialObject(
-						crate::behavior::objects::SpecialObjects::Import(exports.clone()),
+						crate::features::objects::SpecialObjects::Import(exports.clone()),
 					));
 
 					self.register_variable_handle_error(

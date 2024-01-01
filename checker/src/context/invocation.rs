@@ -1,3 +1,5 @@
+//! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
+
 use super::facts::Facts;
 use crate::{events::FinalEvent, Environment, FunctionId};
 
@@ -10,10 +12,10 @@ pub(crate) trait CallCheckingBehavior {
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
 
-	fn new_function_target<T>(
+	fn new_function_context<T>(
 		&mut self,
 		function_id: FunctionId,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T;
 }
 
@@ -31,66 +33,70 @@ impl CallCheckingBehavior for CheckThings {
 		false
 	}
 
-	fn new_function_target<T>(
+	fn new_function_context<T>(
 		&mut self,
 		function_id: FunctionId,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T {
-		let mut target = Target(vec![TargetKind::Function(function_id)]);
+		let mut target = InvocationContext(vec![InvocationKind::Function(function_id)]);
 		cb(&mut target)
 	}
 }
 
-pub(crate) struct Target(Vec<TargetKind>);
+pub(crate) struct InvocationContext(Vec<InvocationKind>);
 
-pub(crate) enum TargetKind {
+pub(crate) enum InvocationKind {
 	Conditional(Facts),
 	Function(FunctionId),
 	LoopIteration,
 }
 
-impl CallCheckingBehavior for Target {
+impl CallCheckingBehavior for InvocationContext {
 	const CHECK_PARAMETERS: bool = false;
 
 	fn get_latest_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
 		self.0
 			.iter_mut()
 			.rev()
-			.find_map(
-				|kind| if let TargetKind::Conditional(facts) = kind { Some(facts) } else { None },
-			)
+			.find_map(|kind| {
+				if let InvocationKind::Conditional(facts) = kind {
+					Some(facts)
+				} else {
+					None
+				}
+			})
 			.unwrap_or(&mut environment.facts)
 	}
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
-		self.0.iter().any(|kind| matches!(kind, TargetKind::Function(id) if function_id == *id))
+		self.0.iter().any(|kind| matches!(kind, InvocationKind::Function(id) if function_id == *id))
 	}
 
-	fn new_function_target<T>(
+	fn new_function_context<T>(
 		&mut self,
 		function_id: FunctionId,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T {
-		self.0.push(TargetKind::Function(function_id));
+		self.0.push(InvocationKind::Function(function_id));
 		let value = cb(self);
 		self.0.pop();
 		value
 	}
 }
 
-impl Target {
+impl InvocationContext {
 	/// TODO temp for loop unrolling
 	pub(crate) fn new_empty() -> Self {
-		Target(Vec::new())
+		InvocationContext(Vec::new())
 	}
 
 	pub(crate) fn new_conditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> Option<FinalEvent>,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<FinalEvent>,
 	) -> (Facts, Option<FinalEvent>) {
-		self.0.push(TargetKind::Conditional(Facts::default()));
+		self.0.push(InvocationKind::Conditional(Facts::default()));
 		let result = cb(self);
-		if let Some(TargetKind::Conditional(facts)) = self.0.pop() {
+		if let Some(InvocationKind::Conditional(facts)) = self.0.pop() {
 			(facts, result)
 		} else {
 			unreachable!()
@@ -99,16 +105,17 @@ impl Target {
 
 	pub(crate) fn new_loop_iteration<T>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut Target) -> T,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T {
-		self.0.push(TargetKind::LoopIteration);
+		self.0.push(InvocationKind::LoopIteration);
 		let value = cb(self);
 		self.0.pop();
 		value
 	}
 
 	pub(crate) fn get_iteration_depth(&self) -> u8 {
-		let depth = self.0.iter().filter(|p| matches!(p, TargetKind::LoopIteration)).count() as u8;
+		let depth =
+			self.0.iter().filter(|p| matches!(p, InvocationKind::LoopIteration)).count() as u8;
 		// TODO can this every go > 1
 		crate::utils::notify!("Iteration depth {}", depth);
 		depth

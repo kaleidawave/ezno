@@ -2,9 +2,9 @@ use super::{
 	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
 };
 use crate::{
-	behavior::iteration::{synthesise_iteration, IterationBehavior},
 	context::Scope,
 	diagnostics::TypeCheckError,
+	features::iteration::{synthesise_iteration, IterationBehavior},
 	synthesis::EznoParser,
 	CheckingData, Environment, TypeId,
 };
@@ -12,7 +12,7 @@ use crate::{
 use parser::{expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement};
 use std::collections::HashMap;
 
-pub type ExportedItems = HashMap<String, crate::behavior::variables::VariableOrImport>;
+pub type ExportedItems = HashMap<String, crate::features::variables::VariableOrImport>;
 pub type ReturnResult = Option<TypeId>;
 
 pub struct StatementInformation {

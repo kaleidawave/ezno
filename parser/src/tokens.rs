@@ -409,6 +409,8 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
+				// for `const x = 2; /something/g`
+				| TSXToken::SemiColon
 		)
 	}
 

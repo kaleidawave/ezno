@@ -1,7 +1,7 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::objects::ObjectBuilder,
+	features::objects::ObjectBuilder,
 	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
@@ -104,7 +104,7 @@ where
 			tag,
 			CallingInput {
 				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: crate::behavior::functions::ThisValue::UseParent,
+				this_value: crate::features::functions::ThisValue::UseParent,
 				call_site,
 				call_site_type_arguments: None,
 			},
@@ -121,7 +121,7 @@ where
 				let other = part_to_type(rest, environment, checking_data);
 				let result = super::operations::evaluate_mathematical_operation(
 					acc,
-					crate::behavior::operations::MathematicalAndBitwise::Add,
+					crate::features::operations::MathematicalAndBitwise::Add,
 					other,
 					&mut checking_data.types,
 					checking_data.options.strict_casts,

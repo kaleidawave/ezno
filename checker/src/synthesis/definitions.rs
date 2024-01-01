@@ -75,7 +75,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					checking_data,
 					func.performs.as_ref().into(),
 					&declared_at,
-					crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
+					crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
 					None,
 				);
 

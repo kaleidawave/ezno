@@ -35,11 +35,6 @@ print_properties({ x: 1, get y() { Reflect.set(this, "z", 3); return 2 } })
 
 This may be solved in the future by a different way of checking parameters, but for now it is recognised as a use case that should be avoided.
 
-### #TODO
-- Mutable and immutable bases in `Context`
-- Modify RootPoly so only open poly and Typed generic and parameter can have a aliases, rest is handled by Context
-- Think about how function constraints work (they may not exist under `Type`)
-
 ### Inferable properties
 There are two types of inference, type based *coalescence*:
 

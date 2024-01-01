@@ -20,12 +20,12 @@ pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
-	behavior::{
+	events::RootReference,
+	features::{
 		functions::ThisValue,
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	events::RootReference,
 	Decidable, Environment,
 };
 

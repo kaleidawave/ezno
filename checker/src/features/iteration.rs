@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
 use crate::{
-	behavior::operations::CanonicalEqualityAndInequality,
-	context::{calling::Target, environment::Label, get_value_of_variable, CallCheckingBehavior},
+	context::{
+		environment::Label, get_value_of_variable, invocation::InvocationContext,
+		CallCheckingBehavior,
+	},
 	events::{
 		application::ErrorsAndInfo, apply_event, Event, FinalEvent, InitialVariables, RootReference,
 	},
+	features::operations::CanonicalEqualityAndInequality,
 	types::{
 		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
@@ -96,7 +99,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_empty(),
+				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
 				&mut checking_data.types,
 			) {
@@ -170,7 +173,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_empty(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
@@ -300,7 +303,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_empty(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
@@ -333,7 +336,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_empty(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
@@ -368,8 +371,8 @@ pub(crate) fn run_iteration_block(
 	events: Vec<Event>,
 	initial: InitialVariablesInput,
 	type_arguments: &mut FunctionTypeArguments,
-	environment: &mut Environment,
-	target: &mut Target,
+	top_environment: &mut Environment,
+	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<FinalEvent> {
@@ -383,7 +386,7 @@ pub(crate) fn run_iteration_block(
 			// 	&mut buf,
 			// 	&events,
 			// 	&checking_data.types,
-			// 	&environment.as_general_context(),
+			// 	&top_environment.as_general_context(),
 			// 	true,
 			// );
 			// crate::utils::notify!("events in iteration = {}", buf);
@@ -406,8 +409,8 @@ pub(crate) fn run_iteration_block(
 
 				if let InitialVariablesInput::Calculated(initial) = initial {
 					for (variable_id, initial_value) in &initial {
-						target
-							.get_latest_facts(environment)
+						invocation_context
+							.get_latest_facts(top_environment)
 							.variable_current_value
 							.insert(*variable_id, *initial_value);
 					}
@@ -417,8 +420,8 @@ pub(crate) fn run_iteration_block(
 					iterations,
 					&events,
 					type_arguments,
-					environment,
-					target,
+					top_environment,
+					invocation_context,
 					errors,
 					types,
 				)
@@ -426,8 +429,8 @@ pub(crate) fn run_iteration_block(
 				let initial = match initial {
 					InitialVariablesInput::Calculated(initial) => {
 						for (id, value) in &initial {
-							target
-								.get_latest_facts(environment)
+							invocation_context
+								.get_latest_facts(top_environment)
 								.variable_current_value
 								.insert(*id, *value);
 						}
@@ -447,7 +450,7 @@ pub(crate) fn run_iteration_block(
 							} = event
 							{
 								let value_before_iterations = get_value_of_variable(
-									environment.facts_chain(),
+									top_environment.facts_chain(),
 									*variable_id,
 									None::<&crate::types::poly_types::FunctionTypeArguments>,
 								)
@@ -455,18 +458,18 @@ pub(crate) fn run_iteration_block(
 
 								crate::utils::notify!(
 									"setting '{}' to have initial type {}",
-									environment.get_variable_name(*variable_id),
+									top_environment.get_variable_name(*variable_id),
 									crate::types::printing::print_type(
 										value_before_iterations,
 										types,
-										&environment.as_general_context(),
+										&top_environment.as_general_context(),
 										true
 									)
 								);
 
 								initial.insert(*variable_id, value_before_iterations);
 
-								environment
+								top_environment
 									.facts
 									.variable_current_value
 									.insert(*variable_id, *free_variable_id);
@@ -478,7 +481,7 @@ pub(crate) fn run_iteration_block(
 
 				crate::utils::notify!("Saving events");
 
-				target.get_latest_facts(environment).events.push(Event::Iterate {
+				invocation_context.get_latest_facts(top_environment).events.push(Event::Iterate {
 					kind: IterationKind::Condition { under, postfix_condition },
 					initial,
 					iterate_over: events.into_boxed_slice(),
@@ -490,8 +493,8 @@ pub(crate) fn run_iteration_block(
 				// 		event,
 				// 		crate::behavior::functions::ThisValue::UseParent,
 				// 		&mut arguments,
-				// 		environment,
-				// 		&mut crate::context::calling::Target::new_default(),
+				// 		top_environment,
+				// 		&mut crate::context::calling::InvocationContext::new_default(),
 				// 		&mut checking_data.types,
 				// 	);
 				// }
@@ -500,7 +503,7 @@ pub(crate) fn run_iteration_block(
 		}
 		IterationKind::Properties(on) => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				for (_publicity, property, _value) in environment.get_properties_on_type(on) {
+				for (_publicity, property, _value) in top_environment.get_properties_on_type(on) {
 					// TODO enumerable
 					crate::utils::notify!("Property: {:?}", property);
 				}
@@ -518,8 +521,8 @@ fn evaluate_iterations(
 	iterations: usize,
 	events: &[Event],
 	arguments: &mut FunctionTypeArguments,
-	environment: &mut Environment,
-	target: &mut Target,
+	top_environment: &mut Environment,
+	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<FinalEvent> {
@@ -530,13 +533,13 @@ fn evaluate_iterations(
 
 	'main_iterations: for _ in 0..iterations {
 		'inner_loop: for event in events {
-			let result = target.new_loop_iteration(|target| {
+			let result = invocation_context.new_loop_iteration(|invocation_context| {
 				apply_event(
 					event.clone(),
-					crate::behavior::functions::ThisValue::UseParent,
+					crate::features::functions::ThisValue::UseParent,
 					arguments,
-					environment,
-					target,
+					top_environment,
+					invocation_context,
 					types,
 					errors,
 				)
@@ -596,13 +599,13 @@ impl LoopStructure {
 		self,
 		arguments: &mut T,
 		// TODO temp
-		environment: &mut Environment,
+		top_environment: &mut Environment,
 		types: &mut TypeStore,
 	) -> Self {
 		Self {
-			start: substitute(self.start, arguments, environment, types),
-			increment_by: substitute(self.increment_by, arguments, environment, types),
-			roof: substitute(self.roof, arguments, environment, types),
+			start: substitute(self.start, arguments, top_environment, types),
+			increment_by: substitute(self.increment_by, arguments, top_environment, types),
+			roof: substitute(self.roof, arguments, top_environment, types),
 		}
 	}
 

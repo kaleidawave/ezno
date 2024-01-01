@@ -1,7 +1,7 @@
 // Types to runtime behavior
 
 use crate::{
-	behavior::objects::ObjectBuilder, context::facts::Publicity, Constant, Environment, Type,
+	context::facts::Publicity, features::objects::ObjectBuilder, Constant, Environment, Type,
 	TypeId,
 };
 

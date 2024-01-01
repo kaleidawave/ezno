@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::{ClassPropertiesToRegister, FunctionBehavior},
 	context::{environment::FunctionScope, ContextType},
 	events::{Event, RootReference},
+	features::functions::{ClassPropertiesToRegister, FunctionBehavior},
 	CheckingData, Facts, FunctionId, GenericTypeParameters, Scope, Type, TypeId,
 };
 

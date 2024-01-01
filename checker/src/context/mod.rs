@@ -6,10 +6,10 @@ pub mod environment;
 mod root;
 // TODO better name
 mod bases;
-pub mod calling;
 pub mod facts;
+pub mod invocation;
 
-pub(crate) use calling::CallCheckingBehavior;
+pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
 
 pub(crate) use bases::Boundary;
@@ -17,15 +17,15 @@ pub(crate) use bases::Boundary;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::{
-		functions::ClosureChain,
-		modules::Exported,
-		variables::{VariableMutability, VariableOrImport},
-	},
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 	},
 	events::RootReference,
+	features::{
+		functions::ClosureChain,
+		modules::Exported,
+		variables::{VariableMutability, VariableOrImport},
+	},
 	types::{
 		get_constraint,
 		poly_types::generic_type_arguments::StructureGenericArguments,

@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 
 use crate::{
-	behavior::functions::ThisValue,
 	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
+	features::functions::ThisValue,
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
 		calling::CallingInput, get_constraint,

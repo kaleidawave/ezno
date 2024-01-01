@@ -1,5 +1,5 @@
 use crate::{
-	behavior::functions::ClassPropertiesToRegister, context::facts::Publicity, events::Event,
+	context::facts::Publicity, events::Event, features::functions::ClassPropertiesToRegister,
 	CheckingData, Environment, PropertyValue, TypeId,
 };
 

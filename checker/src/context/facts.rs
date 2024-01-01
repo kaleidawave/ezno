@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::{ClosureId, ThisValue},
 	events::{Event, RootReference},
+	features::functions::{ClosureId, ThisValue},
 	types::properties::PropertyKey,
 	PropertyValue, Type, TypeId, VariableId,
 };

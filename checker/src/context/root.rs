@@ -2,7 +2,7 @@ use super::{
 	environment::DynamicBoundaryKind, ClosedOverReferencesInScope, Context, ContextId, ContextType,
 };
 use crate::{
-	behavior::{
+	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
 	},
@@ -74,7 +74,7 @@ impl RootContext {
 		// Add undefined
 		let variables = {
 			let variable_or_import = VariableOrImport::Variable {
-				mutability: crate::behavior::variables::VariableMutability::Constant,
+				mutability: crate::features::variables::VariableMutability::Constant,
 				declared_at: SpanWithSource::NULL_SPAN,
 				context: None,
 			};

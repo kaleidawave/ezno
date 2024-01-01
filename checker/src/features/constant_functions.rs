@@ -206,7 +206,7 @@ pub(crate) fn call_constant_function(
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading
 				let value = types.register_type(Type::SpecialObject(
-					crate::behavior::objects::SpecialObjects::Proxy {
+					crate::features::objects::SpecialObjects::Proxy {
 						handler: trap.to_type().expect("single type"),
 						over: object.to_type().expect("single type"),
 					},

@@ -65,7 +65,7 @@ const a = 3;
 
 - Cannot redeclare variable a
 
-#### Un-intialised variables are undefined
+#### Unintialised variables are undefined
 
 > Might be a usage warning at some point
 
@@ -76,28 +76,209 @@ b satisfies string;
 
 - Expected string, found undefined
 
-### Generic types
+### Properties
 
-#### Generic interface
+#### Property exists
 
 ```ts
-interface Wrapper<T> {
-	internal: T
+let my_obj = { a: 3 }
+const a = my_obj.a
+const b = my_obj.b
+```
+
+- No property 'b' on { a: 3 }
+
+#### Property updates registered
+
+```ts
+let my_obj = { a: 3 }
+my_obj.a = 4
+let b: 3 = my_obj.a
+```
+
+- Type 4 is not assignable to type 3
+
+#### Property references
+
+```ts
+const my_obj = { a: 2 }
+const three: 3 = my_obj.a
+```
+
+- Type 2 is not assignable to type 3
+
+#### Object property constraints
+
+```ts
+const my_obj: { a: number } = { a: 2 }
+my_obj.a = "not a number"
+```
+
+- Type "not a number" does not meet property constraint number
+
+#### Objects checks
+
+```ts
+const my_obj: { b: 3 } = { a: 2 }
+```
+
+- Type { a: 2 } is not assignable to type { b: 3 }
+
+#### Getters
+
+```ts
+let global = 0;
+const object = {
+	get getValue() {
+		return global++
+	},
 }
 
-const my_wrapped: Wrapper<number> = { internal: "hi" }
+object.getValue satisfies string
+object.getValue satisfies boolean
 ```
 
-- Type { internal: "hi" } is not assignable to type Wrapper\<number>
+> Also test that side effects work here
 
-#### Array property checking
+- Expected string, found 0
+- Expected boolean, found 1
+
+#### Object spread
 
 ```ts
-const numbers1: Array<number> = [1, 2, "3"]
-const numbers2: Array<string> = ["hi", "3"]
+const obj1 = { a: 2, b: 3 };
+const obj2 = { b: 4, ...obj1, a: 6 };
+
+obj2.b satisfies 100;
+obj2.a satisfies boolean;
 ```
 
-- Type [1, 2, "3"] is not assignable to type Array\<number>
+- Expected 100, found 3
+- Expected boolean, found 6
+
+#### Set property with key
+
+```ts
+const obj = { a: 2 }
+
+function setProperty(key: string, value) {
+	obj[key] = value;
+}
+
+setProperty("b", 6)
+obj satisfies string;
+```
+
+- Expected string, found { a: 2, b: 6 }
+
+#### Delete properties
+
+```ts
+const x = { a: 2, b: 3 }
+delete x.b;
+const b = x.b;
+```
+
+- No property 'b' on { a: 2 }
+
+### Constant evaluation
+
+#### Arithmetic
+
+```ts
+const x: 4 = 2 + 3
+const y: 6 = 2 * 3
+const z: 8 = (2 * 3) - 2
+```
+
+- Type 5 is not assignable to type 4
+- Type 4 is not assignable to type 8
+
+#### Bitwise arithmetic
+
+```ts
+const x: 2 = 2 & 3
+const y: 6 = 2 ^ 7
+const z: 14 = 8 | 4
+```
+
+- Type 5 is not assignable to type 6
+- Type 12 is not assignable to type 14
+
+#### Logical operators
+
+```ts
+const x: 2 = 3 && 2
+const y: 6 = 3 && false
+const z: false = true || 4
+```
+
+- Type false is not assignable to type 6
+- Type true is not assignable to type false
+
+#### Equality
+
+```ts
+(4 === 2) satisfies true;
+(4 !== 2) satisfies string;
+```
+
+- Expected true, found false
+- Expected string, found true
+
+#### Inequality
+
+```ts
+(Math.PI > 3) satisfies true;
+(4 < 2) satisfies true;
+(4 > 2) satisfies number;
+(2 >= 2) satisfies string;
+```
+
+- Expected true, found false
+- Expected number, found true
+- Expected string, found true
+
+#### String operations (constant functions can use `this`)
+
+```ts
+"hi".toUpperCase() satisfies number
+```
+
+- Expected number, found "HI"
+
+#### Math operations
+
+```ts
+Math.cos(0) satisfies 0;
+Math.sqrt(16) satisfies 1;
+Math.floor(723.22) satisfies 2
+```
+
+- Expected 0, found 1
+- Expected 1, found 4
+- Expected 2, found 723
+
+#### Updating assignments
+
+```ts
+let a = 5, b = 6;
+a++;
+a satisfies 4;
+b *= 4;
+b satisfies 23;
+```
+
+- Expected 4, found 6
+- Expected 23, found 24
+
+#### Index into string
+
+```ts
+("something"[2]) satisfies number;
+```
+
+- Expected number, found "m"
 
 ### Function checking
 
@@ -132,17 +313,18 @@ func satisfies () => string
 
 - Expected () => string, found () => 2
 
-#### Parameters are always considered generic
+#### Set property on dependent observed
 
 ```ts
-function id(a) {
-	return a
+function add_property(obj: { prop: number }) {
+    obj.prop = 2;
+    (obj.prop satisfies 4);
 }
-
-const d: 3 = id(2)
 ```
 
-- Type 2 is not assignable to type 3
+> Not number
+
+- Expected 4, found 2
 
 #### Type checking basic function types
 
@@ -247,6 +429,18 @@ func("not a number")
 
 - Argument of type "not a number" is not assignable to parameter of type number
 
+#### Parameters are always considered generic
+
+```ts
+function id(a) {
+	return a
+}
+
+const d: 3 = id(2)
+```
+
+- Type 2 is not assignable to type 3
+
 #### Generic type argument parameter
 
 ```ts
@@ -321,6 +515,20 @@ call(Math.sqrt) satisfies 2
 
 - Expected 2, found 3
 
+#### Constant call and operation with a parameter
+
+> An example of the generic constructor type (namely call and operation)
+
+```ts
+function floorPlusB(a: number, b: number) {
+	return Math.floor(a) + b
+}
+
+floorPlusB(100.22, 5) satisfies 8
+```
+
+- Expected 8, found 105
+
 #### This in object literal
 
 ```ts
@@ -361,68 +569,17 @@ function callToUpperCase(s: string) {
 
 - Expected "HEY", found "HI"
 
-### Closures
-
-#### Reading variable
+#### Calling new on a function
 
 ```ts
-function kestrel(a) {
-    return function (_b) {
-        return a
-    }
+function MyClass(value) {
+	this.value = value
 }
 
-kestrel(3)(2) satisfies 4
+new MyClass("hi").value satisfies "hello"
 ```
 
-- Expected 4, found 3
-
-#### Nesting
-
-```ts
-function kestrel2(a) {
-    return _b => _c => a
-}
-
-kestrel2(3)(2)(6) satisfies 4
-```
-
-- Expected 4, found 3
-
-#### Carry across objects
-
-```ts
-function magicNumber(a: number) {
-    return {
-		plusOne() { return a + 1 },
-		doubled() { return 2 * a }
-	}
-}
-
-const myNumber = magicNumber(4);
-myNumber.plusOne() satisfies 5
-myNumber.doubled() satisfies 6
-```
-
-- Expected 6, found 8
-
-#### Stateful
-
-```ts
-function myClosure(a) {
-    return {
-		getValue() { return a },
-		setValue(b) { a = b }
-	}
-}
-
-const value = myClosure(4);
-value.getValue() satisfies 4;
-value.setValue(10);
-value.getValue() satisfies 6
-```
-
-- Expected 6, found 10
+- Expected "hello", found "hi"
 
 ### Effects
 
@@ -591,193 +748,6 @@ add_property(obj);
 
 - Expected 8, found 6
 
-### Constant evaluation
-
-#### Arithmetic
-
-```ts
-const x: 4 = 2 + 3
-const y: 6 = 2 * 3
-const z: 8 = (2 * 3) - 2
-```
-
-- Type 5 is not assignable to type 4
-- Type 4 is not assignable to type 8
-
-#### Bitwise arithmetic
-
-```ts
-const x: 2 = 2 & 3
-const y: 6 = 2 ^ 7
-const z: 14 = 8 | 4
-```
-
-- Type 5 is not assignable to type 6
-- Type 12 is not assignable to type 14
-
-#### Logical operators
-
-```ts
-const x: 2 = 3 && 2
-const y: 6 = 3 && false
-const z: false = true || 4
-```
-
-- Type false is not assignable to type 6
-- Type true is not assignable to type false
-
-#### Equality
-
-```ts
-(4 === 2) satisfies true;
-(4 !== 2) satisfies string;
-```
-
-- Expected true, found false
-- Expected string, found true
-
-#### Inequality
-
-```ts
-(Math.PI > 3) satisfies true;
-(4 < 2) satisfies true;
-(4 > 2) satisfies number;
-(2 >= 2) satisfies string;
-```
-
-- Expected true, found false
-- Expected number, found true
-- Expected string, found true
-
-#### String operations (constant functions can use `this`)
-
-```ts
-"hi".toUpperCase() satisfies number
-```
-
-- Expected number, found "HI"
-
-#### Math operations
-
-```ts
-Math.cos(0) satisfies 0;
-Math.sqrt(16) satisfies 1;
-Math.floor(723.22) satisfies 2
-```
-
-- Expected 0, found 1
-- Expected 1, found 4
-- Expected 2, found 723
-
-#### Updating assignments
-
-```ts
-let a = 5, b = 6;
-a++;
-a satisfies 4;
-b *= 4;
-b satisfies 23;
-```
-
-- Expected 4, found 6
-- Expected 23, found 24
-
-### Objects
-
-#### Property exists
-
-```ts
-let my_obj = { a: 3 }
-const a = my_obj.a
-const b = my_obj.b
-```
-
-- No property 'b' on { a: 3 }
-
-#### Property updates registered
-
-```ts
-let my_obj = { a: 3 }
-my_obj.a = 4
-let b: 3 = my_obj.a
-```
-
-- Type 4 is not assignable to type 3
-
-#### Property references
-
-```ts
-const my_obj = { a: 2 }
-const three: 3 = my_obj.a
-```
-
-- Type 2 is not assignable to type 3
-
-#### Object property constraints
-
-```ts
-const my_obj: { a: number } = { a: 2 }
-my_obj.a = "not a number"
-```
-
-- Type "not a number" does not meet property constraint number
-
-#### Objects checks
-
-```ts
-const my_obj: { b: 3 } = { a: 2 }
-```
-
-- Type { a: 2 } is not assignable to type { b: 3 }
-
-#### Getters
-
-```ts
-let global = 0;
-const object = {
-	get getValue() {
-		return global++
-	},
-}
-
-object.getValue satisfies string
-object.getValue satisfies boolean
-```
-
-> Also test that side effects work here
-
-- Expected string, found 0
-- Expected boolean, found 1
-
-#### Object spread
-
-```ts
-const obj1 = { a: 2, b: 3 };
-const obj2 = { b: 4, ...obj1, a: 6 };
-
-obj2.b satisfies 100;
-obj2.a satisfies boolean;
-```
-
-- Expected 100, found 3
-- Expected boolean, found 6
-
-#### Array pushing and pop-ing
-
-> TODO maybe separate
-
-```ts
-const x = [1]
-x.push("hi")
-x[1] satisfies 3
-x.length satisfies 4;
-x.pop() satisfies "hi";
-x.length satisfies 1;
-```
-
-- Expected 3, found "hi"
-- Expected 4, found 2
-
 #### Functions create objects
 
 ```ts
@@ -794,30 +764,86 @@ const c = a;
 - Expected false, found true
 - Expected string, found false
 
-#### Set property with key
+### Closures
+
+#### Reading variable
 
 ```ts
-const obj = { a: 2 }
-
-function setProperty(key: string, value) {
-	obj[key] = value;
+function kestrel(a) {
+    return function (_b) {
+        return a
+    }
 }
 
-setProperty("b", 6)
-obj satisfies string;
+kestrel(3)(2) satisfies 4
 ```
 
-- Expected string, found { a: 2, b: 6 }
+- Expected 4, found 3
 
-#### Delete properties
+#### Nesting
 
 ```ts
-const x = { a: 2, b: 3 }
-delete x.b;
-const b = x.b;
+function kestrel2(a) {
+    return _b => _c => a
+}
+
+kestrel2(3)(2)(6) satisfies 4
 ```
 
-- No property 'b' on { a: 2 }
+- Expected 4, found 3
+
+#### Carry across objects
+
+```ts
+function magicNumber(a: number) {
+    return {
+		plusOne() { return a + 1 },
+		doubled() { return 2 * a }
+	}
+}
+
+const myNumber = magicNumber(4);
+myNumber.plusOne() satisfies 5
+myNumber.doubled() satisfies 6
+```
+
+- Expected 6, found 8
+
+#### Stateful
+
+```ts
+function myClosure(a) {
+    return {
+		getValue() { return a },
+		setValue(b) { a = b }
+	}
+}
+
+const value = myClosure(4);
+value.getValue() satisfies 4;
+value.setValue(10);
+value.getValue() satisfies 6
+```
+
+- Expected 6, found 10
+
+### Collection types
+
+#### Array pushing and popping
+
+> TODO maybe separate
+
+```ts
+const x = [1]
+x.push("hi")
+x[1] satisfies 3
+x.length satisfies 4;
+x.pop() satisfies "hi";
+x.length satisfies 1;
+```
+
+- Expected 3, found "hi"
+- Expected 4, found 2
 
 ### Control flow
 
@@ -869,7 +895,7 @@ a satisfies string
 
 - Expected string, found "hi" | 0
 
-#### If else
+#### If and else (across function)
 
 ```ts
 function print_number(value: number) {
@@ -1120,7 +1146,7 @@ const x: X = { a: 2, b: false }
 ```ts
 type MyNumber = number;
 "hi" satisfies MyNumber;
-4 satisfies MyNumber
+4 satisfies MyNumber;
 ```
 
 - Expected MyNumber, found "hi"
@@ -1614,13 +1640,28 @@ function getSecondCharacter(s: string) {
 - Expected boolean, found (s: string) => string | undefined
 - Expected "b", found "t"
 
-#### Index into string
+### Generic types
+
+#### Generic interface
 
 ```ts
-("something"[2]) satisfies number;
+interface Wrapper<T> {
+	internal: T
+}
+
+const my_wrapped: Wrapper<number> = { internal: "hi" }
 ```
 
-- Expected number, found "m"
+- Type { internal: "hi" } is not assignable to type Wrapper\<number>
+
+#### Array property checking
+
+```ts
+const numbers1: Array<number> = [1, 2, "3"]
+const numbers2: Array<string> = ["hi", "3"]
+```
+
+- Type [1, 2, "3"] is not assignable to type Array\<number>
 
 ### Prototypes
 

@@ -29,9 +29,9 @@ use parser::{
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::objects::ObjectBuilder,
 	context::facts::Publicity,
 	diagnostics::TypeCheckError,
+	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
@@ -252,7 +252,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				super::Performs::None,
 				&position,
 				// TODO async
-				crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
+				crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
 				None,
 			);
 			// TODO bit messy

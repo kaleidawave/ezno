@@ -7,12 +7,12 @@ use parser::{
 };
 
 use crate::{
-	behavior::{
+	context::Environment,
+	features::{
 		functions::synthesise_hoisted_statement_function,
 		modules::{ImportKind, NamePair},
 		variables::VariableMutability,
 	},
-	context::Environment,
 	CheckingData, ReadFromFS, TypeId,
 };
 
@@ -78,13 +78,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Import(import) => {
 					let items = match &import.items {
 						parser::declarations::import::ImportedItems::Parts(parts) => {
-							crate::behavior::modules::ImportKind::Parts(
+							crate::features::modules::ImportKind::Parts(
 								parts.iter().flatten().filter_map(import_part_to_name_pair),
 							)
 						}
 						parser::declarations::import::ImportedItems::All { under } => match under {
 							VariableIdentifier::Standard(under, position) => {
-								crate::behavior::modules::ImportKind::All {
+								crate::features::modules::ImportKind::All {
 									under,
 									position: *position,
 								}
@@ -141,7 +141,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									from.get_path().unwrap(),
 									*position,
 									None,
-									crate::behavior::modules::ImportKind::Parts(parts),
+									crate::features::modules::ImportKind::Parts(parts),
 									checking_data,
 									true,
 									type_keyword.is_some(),
@@ -192,7 +192,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO unsynthesised function? ...
 					let behavior = crate::context::VariableRegisterBehavior::Register {
 						// TODO
-						mutability: crate::behavior::variables::VariableMutability::Constant,
+						mutability: crate::features::variables::VariableMutability::Constant,
 					};
 					if let Some(VariableIdentifier::Standard(name, ..)) =
 						func.on.name.as_option_variable_identifier()
@@ -216,7 +216,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 						func.performs.as_ref().into(),
 						&declared_at,
-						crate::behavior::functions::FunctionBehavior::ArrowFunction {
+						crate::features::functions::FunctionBehavior::ArrowFunction {
 							is_async: false,
 						},
 						None,
@@ -291,7 +291,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							Exportable::Function(func) => {
 								// TODO unsynthesised function? ...
 								let mutability =
-									crate::behavior::variables::VariableMutability::Constant;
+									crate::features::variables::VariableMutability::Constant;
 								let behavior = crate::context::VariableRegisterBehavior::Register {
 									mutability,
 								};

@@ -5,7 +5,7 @@ use source_map::{SourceId, SpanWithSource};
 use super::range_map::RangeMap;
 
 use crate::{
-	behavior::variables::VariableWithValue,
+	features::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
 	GeneralContext, VariableId,
 };

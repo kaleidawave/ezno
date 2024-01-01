@@ -104,7 +104,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	checking_data: &mut CheckingData<T, A>,
 ) {
 	// TODO get existing by variable_id
-	let behavior = crate::behavior::functions::FunctionRegisterBehavior::StatementFunction {
+	let behavior = crate::features::functions::FunctionRegisterBehavior::StatementFunction {
 		hoisted: variable_id,
 		is_async,
 		is_generator,

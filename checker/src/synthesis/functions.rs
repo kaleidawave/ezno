@@ -7,8 +7,8 @@ use parser::{
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
-	behavior::functions::{FunctionBehavior, SynthesisableFunction},
 	context::{CanReferenceThis, Context, ContextType, Scope},
+	features::functions::{FunctionBehavior, SynthesisableFunction},
 	types::poly_types::GenericTypeParameters,
 	types::{
 		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},

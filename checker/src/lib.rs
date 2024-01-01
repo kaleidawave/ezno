@@ -1,10 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
 
-pub mod behavior;
 pub mod context;
 pub mod diagnostics;
 pub mod events;
+pub mod features;
 mod options;
 pub mod range_map;
 mod serialization;
@@ -22,7 +22,7 @@ use context::Names;
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
-use behavior::{
+use features::{
 	functions::SynthesisableFunction,
 	modules::{Exported, InvalidModule, SynthesisedModule},
 };
