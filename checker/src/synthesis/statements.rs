@@ -1,10 +1,11 @@
 use super::{
-	expressions::synthesise_multiple_expression, synthesise_block, variables::register_variable,
+	expressions::synthesise_multiple_expression, synthesise_block,
+	type_annotations::synthesise_type_annotation, variables::register_variable,
 };
 use crate::{
-	behavior::iteration::{synthesise_iteration, IterationBehavior},
-	context::Scope,
+	context::{Scope, VariableRegisterArguments},
 	diagnostics::TypeCheckError,
+	features::iteration::{synthesise_iteration, IterationBehavior},
 	synthesis::EznoParser,
 	CheckingData, Environment, TypeId,
 };
@@ -12,7 +13,7 @@ use crate::{
 use parser::{expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement};
 use std::collections::HashMap;
 
-pub type ExportedItems = HashMap<String, crate::behavior::variables::VariableOrImport>;
+pub type ExportedItems = HashMap<String, crate::features::variables::VariableOrImport>;
 pub type ReturnResult = Option<TypeId>;
 
 pub struct StatementInformation {
@@ -233,7 +234,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::TryCatch(stmt) => {
-			let throw_type: TypeId =
+			let thrown_type: TypeId =
 				environment.new_try_context(checking_data, |environment, checking_data| {
 					synthesise_block(&stmt.try_inner.0, environment, checking_data);
 				});
@@ -244,17 +245,23 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					crate::Scope::Block {},
 					checking_data,
 					|environment, checking_data| {
-						if let Some((clause, _type)) = &stmt.exception_var {
-							// TODO clause.type_annotation
+						if let Some((clause, ty_annotation)) = &stmt.exception_var {
+							let catch_variable_type = ty_annotation.as_ref().map(|annotation| {
+								synthesise_type_annotation(annotation, environment, checking_data)
+							});
+
+							// TODO subtype thrown here with catch_variable_type
+
 							register_variable(
 								clause.get_ast_ref(),
 								environment,
 								checking_data,
-								crate::context::VariableRegisterBehavior::CatchVariable {
-									ty: throw_type,
+								VariableRegisterArguments {
+									// TODO catch variable constant option
+									constant: true,
+									space: catch_variable_type,
+									initial_value: Some(thrown_type),
 								},
-								// TODO
-								None,
 							);
 						}
 						synthesise_block(&catch_block.0, environment, checking_data);

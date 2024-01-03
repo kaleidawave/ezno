@@ -2,18 +2,18 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
-	behavior::{
+	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
+	events::{Event, FinalEvent, RootReference},
+	features::{
 		assignments::{Assignable, AssignmentKind, Reference},
 		functions,
-		modules::{Exported, ImportKind, NamePair},
+		modules::Exported,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{Event, RootReference},
 	subtyping::BasicEquality,
 	types::{
 		is_type_truthy_falsy,
@@ -25,7 +25,7 @@ use crate::{
 };
 
 use super::{
-	calling::CheckThings, facts::Publicity, get_on_ctx, get_value_of_variable, AssignmentError,
+	facts::Publicity, get_on_ctx, get_value_of_variable, invocation::CheckThings, AssignmentError,
 	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
 	SetPropertyError,
 };
@@ -49,6 +49,20 @@ pub struct Syntax<'a> {
 	pub location: ContextLocation,
 }
 
+/// Code under a dynamic boundary can run more than once
+#[derive(Debug, Clone, Copy)]
+pub enum DynamicBoundaryKind {
+	Loop,
+	Function,
+}
+
+impl DynamicBoundaryKind {
+	#[must_use]
+	pub fn can_use_variable_before_definition(self) -> bool {
+		matches!(self, Self::Function)
+	}
+}
+
 impl<'a> ContextType for Syntax<'a> {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
@@ -58,8 +72,12 @@ impl<'a> ContextType for Syntax<'a> {
 		Some(&self.parent)
 	}
 
-	fn is_dynamic_boundary(&self) -> bool {
-		matches!(self.scope, Scope::Function { .. } | Scope::Looping { .. })
+	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
+		match &self.scope {
+			Scope::Function { .. } => Some(DynamicBoundaryKind::Function),
+			Scope::Iteration { .. } => Some(DynamicBoundaryKind::Loop),
+			_ => None,
+		}
 	}
 
 	fn is_conditional(&self) -> bool {
@@ -121,6 +139,7 @@ pub enum Scope {
 	InterfaceEnvironment {
 		this_constraint: TypeId,
 	},
+	DefaultFunctionParameter {},
 	FunctionAnnotation {},
 	/// For ifs, elses, or lazy operators
 	Conditional {
@@ -130,7 +149,7 @@ pub enum Scope {
 		is_switch: Option<Label>,
 	},
 	/// Variables here are dependent on the iteration,
-	Looping {
+	Iteration {
 		label: Label, // TODO on: Proofs,
 	},
 	TryBlock {},
@@ -168,7 +187,7 @@ impl<'a> Environment<'a> {
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
 		expression: Option<&'b A::Expression<'b>>,
-		assignment_span: SpanWithSource,
+		assignment_span: Span,
 		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		match lhs {
@@ -189,7 +208,7 @@ impl<'a> Environment<'a> {
 								publicity,
 								with,
 								checking_data,
-								span,
+								span.without_source(),
 							);
 							match get_property_handle_errors {
 								Ok(i) => i.get_value(),
@@ -265,7 +284,7 @@ impl<'a> Environment<'a> {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
 									error,
-									assignment_span,
+									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
 									new,
 								);
@@ -303,7 +322,7 @@ impl<'a> Environment<'a> {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
 									error,
-									assignment_span,
+									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
 									new,
 								);
@@ -323,10 +342,10 @@ impl<'a> Environment<'a> {
 						let new = evaluate_pure_binary_operation_handle_errors(
 							(existing, span),
 							match direction {
-								crate::behavior::assignments::IncrementOrDecrement::Increment => {
+								crate::features::assignments::IncrementOrDecrement::Increment => {
 									MathematicalAndBitwise::Add
 								}
-								crate::behavior::assignments::IncrementOrDecrement::Decrement => {
+								crate::features::assignments::IncrementOrDecrement::Decrement => {
 									MathematicalAndBitwise::Subtract
 								}
 							}
@@ -340,16 +359,16 @@ impl<'a> Environment<'a> {
 
 						match result {
 							Ok(new) => match return_kind {
-								crate::behavior::assignments::AssignmentReturnStatus::Previous => {
+								crate::features::assignments::AssignmentReturnStatus::Previous => {
 									existing
 								}
-								crate::behavior::assignments::AssignmentReturnStatus::New => new,
+								crate::features::assignments::AssignmentReturnStatus::New => new,
 							},
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
 									error,
-									assignment_span,
+									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
 									new,
 								);
@@ -379,7 +398,7 @@ impl<'a> Environment<'a> {
 								let error = set_property_error_to_type_check_error(
 									&self.as_general_context(),
 									error,
-									assignment_span,
+									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
 									new,
 								);
@@ -453,6 +472,7 @@ impl<'a> Environment<'a> {
 						}
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
+							let variable_site = *declared_at;
 
 							if let Some(reassignment_constraint) = *reassignment_constraint {
 								// TODO tuple with position:
@@ -482,8 +502,7 @@ impl<'a> Environment<'a> {
 											store,
 											false,
 										),
-										// TODO split
-										variable_site: assignment_position,
+										variable_site,
 										value_site: assignment_position,
 									});
 								}
@@ -579,7 +598,6 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	/// Also evaluates getter and binds `this`
 	pub fn get_property(
 		&mut self,
 		on: TypeId,
@@ -587,7 +605,7 @@ impl<'a> Environment<'a> {
 		property: PropertyKey,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
-		position: SpanWithSource,
+		position: Span,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -597,7 +615,7 @@ impl<'a> Environment<'a> {
 			self,
 			&mut CheckThings,
 			types,
-			position,
+			position.with_source(self.get_source()),
 		)
 	}
 
@@ -607,7 +625,7 @@ impl<'a> Environment<'a> {
 		publicity: Publicity,
 		key: PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
-		site: SpanWithSource,
+		site: Span,
 	) -> Result<Instance, ()> {
 		let get_property =
 			self.get_property(on, publicity, key.clone(), &mut checking_data.types, None, site);
@@ -638,7 +656,7 @@ impl<'a> Environment<'a> {
 				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					on, ctx, types, false,
 				),
-				site,
+				site: site.with_source(self.get_source()),
 			});
 			Err(())
 		}
@@ -718,15 +736,18 @@ impl<'a> Environment<'a> {
 							if matches!(ty, Type::Function(..)) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-								// crate::utils::notify!(
-								// 	"Open poly type treated as immutable free variable"
-								// );
+								crate::utils::notify!(
+									"Open poly type '{}' treated as immutable free variable",
+									name
+								);
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::Constant(_) = ty {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							crate::utils::notify!("Free variable!");
+						} else {
+							crate::utils::notify!("No current value");
 						}
 					}
 
@@ -747,7 +768,7 @@ impl<'a> Environment<'a> {
 						{
 							return Ok(VariableWithValue(og_var.clone(), *value));
 						}
-						if get_on_ctx!(p.context_type.is_dynamic_boundary()) {
+						if get_on_ctx!(p.context_type.is_dynamic_boundary()).is_some() {
 							break;
 						}
 					}
@@ -837,7 +858,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub(crate) fn new_conditional_context<T, A, R>(
+	pub fn new_conditional_context<T, A, R>(
 		&mut self,
 		condition: TypeId,
 		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
@@ -851,6 +872,7 @@ impl<'a> Environment<'a> {
 	{
 		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 			// TODO emit warning
+			crate::utils::notify!("Constant result {:?}", result);
 			return if result {
 				then_evaluate(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
@@ -883,10 +905,11 @@ impl<'a> Environment<'a> {
 				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
 
 			let falsy_events = falsy_environment.facts.events;
+
 			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
 			self.facts.events.push(Event::Conditionally {
 				condition,
-				events_if_truthy: truthy_events.into_boxed_slice(),
+				true_events: truthy_events.into_boxed_slice(),
 				else_events: falsy_events.into_boxed_slice(),
 				position: None,
 			});
@@ -899,7 +922,7 @@ impl<'a> Environment<'a> {
 		} else {
 			self.facts.events.push(Event::Conditionally {
 				condition,
-				events_if_truthy: truthy_events.into_boxed_slice(),
+				true_events: truthy_events.into_boxed_slice(),
 				else_events: Default::default(),
 				position: None,
 			});
@@ -910,12 +933,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
-		self.facts.events.push(Event::Throw(value, position));
+	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
+		self.facts.events.push(FinalEvent::Throw { thrown, position }.into());
 	}
 
 	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
-		self.facts.events.push(Event::Return { returned, returned_position });
+		self.facts.events.push(FinalEvent::Return { returned, returned_position }.into());
 	}
 
 	pub fn add_continue(
@@ -924,10 +947,13 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
-			self.facts.events.push(Event::Continue {
-				position: Some(position.with_source(self.get_source())),
-				carry,
-			});
+			self.facts.events.push(
+				FinalEvent::Continue {
+					position: Some(position.with_source(self.get_source())),
+					carry,
+				}
+				.into(),
+			);
 			Ok(())
 		} else {
 			Err(NotInLoopOrCouldNotFindLabel {
@@ -943,10 +969,14 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
-			self.facts.events.push(Event::Break {
-				position: Some(position.with_source(self.get_source())),
-				carry,
-			});
+			crate::utils::notify!("Carry is {}", carry);
+			self.facts.events.push(
+				FinalEvent::Break {
+					position: Some(position.with_source(self.get_source())),
+					carry,
+				}
+				.into(),
+			);
 			Ok(())
 		} else {
 			Err(NotInLoopOrCouldNotFindLabel {
@@ -972,7 +1002,7 @@ impl<'a> Environment<'a> {
 			on,
 			publicity,
 			under,
-			&PropertyValue::Value(new),
+			PropertyValue::Value(new),
 			self,
 			&mut CheckThings,
 			types,
@@ -1001,15 +1031,15 @@ impl<'a> Environment<'a> {
 					| Scope::StaticBlock {} => {
 						break;
 					}
-					Scope::Looping { ref label } => {
+					Scope::Iteration { ref label } => {
 						if looking_for_label.is_none() {
 							return Some(falling_through_structures);
 						} else if let Some(label) = label {
 							if label == looking_for_label.unwrap() {
 								return Some(falling_through_structures);
 							}
-							falling_through_structures += 1;
 						}
+						falling_through_structures += 1;
 					}
 					Scope::Conditional { is_switch: Some(_label @ Some(_)), .. }
 						if !is_continue && looking_for_label.is_some() =>
@@ -1019,201 +1049,11 @@ impl<'a> Environment<'a> {
 					Scope::PassThrough { .. }
 					| Scope::Conditional { .. }
 					| Scope::TryBlock {}
+					| Scope::DefaultFunctionParameter {}
 					| Scope::Block {} => {}
 				}
 			}
 		}
 		None
-	}
-
-	pub(crate) fn import_items<
-		'b,
-		P: Iterator<Item = NamePair<'b>>,
-		T: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-	>(
-		&mut self,
-		partial_import_path: &str,
-		import_position: Span,
-		default_import: Option<(&str, Span)>,
-		kind: ImportKind<'b, P>,
-		checking_data: &mut CheckingData<T, A>,
-		also_export: bool,
-	) {
-		let current_source = self.get_source();
-		if !matches!(self.context_type.scope, crate::Scope::Module { .. }) {
-			checking_data.diagnostics_container.add_error(TypeCheckError::NotTopLevelImport(
-				import_position.with_source(current_source),
-			));
-			return;
-		}
-
-		let exports = checking_data.import_file(current_source, partial_import_path, self);
-
-		if let Err(ref err) = exports {
-			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
-				file: err.clone(),
-				position: Some(import_position.with_source(self.get_source())),
-			});
-		}
-
-		if let Some((default_name, position)) = default_import {
-			if let Ok(Ok(ref exports)) = exports {
-				if let Some(item) = &exports.default {
-					let id = crate::VariableId(current_source, position.start);
-					let v = VariableOrImport::ConstantImport {
-						to: None,
-						import_specified_at: position.with_source(current_source),
-					};
-					self.facts.variable_current_value.insert(id, *item);
-					let existing = self.variables.insert(default_name.to_owned(), v);
-					if let Some(_existing) = existing {
-						todo!("diagnostic")
-					}
-				} else {
-					todo!("emit 'no default export' diagnostic")
-				}
-			} else {
-				let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
-					value: TypeId::ERROR_TYPE,
-				};
-
-				self.register_variable_handle_error(
-					default_name,
-					position.with_source(current_source),
-					behavior,
-					checking_data,
-				);
-			}
-		}
-
-		match kind {
-			ImportKind::Parts(parts) => {
-				for part in parts {
-					if let Ok(Ok(ref exports)) = exports {
-						if let Some(export) = exports.get_export(part.value) {
-							match export {
-								crate::behavior::modules::TypeOrVariable::ExportedVariable((
-									variable,
-									mutability,
-								)) => {
-									let constant = match mutability {
-										VariableMutability::Constant => {
-											let k = crate::VariableId(
-												current_source,
-												part.position.start,
-											);
-											let v = self
-												.get_value_of_constant_import_variable(variable);
-											self.facts.variable_current_value.insert(k, v);
-											true
-										}
-										VariableMutability::Mutable {
-											reassignment_constraint: _,
-										} => false,
-									};
-
-									let v = VariableOrImport::MutableImport {
-										of: variable,
-										constant,
-										import_specified_at: part
-											.position
-											.with_source(self.get_source()),
-									};
-									let existing = self.variables.insert(part.r#as.to_owned(), v);
-									if let Some(_existing) = existing {
-										todo!("diagnostic")
-									}
-									if also_export {
-										if let Scope::Module { ref mut exported, .. } =
-											self.context_type.scope
-										{
-											exported.named.push((
-												part.r#as.to_owned(),
-												(variable, mutability),
-											));
-										}
-									}
-								}
-								crate::behavior::modules::TypeOrVariable::Type(ty) => {
-									let existing =
-										self.named_types.insert(part.r#as.to_owned(), ty);
-									assert!(existing.is_none(), "TODO exception");
-								}
-							}
-						} else {
-							let position = part.position.with_source(current_source);
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::FieldNotExported {
-									file: partial_import_path,
-									position,
-									importing: part.value,
-								},
-							);
-
-							let behavior =
-								crate::context::VariableRegisterBehavior::ConstantImport {
-									value: TypeId::ERROR_TYPE,
-								};
-
-							self.register_variable_handle_error(
-								part.r#as,
-								position,
-								behavior,
-								checking_data,
-							);
-						}
-					} else {
-						let behavior = crate::context::VariableRegisterBehavior::ConstantImport {
-							value: TypeId::ERROR_TYPE,
-						};
-
-						self.register_variable_handle_error(
-							part.r#as,
-							part.position.with_source(current_source),
-							behavior,
-							checking_data,
-						);
-					}
-				}
-			}
-			ImportKind::All { under, position } => {
-				if let Ok(Ok(ref exports)) = exports {
-					let value = checking_data.types.register_type(Type::SpecialObject(
-						crate::behavior::objects::SpecialObjects::Import(exports.clone()),
-					));
-
-					self.register_variable_handle_error(
-						under,
-						position.with_source(current_source),
-						crate::context::VariableRegisterBehavior::ConstantImport { value },
-						checking_data,
-					);
-				} else {
-					let behavior = crate::context::VariableRegisterBehavior::Declare {
-						base: TypeId::ERROR_TYPE,
-						context: None,
-					};
-					self.register_variable_handle_error(
-						under,
-						position.with_source(current_source),
-						behavior,
-						checking_data,
-					);
-				}
-			}
-			ImportKind::Everything => {
-				if let Ok(Ok(ref exports)) = exports {
-					for (name, (variable, mutability)) in &exports.named {
-						// TODO are variables put into scope?
-						if let Scope::Module { ref mut exported, .. } = self.context_type.scope {
-							exported.named.push((name.clone(), (*variable, *mutability)));
-						}
-					}
-				} else {
-					// TODO ??
-				}
-			}
-		}
 	}
 }

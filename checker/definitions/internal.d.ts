@@ -18,7 +18,7 @@ declare function satisfies<T>(t: T): T performs const satisfies;
 declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
 // ↑↑ Ezno Functions ↑↑
 
-declare var undefined: undefined;
+// declare var undefined: undefined;
 
 interface nominal Array<T> {
     [index: number]: T | undefined;
@@ -98,7 +98,7 @@ interface Symbols {
     iterator: 199
 }
 
-declare var Symbol: Symbols;
+declare const Symbol: Symbols;
 
 interface Object {
     @DoNotIncludeThis
@@ -114,10 +114,10 @@ interface Object {
     // }
 }
 
-declare var JSON: JSON;
-declare var Math: Math;
-declare var console: Console;
-declare var Object: Object;
+declare const JSON: JSON;
+declare const Math: Math;
+declare const console: Console;
+declare const Object: Object;
 
 declare function JSXH(tag: string, attributes: any, children?: any) performs {
     return { tag, attributes, children }

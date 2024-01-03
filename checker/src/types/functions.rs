@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::{ClassPropertiesToRegister, FunctionBehavior},
 	context::{environment::FunctionScope, ContextType},
 	events::{Event, RootReference},
+	features::functions::{ClassPropertiesToRegister, FunctionBehavior},
 	CheckingData, Facts, FunctionId, GenericTypeParameters, Scope, Type, TypeId,
 };
 
@@ -22,7 +22,7 @@ pub struct FunctionType {
 	/// If async, generator and what to do with `this`
 	pub behavior: FunctionBehavior,
 
-	/// TODO not sure about this field and how it tails with Pi Types
+	/// TODO unsure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesisedParameters,
 	/// This is just aesthetic TODO also throw
@@ -134,19 +134,21 @@ pub enum GetSet {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct SynthesisedParameter {
 	pub name: String,
+	/// This is also for parameters with default (which is handled behind the scenes)
+	pub optional: bool,
 	/// This is the generic parameter type, not the restriction
 	pub ty: TypeId,
 	pub position: SpanWithSource,
-	/// For optional parameters this is [TypeId::UNDEFINED_TYPE] else some type
-	pub missing_value: Option<TypeId>,
 }
 
 /// **Note that the [Type] here is not array like**
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct SynthesisedRestParameter {
 	pub name: String,
-	/// This is the T, of Array<T>
+	/// This is the item type, aka the `T`` of `Array<T>`
 	pub item_type: TypeId,
+	/// This is the generic type (to substitute into)
+	pub ty: TypeId,
 	pub position: SpanWithSource,
 }
 
@@ -171,29 +173,19 @@ impl SynthesisedParameters {
 	}
 }
 
-/// TODO spread should of tuples should expand into `NonSpread`
-/// TODO spread for non heterogenous things
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-#[non_exhaustive]
-pub enum SynthesisedArgument {
-	/// This is the get value of a argument
-	NonSpread { ty: TypeId, position: SpanWithSource },
-	// TODO
-	// Spread(Instance),
+pub struct SynthesisedArgument {
+	pub(crate) spread: bool,
+	pub(crate) value: TypeId,
+	pub(crate) position: SpanWithSource,
 }
 
 impl SynthesisedArgument {
-	pub(crate) fn get_position(&self) -> SpanWithSource {
-		match self {
-			SynthesisedArgument::NonSpread { ty: _, position } => *position,
-		}
-	}
-
-	// TODO: Remove when error is added
-	#[allow(clippy::unnecessary_wraps)]
-	pub(crate) fn to_type(&self) -> Result<TypeId, ()> {
-		match self {
-			SynthesisedArgument::NonSpread { ty, position: _ } => Ok(*ty),
+	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
+		if self.spread {
+			Err(())
+		} else {
+			Ok(self.value)
 		}
 	}
 }

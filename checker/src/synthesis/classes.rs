@@ -5,10 +5,10 @@ use parser::{
 };
 
 use crate::{
-	behavior::functions::{
+	context::{facts::Publicity, Environment},
+	features::functions::{
 		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter,
 	},
-	context::{facts::Publicity, Environment},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{classes::ClassValue, properties::PropertyKey, FunctionType},
 	CheckingData, PropertyValue, Scope, Type, TypeId,
@@ -60,7 +60,7 @@ pub(super) fn synthesise_class_declaration<
 	// Property keys on `static` items
 	let mut static_property_keys: Vec<PropertyKey<'static>> = Vec::new();
 
-	for (_idx, member) in class.members.iter().enumerate() {
+	for member in &class.members {
 		match &member.on {
 			ClassMember::Method(None, method) => {
 				let publicity = match method.name.get_ast_ref() {

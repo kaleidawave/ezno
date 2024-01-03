@@ -117,6 +117,14 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	) {
 		name.visit_mut(visitors, data, options, chain);
 	}
+
+	fn get_name(name: &Self::Name) -> Option<&str> {
+		if let PropertyKey::Ident(name, ..) = name {
+			Some(name.as_str())
+		} else {
+			None
+		}
+	}
 }
 
 impl Eq for ObjectLiteralMember {}

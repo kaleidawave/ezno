@@ -8,8 +8,8 @@ use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	context::{
-		environment::FunctionScope, facts::Facts, get_value_of_variable, CanReferenceThis,
-		ContextType, Syntax,
+		environment::FunctionScope, facts::Facts, get_on_ctx, get_value_of_variable,
+		CanReferenceThis, ContextType, Syntax,
 	},
 	events::RootReference,
 	types::{
@@ -20,7 +20,8 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		Constructor, FunctionType, PolyNature, TypeStore,
 	},
-	CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId,
+	VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -104,7 +105,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	checking_data: &mut CheckingData<T, A>,
 ) {
 	// TODO get existing by variable_id
-	let behavior = crate::behavior::functions::FunctionRegisterBehavior::StatementFunction {
+	let behavior = crate::features::functions::FunctionRegisterBehavior::StatementFunction {
 		hoisted: variable_id,
 		is_async,
 		is_generator,
@@ -128,6 +129,53 @@ pub fn function_to_property(
 		GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
 		GetterSetter::None => PropertyValue::Value(types.new_function_type(function)),
 	}
+}
+
+pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImplementation>(
+	parameter_ty: TypeId,
+	parameter_constraint: TypeId,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, A>,
+	expression: &'a A::Expression<'a>,
+) -> TypeId {
+	let (value, out, ..) = environment.new_lexical_environment_fold_into_parent(
+		Scope::DefaultFunctionParameter {},
+		checking_data,
+		|environment, checking_data| {
+			A::synthesise_expression(expression, parameter_constraint, environment, checking_data)
+		},
+	);
+
+	// Abstraction of `typeof parameter === "undefined"` to generate less types.
+	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(
+		Constructor::TypeRelationOperator(types::TypeRelationOperator::Extends {
+			ty: parameter_ty,
+			extends: TypeId::UNDEFINED_TYPE,
+		}),
+	));
+
+	// TODO is this needed
+	// let union = checking_data.types.new_or_type(parameter_ty, value);
+
+	let result =
+		checking_data.types.register_type(Type::Constructor(Constructor::ConditionalResult {
+			condition: is_undefined_condition,
+			truthy_result: value,
+			else_result: parameter_ty,
+			result_union: parameter_constraint,
+		}));
+
+	let creation_of_default_events = out.unwrap().0.events;
+	if !creation_of_default_events.is_empty() {
+		environment.facts.events.push(crate::events::Event::Conditionally {
+			condition: is_undefined_condition,
+			true_events: creation_of_default_events.into_boxed_slice(),
+			else_events: Box::new([]),
+			position: None,
+		});
+	}
+
+	result
 }
 
 /// TODO different place
@@ -169,8 +217,14 @@ impl FunctionBehavior {
 pub trait SynthesisableFunction<A: crate::ASTImplementation> {
 	fn id(&self, source_id: SourceId) -> FunctionId;
 
+	/// For debugging only
+	fn get_name(&self) -> Option<&str>;
+
 	// TODO temp
 	fn has_body(&self) -> bool;
+
+	// /// For detecting what is inside
+	// fn get_body_span(&self) -> source_map::Span;
 
 	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
 	fn type_parameters<T: ReadFromFS>(
@@ -294,7 +348,7 @@ pub trait ClosureChain {
 }
 
 pub(crate) fn register_function<T, A, F>(
-	context: &mut Environment,
+	base_environment: &mut Environment,
 	behavior: FunctionRegisterBehavior<A>,
 	function: &F,
 	checking_data: &mut CheckingData<T, A>,
@@ -327,7 +381,7 @@ where
 			FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
 				crate::utils::notify!("expecting {:?}", expecting);
 				let (expecting_parameters, expected_return) =
-					if let Type::FunctionReference(func_id, _) =
+					if let Type::FunctionReference(func_id) =
 						checking_data.types.get_type_by_id(expecting)
 					{
 						let f = checking_data.types.get_function_from_id(*func_id);
@@ -411,7 +465,7 @@ where
 			),
 		};
 
-	let mut function_environment = context.new_lexical_environment(Scope::Function(scope));
+	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 
 	let type_parameters = function.type_parameters(&mut function_environment, checking_data);
 
@@ -447,6 +501,7 @@ where
 								on: TypeId::NEW_TARGET_ARG,
 								under: PropertyKey::String(Cow::Owned("value".to_owned())),
 								result: this_constraint,
+								bind_this: true,
 							},
 						));
 
@@ -580,9 +635,14 @@ where
 						*on,
 						None::<&crate::types::poly_types::FunctionTypeArguments>,
 					);
-					get_value_of_variable.expect("value not assigned?")
+					if let Some(value) = get_value_of_variable {
+						value
+					} else {
+						let name = base_environment.get_variable_name(*on);
+						panic!("Could not find value for closed over reference '{name}' ({on:?}) in {:?}", function.get_name());
+					}
 				}
-				// TODO not sure
+				// TODO unsure
 				RootReference::This => TypeId::ANY_INFERRED_FREE_THIS,
 			};
 
@@ -593,13 +653,19 @@ where
 	let Syntax { free_variables, closed_over_references: function_closes_over, .. } =
 		function_environment.context_type;
 
-	let facts = function_environment.facts;
+	// crate::utils::notify!(
+	// 	"closes_over {:?}, free_variable {:?}, in {:?}",
+	// 	closes_over,
+	// 	free_variables,
+	// 	function.get_name()
+	// );
 
-	context.variable_names.extend(function_environment.variable_names);
+	let facts = function_environment.facts;
+	let variable_names = function_environment.variable_names;
 
 	// TODO temp ...
 	for (on, properties) in facts.current_properties {
-		match context.facts.current_properties.entry(on) {
+		match base_environment.facts.current_properties.entry(on) {
 			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
@@ -608,7 +674,7 @@ where
 	}
 
 	for (on, properties) in facts.closure_current_values {
-		match context.facts.closure_current_values.entry(on) {
+		match base_environment.facts.closure_current_values.entry(on) {
 			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
@@ -616,10 +682,27 @@ where
 		}
 	}
 
-	if let Some(closed_over_variables) = context.context_type.get_closed_over_references() {
+	// TODO collect here because of lifetime mutation issues from closed over
+	let continues_to_close_over = function_closes_over
+		.into_iter()
+		.filter(|r| match r {
+			RootReference::Variable(id) => {
+				// Keep if body does not contain id
+				let contains = base_environment
+					.parents_iter()
+					.any(|c| get_on_ctx!(&c.variable_names).contains_key(id));
+
+				crate::utils::notify!("v-id {:?} con {:?}", id, contains);
+				contains
+			}
+			RootReference::This => !behavior.can_be_bound(),
+		})
+		.collect::<Vec<_>>();
+
+	if let Some(closed_over_variables) = base_environment.context_type.get_closed_over_references()
+	{
 		closed_over_variables.extend(free_variables.iter().cloned());
-		// TODO not sure, but fixes nesting
-		closed_over_variables.extend(function_closes_over.iter().cloned());
+		closed_over_variables.extend(continues_to_close_over);
 	}
 
 	// TODO should references used in the function be counted in this scope
@@ -633,7 +716,10 @@ where
 		})
 		.collect();
 
-	let id = function.id(context.get_source());
+	let id = function.id(base_environment.get_source());
+
+	// TODO why
+	base_environment.variable_names.extend(variable_names);
 
 	FunctionType {
 		id,

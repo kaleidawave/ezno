@@ -20,12 +20,12 @@ pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
-	behavior::{
+	events::RootReference,
+	features::{
 		functions::ThisValue,
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	events::RootReference,
 	Decidable, Environment,
 };
 
@@ -60,6 +60,7 @@ impl TypeId {
 	pub const STRING_TYPE: Self = Self(5);
 
 	pub const UNDEFINED_TYPE: Self = Self(6);
+	pub const VOID_TYPE: Self = Self(22);
 	pub const NULL_TYPE: Self = Self(7);
 
 	/// This is the inner version
@@ -87,7 +88,7 @@ impl TypeId {
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 22;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 23;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -121,7 +122,7 @@ pub enum Type {
 	Function(FunctionId, ThisValue),
 
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
-	FunctionReference(FunctionId, ThisValue),
+	FunctionReference(FunctionId),
 
 	/// Technically could be just a function but...
 	Object(ObjectNature),
@@ -199,7 +200,7 @@ impl Type {
 			Type::And(_, _) | Type::Or(_, _) => false,
 			// TODO what about if it aliases
 			Type::AliasTo { .. } | Type::Interface { .. } => {
-				// TODO not sure
+				// TODO unsure
 				false
 			}
 			Type::Constant(_)
@@ -250,6 +251,8 @@ pub enum Constructor {
 		on: TypeId,
 		under: PropertyKey<'static>,
 		result: TypeId,
+		/// See issue #98
+		bind_this: bool,
 	},
 	/// Might not be best place but okay.
 	StructureGenerics(StructureGenerics),
@@ -455,7 +458,7 @@ pub enum PropertyError {
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 	if let Type::RootPolyType(PolyNature::Generic { .. }) = types.get_type_by_id(on) {
 		true
-	} else if let Type::Constructor(Constructor::Property { on, under, result: _ }) =
+	} else if let Type::Constructor(Constructor::Property { on, under, result: _, bind_this: _ }) =
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
@@ -479,7 +482,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
 			};
 
-			// TODO not sure
+			// TODO unsure
 
 			Some(*based_on)
 
@@ -534,8 +537,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 						Some(TypeId::STRING_TYPE)
 					} else {
 						crate::utils::notify!("lhs = {:?}", types.get_type_by_id(lhs));
-						// TODO new conditional
-						todo!("Based on conditional {:?} + {:?}", lhs, rhs)
+						crate::utils::notify!("TODO use existing conditional");
+						Some(TypeId::NUMBER_TYPE)
 					}
 				} else {
 					Some(TypeId::NUMBER_TYPE)
@@ -597,7 +600,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	}
 				// }
 			}
-			Constructor::Property { on: _, under: _, result } => {
+			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
 
@@ -632,7 +635,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	.get_property_unbound(on_constraint, PublicityKind::Public, property, types)
 				// 	.map(|property| match property {
 				// 		Logical::Pure(PropertyValue::Value(v)) => v,
-				// 		// TODO not sure?
+				// 		// TODO unsure?
 				// 		Logical::Pure(PropertyValue::Getter(g)) => g.return_type,
 				// 		result => todo!("{:?}", result),
 				// 	})

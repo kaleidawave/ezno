@@ -6,10 +6,10 @@ pub mod environment;
 mod root;
 // TODO better name
 mod bases;
-pub mod calling;
 pub mod facts;
+pub mod invocation;
 
-pub(crate) use calling::CallCheckingBehavior;
+pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
 
 pub(crate) use bases::Boundary;
@@ -17,26 +17,26 @@ pub(crate) use bases::Boundary;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::{
-		functions::ClosureChain,
-		modules::Exported,
-		variables::{VariableMutability, VariableOrImport},
-	},
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 	},
 	events::RootReference,
+	features::{
+		functions::ClosureChain,
+		modules::Exported,
+		variables::{VariableMutability, VariableOrImport},
+	},
 	types::{
 		get_constraint,
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	CheckingData, FunctionId, VariableId,
+	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
 };
 
 use self::{
-	environment::FunctionScope,
+	environment::{DynamicBoundaryKind, FunctionScope},
 	facts::{Facts, Publicity},
 };
 pub use environment::Scope;
@@ -125,7 +125,7 @@ pub trait ContextType: Sized {
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
 	/// Variables **above** this scope may change *between runs*
-	fn is_dynamic_boundary(&self) -> bool;
+	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind>;
 
 	/// Branch might not be run
 	fn is_conditional(&self) -> bool;
@@ -165,10 +165,10 @@ pub struct Context<T: ContextType> {
 	pub(crate) variables: HashMap<String, VariableOrImport>,
 	pub(crate) named_types: HashMap<String, TypeId>,
 
-	/// For debugging only
+	/// For debugging AND noting what contexts contain what variables
 	pub(crate) variable_names: HashMap<VariableId, String>,
 
-	/// TODO not sure if needed
+	/// TODO unsure if needed
 	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
 	pub(crate) bases: bases::Bases,
 
@@ -185,6 +185,12 @@ pub struct Context<T: ContextType> {
 	pub facts: Facts,
 }
 
+pub struct VariableRegisterArguments {
+	pub constant: bool,
+	pub space: Option<TypeId>,
+	pub initial_value: Option<TypeId>,
+}
+
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub(super) enum CanReferenceThis {
 	NotYetSuperToBeCalled,
@@ -192,29 +198,6 @@ pub(super) enum CanReferenceThis {
 	ConstructorCalled,
 	// Top level scope,
 	Yeah,
-}
-
-#[derive(Clone)]
-pub enum VariableRegisterBehavior {
-	Register {
-		mutability: VariableMutability,
-	},
-	Declare {
-		/// *wrapped in open poly type*
-		base: TypeId,
-		context: Option<String>,
-	},
-	FunctionParameter {
-		/// TODO what happens to it
-		annotation: Option<TypeId>,
-	},
-	// TODO document behavior
-	CatchVariable {
-		ty: TypeId,
-	},
-	ConstantImport {
-		value: TypeId,
-	},
 }
 
 impl<T: ContextType> Context<T> {
@@ -307,125 +290,57 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Declares a new variable in the environment and returns the new variable
-	///
-	/// **THIS IS USED FOR HOISTING, DOES NOT SET THE VALUE**
 	/// TODO maybe name: `VariableDeclarator` to include destructuring ...?
 	/// TODO hoisted vs declared
 	pub fn register_variable<'b>(
 		&mut self,
 		name: &'b str,
 		declared_at: SpanWithSource,
-		behavior: VariableRegisterBehavior,
-		types: &mut TypeStore,
-	) -> Result<TypeId, CannotRedeclareVariable<'b>> {
+		VariableRegisterArguments { constant, initial_value, space }: VariableRegisterArguments,
+	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
-		self.variable_names.insert(id, name.to_owned());
 
-		let (existing_variable, ty) = match behavior {
-			VariableRegisterBehavior::Declare { base, context } => {
-				return self.declare_variable(name, declared_at, base, types, context);
-			}
-			VariableRegisterBehavior::CatchVariable { ty } => {
-				// TODO
-				let kind = VariableMutability::Constant;
-				let variable =
-					VariableOrImport::Variable { declared_at, mutability: kind, context: None };
-				self.variables.insert(name.to_owned(), variable);
-				self.facts.variable_current_value.insert(id, ty);
-				(false, ty)
-			}
-			VariableRegisterBehavior::Register { mutability } => {
-				let variable =
-					VariableOrImport::Variable { mutability, declared_at, context: None };
-				let entry = self.variables.entry(name.to_owned());
-				if let Entry::Vacant(empty) = entry {
-					empty.insert(variable);
-					(false, TypeId::ANY_TYPE)
-				} else {
-					(true, TypeId::ANY_TYPE)
-				}
-			}
-			VariableRegisterBehavior::FunctionParameter { annotation } => {
-				// TODO maybe store separately
+		let mutability = if constant {
+			VariableMutability::Constant
+		} else {
+			VariableMutability::Mutable { reassignment_constraint: space }
+		};
 
-				// TODO via a setting
-				const FUNCTION_PARAM_MUTABLE: bool = true;
-				let mutability = if FUNCTION_PARAM_MUTABLE {
-					VariableMutability::Mutable { reassignment_constraint: annotation }
-				} else {
-					VariableMutability::Constant
-				};
-				let variable =
-					VariableOrImport::Variable { mutability, declared_at, context: None };
-				let entry = self.variables.entry(name.to_owned());
-				if let Entry::Vacant(_empty) = entry {
-					let _existing_variable = self.variables.insert(name.to_owned(), variable);
-					let parameter_ty = if let Some(annotation) = annotation {
-						if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
-							// TODO this can only be used once, two parameters cannot have same type as the can
-							// also not be equal thing to be inline with ts...
-							annotation
-						} else {
-							types.register_type(Type::RootPolyType(
-								crate::types::PolyNature::Parameter { fixed_to: annotation },
-							))
-						}
-					} else {
-						let fixed_to = TypeId::ANY_TYPE;
-						types.register_type(Type::RootPolyType(
-							crate::types::PolyNature::Parameter { fixed_to },
-						))
-					};
+		let variable = VariableOrImport::Variable { declared_at, mutability, context: None };
 
-					self.facts.variable_current_value.insert(id, parameter_ty);
-					(false, parameter_ty)
-				} else {
-					(true, TypeId::ERROR_TYPE)
-				}
-			}
-			VariableRegisterBehavior::ConstantImport { value } => {
-				let variable = VariableOrImport::Variable {
-					mutability: VariableMutability::Constant,
-					declared_at,
-					context: None,
-				};
-				let entry = self.variables.entry(name.to_owned());
-				self.facts.variable_current_value.insert(id, value);
-				if let Entry::Vacant(empty) = entry {
-					empty.insert(variable);
-					(false, TypeId::ANY_TYPE)
-				} else {
-					(true, TypeId::ANY_TYPE)
-				}
+		let existing = match self.variables.entry(name.to_owned()) {
+			Entry::Occupied(_) => true,
+			Entry::Vacant(vacant) => {
+				vacant.insert(variable);
+				false
 			}
 		};
 
-		if existing_variable {
+		self.variable_names.insert(id, name.to_owned());
+
+		if let Some(initial_value) = initial_value {
+			self.facts.variable_current_value.insert(id, initial_value);
+		}
+
+		if existing {
 			Err(CannotRedeclareVariable { name })
 		} else {
-			Ok(ty)
+			Ok(())
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn register_variable_handle_error(
 		&mut self,
 		name: &str,
+		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
-		behavior: VariableRegisterBehavior,
-		checking_data: &mut CheckingData<U, A>,
-	) -> TypeId {
-		if let Ok(ty) =
-			self.register_variable(name, declared_at, behavior, &mut checking_data.types)
-		{
-			ty
-		} else {
-			checking_data.diagnostics_container.add_error(
-				TypeCheckError::CannotRedeclareVariable {
-					name: name.to_owned(),
-					position: declared_at,
-				},
-			);
-			TypeId::ERROR_TYPE
+		diagnostics_container: &mut DiagnosticsContainer,
+	) {
+		if let Err(_err) = self.register_variable(name, declared_at, argument) {
+			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
+				name: name.to_owned(),
+				position: declared_at,
+			});
 		}
 	}
 
@@ -450,7 +365,7 @@ impl<T: ContextType> Context<T> {
 					Scope::InterfaceEnvironment { .. } => "interface",
 					Scope::FunctionAnnotation {} => "function reference",
 					Scope::Conditional { .. } => "conditional",
-					Scope::Looping { .. } => "looping",
+					Scope::Iteration { .. } => "iteration",
 					Scope::TryBlock { .. } => "try",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
@@ -458,6 +373,7 @@ impl<T: ContextType> Context<T> {
 					Scope::DefinitionModule { .. } => "definition module",
 					Scope::PassThrough { .. } => "pass through",
 					Scope::StaticBlock { .. } => "static block",
+					Scope::DefaultFunctionParameter { .. } => "default function parameter value",
 				}
 			} else {
 				"root"
@@ -504,13 +420,14 @@ impl<T: ContextType> Context<T> {
 				}
 				Scope::FunctionAnnotation {} => todo!(),
 				Scope::Conditional { .. }
-				| Scope::Looping { .. }
+				| Scope::Iteration { .. }
 				| Scope::StaticBlock { .. }
 				| Scope::Function(_)
 				| Scope::TryBlock { .. }
 				| Scope::TypeAlias
 				| Scope::Block {}
 				| Scope::PassThrough { .. }
+				| Scope::DefaultFunctionParameter { .. }
 				| Scope::DefinitionModule { .. }
 				| Scope::Module { .. } => None,
 			},
@@ -550,7 +467,16 @@ impl<T: ContextType> Context<T> {
 			*/
 
 			let is_dynamic_boundary = self.context_type.is_dynamic_boundary();
-			let boundary = if is_dynamic_boundary && parent_boundary.is_none() {
+
+			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
+				if !self.facts_chain().any(|f| f.variable_current_value.contains_key(&var.get_id()))
+				{
+					// Cannot use yet in loop
+					return None;
+				}
+			}
+
+			let boundary = if is_dynamic_boundary.is_some() && parent_boundary.is_none() {
 				let boundary = Boundary(get_on_ctx!(parent.context_id));
 				Some(boundary)
 			} else {
@@ -650,17 +576,12 @@ impl<T: ContextType> Context<T> {
 			})
 		}
 
-		// TODO need actual method for these, aka lowest
+		let under = match under {
+			PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
+			under @ PropertyKey::String(_) => under,
+		};
 
-		if let Type::SpecialObject(_obj) = types.get_type_by_id(on) {
-			todo!()
-		} else {
-			let under = match under {
-				PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-				under @ PropertyKey::String(_) => under,
-			};
-			types.get_fact_about_type(self, on, &get_property, (publicity, &under))
-		}
+		types.get_fact_about_type(self, on, &get_property, (publicity, &under))
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -672,7 +593,7 @@ impl<T: ContextType> Context<T> {
 		// TODO map_or temp
 		self.parents_iter()
 			.find_map(|env| get_on_ctx!(env.variable_names.get(&id)))
-			.map_or("could not find", String::as_str)
+			.map_or("error", String::as_str)
 	}
 
 	pub fn as_general_context(&self) -> GeneralContext {
@@ -740,25 +661,17 @@ impl<T: ContextType> Context<T> {
 			checking_data,
 			|env, cd| {
 				func(env, cd);
-				let mut thrown = Vec::new();
+				let mut thrown = TypeId::NEVER_TYPE;
 				let events = mem::take(&mut env.facts.events);
+
 				env.facts.events =
 					crate::events::helpers::extract_throw_events(events, &mut thrown);
+
 				thrown
 			},
 		);
 
-		let mut thrown = thrown.into_iter();
-
-		if let Some(first) = thrown.next() {
-			let mut acc = first;
-			for next in thrown {
-				acc = checking_data.types.new_or_type(acc, next);
-			}
-			acc
-		} else {
-			TypeId::NEVER_TYPE
-		}
+		thrown
 	}
 
 	/// TODO
@@ -820,12 +733,25 @@ impl<T: ContextType> Context<T> {
 
 		// Run any truths through subtyping
 		let additional = match scope {
-			// TODO these might go
-			Scope::FunctionAnnotation {} => None,
-			// TODO temp
-			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Looping { .. } => {
-				Some((facts, used_parent_references))
+			// TODO might go
+			Scope::FunctionAnnotation {} => {
+				// For anonymous objects only
+				for (on, mut properties) in facts.current_properties.clone() {
+					match self.facts.current_properties.entry(on) {
+						hash_map::Entry::Occupied(mut occupied) => {
+							occupied.get_mut().append(&mut properties);
+						}
+						hash_map::Entry::Vacant(vacant) => {
+							vacant.insert(properties);
+						}
+					}
+				}
+				None
 			}
+			// TODO temp
+			Scope::Function(FunctionScope::Constructor { .. })
+			| Scope::Iteration { .. }
+			| Scope::DefaultFunctionParameter {} => Some((facts, used_parent_references)),
 			Scope::Function { .. } => {
 				unreachable!("use new_function")
 			}
@@ -1060,7 +986,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO remove types
-	pub(crate) fn declare_variable<'a>(
+	pub fn declare_variable<'a>(
 		&mut self,
 		name: &'a str,
 		declared_at: SpanWithSource,
@@ -1076,7 +1002,7 @@ impl<T: ContextType> Context<T> {
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);
 
-			// TODO not sure ...
+			// TODO unsure ...
 			let ty = if let Type::Function(..) = types.get_type_by_id(variable_ty) {
 				variable_ty
 			} else {
@@ -1108,11 +1034,8 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
 	}
 
-	pub(crate) fn get_value_of_this(
-		&mut self,
-		_types: &TypeStore,
-		_position: &SpanWithSource,
-	) -> TypeId {
+	/// TODO is this the generic?
+	pub fn get_value_of_this(&mut self, _types: &TypeStore, _position: &SpanWithSource) -> TypeId {
 		self.parents_iter()
 			.find_map(|env| {
 				if let GeneralContext::Syntax(ctx) = env {
@@ -1137,7 +1060,7 @@ impl<T: ContextType> Context<T> {
 			.unwrap()
 	}
 
-	pub(crate) fn get_source(&self) -> source_map::SourceId {
+	pub fn get_source(&self) -> source_map::SourceId {
 		self.parents_iter()
 			.find_map(|ctx| {
 				if let GeneralContext::Syntax(Context {
@@ -1167,6 +1090,12 @@ impl<T: ContextType> Context<T> {
 			.parents_iter()
 			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
 			.unwrap()
+	}
+
+	pub(crate) fn is_possibly_uncalled(&self) -> bool {
+		self.parents_iter().any(|c| {
+			matches!(c, GeneralContext::Syntax(s) if (s.context_type.is_conditional() || s.context_type.is_dynamic_boundary().is_some()))
+		})
 	}
 }
 

@@ -131,7 +131,7 @@ impl ParseOptions {
 	}
 }
 
-// TODO not sure about some of these defaults, may change in future
+// TODO unsure about some of these defaults, may change in future
 impl Default for ParseOptions {
 	fn default() -> Self {
 		Self {
@@ -160,7 +160,7 @@ pub struct ToStringOptions {
 	pub single_statement_on_new_line: bool,
 	/// Include type annotation syntax
 	pub include_types: bool,
-	/// TODO not sure about this
+	/// TODO unsure about this
 	pub include_decorators: bool,
 	pub comments: Comments,
 	pub indent_with: String,

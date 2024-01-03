@@ -4,8 +4,9 @@ use std::collections::HashSet;
 use super::{properties::PropertyKey, PolyNature, Type, TypeArguments, TypeId, TypeStore};
 use crate::{
 	context::{facts::Publicity, get_on_ctx, Logical},
-	events::Event,
-	types::{get_constraint, Constructor, StructureGenerics},
+	events::{Event, FinalEvent},
+	features::objects::SpecialObjects,
+	types::{get_constraint, Constructor, StructureGenerics, TypeRelationOperator},
 	Constant, GeneralContext, PropertyValue,
 };
 
@@ -158,24 +159,36 @@ fn print_type_into_buf(
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, ctx, debug);
 					match operator {
-							crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
+							crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
 								buf.push_str(" === ");
 							}
-							crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
+							crate::features::operations::CanonicalEqualityAndInequality::LessThan => {
 								buf.push_str(" < ");
 							}
 						}
 					print_type_into_buf(*rhs, buf, cycles, args, types, ctx, debug);
 				}
-				Constructor::UnaryOperator { operator: _, operand: _ } => todo!(),
-				Constructor::TypeOperator(_) => todo!(),
-				Constructor::TypeRelationOperator(_) => todo!(),
+				Constructor::UnaryOperator { operator, operand } => {
+					buf.write_fmt(format_args!("{operator:?} ")).unwrap();
+					print_type_into_buf(*operand, buf, cycles, args, types, ctx, debug);
+				}
+				Constructor::TypeOperator(to) => {
+					buf.write_fmt(format_args!("TypeOperator = {to:?}")).unwrap();
+				}
+				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
+					ty,
+					extends,
+				}) => {
+					print_type_into_buf(*ty, buf, cycles, args, types, ctx, debug);
+					buf.push_str(" extends ");
+					print_type_into_buf(*extends, buf, cycles, args, types, ctx, debug);
+				}
 				Constructor::Image { on: _, with: _, result } => {
-					// TODO arguments and stuff
-					buf.push_str("[func result] ");
+					buf.write_fmt(format_args!("[func result {}] ", id.0)).unwrap();
+					// TODO arguments
 					print_type_into_buf(*result, buf, cycles, args, types, ctx, debug);
 				}
-				Constructor::Property { on, under, result: _ } => {
+				Constructor::Property { on, under, result: _, bind_this: _ } => {
 					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
 					print_property_key_into_buf(buf, under, cycles, args, types, ctx, debug);
@@ -185,7 +198,7 @@ fn print_type_into_buf(
 					unreachable!()
 				}
 			},
-			Constructor::Property { on, under, result } => {
+			Constructor::Property { on, under, result, bind_this: _ } => {
 				if crate::types::is_explicit_generic(*on, types) {
 					print_type_into_buf(*on, buf, cycles, args, types, ctx, debug);
 					buf.push('[');
@@ -231,16 +244,16 @@ fn print_type_into_buf(
 				buf.push_str(&cst.as_type_name());
 			}
 		}
-		Type::FunctionReference(func_id, this_ty) | Type::Function(func_id, this_ty) => {
+		Type::FunctionReference(func_id) | Type::Function(func_id, _) => {
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
 				write!(
 					buf,
-					"[FR #{} func, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
+					"[func #{}, fvs {:?}, co {:?}, const {:?}] ", // this {:?},
 					id.0,
 					func.free_variables,
 					func.closed_over_variables,
-					this_ty,
+					// this_ty,
 					func.constant_function.as_deref().unwrap_or("-")
 				)
 				.unwrap();
@@ -269,9 +282,13 @@ fn print_type_into_buf(
 				buf.push_str(&param.name);
 				buf.push_str(": ");
 				print_type_into_buf(param.ty, buf, cycles, args, types, ctx, debug);
-				if not_at_end {
+				if func.parameters.rest_parameter.is_some() || not_at_end {
 					buf.push_str(", ");
 				}
+			}
+			if let Some(ref rest_parameter) = func.parameters.rest_parameter {
+				buf.push_str("...");
+				print_type_into_buf(rest_parameter.ty, buf, cycles, args, types, ctx, debug);
 			}
 			buf.push_str(") => ");
 			print_type_into_buf(func.return_type, buf, cycles, args, types, ctx, debug);
@@ -321,9 +338,9 @@ fn print_type_into_buf(
 			buf.push_str(" }");
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			crate::behavior::objects::SpecialObjects::Promise { events: () } => todo!(),
-			crate::behavior::objects::SpecialObjects::Generator { position: () } => todo!(),
-			crate::behavior::objects::SpecialObjects::Proxy { handler, over } => {
+			SpecialObjects::Promise { events: () } => todo!(),
+			SpecialObjects::Generator { position: () } => todo!(),
+			SpecialObjects::Proxy { handler, over } => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
 				print_type_into_buf(*over, buf, cycles, args, types, ctx, debug);
@@ -331,18 +348,18 @@ fn print_type_into_buf(
 				print_type_into_buf(*handler, buf, cycles, args, types, ctx, debug);
 				buf.push_str(" ]");
 			}
-			crate::behavior::objects::SpecialObjects::Import(exports) => {
+			SpecialObjects::Import(exports) => {
 				buf.push_str("{ ");
 				for (not_at_end, (key, (variable, mutability))) in exports.named.iter().nendiate() {
 					buf.push_str(key);
 					buf.push_str(": ");
 					match mutability {
-						crate::behavior::variables::VariableMutability::Constant => {
+						crate::features::variables::VariableMutability::Constant => {
 							let value =
 								get_on_ctx!(ctx.get_value_of_constant_import_variable(*variable));
 							print_type_into_buf(value, buf, cycles, args, types, ctx, debug);
 						}
-						crate::behavior::variables::VariableMutability::Mutable {
+						crate::features::variables::VariableMutability::Mutable {
 							reassignment_constraint: _,
 						} => todo!(),
 					};
@@ -351,6 +368,11 @@ fn print_type_into_buf(
 					}
 				}
 				buf.push_str(" }");
+			}
+			SpecialObjects::Regexp(exp) => {
+				buf.push('/');
+				buf.push_str(exp);
+				buf.push('/');
 			}
 		},
 	}
@@ -503,13 +525,14 @@ pub fn debug_effects(
 			Event::CallsType {
 				on,
 				with: _,
-				reflects_dependency: _,
+				reflects_dependency,
 				timing,
 				called_with_new: _,
 				position: _,
 			} => {
 				buf.push_str("call ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), None, types, ctx, debug);
+				buf.write_fmt(format_args!(" into {reflects_dependency:?} ")).unwrap();
 				buf.push_str(match timing {
 					crate::events::CallingTiming::Synchronous => "now",
 					crate::events::CallingTiming::QueueTask => "queue",
@@ -517,11 +540,12 @@ pub fn debug_effects(
 				});
 				// TODO args
 			}
-			Event::Throw(value, _) => {
-				buf.push_str("throw ");
-				print_type_into_buf(*value, buf, &mut HashSet::new(), None, types, ctx, debug);
-			}
-			Event::Conditionally { condition, events_if_truthy, else_events, position: _ } => {
+			Event::Conditionally {
+				condition,
+				true_events: events_if_truthy,
+				else_events,
+				position: _,
+			} => {
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), None, types, ctx, debug);
 				buf.push_str(" then ");
@@ -531,10 +555,7 @@ pub fn debug_effects(
 					debug_effects(buf, else_events, types, ctx, debug);
 				}
 			}
-			Event::Return { returned, returned_position: _ } => {
-				buf.push_str("return ");
-				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
-			}
+
 			Event::CreateObject {
 				prototype: _,
 				referenced_in_scope_as,
@@ -548,16 +569,24 @@ pub fn debug_effects(
 						.unwrap();
 				}
 			}
-			Event::Break { .. } => {
-				buf.push_str("break");
-			}
-			Event::Continue { .. } => {
-				buf.push_str("continue");
-			}
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {
 				buf.push_str("iterate\n");
 				debug_effects(buf, iterate_over, types, ctx, debug);
 				buf.push_str("end");
+			}
+			Event::FinalEvent(FinalEvent::Throw { thrown, .. }) => {
+				buf.push_str("throw ");
+				print_type_into_buf(*thrown, buf, &mut HashSet::new(), None, types, ctx, debug);
+			}
+			Event::FinalEvent(FinalEvent::Break { .. }) => {
+				buf.push_str("break");
+			}
+			Event::FinalEvent(FinalEvent::Continue { .. }) => {
+				buf.push_str("continue");
+			}
+			Event::FinalEvent(FinalEvent::Return { returned, returned_position: _ }) => {
+				buf.push_str("return ");
+				print_type_into_buf(*returned, buf, &mut HashSet::new(), None, types, ctx, debug);
 			}
 		}
 		buf.push('\n');

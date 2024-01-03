@@ -165,43 +165,66 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 	}
 
 	match left_ty {
-		Type::FunctionReference(left_func, _) | Type::Function(left_func, _) => {
-			if let Type::FunctionReference(right_func, _) | Type::Function(right_func, _) = right_ty
+		Type::FunctionReference(left_func) | Type::Function(left_func, _) => {
+			// TODO this is a mess
+
+			let right_func = if let Type::FunctionReference(right_func)
+			| Type::Function(right_func, _) = right_ty
 			{
-				let left_func = types.functions.get(left_func).unwrap();
-				let right_func = types.functions.get(right_func).unwrap();
+				right_func
+			} else if let Some(constraint) = get_constraint(ty, types) {
+				// TODO explain why get_constraint early breaks a bunch of tests
+				let right_ty = types.get_type_by_id(constraint);
+				if let Type::FunctionReference(right_func) | Type::Function(right_func, _) =
+					right_ty
+				{
+					right_func
+				} else {
+					crate::utils::notify!("Not function after constraint!! {:?}", right_ty);
+					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+				}
+			} else {
+				crate::utils::notify!("Not function!! {:?}", right_ty);
+				return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+			};
 
-				for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
-					match right_func.parameters.get_type_constraint_at_index(idx) {
-						Some(right_param_ty) => {
-							let result = type_is_subtype2(
-								lhs_param.ty,
-								right_param_ty,
-								base_type_arguments,
-								right_type_arguments,
-								behavior,
-								environment,
-								types,
-								// !!!
-								true,
-							);
+			let left_func = types.functions.get(left_func).unwrap();
+			let right_func = types.functions.get(right_func).unwrap();
 
-							match result {
-								SubTypeResult::IsSubType => {}
-								err @ SubTypeResult::IsNotSubType(_) => {
-									// TODO don't short circuit
-									return err;
-								}
+			for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
+				match right_func.parameters.get_type_constraint_at_index(idx) {
+					Some(right_param_ty) => {
+						let result = type_is_subtype2(
+							right_param_ty,
+							lhs_param.ty,
+							right_type_arguments,
+							base_type_arguments,
+							behavior,
+							environment,
+							types,
+							// !!!
+							true,
+						);
+
+						match result {
+							SubTypeResult::IsSubType => {}
+							err @ SubTypeResult::IsNotSubType(_) => {
+								// TODO don't short circuit
+								return err;
 							}
 						}
-						None => {
-							return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter)
-						}
+					}
+					None => {
+						return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter)
 					}
 				}
-				// TODO optional and rest parameters
+			}
+			// TODO optional and rest parameters
 
-				// TODO NonEqualityReason::InvalidReturnType
+			// `void` return type means anything goes here
+			if TypeId::VOID_TYPE == left_func.return_type {
+				SubTypeResult::IsSubType
+			} else {
 				type_is_subtype2(
 					left_func.return_type,
 					right_func.return_type,
@@ -212,9 +235,6 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 					types,
 					restriction_mode,
 				)
-			} else {
-				crate::utils::notify!("Not function!!");
-				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
 		Type::Constant(lhs) => {
@@ -467,13 +487,14 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				result_union: _,
 			} => todo!(),
 			Constructor::Image { on: _, with: _, result: _ } => todo!(),
-			Constructor::Property { on, under, result: _ } => {
+			Constructor::Property { on, under, result: _, bind_this: _ } => {
 				// Ezno custom behavior
 				// TODO might be based of T
 				if let Type::Constructor(Constructor::Property {
 					on: r_on,
 					under: r_under,
 					result: _,
+					bind_this: _,
 				}) = right_ty
 				{
 					if on == r_on && under == r_under {
@@ -629,7 +650,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						)
 					}
 				}
-				Type::FunctionReference(_, _) => todo!(),
+				Type::FunctionReference(_) => todo!(),
 				Type::SpecialObject(_) => todo!(),
 			}
 		}

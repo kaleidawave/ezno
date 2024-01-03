@@ -256,7 +256,7 @@ impl Operator for BinaryAssignmentOperator {
 	}
 
 	fn is_associative(&self) -> bool {
-		// dbg!("TODO not sure");
+		// dbg!("TODO unsure");
 		true
 	}
 }
@@ -475,8 +475,6 @@ pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;
 pub(crate) const CONSTRUCTOR_PRECEDENCE: u8 = 18;
 pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
-pub(crate) const IN_PRECEDENCE: u8 = 10;
-pub(crate) const INSTANCE_OF_PRECEDENCE: u8 = 10;
+pub(crate) const RELATION_PRECEDENCE: u8 = 10;
 pub(crate) const PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE: u8 = 19;
 pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
-pub(crate) const AS_PRECEDENCE: u8 = 2;

@@ -11,17 +11,22 @@ use parser::{
 };
 
 use crate::{
-	behavior::{
+	features::{
 		functions::{register_arrow_function, register_expression_function},
 		variables::VariableWithValue,
 	},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{calling::CallingInput, properties::PropertyKey},
+	types::{
+		calling::{CallingInput, UnsynthesisedArgument},
+		properties::PropertyKey,
+	},
 	Decidable,
 };
 
 use crate::{
-	behavior::{
+	context::facts::Publicity,
+	diagnostics::TypeCheckWarning,
+	features::{
 		assignments::Assignable,
 		objects::ObjectBuilder,
 		operations::{
@@ -31,9 +36,7 @@ use crate::{
 		},
 		template_literal::synthesise_template_literal,
 	},
-	context::facts::Publicity,
-	diagnostics::TypeCheckWarning,
-	types::{calling::CalledWithNew, functions::SynthesisedArgument},
+	types::calling::CalledWithNew,
 	types::{Constant, TypeId},
 	CheckingData, Environment, Instance, SpecialExpressions,
 };
@@ -75,8 +78,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
-			// TODO flags
-			return checking_data.types.new_constant_type(Constant::Regexp(pattern.clone()));
+			return checking_data.types.new_regex(pattern.clone());
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
@@ -190,10 +192,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
 			let parts_iter = parts.iter().map(|part| match part {
 				parser::expressions::TemplateLiteralPart::Static(value) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Static(value.as_str())
+					crate::features::template_literal::TemplateLiteralPart::Static(value.as_str())
 				}
 				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::behavior::template_literal::TemplateLiteralPart::Dynamic(&**expr)
+					crate::features::template_literal::TemplateLiteralPart::Dynamic(&**expr)
 				}
 			});
 			let tag = tag.as_ref().map(|expr| {
@@ -216,10 +218,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			| BinaryOperator::NullCoalescing = operator
 			{
 				let operator = match operator {
-					BinaryOperator::LogicalAnd => crate::behavior::operations::Logical::And,
-					BinaryOperator::LogicalOr => crate::behavior::operations::Logical::Or,
+					BinaryOperator::LogicalAnd => crate::features::operations::Logical::And,
+					BinaryOperator::LogicalOr => crate::features::operations::Logical::Or,
 					BinaryOperator::NullCoalescing => {
-						crate::behavior::operations::Logical::NullCoalescing
+						crate::features::operations::Logical::NullCoalescing
 					}
 					_ => unreachable!(),
 				};
@@ -413,12 +415,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs: Assignable =
 				synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
 
-			let assignment_span = position.with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
-				crate::behavior::assignments::AssignmentKind::Assign,
+				crate::features::assignments::AssignmentKind::Assign,
 				Some(&**rhs),
-				assignment_span,
+				*position,
 				checking_data,
 			);
 		}
@@ -429,12 +430,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 			));
 
-			let assignment_span = position.with_source(environment.get_source());
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
 				operator_to_assignment_kind(*operator),
 				Some(&**rhs),
-				assignment_span,
+				*position,
 				checking_data,
 			);
 		}
@@ -448,22 +448,21 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match operator {
 				UnaryPrefixAssignmentOperator::Invert => todo!(),
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
-					let assignment_span = position.with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
-						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
+						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							match direction {
 								parser::operators::IncrementOrDecrement::Increment => {
-									crate::behavior::assignments::IncrementOrDecrement::Increment
+									crate::features::assignments::IncrementOrDecrement::Increment
 								}
 								parser::operators::IncrementOrDecrement::Decrement => {
-									crate::behavior::assignments::IncrementOrDecrement::Decrement
+									crate::features::assignments::IncrementOrDecrement::Decrement
 								}
 							},
-							crate::behavior::assignments::AssignmentReturnStatus::New,
+							crate::features::assignments::AssignmentReturnStatus::New,
 						),
 						None::<&Expression>,
-						assignment_span,
+						*position,
 						checking_data,
 					);
 				}
@@ -479,24 +478,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				parser::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
 						parser::operators::IncrementOrDecrement::Increment => {
-							crate::behavior::assignments::IncrementOrDecrement::Increment
+							crate::features::assignments::IncrementOrDecrement::Increment
 						}
 						parser::operators::IncrementOrDecrement::Decrement => {
-							crate::behavior::assignments::IncrementOrDecrement::Decrement
+							crate::features::assignments::IncrementOrDecrement::Decrement
 						}
 					};
 					let operator =
-						crate::behavior::assignments::AssignmentKind::IncrementOrDecrement(
+						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							direction,
-							crate::behavior::assignments::AssignmentReturnStatus::Previous,
+							crate::features::assignments::AssignmentReturnStatus::Previous,
 						);
 
-					let assignment_span = position.with_source(environment.get_source());
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
 						operator,
 						None::<&Expression>,
-						assignment_span,
+						*position,
 						checking_data,
 					);
 				}
@@ -523,7 +521,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					todo!()
 				};
 
-			let access_position = position.with_source(environment.get_source());
 			// TODO
 			let publicity = Publicity::Public;
 
@@ -532,7 +529,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				publicity,
 				property,
 				checking_data,
-				access_position,
+				*position,
 			);
 
 			match result {
@@ -550,14 +547,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				TypeId::ANY_TYPE,
 			);
 
-			let index_position = position.with_source(environment.get_source());
 			// TODO handle differently?
 			let result = environment.get_property_handle_errors(
 				being_indexed,
 				Publicity::Public,
 				PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
-				index_position,
+				*position,
 			);
 
 			match result {
@@ -788,19 +784,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 fn operator_to_assignment_kind(
 	operator: parser::operators::BinaryAssignmentOperator,
-) -> crate::behavior::assignments::AssignmentKind {
-	use crate::behavior::assignments::AssignmentKind;
+) -> crate::features::assignments::AssignmentKind {
+	use crate::features::assignments::AssignmentKind;
 	use parser::operators::BinaryAssignmentOperator;
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::And)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::And)
 		}
 		BinaryAssignmentOperator::LogicalOrAssign => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::Or)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::Or)
 		}
 		BinaryAssignmentOperator::LogicalNullishAssignment => {
-			AssignmentKind::ConditionalUpdate(crate::behavior::operations::Logical::NullCoalescing)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::NullCoalescing)
 		}
 		BinaryAssignmentOperator::AddAssign
 		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
@@ -846,7 +842,7 @@ fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
-	mut arguments: Option<&Vec<SpreadExpression>>,
+	arguments: Option<&Vec<SpreadExpression>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
@@ -863,13 +859,28 @@ fn call_function<T: crate::ReadFromFS>(
 			.collect::<Vec<_>>()
 	});
 
-	let synthesised_arguments = arguments
-		.as_mut()
-		.map(|arguments| synthesise_arguments(arguments, environment, checking_data))
+	let arguments = arguments
+		.map(|arguments| {
+			arguments
+				.iter()
+				.map(|a| match a {
+					SpreadExpression::Spread(e, _) => {
+						UnsynthesisedArgument { spread: true, expression: e }
+					}
+					SpreadExpression::NonSpread(e) => {
+						UnsynthesisedArgument { spread: false, expression: e }
+					}
+					SpreadExpression::Empty => {
+						todo!()
+					}
+				})
+				.collect()
+		})
 		.unwrap_or_default();
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
+		arguments,
 		CallingInput {
 			called_with_new,
 			this_value: Default::default(),
@@ -877,49 +888,8 @@ fn call_function<T: crate::ReadFromFS>(
 			call_site_type_arguments: generic_type_arguments,
 		},
 		environment,
-		synthesised_arguments,
 		checking_data,
 	)
-}
-
-/// TODO do lazily
-fn synthesise_arguments<T: crate::ReadFromFS>(
-	arguments: &[SpreadExpression],
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Vec<SynthesisedArgument> {
-	arguments
-		.iter()
-		.filter_map(|argument| match argument {
-			SpreadExpression::Spread(_expr, _) => {
-				todo!()
-				// Some(synthesisedFunctionArgument::Spread(synthesise_expression(
-				//     expr,
-				//     environment,
-				//     checking_data,
-				//
-				//
-				// )))
-			}
-			SpreadExpression::NonSpread(expr) => {
-				let _non_param = expr.get_non_parenthesized();
-				// if matches!(
-				// 	non_param,
-				// 	Expression::ArrowFunction(_)
-				// 		| Expression::ExpressionFunction(ExpressionFunction { name: None, .. })
-				// ) {
-				// 	crate::utils::notify!("TODO absolute function here");
-				// }
-				// TODO expecting here
-				let ty = synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE);
-				Some(SynthesisedArgument::NonSpread {
-					ty,
-					position: ASTNode::get_position(expr).with_source(environment.get_source()),
-				})
-			}
-			SpreadExpression::Empty => None,
-		})
-		.collect::<Vec<SynthesisedArgument>>()
 }
 
 pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
@@ -1021,7 +991,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
-				let behavior = crate::behavior::functions::FunctionRegisterBehavior::ObjectMethod {
+				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {
 					is_async: method.header.is_async(),
 					is_generator: method.header.is_generator(),
 				};

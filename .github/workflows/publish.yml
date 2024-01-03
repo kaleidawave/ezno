@@ -95,7 +95,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: ${{ github.event.inputs.ezno-version != 'none' }}
         with:
-          packages: wasm-bindgen-cli@0.2.87
+          packages: wasm-bindgen-cli@0.2.89
 
       - name: Set NPM package version & build
         id: set-npm-version
@@ -140,11 +140,15 @@ jobs:
         run: |
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
+
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do
             git tag "release/$update"
           done
+
           git push --tags origin main
 
       - name: Discord

@@ -1,7 +1,7 @@
 // Types to runtime behavior
 
 use crate::{
-	behavior::objects::ObjectBuilder, context::facts::Publicity, Constant, Environment, Type,
+	context::facts::Publicity, features::objects::ObjectBuilder, Constant, Environment, Type,
 	TypeId,
 };
 
@@ -93,8 +93,8 @@ pub(crate) fn create_object_for_type(
 				None,
 			);
 		}
-		Type::Function(_, _) => todo!(),
-		Type::FunctionReference(_, _) => todo!(),
+		Type::Function(..) => todo!(),
+		Type::FunctionReference(..) => todo!(),
 		Type::Object(_) => {
 			let value = crate::PropertyValue::Value(
 				types.new_constant_type(Constant::String("anonymous object".into())),

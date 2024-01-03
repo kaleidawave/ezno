@@ -5,10 +5,14 @@ use std::borrow::Cow;
 use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
 
 use crate::{
-	behavior::objects::ObjectBuilder,
-	call_type_handle_errors,
+	context::invocation::CheckThings,
+	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
-	types::{calling::CallingInput, properties::PropertyKey, SynthesisedArgument},
+	types::{
+		calling::{call_type, CallingInput},
+		properties::PropertyKey,
+		SynthesisedArgument,
+	},
 	CheckingData, Constant, Environment, TypeId,
 };
 
@@ -162,13 +166,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			}
 		};
 
-	let tag_name_argument = SynthesisedArgument::NonSpread {
-		ty: tag_name_as_cst_ty,
+	let tag_name_argument = SynthesisedArgument {
+		value: tag_name_as_cst_ty,
+		spread: false,
 		// TODO use tag name position
 		position,
 	};
-	let attributes_argument = SynthesisedArgument::NonSpread {
-		ty: attributes_object.build_object(),
+	let attributes_argument = SynthesisedArgument {
+		value: attributes_object.build_object(),
+		spread: false,
 		// TODO use arguments position
 		position,
 	};
@@ -176,11 +182,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let mut args = vec![tag_name_argument, attributes_argument];
 	if let Some(child_nodes) = child_nodes {
 		// TODO position here
-		args.push(SynthesisedArgument::NonSpread { ty: child_nodes, position });
+		args.push(SynthesisedArgument { value: child_nodes, position, spread: false });
 	}
 
-	call_type_handle_errors(
+	match call_type(
 		jsx_function,
+		args,
 		CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			this_value: environment.facts.value_of_this,
@@ -188,10 +195,14 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			call_site_type_arguments: None,
 		},
 		environment,
-		args,
-		checking_data,
-	)
-	.0
+		&mut CheckThings,
+		&mut checking_data.types,
+	) {
+		Ok(res) => res.returned_type,
+		Err(_) => {
+			todo!("JSX Calling error")
+		}
+	}
 
 	// else {
 	// 	match environment.get_variable_or_error(tag_name, todo!(), checking_data) {
@@ -332,7 +343,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			&None,
 	// 			// 			checking_data,
 	// 			// 			environment,
-	// 			// 			// TODO not sure, this won't work for classes right...
+	// 			// 			// TODO unsure, this won't work for classes right...
 	// 			// 			crate::events::CalledWithNew::None,
 	// 			// 		)
 	// 			// 		.unwrap()

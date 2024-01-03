@@ -2,8 +2,8 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	behavior::functions::{ClosureChain, ClosureId},
 	context::facts::Facts,
+	features::functions::{ClosureChain, ClosureId},
 	TypeId,
 };
 

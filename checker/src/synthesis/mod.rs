@@ -33,6 +33,133 @@ use self::{
 	type_annotations::synthesise_type_annotation,
 };
 
+pub struct EznoParser;
+
+// Clippy suggests a fix that breaks the code
+#[allow(clippy::needless_lifetimes)]
+impl crate::ASTImplementation for EznoParser {
+	type ParseOptions = parser::ParseOptions;
+	type ParseError = (parser::ParseError, SourceId);
+	type ParserRequirements = ();
+
+	type Module<'a> = parser::Module;
+	type OwnedModule = parser::Module;
+
+	type TypeAnnotation<'a> = parser::TypeAnnotation;
+	type TypeParameter<'a> = parser::GenericTypeConstraint;
+	type Expression<'a> = parser::Expression;
+	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
+	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
+
+	type VariableField<'a> = parser::VariableField<parser::VariableFieldInSourceCode>;
+
+	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
+
+	fn module_from_string(
+		source_id: SourceId,
+		string: String,
+		options: Self::ParseOptions,
+		_parser_requirements: &mut Self::ParserRequirements,
+	) -> Result<Self::Module<'static>, Self::ParseError> {
+		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
+			.map_err(|err| (err, source_id))
+	}
+
+	fn definition_module_from_string(
+		source_id: SourceId,
+		string: String,
+		_parser_requirements: &mut Self::ParserRequirements,
+	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
+		let options = Default::default();
+		parser::TypeDefinitionModule::from_string(&string, options, source_id)
+			.map_err(|err| (err, source_id))
+	}
+
+	fn synthesise_module<'a, T: crate::ReadFromFS>(
+		module: &Self::Module<'a>,
+		_source_id: SourceId,
+		module_environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		synthesise_block(&module.items, module_environment, checking_data);
+	}
+
+	fn synthesise_expression<'a, U: crate::ReadFromFS>(
+		expression: &Self::Expression<'a>,
+		expecting: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<U, Self>,
+	) -> TypeId {
+		synthesise_expression(expression, environment, checking_data, expecting)
+	}
+
+	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> source_map::Span {
+		*ASTNode::get_position(expression)
+	}
+
+	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {
+		parameter.name()
+	}
+
+	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
+		annotation: &Self::TypeAnnotation<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		synthesise_type_annotation(annotation, environment, checking_data)
+	}
+
+	type DefinitionFile<'a> = parser::TypeDefinitionModule;
+
+	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'a>,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, Facts) {
+		definitions::type_definition_file(file, checking_data, root)
+	}
+
+	fn parse_options(_is_js: bool, parse_comments: bool) -> Self::ParseOptions {
+		parser::ParseOptions {
+			comments: if parse_comments {
+				parser::Comments::JustDocumentation
+			} else {
+				parser::Comments::None
+			},
+			..Default::default()
+		}
+	}
+
+	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
+		m
+	}
+
+	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
+		expression: &'a Self::MultipleExpression<'a>,
+		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
+	}
+
+	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
+		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		match for_loop_initialiser {
+			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
+				// TODO is this correct & the best
+				hoist_variable_declaration(declaration, environment, checking_data);
+				synthesise_variable_declaration(declaration, environment, checking_data, false);
+			}
+			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
+			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
+		}
+	}
+}
+
 pub(super) fn parser_property_key_to_checker_property_key<
 	P: parser::property_key::PropertyKeyKind,
 	T: crate::ReadFromFS,
@@ -108,128 +235,11 @@ impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	}
 }
 
-pub struct EznoParser;
-
-// Clippy suggests a fix that breaks the code
-#[allow(clippy::needless_lifetimes)]
-impl crate::ASTImplementation for EznoParser {
-	type ParseOptions = parser::ParseOptions;
-	type ParseError = (parser::ParseError, SourceId);
-
-	type Module<'a> = parser::Module;
-	type OwnedModule = parser::Module;
-
-	type TypeAnnotation<'a> = parser::TypeAnnotation;
-	type TypeParameter<'a> = parser::GenericTypeConstraint;
-	type Expression<'a> = parser::Expression;
-	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
-	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
-
-	type VariableField<'a> = parser::VariableField<parser::VariableFieldInSourceCode>;
-
-	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
-
-	fn module_from_string(
-		source_id: SourceId,
-		string: String,
-		options: Self::ParseOptions,
-	) -> Result<Self::Module<'static>, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
-			.map_err(|err| (err, source_id))
-	}
-
-	fn definition_module_from_string(
-		source_id: SourceId,
-		string: String,
-	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
-		let options = Default::default();
-		parser::TypeDefinitionModule::from_string(&string, options, source_id)
-			.map_err(|err| (err, source_id))
-	}
-
-	fn synthesise_module<'a, T: crate::ReadFromFS>(
-		module: &Self::Module<'a>,
-		_source_id: SourceId,
-		module_environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) {
-		synthesise_block(&module.items, module_environment, checking_data);
-	}
-
-	fn synthesise_expression<'a, U: crate::ReadFromFS>(
-		expression: &Self::Expression<'a>,
-		expecting: TypeId,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<U, Self>,
-	) -> TypeId {
-		synthesise_expression(expression, environment, checking_data, expecting)
-	}
-
-	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> source_map::Span {
-		*ASTNode::get_position(expression)
-	}
-
-	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {
-		parameter.name()
-	}
-
-	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
-		annotation: &Self::TypeAnnotation<'a>,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> TypeId {
-		synthesise_type_annotation(annotation, environment, checking_data)
-	}
-
-	type DefinitionFile<'a> = parser::TypeDefinitionModule;
-
-	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'a>,
-		root: &RootContext,
-		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts) {
-		definitions::type_definition_file(file, checking_data, root)
-	}
-
-	fn parse_options(_is_js: bool) -> Self::ParseOptions {
-		// TODO
-		parser::ParseOptions::default()
-	}
-
-	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
-		m
-	}
-
-	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
-		expression: &'a Self::MultipleExpression<'a>,
-		expected_type: TypeId,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> TypeId {
-		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
-	}
-
-	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
-		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) {
-		match for_loop_initialiser {
-			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
-				// TODO is this correct & the best
-				hoist_variable_declaration(declaration, environment, checking_data);
-				synthesise_variable_declaration(declaration, environment, checking_data, false);
-			}
-			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
-		}
-	}
-}
-
+/// For the REPL in Ezno's CLI
 pub mod interactive {
 	use std::{collections::HashSet, mem, path::PathBuf};
 
-	use source_map::{MapFileStore, SourceId, WithPathMap};
+	use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
 	use crate::{
 		add_definition_files_to_root, types::printing::print_type, CheckingData,
@@ -241,6 +251,7 @@ pub mod interactive {
 	pub struct State<'a, T: crate::ReadFromFS> {
 		checking_data: CheckingData<'a, T, super::EznoParser>,
 		root: RootContext,
+		source: SourceId,
 	}
 
 	impl<'a, T: crate::ReadFromFS> State<'a, T> {
@@ -249,16 +260,17 @@ pub mod interactive {
 			type_definition_files: HashSet<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
-			let _entry_point = PathBuf::from("CLI");
 			let mut checking_data =
-				CheckingData::new(Default::default(), resolver, Default::default());
+				CheckingData::new(Default::default(), resolver, Default::default(), ());
 
 			add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 			if checking_data.diagnostics_container.has_error() {
 				Err((checking_data.diagnostics_container, checking_data.modules.files))
 			} else {
-				Ok(Self { checking_data, root })
+				let source =
+					checking_data.modules.files.new_source_id("CLI.tsx".into(), String::default());
+				Ok(Self { checking_data, root, source })
 			}
 		}
 
@@ -266,9 +278,8 @@ pub mod interactive {
 			&mut self,
 			item: &parser::Module,
 		) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
-			let source = self.checking_data.modules.entry_point.unwrap();
 			let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
-				crate::Scope::PassThrough { source },
+				crate::Scope::PassThrough { source: self.source },
 				&mut self.checking_data,
 				|environment, checking_data| {
 					if let Some(parser::StatementOrDeclaration::Statement(
@@ -294,7 +305,6 @@ pub mod interactive {
 						))
 					} else {
 						synthesise_block(&item.items, environment, checking_data);
-
 						None
 					}
 				},
@@ -308,17 +318,17 @@ pub mod interactive {
 		}
 
 		#[must_use]
+		pub fn get_source_id(&self) -> SourceId {
+			self.source
+		}
+
+		#[must_use]
 		pub fn get_fs_ref(&self) -> &MapFileStore<WithPathMap> {
 			&self.checking_data.modules.files
 		}
 
 		pub fn get_fs_mut(&mut self) -> &mut MapFileStore<WithPathMap> {
 			&mut self.checking_data.modules.files
-		}
-
-		#[must_use]
-		pub fn get_source_id(&self) -> SourceId {
-			self.checking_data.modules.entry_point.unwrap()
 		}
 	}
 }

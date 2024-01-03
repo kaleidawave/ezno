@@ -18,7 +18,7 @@ use std::{
 	path::PathBuf,
 };
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone, Copy)]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -87,6 +87,15 @@ impl Diagnostic {
 			Diagnostic::Global { reason, .. } => (reason, None),
 			Diagnostic::Position { reason, position, .. }
 			| Diagnostic::PositionWithAdditionalLabels { reason, position, .. } => (reason, Some(position)),
+		}
+	}
+
+	#[must_use]
+	pub fn kind(&self) -> DiagnosticKind {
+		match self {
+			Diagnostic::Global { kind, .. }
+			| Diagnostic::Position { kind, .. }
+			| Diagnostic::PositionWithAdditionalLabels { kind, .. } => *kind,
 		}
 	}
 }
@@ -254,7 +263,7 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{
-		behavior::operations::MathematicalAndBitwise, context::AssignmentError,
+		context::AssignmentError, features::operations::MathematicalAndBitwise,
 		types::calling::FunctionCallingError,
 	};
 	use source_map::SpanWithSource;
@@ -287,7 +296,7 @@ mod defined_errors_and_warnings {
 		AssignmentError(AssignmentError),
 		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
 		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
-		InvalidUnaryOperation(crate::behavior::operations::PureUnary, TypeStringRepresentation),
+		InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 		ReturnedTypeDoesNotMatch {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,

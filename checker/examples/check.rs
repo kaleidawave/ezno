@@ -13,7 +13,7 @@ fn main() {
 	let now = Instant::now();
 
 	let (diagnostics, post_check_data) = check_project::<_, synthesis::EznoParser>(
-		path.to_path_buf(),
+		vec![path.to_path_buf()],
 		std::iter::once(ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path: &std::path::Path| {
 			if path == PathBuf::from(ezno_checker::INTERNAL_DEFINITION_FILE_PATH) {
@@ -23,11 +23,12 @@ fn main() {
 			}
 		},
 		None,
+		(),
 	);
 
 	let args: Vec<_> = env::args().collect();
 
-	if let Ok(mut post_check_data) = post_check_data {
+	if let Ok(post_check_data) = post_check_data {
 		if args.iter().any(|arg| arg == "--types") {
 			eprintln!("Types:");
 			for (type_id, item) in post_check_data.types.into_vec_temp() {
@@ -36,8 +37,7 @@ fn main() {
 		}
 		if args.iter().any(|arg| arg == "--events") {
 			eprintln!("Events on entry:");
-			let entry_module =
-				post_check_data.modules.remove(&post_check_data.entry_source).unwrap();
+			let (_, entry_module) = post_check_data.modules.into_iter().next().unwrap();
 			for item in entry_module.facts.get_events() {
 				eprintln!("\t{item:?}");
 			}
@@ -51,10 +51,23 @@ fn main() {
 	} else {
 		eprintln!("Diagnostics:");
 		for diagnostic in diagnostics {
-			eprintln!("\t{}", diagnostic.reason());
-			if let Diagnostic::PositionWithAdditionalLabels { labels, .. } = diagnostic {
-				for (label, _) in labels.iter() {
-					eprintln!("\t\t({})", label);
+			let prefix: char = match diagnostic.kind() {
+				ezno_checker::DiagnosticKind::Error => 'E',
+				ezno_checker::DiagnosticKind::Warning => 'W',
+				ezno_checker::DiagnosticKind::Info => 'I',
+			};
+			match diagnostic {
+				Diagnostic::Global { reason, kind: _ } => {
+					eprintln!("\t{prefix}: {reason}");
+				}
+				Diagnostic::Position { reason, position, kind: _ } => {
+					eprintln!("\t{prefix}: {reason} {position:?}");
+				}
+				Diagnostic::PositionWithAdditionalLabels { reason, position, labels, kind: _ } => {
+					eprintln!("\t{prefix}: {reason} {position:?}");
+					for (reason, position) in labels {
+						eprintln!("\t\t{reason} {position:?}");
+					}
 				}
 			}
 		}

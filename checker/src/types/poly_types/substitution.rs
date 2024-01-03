@@ -1,7 +1,7 @@
 //! How type parameters are resolved
 
 use crate::{
-	behavior::{
+	features::{
 		functions::ThisValue,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
@@ -9,8 +9,8 @@ use crate::{
 		},
 	},
 	types::{
-		get_constraint, is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type,
-		TypeStore,
+		get_constraint, get_larger_type, is_type_truthy_falsy, Constructor, PolyNature,
+		StructureGenerics, Type, TypeStore,
 	},
 	Decidable, Environment, TypeId,
 };
@@ -46,7 +46,7 @@ pub(crate) fn substitute(
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(_f, _t) => curry_arguments(arguments, types, id),
+		Type::FunctionReference(_f) => curry_arguments(arguments, types, id),
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
@@ -64,7 +64,7 @@ pub(crate) fn substitute(
 			if let PolyNature::Open(_) = nature {
 				id
 			} else if let PolyNature::Generic { .. } = nature {
-				crate::utils::notify!("Could not find argument generic");
+				crate::utils::notify!("Could not find argument for explicit generic");
 				id
 			} else {
 				// Other root poly types cases handled by the early return
@@ -145,7 +145,7 @@ pub(crate) fn substitute(
 						substitute(else_result, arguments, environment, types)
 					}
 				} else {
-					crate::utils::notify!("{:?} not decidable", condition);
+					crate::utils::notify!("{:?} is undecidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
 					let else_result = substitute(else_result, arguments, environment, types);
 					// TODO result_union
@@ -159,7 +159,7 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { on, under, result } => {
+			Constructor::Property { on, under, result, bind_this } => {
 				let id = get_constraint(on, types).unwrap_or(on);
 
 				if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
@@ -191,6 +191,7 @@ pub(crate) fn substitute(
 							on,
 							under,
 							result: new_result,
+							bind_this,
 						}))
 					}
 				} else {
@@ -202,7 +203,7 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Image { .. } => {
-				todo!("Constructor::Image should be covered by events");
+				todo!("Constructor::Image {id:?} should be covered by events");
 				// id
 
 				// let on = substitute(on, arguments, environment);
@@ -268,11 +269,11 @@ pub(crate) fn substitute(
 			// }
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
-					crate::behavior::operations::CanonicalEqualityAndInequality::StrictEqual => {
-						crate::behavior::operations::EqualityAndInequality::StrictEqual
+					crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
+						crate::features::operations::EqualityAndInequality::StrictEqual
 					}
-					crate::behavior::operations::CanonicalEqualityAndInequality::LessThan => {
-						crate::behavior::operations::EqualityAndInequality::LessThan
+					crate::features::operations::CanonicalEqualityAndInequality::LessThan => {
+						crate::features::operations::EqualityAndInequality::LessThan
 					}
 				};
 				let lhs = substitute(lhs, arguments, environment, types);
@@ -290,10 +291,17 @@ pub(crate) fn substitute(
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { ty, extends } => {
-					let _ty = substitute(ty, arguments, environment, types);
-					let _extends = substitute(extends, arguments, environment, types);
+					let ty = substitute(ty, arguments, environment, types);
+					let extends = substitute(extends, arguments, environment, types);
 
-					todo!();
+					let does_extend = get_larger_type(ty, types) == extends;
+					crate::utils::notify!("Extends result {:?}", does_extend);
+					if does_extend {
+						TypeId::TRUE
+					} else {
+						TypeId::FALSE
+					}
+
 					// TODO special behavior that doesn't have errors...
 					// let result = type_is_subtype(
 					// 	extends,

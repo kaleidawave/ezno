@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use source_map::SpanWithSource;
 
 use crate::{
-	behavior::functions::{ClosureId, ThisValue},
 	events::{Event, RootReference},
+	features::functions::{ClosureId, ThisValue},
 	types::properties::PropertyKey,
 	PropertyValue, Type, TypeId, VariableId,
 };
@@ -67,8 +67,9 @@ impl Facts {
 		}
 	}
 
-	pub(crate) fn throw_value(&mut self, value: TypeId, position: SpanWithSource) {
-		self.events.push(Event::Throw(value, position));
+	/// This is how invocation contexts register throws...
+	pub(crate) fn throw_value_in_facts(&mut self, value: TypeId, position: SpanWithSource) {
+		self.events.push(crate::events::FinalEvent::Throw { thrown: value, position }.into());
 	}
 
 	#[must_use]

@@ -1,7 +1,7 @@
 use parser::ASTNode;
 
 use crate::{
-	context::{Names, RootContext},
+	context::{Names, RootContext, VariableRegisterArguments},
 	synthesis::{
 		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	},
@@ -75,7 +75,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					checking_data,
 					func.performs.as_ref().into(),
 					&declared_at,
-					crate::behavior::functions::FunctionBehavior::ArrowFunction { is_async: false },
+					crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
 					None,
 				);
 
@@ -89,42 +89,42 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					base.constant_function,
 				);
 
-				let behavior = crate::context::VariableRegisterBehavior::Declare {
-					base,
-					context: decorators_to_context(&func.decorators),
-				};
+				let _context = decorators_to_context(&func.decorators);
 
-				let _res = env.register_variable_handle_error(
+				env.register_variable_handle_error(
 					func.name.as_str(),
-					// TODO
+					VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: Some(base),
+					},
 					func.get_position().with_source(source),
-					behavior,
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				);
 			}
 			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
 				keyword: _,
 				declarations,
 				position: _,
-				decorators,
+				decorators: _,
 			}) => {
 				for declaration in &declarations {
-					let constraint = declaration.type_annotation.as_ref().map(|annotation| {
-						synthesise_type_annotation(annotation, &mut env, checking_data)
-					});
+					// TODO is it ever `None`...?
+					let constraint = declaration.type_annotation.as_ref().map_or(
+						TypeId::ANY_TYPE,
+						|annotation| {
+							synthesise_type_annotation(annotation, &mut env, checking_data)
+						},
+					);
 
-					// TODO warning here
-					let behavior = crate::context::VariableRegisterBehavior::Declare {
-						base: constraint.unwrap_or(TypeId::ANY_TYPE),
-						context: decorators_to_context(&decorators),
-					};
-
+					let initial_value = Some(checking_data.types.register_type(
+						crate::Type::RootPolyType(crate::types::PolyNature::Open(constraint)),
+					));
 					crate::synthesis::variables::register_variable(
 						declaration.name.get_ast_ref(),
 						&mut env,
 						checking_data,
-						behavior,
-						constraint,
+						VariableRegisterArguments { constant: true, space: None, initial_value },
 					);
 				}
 			}

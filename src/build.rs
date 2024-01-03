@@ -1,9 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+	mem,
+	path::{Path, PathBuf},
+};
 
 use checker::DiagnosticsContainer;
 use parser::{
 	source_map::{MapFileStore, WithPathMap},
-	ToStringOptions,
+	SourceId, Span, ToStringOptions,
 };
 use serde::Deserialize;
 
@@ -44,8 +47,8 @@ pub struct BuildConfig {
 pub type EznoParsePostCheckVisitors = parser::visiting::VisitorsMut<EznoCheckerData>;
 
 pub fn build<T: crate::ReadFromFS>(
+	input_paths: Vec<PathBuf>,
 	fs_resolver: &T,
-	input_path: &Path,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
 	config: &BuildConfig,
@@ -53,41 +56,55 @@ pub fn build<T: crate::ReadFromFS>(
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax
 	let (diagnostics, data_and_module) =
-		crate::check(fs_resolver, input_path, type_definition_module);
+		crate::check(input_paths, fs_resolver, type_definition_module);
 
 	match data_and_module {
 		Ok(mut data) => {
 			// TODO For all modules
-			let main_module = data.modules.get_mut(&data.entry_source).unwrap();
+			let keys = data.modules.keys().cloned().collect::<Vec<_>>();
 
-			// TODO bundle using main_module.imports
+			let null_module = parser::Module {
+				items: Default::default(),
+				source: SourceId::NULL,
+				span: Span::NULL_SPAN,
+			};
 
-			// TODO !!! DON'T CLONE !!! THE MODULE !!! BUT DON'T WANT TO REMOVE FROM ABOVE !!!
-			let mut module = main_module.content.clone();
+			let mut outputs = Vec::new();
 
 			let mut transformers = transformers.unwrap_or_default();
 
-			module.visit_mut::<EznoCheckerData>(
-				&mut transformers,
-				&mut data,
-				&parser::visiting::VisitOptions::default(),
-			);
+			for source in keys {
+				// Remove the module
+				let mut module = mem::replace(
+					&mut data.modules.get_mut(&source).unwrap().content,
+					null_module.clone(),
+				);
 
-			let to_string_options = if config.strip_whitespace {
-				ToStringOptions::minified()
-			} else {
-				ToStringOptions::default()
-			};
+				// TODO bundle using main_module.imports
 
-			let content = parser::ASTNode::to_string(&module, &to_string_options);
-			let main_output = Output {
-				output_path: output_path.to_path_buf(),
-				content,
-				// TODO module.to_string_with_map
-				mappings: String::new(),
-			};
+				module.visit_mut::<EznoCheckerData>(
+					&mut transformers,
+					&mut data,
+					&parser::visiting::VisitOptions::default(),
+				);
 
-			Ok(BuildOutput { outputs: vec![main_output], diagnostics, fs: data.module_contents })
+				let to_string_options = if config.strip_whitespace {
+					ToStringOptions::minified()
+				} else {
+					ToStringOptions::default()
+				};
+
+				let content = parser::ASTNode::to_string(&module, &to_string_options);
+
+				outputs.push(Output {
+					output_path: output_path.to_path_buf(),
+					content,
+					// TODO module.to_string_with_map
+					mappings: String::new(),
+				})
+			}
+
+			Ok(BuildOutput { outputs, diagnostics, fs: data.module_contents })
 		}
 		Err(err) => Err(FailedBuildOutput { diagnostics, fs: err }),
 	}

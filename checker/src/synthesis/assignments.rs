@@ -5,8 +5,8 @@ use parser::{
 };
 
 use crate::{
-	behavior::assignments::{Assignable, Reference},
 	context::{facts::Publicity, Environment},
+	features::assignments::{Assignable, Reference},
 	synthesis::expressions::synthesise_expression,
 	types::properties::PropertyKey,
 	CheckingData, TypeId,

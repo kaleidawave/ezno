@@ -5,7 +5,7 @@ use source_map::{SourceId, SpanWithSource};
 use super::range_map::RangeMap;
 
 use crate::{
-	behavior::variables::VariableWithValue,
+	features::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
 	GeneralContext, VariableId,
 };
@@ -83,7 +83,15 @@ impl Instance {
 	}
 
 	#[must_use]
-	pub fn get_value(&self) -> TypeId {
+	pub fn get_value(self) -> TypeId {
+		match self {
+			Instance::LValue(l) => l.1,
+			Instance::GValue(value) | Instance::RValue(value) => value,
+		}
+	}
+
+	#[must_use]
+	pub fn get_value_on_ref(&self) -> TypeId {
 		match self {
 			Instance::LValue(l) => l.1,
 			Instance::GValue(value) | Instance::RValue(value) => *value,

@@ -32,6 +32,10 @@ If you want to check all the checker tests
 
 ```shell
 cargo test -p ezno-checker-specification
+# Also
+cargo test -p ezno-checker-specification -F staging
+# and
+cargo test -p ezno-checker-specification -F all
 ```
 
 If you want to test the lexing and parsing in Ezno's parser
@@ -46,7 +50,7 @@ cargo run -p ezno-parser --example lex path/to/file.ts
 ### Useful commands
 
 - Check source is valid with `cargo check --workspace`
-- Check that code is formatted in accordance with the specification with `cargo fmt --all --check`
+- Check that code is formatted in accordance with the configuration with `cargo fmt --all --check`
 - Run all tests `cargo test --workspace --verbose`
 - Use `cargo clippy -- --allow warnings` to find blocking lints
 

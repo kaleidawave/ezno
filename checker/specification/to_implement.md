@@ -27,6 +27,21 @@ function add_property(obj: { prop: number }) {
 
 - Expected 4, found 2
 
+#### Generic type argument restriction
+
+```ts
+function map<T, U>(a: T, b: (t: T) => U) {
+	return b(a)
+}
+
+map(2, Math.sin)
+map("string", Math.sin)
+```
+
+- Argument of type "string" is not assignable to parameter of type number
+
+> Because `Math.sin` set T to number
+
 #### Calling on or type
 
 ```ts
@@ -40,20 +55,6 @@ print_type(callFunc)
 ```
 
 - Expected "a" | "b" | "c" found "d"
-
-#### This as generic argument
-
-> Was working, now broken for some reason :(
-
-```ts
-function callToUpperCase(s: string) {
-	return s.toUpperCase()
-}
-
-(callToUpperCase("hi") satisfies "HEY")
-```
-
-- Expected "HEY", found "HI"
 
 #### Symmetric or
 
@@ -142,7 +143,53 @@ if (a === "hi") {
 
 - Expected "hello", found "hi"
 
-### Looping
+### This
+
+#### Bind function
+
+```ts
+function ChangeThis(this: { value: any }) {
+	return this.value
+}
+
+const x = ChangeThis.bind({ value: 2 })
+x() satisfies 3
+```
+
+- Expected 3, found 2
+
+### Iteration
+
+#### For-in fixed object
+
+```ts
+let properties: string = "";
+for (const property in { a: 1, b: 2, c: 3 }) {
+    properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found "abc"
+
+#### For-in non fixed object
+
+> TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
+> properties than defined
+
+```ts
+declare const myObject: { a: 1, b: 2, c: 3 };
+
+let properties: string = "";
+for (const property in myObject) {
+    properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found string
+
+> TODO for in and generators
 
 #### For loops
 
@@ -156,7 +203,7 @@ function func(array: Array<string>) {
 
 - Expected number found string
 
-#### Constant loops
+#### Constant for loop
 
 ```ts
 function join(array: Array<string>) {
@@ -171,33 +218,6 @@ join(["a", "b", "c"]) satisfies "cba"
 ```
 
 - Expected "cba" found "abc"
-
-### This
-
-#### Calling new on a function
-
-```ts
-function MyClass(value) {
-	this.value = value
-}
-
-new MyClass("hi").value satisfies "hello"
-```
-
-- Expected "hello", found "hi"
-
-#### Bind function
-
-```ts
-function ChangeThis(this: { value: any }) {
-	return this.value
-}
-
-const x = ChangeThis.bind({ value: 2 })
-x() satisfies 3
-```
-
-- Expected 3, found 2
 
 ### Inference
 
@@ -238,7 +258,7 @@ x = 0
 call() satisfies 2
 ```
 
-- Cannot call ...
+- Cannot call TODO
 - Expected 2 found 1
 
 #### Property restriction
@@ -254,7 +274,7 @@ print_type(call)
 
 ### Asynchronous functions and promises
 
-#TODO promise
+> TODO Promise properties
 
 #### Async function
 
@@ -300,13 +320,11 @@ function x*() {
 (await x) satisfies string;
 ```
 
-- #TODO
+- TODO
 
-### Proxy and Object
+### `Proxy` and `Object`
 
-#TODO effects
-#TODO traps
-#TODO Object.defineProperty
+> TODO effects, different traps and `Object.defineProperty`
 
 #### Proxy object with default callback
 
@@ -331,6 +349,8 @@ a.prop3 satisfies "prop2"
 
 ### Collections
 
+> TODO filter, every and all, find, etc
+
 #### Simple array map
 
 ```ts
@@ -340,6 +360,8 @@ function mapper(a: Array<string>) {
 
 print_type(mapper)
 ```
+
+- TODO
 
 #### Generic array map
 
@@ -351,20 +373,9 @@ function mapper<T, U>(a: Array<T>, func: T => U) {
 print_type(mapper)
 ```
 
+- TODO
+
 ### Expressions
-
-#### Statements, declarations and expressions
-
-```ts
-function myTag(static_parts: Array<string>, first_name: string) {
-	return first_name + static_parts[0]
-}
-
-const name = "Ben";
-myTag`Hello ${name}` satisfies "Hi Ben"
-```
-
-- Expected "Hi Ben", found "Hello Ben"
 
 #### Bad arithmetic operator
 
@@ -377,33 +388,6 @@ console + 2
 ```
 
 - Expected number, found Console
-
-#### Expected argument
-
-> Requires synthesising arguments later ...?
-
-```ts
-function map(a: (a: number) => number) {}
-
-map(a => a.t)
-```
-
-> No property t on string
-
-#### Spread arguments
-
-```ts
-function spread(main, ...others) {
-	return {
-		main,
-		others,
-	}
-}
-
-spread(1, 2, 3) satisfies string
-```
-
-- TODO...
 
 #### Array spread
 
@@ -419,7 +403,16 @@ array2[2] satisfies string;
 
 ### Classes
 
-> TODO extends
+#### Extends
+
+```ts
+class BaseClass extends class { x: 2 } {
+	y: 3
+}
+
+const b = new BaseClass;
+print_type(b.x);
+```
 
 #### Privacy
 
@@ -438,3 +431,38 @@ class MyClass {
 
 - Cannot get private property "#a"
 - Expected 3, found 2
+
+### Recursion
+
+#### Application
+
+```ts
+function x(a: number) {
+	if (a > 10 || a < 0) {
+		return a
+	}
+	return a--
+}
+
+print_type(x(4))
+print_type(x(90))
+```
+
+- TODO
+
+### Function checking
+
+#### Default parameter side effect on parameter
+
+> I don't think this works because of fact combining
+
+```ts
+function doThing(a, b = (a += 2)) {
+    return a
+}
+
+doThing(3) satisfies 2;
+doThing(6, 1) satisfies 6;
+```
+
+- Expected 2, found 5

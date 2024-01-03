@@ -4,8 +4,8 @@ use crate::{
 	functions::{self},
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
-		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, AS_PRECEDENCE,
-		FUNCTION_CALL_PRECEDENCE, INSTANCE_OF_PRECEDENCE, IN_PRECEDENCE,
+		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, FUNCTION_CALL_PRECEDENCE,
+		RELATION_PRECEDENCE,
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
@@ -806,8 +806,12 @@ impl Expression {
 					"private in expression",
 				)?;
 				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
-				let rhs =
-					Expression::from_reader_with_precedence(reader, state, options, IN_PRECEDENCE)?;
+				let rhs = Expression::from_reader_with_precedence(
+					reader,
+					state,
+					options,
+					RELATION_PRECEDENCE,
+				)?;
 				let position = start.union(rhs.get_position());
 				Self::SpecialOperators(
 					SpecialOperators::InExpression {
@@ -1020,7 +1024,7 @@ impl Expression {
 				}
 				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is) => {
 					if AssociativityDirection::LeftToRight
-						.should_return(parent_precedence, AS_PRECEDENCE)
+						.should_return(parent_precedence, RELATION_PRECEDENCE)
 					{
 						return Ok(top);
 					}
@@ -1062,7 +1066,7 @@ impl Expression {
 				}
 				TSXToken::Keyword(TSXKeyword::In) => {
 					if AssociativityDirection::LeftToRight
-						.should_return(parent_precedence, IN_PRECEDENCE)
+						.should_return(parent_precedence, RELATION_PRECEDENCE)
 					{
 						return Ok(top);
 					}
@@ -1072,7 +1076,7 @@ impl Expression {
 						reader,
 						state,
 						options,
-						IN_PRECEDENCE,
+						RELATION_PRECEDENCE,
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
@@ -1085,7 +1089,7 @@ impl Expression {
 				}
 				TSXToken::Keyword(TSXKeyword::InstanceOf) => {
 					if AssociativityDirection::LeftToRight
-						.should_return(parent_precedence, IN_PRECEDENCE)
+						.should_return(parent_precedence, RELATION_PRECEDENCE)
 					{
 						return Ok(top);
 					}
@@ -1095,7 +1099,7 @@ impl Expression {
 						reader,
 						state,
 						options,
-						INSTANCE_OF_PRECEDENCE,
+						RELATION_PRECEDENCE,
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
@@ -1221,12 +1225,9 @@ impl Expression {
             | Self::SuperExpression(..)
             | Self::NewTarget(..)
             | Self::ClassExpression(..)
-            // TODO not sure about this one...?
+            // TODO unsure about this one...?
             | Self::DynamicImport { .. }
             | Self::Cursor { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
-            // TODO not sure about this one...?
-			#[cfg(feature = "extras")]
-            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
             Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
@@ -1244,16 +1245,12 @@ impl Expression {
             Self::PrefixComment(_, expression, _) | Self::PostfixComment(expression, _, _) => {
                 expression.get_precedence()
             }
-            Self::Comment(_, _) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO not sure about this
-            Self::SpecialOperators(op, _) => match op {
-				 // TODO not sure about this
-                SpecialOperators::AsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-                SpecialOperators::SatisfiesExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-                SpecialOperators::InExpression { .. } => IN_PRECEDENCE,
-                SpecialOperators::InstanceOfExpression { .. } => INSTANCE_OF_PRECEDENCE,
-				#[cfg(feature = "extras")]
-                SpecialOperators::IsExpression { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-            },
+            Self::Comment(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+			// All these are relational and have the same precedence
+            Self::SpecialOperators(..) => RELATION_PRECEDENCE,
+			// TODO unsure about this one...?
+			#[cfg(feature = "extras")]
+            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
         }
 	}
 
@@ -1313,18 +1310,23 @@ impl Expression {
 							buf.push_str(property);
 						}
 						InExpressionLHS::Expression(lhs) => {
-							lhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE);
+							lhs.to_string_using_precedence(
+								buf,
+								options,
+								depth,
+								RELATION_PRECEDENCE,
+							);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, depth, IN_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
 				}
 				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
-					lhs.to_string_using_precedence(buf, options, depth, INSTANCE_OF_PRECEDENCE);
+					lhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, depth, INSTANCE_OF_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
 				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {

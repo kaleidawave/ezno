@@ -1,23 +1,3 @@
-// ↓↓ Ezno Functions ↓↓
-declare function debug_context(): void performs const debug_context;
-declare function print_type(t: any): void performs const print_type;
-declare function debug_type(t: any): void performs const debug_type;
-declare function debug_type_rust(t: any): void performs const debug_type_rust;
-declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
-declare function debug_effects(t: () => {}): void performs const debug_effects;
-declare function is_dependent(t: any): void performs const is_dependent;
-
-declare function context_id(): void performs const context_id;
-declare function context_id_chain(): void performs const context_id_chain;
-
-// A function, as it should be!
-declare function satisfies<T>(t: T): T performs const satisfies;
-
-declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
-// ↑↑ Ezno Functions ↑↑
-
-declare var undefined: undefined;
-
 interface nominal Array<T> {
     [index: number]: T | undefined;
     
@@ -38,17 +18,18 @@ interface nominal Array<T> {
         }
     }
 
-    map<U>(cb: (t: T) => U): Array<U> performs {
+    // TODO this argument
+    map<U>(cb: (t: T, i?: number, self: Array<T>) => U): Array<U> performs {
         const { length } = this, u: Array<U> = [];
         let i: number = 0;
         while (i < length) {
-            const value = this[i++];
-            u.push(cb(value))
+            const value = this[i];
+            u.push(cb(value, i++, this))
         }
         return u;
     }
 
-    filter(cb: (t: T) => boolean): Array<T> performs {
+    filter(cb: (t: T, i?: number, self: Array<T>) => boolean): Array<T> performs {
         const { length } = this, filtered: Array<T> = [];
         let i: number = 0;
         while (i < length) {
@@ -60,7 +41,7 @@ interface nominal Array<T> {
         return filtered;
     }
 
-    find(cb: (t: T) => boolean): T | undefined performs {
+    find(cb: (t: T, i?: number, self: Array<T>) => boolean): T | undefined performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -71,7 +52,7 @@ interface nominal Array<T> {
         }
     }
 
-    every(cb: (t: T) => boolean): boolean performs {
+    every(cb: (t: T, i?: number, self: Array<T>) => boolean): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -84,7 +65,7 @@ interface nominal Array<T> {
         return true
     }
 
-    some(cb: (t: T) => boolean): boolean performs {
+    some(cb: (t: T, i?: number, self: Array<T>) => boolean): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -108,9 +89,19 @@ interface nominal Array<T> {
         return false
     }
 
-    // last() performs {
-    //     return this[this.length - 1]
-    // }
+    join(joiner: string = ","): string performs {
+        const { length } = this;
+        let i = 1;
+        if (length === 0) {
+            return ""
+        }
+        // TODO conversion
+        let s: string = "" + this[0];
+        while (i < length) {
+            s += this[i++];
+        }
+        return s
+    }
 }
 
 interface Math {
@@ -140,6 +131,12 @@ interface nominal string {
     toLowerCase(): string performs const lowercase;
 
     get length(): number performs const string_length;
+
+    // TODO
+    slice(start: number, end?: number): string performs const slice;
+
+    // TODO
+    split(splitter: string): Array<string> performs const split;
 }
 
 interface Console {

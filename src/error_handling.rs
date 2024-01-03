@@ -82,7 +82,7 @@ fn emit_diagnostic<'files, F: Files<'files>>(
 
 	let config = Config::default();
 
-	let writer = StandardStream::stderr(ColorChoice::Always);
+	let writer = StandardStream::stderr(ColorChoice::Auto);
 	let mut lock = writer.lock();
 	emit(&mut lock, &config, files, diagnostic)
 }

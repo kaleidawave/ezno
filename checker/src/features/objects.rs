@@ -53,6 +53,8 @@ pub enum SpecialObjects {
 		over: TypeId,
 		handler: TypeId,
 	},
+	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
+	Regexp(String),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
 }

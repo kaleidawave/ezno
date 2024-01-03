@@ -3,8 +3,8 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	behavior::iteration::IterationKind,
 	context::{facts::Publicity, get_on_ctx},
+	features::iteration::IterationKind,
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
@@ -34,21 +34,6 @@ impl RootReference {
 	}
 }
 
-/// If `carry == 0` then break
-#[derive(Debug)]
-pub enum EventResult {
-	Return(TypeId, SpanWithSource),
-	Break {
-		carry: u8,
-	},
-	/// from `continue` statements, which should be called `skip`.
-	/// TODO maybe this can be abstracted
-	Continue {
-		carry: u8,
-	},
-	Throw,
-}
-
 /// For iterations. TODO up for debate
 pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
 
@@ -58,8 +43,6 @@ pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
 ///
 /// `reflects_dependency` means the result goes into the type argument map. This corresponds to the
 /// type id (of constructor) it goes under
-///
-/// TODO store positions?
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Event {
 	/// Reads a reference (as a free variable or `this`)
@@ -102,12 +85,10 @@ pub enum Event {
 		called_with_new: CalledWithNew,
 		position: SpanWithSource,
 	},
-	/// From a `throw ***` statement (or expression)
-	Throw(TypeId, SpanWithSource),
 	/// Run events conditionally
 	Conditionally {
 		condition: TypeId,
-		events_if_truthy: Box<[Event]>,
+		true_events: Box<[Event]>,
 		else_events: Box<[Event]>,
 		position: Option<SpanWithSource>,
 	},
@@ -120,11 +101,7 @@ pub enum Event {
 		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
 		initial: InitialVariables,
 	},
-	/// TODO not sure but whatever
-	Return {
-		returned: TypeId,
-		returned_position: SpanWithSource,
-	},
+
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -150,14 +127,35 @@ pub enum Event {
 		/// Debug only
 		is_function_this: bool,
 	},
+	FinalEvent(FinalEvent),
+}
+
+impl From<FinalEvent> for Event {
+	fn from(value: FinalEvent) -> Self {
+		Event::FinalEvent(value)
+	}
+}
+
+/// Nothing runs after this event
+#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+pub enum FinalEvent {
+	Return {
+		returned: TypeId,
+		returned_position: SpanWithSource,
+	},
+	/// From a `throw ***` statement (or expression)
+	Throw {
+		thrown: TypeId,
+		position: SpanWithSource,
+	},
 	Break {
-		position: Option<SpanWithSource>,
 		carry: u8,
+		position: Option<SpanWithSource>,
 	},
 	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
 	Continue {
-		position: Option<SpanWithSource>,
 		carry: u8,
+		position: Option<SpanWithSource>,
 	},
 }
 

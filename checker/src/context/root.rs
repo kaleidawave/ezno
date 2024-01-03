@@ -1,10 +1,15 @@
-use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
+use super::{
+	environment::DynamicBoundaryKind, ClosedOverReferencesInScope, Context, ContextId, ContextType,
+};
 use crate::{
-	behavior::modules::{Exported, SynthesisedModule},
+	features::{
+		modules::{Exported, SynthesisedModule},
+		variables::VariableOrImport,
+	},
 	types::TypeId,
 	CheckingData, GeneralContext,
 };
-use source_map::SourceId;
+use source_map::{SourceId, SpanWithSource};
 use std::{collections::HashMap, iter::FromIterator};
 
 pub type RootContext = Context<Root>;
@@ -21,8 +26,8 @@ impl ContextType for Root {
 		None
 	}
 
-	fn is_dynamic_boundary(&self) -> bool {
-		false
+	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
+		None
 	}
 
 	fn is_conditional(&self) -> bool {
@@ -52,33 +57,45 @@ impl RootContext {
 	#[must_use]
 	pub fn new_with_primitive_references() -> Self {
 		// TODO number might not be a reference at some point
-		let named_types = [
+		let types = [
 			("number".to_owned(), TypeId::NUMBER_TYPE),
 			("string".to_owned(), TypeId::STRING_TYPE),
 			("boolean".to_owned(), TypeId::BOOLEAN_TYPE),
 			("null".to_owned(), TypeId::NULL_TYPE),
 			("undefined".to_owned(), TypeId::UNDEFINED_TYPE),
-			// void = undefined everywhere in tsc, not great but preserving compat here
-			("void".to_owned(), TypeId::UNDEFINED_TYPE),
+			("void".to_owned(), TypeId::VOID_TYPE),
 			("Array".to_owned(), TypeId::ARRAY_TYPE),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 		];
 
-		let named_types = HashMap::from_iter(named_types);
+		let mut facts = crate::Facts::default();
+
+		// Add undefined
+		let variables = {
+			let variable_or_import = VariableOrImport::Variable {
+				mutability: crate::features::variables::VariableMutability::Constant,
+				declared_at: SpanWithSource::NULL_SPAN,
+				context: None,
+			};
+			let undefined_id = variable_or_import.get_id();
+			let variables = [("undefined".to_owned(), variable_or_import)];
+			facts.variable_current_value.insert(undefined_id, TypeId::UNDEFINED_TYPE);
+			variables
+		};
 
 		Self {
 			context_type: Root,
 			context_id: ContextId::ROOT,
-			named_types,
-			variables: Default::default(),
+			named_types: HashMap::from_iter(types),
+			variables: HashMap::from_iter(variables),
 			variable_names: Default::default(),
 			deferred_function_constraints: Default::default(),
 			bases: Default::default(),
 			object_constraints: Default::default(),
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
-			facts: Default::default(),
+			facts,
 			possibly_mutated_objects: Default::default(),
 		}
 	}
@@ -89,10 +106,8 @@ impl RootContext {
 		module: A::Module<'static>,
 		checking_data: &'a mut CheckingData<T, A>,
 	) -> &'a SynthesisedModule<A::OwnedModule> {
-		let mut environment = self.new_lexical_environment(crate::Scope::Module {
-			source,
-			exported: Exported::default(),
-		});
+		let module_scope = crate::Scope::Module { source, exported: Exported::default() };
+		let mut environment = self.new_lexical_environment(module_scope);
 		A::synthesise_module(&module, source, &mut environment, checking_data);
 
 		let crate::Scope::Module { exported, .. } = environment.context_type.scope else {

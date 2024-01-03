@@ -1,14 +1,17 @@
 //! Function tings. Contains parameter synthesis, function body synthesis
 
+use iterator_endiate::EndiateIteratorExt;
 use parser::{
-	expressions::ExpressionOrBlock, ASTNode, Block, FunctionBased, GenericTypeConstraint,
-	TypeAnnotation, VariableField, VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock, parameters::ParameterData, ASTNode, Block, FunctionBased,
+	GenericTypeConstraint, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
 };
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
-	behavior::functions::{FunctionBehavior, SynthesisableFunction},
-	context::{CanReferenceThis, Context, ContextType, Scope},
+	context::{CanReferenceThis, Context, ContextType, Scope, VariableRegisterArguments},
+	features::functions::{
+		synthesise_function_default_value, FunctionBehavior, SynthesisableFunction,
+	},
 	types::poly_types::GenericTypeParameters,
 	types::{
 		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},
@@ -20,8 +23,11 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesise_expression, hoisting::comment_as_type_annotation, synthesise_block,
-	type_annotations::synthesise_type_annotation, variables::register_variable, Performs,
+	expressions::synthesise_expression,
+	synthesise_block,
+	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
+	variables::register_variable,
+	Performs,
 };
 
 impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
@@ -31,6 +37,10 @@ where
 {
 	fn id(&self, source_id: SourceId) -> FunctionId {
 		FunctionId(source_id, self.get_position().start)
+	}
+
+	fn get_name(&self) -> Option<&str> {
+		U::get_name(&self.name)
 	}
 
 	fn has_body(&self) -> bool {
@@ -201,23 +211,30 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 		.iter()
 		.enumerate()
 		.map(|(idx, parameter)| {
-			let parameter_type =
+			let parameter_constraint =
 				synthesise_type_annotation(&parameter.type_annotation, environment, checking_data);
 
-			// TODO temp for performs bodies
-			let parameter_type = if let Some(name) = &parameter.name {
+			// TODO I think this is correct
+			let parameter_constraint = if parameter.is_optional {
+				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
+			} else {
+				parameter_constraint
+			};
+
+			let ty = checking_data.types.new_function_parameter(parameter_constraint);
+
+			if let Some(name) = &parameter.name {
 				register_variable(
 					name.get_ast_ref(),
 					environment,
 					checking_data,
-					crate::context::VariableRegisterBehavior::FunctionParameter {
-						annotation: Some(parameter_type),
+					VariableRegisterArguments {
+						// TODO constant parameter option
+						constant: false,
+						space: Some(parameter_constraint),
+						initial_value: Some(ty),
 					},
-					// TODO none...?
-					Some(parameter_type),
-				)
-			} else {
-				parameter_type
+				);
 			};
 
 			let name = parameter
@@ -226,26 +243,25 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				.map(WithComment::get_ast_ref)
 				.map_or_else(|| format!("parameter{idx}"), get_parameter_name);
 
-			let missing_value =
-				if parameter.is_optional { Some(TypeId::UNDEFINED_TYPE) } else { None };
-
 			SynthesisedParameter {
-				ty: parameter_type,
+				ty,
+				optional: parameter.is_optional,
 				name,
 				position: parameter.position.with_source(environment.get_source()),
-				missing_value,
 			}
 		})
 		.collect();
 
-	let rest_parameter = reference_parameters.rest_parameter.as_ref().map(|parameter| {
-		let ty = synthesise_type_annotation(&parameter.type_annotation, environment, checking_data);
-		let item_type = if let TypeId::ERROR_TYPE = ty {
+	let rest_parameter = reference_parameters.rest_parameter.as_ref().map(|rest_parameter| {
+		let parameter_constraint =
+			synthesise_type_annotation(&rest_parameter.type_annotation, environment, checking_data);
+
+		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
 		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(ty)
+		})) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
 				item
@@ -259,10 +275,28 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			// );
 			TypeId::ERROR_TYPE
 		};
+
+		let ty = checking_data.types.new_function_parameter(parameter_constraint);
+
+		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+
+		environment.register_variable_handle_error(
+			&rest_parameter.name,
+			VariableRegisterArguments {
+				// TODO constant parameter option
+				constant: false,
+				space: Some(parameter_constraint),
+				initial_value: Some(ty),
+			},
+			rest_parameter.position.with_source(environment.get_source()),
+			&mut checking_data.diagnostics_container,
+		);
+
 		SynthesisedRestParameter {
 			item_type,
-			name: parameter.name.clone(),
-			position: parameter.position.with_source(environment.get_source()),
+			ty,
+			name: rest_parameter.name.clone(),
+			position: rest_parameter.position.with_source(environment.get_source()),
 		}
 	});
 
@@ -280,7 +314,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 		.iter()
 		.enumerate()
 		.map(|(idx, parameter)| {
-			let annotation = parameter
+			let parameter_constraint = parameter
 				.type_annotation
 				.as_ref()
 				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
@@ -303,37 +337,122 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				.or_else(|| {
 					// Try use expected type
 					expected_parameters.as_ref().and_then(|p| p.get_type_constraint_at_index(idx))
-				});
+				})
+				.unwrap_or(TypeId::ANY_TYPE);
 
-			let param_type = register_variable(
+			// TODO I think this is correct
+			let parameter_constraint = if let Some(ParameterData::Optional) = parameter.additionally
+			{
+				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
+			} else {
+				parameter_constraint
+			};
+
+			let ty = checking_data.types.new_function_parameter(parameter_constraint);
+
+			// TODO parameter_constraint is stateless to reduce redundancy
+			if !matches!(
+				parameter_constraint,
+				TypeId::NUMBER_TYPE | TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE
+			) {
+				environment.object_constraints.insert(ty, vec![parameter_constraint]);
+			}
+
+			let (optional, variable_ty) = match &parameter.additionally {
+				Some(ParameterData::WithDefaultValue(expression)) => {
+					let out = synthesise_function_default_value(
+						ty,
+						parameter_constraint,
+						environment,
+						checking_data,
+						expression,
+					);
+					(true, out)
+				}
+				Some(ParameterData::Optional) => (true, ty),
+				None => (false, ty),
+			};
+
+			register_variable(
 				parameter.name.get_ast_ref(),
 				environment,
 				checking_data,
-				crate::context::VariableRegisterBehavior::FunctionParameter { annotation },
-				annotation,
+				VariableRegisterArguments {
+					// TODO constant parameter option
+					constant: false,
+					space: Some(parameter_constraint),
+					initial_value: Some(variable_ty),
+				},
 			);
-			let name = param_name_to_string(parameter.name.get_ast_ref());
 
-			let missing_value = match &parameter.additionally {
-				Some(parser::functions::ParameterData::Optional) => Some(TypeId::UNDEFINED_TYPE),
-				Some(_expr) => todo!(),
-				None => None,
-			};
+			let name = param_name_to_string(parameter.name.get_ast_ref());
 
 			SynthesisedParameter {
 				name,
-				ty: param_type,
+				optional,
+				// Important != variable_ty here
+				ty,
 				position: parameter.position.with_source(environment.get_source()),
-				missing_value,
 			}
 		})
 		.collect();
 
-	for _parameter in &ast_parameters.rest_parameter {
-		todo!()
-		// super::variables::hoist_variable_identifier(&parameter.name, environment, is_constant);
-	}
-	SynthesisedParameters { parameters, rest_parameter: Default::default() }
+	let rest_parameter = ast_parameters.rest_parameter.as_ref().map(|rest_parameter| {
+		// TODO should be Array<TypeId::ANY_TYPE>
+		let parameter_constraint =
+			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
+				synthesise_type_annotation(annotation, environment, checking_data)
+			});
+
+		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
+			TypeId::ERROR_TYPE
+		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			on: TypeId::ARRAY_TYPE,
+			arguments,
+		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		{
+			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
+		} else {
+			crate::utils::notify!("rest parameter should be array error");
+			// checking_data.diagnostics_container.add_error(
+			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
+			// );
+			TypeId::ERROR_TYPE
+		};
+
+		let ty = checking_data.types.new_function_parameter(parameter_constraint);
+
+		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+
+		match rest_parameter.name {
+			VariableIdentifier::Standard(ref name, pos) => environment
+				.register_variable_handle_error(
+					name,
+					VariableRegisterArguments {
+						// TODO constant parameter option
+						constant: false,
+						space: Some(parameter_constraint),
+						initial_value: Some(ty),
+					},
+					pos.with_source(environment.get_source()),
+					&mut checking_data.diagnostics_container,
+				),
+			VariableIdentifier::Cursor(_, _) => todo!(),
+		};
+
+		SynthesisedRestParameter {
+			item_type,
+			ty,
+			name: rest_parameter.name.as_str().to_owned(),
+			position: rest_parameter.position.with_source(environment.get_source()),
+		}
+	});
+
+	SynthesisedParameters { parameters, rest_parameter }
 }
 
 fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>) -> String {
@@ -345,8 +464,65 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 				String::new()
 			}
 		}
-		VariableField::Array(_, _) => todo!(),
-		VariableField::Object(_, _) => todo!(),
+		VariableField::Array(items, _) => {
+			let mut buf = String::from("[");
+			for (not_at_end, item) in items.iter().nendiate() {
+				match item {
+					parser::ArrayDestructuringField::Spread(_, name) => {
+						buf.push_str("...");
+						if let VariableIdentifier::Standard(name, ..) = name {
+							buf.push_str(name);
+						}
+					}
+					parser::ArrayDestructuringField::Name(name, _) => {
+						buf.push_str(&param_name_to_string(name.get_ast_ref()));
+					}
+					parser::ArrayDestructuringField::None => {}
+				}
+				if not_at_end {
+					buf.push_str(", ");
+				}
+			}
+			buf.push(']');
+
+			buf
+		}
+		VariableField::Object(items, _) => {
+			let mut buf = String::from("{");
+			for (not_at_end, item) in items.iter().nendiate() {
+				match item.get_ast_ref() {
+					parser::ObjectDestructuringField::Name(name, _, _) => {
+						if let VariableIdentifier::Standard(name, ..) = name {
+							buf.push_str(name);
+						}
+					}
+					parser::ObjectDestructuringField::Spread(name, _) => {
+						buf.push_str("...");
+						if let VariableIdentifier::Standard(name, ..) = name {
+							buf.push_str(name);
+						}
+					}
+					parser::ObjectDestructuringField::Map { from, name, .. } => {
+						match from {
+							parser::PropertyKey::Ident(ident, _, ()) => {
+								buf.push_str(ident);
+							}
+							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),
+							parser::PropertyKey::NumberLiteral(_, _) => todo!(),
+							parser::PropertyKey::Computed(_, _) => todo!(),
+						}
+						buf.push_str(": ");
+						buf.push_str(&param_name_to_string(name.get_ast_ref()));
+					}
+				}
+				if not_at_end {
+					buf.push_str(", ");
+				}
+			}
+			buf.push_str(" }");
+
+			buf
+		}
 	}
 }
 
@@ -490,53 +666,4 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 			},
 		)
 		.0
-}
-
-#[cfg(test)]
-mod tests {
-
-	use crate::{context::RootContext, TypeMappings};
-
-	fn _get_base_environment() -> (RootContext, TypeMappings) {
-		todo!()
-		// let mut type_mappings = TypeMappings::default();
-		// let environment = type_definition_file(
-		//     TypeDefinitionModule::from_string(
-		//         include_str!("..\\..\\definitions\\simple.d.ts").to_owned(),
-		//         Default::default(),
-		//         SourceId::new_null(),
-		//         Vec::new(),
-		//     )
-		//     .unwrap(),
-		//     &DiagnosticsContainer::default(),
-		//     todo!()
-		// );
-		// (environment, type_mappings)
-	}
-
-	// TODO temp
-	// #[test]
-	// fn synthesis_test() {
-	//     let function = "function add(x, y) {
-	//         return x + y;
-	//     }";
-	//     let mut function = FunctionDeclaration::from_string(
-	//         function.to_owned(),
-	//         Default::default(),
-	//         SourceId::new_null(),
-	//         None,
-	//     )
-	//     .unwrap();
-	//     let (environment, type_mappings) = get_base_environment();
-
-	//     let function_type = synthesise_function(
-	//         &function.base,
-	//         &environment,
-	//         &Default::default(),
-	//         &type_mappings,
-	//         None
-	//     );
-
-	//     todo!("{:#?}", function_type);
-	// }
 }

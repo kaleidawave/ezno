@@ -37,6 +37,9 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 
 	fn header_left(header: &Self::Header) -> Option<source_map::Start>;
 
+	/// For debugging only
+	fn get_name(name: &Self::Name) -> Option<&str>;
+
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -297,6 +300,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 			data,
 			chain,
 		);
+	}
+
+	fn get_name(name: &Self::Name) -> Option<&str> {
+		name.as_option_str()
 	}
 }
 

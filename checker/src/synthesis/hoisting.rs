@@ -7,18 +7,20 @@ use parser::{
 };
 
 use crate::{
-	behavior::{
+	context::{Environment, VariableRegisterArguments},
+	features::{
 		functions::synthesise_hoisted_statement_function,
-		modules::{ImportKind, NamePair},
+		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
-	context::Environment,
 	CheckingData, ReadFromFS, TypeId,
 };
 
 use super::{
-	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
-	variables::register_variable, EznoParser,
+	functions::synthesise_function_annotation,
+	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
+	variables::register_variable,
+	EznoParser,
 };
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
@@ -76,13 +78,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Import(import) => {
 					let items = match &import.items {
 						parser::declarations::import::ImportedItems::Parts(parts) => {
-							crate::behavior::modules::ImportKind::Parts(
+							crate::features::modules::ImportKind::Parts(
 								parts.iter().flatten().filter_map(import_part_to_name_pair),
 							)
 						}
 						parser::declarations::import::ImportedItems::All { under } => match under {
 							VariableIdentifier::Standard(under, position) => {
-								crate::behavior::modules::ImportKind::All {
+								crate::features::modules::ImportKind::All {
 									under,
 									position: *position,
 								}
@@ -98,13 +100,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
-					environment.import_items(
+					import_items(
+						environment,
 						import.from.get_path().unwrap(),
 						import.position,
 						default_import,
 						items,
 						checking_data,
 						false,
+						import.type_keyword.is_some(),
 					);
 				}
 				parser::Declaration::Export(export) => {
@@ -120,25 +124,30 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									None => ImportKind::Everything,
 								};
 
-								environment.import_items::<iter::Empty<_>, _, _>(
+								import_items::<iter::Empty<_>, _, _>(
+									environment,
 									from.get_path().unwrap(),
 									*position,
 									None,
 									kind,
 									checking_data,
 									true,
+									// TODO
+									false,
 								);
 							}
-							Exportable::ImportParts { parts, from, .. } => {
+							Exportable::ImportParts { parts, from, type_keyword, .. } => {
 								let parts = parts.iter().filter_map(export_part_to_name_pair);
 
-								environment.import_items(
+								import_items(
+									environment,
 									from.get_path().unwrap(),
 									*position,
 									None,
-									crate::behavior::modules::ImportKind::Parts(parts),
+									crate::features::modules::ImportKind::Parts(parts),
 									checking_data,
 									true,
+									type_keyword.is_some(),
 								);
 							}
 							Exportable::TypeAlias(alias) => {
@@ -158,6 +167,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										.push((alias.type_name.name.clone(), export));
 								}
 							}
+							// Other exported things are skipped
 							_ => {}
 						}
 					}
@@ -167,7 +177,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Second stage
-	for (_idx, item) in items.iter().enumerate() {
+	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(_) = stmt {
@@ -182,19 +192,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					hoist_variable_declaration(declaration, environment, checking_data);
 				}
 				parser::Declaration::Function(func) => {
-					// TODO unsynthesised function? ...
-					let behavior = crate::context::VariableRegisterBehavior::Register {
-						// TODO
-						mutability: crate::behavior::variables::VariableMutability::Constant,
-					};
 					if let Some(VariableIdentifier::Standard(name, ..)) =
 						func.on.name.as_option_variable_identifier()
 					{
 						environment.register_variable_handle_error(
 							name,
+							VariableRegisterArguments {
+								// TODO functions are constant references
+								constant: true,
+								space: None,
+								initial_value: None,
+							},
 							func.get_position().with_source(environment.get_source()),
-							behavior,
-							checking_data,
+							&mut checking_data.diagnostics_container,
 						);
 					}
 				}
@@ -209,7 +219,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 						func.performs.as_ref().into(),
 						&declared_at,
-						crate::behavior::functions::FunctionBehavior::ArrowFunction {
+						crate::features::functions::FunctionBehavior::ArrowFunction {
 							is_async: false,
 						},
 						None,
@@ -224,13 +234,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						base.constant_function,
 					);
 
-					let behavior =
-						crate::context::VariableRegisterBehavior::Declare { base, context: None };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
+						VariableRegisterArguments {
+							// TODO functions are constant references
+							constant: true,
+							space: None,
+							initial_value: Some(base),
+						},
 						func.get_position().with_source(environment.get_source()),
-						behavior,
-						checking_data,
+						&mut checking_data.diagnostics_container,
 					);
 				}
 				parser::Declaration::Enum(r#enum) => {
@@ -262,18 +275,26 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							checking_data,
 						);
 
-						// TODO warning here
-						let behavior = crate::context::VariableRegisterBehavior::Declare {
-							base: constraint.unwrap_or(TypeId::ANY_TYPE),
-							context: None,
-						};
+						if constraint.is_none() {
+							crate::utils::notify!("constraint with no type?");
+						}
+
+						let value = constraint.unwrap_or(TypeId::ANY_TYPE);
+
+						let ty = checking_data.types.register_type(crate::Type::RootPolyType(
+							crate::types::PolyNature::Open(value),
+						));
 
 						register_variable(
 							declaration.name.get_ast_ref(),
 							environment,
 							checking_data,
-							behavior,
-							constraint,
+							VariableRegisterArguments {
+								// TODO based on keyword
+								constant: true,
+								space: None,
+								initial_value: Some(ty),
+							},
 						);
 					}
 				}
@@ -282,12 +303,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 						match exported {
 							Exportable::Function(func) => {
-								// TODO unsynthesised function? ...
-								let mutability =
-									crate::behavior::variables::VariableMutability::Constant;
-								let behavior = crate::context::VariableRegisterBehavior::Register {
-									mutability,
-								};
 								let declared_at =
 									func.get_position().with_source(environment.get_source());
 
@@ -296,9 +311,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								{
 									environment.register_variable_handle_error(
 										name,
+										VariableRegisterArguments {
+											// TODO based on keyword
+											constant: true,
+											space: None,
+											initial_value: None,
+										},
 										declared_at,
-										behavior,
-										checking_data,
+										&mut checking_data.diagnostics_container,
 									);
 								}
 							}
@@ -474,19 +494,20 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			position: _,
 		} => {
 			for declaration in declarations {
+				crate::utils::notify!("TODO constraint needed to be set for free variable!!!");
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
-
-				let behavior = crate::context::VariableRegisterBehavior::Register {
-					mutability: VariableMutability::Constant,
-				};
 
 				register_variable(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					behavior,
-					constraint,
+					VariableRegisterArguments {
+						constant: true,
+						space: constraint,
+						// Value set later
+						initial_value: None,
+					},
 				);
 			}
 		}
@@ -499,16 +520,16 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
-				let behavior = crate::context::VariableRegisterBehavior::Register {
-					mutability: VariableMutability::Mutable { reassignment_constraint: constraint },
-				};
-
 				register_variable(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					behavior,
-					constraint,
+					VariableRegisterArguments {
+						constant: false,
+						space: constraint,
+						// Value set later
+						initial_value: None,
+					},
 				);
 			}
 		}
@@ -552,29 +573,4 @@ fn get_annotation_from_declaration<
 	}
 
 	result.map(|(value, _span)| value)
-}
-
-pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
-	possible_declaration: &String,
-	position: &source_map::SpanWithSource,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Option<(TypeId, source_map::SpanWithSource)> {
-	let source = environment.get_source();
-	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
-	let annotation = parser::TypeAnnotation::from_string(
-		possible_declaration.clone(),
-		Default::default(),
-		source,
-		offset,
-	);
-	if let Ok(annotation) = annotation {
-		Some((
-			synthesise_type_annotation(&annotation, environment, checking_data),
-			annotation.get_position().with_source(source),
-		))
-	} else {
-		// TODO warning
-		None
-	}
 }

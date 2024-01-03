@@ -1,7 +1,8 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::{
-	behavior::objects::ObjectBuilder,
+	context::invocation::CheckThings,
+	features::objects::ObjectBuilder,
 	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
@@ -80,11 +81,11 @@ where
 					static_part_count += 1;
 				}
 				p @ TemplateLiteralPart::Dynamic(_) => {
-					let ty = part_to_type(p, environment, checking_data);
-					arguments.push(SynthesisedArgument::NonSpread {
-						ty,
+					arguments.push(SynthesisedArgument {
+						value: part_to_type(p, environment, checking_data),
 						// TODO position
 						position: SpanWithSource::NULL_SPAN,
+						spread: false,
 					});
 				}
 			}
@@ -92,27 +93,33 @@ where
 
 		arguments.insert(
 			0,
-			SynthesisedArgument::NonSpread {
-				ty: static_parts.build_object(),
+			SynthesisedArgument {
+				value: static_parts.build_object(),
 				// TODO position
 				position: SpanWithSource::NULL_SPAN,
+				spread: false,
 			},
 		);
 
 		let call_site = position.with_source(environment.get_source());
-		crate::types::calling::call_type_handle_errors(
+		match crate::types::calling::call_type(
 			tag,
+			arguments,
 			CallingInput {
 				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: crate::behavior::functions::ThisValue::UseParent,
+				this_value: crate::features::functions::ThisValue::UseParent,
 				call_site,
 				call_site_type_arguments: None,
 			},
 			environment,
-			arguments,
-			checking_data,
-		)
-		.0
+			&mut CheckThings,
+			&mut checking_data.types,
+		) {
+			Ok(res) => res.returned_type,
+			Err(_) => {
+				todo!("JSX Calling error")
+			}
+		}
 	} else {
 		// Bit weird but makes Rust happy
 		if let Some(first) = parts_iter.next() {
@@ -121,7 +128,7 @@ where
 				let other = part_to_type(rest, environment, checking_data);
 				let result = super::operations::evaluate_mathematical_operation(
 					acc,
-					crate::behavior::operations::MathematicalAndBitwise::Add,
+					crate::features::operations::MathematicalAndBitwise::Add,
 					other,
 					&mut checking_data.types,
 					checking_data.options.strict_casts,

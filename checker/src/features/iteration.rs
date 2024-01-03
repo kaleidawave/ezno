@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use crate::{
-	behavior::operations::CanonicalEqualityAndInequality,
-	context::{calling::Target, environment::Label, get_value_of_variable, CallCheckingBehavior},
-	events::{
-		application::ErrorsAndInfo, apply_event, Event, EventResult, InitialVariables,
-		RootReference,
+	context::{
+		environment::Label, get_value_of_variable, invocation::InvocationContext,
+		CallCheckingBehavior,
 	},
+	events::{
+		application::ErrorsAndInfo, apply_event, Event, FinalEvent, InitialVariables, RootReference,
+	},
+	features::operations::CanonicalEqualityAndInequality,
 	types::{
 		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
-		printing::print_type,
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
 	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
@@ -45,7 +46,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	match behavior {
 		IterationBehavior::While(condition) => {
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					let condition = A::synthesise_multiple_expression(
@@ -58,13 +59,17 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					// TODO not always needed
 					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Default::default(),
-						else_events: Box::new([Event::Break { position: None, carry: 0 }]),
+						true_events: Default::default(),
+						else_events: Box::new([
+							FinalEvent::Break { position: None, carry: 0 }.into()
+						]),
 						position: None,
 					};
 					environment.facts.events.push(break_event);
 
 					loop_body(environment, checking_data);
+
+					crate::utils::notify!("Loop does {:#?}", environment.facts.events);
 
 					condition
 				},
@@ -86,18 +91,32 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_facts,
 			);
 
-			if let Some(_value) = run_iteration_block(
+			let mut errors_and_info = ErrorsAndInfo::default();
+
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
-				// TODO shouldn't be needed
-				&mut Default::default(),
+				&mut InvocationContext::new_empty(),
+				&mut errors_and_info,
 				&mut checking_data.types,
 			) {
-				todo!()
+				crate::utils::notify!("Loop returned {:?}", early_return);
+				environment.facts.events.push(Event::FinalEvent(early_return));
+			}
+
+			// TODO for other blocks
+			for warning in errors_and_info.warnings {
+				checking_data.diagnostics_container.add_info(
+					crate::diagnostics::Diagnostic::Position {
+						reason: warning.0,
+						// TODO temp
+						position: source_map::SpanWithSource::NULL_SPAN,
+						kind: crate::diagnostics::DiagnosticKind::Info,
+					},
+				);
 			}
 		}
 		IterationBehavior::DoWhile(condition) => {
@@ -105,7 +124,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			// Same as above but condition is evaluated at end. Don't know whether events should be evaluated once...?
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					loop_body(environment, checking_data);
@@ -120,8 +139,10 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					// TODO not always needed
 					let break_event = Event::Conditionally {
 						condition,
-						events_if_truthy: Default::default(),
-						else_events: Box::new([Event::Break { position: None, carry: 0 }]),
+						true_events: Default::default(),
+						else_events: Box::new([
+							FinalEvent::Break { position: None, carry: 0 }.into()
+						]),
 						position: None,
 					};
 					environment.facts.events.push(break_event);
@@ -146,18 +167,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_facts,
 			);
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::For { initialiser, condition, afterthought } => {
@@ -194,7 +215,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 						let ((condition, dependent_variables), events, ..) = environment
 							.new_lexical_environment_fold_into_parent(
-								Scope::Looping { label },
+								Scope::Iteration { label },
 								checking_data,
 								|environment, checking_data| {
 									let condition = if let Some(condition) = condition {
@@ -211,11 +232,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 									// TODO not always needed
 									let break_event = Event::Conditionally {
 										condition,
-										events_if_truthy: Default::default(),
-										else_events: Box::new([Event::Break {
+										true_events: Default::default(),
+										else_events: Box::new([FinalEvent::Break {
 											position: None,
 											carry: 0,
-										}]),
+										}
+										.into()]),
 										position: None,
 									};
 									environment.facts.events.push(break_event);
@@ -275,18 +297,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				environment.facts.variable_current_value.insert(var, start);
 			}
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::ForIn { lhs: _, rhs } => {
@@ -299,7 +321,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			);
 
 			let ((), result, ..) = environment.new_lexical_environment_fold_into_parent(
-				Scope::Looping { label },
+				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
 					loop_body(environment, checking_data);
@@ -308,18 +330,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let events = result.unwrap().0.events;
 
-			if let Some(_value) = run_iteration_block(
+			if let Some(early_return) = run_iteration_block(
 				IterationKind::Properties(on),
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
 				environment,
-				&mut crate::context::calling::Target::new_default(),
+				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
 			) {
-				todo!()
+				todo!("{early_return:?}")
 			}
 		}
 		IterationBehavior::ForOf { lhs: _, rhs: _ } => todo!(),
@@ -349,11 +371,11 @@ pub(crate) fn run_iteration_block(
 	events: Vec<Event>,
 	initial: InitialVariablesInput,
 	type_arguments: &mut FunctionTypeArguments,
-	environment: &mut Environment,
-	target: &mut Target,
+	top_environment: &mut Environment,
+	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
-) -> Option<EventResult> {
+) -> Option<FinalEvent> {
 	/// TODO via config
 	const MAX_ITERATIONS: usize = 1000;
 
@@ -364,11 +386,12 @@ pub(crate) fn run_iteration_block(
 			// 	&mut buf,
 			// 	&events,
 			// 	&checking_data.types,
-			// 	&environment.as_general_context(),
+			// 	&top_environment.as_general_context(),
 			// 	true,
 			// );
 			// crate::utils::notify!("events in iteration = {}", buf);
 
+			// TODO if depends on something maybe limit to 10?
 			let non_exorbitant_amount_of_iterations = under
 				.and_then(|under| under.calculate_iterations(types).ok())
 				.and_then(|iterations| (iterations < MAX_ITERATIONS).then_some(iterations));
@@ -386,21 +409,19 @@ pub(crate) fn run_iteration_block(
 
 				if let InitialVariablesInput::Calculated(initial) = initial {
 					for (variable_id, initial_value) in &initial {
-						target
-							.get_latest_facts(environment)
+						invocation_context
+							.get_latest_facts(top_environment)
 							.variable_current_value
 							.insert(*variable_id, *initial_value);
 					}
-				} else {
-					crate::utils::notify!("Here ??");
 				}
 
 				evaluate_iterations(
 					iterations,
 					&events,
 					type_arguments,
-					environment,
-					target,
+					top_environment,
+					invocation_context,
 					errors,
 					types,
 				)
@@ -408,8 +429,8 @@ pub(crate) fn run_iteration_block(
 				let initial = match initial {
 					InitialVariablesInput::Calculated(initial) => {
 						for (id, value) in &initial {
-							target
-								.get_latest_facts(environment)
+							invocation_context
+								.get_latest_facts(top_environment)
 								.variable_current_value
 								.insert(*id, *value);
 						}
@@ -429,7 +450,7 @@ pub(crate) fn run_iteration_block(
 							} = event
 							{
 								let value_before_iterations = get_value_of_variable(
-									environment.facts_chain(),
+									top_environment.facts_chain(),
 									*variable_id,
 									None::<&crate::types::poly_types::FunctionTypeArguments>,
 								)
@@ -437,18 +458,18 @@ pub(crate) fn run_iteration_block(
 
 								crate::utils::notify!(
 									"setting '{}' to have initial type {}",
-									environment.get_variable_name(*variable_id),
-									print_type(
+									top_environment.get_variable_name(*variable_id),
+									crate::types::printing::print_type(
 										value_before_iterations,
 										types,
-										&environment.as_general_context(),
+										&top_environment.as_general_context(),
 										true
 									)
 								);
 
 								initial.insert(*variable_id, value_before_iterations);
 
-								environment
+								top_environment
 									.facts
 									.variable_current_value
 									.insert(*variable_id, *free_variable_id);
@@ -460,7 +481,7 @@ pub(crate) fn run_iteration_block(
 
 				crate::utils::notify!("Saving events");
 
-				target.get_latest_facts(environment).events.push(Event::Iterate {
+				invocation_context.get_latest_facts(top_environment).events.push(Event::Iterate {
 					kind: IterationKind::Condition { under, postfix_condition },
 					initial,
 					iterate_over: events.into_boxed_slice(),
@@ -472,8 +493,8 @@ pub(crate) fn run_iteration_block(
 				// 		event,
 				// 		crate::behavior::functions::ThisValue::UseParent,
 				// 		&mut arguments,
-				// 		environment,
-				// 		&mut crate::context::calling::Target::new_default(),
+				// 		top_environment,
+				// 		&mut crate::context::calling::InvocationContext::new_default(),
 				// 		&mut checking_data.types,
 				// 	);
 				// }
@@ -482,7 +503,7 @@ pub(crate) fn run_iteration_block(
 		}
 		IterationKind::Properties(on) => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				for (_publicity, property, _value) in environment.get_properties_on_type(on) {
+				for (_publicity, property, _value) in top_environment.get_properties_on_type(on) {
 					// TODO enumerable
 					crate::utils::notify!("Property: {:?}", property);
 				}
@@ -500,11 +521,11 @@ fn evaluate_iterations(
 	iterations: usize,
 	events: &[Event],
 	arguments: &mut FunctionTypeArguments,
-	environment: &mut Environment,
-	target: &mut Target,
+	top_environment: &mut Environment,
+	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
-) -> Option<EventResult> {
+) -> Option<FinalEvent> {
 	// TODO temp fix
 	if !errors.errors.is_empty() {
 		return None;
@@ -512,17 +533,17 @@ fn evaluate_iterations(
 
 	'main_iterations: for _ in 0..iterations {
 		'inner_loop: for event in events {
-			let result = apply_event(
-				event.clone(),
-				crate::behavior::functions::ThisValue::UseParent,
-				arguments,
-				environment,
-				// TODO new nested target
-				target,
-				types,
-				// Shouldn't matter
-				errors,
-			);
+			let result = invocation_context.new_loop_iteration(|invocation_context| {
+				apply_event(
+					event.clone(),
+					crate::features::functions::ThisValue::UseParent,
+					arguments,
+					top_environment,
+					invocation_context,
+					types,
+					errors,
+				)
+			});
 
 			if !errors.errors.is_empty() {
 				unreachable!("errors when calling loop")
@@ -530,19 +551,19 @@ fn evaluate_iterations(
 
 			if let Some(result) = result {
 				match result {
-					EventResult::Continue { carry: 0 } => {
+					FinalEvent::Continue { carry: 0, position: _ } => {
 						break 'inner_loop;
 					}
-					EventResult::Break { carry: 0 } => {
+					FinalEvent::Break { carry: 0, position: _ } => {
 						break 'main_iterations;
 					}
-					EventResult::Continue { carry } => {
-						return Some(EventResult::Continue { carry: carry - 1 })
+					FinalEvent::Continue { carry, position } => {
+						return Some(FinalEvent::Continue { carry: carry - 1, position })
 					}
-					EventResult::Break { carry } => {
-						return Some(EventResult::Break { carry: carry - 1 })
+					FinalEvent::Break { carry, position } => {
+						return Some(FinalEvent::Break { carry: carry - 1, position })
 					}
-					e @ (EventResult::Return(..) | EventResult::Throw) => return Some(e),
+					e @ (FinalEvent::Return { .. } | FinalEvent::Throw { .. }) => return Some(e),
 				}
 			}
 		}
@@ -578,13 +599,13 @@ impl LoopStructure {
 		self,
 		arguments: &mut T,
 		// TODO temp
-		environment: &mut Environment,
+		top_environment: &mut Environment,
 		types: &mut TypeStore,
 	) -> Self {
 		Self {
-			start: substitute(self.start, arguments, environment, types),
-			increment_by: substitute(self.increment_by, arguments, environment, types),
-			roof: substitute(self.roof, arguments, environment, types),
+			start: substitute(self.start, arguments, top_environment, types),
+			increment_by: substitute(self.increment_by, arguments, top_environment, types),
+			roof: substitute(self.roof, arguments, top_environment, types),
 		}
 	}
 

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	behavior::functions::{ClosureId, FunctionBehavior},
 	context::{get_on_ctx, Context, ContextType, Logical},
+	features::functions::{ClosureId, FunctionBehavior},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	FunctionId, GeneralContext, TypeId,
+	Environment, FunctionId, GeneralContext, TypeId,
 };
 
 use super::{
@@ -65,7 +65,7 @@ impl Default for TypeStore {
 			Type::Constant(crate::Constant::Number(0.into())),
 			// one
 			Type::Constant(crate::Constant::Number(1.into())),
-			// NaNFreeVariable
+			// NaN
 			Type::Constant(crate::Constant::NaN),
 			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
@@ -83,6 +83,8 @@ impl Default for TypeStore {
 				name: "SymbolToPrimitive".into(),
 				parameters: None,
 			},
+			// `void` type. Does not block sometimes
+			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -135,11 +137,19 @@ impl TypeStore {
 	}
 
 	pub fn new_or_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		if lhs == rhs {
+			return lhs;
+		}
+
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)
 	}
 
 	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		if lhs == rhs {
+			return lhs;
+		}
+
 		// TODO distribute or types
 		let ty = Type::And(lhs, rhs);
 		self.register_type(ty)
@@ -176,7 +186,7 @@ impl TypeStore {
 			id,
 		};
 		self.functions.insert(id, function_type);
-		self.register_type(Type::FunctionReference(id, Default::default()))
+		self.register_type(Type::FunctionReference(id))
 	}
 
 	/// TODO this registers 3 new types, is there a smaller way
@@ -221,7 +231,7 @@ impl TypeStore {
 	/// Doesn't do constant compilation
 	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
 		let ty = Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::behavior::operations::PureUnary::LogicalNot,
+			operator: crate::features::operations::PureUnary::LogicalNot,
 			operand,
 		});
 		self.register_type(ty)
@@ -251,7 +261,7 @@ impl TypeStore {
 					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
-			Type::FunctionReference(_, _) => {
+			Type::FunctionReference(_) => {
 				let on_function = ctx
 					.parents_iter()
 					.find_map(|env| resolver(&env, self, on, data))
@@ -270,9 +280,11 @@ impl TypeStore {
 
 				property_on_self.or_else(|| self.get_fact_about_type(ctx, *to, resolver, data))
 			}
+
 			Type::And(left, right) => self
 				.get_fact_about_type(ctx, *left, resolver, data)
 				.or_else(|| self.get_fact_about_type(ctx, *right, resolver, data)),
+
 			Type::Or(left, right) => {
 				// TODO temp
 				let left = self.get_fact_about_type(ctx, *left, resolver, data);
@@ -287,28 +299,48 @@ impl TypeStore {
 				}
 			}
 			Type::RootPolyType(_nature) => {
-				// TODO None here
-				let aliases = get_constraint(on, self).unwrap();
-				// Don't think any properties exist on this poly type
-				self.get_fact_about_type(ctx, aliases, resolver, data)
+				// Can assign to properties on parameters etc
+				let on_root_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				on_root_type.or_else(|| {
+					let aliases = get_constraint(on, self).expect("poly type with no constraint");
+					self.get_fact_about_type(ctx, aliases, resolver, data)
+				})
 			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on,
+				on: sg_base,
 				arguments,
 			})) => {
-				// TODO could drop some of with here
-				let fact_opt = self.get_fact_about_type(ctx, *on, resolver, data);
-				fact_opt.map(|fact| Logical::Implies {
-					on: Box::new(fact),
-					antecedent: arguments.clone(),
+				let on_sg_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				on_sg_type.or_else(|| {
+					let fact_opt = self.get_fact_about_type(ctx, *sg_base, resolver, data);
+
+					fact_opt.map(|fact| Logical::Implies {
+						on: Box::new(fact),
+						antecedent: arguments.clone(),
+					})
 				})
 			}
 			Type::Constructor(_constructor) => {
-				// Don't think any properties exist on this poly type
-				// TODO None here
-				let _constraint = get_constraint(on, self).unwrap();
-				// TODO might need to send more information here, rather than forgetting via .get_type
-				self.get_fact_about_type(ctx, on, resolver, data)
+				let on_constructor_type = ctx
+					.parents_iter()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(Logical::Pure);
+
+				on_constructor_type.or_else(|| {
+					// TODO implies ???
+					let constraint =
+						get_constraint(on, self).expect("no constraint for constructor");
+					// TODO might need to send more information here, rather than forgetting via .get_type
+					self.get_fact_about_type(ctx, constraint, resolver, data)
+				})
 			}
 			Type::Object(..) | Type::Interface { .. } => ctx
 				.parents_iter()
@@ -351,15 +383,54 @@ impl TypeStore {
 		self.register_type(Type::Function(id, Default::default()))
 	}
 
+	/// TODO WIP
 	#[allow(clippy::similar_names)]
-	pub(crate) fn new_property_constructor(
+	pub(crate) fn new_property_on_type_annotation(
 		&mut self,
 		indexee: TypeId,
 		indexer: TypeId,
-		base: TypeId,
+		environment: &Environment,
 	) -> TypeId {
-		let under = PropertyKey::from_type(indexer, self);
-		let ty = Type::Constructor(Constructor::Property { on: indexee, under, result: base });
-		self.register_type(ty)
+		if let Some(base) = get_constraint(indexee, self) {
+			let under = PropertyKey::from_type(indexer, self);
+			let ty = Type::Constructor(Constructor::Property {
+				on: indexee,
+				under,
+				result: base,
+				bind_this: true,
+			});
+			self.register_type(ty)
+		} else if let Some(prop) = environment.get_property_unbound(
+			indexee,
+			crate::context::facts::Publicity::Public,
+			PropertyKey::from_type(indexer, self),
+			self,
+		) {
+			match prop {
+				crate::context::Logical::Pure(ty) => ty.as_get_type(),
+				crate::context::Logical::Or { .. } => todo!(),
+				crate::context::Logical::Implies { .. } => todo!(),
+			}
+		} else {
+			crate::utils::notify!("Error: no index on type annotation");
+			TypeId::ERROR_TYPE
+		}
+	}
+
+	/// TODO flags
+	pub fn new_regex(&mut self, pattern: String) -> TypeId {
+		self.register_type(Type::SpecialObject(crate::features::objects::SpecialObjects::Regexp(
+			pattern,
+		)))
+	}
+
+	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
+		if let Type::RootPolyType(_) = self.get_type_by_id(parameter_constraint) {
+			parameter_constraint
+		} else {
+			self.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
+				fixed_to: parameter_constraint,
+			}))
+		}
 	}
 }

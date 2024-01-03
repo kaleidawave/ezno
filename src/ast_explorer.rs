@@ -83,7 +83,7 @@ pub(crate) enum ExplorerSubCommand {
 	Lexer(LexerArgs),
 }
 
-/// Prints AST for given expression
+/// Prints AST for a given expression
 #[derive(FromArgs, Debug, Default)]
 #[argh(subcommand, name = "ast")]
 pub(crate) struct ASTArgs {
@@ -92,7 +92,7 @@ pub(crate) struct ASTArgs {
 	json: bool,
 }
 
-/// Prints AST for given module
+/// Prints AST for a given module/block
 #[derive(FromArgs, Debug, Default)]
 #[argh(subcommand, name = "full-ast")]
 pub(crate) struct FullASTArgs {

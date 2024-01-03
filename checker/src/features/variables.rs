@@ -1,7 +1,13 @@
-use source_map::SpanWithSource;
+use source_map::{Span, SpanWithSource};
 
+use crate::context::facts::Publicity;
+use crate::context::VariableRegisterArguments;
 use crate::context::{environment::ContextLocation, AssignmentError};
+use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
+use crate::types::printing::print_type;
+use crate::types::properties::PropertyKey;
 use crate::{types::TypeId, CheckingData, VariableId};
+use crate::{Environment, Instance};
 use std::fmt::Debug;
 
 /// A variable, that can be referenced. Can be a including class (prototypes) and functions
@@ -113,5 +119,70 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 		);
 
 		checking_data.diagnostics_container.add_error(error);
+	}
+}
+
+pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	on: &VariableRegisterArguments,
+	under: PropertyKey,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, A>,
+	at: Span,
+) -> VariableRegisterArguments {
+	VariableRegisterArguments {
+		constant: on.constant,
+		space: on.space.map(|space| {
+			let property_constraint = environment.get_property_unbound(
+				space,
+				Publicity::Public,
+				under.clone(),
+				&checking_data.types,
+			);
+			if let Some(value) = property_constraint {
+				match value {
+					crate::context::Logical::Pure(crate::PropertyValue::Value(value)) => value,
+					crate::context::Logical::Pure(_) => todo!(),
+					crate::context::Logical::Or { left: _, right: _ } => todo!(),
+					crate::context::Logical::Implies { on: _, antecedent: _ } => {
+						todo!()
+					}
+				}
+			} else {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::PropertyDoesNotExist {
+						property: match under.clone() {
+							PropertyKey::String(s) => {
+								PropertyRepresentation::StringKey(s.to_string())
+							}
+							PropertyKey::Type(t) => PropertyRepresentation::Type(print_type(
+								t,
+								&checking_data.types,
+								&environment.as_general_context(),
+								false,
+							)),
+						},
+						on: TypeStringRepresentation::from_type_id(
+							space,
+							&environment.as_general_context(),
+							&checking_data.types,
+							false,
+						),
+						site: at.with_source(environment.get_source()),
+					},
+				);
+				TypeId::ERROR_TYPE
+			}
+		}),
+		initial_value: on.initial_value.map(|initial_value| {
+			environment
+				.get_property_handle_errors(
+					initial_value,
+					Publicity::Public,
+					under,
+					checking_data,
+					at,
+				)
+				.map_or(TypeId::ERROR_TYPE, Instance::get_value)
+		}),
 	}
 }
