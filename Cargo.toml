@@ -36,8 +36,8 @@ license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
 default-run = "ezno"
-keywords = ["javascript", "typescript", "type-checker"]
 categories = ["compilers"]
+keywords = ["javascript", "typescript", "type-checker"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
