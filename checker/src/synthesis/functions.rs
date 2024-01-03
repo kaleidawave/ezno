@@ -8,7 +8,7 @@ use parser::{
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
-	context::{CanReferenceThis, Context, ContextType, Scope},
+	context::{CanReferenceThis, Context, ContextType, Scope, VariableRegisterArguments},
 	features::functions::{
 		synthesise_function_default_value, FunctionBehavior, SynthesisableFunction,
 	},
@@ -214,6 +214,13 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			let parameter_constraint =
 				synthesise_type_annotation(&parameter.type_annotation, environment, checking_data);
 
+			// TODO I think this is correct
+			let parameter_constraint = if parameter.is_optional {
+				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
+			} else {
+				parameter_constraint
+			};
+
 			let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
 			if let Some(name) = &parameter.name {
@@ -221,12 +228,13 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 					name.get_ast_ref(),
 					environment,
 					checking_data,
-					// TODO constant parameters
-					crate::features::variables::VariableMutability::Mutable {
-						reassignment_constraint: Some(parameter_constraint),
+					VariableRegisterArguments {
+						// TODO constant parameter option
+						constant: false,
+						space: Some(parameter_constraint),
+						initial_value: Some(ty),
 					},
-					Some(ty),
-				)
+				);
 			};
 
 			let name = parameter
@@ -274,11 +282,14 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
-			// TODO function parameters constant
-			crate::features::variables::VariableMutability::Constant,
+			VariableRegisterArguments {
+				// TODO constant parameter option
+				constant: false,
+				space: Some(parameter_constraint),
+				initial_value: Some(ty),
+			},
 			rest_parameter.position.with_source(environment.get_source()),
-			Some(ty),
-			checking_data,
+			&mut checking_data.diagnostics_container,
 		);
 
 		SynthesisedRestParameter {
@@ -366,11 +377,12 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				parameter.name.get_ast_ref(),
 				environment,
 				checking_data,
-				// TODO constant parameters
-				crate::features::variables::VariableMutability::Mutable {
-					reassignment_constraint: Some(parameter_constraint),
+				VariableRegisterArguments {
+					// TODO constant parameter option
+					constant: false,
+					space: Some(parameter_constraint),
+					initial_value: Some(variable_ty),
 				},
-				Some(variable_ty),
 			);
 
 			let name = param_name_to_string(parameter.name.get_ast_ref());
@@ -420,13 +432,14 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			VariableIdentifier::Standard(ref name, pos) => environment
 				.register_variable_handle_error(
 					name,
-					// TODO constant parameters
-					crate::features::variables::VariableMutability::Mutable {
-						reassignment_constraint: Some(parameter_constraint),
+					VariableRegisterArguments {
+						// TODO constant parameter option
+						constant: false,
+						space: Some(parameter_constraint),
+						initial_value: Some(ty),
 					},
 					pos.with_source(environment.get_source()),
-					Some(ty),
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				),
 			VariableIdentifier::Cursor(_, _) => todo!(),
 		};
@@ -458,7 +471,7 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 					parser::ArrayDestructuringField::Spread(_, name) => {
 						buf.push_str("...");
 						if let VariableIdentifier::Standard(name, ..) = name {
-							buf.push_str(name)
+							buf.push_str(name);
 						}
 					}
 					parser::ArrayDestructuringField::Name(name, _) => {
@@ -471,7 +484,8 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 				}
 			}
 			buf.push(']');
-			return buf;
+
+			buf
 		}
 		VariableField::Object(items, _) => {
 			let mut buf = String::from("{");
@@ -479,18 +493,18 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 				match item.get_ast_ref() {
 					parser::ObjectDestructuringField::Name(name, _, _) => {
 						if let VariableIdentifier::Standard(name, ..) = name {
-							buf.push_str(name)
+							buf.push_str(name);
 						}
 					}
 					parser::ObjectDestructuringField::Spread(name, _) => {
 						buf.push_str("...");
 						if let VariableIdentifier::Standard(name, ..) = name {
-							buf.push_str(name)
+							buf.push_str(name);
 						}
 					}
 					parser::ObjectDestructuringField::Map { from, name, .. } => {
 						match from {
-							parser::PropertyKey::Ident(ident, _, _) => {
+							parser::PropertyKey::Ident(ident, _, ()) => {
 								buf.push_str(ident);
 							}
 							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),
@@ -506,7 +520,8 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 				}
 			}
 			buf.push_str(" }");
-			return buf;
+
+			buf
 		}
 	}
 }

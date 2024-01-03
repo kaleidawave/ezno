@@ -18,7 +18,7 @@ use std::{
 	path::PathBuf,
 };
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone, Copy)]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -87,6 +87,15 @@ impl Diagnostic {
 			Diagnostic::Global { reason, .. } => (reason, None),
 			Diagnostic::Position { reason, position, .. }
 			| Diagnostic::PositionWithAdditionalLabels { reason, position, .. } => (reason, Some(position)),
+		}
+	}
+
+	#[must_use]
+	pub fn kind(&self) -> DiagnosticKind {
+		match self {
+			Diagnostic::Global { kind, .. }
+			| Diagnostic::Position { kind, .. }
+			| Diagnostic::PositionWithAdditionalLabels { kind, .. } => *kind,
 		}
 	}
 }

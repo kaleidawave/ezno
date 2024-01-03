@@ -449,3 +449,20 @@ print_type(x(90))
 ```
 
 - TODO
+
+### Function checking
+
+#### Default parameter side effect on parameter
+
+> I don't think this works because of fact combining
+
+```ts
+function doThing(a, b = (a += 2)) {
+    return a
+}
+
+doThing(3) satisfies 2;
+doThing(6, 1) satisfies 6;
+```
+
+- Expected 2, found 5

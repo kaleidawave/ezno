@@ -51,10 +51,23 @@ fn main() {
 	} else {
 		eprintln!("Diagnostics:");
 		for diagnostic in diagnostics {
-			eprintln!("\t{}", diagnostic.reason());
-			if let Diagnostic::PositionWithAdditionalLabels { labels, .. } = diagnostic {
-				for (label, _) in labels.iter() {
-					eprintln!("\t\t({})", label);
+			let prefix: char = match diagnostic.kind() {
+				ezno_checker::DiagnosticKind::Error => 'E',
+				ezno_checker::DiagnosticKind::Warning => 'W',
+				ezno_checker::DiagnosticKind::Info => 'I',
+			};
+			match diagnostic {
+				Diagnostic::Global { reason, kind: _ } => {
+					eprintln!("\t{prefix}: {reason}");
+				}
+				Diagnostic::Position { reason, position, kind: _ } => {
+					eprintln!("\t{prefix}: {reason} {position:?}");
+				}
+				Diagnostic::PositionWithAdditionalLabels { reason, position, labels, kind: _ } => {
+					eprintln!("\t{prefix}: {reason} {position:?}");
+					for (reason, position) in labels {
+						eprintln!("\t\t{reason} {position:?}");
+					}
 				}
 			}
 		}

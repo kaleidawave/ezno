@@ -32,7 +32,7 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	CheckingData, FunctionId, VariableId,
+	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
 };
 
 use self::{
@@ -185,6 +185,12 @@ pub struct Context<T: ContextType> {
 	pub facts: Facts,
 }
 
+pub struct VariableRegisterArguments {
+	pub constant: bool,
+	pub space: Option<TypeId>,
+	pub initial_value: Option<TypeId>,
+}
+
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub(super) enum CanReferenceThis {
 	NotYetSuperToBeCalled,
@@ -289,11 +295,16 @@ impl<T: ContextType> Context<T> {
 	pub fn register_variable<'b>(
 		&mut self,
 		name: &'b str,
-		mutability: VariableMutability,
 		declared_at: SpanWithSource,
-		initial_value: Option<TypeId>,
+		VariableRegisterArguments { constant, initial_value, space }: VariableRegisterArguments,
 	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
+
+		let mutability = if constant {
+			VariableMutability::Constant
+		} else {
+			VariableMutability::Mutable { reassignment_constraint: space }
+		};
 
 		let variable = VariableOrImport::Variable { declared_at, mutability, context: None };
 
@@ -318,21 +329,18 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn register_variable_handle_error(
 		&mut self,
 		name: &str,
-		mutability: VariableMutability,
+		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
-		initial_value: Option<TypeId>,
-		checking_data: &mut CheckingData<U, A>,
+		diagnostics_container: &mut DiagnosticsContainer,
 	) {
-		if let Err(_err) = self.register_variable(name, mutability, declared_at, initial_value) {
-			checking_data.diagnostics_container.add_error(
-				TypeCheckError::CannotRedeclareVariable {
-					name: name.to_owned(),
-					position: declared_at,
-				},
-			);
+		if let Err(_err) = self.register_variable(name, declared_at, argument) {
+			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
+				name: name.to_owned(),
+				position: declared_at,
+			});
 		}
 	}
 

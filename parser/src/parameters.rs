@@ -146,9 +146,8 @@ impl FunctionParameters {
 						None
 					};
 
-				let position = spread_pos.union(
-					type_annotation.as_ref().map(|ta| ta.get_position()).unwrap_or(&name_pos),
-				);
+				let position = spread_pos
+					.union(type_annotation.as_ref().map_or(&name_pos, ASTNode::get_position));
 
 				rest_parameter = Some(Box::new(SpreadParameter {
 					name: VariableIdentifier::Standard(name, name_pos),

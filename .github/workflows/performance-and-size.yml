@@ -2,7 +2,7 @@ name: Performance and size
 
 on:
   push:
-    branches: [main, fixes271]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always

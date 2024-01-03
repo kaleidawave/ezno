@@ -7,7 +7,7 @@ use parser::{
 };
 
 use crate::{
-	context::Environment,
+	context::{Environment, VariableRegisterArguments},
 	features::{
 		functions::synthesise_hoisted_statement_function,
 		modules::{import_items, ImportKind, NamePair},
@@ -197,12 +197,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					{
 						environment.register_variable_handle_error(
 							name,
-							// TODO functions are constant references
-							VariableMutability::Constant,
+							VariableRegisterArguments {
+								// TODO functions are constant references
+								constant: true,
+								space: None,
+								initial_value: None,
+							},
 							func.get_position().with_source(environment.get_source()),
-							// TODO unsynthesised function? ...
-							None,
-							checking_data,
+							&mut checking_data.diagnostics_container,
 						);
 					}
 				}
@@ -234,10 +236,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 					environment.register_variable_handle_error(
 						func.name.as_str(),
-						VariableMutability::Constant,
+						VariableRegisterArguments {
+							// TODO functions are constant references
+							constant: true,
+							space: None,
+							initial_value: Some(base),
+						},
 						func.get_position().with_source(environment.get_source()),
-						Some(base),
-						checking_data,
+						&mut checking_data.diagnostics_container,
 					);
 				}
 				parser::Declaration::Enum(r#enum) => {
@@ -283,9 +289,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							declaration.name.get_ast_ref(),
 							environment,
 							checking_data,
-							// TODO
-							VariableMutability::Constant,
-							Some(ty),
+							VariableRegisterArguments {
+								// TODO based on keyword
+								constant: true,
+								space: None,
+								initial_value: Some(ty),
+							},
 						);
 					}
 				}
@@ -302,11 +311,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								{
 									environment.register_variable_handle_error(
 										name,
-										VariableMutability::Constant,
+										VariableRegisterArguments {
+											// TODO based on keyword
+											constant: true,
+											space: None,
+											initial_value: None,
+										},
 										declared_at,
-										// TODO unsynthesised function? ...
-										None,
-										checking_data,
+										&mut checking_data.diagnostics_container,
 									);
 								}
 							}
@@ -483,17 +495,19 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 		} => {
 			for declaration in declarations {
 				crate::utils::notify!("TODO constraint needed to be set for free variable!!!");
-				let _constraint =
+				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
 				register_variable(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					// TODO ...
-					VariableMutability::Constant,
-					// Value set later
-					None,
+					VariableRegisterArguments {
+						constant: true,
+						space: constraint,
+						// Value set later
+						initial_value: None,
+					},
 				);
 			}
 		}
@@ -510,9 +524,12 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					VariableMutability::Mutable { reassignment_constraint: constraint },
-					// Set later
-					None,
+					VariableRegisterArguments {
+						constant: false,
+						space: constraint,
+						// Value set later
+						initial_value: None,
+					},
 				);
 			}
 		}

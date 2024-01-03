@@ -19,10 +19,10 @@ const z: object = 4
 
 ```ts
 let x: number = 3
-x = "not a number"
+x = "hello world"
 ```
 
-- Type "not a number" is not assignable to type number
+- Type "hello world" is not assignable to type number
 
 #### Variable references
 
@@ -37,11 +37,11 @@ const b: string = a
 
 ```ts
 let a = 2
-a = "not a number"
+a = "hello world"
 let b: boolean = a
 ```
 
-- Type "not a number" is not assignable to type boolean
+- Type "hello world" is not assignable to type boolean
 
 #### Variable references does not exist
 
@@ -111,10 +111,10 @@ const three: 3 = my_obj.a
 
 ```ts
 const my_obj: { a: number } = { a: 2 }
-my_obj.a = "not a number"
+my_obj.a = "hello world"
 ```
 
-- Type "not a number" does not meet property constraint number
+- Type "hello world" does not meet property constraint number
 
 #### Objects checks
 
@@ -250,9 +250,9 @@ const z: false = true || 4
 #### Math operations
 
 ```ts
-Math.cos(0) satisfies 0;
-Math.sqrt(16) satisfies 1;
-Math.floor(723.22) satisfies 2
+Math.cos(0) satisfies 0
+Math.sqrt(16) satisfies 1
+Math.floor(723.22) satisfies 2;
 ```
 
 - Expected 0, found 1
@@ -466,10 +466,10 @@ myFunction({ a: 6 }) satisfies string;
 
 ```ts
 function func(a: number) {}
-func("not a number")
+func("hello world")
 ```
 
-- Argument of type "not a number" is not assignable to parameter of type number
+- Argument of type "hello world" is not assignable to parameter of type number
 
 #### Parameters are always considered generic
 
@@ -487,10 +487,10 @@ const d: 3 = id(2)
 
 ```ts
 function func<T>(a: T) {}
-func<number>("not a number")
+func<number>("hello world")
 ```
 
-- Argument of type "not a number" is not assignable to parameter of type number
+- Argument of type "hello world" is not assignable to parameter of type number
 
 #### Get value of property on parameter
 
@@ -652,7 +652,7 @@ withDefault(3) satisfies 3;
 
 ```ts
 let b: number = 0
-function doThing(a = b += 2) {
+function doThing(a = (b += 2)) {
     return a
 }
 

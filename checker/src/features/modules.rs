@@ -1,5 +1,8 @@
 use super::variables::{VariableMutability, VariableOrImport};
-use crate::{context::facts::Facts, CheckingData, Environment, Scope, Type, TypeId, VariableId};
+use crate::{
+	context::{facts::Facts, VariableRegisterArguments},
+	CheckingData, Environment, Scope, Type, TypeId, VariableId,
+};
 
 use source_map::Span;
 
@@ -125,10 +128,13 @@ pub fn import_items<
 		} else {
 			environment.register_variable_handle_error(
 				default_name,
-				VariableMutability::Constant,
+				VariableRegisterArguments {
+					constant: true,
+					initial_value: Some(TypeId::ERROR_TYPE),
+					space: None,
+				},
 				position.with_source(current_source),
-				Some(TypeId::ERROR_TYPE),
-				checking_data,
+				&mut checking_data.diagnostics_container,
 			);
 		}
 	}
@@ -152,10 +158,13 @@ pub fn import_items<
 
 						environment.register_variable_handle_error(
 							part.r#as,
-							VariableMutability::Constant,
+							VariableRegisterArguments {
+								constant: true,
+								space: None,
+								initial_value: Some(TypeId::ERROR_TYPE),
+							},
 							position,
-							Some(TypeId::ERROR_TYPE),
-							checking_data,
+							&mut checking_data.diagnostics_container,
 						);
 					}
 					if let Some((variable, mutability)) = exported_variable {
@@ -196,12 +205,16 @@ pub fn import_items<
 				} else {
 					// This happens if imported is an invalid file (syntax issue, doesn't exist etc)
 					// Don't need to emit an error here
+					let declared_at = part.position.with_source(environment.get_source());
 					environment.register_variable_handle_error(
 						part.r#as,
-						VariableMutability::Constant,
-						part.position.with_source(current_source),
-						Some(TypeId::ERROR_TYPE),
-						checking_data,
+						VariableRegisterArguments {
+							constant: true,
+							space: None,
+							initial_value: Some(TypeId::ERROR_TYPE),
+						},
+						declared_at,
+						&mut checking_data.diagnostics_container,
 					);
 				}
 			}
@@ -214,19 +227,25 @@ pub fn import_items<
 
 				environment.register_variable_handle_error(
 					under,
-					VariableMutability::Constant,
+					VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: Some(value),
+					},
 					position.with_source(current_source),
-					Some(value),
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				);
 			} else {
 				crate::utils::notify!("TODO :?");
 				environment.register_variable_handle_error(
 					under,
-					VariableMutability::Constant,
+					VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: Some(TypeId::ERROR_TYPE),
+					},
 					position.with_source(current_source),
-					Some(TypeId::ERROR_TYPE),
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				);
 			}
 		}

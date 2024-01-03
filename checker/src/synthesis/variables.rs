@@ -4,16 +4,15 @@ use parser::{
 	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField,
 	ObjectDestructuringField, VariableField, VariableIdentifier,
 };
-use source_map::Span;
 
 use super::expressions::synthesise_expression;
 use crate::{
-	context::{facts::Publicity, Context, ContextType},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	features::variables::VariableMutability,
+	context::{facts::Publicity, Context, ContextType, VariableRegisterArguments},
+	diagnostics::TypeCheckError,
+	features::variables::{get_new_register_argument_under, VariableMutability},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{printing::print_type, properties::PropertyKey},
-	CheckingData, Environment, Instance, PropertyValue, TypeId,
+	types::properties::PropertyKey,
+	CheckingData, Environment, TypeId,
 };
 
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
@@ -21,48 +20,40 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 	name: &parser::VariableField<U>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-	mutability: VariableMutability,
-	initial_value: Option<TypeId>,
+	argument: VariableRegisterArguments,
 ) {
 	fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
 		name: &VariableIdentifier,
 		environment: &mut Context<V>,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
-		mutability: VariableMutability,
-		initial_value: Option<TypeId>,
+		argument: VariableRegisterArguments,
 	) {
 		match name {
 			parser::VariableIdentifier::Standard(name, pos) => {
+				if let Some(reassignment_constraint) = argument.space {
+					let id = crate::VariableId(environment.get_source(), pos.start);
+					checking_data
+						.type_mappings
+						.variables_to_constraints
+						.0
+						.insert(id, reassignment_constraint);
+				}
+
 				environment.register_variable_handle_error(
 					name,
-					mutability,
+					argument,
 					pos.with_source(environment.get_source()),
-					initial_value,
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				);
-
-				if let VariableMutability::Mutable {
-					reassignment_constraint: Some(reassignment_constraint),
-				} = mutability
-				{
-					checking_data.type_mappings.variables_to_constraints.0.insert(
-						crate::VariableId(environment.get_source(), pos.start),
-						reassignment_constraint,
-					);
-				}
 			}
 			parser::VariableIdentifier::Cursor(..) => todo!(),
 		}
 	}
 
 	match name {
-		parser::VariableField::Name(variable) => register_variable_identifier(
-			variable,
-			environment,
-			checking_data,
-			mutability,
-			initial_value,
-		),
+		parser::VariableField::Name(variable) => {
+			register_variable_identifier(variable, environment, checking_data, argument);
+		}
 		parser::VariableField::Array(items, _) => {
 			for (idx, field) in items.iter().enumerate() {
 				match field {
@@ -71,39 +62,25 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							variable,
 							environment,
 							checking_data,
-							mutability,
-							// TODO is this valid?
-							initial_value,
+							// TODO
+							VariableRegisterArguments {
+								constant: argument.constant,
+								space: argument.space,
+								initial_value: argument.initial_value,
+							},
 						);
 					}
 					ArrayDestructuringField::Name(name, _initial_value) => {
 						// TODO account for spread in `idx`
 						let key = PropertyKey::from_usize(idx);
-						let mutability = get_new_mutable_constraint(
-							mutability,
-							key.clone(),
+						let argument = get_new_register_argument_under(
+							&argument,
+							key,
 							environment,
 							checking_data,
 							*name.get_position(),
 						);
-						let initial_value = initial_value.clone().map(|initial_value| {
-							environment
-								.get_property_handle_errors(
-									initial_value,
-									Publicity::Public,
-									key,
-									checking_data,
-									*name.get_position(),
-								)
-								.map_or(TypeId::ERROR_TYPE, Instance::get_value)
-						});
-						register_variable(
-							name.get_ast_ref(),
-							environment,
-							checking_data,
-							mutability,
-							initial_value,
-						);
+						register_variable(name.get_ast_ref(), environment, checking_data, argument);
 					}
 					ArrayDestructuringField::None => {}
 				}
@@ -114,137 +91,56 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, ..) => {
 						let key = PropertyKey::String(Cow::Borrowed(variable.as_str()));
-						let mutability = get_new_mutable_constraint(
-							mutability,
-							key.clone(),
+						let argument = get_new_register_argument_under(
+							&argument,
+							key,
 							environment,
 							checking_data,
 							*variable.get_position(),
 						);
-						let initial_value = initial_value.clone().map(|initial_value| {
-							environment
-								.get_property_handle_errors(
-									initial_value,
-									Publicity::Public,
-									key,
-									checking_data,
-									*name.get_position(),
-								)
-								.map_or(TypeId::ERROR_TYPE, Instance::get_value)
-						});
 						register_variable_identifier(
 							variable,
 							environment,
 							checking_data,
-							mutability,
-							initial_value,
+							argument,
 						);
 					}
 					ObjectDestructuringField::Spread(variable, _) => {
-						let _ty = register_variable_identifier(
+						register_variable_identifier(
 							variable,
 							environment,
 							checking_data,
-							mutability,
-							initial_value,
+							// TODO
+							VariableRegisterArguments {
+								constant: argument.constant,
+								space: argument.space,
+								initial_value: argument.initial_value,
+							},
 						);
 					}
 					ObjectDestructuringField::Map {
 						from,
 						name,
 						default_value: _default_value,
-						position: _,
+						position,
 					} => {
 						let key = parser_property_key_to_checker_property_key(
 							from,
 							environment,
 							checking_data,
 						);
-						let mutability = get_new_mutable_constraint(
-							mutability,
-							key.clone(),
+						let argument = get_new_register_argument_under(
+							&argument,
+							key,
 							environment,
 							checking_data,
-							*name.get_position(),
+							*position,
 						);
-						let initial_value = initial_value.clone().map(|initial_value| {
-							environment
-								.get_property_handle_errors(
-									initial_value,
-									Publicity::Public,
-									key,
-									checking_data,
-									*name.get_position(),
-								)
-								.map_or(TypeId::ERROR_TYPE, Instance::get_value)
-						});
-						register_variable(
-							name.get_ast_ref(),
-							environment,
-							checking_data,
-							mutability,
-							initial_value,
-						);
+						register_variable(name.get_ast_ref(), environment, checking_data, argument);
 					}
 				}
 			}
 		}
-	}
-}
-
-fn get_new_mutable_constraint<T: crate::ReadFromFS>(
-	on: VariableMutability,
-	under: PropertyKey,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	at: Span,
-) -> VariableMutability {
-	if let VariableMutability::Mutable { reassignment_constraint: Some(reassignment_constraint) } =
-		on
-	{
-		let property_constraint = environment.get_property_unbound(
-			reassignment_constraint,
-			Publicity::Public,
-			under.clone(),
-			&checking_data.types,
-		);
-		let ty = if let Some(value) = property_constraint {
-			match value {
-				crate::context::Logical::Pure(PropertyValue::Value(value)) => value,
-				crate::context::Logical::Pure(_) => todo!(),
-				crate::context::Logical::Or { left: _, right: _ } => todo!(),
-				crate::context::Logical::Implies { on: _, antecedent: _ } => {
-					todo!()
-				}
-			}
-		} else {
-			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				property: match under {
-					PropertyKey::String(s) => {
-						crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
-					}
-					PropertyKey::Type(t) => {
-						crate::diagnostics::PropertyRepresentation::Type(print_type(
-							t,
-							&checking_data.types,
-							&environment.as_general_context(),
-							false,
-						))
-					}
-				},
-				on: TypeStringRepresentation::from_type_id(
-					reassignment_constraint,
-					&environment.as_general_context(),
-					&checking_data.types,
-					false,
-				),
-				site: at.with_source(environment.get_source()),
-			});
-			TypeId::ERROR_TYPE
-		};
-		VariableMutability::Mutable { reassignment_constraint: Some(ty) }
-	} else {
-		on
 	}
 }
 

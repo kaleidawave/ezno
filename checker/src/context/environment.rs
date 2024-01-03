@@ -472,6 +472,7 @@ impl<'a> Environment<'a> {
 						}
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
+							let variable_site = *declared_at;
 
 							if let Some(reassignment_constraint) = *reassignment_constraint {
 								// TODO tuple with position:
@@ -501,8 +502,7 @@ impl<'a> Environment<'a> {
 											store,
 											false,
 										),
-										// TODO split
-										variable_site: assignment_position,
+										variable_site,
 										value_site: assignment_position,
 									});
 								}

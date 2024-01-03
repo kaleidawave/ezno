@@ -1,7 +1,7 @@
 use parser::ASTNode;
 
 use crate::{
-	context::{Names, RootContext},
+	context::{Names, RootContext, VariableRegisterArguments},
 	synthesis::{
 		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	},
@@ -91,12 +91,15 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 				let _context = decorators_to_context(&func.decorators);
 
-				let _res = env.register_variable_handle_error(
+				env.register_variable_handle_error(
 					func.name.as_str(),
-					crate::features::variables::VariableMutability::Constant,
+					VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: Some(base),
+					},
 					func.get_position().with_source(source),
-					Some(base),
-					checking_data,
+					&mut checking_data.diagnostics_container,
 				);
 			}
 			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
@@ -121,8 +124,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 						declaration.name.get_ast_ref(),
 						&mut env,
 						checking_data,
-						crate::features::variables::VariableMutability::Constant,
-						initial_value,
+						VariableRegisterArguments { constant: true, space: None, initial_value },
 					);
 				}
 			}
