@@ -165,17 +165,17 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 	}
 
 	match left_ty {
-		Type::FunctionReference(left_func, _) | Type::Function(left_func, _) => {
+		Type::FunctionReference(left_func) | Type::Function(left_func, _) => {
 			// TODO this is a mess
 
-			let right_func = if let Type::FunctionReference(right_func, _)
+			let right_func = if let Type::FunctionReference(right_func)
 			| Type::Function(right_func, _) = right_ty
 			{
 				right_func
 			} else if let Some(constraint) = get_constraint(ty, types) {
 				// TODO explain why get_constraint early breaks a bunch of tests
 				let right_ty = types.get_type_by_id(constraint);
-				if let Type::FunctionReference(right_func, _) | Type::Function(right_func, _) =
+				if let Type::FunctionReference(right_func) | Type::Function(right_func, _) =
 					right_ty
 				{
 					right_func
@@ -650,7 +650,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						)
 					}
 				}
-				Type::FunctionReference(_, _) => todo!(),
+				Type::FunctionReference(_) => todo!(),
 				Type::SpecialObject(_) => todo!(),
 			}
 		}

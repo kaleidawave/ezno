@@ -5,7 +5,7 @@ use parser::{
 
 use crate::{
 	context::{facts::Publicity, Context, Environment},
-	features::functions::{self, GetterSetter, ThisValue},
+	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		properties::{PropertyKey, PropertyValue},
@@ -90,7 +90,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				GetterSetter::None => {
 					let function_id = function.id;
 					checking_data.types.functions.insert(function.id, function);
-					let ty = Type::FunctionReference(function_id, ThisValue::UseParent);
+					let ty = Type::FunctionReference(function_id);
 					PropertyValue::Value(checking_data.types.register_type(ty))
 				}
 			},

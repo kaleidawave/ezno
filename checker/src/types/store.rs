@@ -186,7 +186,7 @@ impl TypeStore {
 			id,
 		};
 		self.functions.insert(id, function_type);
-		self.register_type(Type::FunctionReference(id, Default::default()))
+		self.register_type(Type::FunctionReference(id))
 	}
 
 	/// TODO this registers 3 new types, is there a smaller way
@@ -261,7 +261,7 @@ impl TypeStore {
 					self.get_fact_about_type(ctx, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
-			Type::FunctionReference(_, _) => {
+			Type::FunctionReference(_) => {
 				let on_function = ctx
 					.parents_iter()
 					.find_map(|env| resolver(&env, self, on, data))
@@ -422,5 +422,15 @@ impl TypeStore {
 		self.register_type(Type::SpecialObject(crate::features::objects::SpecialObjects::Regexp(
 			pattern,
 		)))
+	}
+
+	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
+		if let Type::RootPolyType(_) = self.get_type_by_id(parameter_constraint) {
+			parameter_constraint
+		} else {
+			self.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
+				fixed_to: parameter_constraint,
+			}))
+		}
 	}
 }

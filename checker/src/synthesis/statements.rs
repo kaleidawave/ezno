@@ -250,11 +250,9 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 								clause.get_ast_ref(),
 								environment,
 								checking_data,
-								crate::context::VariableRegisterBehavior::CatchVariable {
-									ty: throw_type,
-								},
 								// TODO
-								None,
+								crate::features::variables::VariableMutability::Constant,
+								Some(throw_type),
 							);
 						}
 						synthesise_block(&catch_block.0, environment, checking_data);

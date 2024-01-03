@@ -6,7 +6,7 @@ use crate::{
 	context::{facts::Publicity, get_on_ctx, Logical},
 	events::{Event, FinalEvent},
 	features::objects::SpecialObjects,
-	types::{get_constraint, Constructor, StructureGenerics},
+	types::{get_constraint, Constructor, StructureGenerics, TypeRelationOperator},
 	Constant, GeneralContext, PropertyValue,
 };
 
@@ -168,9 +168,21 @@ fn print_type_into_buf(
 						}
 					print_type_into_buf(*rhs, buf, cycles, args, types, ctx, debug);
 				}
-				Constructor::UnaryOperator { operator: _, operand: _ } => todo!(),
-				Constructor::TypeOperator(_) => todo!(),
-				Constructor::TypeRelationOperator(_) => todo!(),
+				Constructor::UnaryOperator { operator, operand } => {
+					buf.write_fmt(format_args!("{operator:?} ")).unwrap();
+					print_type_into_buf(*operand, buf, cycles, args, types, ctx, debug);
+				}
+				Constructor::TypeOperator(to) => {
+					buf.write_fmt(format_args!("TypeOperator = {to:?}")).unwrap();
+				}
+				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
+					ty,
+					extends,
+				}) => {
+					print_type_into_buf(*ty, buf, cycles, args, types, ctx, debug);
+					buf.push_str(" extends ");
+					print_type_into_buf(*extends, buf, cycles, args, types, ctx, debug);
+				}
 				Constructor::Image { on: _, with: _, result } => {
 					buf.write_fmt(format_args!("[func result {}] ", id.0)).unwrap();
 					// TODO arguments
@@ -232,16 +244,16 @@ fn print_type_into_buf(
 				buf.push_str(&cst.as_type_name());
 			}
 		}
-		Type::FunctionReference(func_id, this_ty) | Type::Function(func_id, this_ty) => {
+		Type::FunctionReference(func_id) | Type::Function(func_id, _) => {
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
 				write!(
 					buf,
-					"[FR #{} func, fvs {:?}, co {:?}, this {:?}, const {:?}] ",
+					"[func #{}, fvs {:?}, co {:?}, const {:?}] ", // this {:?},
 					id.0,
 					func.free_variables,
 					func.closed_over_variables,
-					this_ty,
+					// this_ty,
 					func.constant_function.as_deref().unwrap_or("-")
 				)
 				.unwrap();
@@ -270,9 +282,13 @@ fn print_type_into_buf(
 				buf.push_str(&param.name);
 				buf.push_str(": ");
 				print_type_into_buf(param.ty, buf, cycles, args, types, ctx, debug);
-				if not_at_end {
+				if func.parameters.rest_parameter.is_some() || not_at_end {
 					buf.push_str(", ");
 				}
+			}
+			if let Some(ref rest_parameter) = func.parameters.rest_parameter {
+				buf.push_str("...");
+				print_type_into_buf(rest_parameter.ty, buf, cycles, args, types, ctx, debug);
 			}
 			buf.push_str(") => ");
 			print_type_into_buf(func.return_type, buf, cycles, args, types, ctx, debug);

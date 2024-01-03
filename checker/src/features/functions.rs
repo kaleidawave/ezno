@@ -20,7 +20,8 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		Constructor, FunctionType, PolyNature, TypeStore,
 	},
-	CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId,
+	VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -128,6 +129,53 @@ pub fn function_to_property(
 		GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
 		GetterSetter::None => PropertyValue::Value(types.new_function_type(function)),
 	}
+}
+
+pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImplementation>(
+	parameter_ty: TypeId,
+	parameter_constraint: TypeId,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, A>,
+	expression: &'a A::Expression<'a>,
+) -> TypeId {
+	let (value, out, ..) = environment.new_lexical_environment_fold_into_parent(
+		Scope::DefaultFunctionParameter {},
+		checking_data,
+		|environment, checking_data| {
+			A::synthesise_expression(expression, parameter_constraint, environment, checking_data)
+		},
+	);
+
+	// Abstraction of `typeof parameter === "undefined"` to generate less types.
+	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(
+		Constructor::TypeRelationOperator(types::TypeRelationOperator::Extends {
+			ty: parameter_ty,
+			extends: TypeId::UNDEFINED_TYPE,
+		}),
+	));
+
+	// TODO is this needed
+	// let union = checking_data.types.new_or_type(parameter_ty, value);
+
+	let result =
+		checking_data.types.register_type(Type::Constructor(Constructor::ConditionalResult {
+			condition: is_undefined_condition,
+			truthy_result: value,
+			else_result: parameter_ty,
+			result_union: parameter_constraint,
+		}));
+
+	let creation_of_default_events = out.unwrap().0.events;
+	if !creation_of_default_events.is_empty() {
+		environment.facts.events.push(crate::events::Event::Conditionally {
+			condition: is_undefined_condition,
+			true_events: creation_of_default_events.into_boxed_slice(),
+			else_events: Box::new([]),
+			position: None,
+		});
+	}
+
+	result
 }
 
 /// TODO different place
@@ -333,7 +381,7 @@ where
 			FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
 				crate::utils::notify!("expecting {:?}", expecting);
 				let (expecting_parameters, expected_return) =
-					if let Type::FunctionReference(func_id, _) =
+					if let Type::FunctionReference(func_id) =
 						checking_data.types.get_type_by_id(expecting)
 					{
 						let f = checking_data.types.get_function_from_id(*func_id);

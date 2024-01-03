@@ -89,16 +89,13 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					base.constant_function,
 				);
 
-				let behavior = crate::context::VariableRegisterBehavior::Declare {
-					base,
-					context: decorators_to_context(&func.decorators),
-				};
+				let _context = decorators_to_context(&func.decorators);
 
 				let _res = env.register_variable_handle_error(
 					func.name.as_str(),
-					// TODO
+					crate::features::variables::VariableMutability::Constant,
 					func.get_position().with_source(source),
-					behavior,
+					Some(base),
 					checking_data,
 				);
 			}
@@ -106,25 +103,26 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				keyword: _,
 				declarations,
 				position: _,
-				decorators,
+				decorators: _,
 			}) => {
 				for declaration in &declarations {
-					let constraint = declaration.type_annotation.as_ref().map(|annotation| {
-						synthesise_type_annotation(annotation, &mut env, checking_data)
-					});
+					// TODO is it ever `None`...?
+					let constraint = declaration.type_annotation.as_ref().map_or(
+						TypeId::ANY_TYPE,
+						|annotation| {
+							synthesise_type_annotation(annotation, &mut env, checking_data)
+						},
+					);
 
-					// TODO warning here
-					let behavior = crate::context::VariableRegisterBehavior::Declare {
-						base: constraint.unwrap_or(TypeId::ANY_TYPE),
-						context: decorators_to_context(&decorators),
-					};
-
+					let initial_value = Some(checking_data.types.register_type(
+						crate::Type::RootPolyType(crate::types::PolyNature::Open(constraint)),
+					));
 					crate::synthesis::variables::register_variable(
 						declaration.name.get_ast_ref(),
 						&mut env,
 						checking_data,
-						behavior,
-						constraint,
+						crate::features::variables::VariableMutability::Constant,
+						initial_value,
 					);
 				}
 			}

@@ -404,19 +404,61 @@ const x: (a: string) => number = a => a.to;
 
 - No property 'to' on string
 
+#### Expected argument from parameter declaration
+
+```ts
+function map(a: (a: number) => number) {}
+
+// No annotation on `a`. But error comes from body
+// (rather than parameter assignment)
+map(a => a.t)
+```
+
+- No property 't' on number
+
 #### Assignment to parameter
 
 ```ts
 function alterParameter(a: number, b: { prop: string }) {
     a = 2;
     a = "hi";
-    b.prop = 6;
+
+	b.prop = 3;
+
+	// Observed
+    b.prop = "hello";
+    b.prop satisfies "hello";
 }
 ```
 
 > Assigning straight to `a` might be disallowed by an option in the future. Right now it is allowed by JavaScript and so is allowed
 
 - Type \"hi\" is not assignable to type number
+- Type 3 does not meet property constraint string
+
+#### Type of rest parameter
+
+```ts
+function myRestFunction(...r: string[]) {
+    r satisfies boolean;
+}
+```
+
+- Expected boolean, found Array\<string\>
+
+#### Destructuring parameter
+
+```ts
+function myFunction({ a }: { a: number }) {
+    a satisfies boolean;
+    return a
+}
+
+myFunction({ a: 6 }) satisfies string;
+```
+
+- Expected boolean, found number
+- Expected string, found 6
 
 ### Function calling
 
@@ -580,6 +622,60 @@ new MyClass("hi").value satisfies "hello"
 ```
 
 - Expected "hello", found "hi"
+
+#### Arguments in to rest parameter
+
+```ts
+function myRestFunction(...r: string[]) {
+    return r[0] + r[1]
+}
+
+myRestFunction("hello ", "world") satisfies number;
+```
+
+- Expected number, found "hello world"
+
+#### Default parameter
+
+```ts
+function withDefault(x: number = 1) {
+    return x
+}
+
+withDefault() satisfies 2;
+withDefault(3) satisfies 3;
+```
+
+- Expected 2, found 1
+
+#### Default parameter side effect
+
+```ts
+let b: number = 0
+function doThing(a = b += 2) {
+    return a
+}
+
+doThing("hello");
+b satisfies 0;
+doThing();
+b satisfies 1;
+```
+
+- Expected 1, found 2
+
+#### Tagged template literal
+
+```ts
+function myTag(static_parts: Array<string>, name: string) {
+	return static_parts[0] + name
+}
+
+const name = "Ben";
+myTag`${name}Hello ` satisfies "Hi Ben"
+```
+
+- Expected "Hi Ben", found "Hello Ben"
 
 ### Effects
 
@@ -829,21 +925,27 @@ value.getValue() satisfies 6
 
 ### Collection types
 
-#### Array pushing and popping
-
-> TODO maybe separate
+#### Array push
 
 ```ts
 const x = [1]
 x.push("hi")
 x[1] satisfies 3
 x.length satisfies 4;
-x.pop() satisfies "hi";
-x.length satisfies 1;
 ```
 
 - Expected 3, found "hi"
 - Expected 4, found 2
+
+#### Array pop
+
+```ts
+const myArray = [6, "hi"]
+myArray.pop() satisfies 3;
+myArray.length satisfies 1;
+```
+
+- Expected 3, found "hi"
 
 ### Control flow
 

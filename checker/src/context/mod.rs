@@ -194,29 +194,6 @@ pub(super) enum CanReferenceThis {
 	Yeah,
 }
 
-#[derive(Clone)]
-pub enum VariableRegisterBehavior {
-	Register {
-		mutability: VariableMutability,
-	},
-	Declare {
-		/// *wrapped in open poly type*
-		base: TypeId,
-		context: Option<String>,
-	},
-	FunctionParameter {
-		/// TODO what happens to it
-		annotation: Option<TypeId>,
-	},
-	// TODO document behavior
-	CatchVariable {
-		ty: TypeId,
-	},
-	ConstantImport {
-		value: TypeId,
-	},
-}
-
 impl<T: ContextType> Context<T> {
 	/// This exists on context because bases are localised
 	// TODO with_rule
@@ -307,136 +284,55 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Declares a new variable in the environment and returns the new variable
-	///
-	/// **THIS IS USED FOR HOISTING, DOES NOT SET THE VALUE**
 	/// TODO maybe name: `VariableDeclarator` to include destructuring ...?
 	/// TODO hoisted vs declared
 	pub fn register_variable<'b>(
 		&mut self,
 		name: &'b str,
+		mutability: VariableMutability,
 		declared_at: SpanWithSource,
-		behavior: VariableRegisterBehavior,
-		types: &mut TypeStore,
-	) -> Result<TypeId, CannotRedeclareVariable<'b>> {
+		initial_value: Option<TypeId>,
+	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
-		self.variable_names.insert(id, name.to_owned());
 
-		let (existing_variable, ty) = match behavior {
-			VariableRegisterBehavior::Declare { base, context } => {
-				return self.declare_variable(name, declared_at, base, types, context);
-			}
-			VariableRegisterBehavior::CatchVariable { ty } => {
-				// TODO
-				let kind = VariableMutability::Constant;
-				let variable =
-					VariableOrImport::Variable { declared_at, mutability: kind, context: None };
-				self.variables.insert(name.to_owned(), variable);
-				self.facts.variable_current_value.insert(id, ty);
-				(false, ty)
-			}
-			VariableRegisterBehavior::Register { mutability } => {
-				let variable =
-					VariableOrImport::Variable { mutability, declared_at, context: None };
-				let entry = self.variables.entry(name.to_owned());
-				if let Entry::Vacant(empty) = entry {
-					empty.insert(variable);
-					(false, TypeId::ANY_TYPE)
-				} else {
-					(true, TypeId::ANY_TYPE)
-				}
-			}
-			VariableRegisterBehavior::FunctionParameter { annotation } => {
-				// TODO maybe store separately
+		let variable = VariableOrImport::Variable { declared_at, mutability, context: None };
 
-				// TODO via a setting
-				const FUNCTION_PARAM_MUTABLE: bool = true;
-				let mutability = if FUNCTION_PARAM_MUTABLE {
-					VariableMutability::Mutable { reassignment_constraint: annotation }
-				} else {
-					VariableMutability::Constant
-				};
-				let variable =
-					VariableOrImport::Variable { mutability, declared_at, context: None };
-
-				let entry = self.variables.entry(name.to_owned());
-				if let Entry::Vacant(_empty) = entry {
-					let _existing_variable = self.variables.insert(name.to_owned(), variable);
-					let parameter_ty = if let Some(annotation) = annotation {
-						if let Type::RootPolyType(_) = types.get_type_by_id(annotation) {
-							// TODO this can only be used once, two parameters cannot have same type as the can
-							// also not be equal thing to be inline with ts...
-							annotation
-						} else {
-							let parameter_ty = types.register_type(Type::RootPolyType(
-								crate::types::PolyNature::Parameter { fixed_to: annotation },
-							));
-
-							// TODO might be temp if get a better assigning to poly ...?
-							if matches!(
-								annotation,
-								TypeId::STRING_TYPE | TypeId::NUMBER_TYPE | TypeId::BOOLEAN_TYPE
-							) {
-								self.object_constraints.insert(parameter_ty, vec![annotation]);
-							}
-
-							parameter_ty
-						}
-					} else {
-						let fixed_to = TypeId::ANY_TYPE;
-						types.register_type(Type::RootPolyType(
-							crate::types::PolyNature::Parameter { fixed_to },
-						))
-					};
-
-					self.facts.variable_current_value.insert(id, parameter_ty);
-					(false, parameter_ty)
-				} else {
-					(true, TypeId::ERROR_TYPE)
-				}
-			}
-			VariableRegisterBehavior::ConstantImport { value } => {
-				let variable = VariableOrImport::Variable {
-					mutability: VariableMutability::Constant,
-					declared_at,
-					context: None,
-				};
-				let entry = self.variables.entry(name.to_owned());
-				self.facts.variable_current_value.insert(id, value);
-				if let Entry::Vacant(empty) = entry {
-					empty.insert(variable);
-					(false, TypeId::ANY_TYPE)
-				} else {
-					(true, TypeId::ANY_TYPE)
-				}
+		let existing = match self.variables.entry(name.to_owned()) {
+			Entry::Occupied(_) => true,
+			Entry::Vacant(vacant) => {
+				vacant.insert(variable);
+				false
 			}
 		};
 
-		if existing_variable {
+		self.variable_names.insert(id, name.to_owned());
+
+		if let Some(initial_value) = initial_value {
+			self.facts.variable_current_value.insert(id, initial_value);
+		}
+
+		if existing {
 			Err(CannotRedeclareVariable { name })
 		} else {
-			Ok(ty)
+			Ok(())
 		}
 	}
 
 	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
+		mutability: VariableMutability,
 		declared_at: SpanWithSource,
-		behavior: VariableRegisterBehavior,
+		initial_value: Option<TypeId>,
 		checking_data: &mut CheckingData<U, A>,
-	) -> TypeId {
-		if let Ok(ty) =
-			self.register_variable(name, declared_at, behavior, &mut checking_data.types)
-		{
-			ty
-		} else {
+	) {
+		if let Err(_err) = self.register_variable(name, mutability, declared_at, initial_value) {
 			checking_data.diagnostics_container.add_error(
 				TypeCheckError::CannotRedeclareVariable {
 					name: name.to_owned(),
 					position: declared_at,
 				},
 			);
-			TypeId::ERROR_TYPE
 		}
 	}
 
@@ -469,6 +365,7 @@ impl<T: ContextType> Context<T> {
 					Scope::DefinitionModule { .. } => "definition module",
 					Scope::PassThrough { .. } => "pass through",
 					Scope::StaticBlock { .. } => "static block",
+					Scope::DefaultFunctionParameter { .. } => "default function parameter value",
 				}
 			} else {
 				"root"
@@ -522,6 +419,7 @@ impl<T: ContextType> Context<T> {
 				| Scope::TypeAlias
 				| Scope::Block {}
 				| Scope::PassThrough { .. }
+				| Scope::DefaultFunctionParameter { .. }
 				| Scope::DefinitionModule { .. }
 				| Scope::Module { .. } => None,
 			},
@@ -843,9 +741,9 @@ impl<T: ContextType> Context<T> {
 				None
 			}
 			// TODO temp
-			Scope::Function(FunctionScope::Constructor { .. }) | Scope::Iteration { .. } => {
-				Some((facts, used_parent_references))
-			}
+			Scope::Function(FunctionScope::Constructor { .. })
+			| Scope::Iteration { .. }
+			| Scope::DefaultFunctionParameter {} => Some((facts, used_parent_references)),
 			Scope::Function { .. } => {
 				unreachable!("use new_function")
 			}

@@ -56,20 +56,6 @@ print_type(callFunc)
 
 - Expected "a" | "b" | "c" found "d"
 
-#### This as generic argument
-
-> Was working, now broken for some reason :(
-
-```ts
-function callToUpperCase(s: string) {
-	return s.toUpperCase()
-}
-
-(callToUpperCase("hi") satisfies "HEY")
-```
-
-- Expected "HEY", found "HI"
-
 #### Symmetric or
 
 ```ts
@@ -157,36 +143,6 @@ if (a === "hi") {
 
 - Expected "hello", found "hi"
 
-### Looping
-
-#### For loops
-
-```ts
-function func(array: Array<string>) {
-	for (const item of array) {
-		item satisfies number
-	}
-}
-```
-
-- Expected number found string
-
-#### Constant loops
-
-```ts
-function join(array: Array<string>) {
-	let buf = ""
-	for (let item of array) {
-		buf += item
-	}
-	return buf
-}
-
-join(["a", "b", "c"]) satisfies "cba"
-```
-
-- Expected "cba" found "abc"
-
 ### This
 
 #### Bind function
@@ -203,8 +159,6 @@ x() satisfies 3
 - Expected 3, found 2
 
 ### Iteration
-
-> TODO for in
 
 #### For-in fixed object
 
@@ -234,6 +188,36 @@ properties satisfies boolean;
 ```
 
 - Expected boolean, found string
+
+> TODO for in and generators
+
+#### For loops
+
+```ts
+function func(array: Array<string>) {
+	for (const item of array) {
+		item satisfies number
+	}
+}
+```
+
+- Expected number found string
+
+#### Constant for loop
+
+```ts
+function join(array: Array<string>) {
+	let buf = ""
+	for (let item of array) {
+		buf += item
+	}
+	return buf
+}
+
+join(["a", "b", "c"]) satisfies "cba"
+```
+
+- Expected "cba" found "abc"
 
 ### Inference
 
@@ -365,6 +349,8 @@ a.prop3 satisfies "prop2"
 
 ### Collections
 
+> TODO filter, every and all, find, etc
+
 #### Simple array map
 
 ```ts
@@ -391,19 +377,6 @@ print_type(mapper)
 
 ### Expressions
 
-#### Statements, declarations and expressions
-
-```ts
-function myTag(static_parts: Array<string>, first_name: string) {
-	return first_name + static_parts[0]
-}
-
-const name = "Ben";
-myTag`Hello ${name}` satisfies "Hi Ben"
-```
-
-- Expected "Hi Ben", found "Hello Ben"
-
 #### Bad arithmetic operator
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
@@ -415,33 +388,6 @@ console + 2
 ```
 
 - Expected number, found Console
-
-#### Expected argument
-
-> Requires synthesising arguments later ...?
-
-```ts
-function map(a: (a: number) => number) {}
-
-map(a => a.t)
-```
-
-- No property t on string
-
-#### Spread arguments
-
-```ts
-function spread(main, ...others) {
-	return {
-		main,
-		others,
-	}
-}
-
-spread(1, 2, 3) satisfies string
-```
-
-- TODO
 
 #### Array spread
 
@@ -457,7 +403,16 @@ array2[2] satisfies string;
 
 ### Classes
 
-> TODO extends
+#### Extends
+
+```ts
+class BaseClass extends class { x: 2 } {
+	y: 3
+}
+
+const b = new BaseClass;
+print_type(b.x);
+```
 
 #### Privacy
 
@@ -476,3 +431,21 @@ class MyClass {
 
 - Cannot get private property "#a"
 - Expected 3, found 2
+
+### Recursion
+
+#### Application
+
+```ts
+function x(a: number) {
+	if (a > 10 || a < 0) {
+		return a
+	}
+	return a--
+}
+
+print_type(x(4))
+print_type(x(90))
+```
+
+- TODO

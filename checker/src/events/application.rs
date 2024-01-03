@@ -214,11 +214,10 @@ pub(crate) fn apply_event(
 
 			let with = with
 				.iter()
-				.map(|argument| match argument {
-					SynthesisedArgument::NonSpread { ty, position } => {
-						let ty = substitute(*ty, type_arguments, environment, types);
-						SynthesisedArgument::NonSpread { ty, position: *position }
-					}
+				.map(|argument| SynthesisedArgument {
+					value: substitute(argument.value, type_arguments, environment, types),
+					position: argument.position,
+					spread: argument.spread,
 				})
 				.collect::<Vec<_>>();
 
@@ -226,6 +225,7 @@ pub(crate) fn apply_event(
 				CallingTiming::Synchronous => {
 					let result = crate::types::calling::call_type(
 						on,
+						with,
 						crate::types::calling::CallingInput {
 							called_with_new,
 							this_value: Default::default(),
@@ -233,7 +233,6 @@ pub(crate) fn apply_event(
 							// TODO:
 							call_site: source_map::SpanWithSource::NULL_SPAN,
 						},
-						with,
 						environment,
 						target,
 						types,

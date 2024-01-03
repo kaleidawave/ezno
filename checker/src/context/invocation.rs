@@ -4,7 +4,7 @@ use super::facts::Facts;
 use crate::{events::FinalEvent, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
-pub(crate) trait CallCheckingBehavior {
+pub trait CallCheckingBehavior {
 	// TODO
 	const CHECK_PARAMETERS: bool;
 
@@ -43,7 +43,7 @@ impl CallCheckingBehavior for CheckThings {
 	}
 }
 
-pub(crate) struct InvocationContext(Vec<InvocationKind>);
+pub struct InvocationContext(Vec<InvocationKind>);
 
 pub(crate) enum InvocationKind {
 	Conditional(Facts),

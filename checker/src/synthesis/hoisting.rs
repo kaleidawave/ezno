@@ -10,7 +10,7 @@ use crate::{
 	context::Environment,
 	features::{
 		functions::synthesise_hoisted_statement_function,
-		modules::{ImportKind, NamePair},
+		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
 	CheckingData, ReadFromFS, TypeId,
@@ -100,7 +100,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Cursor(..) => None,
 						}
 					});
-					environment.import_items(
+					import_items(
+						environment,
 						import.from.get_path().unwrap(),
 						import.position,
 						default_import,
@@ -123,7 +124,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									None => ImportKind::Everything,
 								};
 
-								environment.import_items::<iter::Empty<_>, _, _>(
+								import_items::<iter::Empty<_>, _, _>(
+									environment,
 									from.get_path().unwrap(),
 									*position,
 									None,
@@ -137,7 +139,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							Exportable::ImportParts { parts, from, type_keyword, .. } => {
 								let parts = parts.iter().filter_map(export_part_to_name_pair);
 
-								environment.import_items(
+								import_items(
+									environment,
 									from.get_path().unwrap(),
 									*position,
 									None,
@@ -189,18 +192,16 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					hoist_variable_declaration(declaration, environment, checking_data);
 				}
 				parser::Declaration::Function(func) => {
-					// TODO unsynthesised function? ...
-					let behavior = crate::context::VariableRegisterBehavior::Register {
-						// TODO
-						mutability: crate::features::variables::VariableMutability::Constant,
-					};
 					if let Some(VariableIdentifier::Standard(name, ..)) =
 						func.on.name.as_option_variable_identifier()
 					{
 						environment.register_variable_handle_error(
 							name,
+							// TODO functions are constant references
+							VariableMutability::Constant,
 							func.get_position().with_source(environment.get_source()),
-							behavior,
+							// TODO unsynthesised function? ...
+							None,
 							checking_data,
 						);
 					}
@@ -231,12 +232,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						base.constant_function,
 					);
 
-					let behavior =
-						crate::context::VariableRegisterBehavior::Declare { base, context: None };
 					environment.register_variable_handle_error(
 						func.name.as_str(),
+						VariableMutability::Constant,
 						func.get_position().with_source(environment.get_source()),
-						behavior,
+						Some(base),
 						checking_data,
 					);
 				}
@@ -269,18 +269,23 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							checking_data,
 						);
 
-						// TODO warning here
-						let behavior = crate::context::VariableRegisterBehavior::Declare {
-							base: constraint.unwrap_or(TypeId::ANY_TYPE),
-							context: None,
-						};
+						if constraint.is_none() {
+							crate::utils::notify!("constraint with no type?");
+						}
+
+						let value = constraint.unwrap_or(TypeId::ANY_TYPE);
+
+						let ty = checking_data.types.register_type(crate::Type::RootPolyType(
+							crate::types::PolyNature::Open(value),
+						));
 
 						register_variable(
 							declaration.name.get_ast_ref(),
 							environment,
 							checking_data,
-							behavior,
-							constraint,
+							// TODO
+							VariableMutability::Constant,
+							Some(ty),
 						);
 					}
 				}
@@ -289,12 +294,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 						match exported {
 							Exportable::Function(func) => {
-								// TODO unsynthesised function? ...
-								let mutability =
-									crate::features::variables::VariableMutability::Constant;
-								let behavior = crate::context::VariableRegisterBehavior::Register {
-									mutability,
-								};
 								let declared_at =
 									func.get_position().with_source(environment.get_source());
 
@@ -303,8 +302,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								{
 									environment.register_variable_handle_error(
 										name,
+										VariableMutability::Constant,
 										declared_at,
-										behavior,
+										// TODO unsynthesised function? ...
+										None,
 										checking_data,
 									);
 								}
@@ -481,19 +482,18 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			position: _,
 		} => {
 			for declaration in declarations {
-				let constraint =
+				crate::utils::notify!("TODO constraint needed to be set for free variable!!!");
+				let _constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
-
-				let behavior = crate::context::VariableRegisterBehavior::Register {
-					mutability: VariableMutability::Constant,
-				};
 
 				register_variable(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					behavior,
-					constraint,
+					// TODO ...
+					VariableMutability::Constant,
+					// Value set later
+					None,
 				);
 			}
 		}
@@ -506,16 +506,13 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
-				let behavior = crate::context::VariableRegisterBehavior::Register {
-					mutability: VariableMutability::Mutable { reassignment_constraint: constraint },
-				};
-
 				register_variable(
 					declaration.name.get_ast_ref(),
 					environment,
 					checking_data,
-					behavior,
-					constraint,
+					VariableMutability::Mutable { reassignment_constraint: constraint },
+					// Set later
+					None,
 				);
 			}
 		}

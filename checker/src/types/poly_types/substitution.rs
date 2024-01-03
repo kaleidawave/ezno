@@ -9,8 +9,8 @@ use crate::{
 		},
 	},
 	types::{
-		get_constraint, is_type_truthy_falsy, Constructor, PolyNature, StructureGenerics, Type,
-		TypeStore,
+		get_constraint, get_larger_type, is_type_truthy_falsy, Constructor, PolyNature,
+		StructureGenerics, Type, TypeStore,
 	},
 	Decidable, Environment, TypeId,
 };
@@ -46,7 +46,7 @@ pub(crate) fn substitute(
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(_f, _t) => curry_arguments(arguments, types, id),
+		Type::FunctionReference(_f) => curry_arguments(arguments, types, id),
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
@@ -291,10 +291,17 @@ pub(crate) fn substitute(
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { ty, extends } => {
-					let _ty = substitute(ty, arguments, environment, types);
-					let _extends = substitute(extends, arguments, environment, types);
+					let ty = substitute(ty, arguments, environment, types);
+					let extends = substitute(extends, arguments, environment, types);
 
-					todo!();
+					let does_extend = get_larger_type(ty, types) == extends;
+					crate::utils::notify!("Extends result {:?}", does_extend);
+					if does_extend {
+						TypeId::TRUE
+					} else {
+						TypeId::FALSE
+					}
+
 					// TODO special behavior that doesn't have errors...
 					// let result = type_is_subtype(
 					// 	extends,

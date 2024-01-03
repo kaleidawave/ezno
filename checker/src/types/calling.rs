@@ -10,10 +10,7 @@ use crate::{
 		functions::{FunctionBehavior, ThisValue},
 	},
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
-	types::{
-		functions::SynthesisedArgument, poly_types::generic_type_arguments::TypeArgumentStore,
-		substitute, ObjectNature,
-	},
+	types::{functions::SynthesisedArgument, substitute, ObjectNature},
 	types::{FunctionType, Type},
 	FunctionId, SpecialExpressions, TypeId,
 };
@@ -23,7 +20,8 @@ use super::{
 	poly_types::{
 		generic_type_arguments::StructureGenericArguments, FunctionTypeArguments, SeedingContext,
 	},
-	Constructor, PolyNature, StructureGenerics, TypeStore,
+	properties::PropertyKey,
+	Constructor, PolyNature, TypeStore,
 };
 
 pub struct CallingInput {
@@ -39,21 +37,71 @@ pub struct CallingInputWithoutThis {
 	pub call_site: SpanWithSource,
 }
 
-pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation>(
+pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
+	pub spread: bool,
+	pub expression: &'a A::Expression<'a>,
+}
+
+pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	ty: TypeId,
-	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
+	arguments: Vec<UnsynthesisedArgument<A>>,
+	input: CallingInput,
 	environment: &mut Environment,
-	arguments: Vec<SynthesisedArgument>,
-	checking_data: &mut crate::CheckingData<T, M>,
+	checking_data: &mut crate::CheckingData<T, A>,
 ) -> (TypeId, Option<SpecialExpressions>) {
-	let result = call_type(
-		ty,
-		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
-		arguments,
-		environment,
-		&mut CheckThings,
-		&mut checking_data.types,
-	);
+	// TODO maybe could do lower down...?
+	let base_function = get_constraint(ty, &checking_data.types).unwrap_or(ty);
+
+	// TODO fails for ors
+	// TODO not great, gets parameters here, then
+	let arguments = if let Type::Function(f, _) | Type::FunctionReference(f) =
+		checking_data.types.get_type_by_id(base_function)
+	{
+		// TODO clone here bad
+		let parameters = checking_data.types.get_function_from_id(*f).parameters.clone();
+		arguments
+			.into_iter()
+			.enumerate()
+			.map(|(idx, argument)| {
+				let expected = parameters.parameters.get(idx).map_or(TypeId::ANY_TYPE, |p| {
+					get_constraint(p.ty, &checking_data.types).unwrap_or(p.ty)
+				});
+
+				SynthesisedArgument {
+					spread: argument.spread,
+					position: A::expression_position(argument.expression)
+						.with_source(environment.get_source()),
+					value: A::synthesise_expression(
+						argument.expression,
+						expected,
+						environment,
+						checking_data,
+					),
+				}
+			})
+			.collect()
+	} else {
+		arguments
+			.into_iter()
+			.map(|argument| SynthesisedArgument {
+				spread: argument.spread,
+				position: A::expression_position(argument.expression)
+					.with_source(environment.get_source()),
+				value: A::synthesise_expression(
+					argument.expression,
+					TypeId::ANY_TYPE,
+					environment,
+					checking_data,
+				),
+			})
+			.collect()
+	};
+
+	let call_site = input.call_site;
+
+	let result =
+		call_type(ty, arguments, input, environment, &mut CheckThings, &mut checking_data.types);
+
 	match result {
 		Ok(FunctionCallResult {
 			returned_type,
@@ -86,20 +134,18 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, M: crate::ASTImplementation
 }
 
 /// TODO this and aliases kindof broken
-pub(crate) fn call_type<E: CallCheckingBehavior>(
+pub fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
-	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
+	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
 	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	let never_or_error_type =
 		matches!(on, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(on).or_else(|| {
-			arguments.iter().find_map(|a| match a {
-				SynthesisedArgument::NonSpread { ty, .. } => {
-					matches!(*ty, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(*ty)
-				}
+			arguments.iter().find_map(|a| {
+				matches!(a.value, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(a.value)
 			})
 		});
 
@@ -228,7 +274,9 @@ fn get_logical_callable_from_type(
 			get_logical_callable_from_type(*to, types)
 		}
 		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
-		Type::FunctionReference(f, t) | Type::Function(f, t) => Some(Logical::Pure((*f, *t))),
+		Type::Function(f, t) => Some(Logical::Pure((*f, *t))),
+		// TODO not sure about `on`... also #98
+		Type::FunctionReference(f) => Some(Logical::Pure((*f, ThisValue::Passed(on)))),
 		Type::SpecialObject(_) => todo!(),
 	}
 }
@@ -246,16 +294,16 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 
 	let result = call_type(
 		constraint,
-		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 		// TODO clone
 		arguments.clone(),
+		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
 		top_environment,
 		behavior,
 		types,
 	)?;
 
 	// TODO temp position, this should be added in `call_type`. TODO if open poly...? or pure
-	let can_skip = if let Type::FunctionReference(f, _) = types.get_type_by_id(constraint) {
+	let can_skip = if let Type::FunctionReference(f) = types.get_type_by_id(constraint) {
 		let func = types.functions.get(f).unwrap();
 		// TODO or some events that don't modify etc
 		func.constant_function.is_some()
@@ -268,35 +316,30 @@ fn create_generic_function_call<E: CallCheckingBehavior>(
 			// TODO need to do in a function
 			// All properties
 			// Functions free variables etc
-			match argument {
-				SynthesisedArgument::NonSpread { ty, position: _ } => {
-					match types.get_type_by_id(*ty) {
-						Type::Interface { .. }
-						| Type::AliasTo { .. }
-						| Type::And(_, _)
-						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
-						| Type::FunctionReference(_, _)
-						| Type::Or(_, _) => {
-							crate::utils::notify!("Unreachable");
-						}
-						Type::Constant(_) => {}
-						Type::RootPolyType(_) | Type::Constructor(_) => {
-							// All dependent anyway
-							crate::utils::notify!("TODO if any properties set etc");
-						}
-						Type::Function(_, _) => {
-							crate::utils::notify!("TODO record that function could be called");
-						}
-						Type::Object(ObjectNature::RealDeal) => {
-							top_environment.possibly_mutated_objects.insert(*ty);
-							crate::utils::notify!(
-								"TODO record methods could be called here as well"
-							);
-						}
-						Type::SpecialObject(_) => {
-							crate::utils::notify!("TODO record stuff if mutable");
-						}
-					}
+			// TODO if spread
+			match types.get_type_by_id(argument.value) {
+				Type::Interface { .. }
+				| Type::AliasTo { .. }
+				| Type::And(_, _)
+				| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+				| Type::FunctionReference(_)
+				| Type::Or(_, _) => {
+					crate::utils::notify!("Unreachable");
+				}
+				Type::Constant(_) => {}
+				Type::RootPolyType(_) | Type::Constructor(_) => {
+					// All dependent anyway
+					crate::utils::notify!("TODO if any properties set etc");
+				}
+				Type::Function(_, _) => {
+					crate::utils::notify!("TODO record that function could be called");
+				}
+				Type::Object(ObjectNature::RealDeal) => {
+					top_environment.possibly_mutated_objects.insert(argument.value);
+					crate::utils::notify!("TODO record methods could be called here as well");
+				}
+				Type::SpecialObject(_) => {
+					crate::utils::notify!("TODO record stuff if mutable");
 				}
 			}
 		}
@@ -476,9 +519,9 @@ impl FunctionType {
 		}
 
 		if let (Some(const_fn_ident), true) = (self.constant_function.as_deref(), call_constant) {
-			let has_dependent_argument = arguments.iter().any(|arg| {
-				types.get_type_by_id(arg.to_type().expect("dependent spread types")).is_dependent()
-			}) || matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
+			let has_dependent_argument =
+				arguments.iter().any(|arg| types.get_type_by_id(arg.value).is_dependent())
+					|| matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
 
 			let call_anyway = matches!(
 				const_fn_ident,
@@ -691,12 +734,7 @@ impl FunctionType {
 			);
 		}
 
-		let SeedingContext {
-			type_arguments: found,
-			type_restrictions,
-			locally_held_functions: _,
-			argument_position_and_parameter_idx: _,
-		} = self.synthesise_arguments::<E>(
+		let seeding_context = self.synthesise_arguments::<E>(
 			arguments,
 			seeding_context,
 			environment,
@@ -704,6 +742,13 @@ impl FunctionType {
 			&mut errors,
 			&call_site,
 		);
+
+		let SeedingContext {
+			type_arguments: found,
+			type_restrictions,
+			locally_held_functions: _,
+			argument_position_and_parameter_idx: _,
+		} = seeding_context;
 
 		// take the found and inject back into what it resolved
 		let mut result_type_arguments = map_vec::Map::new();
@@ -913,7 +958,7 @@ impl FunctionType {
 		arguments: &[SynthesisedArgument],
 		mut seeding_context: SeedingContext,
 		environment: &mut Environment,
-		types: &TypeStore,
+		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
 		call_site: &source_map::BaseSpan<SourceId>,
 	) -> SeedingContext {
@@ -923,25 +968,13 @@ impl FunctionType {
 			// This handles if the argument is missing but allowing elided arguments
 			let argument = arguments.get(parameter_idx);
 
-			let argument_type_and_pos = argument.map(|argument| {
-				#[allow(irrefutable_let_patterns)]
-				if let SynthesisedArgument::NonSpread { ty, position: pos } = argument {
-					(ty, pos)
-				} else {
-					todo!()
+			if let Some(SynthesisedArgument { spread, value, position }) = argument {
+				if *spread {
+					crate::utils::notify!("TODO spread arguments");
 				}
-			});
 
-			// let (auto_inserted_arg, argument_type) =
-			// 	if argument_type.is_none() && checking_data.options.allow_elided_arguments {
-			// 		(true, Some(Cow::Owned(crate::types::Term::Undefined.into())))
-			// 	} else {
-			// 		(false, argument_type.map(Cow::Borrowed))
-			// 	};
-
-			if let Some((argument_type, argument_position)) = argument_type_and_pos {
-				seeding_context.argument_position_and_parameter_idx =
-					(*argument_position, parameter_idx);
+				// TODO bad
+				seeding_context.argument_position_and_parameter_idx = (*position, parameter_idx);
 
 				// crate::utils::notify!(
 				// 	"param {}, arg {}",
@@ -953,7 +986,7 @@ impl FunctionType {
 					// crate::utils::notify!("Param {:?} :> {:?}", parameter.ty, *argument_type);
 					let result = type_is_subtype(
 						parameter.ty,
-						*argument_type,
+						*value,
 						&mut seeding_context,
 						environment,
 						types,
@@ -968,33 +1001,27 @@ impl FunctionType {
 								false,
 							),
 							argument_type: TypeStringRepresentation::from_type_id(
-								*argument_type,
+								*value,
 								&environment.as_general_context(),
 								types,
 								false,
 							),
 							parameter_position: parameter.position,
-							argument_position: *argument_position,
+							argument_position: *position,
 							restriction: None,
 						});
 					}
 				} else {
-					// Already checked so can set. TODO destructuring etc
-					seeding_context.set_id(
-						parameter.ty,
-						(*argument_type, *argument_position, parameter_idx),
-						false,
-					);
+					// Already checked so can set
+					seeding_context.set_id(parameter.ty, (*value, *position, parameter_idx), false);
 				}
-			} else if let Some(value) = parameter.missing_value {
-				// TODO evaluate effects & get position
+			} else if parameter.optional {
 				seeding_context.set_id(
 					parameter.ty,
-					(value, SpanWithSource::NULL_SPAN, parameter_idx),
+					(TypeId::UNDEFINED_TYPE, SpanWithSource::NULL_SPAN, parameter_idx),
 					false,
 				);
 			} else {
-				// TODO group
 				errors.errors.push(FunctionCallingError::MissingArgument {
 					parameter_position: parameter.position,
 					call_site: *call_site,
@@ -1021,36 +1048,17 @@ impl FunctionType {
 		}
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
-				for (_idx, argument) in
+				// TODO use object builder
+				let rest_parameter_array_type =
+					environment.facts.new_object(Some(TypeId::ARRAY_TYPE), types, true, false);
+
+				for (idx, argument) in
 					arguments.iter().enumerate().skip(self.parameters.parameters.len())
 				{
-					#[allow(irrefutable_let_patterns)]
-					let SynthesisedArgument::NonSpread {
-						ty: argument_type,
-						position: argument_pos,
-					} = argument
-					else {
-						todo!()
-					};
-
-					let item_type = if let Type::Constructor(Constructor::StructureGenerics(
-						StructureGenerics { on, arguments },
-					)) = types.get_type_by_id(rest_parameter.item_type)
-					{
-						assert_eq!(*on, TypeId::ARRAY_TYPE);
-						if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
-							item
-						} else {
-							unreachable!()
-						}
-					} else {
-						unreachable!()
-					};
-
 					if E::CHECK_PARAMETERS {
 						let result = type_is_subtype(
-							item_type,
-							*argument_type,
+							rest_parameter.item_type,
+							argument.value,
 							&mut seeding_context,
 							environment,
 							types,
@@ -1065,20 +1073,34 @@ impl FunctionType {
 									false,
 								),
 								argument_type: TypeStringRepresentation::from_type_id(
-									*argument_type,
+									argument.value,
 									&environment.as_general_context(),
 									types,
 									false,
 								),
-								argument_position: *argument_pos,
+								argument_position: argument.position,
 								parameter_position: rest_parameter.position,
 								restriction: None,
 							});
 						}
-					} else {
-						todo!("substitute")
 					}
+
+					environment.facts.register_property(
+						rest_parameter_array_type,
+						crate::context::facts::Publicity::Public,
+						PropertyKey::from_usize(idx),
+						crate::PropertyValue::Value(argument.value),
+						true,
+						Some(argument.position),
+					);
 				}
+
+				// TODO what does the 0 mean here?
+				seeding_context.set_id(
+					rest_parameter.ty,
+					(rest_parameter_array_type, SpanWithSource::NULL_SPAN, 0),
+					false,
+				);
 			} else {
 				// TODO types.options.allow_extra_arguments
 				let mut left_over = arguments.iter().skip(self.parameters.parameters.len());
@@ -1089,14 +1111,15 @@ impl FunctionType {
 					count += 1;
 					end = arg;
 				}
+				// Creating position for excess arguments
 				let position = if let Some(end) = end {
 					first
-						.get_position()
+						.position
 						.without_source()
-						.union(end.get_position().without_source())
-						.with_source(end.get_position().source)
+						.union(end.position.without_source())
+						.with_source(end.position.source)
 				} else {
-					first.get_position()
+					first.position
 				};
 				errors.errors.push(FunctionCallingError::ExcessArguments { count, position });
 			}
@@ -1121,6 +1144,7 @@ impl FunctionType {
 					{
 						let mut basic_subtyping =
 							BasicEquality { add_property_restrictions: false, position };
+
 						let type_is_subtype = type_is_subtype(
 							*eager_fixed,
 							ty,

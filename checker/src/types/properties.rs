@@ -231,12 +231,11 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 									.register_type(Type::Function(*func, ThisValue::Passed(on)));
 								Some((PropertyKind::Direct, func))
 							}
-							Type::FunctionReference(func, _this_argument) => {
+							Type::FunctionReference(func) => {
 								crate::utils::notify!("TODO temp reference function business");
-								let func = types.register_type(Type::FunctionReference(
-									*func,
-									ThisValue::Passed(on),
-								));
+								// TODO a little bit weird how it goes from FunctionReference -> Function... but should be okay. For example `"hi".toUpperCase()`;
+								let func = types
+									.register_type(Type::Function(*func, ThisValue::Passed(on)));
 								Some((PropertyKind::Direct, func))
 							}
 							Type::SpecialObject(..)

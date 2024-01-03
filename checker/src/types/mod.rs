@@ -122,7 +122,7 @@ pub enum Type {
 	Function(FunctionId, ThisValue),
 
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
-	FunctionReference(FunctionId, ThisValue),
+	FunctionReference(FunctionId),
 
 	/// Technically could be just a function but...
 	Object(ObjectNature),
@@ -537,8 +537,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 						Some(TypeId::STRING_TYPE)
 					} else {
 						crate::utils::notify!("lhs = {:?}", types.get_type_by_id(lhs));
-						// TODO new conditional
-						todo!("Based on conditional {:?} + {:?}", lhs, rhs)
+						crate::utils::notify!("TODO use existing conditional");
+						Some(TypeId::NUMBER_TYPE)
 					}
 				} else {
 					Some(TypeId::NUMBER_TYPE)

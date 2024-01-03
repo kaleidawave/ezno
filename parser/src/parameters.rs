@@ -39,6 +39,7 @@ pub enum ParameterData {
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,
+	pub position: Span,
 }
 
 /// TODO need to something special to not enable `OptionalFunctionParameter::WithValue` in interfaces and other
@@ -131,7 +132,7 @@ impl FunctionParameters {
 			// Skip comments
 			while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
-			if let Some(Token(_, _spread_pos)) =
+			if let Some(Token(_, spread_pos)) =
 				reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
 			{
 				let (name, name_pos) = token_as_identifier(
@@ -144,9 +145,15 @@ impl FunctionParameters {
 					} else {
 						None
 					};
+
+				let position = spread_pos.union(
+					type_annotation.as_ref().map(|ta| ta.get_position()).unwrap_or(&name_pos),
+				);
+
 				rest_parameter = Some(Box::new(SpreadParameter {
 					name: VariableIdentifier::Standard(name, name_pos),
 					type_annotation,
+					position,
 				}));
 				break;
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
