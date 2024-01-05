@@ -22,6 +22,7 @@ jobs:
 
     outputs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
+      new-ezno-version-name: ${{ steps.get-version.outputs.new-ezno-version-name }}
       sponsors: ${{ steps.get-sponsors.outputs.sponsors }}
 
     steps:
@@ -38,12 +39,20 @@ jobs:
             echo "::endgroup"
 
             TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
-            echo "Releasing ${TAG:13}"
+            echo "Building GH release for ${TAG:13}"
             echo "new-ezno-version=${TAG:13}" >> $GITHUB_OUTPUT
+
+            # Replace '.' with '-'
+            NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
+            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           else
             VERSION="${{ inputs.ezno-version }}"
-            echo "Releasing ${VERSION}"
+            echo "Building GH release for ${VERSION}"
             echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
+
+            # Replace '.' with '-'
+            NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
+            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           fi
 
       - id: get-sponsors
@@ -82,6 +91,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # Important that everything here works in all the above OSes!
     steps:
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
@@ -97,10 +107,7 @@ jobs:
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          # Replace '.' with '-'
-          VERSION=$(echo "${{ needs.get-build-info.outputs.new-ezno-version }}" | sed -e "s/\./-/g")
-          NEW_PATH="artifacts/ezno-$VERSION-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
-          mv target/release/ezno${{ matrix.executable-extension }} $NEW_PATH
+          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version-name }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
 
       - uses: actions/upload-artifact@v4
         with:
