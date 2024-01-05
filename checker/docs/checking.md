@@ -36,17 +36,17 @@ There are three stages to hoisting.
 (2) Now that types *mostly* are resolved
 - Interfaces properties are attached to the previously declared types
 - Variable and function names are declared
-    - *Variables and functions may be closed over, thus declared at this point*
+   	- *Variables and functions may be closed over, thus declared at this point*
 
 (3) In the final stage
 - Functions are checked
-    - Inferred parameters are calculated
-    - Values that are closed over are found
-    - Return type synthesised
+   	- Inferred parameters are calculated
+   	- Values that are closed over are found
+   	- Return type synthesised
 
 #### Still working out
 - Types cannot mutate structure
-    - Where do callable interfaces go? (need to be functions)
-    - interface extends (needs to be aliases)
+   	- Where do callable interfaces go? (need to be functions)
+   	- interface extends (needs to be aliases)
 - Cases of cycles etc
 - Values of variables and functions in (2)

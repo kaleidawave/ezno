@@ -8,8 +8,8 @@
 
 ### Poly or not poly
 - Non-poly types
-    - Constants (strings, )
-    - Known objects with known indexes (/positions) (inc tuples, arrays) (sort of and sometimes)
+   	- Constants (strings, )
+   	- Known objects with known indexes (/positions) (inc tuples, arrays) (sort of and sometimes)
 
 ### Open poly types
 Poly types retain information and flow of data through the use of higher poly types.

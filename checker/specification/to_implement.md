@@ -111,7 +111,7 @@ print_type(callFunc)
 let c: Array<number> = []
 
 function add() {
-    c.push("hi")
+	c.push("hi")
 }
 ```
 
@@ -154,7 +154,7 @@ x() satisfies 3
 ```ts
 let properties: string = "";
 for (const property in { a: 1, b: 2, c: 3 }) {
-    properties += property;
+	properties += property;
 }
 properties satisfies boolean;
 ```
@@ -171,7 +171,7 @@ declare const myObject: { a: 1, b: 2, c: 3 };
 
 let properties: string = "";
 for (const property in myObject) {
-    properties += property;
+	properties += property;
 }
 properties satisfies boolean;
 ```
@@ -216,7 +216,7 @@ join(["a", "b", "c"]) satisfies "cba"
 
 ```ts
 function x(p) {
-    return p.b
+	return p.b
 }
 
 x satisfies string;
@@ -269,7 +269,7 @@ print_type(call)
 
 ```ts
 async function x() {
-    return 2
+	return 2
 }
 
 x satisfies string;
@@ -281,7 +281,7 @@ x satisfies string;
 
 ```ts
 async function x() {
-    return 2
+	return 2
 }
 
 (await x) satisfies string;
@@ -303,7 +303,7 @@ declare let a: Promise<string>;
 
 ```ts
 function x*() {
-    return 2
+	return 2
 }
 
 (await x) satisfies string;
@@ -556,7 +556,7 @@ call(call)
 
 ```ts
 function doThing(a, b = (a += 2)) {
-    return a
+	return a
 }
 
 doThing(3) satisfies 2;
@@ -569,7 +569,7 @@ doThing(6, 1) satisfies 6;
 
 ```ts
 function doThing(b: number = "hello") {
-    return a
+	return a
 }
 ```
 
