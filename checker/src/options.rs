@@ -15,6 +15,8 @@ pub struct TypeCheckOptions {
 	/// Any types displayed will be in debug view
 	pub debug_types: bool,
 
+	pub store_expression_type_mappings: bool,
+
 	/// TODO WIP
 	pub parse_comments: bool,
 }
@@ -29,6 +31,7 @@ impl Default for TypeCheckOptions {
 			debug_types: false,
 			parse_comments: true,
 			strict_casts: false,
+			store_expression_type_mappings: false,
 		}
 	}
 }

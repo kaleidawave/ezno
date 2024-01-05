@@ -5,8 +5,8 @@ members = [
   "parser/generator",
   "checker",
   "checker/binary-serialize-derive",
+  "checker/specification",
   # "lsp/server",
-  # "checker/specification"
 ]
 
 

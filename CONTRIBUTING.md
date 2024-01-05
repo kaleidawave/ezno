@@ -32,9 +32,9 @@ If you want to check all the checker tests
 
 ```shell
 cargo test -p ezno-checker-specification
-# Also
+# To including staging.md (which is really useful for keeping new fixes/additions separate)
 cargo test -p ezno-checker-specification -F staging
-# and
+# and for all the tests (which includes all of to_implement.md)
 cargo test -p ezno-checker-specification -F all
 ```
 

@@ -1,3 +1,5 @@
+These tests do not pass ATM. But hopefully will in the future 🤞
+
 ### Types
 
 #### Resolving value by property on dependent
@@ -13,19 +15,6 @@ getProperty("c") satisfies 2
 
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
-
-#### Set property on dependent observed
-
-```ts
-function add_property(obj: { prop: number }) {
-    obj.prop = 2;
-    (obj.prop satisfies 4);
-}
-```
-
-> Not number
-
-- Expected 4, found 2
 
 #### Generic type argument restriction
 
@@ -401,6 +390,101 @@ array2[2] satisfies string;
 
 - Expected string, found 3
 
+#### Destructuring assign
+
+> TODO include an object destructure here
+
+```ts
+let array1 = [1, 2, 3];
+let a = 0, b = 0;
+[a, b] = array1;
+
+a satisfies 1;
+b satisfies "hello world";
+```
+
+- Expected "hello world", found 2
+
+#### Optional interface property
+
+> TODO needs `Logical`-ish `PropertyValue`
+
+```ts
+declare const global: { a?: string };
+
+("a" in global) satisfies string;
+(global.a) satisfies 2;
+```
+
+- Expected string, found boolean
+- Expected 2, found string | undefined
+
+#### Delete from required propertied
+
+```ts
+declare let global: { a?: string, b: string };
+
+// Fine
+delete global.a;
+// Bad
+delete global.b;
+```
+
+- Cannot delete property "b" off { a?: string, b: string }
+
+#### Try-catch variable restriction
+
+```ts
+try {
+	throw 2;
+} catch (e: string) {
+	// ...
+}
+```
+
+- Thrown type 2, not assignable to catch variable of string
+
+#### `typeof` expression
+
+> TODO better test
+
+```ts
+(typeof "hello") satisfies "string";
+(typeof 5) satisfies "number";
+(typeof {}) satisfies "Number";
+```
+
+- Expected "Number", found "object"
+
+#### `instanceof` expression
+
+```ts
+class X {}
+class Y {}
+
+(new X instanceof X) satisfies number;
+(new X instanceof Y) satisfies false;
+```
+
+- Expected number, found true
+
+### Runtime
+
+```ts
+let x: number = 0;
+
+document.addEventListener("click", () => {
+	x++;
+});
+
+document.addEventListener("scroll", () => {
+	x satisfies 0;
+	x++;
+})
+```
+
+- Expected 0, found number
+
 ### Classes
 
 #### Extends
@@ -413,6 +497,8 @@ class BaseClass extends class { x: 2 } {
 const b = new BaseClass;
 print_type(b.x);
 ```
+
+- TODO
 
 #### Privacy
 
@@ -450,6 +536,18 @@ print_type(x(90))
 
 - TODO
 
+#### No loop
+
+```ts
+function call(cb: () => void) {
+	return cb()
+}
+
+call(call)
+```
+
+- TODO hopefully doesn't blow up
+
 ### Function checking
 
 #### Default parameter side effect on parameter
@@ -466,3 +564,13 @@ doThing(6, 1) satisfies 6;
 ```
 
 - Expected 2, found 5
+
+#### Default parameter type check
+
+```ts
+function doThing(b: number = "hello") {
+    return a
+}
+```
+
+- Default value "hello" is not assignable to parameter of type number

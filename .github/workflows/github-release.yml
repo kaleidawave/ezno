@@ -1,7 +1,12 @@
 name: GitHub release
 
-on: 
-  workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      ezno-version:
+        description: "Semver for Ezno (CLI) to release on"
+        required: false
+        default: "latest"
       
 env:
   CACHE_PATHS: |
@@ -23,12 +28,23 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-tags: true
+
       - name: Get version
         id: get-version
         run: |
-          tag=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
-          echo "Releasing ${tag:13}"
-          echo "new-ezno-version=${tag:13}" >> $GITHUB_OUTPUT
+          if [ ${{ inputs.ezno-version }} = 'latest' ]; then
+            echo "::group::Ezno tags"
+            git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*'
+            echo "::endgroup"
+
+            TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
+            echo "Releasing ${TAG:13}"
+            echo "new-ezno-version=${TAG:13}" >> $GITHUB_OUTPUT
+          else
+            VERSION="${{ inputs.ezno-version }}"
+            echo "Releasing ${VERSION}"
+            echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
+          fi
 
       - id: get-sponsors
         run: |
@@ -81,7 +97,10 @@ jobs:
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}
+          # Replace '.' with '-'
+          VERSION=$(echo "${{ needs.get-build-info.outputs.new-ezno-version }}" | sed -e "s/\./-/g")
+          NEW_PATH="artifacts/ezno-$VERSION-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
+          mv target/release/ezno${{ matrix.executable-extension }} $NEW_PATH
 
       - uses: actions/upload-artifact@v4
         with:

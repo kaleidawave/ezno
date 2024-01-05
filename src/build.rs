@@ -3,7 +3,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use checker::DiagnosticsContainer;
+use checker::{DiagnosticsContainer, TypeCheckOptions};
 use parser::{
 	source_map::{MapFileStore, WithPathMap},
 	SourceId, Span, ToStringOptions,
@@ -55,8 +55,10 @@ pub fn build<T: crate::ReadFromFS>(
 	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax
+	let type_check_options =
+		TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
 	let (diagnostics, data_and_module) =
-		crate::check(input_paths, fs_resolver, type_definition_module);
+		crate::check(input_paths, fs_resolver, type_definition_module, Some(type_check_options));
 
 	match data_and_module {
 		Ok(mut data) => {
