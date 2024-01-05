@@ -11,27 +11,28 @@ This is more of an exercise project in getting better at writing Rust and doesn'
 ## Goals
 
 - Keep under 15k lines of code (excluding `/tests` and `/examples` folders)
-- Easy to use (see `/tests` and `/examples` folders)
+- Easy to use API (see `/tests` and `/examples` folders for example usage)
+- Run in WASM
 - Keep readable and maintainable
 - **Designed for analysis and transformations**
-    - See expression identifiers can be used to bind information to
-    - Retain source positions for throwing errors
-    - All AST should be visitable. Immutably to collect facts or mutable to transform/remove
+   	- See expression identifiers can be used to bind information to
+   	- Retain source positions for throwing errors
+   	- All AST should be visitable. Immutably to collect facts or mutable to transform/remove
 - Optionally via configuration extend the ECMAscript language definition
-    - TypeScript type annotations
-        - Interfaces, enums and type alias statements
-        - Parameter, return type and variable annotations
-        - `satisfies` and `as` 😑
-    - JSX support
-        - Includes HTML comments, special handing of self closing tags from the specification
-    - Others under `feature = "extras"` 👀
+   	- TypeScript type annotations
+      		- Interfaces, enums and type alias statements
+      		- Parameter, return type and variable annotations
+      		- `satisfies` and `as` 😑
+   	- JSX support
+      		- Includes HTML comments, special handing of self closing tags from the specification
+   	- Others under `feature = "extras"` 👀
 
 ## Non-goals
 
 - CSTs, close to source operations etc
-    - Source with unbalanced parenthesis/brackets
-- Increase code size or decrease readability for speed improvements
-- Allow adding new syntax at runtime, that would require modifying the lexer at runtime adding new tokens
+   	- Source with unbalanced parenthesis/brackets
+- Increase code size or decrease readability for minor speed improvements
+- Allow injecting additional syntax, that would require modifying the lexer at runtime adding new tokens which isn't technically possible with the setup
 
 ### Testing
 
@@ -48,6 +49,8 @@ and parse
 ```shell
 cargo run --example parse path/to/file.js
 ```
+
+> Note the Ezno CLI includes `ast-playground`: a more user focused version of these commands
 
 ## Features
 
@@ -66,13 +69,3 @@ Allows holes in AST where a cursor exists. This allows for LSP to provide sugges
 ### Generator
 
 Easily generate AST nodes with data interpolation using the constant compiled quasi-quoted macro. [See example](https://github.com/kaleidawave/ezno/blob/main/parser/generator/examples/example.rs).
-
-## Notable structures
-
-- ASTNode, a trait that all AST should implement
-- FunctionBase, a abstraction for functions
-- Expression
-- Statements
-- Operators
-- TSXToken
-- TSXKeyword

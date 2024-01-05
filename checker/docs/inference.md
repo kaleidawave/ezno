@@ -40,19 +40,19 @@ There are two types of inference, type based *coalescence*:
 
 ```js
 interface X {
-    readable: boolean
+	readable: boolean
 }
 
 interface Y {
-    name: string
+	name: string
 }
 
 function x(p: X) {}
 function y(p: Y) {}
 
 function z(param1) {
-    x(param1)
-    y(param1)
+	x(param1)
+	y(param1)
 }
 ```
 

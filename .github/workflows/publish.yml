@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ezno-version:
-        description: "major/minor/patch or semver for Ezno (cli)"
+        description: "major/minor/patch or semver for Ezno (CLI)"
         required: false
         default: "none"
       ezno-checker-version:
@@ -47,7 +47,7 @@ jobs:
 
       - id: set-arguments
         run: |
-          KEY_PAIR_ARGS="ezno=${{ github.event.inputs.ezno-version }},ezno-parser=${{ github.event.inputs.ezno-parser-version }},ezno-checker=${{ github.event.inputs.ezno-checker-version }},${{ github.event.inputs.other-versions }}"
+          KEY_PAIR_ARGS="ezno=${{ inputs.ezno-version }},ezno-parser=${{ inputs.ezno-parser-version }},ezno-checker=${{ inputs.ezno-checker-version }},${{ inputs.other-versions }}"
 
           echo "::debug::$KEY_PAIR_ARGS"
 
@@ -89,17 +89,17 @@ jobs:
           SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
 
       - name: Add WASM to rustup
-        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        if: ${{ inputs.ezno-version != 'none' }}
         run: rustup target add wasm32-unknown-unknown
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        if: ${{ inputs.ezno-version != 'none' }}
         with:
           packages: wasm-bindgen-cli@0.2.89
 
       - name: Set NPM package version & build
         id: set-npm-version
-        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        if: ${{ inputs.ezno-version != 'none' }}
         run: |
           VERSION=$(echo '${{ steps.release.outputs.new-versions-json-object }}' | jq -r '.ezno')
           echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
@@ -113,15 +113,15 @@ jobs:
         env:
           SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
 
-      - name: NPM publish (cli and library)
-        if: ${{ github.event.inputs.ezno-version != 'none' }}
+      - name: NPM publish (CLI and library)
+        if: ${{ inputs.ezno-version != 'none' }}
         uses: rxfork/npm-publish@v1
         with:
           token: ${{ secrets.NPM_REGISTRY_TOKEN }}
           package: src/js-cli-and-library/package.json
           
       - name: Update JS plugin version and dependencies
-        if: ${{ github.event.inputs.ezno-version != 'none' }}
+        if: ${{ inputs.ezno-version != 'none' }}
         run: |
           # Hopefully propagated in 20 seconds
           sleep 20
@@ -141,8 +141,8 @@ jobs:
           git add .
           git commit -m "Release: ${{ steps.release.outputs.new-versions-description }}"
 
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Create tags
           echo '${{ steps.release.outputs.new-versions }}' | jq -r '.[]' | while read -r update; do

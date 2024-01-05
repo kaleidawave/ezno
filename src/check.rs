@@ -11,6 +11,7 @@ pub fn check<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,
 	read_from_filesystem: &T,
 	type_definition_module: Option<&Path>,
+	type_check_options: Option<checker::TypeCheckOptions>,
 ) -> (checker::DiagnosticsContainer, Result<EznoCheckerData, MapFileStore<WithPathMap>>) {
 	let definitions = if let Some(tdm) = type_definition_module {
 		HashSet::from_iter(std::iter::once(tdm.into()))
@@ -25,8 +26,6 @@ pub fn check<T: crate::ReadFromFS>(
 			read_from_filesystem.get_content_at_path(path)
 		}
 	};
-
-	let type_check_options = None;
 
 	checker::check_project(entry_points, definitions, read_from_fs, type_check_options, ())
 }

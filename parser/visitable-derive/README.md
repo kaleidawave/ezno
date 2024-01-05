@@ -12,7 +12,7 @@ use visitable_derive::Visitable;
 
 #[derive(Visitable)]
 struct MyAstNode {
-    ...
+	...
 }
 ```
 
@@ -24,7 +24,7 @@ Will visit all fields **first then** self
 #[derive(Visitable)]
 #[visit_self]
 struct MyAstNode {
-    ...
+	...
 }
 ```
 
@@ -36,13 +36,13 @@ Will visit self additionally before if predicate is true
 #[derive(Visitable)]
 #[visit_self(also_visit_first_if="self.predicate()"]
 struct MyAstNode {
-    ...
+	...
 }
 
 impl MyAstNode {
-    fn predicate(&self) -> bool {
-        ...
-    }
+	fn predicate(&self) -> bool {
+		...
+	}
 }
 ```
 
@@ -52,7 +52,7 @@ Skips visiting the field. Used if type does not implement `Visitable`
 ```rust
 #[derive(Visitable)]
 struct MyAstNode {
-    #[visit_skip_field]
-    a: String
+	#[visit_skip_field]
+	a: String
 }
 ```

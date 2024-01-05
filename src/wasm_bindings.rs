@@ -41,7 +41,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (diagnostics, _) = crate::check::check(vec![entry_path.into()], &fs_resolver, None);
+	let (diagnostics, _) = crate::check::check(vec![entry_path.into()], &fs_resolver, None, None);
 	// TODO also emit mappings
 	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
 }

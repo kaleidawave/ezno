@@ -317,8 +317,8 @@ func satisfies () => string
 
 ```ts
 function add_property(obj: { prop: number }) {
-    obj.prop = 2;
-    (obj.prop satisfies 4);
+	obj.prop = 2;
+	(obj.prop satisfies 4);
 }
 ```
 
@@ -356,11 +356,11 @@ myThrow satisfies string;
 
 ```ts
 function getSecond1<T, U>(p1: T, p2: U): U {
-    return p1
+	return p1
 }
 
 function getSecond2<T, U>(p1: T, p2: U): U {
-    return p2
+	return p2
 }
 ```
 
@@ -420,14 +420,14 @@ map(a => a.t)
 
 ```ts
 function alterParameter(a: number, b: { prop: string }) {
-    a = 2;
-    a = "hi";
+	a = 2;
+	a = "hi";
 
 	b.prop = 3;
 
 	// Observed
-    b.prop = "hello";
-    b.prop satisfies "hello";
+	b.prop = "hello";
+	b.prop satisfies "hello";
 }
 ```
 
@@ -440,7 +440,7 @@ function alterParameter(a: number, b: { prop: string }) {
 
 ```ts
 function myRestFunction(...r: string[]) {
-    r satisfies boolean;
+	r satisfies boolean;
 }
 ```
 
@@ -450,8 +450,8 @@ function myRestFunction(...r: string[]) {
 
 ```ts
 function myFunction({ a }: { a: number }) {
-    a satisfies boolean;
-    return a
+	a satisfies boolean;
+	return a
 }
 
 myFunction({ a: 6 }) satisfies string;
@@ -627,7 +627,7 @@ new MyClass("hi").value satisfies "hello"
 
 ```ts
 function myRestFunction(...r: string[]) {
-    return r[0] + r[1]
+	return r[0] + r[1]
 }
 
 myRestFunction("hello ", "world") satisfies number;
@@ -639,7 +639,7 @@ myRestFunction("hello ", "world") satisfies number;
 
 ```ts
 function withDefault(x: number = 1) {
-    return x
+	return x
 }
 
 withDefault() satisfies 2;
@@ -653,7 +653,7 @@ withDefault(3) satisfies 3;
 ```ts
 let b: number = 0
 function doThing(a = (b += 2)) {
-    return a
+	return a
 }
 
 doThing("hello");
@@ -766,7 +766,7 @@ out satisfies string
 
 ```ts
 function getX() {
-    return x
+	return x
 }
 
 (getX satisfies () => number);
@@ -786,7 +786,7 @@ let x: number = 5;
 let myObject: { a: number } = { a: 4 }
 
 function setAtoString(someObject: { a: number | string }) {
-    someObject.a = "hi";
+	someObject.a = "hi";
 }
 
 setAtoString({ a: 6 });
@@ -801,11 +801,11 @@ setAtoString(myObject);
 
 ```ts
 function getObject(condition: boolean) {
-    const mainObject = { a: 2 };
-    const object = condition ? mainObject : { b: 3 };
-    object.c = 4;
-    mainObject.c satisfies string;
-    return mainObject
+	const mainObject = { a: 2 };
+	const object = condition ? mainObject : { b: 3 };
+	object.c = 4;
+	mainObject.c satisfies string;
+	return mainObject
 }
 ```
 
@@ -817,10 +817,10 @@ function getObject(condition: boolean) {
 
 ```ts
 function doThingWithCallback(callback: (obj: { x: number }) => any) {
-    const obj: { x: number } = { x: 8 };
-    callback(obj);
-    (obj.x satisfies 8);
-    return obj;
+	const obj: { x: number } = { x: 8 };
+	callback(obj);
+	(obj.x satisfies 8);
+	return obj;
 }
 
 const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
@@ -834,7 +834,7 @@ const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
 
 ```ts
 function add_property(obj: { prop: number }) {
-    obj.prop += 2;
+	obj.prop += 2;
 }
 
 const obj = { prop: 4 };
@@ -866,9 +866,9 @@ const c = a;
 
 ```ts
 function kestrel(a) {
-    return function (_b) {
-        return a
-    }
+	return function (_b) {
+		return a
+	}
 }
 
 kestrel(3)(2) satisfies 4
@@ -880,7 +880,7 @@ kestrel(3)(2) satisfies 4
 
 ```ts
 function kestrel2(a) {
-    return _b => _c => a
+	return _b => _c => a
 }
 
 kestrel2(3)(2)(6) satisfies 4
@@ -892,7 +892,7 @@ kestrel2(3)(2)(6) satisfies 4
 
 ```ts
 function magicNumber(a: number) {
-    return {
+	return {
 		plusOne() { return a + 1 },
 		doubled() { return 2 * a }
 	}
@@ -909,7 +909,7 @@ myNumber.doubled() satisfies 6
 
 ```ts
 function myClosure(a) {
-    return {
+	return {
 		getValue() { return a },
 		setValue(b) { a = b }
 	}
@@ -1001,13 +1001,13 @@ a satisfies string
 
 ```ts
 function print_number(value: number) {
-    if (value === 0) {
-        return "zero"
-    } else if (value === 1) {
-        return "one"
-    } else {
-        return "some number"
-    }
+	if (value === 0) {
+		return "zero"
+	} else if (value === 1) {
+		return "one"
+	} else {
+		return "some number"
+	}
 }
 
 print_number(0) satisfies "zero"
@@ -1071,8 +1071,8 @@ func satisfies (a: boolean) => 5;
 let a = 1;
 let i = 0;
 while (i < 5) {
-    a *= 2;
-    i++;
+	a *= 2;
+	i++;
 }
 
 (a satisfies 8);
@@ -1086,7 +1086,7 @@ while (i < 5) {
 let a = 1;
 let i = 0;
 while (i++ < 5) {
-    a *= 2;
+	a *= 2;
 }
 
 (a satisfies 8);
@@ -1099,7 +1099,7 @@ while (i++ < 5) {
 ```ts
 let a = 0;
 do {
-    a++
+	a++
 } while (a < 3)
 
 (a satisfies 8);
@@ -1112,7 +1112,7 @@ do {
 ```ts
 let a: string = "";
 for (let i: number = 0; i < 10; i++) {
-    a = a + i;
+	a = a + i;
 }
 
 (a satisfies number)
@@ -1126,7 +1126,7 @@ for (let i: number = 0; i < 10; i++) {
 declare let i: number;
 let a: number = 0;
 while (a < i) {
-    a++;
+	a++;
 }
 
 (a satisfies string)
@@ -1154,12 +1154,12 @@ a satisfies string;
 
 ```ts
 function loop(n: number, c: string) {
-    let a: string = c;
-    let i: number = 0;
-    while (i++ < n) {
-        a += c
-    }
-    return a
+	let a: string = c;
+	let i: number = 0;
+	while (i++ < n) {
+		a += c
+	}
+	return a
 }
 
 (loop(10, "!") satisfies number);
@@ -1173,10 +1173,10 @@ function loop(n: number, c: string) {
 let a = 2;
 let i = 0;
 while (i++ < 10) {
-    a *= 2;
-    if (a > 5) {
-        break;
-    }
+	a *= 2;
+	if (a > 5) {
+		break;
+	}
 }
 
 (a satisfies 2);
@@ -1191,13 +1191,13 @@ let a: number = 0;
 let result;
 
 top: while (a++ < 10) {
-    let b: number = 0;
-    while (b++ < 10) {
-        if (a === 3 && b === 2) {
-            result = a * b;
-            break top
-        }
-    }
+	let b: number = 0;
+	while (b++ < 10) {
+		if (a === 3 && b === 2) {
+			result = a * b;
+			break top
+		}
+	}
 }
 
 a satisfies string;
@@ -1215,10 +1215,10 @@ result satisfies boolean;
 let a = 2;
 let i = 0;
 while (i++ < 10) {
-    if (i % 2) {
-        continue;
-    }
-    a *= 2;
+	if (i % 2) {
+		continue;
+	}
+	a *= 2;
 }
 
 (a satisfies 2);
@@ -1637,7 +1637,7 @@ getProp satisfies string
 
 ```ts
 function getA<T extends { a: string }>(p: T) {
-    return p.a
+	return p.a
 }
 
 getA({ p: 2 })
@@ -1675,9 +1675,9 @@ const y: (a: number) => number = p => "a number"
 
 ```ts
 function runWithCallback(cb: () => void): void {
-    cb() satisfies string;
+	cb() satisfies string;
 
-    return 5;
+	return 5;
 }
 
 runWithCallback(() => 3)
@@ -1720,7 +1720,7 @@ function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
 
 ```ts
 function getFirst(array: number[]) {
-    return array[0]
+	return array[0]
 }
 
 (getFirst satisfies boolean);
@@ -1732,7 +1732,7 @@ function getFirst(array: number[]) {
 
 ```ts
 function getSecondCharacter(s: string) {
-    return s[1]
+	return s[1]
 }
 
 (getSecondCharacter satisfies boolean);

@@ -8,9 +8,9 @@ For example in Vite, `vite.config.js` should look like:
 import Ezno from 'unplugin-ezno'
 
 export default {
-    plugins: [
-        Ezno.vite(),
-    ]
+	plugins: [
+		Ezno.vite(),
+	]
 }
 ```
 

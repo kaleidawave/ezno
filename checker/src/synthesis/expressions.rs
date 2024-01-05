@@ -776,8 +776,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 	let position = ASTNode::get_position(expression).with_source(environment.get_source());
 
-	// TODO should be copy
-	checking_data.add_expression_mapping(position, instance.clone());
+	if checking_data.options.store_expression_type_mappings {
+		checking_data.add_expression_mapping(position, instance.clone());
+	}
 
 	instance.get_value()
 }
