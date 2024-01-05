@@ -4,7 +4,7 @@ name: Rust
 # - That the code compiles
 # - That the code complies with formatting
 # - Lints (using clippy) to find errors
-# - That crates that are published are publish-able
+# - That crates that are published are publish-able (works most of the time)
 # - Testing 
 #   - Standard Rust integration and unit tests
 #   - Fuzz tests
@@ -237,14 +237,17 @@ jobs:
         run: cargo clippy
 
   publish-ability:
+    # TODO only need to do for `.toml` file changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check that it will publish to crates
+      - name: Check that it will publish to crates.io
         run: |
           cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r _n _v pathInfo ; do
-            cd ${pathInfo:13:-1}
-            cargo publish --no-verify --dry-run
+            if ! grep -q "publish = false" "${pathInfo:13:-1}/Cargo.toml"; then
+              cd ${pathInfo:13:-1}
+              cargo publish --no-verify --dry-run
+            fi
           done
         shell: bash

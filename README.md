@@ -12,9 +12,10 @@ What Ezno is
 - Types aimed at soundness and tracing for better static analysis
 - A *imperative* type system that tracks and evaluates the side effects of functions and control flow structures. It is similar to an interpreter, but acts with types instead of *values* and does not run IO side effects etc
 - A collection of experiments of types. Many are being worked out and are in the prototype stage. Some of the new behaviors benefit JavaScript specifically and others could be applied to other languages
-- A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis
 - [Fast](https://github.com/kaleidawave/ezno/actions/workflows/performance-and-size.yml)
 - Written in Rust
+- Open source! [You can help build Ezno!](https://github.com/kaleidawave/ezno/issues?q=is%3Aopen+label%3Agood-first-issue%2Cfeedback-needed)
+- A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis
 
 What Ezno is not
 - **eNZo, the Z is in front of the N** (pronounce as 'Fresno' without the 'fr') 😀
@@ -41,4 +42,6 @@ Also checkout [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/mai
 
 ## Help contribute
 
-Check out issues and comment on discussions! Read [CONTRIBUTING.md](https://github.com/kaleidawave/ezno/blob/main/CONTRIBUTING.md) for more information.
+Check out [good first issues and comment on discussions]((https://github.com/kaleidawave/ezno/issues?q=is%3Aopen+label%3Agood-first-issue%2Cfeedback-needed))! Feel free to ask questions on parts of the code of the checking implementation.
+
+Read [CONTRIBUTING.md](https://github.com/kaleidawave/ezno/blob/main/CONTRIBUTING.md) for information about building and testing the projects.
