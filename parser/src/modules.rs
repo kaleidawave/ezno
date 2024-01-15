@@ -258,7 +258,7 @@ impl ASTNode for TypeDefinitionModule {
 		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
-		todo!()
+		todo!("tdm to buffer")
 	}
 }
 

@@ -670,7 +670,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::ArrowFunction(function) => Instance::RValue(register_arrow_function(
 			expecting,
-			function.header.is_some(),
+			function.header,
 			function,
 			environment,
 			checking_data,
@@ -679,8 +679,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let is_async = function.header.is_async();
 			let is_generator = function.header.is_generator();
 			let location = function.header.get_location().map(|location| match location {
-				parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-				parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
+				parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
+				parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 			});
 			Instance::RValue(register_expression_function(
 				expecting,
@@ -718,7 +718,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return synthesise_expression(value, environment, checking_data, expecting);
 			}
-			SpecialOperators::IsExpression { value: _, is_keyword: _, type_annotation: _ } => {
+			SpecialOperators::IsExpression { value: _, type_annotation: _ } => {
 				todo!()
 			}
 			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
@@ -904,7 +904,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
-		match member.get_ast_ref() {
+		match member {
 			ObjectLiteralMember::Spread(spread, pos) => {
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
@@ -950,8 +950,11 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 			}
 			ObjectLiteralMember::Property(key, expression, _) => {
-				let key =
-					parser_property_key_to_checker_property_key(key, environment, checking_data);
+				let key = parser_property_key_to_checker_property_key(
+					key.get_ast_ref(),
+					environment,
+					checking_data,
+				);
 
 				// TODO base of above
 				let expecting = TypeId::ANY_TYPE;
@@ -987,7 +990,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			}
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
-					&method.name,
+					&method.name.get_ast_ref(),
 					environment,
 					checking_data,
 				);
@@ -1000,8 +1003,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let function = environment.new_function(checking_data, method, behavior);
 
 				let property = match &method.header {
-					MethodHeader::Get(_) => crate::PropertyValue::Getter(Box::new(function)),
-					MethodHeader::Set(_) => crate::PropertyValue::Setter(Box::new(function)),
+					MethodHeader::Get => crate::PropertyValue::Getter(Box::new(function)),
+					MethodHeader::Set => crate::PropertyValue::Setter(Box::new(function)),
 					MethodHeader::Regular { .. } => {
 						crate::PropertyValue::Value(checking_data.types.new_function_type(function))
 					}

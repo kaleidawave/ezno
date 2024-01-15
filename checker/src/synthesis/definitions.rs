@@ -33,7 +33,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = env.new_interface(
 					&interface.on.name,
-					interface.on.nominal_keyword.is_some(),
+					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
 					interface.on.position.with_source(source),

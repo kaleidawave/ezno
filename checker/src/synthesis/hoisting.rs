@@ -47,7 +47,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO any difference bc declare?
 					let ty = environment.new_interface(
 						&interface.name,
-						interface.nominal_keyword.is_some(),
+						interface.is_nominal,
 						interface.type_parameters.as_deref(),
 						interface.extends.as_deref(),
 						interface.position.with_source(environment.get_source()),
@@ -58,7 +58,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.new_interface(
 						&interface.on.name,
-						interface.on.nominal_keyword.is_some(),
+						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
 						interface.on.position.with_source(environment.get_source()),
@@ -108,7 +108,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						items,
 						checking_data,
 						false,
-						import.type_keyword.is_some(),
+						import.is_type_annotation_import_only,
 					);
 				}
 				parser::Declaration::Export(export) => {
@@ -136,7 +136,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									false,
 								);
 							}
-							Exportable::ImportParts { parts, from, type_keyword, .. } => {
+							Exportable::ImportParts {
+								parts, from, type_definitions_only, ..
+							} => {
 								let parts = parts.iter().filter_map(export_part_to_name_pair);
 
 								import_items(
@@ -147,7 +149,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									crate::features::modules::ImportKind::Parts(parts),
 									checking_data,
 									true,
-									type_keyword.is_some(),
+									*type_definitions_only,
 								);
 							}
 							Exportable::TypeAlias(alias) => {
@@ -362,8 +364,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_async = function.on.header.is_async();
 				let is_generator = function.on.header.is_generator();
 				let location = function.on.header.get_location().map(|location| match location {
-					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
+					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -390,8 +392,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let is_async = function.header.is_async();
 				let is_generator = function.header.is_generator();
 				let location = function.header.get_location().map(|location| match location {
-					parser::functions::FunctionLocationModifier::Server(_) => "server".to_owned(),
-					parser::functions::FunctionLocationModifier::Worker(_) => "worker".to_owned(),
+					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
 				synthesise_hoisted_statement_function(
@@ -489,7 +491,6 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 ) {
 	match declaration {
 		parser::declarations::VariableDeclaration::ConstDeclaration {
-			keyword: _,
 			declarations,
 			position: _,
 		} => {
@@ -511,11 +512,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 				);
 			}
 		}
-		parser::declarations::VariableDeclaration::LetDeclaration {
-			keyword: _,
-			declarations,
-			position: _,
-		} => {
+		parser::declarations::VariableDeclaration::LetDeclaration { declarations, position: _ } => {
 			for declaration in declarations {
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);

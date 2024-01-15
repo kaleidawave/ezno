@@ -238,18 +238,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum_variant_type"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7b4d0447be46f06039b1e13c5c77df8d9f9f37fa5fab578a1827b8f136aab64"
-dependencies = [
- "proc-macro2",
- "proc_macro_roids",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -338,7 +326,6 @@ dependencies = [
  "derive-finite-automaton",
  "derive-partial-eq-extras",
  "enum-variants-strings",
- "enum_variant_type",
  "ezno-parser-visitable-derive",
  "get-field-by-type",
  "iterator-endiate",
@@ -353,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "ezno-parser-visitable-derive"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "string-cases",
  "syn-helpers",
@@ -618,17 +605,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2de98502f212cfcea8d0bb305bd0f49d7ebdd75b64ba0a68f937d888f4e0d6db"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "proc_macro_roids"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06675fa2c577f52bcf77fbb511123927547d154faa08097cc012c66ec3c9611a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

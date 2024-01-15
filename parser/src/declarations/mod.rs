@@ -6,7 +6,7 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
-	CursorId, Decorated, Keyword, ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition,
+	CursorId, Decorated, ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition,
 	TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
 };
 
@@ -176,14 +176,10 @@ impl crate::ASTNode for Declaration {
 				Ok(Declaration::Function(Decorated::new(decorators, function)))
 			}
 			TSXToken::Keyword(TSXKeyword::Class) => {
-				let class_keyword = Keyword::new(reader.next().unwrap().get_span());
-				ClassDeclaration::from_reader_sub_class_keyword(
-					reader,
-					state,
-					options,
-					class_keyword,
-				)
-				.map(|on| Declaration::Class(Decorated::new(decorators, on)))
+				let Token(_, start) = reader.next().unwrap();
+				state.add_keyword_at_pos(start.0, TSXKeyword::Class);
+				ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)
+					.map(|on| Declaration::Class(Decorated::new(decorators, on)))
 			}
 			TSXToken::Keyword(TSXKeyword::Export) => {
 				ExportDeclaration::from_reader(reader, state, options)

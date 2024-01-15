@@ -1,7 +1,6 @@
-use crate::tsx_keywords::New;
 use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
-	extensions::decorators::Decorated, CursorId, Decorator, Keyword, ParseResult, VariableField,
+	extensions::decorators::Decorated, CursorId, Decorator, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
 };
 use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, Quoted};
@@ -55,7 +54,6 @@ pub enum TypeAnnotation {
 	},
 	/// Construction literal e.g. `new (x: string) => string`
 	ConstructorLiteral {
-		new_keyword: Keyword<New>,
 		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Box<TypeAnnotation>,
@@ -568,7 +566,6 @@ impl TypeAnnotation {
 				let return_type = Self::from_reader(reader, state, options)?;
 				Self::ConstructorLiteral {
 					position: start.union(return_type.get_position()),
-					new_keyword: Keyword::new(start.with_length(3)),
 					parameters,
 					type_parameters,
 					return_type: Box::new(return_type),

@@ -499,7 +499,12 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 	}
 
 	fn get_position(&self) -> &Span {
-		todo!()
+		match self {
+			ArrayDestructuringField::Spread(pos, _) => pos,
+			// TODO misses out optional expression
+			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
+			ArrayDestructuringField::None => &Span::NULL_SPAN,
+		}
 	}
 }
 
@@ -522,13 +527,13 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields {
-					visitors.visit_variable(
-						&ImmutableVariableOrProperty::ArrayDestructuringMember(field),
-						data,
-						chain,
-					);
+					let array_destructuring_member =
+						ImmutableVariableOrProperty::ArrayDestructuringMember(field);
+					visitors.visit_variable(&array_destructuring_member, data, chain);
 					match field {
-						ArrayDestructuringField::Spread(_, _id) => todo!(),
+						ArrayDestructuringField::Spread(..) => {
+							// TODO should be okay, no nesting here
+						}
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, expression) => {
 							variable_field.visit(visitors, data, options, chain);
@@ -582,13 +587,13 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields.iter_mut() {
-					visitors.visit_variable_mut(
-						&mut MutableVariableOrProperty::ArrayDestructuringMember(field),
-						data,
-						chain,
-					);
+					let mut array_destructuring_member =
+						MutableVariableOrProperty::ArrayDestructuringMember(field);
+					visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
 					match field {
-						ArrayDestructuringField::Spread(_, _id) => todo!(),
+						ArrayDestructuringField::Spread(_, _id) => {
+							// TODO should be okay, no nesting here
+						}
 						ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, default_value) => {
 							variable_field.visit_mut(visitors, data, options, chain);

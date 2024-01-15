@@ -302,7 +302,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			type_parameters: _,
 			parameters: _,
 			return_type: _,
-			new_keyword: _,
 			position: _,
 		} => unimplemented!(),
 		// Object literals are first turned into types as if they were interface declarations and then

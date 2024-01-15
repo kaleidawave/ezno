@@ -15,6 +15,7 @@ use crate::{
 	utilities::print_to_cli,
 };
 use argh::FromArgs;
+use checker::CheckOutput;
 
 /// Ezno Compiler
 #[derive(FromArgs, Debug)]
@@ -30,9 +31,8 @@ enum CompilerSubCommand {
 	ASTExplorer(crate::ast_explorer::ExplorerArguments),
 	Check(CheckArguments),
 	Experimental(ExperimentalArguments),
-	// Run(RunArguments),
-	#[cfg(not(target_family = "wasm"))]
 	Repl(crate::repl::ReplArguments),
+	// Run(RunArguments),
 	// #[cfg(debug_assertions)]
 	// Pack(Pack),
 }
@@ -174,7 +174,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			#[cfg(not(target_family = "wasm"))]
 			let start = timings.then(std::time::Instant::now);
 
-			let (diagnostics, _others) =
+			let CheckOutput { diagnostics, module_contents, .. } =
 				check(entry_points, read_file, definition_file.as_deref(), None);
 
 			#[cfg(not(target_family = "wasm"))]
@@ -182,15 +182,11 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				eprintln!("Checked in {:?}", start.elapsed());
 			};
 
-			let fs = match _others {
-				Ok(data) => data.module_contents,
-				Err(data) => data,
-			};
 			if !diagnostics.has_error() {
 				print_to_cli(format_args!("No type errors found 🎉"))
 			}
 			for diagnostic in diagnostics.into_iter() {
-				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
+				emit_ezno_diagnostic(diagnostic, &module_contents).unwrap();
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
@@ -240,8 +236,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		}
 		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(read_file, cli_input_resolver),
-		#[cfg(not(target_family = "wasm"))]
-		CompilerSubCommand::Repl(argument) => crate::repl::run_deno_repl(cli_input_resolver, argument),
+		CompilerSubCommand::Repl(argument) => crate::repl::run_repl(cli_input_resolver, argument),
 		// CompilerSubCommand::Run(run_arguments) => {
 		// 	let build_arguments = BuildArguments {
 		// 		input: run_arguments.input,

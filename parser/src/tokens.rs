@@ -4,7 +4,6 @@
 
 use derive_finite_automaton::FiniteAutomataConstructor;
 use derive_partial_eq_extras::PartialEqExtras;
-use enum_variant_type::EnumVariantType;
 use enum_variants_strings::EnumVariantsStrings;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token};
@@ -180,7 +179,7 @@ impl tokenizer_lib::TokenTrait for TSXToken {
 impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 	fn length(&self) -> u32 {
 		match self {
-			TSXToken::Keyword(kw) => kw.to_str().len() as u32,
+			TSXToken::Keyword(kw) => kw.length(),
 
 			TSXToken::JSXClosingTagName(lit)
 			| TSXToken::TemplateLiteralChunk(lit)
@@ -294,11 +293,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 impl Eq for TSXToken {}
 
-pub trait TSXKeywordNode: Into<TSXKeyword> + Copy + Default {}
-
-#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, EnumVariantType)]
+#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, Clone, Copy)]
 #[enum_variants_strings_transform(transform = "lower_case")]
-#[evt(module = "tsx_keywords", implement_marker_traits(TSXKeywordNode), derive(Clone, Copy, PartialEq, Eq, Debug, Default))]
 #[rustfmt::skip]
 pub enum TSXKeyword {
     Const, Var, Let,
@@ -354,22 +350,9 @@ impl TSXKeyword {
 	pub(crate) fn is_in_function_header(&self) -> bool {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
-}
 
-impl std::fmt::Display for TSXKeyword {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		std::fmt::Debug::fmt(&self, f)
-	}
-}
-
-impl std::fmt::Display for TSXToken {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			TSXToken::Keyword(kw) => std::fmt::Debug::fmt(kw, f),
-			TSXToken::NumberLiteral(num) => std::fmt::Display::fmt(num, f),
-			TSXToken::Identifier(value) => std::fmt::Display::fmt(value, f),
-			_ => std::fmt::Debug::fmt(&self, f),
-		}
+	pub(crate) fn length(&self) -> u32 {
+		self.to_str().len() as u32
 	}
 }
 

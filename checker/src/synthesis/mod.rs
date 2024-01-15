@@ -222,14 +222,12 @@ impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
 impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
 	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
 		match value {
-			Some(parser::types::AnnotationPerforms::PerformsConst {
-				performs_keyword: _,
-				identifier,
-			}) => Performs::Const(identifier.clone()),
-			Some(parser::types::AnnotationPerforms::PerformsStatements {
-				performs_keyword: _,
-				statements,
-			}) => Performs::Block(statements),
+			Some(parser::types::AnnotationPerforms::PerformsConst { identifier }) => {
+				Performs::Const(identifier.clone())
+			}
+			Some(parser::types::AnnotationPerforms::PerformsStatements { body: statements }) => {
+				Performs::Block(statements)
+			}
 			None => Performs::None,
 		}
 	}

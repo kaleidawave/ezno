@@ -5,8 +5,8 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, tsx_keywords, ASTNode, CursorId, Keyword, ParseOptions,
-	ParseResult, ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	tokens::token_as_identifier, ASTNode, CursorId, ParseOptions, ParseResult, ParsingState,
+	Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -28,8 +28,8 @@ pub enum ImportedItems {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
-	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
-	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
+	pub is_deferred: bool,
+	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
@@ -85,9 +85,9 @@ impl ASTNode for ImportDeclaration {
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
-			type_keyword: out.type_keyword,
+			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
-			deferred_keyword: out.deferred_keyword,
+			is_deferred: out.is_deferred,
 			from,
 			position: out.start.union(end),
 			#[cfg(feature = "extras")]
@@ -102,7 +102,7 @@ impl ASTNode for ImportDeclaration {
 		depth: u8,
 	) {
 		buf.push_str("import");
-		if self.type_keyword.is_some() && options.include_types {
+		if self.is_type_annotation_import_only && options.include_types {
 			buf.push_str(" type");
 		}
 
@@ -176,9 +176,9 @@ impl ImportDeclaration {
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
-			type_keyword: out.type_keyword,
+			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
-			deferred_keyword: out.deferred_keyword,
+			is_deferred: out.is_deferred,
 			from,
 			position: start.union(out.end),
 			reversed: true,
@@ -187,30 +187,28 @@ impl ImportDeclaration {
 }
 
 pub(crate) struct PartsResult {
-	pub start: source_map::Start,
+	pub start: TokenStart,
 	#[cfg(feature = "extras")]
-	pub deferred_keyword: Option<Keyword<tsx_keywords::Deferred>>,
-	pub type_keyword: Option<Keyword<tsx_keywords::Type>>,
+	pub is_deferred: bool,
+	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub end: source_map::End,
 }
 
+/// Covers import and exports
 pub(crate) fn parse_import_specifier_and_parts(
-	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 	state: &mut ParsingState,
 	options: &ParseOptions,
 ) -> Result<PartsResult, crate::ParseError> {
 	let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
 
 	#[cfg(feature = "extras")]
-	let deferred_keyword = reader
-		.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Deferred)))
-		.map(|tok| Keyword::new(tok.get_span()));
+	let is_deferred = state.new_optional_keyword(reader, TSXKeyword::Deferred).is_some();
 
-	let type_keyword = reader
-		.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type)))
-		.map(|tok| Keyword::new(tok.get_span()));
+	let is_type_annotation_import_only =
+		state.new_optional_keyword(reader, TSXKeyword::Type).is_some();
 
 	let peek = reader.peek();
 
@@ -232,8 +230,8 @@ pub(crate) fn parse_import_specifier_and_parts(
 			return Ok(PartsResult {
 				start,
 				#[cfg(feature = "extras")]
-				deferred_keyword,
-				type_keyword,
+				is_deferred,
+				is_type_annotation_import_only,
 				default: Some(default_identifier),
 				items: ImportedItems::Parts(None),
 				end,
@@ -266,8 +264,8 @@ pub(crate) fn parse_import_specifier_and_parts(
 	Ok(PartsResult {
 		start,
 		#[cfg(feature = "extras")]
-		deferred_keyword,
-		type_keyword,
+		is_deferred,
+		is_type_annotation_import_only,
 		default,
 		items,
 		end,

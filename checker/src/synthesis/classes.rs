@@ -62,7 +62,7 @@ pub(super) fn synthesise_class_declaration<
 
 	for member in &class.members {
 		match &member.on {
-			ClassMember::Method(None, method) => {
+			ClassMember::Method(false, method) => {
 				let publicity = match method.name.get_ast_ref() {
 					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
 					_ => Publicity::Public,
@@ -75,10 +75,10 @@ pub(super) fn synthesise_class_declaration<
 
 				// TODO abstract
 				let (getter_setter, is_async, is_generator) = match &method.header {
-					MethodHeader::Get(_) => (GetterSetter::Getter, false, false),
-					MethodHeader::Set(_) => (GetterSetter::Setter, false, false),
-					MethodHeader::Regular { r#async, generator } => {
-						(GetterSetter::None, r#async.is_some(), generator.is_some())
+					MethodHeader::Get => (GetterSetter::Getter, false, false),
+					MethodHeader::Set => (GetterSetter::Setter, false, false),
+					MethodHeader::Regular { is_async, generator } => {
+						(GetterSetter::None, *is_async, generator.is_some())
 					}
 				};
 
@@ -107,7 +107,7 @@ pub(super) fn synthesise_class_declaration<
 					position,
 				);
 			}
-			ClassMember::Property(None, property) => {
+			ClassMember::Property(false, property) => {
 				let publicity = match property.key.get_ast_ref() {
 					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
 					_ => Publicity::Public,
@@ -120,7 +120,7 @@ pub(super) fn synthesise_class_declaration<
 				// TODO restriction
 				properties.push(ClassValue { publicity, key, value: property.value.as_deref() });
 			}
-			ClassMember::Property(Some(_), property) => {
+			ClassMember::Property(true, property) => {
 				let value = parser_property_key_to_checker_property_key(
 					property.key.get_ast_ref(),
 					environment,
@@ -158,7 +158,7 @@ pub(super) fn synthesise_class_declaration<
 
 	for member in &class.members {
 		match &member.on {
-			ClassMember::Method(Some(_), method) => {
+			ClassMember::Method(true, method) => {
 				let publicity_kind = match method.name.get_ast_ref() {
 					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
 					_ => Publicity::Public,
@@ -172,8 +172,8 @@ pub(super) fn synthesise_class_declaration<
 				let function = environment.new_function(checking_data, method, behavior);
 
 				let value = match method.header {
-					MethodHeader::Get(_) => PropertyValue::Getter(Box::new(function)),
-					MethodHeader::Set(_) => PropertyValue::Setter(Box::new(function)),
+					MethodHeader::Get => PropertyValue::Getter(Box::new(function)),
+					MethodHeader::Set => PropertyValue::Setter(Box::new(function)),
 					MethodHeader::Regular { .. } => {
 						PropertyValue::Value(checking_data.types.new_function_type(function))
 					}
@@ -191,7 +191,7 @@ pub(super) fn synthesise_class_declaration<
 					None,
 				);
 			}
-			ClassMember::Property(Some(_), property) => {
+			ClassMember::Property(true, property) => {
 				let publicity_kind = match property.key.get_ast_ref() {
 					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
 					_ => Publicity::Public,

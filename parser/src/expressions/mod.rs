@@ -9,8 +9,8 @@ use crate::{
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	CursorId, ExpressionPosition, FunctionHeader, Keyword, NumberRepresentation, ParseResult,
-	Quoted, TSXKeyword,
+	CursorId, ExpressionPosition, FunctionHeader, NumberRepresentation, ParseResult, Quoted,
+	TSXKeyword,
 };
 
 use self::{
@@ -27,10 +27,9 @@ use super::{
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword, IsExpression};
 
-use crate::tsx_keywords::{self, As, Satisfies};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -324,20 +323,19 @@ impl Expression {
 				Expression::SuperExpression(reference, position.union(end))
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Null), _) => Expression::Null(t.get_span()),
-			t @ Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-				let keyword = Keyword(tsx_keywords::Class, t.get_span());
-				let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
-					reader, state, options, keyword,
-				)?;
-				Expression::ClassExpression(class_declaration)
+			Token(TSXToken::Keyword(kw @ TSXKeyword::Class), start) => {
+				state.add_keyword_at_pos(start.0, kw);
+				Expression::ClassExpression(ClassDeclaration::from_reader_sub_class_keyword(
+					reader, state, options, start,
+				)?)
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Yield), s) => {
 				// TODO could we do better?
-				let delegated =
+				let is_delegated =
 					reader.conditional_next(|t| matches!(t, TSXToken::Multiply)).is_some();
 
 				let operator =
-					if delegated { UnaryOperator::DelegatedYield } else { UnaryOperator::Yield };
+					if is_delegated { UnaryOperator::DelegatedYield } else { UnaryOperator::Yield };
 
 				let operand = Expression::from_reader_with_precedence(
 					reader,
@@ -473,7 +471,7 @@ impl Expression {
 				if let Some(Token(token_type, _)) = next {
 					if let TSXToken::Arrow = token_type {
 						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
-							reader, state, options, None, start,
+							reader, state, options, false, start,
 						)?;
 						Expression::ArrowFunction(arrow_function)
 					} else {
@@ -568,31 +566,22 @@ impl Expression {
 				)?;
 				Expression::TemplateLiteral(template_literal)
 			}
-			Token(TSXToken::Keyword(kw), start)
-				if (kw.is_special_function_header()
-					&& reader.peek().map_or(
-						false,
-						|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-					)) || kw.is_in_function_header() =>
-			{
+			Token(TSXToken::Keyword(kw), start) if function_header_ish(&kw, reader) => {
+				// TODO fix
 				let token = Token(TSXToken::Keyword(kw), start);
-				let (async_keyword, token) =
-					if let Token(TSXToken::Keyword(TSXKeyword::Async), _) = token {
-						(Some(Keyword::new(token.get_span())), reader.next().unwrap())
+				let (is_async, start, token) =
+					if let Token(TSXToken::Keyword(TSXKeyword::Async), start) = token {
+						(true, start, reader.next().unwrap())
 					} else {
-						(None, token)
+						(false, start, token)
 					};
 
-				if async_keyword.is_some()
+				if is_async
 					&& !matches!(token, Token(TSXToken::Keyword(ref kw), _) if kw.is_in_function_header())
 				{
 					if let Token(TSXToken::OpenParentheses, start) = token {
 						let function = ArrowFunction::from_reader_sub_open_paren(
-							reader,
-							state,
-							options,
-							async_keyword,
-							start,
+							reader, state, options, is_async, start,
 						)?;
 						return Ok(Expression::ArrowFunction(function));
 					}
@@ -603,7 +592,7 @@ impl Expression {
 						state,
 						options,
 						(name, position),
-						async_keyword,
+						is_async,
 					)?;
 					return Ok(Expression::ArrowFunction(function));
 				}
@@ -613,24 +602,23 @@ impl Expression {
 					use crate::functions::FunctionLocationModifier;
 					let (generator_keyword, token) =
 						if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
-							(Some(Keyword::new(token.get_span())), reader.next().unwrap())
+							(Some(token.get_span()), reader.next().unwrap())
 						} else {
 							(None, token)
 						};
 
 					let (location, token) = match token {
-						t @ Token(TSXToken::Keyword(TSXKeyword::Server), _) => (
-							Some(FunctionLocationModifier::Server(Keyword::new(t.get_span()))),
-							reader.next().unwrap(),
-						),
-						t @ Token(TSXToken::Keyword(TSXKeyword::Worker), _) => (
-							Some(FunctionLocationModifier::Worker(Keyword::new(t.get_span()))),
-							reader.next().unwrap(),
-						),
-						t => (None, t),
+						Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
+							(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+						}
+						Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
+							(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
+						}
+						token => (None, token),
 					};
 
-					let Token(f @ TSXToken::Keyword(TSXKeyword::Function), function_start) = token
+					// Here because `token` (can't use `.expect_next()`)
+					let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
 					else {
 						return throw_unexpected_token_with_token(
 							token,
@@ -638,24 +626,19 @@ impl Expression {
 						);
 					};
 
-					let function_keyword =
-						Keyword::new(function_start.with_length(
-							tokenizer_lib::sized_tokens::SizedToken::length(&f) as usize,
-						));
+					let function_end = function_start
+						.get_end_after(TSXToken::Keyword(TSXKeyword::Function).length() as usize);
 
-					if let Some(generator_keyword) = generator_keyword {
-						let position = async_keyword
-							.as_ref()
-							.map_or(&generator_keyword.1, |kw| kw.get_position())
-							.union(function_keyword.get_position().get_end());
+					if let Some(_) = generator_keyword {
+						let position = start.union(function_end);
 
 						let header = FunctionHeader::ChadFunctionHeader {
-							async_keyword,
-							generator_keyword: Some(generator_keyword),
+							is_async,
+							is_generator: true,
 							location,
-							function_keyword,
 							position,
 						};
+
 						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
 						{
 							None
@@ -669,7 +652,7 @@ impl Expression {
 								reader,
 								state,
 								options,
-								header,
+								(Some(header.get_position().get_start()), header),
 								ExpressionPosition(name),
 							)?;
 
@@ -679,21 +662,17 @@ impl Expression {
 							.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 							.map(|token| token.get_span());
 
-						let position = async_keyword
+						let end = generator_star_token_position
 							.as_ref()
-							.map_or(function_keyword.get_position(), |kw| kw.get_position())
-							.union(
-								generator_star_token_position
-									.as_ref()
-									.unwrap_or(function_keyword.get_position()),
-							);
+							.map_or(function_end, |gstp| gstp.get_end());
+
 						let header = FunctionHeader::VirginFunctionHeader {
-							position,
-							async_keyword,
+							position: start.union(end),
+							is_async,
 							location,
-							function_keyword,
 							generator_star_token_position,
 						};
+
 						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
 						{
 							None
@@ -702,12 +681,13 @@ impl Expression {
 								token_as_identifier(reader.next().unwrap(), "function name")?;
 							Some(crate::VariableIdentifier::Standard(token, span))
 						};
+
 						let function: ExpressionFunction =
 							FunctionBase::from_reader_with_header_and_name(
 								reader,
 								state,
 								options,
-								header,
+								(Some(header.get_position().get_start()), header),
 								ExpressionPosition(name),
 							)?;
 
@@ -724,8 +704,6 @@ impl Expression {
 						);
 					};
 
-					let function_keyword = Keyword::new(token.get_span());
-
 					let generator_star_token_position = reader
 						.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 						.map(|token| token.get_span());
@@ -741,8 +719,7 @@ impl Expression {
 
 					let header = FunctionHeader::VirginFunctionHeader {
 						position,
-						async_keyword,
-						function_keyword,
+						is_async,
 						generator_star_token_position,
 					};
 					let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
@@ -782,12 +759,7 @@ impl Expression {
 				if let Some(Token(token_type, _)) = next {
 					if let TSXToken::OpenBrace = token_type {
 						let is_expression_from_reader_sub_is_keyword =
-							is_expression_from_reader_sub_is_keyword(
-								reader,
-								state,
-								options,
-								Keyword::new(t.get_span()),
-							);
+							is_expression_from_reader_sub_is_keyword(reader, state, options, start);
 
 						is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
 					} else {
@@ -857,7 +829,7 @@ impl Expression {
 							state,
 							options,
 							(name, position),
-							None,
+							false,
 						)?;
 						Expression::ArrowFunction(function)
 					} else {
@@ -866,6 +838,7 @@ impl Expression {
 				}
 			}
 		};
+
 		Self::from_reader_sub_first_expression(
 			reader,
 			state,
@@ -1039,25 +1012,20 @@ impl Expression {
 					let reference = TypeAnnotation::from_reader(reader, state, options)?;
 					let position = top.get_position().union(reference.get_position());
 
-					let keyword_span = token.get_span();
-
 					let special_operators = match token.0 {
 						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsExpression {
 							value: top.into(),
-							as_keyword: Keyword::new(keyword_span),
 							type_annotation: Box::new(reference),
 						},
 						TSXToken::Keyword(TSXKeyword::Satisfies) => {
 							SpecialOperators::SatisfiesExpression {
 								value: top.into(),
-								satisfies_keyword: Keyword::new(keyword_span),
 								type_annotation: Box::new(reference),
 							}
 						}
 						#[cfg(feature = "extras")]
 						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
 							value: top.into(),
-							is_keyword: Keyword::new(keyword_span),
 							type_annotation: Box::new(reference),
 						},
 						_ => unreachable!(),
@@ -1533,6 +1501,17 @@ impl Expression {
 	}
 }
 
+fn function_header_ish(
+	kw: &TSXKeyword,
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+) -> bool {
+	let x = reader.peek().map_or(
+		false,
+		|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+	);
+	kw.is_in_function_header() || (kw.is_special_function_header() && x)
+}
+
 /// Represents expressions that can be `,`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -1703,13 +1682,11 @@ pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
 		value: Box<Expression>,
-		as_keyword: Keyword<As>,
 		type_annotation: Box<TypeAnnotation>,
 	},
 	/// TS Only
 	SatisfiesExpression {
 		value: Box<Expression>,
-		satisfies_keyword: Keyword<Satisfies>,
 		type_annotation: Box<TypeAnnotation>,
 	},
 	InExpression {
@@ -1723,7 +1700,6 @@ pub enum SpecialOperators {
 	#[cfg(feature = "extras")]
 	IsExpression {
 		value: Box<Expression>,
-		is_keyword: Keyword<tsx_keywords::Is>,
 		type_annotation: Box<TypeAnnotation>,
 	},
 }
@@ -1839,7 +1815,7 @@ impl Expression {
 				Box::new(
 					Expression::ArrowFunction(ArrowFunction {
 						// TODO maybe async
-						header: None,
+						header: false,
 						name: (),
 						parameters: crate::FunctionParameters {
 							parameters: Default::default(),

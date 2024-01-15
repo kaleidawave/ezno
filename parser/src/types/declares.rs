@@ -2,20 +2,11 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 use crate::{
 	declarations::VariableDeclarationItem, errors::parse_lexing_error, parse_bracketed,
-	to_string_bracketed, tokens::token_as_identifier, tsx_keywords,
+	to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Decorator,
-	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
-	TokenReader, TypeAnnotation,
+	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader,
+	TypeAnnotation, VariableKeyword,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum DeclareVariableKeyword {
-	Const(Keyword<tsx_keywords::Const>),
-	Let(Keyword<tsx_keywords::Let>),
-	Var(Keyword<tsx_keywords::Var>),
-}
 
 /// A `declare var/let/const` thingy.
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
@@ -23,7 +14,7 @@ pub enum DeclareVariableKeyword {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DeclareVariableDeclaration {
-	pub keyword: DeclareVariableKeyword,
+	pub keyword: VariableKeyword,
 	/// TODO expressions advised against, but still parse
 	pub declarations: Vec<VariableDeclarationItem<Option<crate::Expression>>>,
 	pub position: Span,
@@ -52,11 +43,7 @@ impl ASTNode for DeclareVariableDeclaration {
 	) {
 		if options.include_types {
 			buf.push_str("declare ");
-			buf.push_str(match self.keyword {
-				DeclareVariableKeyword::Const(_) => "const ",
-				DeclareVariableKeyword::Let(_) => "let ",
-				DeclareVariableKeyword::Var(_) => "var ",
-			});
+			buf.push_str(self.keyword.as_str());
 			crate::declarations::variable::declarations_to_string(
 				&self.declarations,
 				buf,
@@ -76,28 +63,8 @@ impl DeclareVariableDeclaration {
 		decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let kw_position = token.get_span();
-		let keyword = match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
-				DeclareVariableKeyword::Const(Keyword::new(kw_position))
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => {
-				DeclareVariableKeyword::Let(Keyword::new(kw_position))
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Var), _) => {
-				DeclareVariableKeyword::Var(Keyword::new(kw_position))
-			}
-			token => {
-				return crate::throw_unexpected_token_with_token(
-					token,
-					&[
-						TSXToken::Keyword(TSXKeyword::Const),
-						TSXToken::Keyword(TSXKeyword::Let),
-						TSXToken::Keyword(TSXKeyword::Var),
-					],
-				)
-			}
-		};
+		let start = start.unwrap_or(token.1);
+		let keyword = VariableKeyword::from_reader(token)?;
 		let mut declarations = Vec::new();
 		loop {
 			let value = VariableDeclarationItem::from_reader(reader, state, options)?;
@@ -108,8 +75,9 @@ impl DeclareVariableDeclaration {
 				break;
 			}
 		}
-		let position =
-			start.unwrap_or(kw_position.into()).union(declarations.last().unwrap().get_position());
+
+		let position = start.union(declarations.last().unwrap().get_position());
+
 		Ok(DeclareVariableDeclaration { keyword, declarations, position, decorators })
 	}
 }

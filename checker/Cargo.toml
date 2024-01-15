@@ -16,7 +16,6 @@ keywords = ["javascript", "typechecker", "checker", "typescript", "types"]
 workspace = true
 
 [features]
-default = []
 ezno-parser = ["parser"]
 
 [dependencies]

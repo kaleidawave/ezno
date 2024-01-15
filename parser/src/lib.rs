@@ -26,7 +26,6 @@ pub use comments::WithComment;
 pub use cursor::{CursorId, EmptyCursorId};
 pub use declarations::Declaration;
 
-use errors::parse_lexing_error;
 pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
 pub use extensions::{
@@ -43,8 +42,7 @@ pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
-use temporary_annex::Annex;
-pub use tokens::{tsx_keywords, TSXKeyword, TSXToken};
+pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
@@ -54,7 +52,10 @@ pub(crate) use visiting::{
 	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
 
-use tokenizer_lib::{sized_tokens::TokenEnd, Token, TokenReader};
+use tokenizer_lib::{
+	sized_tokens::{SizedToken, TokenEnd},
+	Token, TokenReader,
+};
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
@@ -104,6 +105,8 @@ pub struct ParseOptions {
 	///
 	/// Has no effect on WASM
 	pub stack_size: Option<usize>,
+	/// Useful for LSP information
+	pub record_keyword_positions: bool,
 }
 
 impl ParseOptions {
@@ -127,6 +130,7 @@ impl ParseOptions {
 			is_expressions: true,
 			buffer_size: 100,
 			stack_size: None,
+			record_keyword_positions: true,
 		}
 	}
 }
@@ -144,6 +148,7 @@ impl Default for ParseOptions {
 			is_expressions: false,
 			buffer_size: 100,
 			stack_size: None,
+			record_keyword_positions: false,
 		}
 	}
 }
@@ -298,6 +303,9 @@ pub fn lex_and_parse_script<T: ASTNode>(
 				source,
 				length_of_source: length,
 				constant_imports: Default::default(),
+				keyword_positions: options
+					.record_keyword_positions
+					.then_some(KeywordPositions::new()),
 			};
 			let res = T::from_reader(&mut reader, &mut state, &options);
 			if res.is_ok() {
@@ -347,14 +355,14 @@ pub fn lex_and_parse_script<T: ASTNode>(
 }
 
 pub(crate) fn throw_unexpected_token<T>(
-	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 	expected: &[TSXToken],
 ) -> Result<T, ParseError> {
 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
 }
 
 pub(crate) fn throw_unexpected_token_with_token<T>(
-	token: Token<TSXToken, source_map::Start>,
+	token: Token<TSXToken, TokenStart>,
 	expected: &[TSXToken],
 ) -> Result<T, ParseError> {
 	let position = token.get_span();
@@ -368,103 +376,75 @@ pub struct ParsingState {
 	pub(crate) length_of_source: u32,
 	/// TODO as multithreaded channel + record is dynamic exists
 	pub(crate) constant_imports: Vec<String>,
+	pub(crate) keyword_positions: Option<KeywordPositions>,
 }
 
-/// A keyword
-#[derive(Debug, Eq, Clone)]
-pub struct Keyword<T: tokens::TSXKeywordNode>(pub T, pub Span);
-
-// TODO name
-#[cfg(feature = "serde-serialize")]
-impl<T: tokens::TSXKeywordNode> serde::Serialize for Keyword<T> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.1.serialize(serializer)
-	}
-}
-
-// Always true as T == T
-impl<T: tokens::TSXKeywordNode + PartialEq> PartialEq for Keyword<T> {
-	fn eq(&self, _: &Self) -> bool {
-		true
-	}
-}
-
-#[cfg(feature = "self-rust-tokenize")]
-impl<T: tokens::TSXKeywordNode> self_rust_tokenize::SelfRustTokenize for Keyword<T> {
-	fn append_to_token_stream(
-		&self,
-		token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
-	) {
-		let span_tokens = self_rust_tokenize::SelfRustTokenize::to_tokens(&self.1);
-		token_stream.extend(self_rust_tokenize::quote!(Keyword(Default::default(), #span_tokens)));
-	}
-}
-
-impl<T: tokens::TSXKeywordNode> Keyword<T>
-where
-	tokens::TSXKeyword: std::convert::From<T>,
-{
-	#[must_use]
-	pub fn new(span: Span) -> Self {
-		Keyword(T::default(), span)
-	}
-
-	pub(crate) fn optionally_from_reader(
+impl ParsingState {
+	pub(crate) fn new_keyword(
+		&mut self,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> Option<Self> {
-		reader
-			// There has to be a better way. Probably using constants
-			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::from(T::default())))
-			.map(|token| Keyword::new(token.get_span()))
+		kw: TSXKeyword,
+	) -> crate::ParseResult<TokenStart> {
+		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+		self.add_keyword_at_pos(start.0, kw);
+		Ok(start)
 	}
 
-	pub(crate) fn from_reader(
+	pub(crate) fn new_optional_keyword(
+		&mut self,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> ParseResult<Self> {
-		match reader.next() {
-			Some(token) => {
-				let keyword = TSXToken::Keyword(TSXKeyword::from(T::default()));
-				let span = token.get_span();
-				if token.0 == keyword {
-					Ok(Self::new(span))
-				} else {
-					Err(ParseError::new(
-						ParseErrors::UnexpectedToken { expected: &[keyword], found: token.0 },
-						span,
-					))
-				}
-			}
-			None => Err(parse_lexing_error()),
+		kw: TSXKeyword,
+	) -> Option<Span> {
+		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
+			self.add_keyword_at_pos(start.0, kw);
+			Some(start.with_length(t.length() as usize))
+		} else {
+			None
 		}
 	}
 
-	pub fn get_position(&self) -> &Span {
-		&self.1
+	pub(crate) fn new_keyword_full_span(
+		&mut self,
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		kw: TSXKeyword,
+	) -> crate::ParseResult<Span> {
+		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+		self.add_keyword_at_pos(start.0, kw);
+		Ok(start.with_length(kw.length() as usize))
+	}
+
+	fn add_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
+		if let Some(ref mut keyword_positions) = self.keyword_positions {
+			keyword_positions.0.push((start, kw));
+		}
 	}
 }
 
-impl<T: tokens::TSXKeywordNode> Visitable for Keyword<T> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		_options: &VisitOptions,
-		chain: &mut Annex<Chain>,
-	) {
-		visitors.visit_keyword(&(self.0.into(), &self.1), data, chain);
+/// As parsing is forwards, this is ordered
+#[derive(Debug)]
+pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
+
+impl KeywordPositions {
+	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
+		// binary search
+		let mut l: u32 = 0;
+		let mut r: u32 = self.0.len() as u32 - 1u32;
+		while l <= r {
+			let m = (l + r) >> 1;
+			let (kw_pos, kw) = self.0[m as usize];
+			if kw_pos <= pos && pos < (kw_pos + kw.length()) {
+				return Some(kw);
+			} else if pos > kw_pos {
+				l = m + 1
+			} else if pos < kw_pos {
+				r = m - 1
+			}
+		}
+		None
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		_visitors: &mut (impl VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut Annex<Chain>,
-	) {
-		// TODO should this have a implementation?
+	fn new() -> Self {
+		Self(Default::default())
 	}
 }
 
@@ -1051,6 +1031,45 @@ pub(crate) fn expect_semi_colon(
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum VariableKeyword {
+	Const,
+	Let,
+	Var,
+}
+
+impl VariableKeyword {
+	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
+		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
+	}
+
+	pub(crate) fn from_reader(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
+		match token {
+			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
+			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
+			Token(TSXToken::Keyword(TSXKeyword::Var), _) => Ok(Self::Var),
+			token => crate::throw_unexpected_token_with_token(
+				token,
+				&[
+					TSXToken::Keyword(TSXKeyword::Const),
+					TSXToken::Keyword(TSXKeyword::Let),
+					TSXToken::Keyword(TSXKeyword::Var),
+				],
+			),
+		}
+	}
+
+	pub fn as_str(&self) -> &str {
+		match self {
+			Self::Const => "const ",
+			Self::Let => "let ",
+			Self::Var => "var ",
+		}
+	}
+}
+
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
@@ -1063,8 +1082,8 @@ pub mod ast {
 			ParameterData, SpreadParameter,
 		},
 		statements::*,
-		Block, Decorated, Keyword, NumberRepresentation, PropertyKey, StatementOrDeclaration,
-		VariableField, VariableIdentifier, WithComment,
+		Block, Decorated, NumberRepresentation, PropertyKey, StatementOrDeclaration, VariableField,
+		VariableIdentifier, WithComment,
 	};
 
 	pub use source_map::{BaseSpan, SourceId};

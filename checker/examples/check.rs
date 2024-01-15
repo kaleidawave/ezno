@@ -12,7 +12,7 @@ fn main() {
 
 	let now = Instant::now();
 
-	let (diagnostics, post_check_data) = check_project::<_, synthesis::EznoParser>(
+	let result = check_project::<_, synthesis::EznoParser>(
 		vec![path.to_path_buf()],
 		std::iter::once(ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path: &std::path::Path| {
@@ -28,16 +28,16 @@ fn main() {
 
 	let args: Vec<_> = env::args().collect();
 
-	if let Ok(post_check_data) = post_check_data {
+	if !result.diagnostics.has_error() {
 		if args.iter().any(|arg| arg == "--types") {
 			eprintln!("Types:");
-			for (type_id, item) in post_check_data.types.into_vec_temp() {
+			for (type_id, item) in result.types.into_vec_temp() {
 				eprintln!("\t{type_id:?}: {item:?}");
 			}
 		}
 		if args.iter().any(|arg| arg == "--events") {
 			eprintln!("Events on entry:");
-			let (_, entry_module) = post_check_data.modules.into_iter().next().unwrap();
+			let (_, entry_module) = result.modules.into_iter().next().unwrap();
 			for item in entry_module.facts.get_events() {
 				eprintln!("\t{item:?}");
 			}
@@ -46,11 +46,11 @@ fn main() {
 
 	if args.iter().any(|arg| arg == "--time") {
 		let end = now.elapsed();
-		let count = diagnostics.into_iter().len();
+		let count = result.diagnostics.into_iter().len();
 		eprintln!("Found {count} diagnostics in {end:?}");
 	} else {
 		eprintln!("Diagnostics:");
-		for diagnostic in diagnostics {
+		for diagnostic in result.diagnostics {
 			let prefix: char = match diagnostic.kind() {
 				ezno_checker::DiagnosticKind::Error => 'E',
 				ezno_checker::DiagnosticKind::Warning => 'W',

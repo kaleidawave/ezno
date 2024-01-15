@@ -32,8 +32,23 @@ pub fn experimental_build_wasm(
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
+#[wasm_bindgen]
+pub struct WASMCheckOutput(checker::CheckOutput<checker::synthesis::EznoParser>);
+
+#[wasm_bindgen]
+impl CheckOutput {
+	#[wasm_bindgen(js_name = diagnostics, getter)]
+	pub fn get_diagnostics(&self) -> JsValue {
+		serde_wasm_bindgen::to_value(&self.0.diagnostics).unwrap()
+	}
+
+	pub fn get_type_at_position(path: &str, pos: u32) -> String {
+		self.0
+	}
+}
+
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsValue {
+pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
@@ -41,9 +56,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsVa
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (diagnostics, _) = crate::check::check(vec![entry_path.into()], &fs_resolver, None, None);
-	// TODO also emit mappings
-	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
 }
 
 #[wasm_bindgen(js_name = run_cli)]

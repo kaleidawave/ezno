@@ -3,9 +3,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token_with_token, tsx_keywords, ASTNode,
-	Expression, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
-	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
+	errors::parse_lexing_error, throw_unexpected_token_with_token, ASTNode, Expression,
+	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation,
+	VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -176,12 +176,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
-		keyword: Keyword<tsx_keywords::Const>,
 		declarations: Vec<VariableDeclarationItem<Expression>>,
 		position: Span,
 	},
 	LetDeclaration {
-		keyword: Keyword<tsx_keywords::Let>,
 		declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 		position: Span,
 	},
@@ -191,8 +189,8 @@ pub enum VariableDeclaration {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclarationKeyword {
-	Const(Keyword<tsx_keywords::Const>),
-	Let(Keyword<tsx_keywords::Let>),
+	Const,
+	Let,
 }
 
 impl VariableDeclarationKeyword {
@@ -202,12 +200,9 @@ impl VariableDeclarationKeyword {
 	}
 
 	pub(crate) fn from_reader(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
-		let position = token.get_span();
 		match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
-				Ok(Self::Const(Keyword::new(position)))
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let(Keyword::new(position))),
+			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
+			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
 			token => throw_unexpected_token_with_token(
 				token,
 				&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
@@ -218,16 +213,8 @@ impl VariableDeclarationKeyword {
 	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
-			VariableDeclarationKeyword::Const(_) => "const ",
-			VariableDeclarationKeyword::Let(_) => "let ",
-		}
-	}
-
-	#[must_use]
-	pub fn get_position(&self) -> &Span {
-		match self {
-			VariableDeclarationKeyword::Const(kw) => kw.get_position(),
-			VariableDeclarationKeyword::Let(kw) => kw.get_position(),
+			VariableDeclarationKeyword::Const => "const ",
+			VariableDeclarationKeyword::Let => "let ",
 		}
 	}
 }
@@ -239,9 +226,10 @@ impl ASTNode for VariableDeclaration {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
+		let start = token.1;
 		let kind = VariableDeclarationKeyword::from_reader(token)?;
 		Ok(match kind {
-			VariableDeclarationKeyword::Let(keyword) => {
+			VariableDeclarationKeyword::Let => {
 				let mut declarations = Vec::new();
 				loop {
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
@@ -255,14 +243,11 @@ impl ASTNode for VariableDeclaration {
 					}
 				}
 				VariableDeclaration::LetDeclaration {
-					position: keyword
-						.get_position()
-						.union(declarations.last().unwrap().get_position()),
-					keyword,
+					position: start.union(declarations.last().unwrap().get_position()),
 					declarations,
 				}
 			}
-			VariableDeclarationKeyword::Const(keyword) => {
+			VariableDeclarationKeyword::Const => {
 				let mut declarations = Vec::new();
 				loop {
 					let value =
@@ -275,10 +260,7 @@ impl ASTNode for VariableDeclaration {
 					}
 				}
 				VariableDeclaration::ConstDeclaration {
-					position: keyword
-						.get_position()
-						.union(declarations.last().unwrap().get_position()),
-					keyword,
+					position: start.union(declarations.last().unwrap().get_position()),
 					declarations,
 				}
 			}

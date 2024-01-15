@@ -26,6 +26,9 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
 	) -> ParseResult<(String, Span, Self::Private)>;
 
 	fn is_private(p: Self::Private) -> bool;
+
+	/// TODO temp
+	fn new_public() -> Self::Private;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +45,11 @@ impl PropertyKeyKind for AlwaysPublic {
 	}
 
 	fn is_private(_p: Self::Private) -> bool {
-		true
+		false
+	}
+
+	fn new_public() -> () {
+		()
 	}
 }
 
@@ -67,6 +74,10 @@ impl PropertyKeyKind for PublicOrPrivate {
 
 	fn is_private(p: Self::Private) -> bool {
 		p
+	}
+
+	fn new_public() -> Self::Private {
+		true
 	}
 }
 

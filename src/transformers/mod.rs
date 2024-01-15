@@ -16,13 +16,11 @@ impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 		)) = item
 		{
 			if let parser::declarations::VariableDeclaration::ConstDeclaration {
-				keyword,
 				declarations,
 				position,
 			} = decl
 			{
 				*decl = parser::declarations::VariableDeclaration::LetDeclaration {
-					keyword: parser::Keyword::new(*keyword.get_position()),
 					declarations: declarations
 						.drain(..)
 						.map(|dec| parser::declarations::VariableDeclarationItem {

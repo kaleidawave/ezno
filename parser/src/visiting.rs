@@ -249,7 +249,8 @@ mod ast {
 		crate::declarations::ImportExportName,
 		crate::declarations::ImportLocation,
 		crate::functions::FunctionHeader,
-		crate::functions::MethodHeader
+		crate::functions::MethodHeader,
+		crate::VariableKeyword
 	];
 }
 

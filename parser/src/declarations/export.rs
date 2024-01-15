@@ -1,6 +1,6 @@
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token, tsx_keywords, ASTNode, Expression, Keyword,
-	ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
+	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ParseError,
+	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
 	VariableIdentifier,
 };
 
@@ -40,15 +40,8 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	Parts(Vec<ExportPart>),
-	ImportAll {
-		r#as: Option<VariableIdentifier>,
-		from: ImportLocation,
-	},
-	ImportParts {
-		parts: Vec<ExportPart>,
-		from: ImportLocation,
-		type_keyword: Option<Keyword<tsx_keywords::Type>>,
-	},
+	ImportAll { r#as: Option<VariableIdentifier>, from: ImportLocation },
+	ImportParts { parts: Vec<ExportPart>, from: ImportLocation, type_definitions_only: bool },
 }
 
 impl ASTNode for ExportDeclaration {
@@ -91,11 +84,10 @@ impl ASTNode for ExportDeclaration {
 				})
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-				let token = reader.next().unwrap();
-				let keyword = Keyword::new(token.get_span());
-				let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
-					reader, state, options, keyword,
-				)?;
+				let Token(_, start) = reader.next().unwrap();
+				state.add_keyword_at_pos(start.0, TSXKeyword::Class);
+				let class_declaration =
+					ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)?;
 				let position = start.union(class_declaration.get_position());
 				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 			}
@@ -121,8 +113,6 @@ impl ASTNode for ExportDeclaration {
 				if let Token(TSXToken::OpenBrace, _) =
 					reader.peek_n(1).ok_or_else(parse_lexing_error)?
 				{
-					let type_keyword = reader.next().map(|tok| Keyword::new(tok.get_span()));
-
 					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
 					let (parts, _end) = crate::parse_bracketed::<ExportPart>(
@@ -139,7 +129,11 @@ impl ASTNode for ExportDeclaration {
 						ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 
 					Ok(Self::Variable {
-						exported: Exportable::ImportParts { parts, from, type_keyword },
+						exported: Exportable::ImportParts {
+							parts,
+							from,
+							type_definitions_only: true,
+						},
 						position: start.union(end),
 					})
 				} else {
@@ -177,7 +171,11 @@ impl ASTNode for ExportDeclaration {
 							reader.next().ok_or_else(parse_lexing_error)?,
 						)?;
 						Ok(Self::Variable {
-							exported: Exportable::ImportParts { parts, from, type_keyword: None },
+							exported: Exportable::ImportParts {
+								parts,
+								from,
+								type_definitions_only: false,
+							},
 							position: start.union(end),
 						})
 					} else {
@@ -272,8 +270,8 @@ impl ASTNode for ExportDeclaration {
 						from.to_string_from_buffer(buf);
 						buf.push('"');
 					}
-					Exportable::ImportParts { parts, from, type_keyword } => {
-						if type_keyword.is_some() {
+					Exportable::ImportParts { parts, from, type_definitions_only } => {
+						if *type_definitions_only {
 							buf.push_str("type ");
 						}
 

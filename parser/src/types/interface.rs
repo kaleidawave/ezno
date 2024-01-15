@@ -1,10 +1,10 @@
 use crate::{
 	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
 	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
-	to_string_bracketed, tokens::token_as_identifier, tsx_keywords,
+	to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions, ParseResult, PropertyKey,
-	Span, TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
+	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
+	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -18,7 +18,7 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
-	pub nominal_keyword: Option<Keyword<tsx_keywords::Nominal>>,
+	pub is_nominal: bool,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
@@ -54,7 +54,9 @@ impl ASTNode for InterfaceDeclaration {
 		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Interface))?;
 
 		#[cfg(feature = "extras")]
-		let nominal_keyword = Keyword::optionally_from_reader(reader);
+		let is_nominal = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
+			.is_some();
 
 		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
 		// 	Some((reader.next().unwrap().1))
@@ -99,7 +101,7 @@ impl ASTNode for InterfaceDeclaration {
 		Ok(InterfaceDeclaration {
 			name,
 			#[cfg(feature = "extras")]
-			nominal_keyword,
+			is_nominal,
 			type_parameters,
 			extends,
 			members,
@@ -221,9 +223,7 @@ impl ASTNode for InterfaceMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let readonly_keyword = Keyword::<tsx_keywords::Readonly>::optionally_from_reader(reader);
-
-		let is_readonly = readonly_keyword.is_some();
+		let readonly_position = state.new_optional_keyword(reader, TSXKeyword::Readonly);
 
 		// This match will early return if not a method
 		let token = &reader.peek().ok_or_else(parse_lexing_error)?.0;
@@ -240,14 +240,11 @@ impl ASTNode for InterfaceMember {
 					None
 				};
 				// TODO parameter.pos can be union'ed with itself
-				let position = readonly_keyword
-					.as_ref()
-					.map_or(&parameters.position, |kw| kw.get_position())
-					.union(
-						return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
-					);
+				let position = readonly_position.as_ref().unwrap_or(&parameters.position).union(
+					return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
+				);
 				Ok(InterfaceMember::Caller {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					return_type,
@@ -270,7 +267,7 @@ impl ASTNode for InterfaceMember {
 					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
 				Ok(InterfaceMember::Caller {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					type_parameters: Some(type_parameters),
@@ -308,11 +305,10 @@ impl ASTNode for InterfaceMember {
 
 				let end = return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
-				let position =
-					readonly_keyword.as_ref().map_or(&new_span, |kw| kw.get_position()).union(end);
+				let position = readonly_position.as_ref().unwrap_or(&new_span).union(end);
 
 				Ok(InterfaceMember::Constructor {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					#[cfg(feature = "extras")]
@@ -364,9 +360,7 @@ impl ASTNode for InterfaceMember {
 								let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 								PropertyKey::Computed(Box::new(expression), start.union(end))
 							} else {
-								let start_span = readonly_keyword
-									.as_ref()
-									.map_or(&name_span, |kw| kw.get_position());
+								let start_span = readonly_position.as_ref().unwrap_or(&name_span);
 								match reader.next().ok_or_else(parse_lexing_error)? {
 									// Indexed type
 									Token(TSXToken::Colon, _) => {
@@ -378,10 +372,10 @@ impl ASTNode for InterfaceMember {
 											TypeAnnotation::from_reader(reader, state, options)?;
 										return Ok(InterfaceMember::Indexer {
 											name,
+											is_readonly: readonly_position.is_some(),
 											indexer_type,
 											position: start_span.union(return_type.get_position()),
 											return_type,
-											is_readonly,
 										});
 									}
 									Token(TSXToken::Keyword(TSXKeyword::In), _) => {
@@ -431,7 +425,7 @@ impl ASTNode for InterfaceMember {
 										return Ok(InterfaceMember::Rule {
 											parameter: name,
 											optionality,
-											is_readonly,
+											is_readonly: readonly_position.is_some(),
 											matching_type: Box::new(matching_type),
 											rule,
 											output_type: Box::new(output_type),
@@ -466,17 +460,17 @@ impl ASTNode for InterfaceMember {
 					}
 				};
 
-				let start = readonly_keyword.as_ref().map_or_else(
-					|| name.get_position().get_start(),
-					|kw| kw.get_position().get_start(),
-				);
+				let start = readonly_position.as_ref().unwrap_or_else(|| name.get_position());
 
 				// TODO a little weird as only functions can have type parameters:
 				match reader.next().ok_or_else(parse_lexing_error)? {
 					Token(TSXToken::OpenParentheses, _start_pos) => {
 						let parameters =
 							TypeAnnotationFunctionParameters::from_reader_sub_open_parenthesis(
-								reader, state, options, start,
+								reader,
+								state,
+								options,
+								start.get_start(),
 							)?;
 						let mut position = start.union(parameters.position);
 						let return_type = if reader
@@ -556,18 +550,20 @@ impl ASTNode for InterfaceMember {
 					Token(TSXToken::Colon, _) => {
 						let mut type_annotation =
 							TypeAnnotation::from_reader(reader, state, options)?;
-						if is_readonly {
+
+						if readonly_position.is_some() {
 							// TODO positioning:
 							let position = start.union(type_annotation.get_position());
 							type_annotation =
 								TypeAnnotation::Readonly(Box::new(type_annotation), position);
 						}
+						let position = start.union(type_annotation.get_position());
 						Ok(InterfaceMember::Property {
+							position,
 							name,
-							position: start.union(type_annotation.get_position()),
 							type_annotation,
 							is_optional: false,
-							is_readonly,
+							is_readonly: readonly_position.is_some(),
 						})
 					}
 					Token(TSXToken::OptionalMember, _) => {
@@ -577,7 +573,7 @@ impl ASTNode for InterfaceMember {
 							name,
 							type_annotation,
 							is_optional: true,
-							is_readonly,
+							is_readonly: readonly_position.is_some(),
 							position,
 						})
 					}
@@ -602,7 +598,7 @@ impl ASTNode for InterfaceMember {
 		depth: u8,
 	) {
 		match self {
-			Self::Property { name, type_annotation, is_readonly, .. } => {
+			InterfaceMember::Property { name, type_annotation, is_readonly, .. } => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
@@ -611,8 +607,13 @@ impl ASTNode for InterfaceMember {
 				options.add_gap(buf);
 				type_annotation.to_string_from_buffer(buf, options, depth);
 			}
-			Self::Method {
-				name, type_parameters, parameters, return_type, is_optional, ..
+			InterfaceMember::Method {
+				name,
+				type_parameters,
+				parameters,
+				return_type,
+				is_optional,
+				..
 			} => {
 				name.to_string_from_buffer(buf, options, depth);
 				if *is_optional {
@@ -628,7 +629,7 @@ impl ASTNode for InterfaceMember {
 					return_type.to_string_from_buffer(buf, options, depth);
 				}
 			}
-			Self::Indexer { name, indexer_type, return_type, is_readonly, .. } => {
+			InterfaceMember::Indexer { name, indexer_type, return_type, is_readonly, .. } => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
@@ -641,7 +642,10 @@ impl ASTNode for InterfaceMember {
 				options.add_gap(buf);
 				return_type.to_string_from_buffer(buf, options, depth);
 			}
-			_ => todo!(),
+			InterfaceMember::Constructor { .. } => todo!(),
+			InterfaceMember::Caller { .. } => todo!(),
+			InterfaceMember::Rule { .. } => todo!(),
+			InterfaceMember::Comment(_, _) => todo!(),
 		}
 	}
 

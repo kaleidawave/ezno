@@ -75,11 +75,7 @@ jobs:
         run: |
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
 
-          echo "### Parsing and writing out minified form of `react-dom`
+          echo "### Parsing and writing out minified form of \`react-dom\`
           \`\`\`shell">> $GITHUB_STEP_SUMMARY
           hyperfine './target/release/ezno ast-explorer --file react.js uglifier' >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-      - name: Print (linux) binary size
-        run: |
-          echo "Binary is $(stat -c %s ./target/release/ezno) bytes" >> $GITHUB_STEP_SUMMARY

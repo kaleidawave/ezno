@@ -1,4 +1,4 @@
-use checker::{synthesis::EznoParser, FunctionId, PostCheckData};
+use checker::FunctionId;
 use parser::{
 	declarations::{
 		classes::{ClassMember, ClassProperty},
@@ -9,24 +9,25 @@ use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition, SourceId, StatementOrDeclaration,
 };
 
+use crate::check::CheckingOutputWithoutDiagnostics;
+
 /// A transformer that optimises expression code
 /// - Removes dead functions
 ///
 /// TODO this can still break somethings if functions are used but not called
 pub struct ExpressionOptimiser;
 
-impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
+impl VisitorMut<Expression, CheckingOutputWithoutDiagnostics> for ExpressionOptimiser {
 	fn visit_mut(
 		&mut self,
 		item: &mut Expression,
-		data: &mut PostCheckData<EznoParser>,
+		data: &mut CheckingOutputWithoutDiagnostics,
 		chain: &parser::visiting::Chain,
 	) {
 		match item {
 			Expression::ObjectLiteral(literal) => {
 				// TODO properties and even entire object
 				for item in literal.members.iter_mut() {
-					let item = item.get_ast_mut();
 					if let ObjectLiteralMember::Method(method) = item {
 						let position = *method.get_position();
 						let function_id = FunctionId(chain.get_module(), position.start);
@@ -68,11 +69,11 @@ impl VisitorMut<Expression, PostCheckData<EznoParser>> for ExpressionOptimiser {
 /// - Removes dead functions
 pub struct StatementOptimiser;
 
-impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimiser {
+impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for StatementOptimiser {
 	fn visit_mut(
 		&mut self,
 		item: &mut BlockItemMut,
-		data: &mut PostCheckData<EznoParser>,
+		data: &mut CheckingOutputWithoutDiagnostics,
 		chain: &parser::visiting::Chain,
 	) {
 		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
@@ -93,7 +94,6 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 						// is the unfortunate design of `StatementOrDeclarationMut`
 						*declaration = parser::Declaration::Variable(
 							parser::declarations::VariableDeclaration::LetDeclaration {
-								keyword: parser::Keyword::new(parser::Span::NULL_SPAN),
 								declarations: Vec::new(),
 								position: *func.get_position(),
 							},
@@ -121,7 +121,7 @@ impl VisitorMut<BlockItemMut<'_>, PostCheckData<EznoParser>> for StatementOptimi
 /// TODO properties and even entire class
 fn shake_class<T: ExpressionOrStatementPosition>(
 	class: &mut ClassDeclaration<T>,
-	data: &PostCheckData<EznoParser>,
+	data: &CheckingOutputWithoutDiagnostics,
 	source: SourceId,
 ) {
 	for item in class.members.iter_mut() {
@@ -132,7 +132,7 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 				item.on = ClassMember::Property(
 					static_kw.clone(),
 					ClassProperty {
-						readonly_keyword: None,
+						is_readonly: false,
 						key: func.name.clone(),
 						type_annotation: None,
 						value: Some(Box::new(Expression::Null(func.position))),

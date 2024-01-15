@@ -49,7 +49,6 @@ fn stmt_with_expr_interpolation() {
 		};
 		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
 			VariableDeclaration::LetDeclaration {
-				keyword: ezno_parser::Keyword::new(Span::NULL_SPAN),
 				declarations: vec![declaration],
 				position: Span::NULL_SPAN,
 			},
@@ -82,7 +81,6 @@ fn stmt_with_var_name_interpolation() {
 		};
 		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
 			VariableDeclaration::LetDeclaration {
-				keyword: ezno_parser::Keyword::new(Span::NULL_SPAN),
 				declarations: vec![declaration],
 				position: Span::NULL_SPAN,
 			},

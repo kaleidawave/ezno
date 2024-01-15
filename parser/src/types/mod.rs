@@ -33,14 +33,8 @@ pub use interface::InterfaceDeclaration;
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum AnnotationPerforms {
-	PerformsStatements {
-		performs_keyword: crate::Keyword<crate::tsx_keywords::Performs>,
-		statements: crate::Block,
-	},
-	PerformsConst {
-		performs_keyword: crate::Keyword<crate::tsx_keywords::Performs>,
-		identifier: String,
-	},
+	PerformsStatements { body: crate::Block },
+	PerformsConst { identifier: String },
 }
 
 #[cfg(feature = "extras")]
@@ -54,19 +48,19 @@ impl crate::ASTNode for AnnotationPerforms {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let performs_keyword = crate::Keyword::from_reader(reader)?;
+		let _ = reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Performs))?;
 		if let Some(tokenizer_lib::Token(crate::TSXToken::OpenBrace, _)) = reader.peek() {
 			// let expression = Expression::from_reader(reader, state, options)?;
 			// reader.expect_next(TSXToken::CloseParentheses)?;
 			// Some(Box::new(expression))
 
 			let body = crate::Block::from_reader(reader, state, options)?;
-			Ok(AnnotationPerforms::PerformsStatements { performs_keyword, statements: body })
+			Ok(AnnotationPerforms::PerformsStatements { body })
 		} else {
 			reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Const))?;
 			let (identifier, _) =
 				crate::tokens::token_as_identifier(reader.next().unwrap(), "performs const")?;
-			Ok(AnnotationPerforms::PerformsConst { performs_keyword, identifier })
+			Ok(AnnotationPerforms::PerformsConst { identifier })
 		}
 	}
 

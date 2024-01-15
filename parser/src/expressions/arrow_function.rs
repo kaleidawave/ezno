@@ -1,22 +1,22 @@
-use crate::{tsx_keywords, VariableIdentifier};
+use crate::VariableIdentifier;
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
-	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Keyword, Parameter,
-	ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
-	WithComment,
+	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Parameter, ParseOptions,
+	ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+pub type IsAsync = bool;
 
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
-	type Header = Option<Keyword<tsx_keywords::Async>>;
+	type Header = IsAsync;
 	type Body = ExpressionOrBlock;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
@@ -25,11 +25,11 @@ impl FunctionBased for ArrowFunctionBase {
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
+		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)> {
-		let async_keyword = Keyword::optionally_from_reader(reader);
-		Ok((async_keyword, ()))
+	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+		let async_pos = state.new_optional_keyword(reader, crate::TSXKeyword::Async);
+		Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -39,7 +39,7 @@ impl FunctionBased for ArrowFunctionBase {
 		_options: &crate::ToStringOptions,
 		_depth: u8,
 	) {
-		if is_async.is_some() {
+		if *is_async {
 			buf.push_str("async ");
 		}
 	}
@@ -102,10 +102,6 @@ impl FunctionBased for ArrowFunctionBase {
 		buf.push_str(if options.pretty { " => " } else { "=>" });
 	}
 
-	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		header.as_ref().map(|kw| kw.get_position().get_start())
-	}
-
 	fn visit_name<TData>(
 		(): &Self::Name,
 		_: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
@@ -135,7 +131,7 @@ impl ArrowFunction {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 		first_parameter: (String, Span),
-		is_async: Option<Keyword<tsx_keywords::Async>>,
+		is_async: IsAsync,
 	) -> ParseResult<Self> {
 		let parameters = vec![crate::Parameter {
 			name: WithComment::None(
@@ -169,7 +165,7 @@ impl ArrowFunction {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		is_async: Option<Keyword<tsx_keywords::Async>>,
+		is_async: IsAsync,
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		let parameters =

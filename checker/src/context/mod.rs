@@ -767,48 +767,49 @@ impl<T: ContextType> Context<T> {
 			| Scope::Module { .. }
 			| Scope::StaticBlock { .. }
 			| Scope::DefinitionModule { .. } => {
+				// TODO for LSP
+				// let shell = ExistingContext {
+				// 	variables,
+				// 	named_types,
+				// 	can_reference_this: can_reference_this.clone(),
+				// 	scope: scope.clone(),
+				// };
+				// checking_data.existing_contexts.existing_environments.insert(context_id, shell);
+
+				// 	// TODO temp
+				// 	self.context_type
+				// 		.get_closed_over_references_mut()
+				// 		.extend(closed_over_references.into_iter());
+
+				self.deferred_function_constraints.extend(deferred_function_constraints);
+
+				self.can_reference_this = can_reference_this;
+
+				// TODO don't need to clone all the time
+				for (on, mut properties) in facts.current_properties.clone() {
+					match self.facts.current_properties.entry(on) {
+						hash_map::Entry::Occupied(mut occupied) => {
+							occupied.get_mut().append(&mut properties);
+						}
+						hash_map::Entry::Vacant(vacant) => {
+							vacant.insert(properties);
+						}
+					}
+				}
+
+				// TODO don't need to clone all the time
+				self.facts.prototypes.extend(facts.prototypes.clone());
+
 				// TODO also lift vars, regardless of scope
 				if matches!(scope, Scope::PassThrough { .. }) {
 					self.variables.extend(variables);
 					self.facts.variable_current_value.extend(facts.variable_current_value);
 					None
+				} else if self.context_type.get_parent().is_some() {
+					self.facts.events.append(&mut facts.events);
+					None
 				} else {
-					// TODO for LSP
-					// let shell = ExistingContext {
-					// 	variables,
-					// 	named_types,
-					// 	can_reference_this: can_reference_this.clone(),
-					// 	scope: scope.clone(),
-					// };
-					// checking_data.existing_contexts.existing_environments.insert(context_id, shell);
-
-					// 	// TODO temp
-					// 	self.context_type
-					// 		.get_closed_over_references_mut()
-					// 		.extend(closed_over_references.into_iter());
-
-					self.deferred_function_constraints.extend(deferred_function_constraints);
-
-					self.can_reference_this = can_reference_this;
-
-					// TODO clone
-					for (on, mut properties) in facts.current_properties.clone() {
-						match self.facts.current_properties.entry(on) {
-							hash_map::Entry::Occupied(mut occupied) => {
-								occupied.get_mut().append(&mut properties);
-							}
-							hash_map::Entry::Vacant(vacant) => {
-								vacant.insert(properties);
-							}
-						}
-					}
-
-					if self.context_type.get_parent().is_some() {
-						self.facts.events.append(&mut facts.events);
-						None
-					} else {
-						Some((facts, Default::default()))
-					}
+					Some((facts, Default::default()))
 				}
 			}
 		};

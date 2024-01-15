@@ -88,6 +88,15 @@ const b = my_obj.b
 
 - No property 'b' on { a: 3 }
 
+#### Reading property (via accessor)
+
+```ts
+const my_obj = { a: 2 }
+const three: 3 = my_obj.a
+```
+
+- Type 2 is not assignable to type 3
+
 #### Property updates registered
 
 ```ts
@@ -97,15 +106,6 @@ let b: 3 = my_obj.a
 ```
 
 - Type 4 is not assignable to type 3
-
-#### Property references
-
-```ts
-const my_obj = { a: 2 }
-const three: 3 = my_obj.a
-```
-
-- Type 2 is not assignable to type 3
 
 #### Object property constraints
 
@@ -129,8 +129,9 @@ const my_obj: { b: 3 } = { a: 2 }
 ```ts
 let global = 0;
 const object = {
+	// This getter has an impure side effect
 	get getValue() {
-		return global++
+		return ++global
 	},
 }
 
@@ -138,10 +139,8 @@ object.getValue satisfies string
 object.getValue satisfies boolean
 ```
 
-> Also test that side effects work here
-
-- Expected string, found 0
-- Expected boolean, found 1
+- Expected string, found 1
+- Expected boolean, found 2
 
 #### Object spread
 

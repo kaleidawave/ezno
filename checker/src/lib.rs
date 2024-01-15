@@ -419,11 +419,12 @@ where
 }
 
 /// Used for transformers and other things after checking!!!!
-pub struct PostCheckData<A: crate::ASTImplementation> {
+pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
+	pub diagnostics: crate::DiagnosticsContainer,
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -433,7 +434,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	resolver: T,
 	options: Option<TypeCheckOptions>,
 	parser_requirements: A::ParserRequirements,
-) -> (crate::DiagnosticsContainer, Result<PostCheckData<A>, MapFileStore<WithPathMap>>) {
+) -> CheckOutput<A> {
 	let mut checking_data = CheckingData::<T, A>::new(
 		options.unwrap_or_default(),
 		&resolver,
@@ -446,7 +447,13 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 	if checking_data.diagnostics_container.has_error() {
-		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
+		return CheckOutput {
+			type_mappings: checking_data.type_mappings,
+			types: checking_data.types,
+			module_contents: checking_data.modules.files,
+			modules: Default::default(),
+			diagnostics: checking_data.diagnostics_container,
+		};
 	}
 
 	for point in &entry_points {
@@ -491,16 +498,12 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		unimplemented_items: _,
 	} = checking_data;
 
-	if diagnostics_container.has_error() {
-		(diagnostics_container, Err(modules.files))
-	} else {
-		let post_check_data = Ok(PostCheckData {
-			type_mappings,
-			types,
-			module_contents: modules.files,
-			modules: modules.synthesised_modules,
-		});
-		(diagnostics_container, post_check_data)
+	CheckOutput {
+		type_mappings,
+		types,
+		module_contents: modules.files,
+		modules: modules.synthesised_modules,
+		diagnostics: diagnostics_container,
 	}
 }
 
@@ -580,12 +583,5 @@ impl TypeCombinable for TypeId {
 
 	fn default() -> Self {
 		TypeId::UNDEFINED_TYPE
-	}
-}
-
-impl<A: crate::ASTImplementation> PostCheckData<A> {
-	#[must_use]
-	pub fn is_function_called(&self, function_id: FunctionId) -> bool {
-		self.types.called_functions.contains(&function_id)
 	}
 }

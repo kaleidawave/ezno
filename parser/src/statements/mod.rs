@@ -7,7 +7,6 @@ mod while_statement;
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
 	tokens::token_as_identifier,
-	tsx_keywords,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -15,7 +14,7 @@ use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 
 use super::{
-	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, Keyword, ParseOptions,
+	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, ParseOptions,
 	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
@@ -73,17 +72,13 @@ pub enum Statement {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ReturnStatement(
-	pub Keyword<tsx_keywords::Return>,
-	pub Option<MultipleExpression>,
-	pub Span,
-);
+pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ThrowStatement(pub Keyword<tsx_keywords::Throw>, pub Box<MultipleExpression>, pub Span);
+pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
 
@@ -120,10 +115,10 @@ impl ASTNode for Statement {
 				Ok(Statement::VarVariable(stmt))
 			}
 			TSXToken::Keyword(TSXKeyword::Throw) => {
-				let throw_pos = Keyword::new(reader.next().unwrap().get_span());
+				let Token(_, start) = reader.next().unwrap();
 				let expression = MultipleExpression::from_reader(reader, state, options)?;
-				let position = throw_pos.get_position().union(expression.get_position());
-				Ok(Statement::Throw(ThrowStatement(throw_pos, Box::new(expression), position)))
+				let position = start.union(expression.get_position());
+				Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
 			}
 			TSXToken::Keyword(TSXKeyword::If) => {
 				IfStatement::from_reader(reader, state, options).map(Into::into)
@@ -145,23 +140,19 @@ impl ASTNode for Statement {
 			}
 			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
 			TSXToken::Keyword(TSXKeyword::Return) => Ok({
-				let return_keyword = Keyword::new(reader.next().unwrap().get_span());
+				let Token(_, start) = reader.next().unwrap();
+				state.add_keyword_at_pos(start.0, TSXKeyword::Return);
 				if matches!(
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
 				) {
-					let position = *return_keyword.get_position();
-					Statement::Return(ReturnStatement(return_keyword, None, position))
+					let position = start.with_length(TSXKeyword::Return.length() as usize);
+					Statement::Return(ReturnStatement(None, position))
 				} else {
 					let multiple_expression =
 						MultipleExpression::from_reader(reader, state, options)?;
-					let position =
-						return_keyword.get_position().union(multiple_expression.get_position());
-					Statement::Return(ReturnStatement(
-						return_keyword,
-						Some(multiple_expression),
-						position,
-					))
+					let position = start.union(multiple_expression.get_position());
+					Statement::Return(ReturnStatement(Some(multiple_expression), position))
 				}
 			}),
 			TSXToken::Keyword(TSXKeyword::Debugger) => {
@@ -231,7 +222,7 @@ impl ASTNode for Statement {
 			Statement::Empty(..) => {
 				buf.push(';');
 			}
-			Statement::Return(ReturnStatement(_, expression, _)) => {
+			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
@@ -283,7 +274,7 @@ impl ASTNode for Statement {
 				buf.push(':');
 				statement.to_string_from_buffer(buf, options, depth);
 			}
-			Statement::Throw(ThrowStatement(_, thrown_expression, _)) => {
+			Statement::Throw(ThrowStatement(thrown_expression, _)) => {
 				buf.push_str("throw ");
 				thrown_expression.to_string_from_buffer(buf, options, depth);
 			}
@@ -318,7 +309,6 @@ impl Statement {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
-	keyword: Keyword<tsx_keywords::Var>,
 	declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 	position: Span,
 }
@@ -333,7 +323,7 @@ impl ASTNode for VarVariableStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let keyword = Keyword::from_reader(reader)?;
+		let Token(_, start) = reader.next().unwrap();
 		let mut declarations = Vec::new();
 		loop {
 			let value =
@@ -346,8 +336,7 @@ impl ASTNode for VarVariableStatement {
 			}
 		}
 		Ok(VarVariableStatement {
-			position: keyword.get_position().union(declarations.last().unwrap().get_position()),
-			keyword,
+			position: start.union(declarations.last().unwrap().get_position()),
 			declarations,
 		})
 	}

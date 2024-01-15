@@ -99,22 +99,22 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Expected ")?;
 				match expected {
 					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a}")),
-					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
-					[head @ .., end] => f.write_fmt(format_args!(
-						"{} or {}",
-						head.iter()
-							.map(|token| format!("{token}"))
+					[a] => f.write_fmt(format_args!("{a:?}")),
+					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
+					[head @ .., end] => {
+						let start = head
+							.iter()
+							.map(|token| format!("{token:?}"))
 							.reduce(|mut acc, token| {
 								acc.push_str(", ");
 								acc.push_str(&token);
 								acc
 							})
-							.unwrap(),
-						end
-					)),
+							.unwrap();
+						f.write_fmt(format_args!("{start} or {end:?}"))
+					}
 				}?;
-				write!(f, " found {found}")
+				write!(f, " found {found:?}")
 			}
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
@@ -131,7 +131,7 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found}")
+				write!(f, "Expected identifier at {at_location}, found {found:?}")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
 				f.write_str("Function parameter cannot be have default value here")
