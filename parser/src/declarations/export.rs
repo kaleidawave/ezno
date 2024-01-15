@@ -57,7 +57,7 @@ impl ASTNode for ExportDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Export))?;
+		let start = state.new_keyword(reader, TSXKeyword::Export)?;
 
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
@@ -70,12 +70,12 @@ impl ASTNode for ExportDeclaration {
 				reader.next();
 				let r#as = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
 				{
-					reader.next();
+					state.add_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
 					Some(VariableIdentifier::from_reader(reader, state, options)?)
 				} else {
 					None
 				};
-				reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+				let _ = state.new_keyword(reader, TSXKeyword::From)?;
 				let (from, end) =
 					ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
 				Ok(ExportDeclaration::Variable {
@@ -113,6 +113,7 @@ impl ASTNode for ExportDeclaration {
 				if let Token(TSXToken::OpenBrace, _) =
 					reader.peek_n(1).ok_or_else(parse_lexing_error)?
 				{
+					state.add_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
 					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
 					let (parts, _end) = crate::parse_bracketed::<ExportPart>(
@@ -123,7 +124,7 @@ impl ASTNode for ExportDeclaration {
 						TSXToken::CloseBrace,
 					)?;
 
-					reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+					let _ = state.new_keyword(reader, TSXKeyword::From)?;
 
 					let (from, end) =
 						ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;

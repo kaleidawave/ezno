@@ -1,4 +1,4 @@
-use crate::VariableIdentifier;
+use crate::{functions::HeadingAndPosition, VariableIdentifier};
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
@@ -27,7 +27,7 @@ impl FunctionBased for ArrowFunctionBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let async_pos = state.new_optional_keyword(reader, crate::TSXKeyword::Async);
 		Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
 	}

@@ -41,6 +41,7 @@ impl<'a> IntoAST<VariableIdentifier> for &'a str {
 	}
 }
 
+#[allow(clippy::cast_precision_loss)]
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
 		Expression::NumberLiteral(crate::NumberRepresentation::from(self as f64), NULL_SPAN)

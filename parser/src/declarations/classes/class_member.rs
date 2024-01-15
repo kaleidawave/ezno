@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 
-use crate::{errors::parse_lexing_error, property_key::PublicOrPrivate, visiting::Visitable};
+use crate::{
+	errors::parse_lexing_error, functions::HeadingAndPosition, property_key::PublicOrPrivate,
+	visiting::Visitable,
+};
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
@@ -83,7 +86,7 @@ impl ASTNode for ClassMember {
 		let readonly_position = state.new_optional_keyword(reader, TSXKeyword::Readonly);
 
 		// TODO not great
-		let start = reader.peek().unwrap().1.clone();
+		let start = reader.peek().unwrap().1;
 
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
@@ -211,10 +214,12 @@ impl FunctionBased for ClassFunctionBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
+		// TODO not great
+		let start = reader.peek().unwrap().1;
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
-		Ok(((header.get_start(), header), name))
+		Ok((((!header.is_no_modifiers()).then_some(start), header), name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -270,7 +275,7 @@ impl FunctionBased for ClassConstructorBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let start = state.new_keyword(reader, TSXKeyword::Constructor)?;
 		Ok(((Some(start), ()), ()))
 	}

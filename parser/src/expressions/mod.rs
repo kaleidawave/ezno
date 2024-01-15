@@ -566,7 +566,7 @@ impl Expression {
 				)?;
 				Expression::TemplateLiteral(template_literal)
 			}
-			Token(TSXToken::Keyword(kw), start) if function_header_ish(&kw, reader) => {
+			Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
 				// TODO fix
 				let token = Token(TSXToken::Keyword(kw), start);
 				let (is_async, start, token) =
@@ -629,7 +629,7 @@ impl Expression {
 					let function_end = function_start
 						.get_end_after(TSXToken::Keyword(TSXKeyword::Function).length() as usize);
 
-					if let Some(_) = generator_keyword {
+					if generator_keyword.is_some() {
 						let position = start.union(function_end);
 
 						let header = FunctionHeader::ChadFunctionHeader {
@@ -664,7 +664,7 @@ impl Expression {
 
 						let end = generator_star_token_position
 							.as_ref()
-							.map_or(function_end, |gstp| gstp.get_end());
+							.map_or(function_end, Span::get_end);
 
 						let header = FunctionHeader::VirginFunctionHeader {
 							position: start.union(end),
@@ -777,7 +777,7 @@ impl Expression {
 					reader.next().ok_or_else(parse_lexing_error)?,
 					"private in expression",
 				)?;
-				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
+				let _ = state.new_keyword(reader, TSXKeyword::In)?;
 				let rhs = Expression::from_reader_with_precedence(
 					reader,
 					state,
@@ -822,6 +822,7 @@ impl Expression {
 						position,
 					}
 				} else {
+					// else if options.partial_syntax
 					let (name, position) = token_as_identifier(token, "variable reference")?;
 					if let Some(Token(TSXToken::Arrow, _)) = reader.peek() {
 						let function = ArrowFunction::from_reader_with_first_parameter(
@@ -946,16 +947,22 @@ impl Expression {
 					let next = reader.next().unwrap();
 					let is_optional = matches!(next.0, TSXToken::OptionalChain);
 
-					let token = reader.next().ok_or_else(parse_lexing_error)?;
-					let (property, position) = if let Token(TSXToken::Cursor(cursor_id), start) =
-						token
+					let (property, position) = if let Some(Token(TSXToken::Cursor(_), _)) =
+						reader.peek()
 					{
+						let Token(TSXToken::Cursor(cursor_id), start) = reader.next().unwrap()
+						else {
+							unreachable!()
+						};
+
 						(PropertyReference::Cursor(cursor_id.into_cursor()), start.with_length(1))
 					} else {
 						let is_private =
 							reader.conditional_next(|t| matches!(t, TSXToken::HashTag)).is_some();
-						let (property, position) =
-							token_as_identifier(token, "variable reference")?;
+						let (property, position) = token_as_identifier(
+							reader.next().ok_or_else(parse_lexing_error)?,
+							"variable reference",
+						)?;
 						(PropertyReference::Standard { property, is_private }, position)
 					};
 					let position = top.get_position().union(position);
@@ -1502,7 +1509,7 @@ impl Expression {
 }
 
 fn function_header_ish(
-	kw: &TSXKeyword,
+	kw: TSXKeyword,
 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 ) -> bool {
 	let x = reader.peek().map_or(

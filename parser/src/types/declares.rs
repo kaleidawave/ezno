@@ -31,8 +31,8 @@ impl ASTNode for DeclareVariableDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::Declare))?;
-		Self::from_reader_sub_declare(reader, state, options, Some(start_span), Vec::new())
+		let start = state.new_keyword(reader, TSXKeyword::Declare)?;
+		Self::from_reader_sub_declare(reader, state, options, Some(start), Vec::new())
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -107,7 +107,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::Declare))?;
+		let _ = state.new_keyword(reader, TSXKeyword::Declare)?;
 		Self::from_reader_sub_declare_with_decorators(reader, state, options, Vec::new())
 	}
 
@@ -139,7 +139,7 @@ impl DeclareFunctionDeclaration {
 		options: &ParseOptions,
 		decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
-		let start_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Function))?;
+		let start = state.new_keyword(reader, TSXKeyword::Function)?;
 		let (name, _) = token_as_identifier(
 			reader.next().ok_or_else(parse_lexing_error)?,
 			"declare function name",
@@ -166,8 +166,8 @@ impl DeclareFunctionDeclaration {
 			None
 		};
 
-		let position = start_pos
-			.union(return_type.as_ref().map_or(&parameters.position, ASTNode::get_position));
+		let position =
+			start.union(return_type.as_ref().map_or(&parameters.position, ASTNode::get_position));
 
 		Ok(Self {
 			name,
@@ -200,7 +200,7 @@ impl ASTNode for DeclareClassDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::Declare))?;
+		let _ = state.new_keyword(reader, TSXKeyword::Declare)?;
 		Self::from_reader_sub_declare(reader, state, options)
 	}
 
@@ -220,7 +220,7 @@ impl DeclareClassDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::Class))?;
+		let _ = state.new_keyword(reader, TSXKeyword::Class)?;
 		let (name, _) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "class")?;
 		let extends = if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek()

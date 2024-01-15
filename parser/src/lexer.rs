@@ -2,10 +2,12 @@
 //!
 //! Uses [`TSXToken`]s for data, uses [Span] for location data. Uses [`tokenizer_lib`] for logic.
 
+#![allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+
 use super::{Span, TSXToken};
 use crate::{
-	cursor::EmptyCursorId, errors::LexingErrors, html_tag_contains_literal_content,
-	html_tag_is_self_closing, Comments, Quoted,
+	errors::LexingErrors, html_tag_contains_literal_content, html_tag_is_self_closing, Comments,
+	Quoted,
 };
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
@@ -21,6 +23,9 @@ pub struct LexerOptions {
 	pub lex_jsx: bool,
 	/// TODO temp
 	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
+
+	/// Allows generating cursors at points
+	pub interpolation_points: bool,
 }
 
 impl Default for LexerOptions {
@@ -29,6 +34,7 @@ impl Default for LexerOptions {
 			comments: Comments::All,
 			lex_jsx: true,
 			allow_unsupported_characters_in_jsx_attribute_keys: true,
+			interpolation_points: false,
 		}
 	}
 }
@@ -59,7 +65,6 @@ pub fn lex_script(
 	sender: &mut impl TokenSender<TSXToken, crate::TokenStart>,
 	options: &LexerOptions,
 	offset: Option<u32>,
-	mut cursors: Vec<(usize, EmptyCursorId)>,
 ) -> Result<(), (LexingErrors, Span)> {
 	#[derive(PartialEq, Debug)]
 	enum JSXAttributeValueDelimiter {
@@ -161,7 +166,9 @@ pub fn lex_script(
 		},
 	}
 
-	cursors.reverse();
+	if script.len() > u32::MAX as usize {
+		return Err((LexingErrors::CannotLoadLargeFile(script.len()), Span::NULL_SPAN));
+	}
 
 	let mut state: LexingState = LexingState::None;
 
@@ -178,6 +185,8 @@ pub fn lex_script(
 	// than a sequence of tokens. Similarly for JSX is a < a less than comparison or the start of a tag. This variable
 	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
 	let mut expect_expression = true;
+
+	let mut interpolation_point_count: u8 = 0;
 
 	/// Returns a span at the current end position. Used for throwing errors
 	macro_rules! current_position {
@@ -202,11 +211,6 @@ pub fn lex_script(
 	}
 
 	for (idx, chr) in script.char_indices() {
-		// TODO somewhat temp
-		if matches!(cursors.last(), Some((x, _)) if *x < idx) {
-			cursors.pop();
-		}
-
 		// Sets current parser state and updates start track
 		macro_rules! set_state {
 			($s:expr) => {{
@@ -906,15 +910,17 @@ pub fn lex_script(
 
 		// This is done later as state may have been set to none by the matching
 		if state == LexingState::None {
-			if matches!(cursors.last(), Some((cursor_idx, _)) if *cursor_idx == idx) {
-				sender.push(Token(TSXToken::Cursor(cursors.pop().unwrap().1), current_position!()));
-			}
 			match chr {
 				'0'..='9' => set_state!(LexingState::Number(Default::default())),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
 				'_' | '$' => {
 					set_state!(LexingState::Identifier);
+				}
+				'\u{03A9}' if options.interpolation_points => {
+					push_token!(TSXToken::Cursor(crate::CursorId::new(interpolation_point_count,)));
+					interpolation_point_count += 1;
+					continue;
 				}
 				chr if chr.is_alphabetic() => {
 					set_state!(LexingState::Identifier);
@@ -1091,10 +1097,6 @@ pub fn lex_script(
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}
-	}
-
-	if matches!(cursors.last(), Some((idx, _)) if *idx == script.len()) {
-		sender.push(Token(TSXToken::Cursor(cursors.pop().unwrap().1), current_position!()));
 	}
 
 	sender.push(Token(TSXToken::EOS, current_position!()));

@@ -28,6 +28,8 @@ pub mod bases {
 	};
 }
 
+pub type HeadingAndPosition<T> = (Option<TokenStart>, <T as FunctionBased>::Header);
+
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// Includes a keyword and/or modifiers
@@ -44,7 +46,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)>;
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
@@ -248,7 +250,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader, state, options)?;
 		let name = T::from_reader(reader, state, options)?;
 		Ok(((Some(header.get_position().get_start()), header), name))
@@ -532,19 +534,6 @@ impl MethodHeader {
 		}
 	}
 
-	pub(crate) fn get_start(&self) -> Option<TokenStart> {
-		None
-		// match self {
-		// 	MethodHeader::Get(kw) => Some(kw.1.get_start()),
-		// 	MethodHeader::Set(kw) => Some(kw.1.get_start()),
-		// 	MethodHeader::Regular { r#async: Some(r#async), .. } => {
-		// 		Some(r#async.get_position().get_start())
-		// 	}
-		// 	MethodHeader::Regular { generator: Some(generator), .. } => Some(generator.get_start()),
-		// 	MethodHeader::Regular { .. } => None,
-		// }
-	}
-
 	#[must_use]
 	pub fn is_async(&self) -> bool {
 		matches!(self, Self::Regular { is_async: true, .. })
@@ -599,7 +588,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 		Some(Token(TSXToken::OpenParentheses, _))
 	);
 
-	let (header, key) = if is_named_get_set_or_async {
+	let (function_header, key) = if is_named_get_set_or_async {
 		let token = reader.next().unwrap();
 		let position = token.get_span();
 		let name = match token.0 {
@@ -615,9 +604,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 			WithComment::None(PropertyKey::Ident(name.to_owned(), position, new_public)),
 		)
 	} else {
-		let header = MethodHeader::from_reader(reader);
-
-		(header, WithComment::from_reader(reader, state, options)?)
+		(MethodHeader::from_reader(reader), WithComment::from_reader(reader, state, options)?)
 	};
-	Ok((header, key))
+	Ok((function_header, key))
 }

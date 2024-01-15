@@ -199,7 +199,7 @@ impl TypeDefinitionModule {
 		options.jsx = false;
 
 		let line_starts = source_map::LineStarts::new(script);
-		super::lex_and_parse_script(line_starts, options, script, source, None, Default::default())
+		super::lex_and_parse_script(line_starts, options, script, source, None)
 	}
 
 	#[cfg(not(target_family = "wasm"))]

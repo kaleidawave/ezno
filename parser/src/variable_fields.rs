@@ -311,7 +311,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, depth);
-					if !at_end {
+					if !at_end || matches!(member, ArrayDestructuringField::None) {
 						buf.push(',');
 						options.add_gap(buf);
 					}
@@ -531,10 +531,8 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 						ImmutableVariableOrProperty::ArrayDestructuringMember(field);
 					visitors.visit_variable(&array_destructuring_member, data, chain);
 					match field {
-						ArrayDestructuringField::Spread(..) => {
-							// TODO should be okay, no nesting here
-						}
-						ArrayDestructuringField::None => {}
+						// TODO should be okay, no nesting here
+						ArrayDestructuringField::Spread(..) | ArrayDestructuringField::None => {}
 						ArrayDestructuringField::Name(variable_field, expression) => {
 							variable_field.visit(visitors, data, options, chain);
 							expression.visit(visitors, data, options, chain);

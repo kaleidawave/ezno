@@ -125,12 +125,12 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 	source: SourceId,
 ) {
 	for item in class.members.iter_mut() {
-		if let ClassMember::Method(static_kw, func) = &item.on {
+		if let ClassMember::Method(is_static, func) = &item.on {
 			let id = FunctionId(source, func.position.start);
 			if !data.is_function_called(id) {
 				// Replace with property to not break Object.keys for now
 				item.on = ClassMember::Property(
-					static_kw.clone(),
+					*is_static,
 					ClassProperty {
 						is_readonly: false,
 						key: func.name.clone(),

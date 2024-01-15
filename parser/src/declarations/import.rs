@@ -76,7 +76,7 @@ impl ASTNode for ImportDeclaration {
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
 		if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
-			reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+			let _ = state.new_keyword(reader, TSXKeyword::From)?;
 		}
 
 		let (from, end) =
@@ -166,7 +166,7 @@ impl ImportDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+		let start = state.new_keyword(reader, TSXKeyword::From)?;
 
 		let (from, _end) =
 			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
@@ -202,7 +202,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 	state: &mut ParsingState,
 	options: &ParseOptions,
 ) -> Result<PartsResult, crate::ParseError> {
-	let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Import))?;
+	let start = state.new_keyword(reader, TSXKeyword::Import)?;
 
 	#[cfg(feature = "extras")]
 	let is_deferred = state.new_optional_keyword(reader, TSXKeyword::Deferred).is_some();
@@ -316,7 +316,7 @@ impl ASTNode for ImportPart {
 				};
 			let mut value = match alias {
 				ImportExportName::Quoted(..) => {
-					reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+					let _ = state.new_keyword(reader, TSXKeyword::As)?;
 					let (name, pos) = token_as_identifier(
 						reader.next().ok_or_else(parse_lexing_error)?,
 						"import name",

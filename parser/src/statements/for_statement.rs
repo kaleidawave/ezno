@@ -30,10 +30,10 @@ impl ASTNode for ForLoopStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::For))?;
+		let start = state.new_keyword(reader, TSXKeyword::For)?;
 		let condition = ForLoopCondition::from_reader(reader, state, options)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		let position = start_pos.union(inner.get_position());
+		let position = start.union(inner.get_position());
 		Ok(ForLoopStatement { condition, inner, position })
 	}
 
@@ -145,7 +145,8 @@ impl ASTNode for ForLoopCondition {
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
-				reader.expect_next(TSXToken::Keyword(TSXKeyword::Of))?;
+				let _ = state.new_keyword(reader, TSXKeyword::Of)?;
+
 				let of = Expression::from_reader(reader, state, options)?;
 				let position = start
 					.unwrap_or_else(|| variable.get_position().get_start())
@@ -161,7 +162,8 @@ impl ASTNode for ForLoopCondition {
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
-				reader.expect_next(TSXToken::Keyword(TSXKeyword::In))?;
+				let _ = state.new_keyword(reader, TSXKeyword::In)?;
+
 				let r#in = MultipleExpression::from_reader(reader, state, options)?;
 				let position = start
 					.unwrap_or_else(|| variable.get_position().get_start())

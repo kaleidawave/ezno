@@ -45,6 +45,7 @@ pub enum LexingErrors {
 	ExpectedEndToTemplateLiteral,
 	InvalidExponentUsage,
 	InvalidUnderscore,
+	CannotLoadLargeFile(usize),
 }
 
 impl Display for LexingErrors {
@@ -87,6 +88,9 @@ impl Display for LexingErrors {
 			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
 			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
 				f.write_str("Invalid item in binary, hex or octal literal")
+			}
+			LexingErrors::CannotLoadLargeFile(size) => {
+				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
 			}
 		}
 	}

@@ -338,7 +338,7 @@ pub enum TSXKeyword {
 
 impl TSXKeyword {
 	#[cfg(feature = "extras")]
-	pub(crate) fn is_special_function_header(&self) -> bool {
+	pub(crate) fn is_special_function_header(self) -> bool {
 		matches!(self, TSXKeyword::Worker | TSXKeyword::Server | TSXKeyword::Generator)
 	}
 
@@ -347,11 +347,11 @@ impl TSXKeyword {
 		false
 	}
 
-	pub(crate) fn is_in_function_header(&self) -> bool {
+	pub(crate) fn is_in_function_header(self) -> bool {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 
-	pub(crate) fn length(&self) -> u32 {
+	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
 	}
 }

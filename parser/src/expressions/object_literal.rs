@@ -6,7 +6,7 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error,
-	functions::{FunctionBased, MethodHeader},
+	functions::{FunctionBased, HeadingAndPosition, MethodHeader},
 	property_key::AlwaysPublic,
 	throw_unexpected_token_with_token,
 	visiting::Visitable,
@@ -79,7 +79,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<((Option<TokenStart>, Self::Header), Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		// TODO not great
 		let start = reader.peek().unwrap().1;
 		Ok((

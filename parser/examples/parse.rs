@@ -7,13 +7,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let path = args.drain(0..1).next().ok_or("expected argument")?;
 	let now = Instant::now();
 	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
-	// TODO temp
-	const STACK_SIZE_MB: usize = 32;
+
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
 	} else {
 		Comments::All
 	};
+
+	// TODO temp
+	const STACK_SIZE_MB: usize = 32;
 
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
@@ -27,19 +29,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			eprintln!("Parsed in: {:?}", now.elapsed());
 			if args.iter().any(|item| item == "--ast") {
 				println!("{module:#?}");
-			} else if args.iter().any(|item| item == "--render") {
+			}
+			if args.iter().any(|item| item == "--render") {
 				let output = module
 					.to_string(&ToStringOptions { trailing_semicolon: true, ..Default::default() });
 				println!("{output}");
 			}
 			Ok(())
 		}
-		Err(FromFileError::FileError(_file_err)) => {
+		Err(FromFileError::FileError(file_err)) => {
 			eprintln!("could not find file {path}");
-			Err(Box::<dyn std::error::Error>::from("error"))
+			Err(Box::<dyn std::error::Error>::from(file_err))
 		}
 		Err(FromFileError::ParseError(parse_err, source)) => {
-			eprintln!("parse error {}", parse_err.reason);
 			eprintln!(
 				"error on {:?}",
 				parse_err
@@ -47,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					.with_source(source)
 					.into_line_column_span::<source_map::encodings::Utf8>(&fs)
 			);
-			Err(Box::<dyn std::error::Error>::from("error"))
+			Err(Box::<dyn std::error::Error>::from(parse_err))
 		}
 	}
 }

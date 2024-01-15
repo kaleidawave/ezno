@@ -48,9 +48,7 @@ impl PropertyKeyKind for AlwaysPublic {
 		false
 	}
 
-	fn new_public() -> () {
-		()
-	}
+	fn new_public() {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

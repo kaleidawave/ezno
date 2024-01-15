@@ -107,6 +107,10 @@ pub struct ParseOptions {
 	pub stack_size: Option<usize>,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
+	/// For the generator
+	pub interpolation_points: bool,
+	/// For LSP
+	pub partial_syntax: bool,
 }
 
 impl ParseOptions {
@@ -115,6 +119,7 @@ impl ParseOptions {
 			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
+			interpolation_points: self.interpolation_points,
 		}
 	}
 
@@ -131,6 +136,9 @@ impl ParseOptions {
 			buffer_size: 100,
 			stack_size: None,
 			record_keyword_positions: true,
+			// Only used in the AST-generator
+			interpolation_points: false,
+			partial_syntax: true,
 		}
 	}
 }
@@ -149,6 +157,8 @@ impl Default for ParseOptions {
 			buffer_size: 100,
 			stack_size: None,
 			record_keyword_positions: false,
+			interpolation_points: false,
+			partial_syntax: false,
 		}
 	}
 }
@@ -250,7 +260,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		// TODO take from argument
 		let line_starts = LineStarts::new(script.as_str());
 
-		lex_and_parse_script(line_starts, options, &script, source, offset, Default::default())
+		lex_and_parse_script(line_starts, options, &script, source, offset)
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
@@ -285,7 +295,6 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	script: &str,
 	source: SourceId,
 	offset: Option<u32>,
-	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
@@ -315,7 +324,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		})
 		.unwrap();
 
-	let lex_result = lexer::lex_script(script, &mut sender, &lex_options, offset, cursors);
+	let lex_result = lexer::lex_script(script, &mut sender, &lex_options, offset);
 	if let Err((reason, pos)) = lex_result {
 		return Err(ParseError::new(reason, pos));
 	}
@@ -331,11 +340,9 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	script: &str,
 	source: SourceId,
 	offset: Option<u32>,
-	cursors: Vec<(usize, CursorId<()>)>,
 ) -> Result<T, ParseError> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-	let lex_result =
-		lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset, cursors);
+	let lex_result = lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset);
 
 	if let Err((reason, pos)) = lex_result {
 		return Err(ParseError::new(reason, pos));
@@ -346,6 +353,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		length_of_source: script.len() as u32,
 		source,
 		constant_imports: Default::default(),
+		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
 	};
 	let res = T::from_reader(&mut queue, &mut state, &options);
 	if res.is_ok() {
@@ -425,6 +433,7 @@ impl ParsingState {
 pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
 
 impl KeywordPositions {
+	#[must_use]
 	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
 		// binary search
 		let mut l: u32 = 0;
@@ -435,9 +444,9 @@ impl KeywordPositions {
 			if kw_pos <= pos && pos < (kw_pos + kw.length()) {
 				return Some(kw);
 			} else if pos > kw_pos {
-				l = m + 1
+				l = m + 1;
 			} else if pos < kw_pos {
-				r = m - 1
+				r = m - 1;
 			}
 		}
 		None
@@ -937,8 +946,7 @@ pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> 
 	// TODO clone ...
 	let input = source.clone();
 	let _lexing_thread = std::thread::spawn(move || {
-		let _lex_script =
-			lexer::lex_script(&input, &mut sender, &Default::default(), None, Default::default());
+		let _lex_script = lexer::lex_script(&input, &mut sender, &Default::default(), None);
 		drop(sender);
 	});
 
@@ -1041,6 +1049,7 @@ pub enum VariableKeyword {
 }
 
 impl VariableKeyword {
+	#[must_use]
 	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
 	}
@@ -1061,6 +1070,7 @@ impl VariableKeyword {
 		}
 	}
 
+	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
 			Self::Const => "const ",

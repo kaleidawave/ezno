@@ -51,7 +51,7 @@ impl ASTNode for InterfaceDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Interface))?;
+		let start = state.new_keyword(reader, TSXKeyword::Interface)?;
 
 		#[cfg(feature = "extras")]
 		let is_nominal = reader

@@ -216,7 +216,7 @@ impl LHSOfAssignment {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, depth);
-					if !at_end {
+					if !at_end || matches!(member, ArrayDestructuringField::None) {
 						buf.push(',');
 					}
 				}

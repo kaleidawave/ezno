@@ -990,7 +990,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			}
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
-					&method.name.get_ast_ref(),
+					method.name.get_ast_ref(),
 					environment,
 					checking_data,
 				);
