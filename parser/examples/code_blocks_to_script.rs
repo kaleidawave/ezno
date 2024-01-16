@@ -44,8 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
 	for code in blocks {
-		let module = Module::from_string(code.clone(), Default::default(), SourceId::NULL, None)
-			.map_err(Box::new)?;
+		let module = Module::from_string(code.clone(), Default::default()).map_err(Box::new)?;
 
 		let mut names = HashSet::new();
 
@@ -60,6 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			&mut visitors,
 			&mut names,
 			&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
+			SourceId::NULL,
 		);
 
 		// TODO quick fix to also register interface and type alias names to prevent conflicts

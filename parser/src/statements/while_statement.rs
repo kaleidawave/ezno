@@ -25,7 +25,7 @@ impl ASTNode for WhileStatement {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = state.new_keyword(reader, TSXKeyword::While)?;
+		let start = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -71,7 +71,7 @@ impl ASTNode for DoWhileStatement {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = state.new_keyword(reader, TSXKeyword::Do)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let _ = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;

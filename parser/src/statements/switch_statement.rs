@@ -36,7 +36,7 @@ impl ASTNode for SwitchStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = state.new_keyword(reader, TSXKeyword::Switch)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
 		let case = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;

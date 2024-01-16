@@ -46,7 +46,7 @@ impl ASTNode for IfStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::If)?;
+		let start = state.expect_keyword(reader, TSXKeyword::If)?;
 
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
@@ -126,7 +126,7 @@ impl ASTNode for ConditionalElseStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let else_start = state.new_keyword(reader, TSXKeyword::Else)?;
+		let else_start = state.expect_keyword(reader, TSXKeyword::Else)?;
 		Self::from_reader_sub_without_else(reader, state, options, else_start)
 	}
 
@@ -157,7 +157,7 @@ impl ConditionalElseStatement {
 		options: &ParseOptions,
 		else_position: TokenStart,
 	) -> ParseResult<Self> {
-		let _ = state.new_keyword(reader, TSXKeyword::If)?;
+		let _ = state.expect_keyword(reader, TSXKeyword::If)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -176,7 +176,7 @@ impl ASTNode for UnconditionalElseStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let else_position = state.new_keyword(reader, TSXKeyword::Else)?;
+		let else_position = state.expect_keyword(reader, TSXKeyword::Else)?;
 		Self::from_reader_sub_without_else(reader, state, options, else_position)
 	}
 

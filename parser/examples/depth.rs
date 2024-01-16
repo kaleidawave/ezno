@@ -1,5 +1,4 @@
 use ezno_parser::{ASTNode, Module, ParseOptions};
-use source_map::SourceId;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	const STACK_SIZE_MB: usize = 64;
@@ -12,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			s = format!("a ? b : ({s})");
 		}
 		eprintln!("parsing at {}", i * 5);
-		let _result = Module::from_string(s, options, SourceId::NULL, None)?;
+		let _result = Module::from_string(s, options)?;
 	}
 	Ok(())
 }

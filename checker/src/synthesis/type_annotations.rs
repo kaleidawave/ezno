@@ -467,13 +467,12 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
 
-	let annotation = parser::TypeAnnotation::from_string(
+	let annotation = parser::TypeAnnotation::from_string_with_options(
 		possible_declaration.to_owned(),
 		Default::default(),
-		source,
 		offset,
 	);
-	if let Ok(annotation) = annotation {
+	if let Ok((annotation, _)) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
 			annotation.get_position().with_source(source),

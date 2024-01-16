@@ -83,7 +83,7 @@ impl ASTNode for ClassMember {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, options)?));
 		}
 
-		let readonly_position = state.new_optional_keyword(reader, TSXKeyword::Readonly);
+		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
 		// TODO not great
 		let start = reader.peek().unwrap().1;
@@ -276,7 +276,7 @@ impl FunctionBased for ClassConstructorBase {
 		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let start = state.new_keyword(reader, TSXKeyword::Constructor)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
 		Ok(((Some(start), ()), ()))
 	}
 

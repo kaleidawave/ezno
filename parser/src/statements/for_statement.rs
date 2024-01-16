@@ -30,7 +30,7 @@ impl ASTNode for ForLoopStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::For)?;
+		let start = state.expect_keyword(reader, TSXKeyword::For)?;
 		let condition = ForLoopCondition::from_reader(reader, state, options)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let position = start.union(inner.get_position());
@@ -145,7 +145,7 @@ impl ASTNode for ForLoopCondition {
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
-				let _ = state.new_keyword(reader, TSXKeyword::Of)?;
+				let _ = state.expect_keyword(reader, TSXKeyword::Of)?;
 
 				let of = Expression::from_reader(reader, state, options)?;
 				let position = start
@@ -162,7 +162,7 @@ impl ASTNode for ForLoopCondition {
 				let variable =
 					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
 
-				let _ = state.new_keyword(reader, TSXKeyword::In)?;
+				let _ = state.expect_keyword(reader, TSXKeyword::In)?;
 
 				let r#in = MultipleExpression::from_reader(reader, state, options)?;
 				let position = start

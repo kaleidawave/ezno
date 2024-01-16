@@ -141,7 +141,7 @@ impl ASTNode for Statement {
 			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
 			TSXToken::Keyword(TSXKeyword::Return) => Ok({
 				let Token(_, start) = reader.next().unwrap();
-				state.add_keyword_at_pos(start.0, TSXKeyword::Return);
+				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
 				if matches!(
 					reader.peek(),
 					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))

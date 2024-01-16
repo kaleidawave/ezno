@@ -324,7 +324,7 @@ impl Expression {
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Null), _) => Expression::Null(t.get_span()),
 			Token(TSXToken::Keyword(kw @ TSXKeyword::Class), start) => {
-				state.add_keyword_at_pos(start.0, kw);
+				state.append_keyword_at_pos(start.0, kw);
 				Expression::ClassExpression(ClassDeclaration::from_reader_sub_class_keyword(
 					reader, state, options, start,
 				)?)
@@ -777,7 +777,7 @@ impl Expression {
 					reader.next().ok_or_else(parse_lexing_error)?,
 					"private in expression",
 				)?;
-				let _ = state.new_keyword(reader, TSXKeyword::In)?;
+				let _ = state.expect_keyword(reader, TSXKeyword::In)?;
 				let rhs = Expression::from_reader_with_precedence(
 					reader,
 					state,
@@ -1914,7 +1914,7 @@ mod tests {
 	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
 	use crate::{
 		assert_matches_ast, ast::SpreadExpression, operators::BinaryOperator, span,
-		NumberRepresentation, Quoted, SourceId,
+		NumberRepresentation, Quoted,
 	};
 
 	#[test]
@@ -1950,13 +1950,7 @@ mod tests {
 
 	#[test]
 	fn is_iife() {
-		let expr = Expression::from_string(
-			"(() => 2)()".to_owned(),
-			Default::default(),
-			SourceId::NULL,
-			Default::default(),
-		)
-		.unwrap();
+		let expr = Expression::from_string("(() => 2)()".to_owned(), Default::default()).unwrap();
 		assert!(expr.is_iife().is_some());
 	}
 

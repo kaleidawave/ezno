@@ -1,4 +1,5 @@
 use parser::ASTNode;
+use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
@@ -23,7 +24,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	};
 
 	let mut idx_to_types = HashMap::new();
-	let source = definition.source;
+	// TODO NULL
+	let source = SourceId::NULL;
 	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types

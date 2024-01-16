@@ -97,13 +97,14 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let options = Default::default();
 		let offset = Some(from_index as u32);
 		let result = if input.trim_start().starts_with('{') {
-			Expression::from_string(input, options, source, offset).map(|expression| Module {
-				span: *expression.get_position(),
-				items: vec![Statement::Expression(expression.into()).into()],
-				source,
+			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
+				Module {
+					span: *expression.get_position(),
+					items: vec![Statement::Expression(expression.into()).into()],
+				}
 			})
 		} else {
-			Module::from_string(input, options, source, offset)
+			Module::from_string(input, options)
 		};
 
 		let mut item = match result {
@@ -122,6 +123,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 				},
 				&mut (),
 				&Default::default(),
+				source,
 			);
 		}
 

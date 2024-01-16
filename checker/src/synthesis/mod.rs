@@ -56,23 +56,24 @@ impl crate::ASTImplementation for EznoParser {
 	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
 
 	fn module_from_string(
+		// TODO remove
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
 		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options, source_id, None)
+		<parser::Module as parser::ASTNode>::from_string(string, options)
 			.map_err(|err| (err, source_id))
 	}
 
 	fn definition_module_from_string(
+		// TODO remove
 		source_id: SourceId,
 		string: String,
 		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = Default::default();
-		parser::TypeDefinitionModule::from_string(&string, options, source_id)
-			.map_err(|err| (err, source_id))
+		parser::TypeDefinitionModule::from_string(&string, options).map_err(|err| (err, source_id))
 	}
 
 	fn synthesise_module<'a, T: crate::ReadFromFS>(

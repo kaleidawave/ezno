@@ -1,10 +1,10 @@
 use ezno_parser::{
 	visiting::{Annex, Chain, VisitOptions, Visitable, Visitor, Visitors},
-	ASTNode, Expression, SourceId,
+	ASTNode, Expression,
 };
 
 fn parse<T: ASTNode>(s: &str) -> T {
-	T::from_string(s.to_owned(), Default::default(), SourceId::NULL, None).unwrap()
+	T::from_string(s.to_owned(), Default::default()).unwrap()
 }
 
 struct ShowChain;

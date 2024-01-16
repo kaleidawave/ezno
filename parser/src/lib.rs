@@ -37,7 +37,7 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_script, LexerOptions};
-pub use modules::{FromFileError, Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
+pub use modules::{Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
 pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
@@ -249,18 +249,18 @@ pub enum Comments {
 /// TODO remove partial eq
 pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
-	fn from_string(
+	fn from_string(script: String, options: ParseOptions) -> ParseResult<Self> {
+		Self::from_string_with_options(script, options, None).map(|(ast, _)| ast)
+	}
+
+	fn from_string_with_options(
 		script: String,
 		options: ParseOptions,
-		source: SourceId,
 		offset: Option<u32>,
-	) -> ParseResult<Self> {
-		use source_map::LineStarts;
-
+	) -> ParseResult<(Self, ParsingState)> {
 		// TODO take from argument
-		let line_starts = LineStarts::new(script.as_str());
-
-		lex_and_parse_script(line_starts, options, &script, source, offset)
+		let line_starts = source_map::LineStarts::new(script.as_str());
+		lex_and_parse_script(line_starts, options, &script, offset)
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
@@ -293,13 +293,12 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
 	script: &str,
-	source: SourceId,
 	offset: Option<u32>,
-) -> Result<T, ParseError> {
+) -> Result<(T, ParsingState), ParseError> {
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
-	let length = script.len() as u32;
+	let length_of_source = script.len() as u32;
 	let mut thread = std::thread::Builder::new().name("AST parsing".into());
 	if let Some(stack_size) = options.stack_size {
 		thread = thread.stack_size(stack_size);
@@ -309,8 +308,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		.spawn(move || {
 			let mut state = ParsingState {
 				line_starts,
-				source,
-				length_of_source: length,
+				length_of_source,
 				constant_imports: Default::default(),
 				keyword_positions: options
 					.record_keyword_positions
@@ -320,7 +318,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 			if res.is_ok() {
 				reader.expect_next(TSXToken::EOS)?;
 			}
-			res
+			res.map(|res| (res, state))
 		})
 		.unwrap();
 
@@ -332,15 +330,15 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	parsing_thread.join().expect("Parsing panicked")
 }
 
+// WASM has no threads, so this is a sequential version
 #[cfg(target_arch = "wasm32")]
 #[doc(hidden)]
 pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
 	options: ParseOptions,
 	script: &str,
-	source: SourceId,
 	offset: Option<u32>,
-) -> Result<T, ParseError> {
+) -> Result<(T, ParsingState), ParseError> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 	let lex_result = lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset);
 
@@ -351,7 +349,6 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	let mut state = ParsingState {
 		line_starts,
 		length_of_source: script.len() as u32,
-		source,
 		constant_imports: Default::default(),
 		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
 	};
@@ -359,7 +356,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	if res.is_ok() {
 		queue.expect_next(TSXToken::EOS)?;
 	}
-	res
+	res.map(|res| (res, state))
 }
 
 pub(crate) fn throw_unexpected_token<T>(
@@ -380,48 +377,47 @@ pub(crate) fn throw_unexpected_token_with_token<T>(
 #[derive(Debug)]
 pub struct ParsingState {
 	pub(crate) line_starts: source_map::LineStarts,
-	pub(crate) source: source_map::SourceId,
 	pub(crate) length_of_source: u32,
 	/// TODO as multithreaded channel + record is dynamic exists
 	pub(crate) constant_imports: Vec<String>,
-	pub(crate) keyword_positions: Option<KeywordPositions>,
+	pub keyword_positions: Option<KeywordPositions>,
 }
 
 impl ParsingState {
-	pub(crate) fn new_keyword(
+	pub(crate) fn expect_keyword(
 		&mut self,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		kw: TSXKeyword,
 	) -> crate::ParseResult<TokenStart> {
 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
-		self.add_keyword_at_pos(start.0, kw);
+		self.append_keyword_at_pos(start.0, kw);
 		Ok(start)
 	}
 
-	pub(crate) fn new_optional_keyword(
+	pub(crate) fn optionally_expect_keyword(
 		&mut self,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		kw: TSXKeyword,
 	) -> Option<Span> {
 		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
-			self.add_keyword_at_pos(start.0, kw);
+			self.append_keyword_at_pos(start.0, kw);
 			Some(start.with_length(t.length() as usize))
 		} else {
 			None
 		}
 	}
 
-	pub(crate) fn new_keyword_full_span(
+	pub(crate) fn expect_keyword_get_full_span(
 		&mut self,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		kw: TSXKeyword,
 	) -> crate::ParseResult<Span> {
 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
-		self.add_keyword_at_pos(start.0, kw);
+		self.append_keyword_at_pos(start.0, kw);
 		Ok(start.with_length(kw.length() as usize))
 	}
 
-	fn add_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
+	fn append_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
 		if let Some(ref mut keyword_positions) = self.keyword_positions {
 			keyword_positions.0.push((start, kw));
 		}
@@ -958,8 +954,7 @@ pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> 
 pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 
-	let _lex_script =
-		lexer::lex_script(&source, &mut queue, &Default::default(), None, Default::default());
+	let _lex_script = lexer::lex_script(&source, &mut queue, &Default::default(), None);
 
 	receiver_to_tokens(queue, source)
 }
@@ -1108,13 +1103,7 @@ pub(crate) mod test_utils {
 	#[allow(clippy::crate_in_macro_def)]
 	macro_rules! assert_matches_ast {
 		($source:literal, $ast_pattern:pat) => {{
-			let node = crate::ASTNode::from_string(
-				$source.to_owned(),
-				Default::default(),
-				crate::SourceId::NULL,
-				None,
-			)
-			.unwrap();
+			let node = crate::ASTNode::from_string($source.to_owned(), Default::default()).unwrap();
 			// AST matchers are partial expressions
 			let matches = ::match_deref::match_deref! {
 				match &node {

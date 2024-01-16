@@ -51,7 +51,7 @@ impl ASTNode for InterfaceDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::Interface)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Interface)?;
 
 		#[cfg(feature = "extras")]
 		let is_nominal = reader
@@ -223,7 +223,7 @@ impl ASTNode for InterfaceMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let readonly_position = state.new_optional_keyword(reader, TSXKeyword::Readonly);
+		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
 		// This match will early return if not a method
 		let token = &reader.peek().ok_or_else(parse_lexing_error)?.0;

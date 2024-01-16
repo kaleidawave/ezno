@@ -24,7 +24,7 @@ impl ASTNode for IsExpression {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let start = state.new_keyword(reader, crate::TSXKeyword::Is)?;
+		let start = state.expect_keyword(reader, crate::TSXKeyword::Is)?;
 		is_expression_from_reader_sub_is_keyword(reader, state, options, start)
 	}
 

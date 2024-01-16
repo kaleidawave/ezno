@@ -31,7 +31,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::Declare)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Declare)?;
 		Self::from_reader_sub_declare(reader, state, options, Some(start), Vec::new())
 	}
 
@@ -107,7 +107,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let _ = state.new_keyword(reader, TSXKeyword::Declare)?;
+		let _ = state.expect_keyword(reader, TSXKeyword::Declare)?;
 		Self::from_reader_sub_declare_with_decorators(reader, state, options, Vec::new())
 	}
 
@@ -139,7 +139,7 @@ impl DeclareFunctionDeclaration {
 		options: &ParseOptions,
 		decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::Function)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Function)?;
 		let (name, _) = token_as_identifier(
 			reader.next().ok_or_else(parse_lexing_error)?,
 			"declare function name",
@@ -200,7 +200,7 @@ impl ASTNode for DeclareClassDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let _ = state.new_keyword(reader, TSXKeyword::Declare)?;
+		let _ = state.expect_keyword(reader, TSXKeyword::Declare)?;
 		Self::from_reader_sub_declare(reader, state, options)
 	}
 
@@ -220,7 +220,7 @@ impl DeclareClassDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let _ = state.new_keyword(reader, TSXKeyword::Class)?;
+		let _ = state.expect_keyword(reader, TSXKeyword::Class)?;
 		let (name, _) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "class")?;
 		let extends = if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek()

@@ -1,12 +1,12 @@
-use std::time::Instant;
+use std::{fs::read_to_string, time::Instant};
 
-use ezno_parser::{ASTNode, Comments, FromFileError, Module, ParseOptions, ToStringOptions};
+use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
+use source_map::FileSystem;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut args: Vec<_> = std::env::args().skip(1).collect();
 	let path = args.drain(0..1).next().ok_or("expected argument")?;
 	let now = Instant::now();
-	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
@@ -17,36 +17,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// TODO temp
 	const STACK_SIZE_MB: usize = 32;
 
+	let display_keywords = args.iter().any(|item| item == "--keywords");
+
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,
+		record_keyword_positions: display_keywords,
 		..ParseOptions::all_features()
 	};
 
-	let result = Module::from_file(&path, options, &mut fs);
+	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
+	let source = read_to_string(path.clone())?;
+	let source_id = fs.new_source_id(path.into(), source.clone());
+
+	let result = Module::from_string_with_options(source, options, None);
+
 	match result {
-		Ok(module) => {
+		Ok((module, state)) => {
 			eprintln!("Parsed in: {:?}", now.elapsed());
-			if args.iter().any(|item| item == "--ast") {
+			let print_ast = args.iter().any(|item| item == "--ast");
+			let render_output = args.iter().any(|item| item == "--render");
+
+			if print_ast {
 				println!("{module:#?}");
 			}
-			if args.iter().any(|item| item == "--render") {
+			if render_output {
 				let output = module
 					.to_string(&ToStringOptions { trailing_semicolon: true, ..Default::default() });
 				println!("{output}");
 			}
+			if display_keywords {
+				println!("{:?}", state.keyword_positions.unwrap());
+			}
 			Ok(())
 		}
-		Err(FromFileError::FileError(file_err)) => {
-			eprintln!("could not find file {path}");
-			Err(Box::<dyn std::error::Error>::from(file_err))
-		}
-		Err(FromFileError::ParseError(parse_err, source)) => {
+		Err(parse_err) => {
 			eprintln!(
 				"error on {:?}",
 				parse_err
 					.position
-					.with_source(source)
+					.with_source(source_id)
 					.into_line_column_span::<source_map::encodings::Utf8>(&fs)
 			);
 			Err(Box::<dyn std::error::Error>::from(parse_err))

@@ -30,7 +30,7 @@ impl ASTNode for TryCatchStatement {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = state.new_keyword(reader, TSXKeyword::Try)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Try)?;
 		let try_inner = Block::from_reader(reader, state, options)?;
 
 		let mut catch_inner: Option<Block> = None;
@@ -38,7 +38,7 @@ impl ASTNode for TryCatchStatement {
 
 		// Optional `catch` clause
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Catch), _)) = reader.peek() {
-			state.add_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Else);
+			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Else);
 
 			// Optional exception variable field `catch (e)`
 			if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
@@ -65,7 +65,7 @@ impl ASTNode for TryCatchStatement {
 		// Optional `finally` clause
 		let mut finally_inner: Option<Block> = None;
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Finally), _)) = reader.peek() {
-			state.add_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Finally);
+			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Finally);
 			finally_inner = Some(Block::from_reader(reader, state, options)?);
 		}
 

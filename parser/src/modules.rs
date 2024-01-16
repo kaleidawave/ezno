@@ -19,22 +19,11 @@ use crate::{
 };
 
 use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
-use std::io::Error as IOError;
-
-#[cfg(not(target_family = "wasm"))]
-use std::{fs, path::Path};
-
-#[derive(Debug)]
-pub enum FromFileError {
-	FileError(IOError),
-	ParseError(ParseError, SourceId),
-}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Module {
 	pub items: Vec<StatementOrDeclaration>,
-	pub source: SourceId,
 	pub span: Span,
 }
 
@@ -65,7 +54,6 @@ impl ASTNode for Module {
 	) -> ParseResult<Self> {
 		let end = state.length_of_source;
 		parse_statements_and_declarations(reader, state, options).map(|statements| Module {
-			source: state.source,
 			items: statements,
 			span: Span { start: 0, source: (), end },
 		})
@@ -89,18 +77,6 @@ impl Module {
 		self.to_string_from_buffer(&mut buf, options, 0);
 		buf.get_count()
 	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_file(
-		path: impl AsRef<Path>,
-		options: ParseOptions,
-		fs: &mut impl source_map::FileSystem,
-	) -> Result<Self, FromFileError> {
-		let source = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
-		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
-		Self::from_string(source, options, source_id, None)
-			.map_err(|err| FromFileError::ParseError(err, source_id))
-	}
 }
 
 impl Module {
@@ -109,9 +85,10 @@ impl Module {
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
+		source: SourceId,
 	) {
 		use crate::visiting::Visitable;
-		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
+		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));
 		let mut chain = temporary_annex::Annex::new(&mut chain);
 
 		{
@@ -131,9 +108,10 @@ impl Module {
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
+		source: SourceId,
 	) {
 		use crate::visiting::Visitable;
-		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
+		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));
 		let mut chain = temporary_annex::Annex::new(&mut chain);
 
 		{
@@ -185,33 +163,16 @@ pub enum TypeDefinitionModuleDeclaration {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDefinitionModule {
 	pub declarations: Vec<TypeDefinitionModuleDeclaration>,
-	pub source: SourceId,
 	pub position: Span,
 }
 
 impl TypeDefinitionModule {
-	pub fn from_string(
-		script: &str,
-		mut options: ParseOptions,
-		source: SourceId,
-	) -> ParseResult<Self> {
+	pub fn from_string(script: &str, mut options: ParseOptions) -> ParseResult<Self> {
 		// Important not to parse JSX as <> is used for casting
 		options.jsx = false;
 
 		let line_starts = source_map::LineStarts::new(script);
-		super::lex_and_parse_script(line_starts, options, script, source, None)
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_file(
-		path: impl AsRef<Path>,
-		options: ParseOptions,
-		fs: &mut impl source_map::FileSystem,
-	) -> Result<Self, FromFileError> {
-		let script = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
-		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
-		Self::from_string(&script, options, source)
-			.map_err(|err| FromFileError::ParseError(err, source))
+		super::lex_and_parse_script(line_starts, options, script, None).map(|(ast, _)| ast)
 	}
 }
 
@@ -245,11 +206,7 @@ impl ASTNode for TypeDefinitionModule {
 			}
 		}
 		let end = state.length_of_source;
-		Ok(Self {
-			declarations,
-			source: state.source,
-			position: Span { start: 0, end, source: () },
-		})
+		Ok(Self { declarations, position: Span { start: 0, end, source: () } })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

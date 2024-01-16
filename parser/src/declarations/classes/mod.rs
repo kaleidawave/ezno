@@ -37,7 +37,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = state.new_keyword(reader, TSXKeyword::Class)?;
+		let start = state.expect_keyword(reader, TSXKeyword::Class)?;
 		Self::from_reader_sub_class_keyword(reader, state, options, start)
 	}
 

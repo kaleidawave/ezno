@@ -31,7 +31,7 @@ impl ASTNode for EnumDeclaration {
 			.map(|Token(_, pos)| pos);
 
 		let is_constant = const_pos.is_some();
-		let enum_pos = state.new_keyword(reader, TSXKeyword::Enum)?;
+		let enum_pos = state.expect_keyword(reader, TSXKeyword::Enum)?;
 		let (name, _) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
 		reader.expect_next(TSXToken::OpenBrace)?;

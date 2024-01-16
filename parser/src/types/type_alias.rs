@@ -19,7 +19,7 @@ impl ASTNode for TypeAlias {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let start = state.new_keyword(reader, crate::TSXKeyword::Type)?;
+		let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
 		let type_name = TypeDeclaration::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::Assign)?;
 		let type_expression = TypeAnnotation::from_reader(reader, state, options)?;

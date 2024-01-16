@@ -6,7 +6,7 @@ use std::{
 use checker::{DiagnosticsContainer, TypeCheckOptions};
 use parser::{
 	source_map::{MapFileStore, WithPathMap},
-	SourceId, Span, ToStringOptions,
+	Span, ToStringOptions,
 };
 use serde::Deserialize;
 
@@ -73,11 +73,7 @@ pub fn build<T: crate::ReadFromFS>(
 		// TODO For all modules
 		let keys = data.modules.keys().cloned().collect::<Vec<_>>();
 
-		let null_module = parser::Module {
-			items: Default::default(),
-			source: SourceId::NULL,
-			span: Span::NULL_SPAN,
-		};
+		let null_module = parser::Module { items: Default::default(), span: Span::NULL_SPAN };
 
 		let mut outputs = Vec::new();
 
@@ -96,6 +92,7 @@ pub fn build<T: crate::ReadFromFS>(
 				&mut transformers,
 				&mut data,
 				&parser::visiting::VisitOptions::default(),
+				source,
 			);
 
 			let to_string_options = if config.strip_whitespace {

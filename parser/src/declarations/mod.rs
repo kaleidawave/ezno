@@ -177,7 +177,7 @@ impl crate::ASTNode for Declaration {
 			}
 			TSXToken::Keyword(TSXKeyword::Class) => {
 				let Token(_, start) = reader.next().unwrap();
-				state.add_keyword_at_pos(start.0, TSXKeyword::Class);
+				state.append_keyword_at_pos(start.0, TSXKeyword::Class);
 				ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)
 					.map(|on| Declaration::Class(Decorated::new(decorators, on)))
 			}

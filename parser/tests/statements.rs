@@ -1,4 +1,4 @@
-use ezno_parser::{ASTNode, Module, SourceId, ToStringOptions};
+use ezno_parser::{ASTNode, Module, ToStringOptions};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -34,8 +34,7 @@ interface X {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module =
-		Module::from_string(input.clone(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
@@ -98,8 +97,7 @@ try {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module =
-		Module::from_string(input.clone(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&Default::default());
 	assert_eq!(output, input);
 }
@@ -121,8 +119,7 @@ import defaultExport, * as name from "module-name";
 import "module-name""#
 		.trim_start();
 
-	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 	assert_eq!(output, input);
 
@@ -133,7 +130,7 @@ import { a, } from "module-name"
 "#
 	.trim_start();
 
-	Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	Module::from_string(input.to_owned(), Default::default()).unwrap();
 }
 
 #[test]
@@ -194,8 +191,7 @@ export { default as name1 } from "module-name";
 export type { name1, /* …, */ nameN } from "module-name";"#
 		.trim_start();
 
-	let _module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let _module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	// TODO
 	// let output = module.to_string(&ToStringOptions::typescript());
@@ -215,8 +211,7 @@ from "module-name" import defaultExport, * as name;
     "#
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -239,9 +234,7 @@ worker function a() {}
     "
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), ParseOptions::all_features(), SourceId::NULL, None)
-			.unwrap();
+	let module = Module::from_string(input.to_owned(), ParseOptions::all_features()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 

@@ -346,7 +346,7 @@ impl ASTNode for FunctionHeader {
 		_options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let async_start =
-			state.new_optional_keyword(reader, TSXKeyword::Async).map(|kw| kw.get_start());
+			state.optionally_expect_keyword(reader, TSXKeyword::Async).map(|kw| kw.get_start());
 		parse_special_then_regular_header(reader, state, async_start)
 	}
 
@@ -382,7 +382,7 @@ pub(crate) fn parse_special_then_regular_header(
 			let span = token.get_span();
 			let location = parse_function_location(reader);
 
-			let pos = state.new_keyword_full_span(reader, TSXKeyword::Function)?;
+			let pos = state.expect_keyword_get_full_span(reader, TSXKeyword::Function)?;
 			let position = span.union(pos);
 
 			Ok(FunctionHeader::ChadFunctionHeader {
@@ -425,7 +425,7 @@ fn parse_regular_header(
 	#[cfg(feature = "extras")]
 	let location = parse_function_location(reader);
 
-	let function_start = state.new_keyword(reader, TSXKeyword::Function)?;
+	let function_start = state.expect_keyword(reader, TSXKeyword::Function)?;
 	let is_async = async_kw_pos.is_some();
 
 	let generator_star_token_position = reader
@@ -585,7 +585,14 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 		Some(Token(TSXToken::Keyword(TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async), _))
 	) && matches!(
 		reader.peek_n(1),
-		Some(Token(TSXToken::OpenParentheses, _))
+		Some(Token(
+			TSXToken::OpenParentheses
+				| TSXToken::Colon
+				| TSXToken::OpenChevron
+				| TSXToken::CloseBrace
+				| TSXToken::Comma,
+			_
+		))
 	);
 
 	let (function_header, key) = if is_named_get_set_or_async {

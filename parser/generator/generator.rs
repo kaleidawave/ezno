@@ -27,17 +27,11 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	// TODO can you get new lines in macro?
 	let line_starts = ezno_parser::source_map::LineStarts::new("");
 	let options = ezno_parser::ParseOptions::default();
-	let source = ezno_parser::SourceId::NULL;
-	let parse_result = ezno_parser::lex_and_parse_script::<T>(
-		line_starts,
-		options,
-		&string_to_parse,
-		source,
-		None,
-	);
+	let parse_result =
+		ezno_parser::lex_and_parse_script::<T>(line_starts, options, &string_to_parse, None);
 
 	let node = match parse_result {
-		Ok(node) => node,
+		Ok((node, _state)) => node,
 		Err(err) => {
 			let reason = err.reason;
 			return quote!(compile_error!(#reason)).into();
