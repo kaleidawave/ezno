@@ -233,12 +233,12 @@ impl ASTNode for InterfaceMember {
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
 				// let parameters = function_parameters_from_reader(reader, state, options)?;
-				let return_type = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-					reader.next();
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
+				let return_type =
+					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
+						Some(TypeAnnotation::from_reader(reader, state, options)?)
+					} else {
+						None
+					};
 				// TODO parameter.pos can be union'ed with itself
 				let position = readonly_position.as_ref().unwrap_or(&parameters.position).union(
 					return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
@@ -257,12 +257,12 @@ impl ASTNode for InterfaceMember {
 					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-				let return_type = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-					reader.next();
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
+				let return_type =
+					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
+						Some(TypeAnnotation::from_reader(reader, state, options)?)
+					} else {
+						None
+					};
 				let position =
 					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
@@ -289,12 +289,16 @@ impl ASTNode for InterfaceMember {
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
 
-				let return_type =
-					if reader.conditional_next(|token| *token == TSXToken::Colon).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
+				let return_type = if reader
+					.conditional_next(|tok| {
+						options.type_annotations && matches!(tok, TSXToken::Colon)
+					})
+					.is_some()
+				{
+					Some(TypeAnnotation::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
 
 				#[cfg(feature = "extras")]
 				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {

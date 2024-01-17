@@ -89,7 +89,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									position: *position,
 								}
 							}
-							VariableIdentifier::Cursor(_, _) => todo!(),
+							VariableIdentifier::Marker(_, _) => todo!(),
 						},
 					};
 					let default_import = import.default.as_ref().and_then(|default_identifier| {
@@ -97,7 +97,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(name, position) => {
 								Some((name.as_str(), *position))
 							}
-							VariableIdentifier::Cursor(..) => None,
+							VariableIdentifier::Marker(..) => None,
 						}
 					});
 					import_items(
@@ -120,7 +120,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									Some(VariableIdentifier::Standard(name, position)) => {
 										ImportKind::All { under: name, position: *position }
 									}
-									Some(VariableIdentifier::Cursor(_, _)) => todo!(),
+									Some(VariableIdentifier::Marker(_, _)) => todo!(),
 									None => ImportKind::Everything,
 								};
 
@@ -438,7 +438,7 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 				value: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Cursor(_) => todo!(),
+					parser::declarations::ImportExportName::Marker(_) => todo!(),
 				},
 				r#as: name,
 				position: *position,
@@ -470,7 +470,7 @@ pub(super) fn export_part_to_name_pair(
 				r#as: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Cursor(_) => todo!(),
+					parser::declarations::ImportExportName::Marker(_) => todo!(),
 				},
 				position: *position,
 			})

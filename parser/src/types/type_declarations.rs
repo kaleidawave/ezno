@@ -96,8 +96,9 @@ impl ASTNode for GenericTypeConstraint {
 				let key_of = reader
 					.conditional_next(|token| *token == TSXToken::Keyword(TSXKeyword::KeyOf))
 					.is_some();
-				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
+				let extends_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, false, false, None,
+				)?;
 				if key_of {
 					Ok(Self::ExtendsKeyOf(name, extends_type))
 				} else {
@@ -106,8 +107,9 @@ impl ASTNode for GenericTypeConstraint {
 			}
 			Some(Token(TSXToken::Assign, _)) => {
 				reader.next();
-				let default_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
+				let default_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, false, false, None,
+				)?;
 				Ok(Self::Parameter { name, default: Some(default_type) })
 			}
 			_ => Ok(Self::Parameter { name, default: None }),

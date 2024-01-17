@@ -151,8 +151,8 @@ impl DeclareFunctionDeclaration {
 				None
 			};
 		let parameters = TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-		let return_type = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-			reader.next();
+		let return_type = if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
+		{
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			Some(type_annotation)
 		} else {

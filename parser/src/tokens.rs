@@ -164,15 +164,13 @@ pub enum TSXToken {
     #[cfg(feature = "extras")]
     PipeOperator,
 
-    /// Special cursor marker
-    Cursor(crate::EmptyCursorId),
-
     EOS
 }
 
 impl tokenizer_lib::TokenTrait for TSXToken {
 	fn is_skippable(&self) -> bool {
-		matches!(self, TSXToken::Cursor(_))
+		// TODO is this correct?
+		self.is_comment()
 	}
 }
 
@@ -276,12 +274,11 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
-			// TODO
+			// Marker nodes with no length
 			TSXToken::JSXClosingTagStart
 			| TSXToken::JSXSelfClosingTag
 			| TSXToken::JSXContentLineBreak
-			| TSXToken::EOS
-			| TSXToken::Cursor(_) => 0,
+			| TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
 			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
@@ -408,6 +405,45 @@ impl TSXToken {
 
 	pub(crate) fn is_symbol(&self) -> bool {
 		!matches!(self, TSXToken::Keyword(_) | TSXToken::Identifier(..))
+	}
+
+	pub(crate) fn is_statement_or_declaration_start(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Keyword(
+				TSXKeyword::Function
+					| TSXKeyword::If | TSXKeyword::For
+					| TSXKeyword::While | TSXKeyword::Const
+					| TSXKeyword::Let | TSXKeyword::Break
+					| TSXKeyword::Import | TSXKeyword::Export
+			)
+		)
+	}
+
+	pub(crate) fn is_expression_delimiter(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Comma
+				| TSXToken::SemiColon
+				| TSXToken::Colon
+				| TSXToken::LogicalOr
+				| TSXToken::LogicalAnd
+				| TSXToken::CloseBrace
+				| TSXToken::CloseParentheses
+				| TSXToken::CloseBracket
+		) || self.is_assignment()
+	}
+
+	pub(crate) fn is_assignment(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Assign
+				| TSXToken::MultiplyAssign
+				| TSXToken::AddAssign
+				| TSXToken::SubtractAssign
+				| TSXToken::DivideAssign
+				| TSXToken::ModuloAssign
+		)
 	}
 }
 

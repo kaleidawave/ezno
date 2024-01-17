@@ -242,14 +242,7 @@ pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 
 	let definition_file = if let Some(source) = handler(file) {
 		let now = std::time::Instant::now();
-		// TODO
-		let cursors = Default::default();
-		let from_string = parser::TypeDefinitionModule::from_string(
-			source,
-			Default::default(),
-			source_map::SourceId::NULL,
-			cursors,
-		);
+		let from_string = parser::TypeDefinitionModule::from_string(source, Default::default());
 
 		println!("Parsing {:?}", now.elapsed());
 		match from_string {

@@ -1,6 +1,6 @@
 use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
-	extensions::decorators::Decorated, CursorId, Decorator, ParseResult, VariableField,
+	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
 };
 use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, Quoted};
@@ -81,7 +81,7 @@ pub enum TypeAnnotation {
 	},
 	Decorated(Decorator, Box<Self>, Span),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(CursorId<TypeAnnotation>, Span),
+	Marker(Marker<TypeAnnotation>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -249,7 +249,7 @@ impl ASTNode for TypeAnnotation {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, options, false, false)
+		Self::from_reader_with_config(reader, state, options, false, false, None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -259,8 +259,8 @@ impl ASTNode for TypeAnnotation {
 		depth: u8,
 	) {
 		match self {
-			Self::Cursor(..) => {
-				assert!(options.expect_cursors,);
+			Self::Marker(..) => {
+				assert!(options.expect_markers,);
 			}
 			Self::CommonName(name, _) => buf.push_str(match name {
 				CommonTypes::String => "string",
@@ -406,7 +406,32 @@ impl TypeAnnotation {
 		options: &ParseOptions,
 		return_on_union_or_intersection: bool,
 		return_on_arrow: bool,
+		start: Option<TokenStart>,
 	) -> ParseResult<Self> {
+		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
+			let next_is_not_type_annotation_like = matches!(
+				peek,
+				TSXToken::CloseParentheses
+					| TSXToken::CloseBracket
+					| TSXToken::CloseBrace
+					| TSXToken::Comma | TSXToken::OpenChevron
+			) || peek.is_assignment()
+				|| (start.map_or(false, |start| {
+					peek.is_statement_or_declaration_start()
+						&& state
+							.line_starts
+							.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
+				}));
+
+			if next_is_not_type_annotation_like {
+				let point = start.unwrap_or(*at);
+				return Ok(TypeAnnotation::Marker(
+					state.new_partial_point_marker(point),
+					point.with_length(0),
+				));
+			}
+		}
+
 		while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
 			reader.peek()
 		{
@@ -431,7 +456,7 @@ impl TypeAnnotation {
 			Token(TSXToken::At, pos) => {
 				let decorator = Decorator::from_reader_sub_at_symbol(reader, state, options, pos)?;
 				let this_declaration =
-					Self::from_reader_with_config(reader, state, options, true, false)?;
+					Self::from_reader_with_config(reader, state, options, true, false, start)?;
 				let position = pos.union(this_declaration.get_position());
 				Self::Decorated(decorator, Box::new(this_declaration), position)
 			}
@@ -632,8 +657,9 @@ impl TypeAnnotation {
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
-				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, true, false)?;
+				let extends_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, true, false, start,
+				)?;
 				// TODO depth
 				let position = reference.get_position().union(extends_type.get_position());
 				let condition = TypeCondition::Extends {
@@ -660,8 +686,9 @@ impl TypeAnnotation {
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) => {
 				reader.next();
-				let is_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, true, false)?;
+				let is_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, true, false, start,
+				)?;
 				// TODO depth
 				let position = reference.get_position().union(is_type.get_position());
 				let condition =
@@ -684,8 +711,9 @@ impl TypeAnnotation {
 				let mut union_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseOr, _)) = reader.peek() {
 					reader.next();
-					union_members
-						.push(Self::from_reader_with_config(reader, state, options, true, false)?);
+					union_members.push(Self::from_reader_with_config(
+						reader, state, options, true, false, start,
+					)?);
 				}
 				let position = union_members
 					.first()
@@ -701,8 +729,9 @@ impl TypeAnnotation {
 				let mut intersection_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseAnd, _)) = reader.peek() {
 					reader.next();
-					intersection_members
-						.push(Self::from_reader_with_config(reader, state, options, true, false)?);
+					intersection_members.push(Self::from_reader_with_config(
+						reader, state, options, true, false, start,
+					)?);
 				}
 				let position = intersection_members
 					.first()
@@ -717,7 +746,7 @@ impl TypeAnnotation {
 				}
 				reader.next();
 				let return_type =
-					Self::from_reader_with_config(reader, state, options, true, false)?;
+					Self::from_reader_with_config(reader, state, options, true, false, start)?;
 				let parameters_position = *reference.get_position();
 				let position = parameters_position.union(return_type.get_position());
 				Ok(Self::FunctionLiteral {
@@ -760,6 +789,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 			options,
 			return_on_union_or_intersection,
 			false,
+			None,
 		)?;
 		generic_arguments.push(argument);
 

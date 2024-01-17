@@ -139,12 +139,13 @@ impl FunctionParameters {
 					reader.next().ok_or_else(parse_lexing_error)?,
 					"spread function parameter",
 				)?;
-				let type_annotation =
-					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
+				let type_annotation = if options.type_annotations
+					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
+				{
+					Some(TypeAnnotation::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
 
 				let position = spread_pos
 					.union(type_annotation.as_ref().map_or(&name_pos, ASTNode::get_position));
@@ -156,14 +157,18 @@ impl FunctionParameters {
 				}));
 				break;
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::This))
+				options.type_annotations
+					&& parameters.is_empty()
+					&& matches!(tok, TSXToken::Keyword(TSXKeyword::This))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 				let position = start.union(type_annotation.get_position());
 				this_type = Some((type_annotation, position));
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
+				options.type_annotations
+					&& parameters.is_empty()
+					&& matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
@@ -175,12 +180,12 @@ impl FunctionParameters {
 				)?;
 
 				let (is_optional, type_annotation) = match reader.peek() {
-					Some(Token(TSXToken::Colon, _)) => {
+					Some(Token(TSXToken::Colon, _)) if options.type_annotations => {
 						reader.next();
 						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(false, Some(type_annotation))
 					}
-					Some(Token(TSXToken::OptionalMember, _)) => {
+					Some(Token(TSXToken::OptionalMember, _)) if options.type_annotations => {
 						reader.next();
 						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(true, Some(type_annotation))

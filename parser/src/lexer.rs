@@ -23,9 +23,6 @@ pub struct LexerOptions {
 	pub lex_jsx: bool,
 	/// TODO temp
 	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
-
-	/// Allows generating cursors at points
-	pub interpolation_points: bool,
 }
 
 impl Default for LexerOptions {
@@ -34,7 +31,6 @@ impl Default for LexerOptions {
 			comments: Comments::All,
 			lex_jsx: true,
 			allow_unsupported_characters_in_jsx_attribute_keys: true,
-			interpolation_points: false,
 		}
 	}
 }
@@ -58,7 +54,7 @@ fn is_number_delimiter(chr: char) -> bool {
 ///
 /// Returns () if successful, if runs into lexing error will short-circuit
 ///
-/// **CURSORS HAVE TO BE IN FORWARD ORDER**
+/// **MARKERS HAVE TO BE IN FORWARD ORDER**
 #[doc(hidden)]
 pub fn lex_script(
 	script: &str,
@@ -185,8 +181,6 @@ pub fn lex_script(
 	// than a sequence of tokens. Similarly for JSX is a < a less than comparison or the start of a tag. This variable
 	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
 	let mut expect_expression = true;
-
-	let mut interpolation_point_count: u8 = 0;
 
 	/// Returns a span at the current end position. Used for throwing errors
 	macro_rules! current_position {
@@ -916,11 +910,6 @@ pub fn lex_script(
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
 				'_' | '$' => {
 					set_state!(LexingState::Identifier);
-				}
-				'\u{03A9}' if options.interpolation_points => {
-					push_token!(TSXToken::Cursor(crate::CursorId::new(interpolation_point_count,)));
-					interpolation_point_count += 1;
-					continue;
 				}
 				chr if chr.is_alphabetic() => {
 					set_state!(LexingState::Identifier);

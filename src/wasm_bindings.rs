@@ -1,10 +1,20 @@
 use std::path::Path;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_derive::TryFromJsValue;
 
 #[wasm_bindgen]
 extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
 	pub(crate) fn log(s: &str);
+
+	#[wasm_bindgen(typescript_type = "CheckOptions | undefined")]
+	pub type OptionalCheckOptions;
+}
+
+#[derive(TryFromJsValue)]
+#[wasm_bindgen]
+pub struct CheckOptions {
+	pub lsp_mode: bool,
 }
 
 #[wasm_bindgen(js_name = experimental_build)]
@@ -43,20 +53,32 @@ impl CheckOutput {
 	}
 
 	pub fn get_type_at_position(path: &str, pos: u32) -> String {
-		self.0
+		self.0.get_type_at_position(path, pos)
 	}
 }
 
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASMCheckOutput {
+pub fn check_wasm(
+	entry_path: String,
+	fs_resolver_js: &js_sys::Function,
+	options: OptionalCheckOptions,
+) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+	let js_value: &JsValue = options.as_ref();
+	let typed_value: Option<MyType> = if js_value.is_undefined() {
+		None
+	} else {
+		let options = CheckOptions::try_from(js_value).expect("invalid options");
+		Some(checker::TypeCheckOptions { lsp_mode: options.lsp_mode, ..Default::default() })
+	};
 
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
 		res.ok().and_then(|res| res.as_string())
 	};
-	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some()))
 }
 
 #[wasm_bindgen(js_name = run_cli)]
@@ -103,7 +125,7 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Expression, SourceId};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Expression::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Expression::from_string(input, Default::default());
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -117,7 +139,7 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Module, SourceId};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(input, Default::default());
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -131,7 +153,7 @@ pub fn just_imports(input: String) -> JsValue {
 	use parser::{ASTNode, Module, SourceId};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(input, Default::default());
 	match item {
 		Ok(mut item) => {
 			crate::transformers::filter_imports(&mut item);
@@ -150,7 +172,7 @@ pub fn minify_module(input: String) -> JsValue {
 	use parser::{ASTNode, Module, SourceId};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(input, Default::default());
 	match item {
 		Ok(item) => {
 			serde_wasm_bindgen::to_value(&item.to_string(&parser::ToStringOptions::minified()))

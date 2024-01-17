@@ -105,7 +105,7 @@ fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
 			Reference::Variable(name.clone(), pos.with_source(environment.get_source())),
 		),
-		parser::VariableIdentifier::Cursor(..) => todo!(),
+		parser::VariableIdentifier::Marker(..) => todo!(),
 	}
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 						publicity,
 					}
 				}
-				parser::PropertyReference::Cursor(_) => todo!(),
+				parser::PropertyReference::Marker(_) => todo!(),
 			}
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {

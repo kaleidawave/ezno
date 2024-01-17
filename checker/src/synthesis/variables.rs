@@ -46,7 +46,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 					&mut checking_data.diagnostics_container,
 				);
 			}
-			parser::VariableIdentifier::Cursor(..) => todo!(),
+			parser::VariableIdentifier::Marker(..) => todo!(),
 		}
 	}
 
@@ -265,7 +265,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(name, _) => {
 								crate::types::properties::PropertyKey::String(Cow::Borrowed(name))
 							}
-							VariableIdentifier::Cursor(..) => todo!(),
+							VariableIdentifier::Marker(..) => todo!(),
 						};
 
 						// TODO if LHS = undefined ...? conditional

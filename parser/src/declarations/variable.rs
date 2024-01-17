@@ -3,9 +3,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token_with_token, ASTNode, Expression,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation,
-	VariableField, VariableFieldInSourceCode, WithComment,
+	errors::parse_lexing_error, operators::COMMA_PRECEDENCE, throw_unexpected_token_with_token,
+	ASTNode, Expression, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -39,10 +39,15 @@ impl DeclarationExpression for Option<Expression> {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
-			reader.next();
-			let expression = Expression::from_reader(reader, state, options)?;
-			Ok(Some(expression))
+		if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
+			Expression::from_reader_with_precedence(
+				reader,
+				state,
+				options,
+				COMMA_PRECEDENCE,
+				Some(start),
+			)
+			.map(Some)
 		} else {
 			Ok(None)
 		}
@@ -79,8 +84,14 @@ impl DeclarationExpression for crate::Expression {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Assign)?;
-		Expression::from_reader(reader, state, options)
+		let start = reader.expect_next(TSXToken::Assign)?;
+		Expression::from_reader_with_precedence(
+			reader,
+			state,
+			options,
+			COMMA_PRECEDENCE,
+			Some(start),
+		)
 	}
 
 	fn decl_to_string_from_buffer<T: source_map::ToString>(
@@ -128,26 +139,24 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
 			reader, state, options,
 		)?;
-		let type_annotation = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-			reader.next();
+		let type_annotation = if reader
+			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
+			.is_some()
+		{
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			Some(type_annotation)
 		} else {
 			None
 		};
 		let expression = TExpr::decl_from_reader(reader, state, options)?;
-		Ok(Self {
-			position: name.get_position().union(
-				expression
-					.get_decl_position()
-					.or(type_annotation.as_ref().map(ASTNode::get_position))
-					// TODO lol
-					.unwrap_or(name.get_position()),
-			),
-			name,
-			type_annotation,
-			expression,
-		})
+		let position = name.get_position().union(
+			expression
+				.get_decl_position()
+				.or(type_annotation.as_ref().map(ASTNode::get_position))
+				.unwrap_or(name.get_position()),
+		);
+
+		Ok(Self { position, name, type_annotation, expression })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -199,7 +208,7 @@ impl VariableDeclarationKeyword {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
 
-	pub(crate) fn from_reader(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
+	pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
 		match token {
 			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
 			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
@@ -227,9 +236,10 @@ impl ASTNode for VariableDeclaration {
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
 		let start = token.1;
-		let kind = VariableDeclarationKeyword::from_reader(token)?;
+		let kind = VariableDeclarationKeyword::from_token(token)?;
 		Ok(match kind {
 			VariableDeclarationKeyword::Let => {
+				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
 				let mut declarations = Vec::new();
 				loop {
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
@@ -248,6 +258,7 @@ impl ASTNode for VariableDeclaration {
 				}
 			}
 			VariableDeclarationKeyword::Const => {
+				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
 				let mut declarations = Vec::new();
 				loop {
 					let value =

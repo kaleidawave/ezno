@@ -13,9 +13,7 @@ use pretty_assertions::assert_eq;
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
-	let Ok(module) =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None)
-	else {
+	let Ok(module) = Module::from_string(input.to_owned(), Default::default()) else {
 		return Corpus::Reject;
 	};
 
@@ -24,9 +22,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	let output1 = module.to_string(&to_string_options);
 
-	let Ok(module) =
-		Module::from_string(output1.to_owned(), Default::default(), SourceId::NULL, None)
-	else {
+	let Ok(module) = Module::from_string(output1.to_owned(), Default::default()) else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 

@@ -413,7 +413,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Cursor(_, _) => {
+		TypeAnnotation::Marker(_, _) => {
 			todo!("Dump available object types in environment to somewhere..?")
 		}
 		// TODO these are all work in progress

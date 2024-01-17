@@ -3,7 +3,6 @@
 
 mod block;
 mod comments;
-pub mod cursor;
 pub mod declarations;
 mod errors;
 pub mod expressions;
@@ -11,6 +10,7 @@ mod extensions;
 pub mod functions;
 pub mod generator_helpers;
 mod lexer;
+pub mod marker;
 mod modules;
 pub mod operators;
 pub mod parameters;
@@ -23,8 +23,8 @@ pub mod visiting;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
-pub use cursor::{CursorId, EmptyCursorId};
 pub use declarations::Declaration;
+pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
@@ -59,7 +59,7 @@ use tokenizer_lib::{
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, marker::PhantomData, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -87,6 +87,8 @@ impl Quoted {
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
+	/// only type annotations
+	pub type_annotations: bool,
 	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
@@ -97,8 +99,6 @@ pub struct ParseOptions {
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
 	pub custom_function_headers: bool,
-	/// For LSP allows incomplete AST for completions. TODO tidy up
-	pub slots: bool,
 	/// TODO temp for seeing how channel performs
 	pub buffer_size: usize,
 	/// TODO temp for seeing how channel performs
@@ -119,7 +119,6 @@ impl ParseOptions {
 			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-			interpolation_points: self.interpolation_points,
 		}
 	}
 
@@ -127,10 +126,10 @@ impl ParseOptions {
 	pub fn all_features() -> Self {
 		Self {
 			jsx: true,
+			type_annotations: true,
 			special_jsx_attributes: true,
 			comments: Comments::All,
 			decorators: true,
-			slots: true,
 			custom_function_headers: true,
 			is_expressions: true,
 			buffer_size: 100,
@@ -148,10 +147,10 @@ impl Default for ParseOptions {
 	fn default() -> Self {
 		Self {
 			jsx: true,
+			type_annotations: true,
 			special_jsx_attributes: false,
 			comments: Comments::All,
 			decorators: true,
-			slots: false,
 			custom_function_headers: false,
 			is_expressions: false,
 			buffer_size: 100,
@@ -181,7 +180,11 @@ pub struct ToStringOptions {
 	pub indent_with: String,
 	/// If false, panics if sees JSX
 	pub expect_jsx: bool,
-	pub expect_cursors: bool,
+	/// For partial AST, marker nodes may exist. This allows pretty printing on invalid source
+	/// but should be `false` for builds
+	///
+	/// if `false` and a marker node is found, printing will panic
+	pub expect_markers: bool,
 }
 
 impl Default for ToStringOptions {
@@ -194,7 +197,7 @@ impl Default for ToStringOptions {
 			comments: Comments::All,
 			expect_jsx: false,
 			trailing_semicolon: false,
-			expect_cursors: false,
+			expect_markers: false,
 			indent_with: "\t".to_owned(),
 		}
 	}
@@ -313,6 +316,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 				keyword_positions: options
 					.record_keyword_positions
 					.then_some(KeywordPositions::new()),
+				partial_points: Default::default(),
 			};
 			let res = T::from_reader(&mut reader, &mut state, &options);
 			if res.is_ok() {
@@ -351,6 +355,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		length_of_source: script.len() as u32,
 		constant_imports: Default::default(),
 		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
+		partial_points: Default::default(),
 	};
 	let res = T::from_reader(&mut queue, &mut state, &options);
 	if res.is_ok() {
@@ -381,6 +386,7 @@ pub struct ParsingState {
 	/// TODO as multithreaded channel + record is dynamic exists
 	pub(crate) constant_imports: Vec<String>,
 	pub keyword_positions: Option<KeywordPositions>,
+	pub partial_points: Vec<TokenStart>,
 }
 
 impl ParsingState {
@@ -421,6 +427,12 @@ impl ParsingState {
 		if let Some(ref mut keyword_positions) = self.keyword_positions {
 			keyword_positions.0.push((start, kw));
 		}
+	}
+
+	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
+		let id = self.partial_points.len();
+		self.partial_points.push(at);
+		Marker(id as u8, PhantomData::default())
 	}
 }
 

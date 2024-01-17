@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 /// Used for generating ezno_parser::ASTNodes using proc macros
 ///
 /// Turns token stream into string.
-/// - Finds expressions and registers cursor locations
+/// - Finds expressions and registers marker locations
 /// - Parses structure from string and turns it into Rust tokens
 #[proc_macro]
 pub fn expr(item: TokenStream) -> TokenStream {
@@ -21,12 +21,12 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	item: TokenStream,
 ) -> TokenStream {
 	let mut string_to_parse = String::new();
-	let mut cursor_items = Vec::new();
-	parse_token_stream(item.into_iter(), &mut string_to_parse, &mut cursor_items);
+	let mut marker_items = Vec::new();
+	parse_token_stream(item.into_iter(), &mut string_to_parse, &mut marker_items);
 
 	// TODO can you get new lines in macro?
 	let line_starts = ezno_parser::source_map::LineStarts::new("");
-	let options = ezno_parser::ParseOptions::default();
+	let options = ezno_parser::ParseOptions { interpolation_points: true, ..Default::default() };
 	let parse_result =
 		ezno_parser::lex_and_parse_script::<T>(line_starts, options, &string_to_parse, None);
 
@@ -40,8 +40,8 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 
 	let node_as_tokens = self_rust_tokenize::SelfRustTokenize::to_tokens(&node);
 
-	let interpolation_tokens = cursor_items.iter().enumerate().map(|(idx, name)| {
-		let ident = format_ident!("_cursor_{idx}");
+	let interpolation_tokens = marker_items.iter().enumerate().map(|(idx, name)| {
+		let ident = format_ident!("_marker_{idx}");
 		let expr_ident = proc_macro2::Ident::new(name, Span::call_site());
 		quote!(let #ident = #expr_ident)
 	});
@@ -65,7 +65,7 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 fn parse_token_stream(
 	mut token_iter: token_stream::IntoIter,
 	string: &mut String,
-	cursor_items: &mut Vec<String>,
+	marker_items: &mut Vec<String>,
 ) {
 	let mut last_was_ident = false;
 	while let Some(token_tree) = token_iter.next() {
@@ -81,7 +81,7 @@ fn parse_token_stream(
 					Delimiter::None => ("", ""),
 				};
 				string.push_str(start);
-				parse_token_stream(group.stream().into_iter(), string, cursor_items);
+				parse_token_stream(group.stream().into_iter(), string, marker_items);
 				string.push_str(end);
 			}
 			TokenTree::Ident(ident) => {
@@ -95,7 +95,7 @@ fn parse_token_stream(
 				if chr == '#' {
 					if let Some(TokenTree::Ident(ident)) = token_iter.next() {
 						let expr_name = ident.to_string();
-						cursor_items.push(expr_name);
+						marker_items.push(expr_name);
 					} else {
 						panic!("Expected ident")
 					}

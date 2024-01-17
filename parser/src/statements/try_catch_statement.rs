@@ -50,8 +50,12 @@ impl ASTNode for TryCatchStatement {
 
 				// Optional type reference `catch (e: type)`
 				let mut exception_var_type: Option<TypeAnnotation> = None;
-				if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-					reader.expect_next(TSXToken::Colon)?;
+				if reader
+					.conditional_next(|tok| {
+						options.type_annotations && matches!(tok, TSXToken::Colon)
+					})
+					.is_some()
+				{
 					exception_var_type = Some(TypeAnnotation::from_reader(reader, state, options)?);
 				}
 				exception_var = Some((variable_field, exception_var_type));

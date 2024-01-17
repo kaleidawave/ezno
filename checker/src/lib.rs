@@ -151,7 +151,7 @@ pub trait ASTImplementation: Sized {
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
-	fn parse_options(is_js: bool, parse_comments: bool) -> Self::ParseOptions;
+	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 }
@@ -299,8 +299,11 @@ where
 						.and_then(|s| s.to_str())
 						.map_or(false, |s| s.starts_with("ts"));
 
-					let parse_options =
-						A::parse_options(is_js, checking_data.options.parse_comments);
+					let parse_options = A::parse_options(
+						is_js,
+						checking_data.options.parse_comments,
+						checking_data.options.lsp_mode,
+					);
 
 					let module_from_string = A::module_from_string(
 						source,
@@ -465,7 +468,11 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			let is_js =
 				point.extension().and_then(|s| s.to_str()).map_or(false, |s| s.starts_with("ts"));
 
-			let parse_options = A::parse_options(is_js, checking_data.options.parse_comments);
+			let parse_options = A::parse_options(
+				is_js,
+				checking_data.options.parse_comments,
+				checking_data.options.lsp_mode,
+			);
 
 			let module = A::module_from_string(
 				source,

@@ -15,10 +15,13 @@ pub struct TypeCheckOptions {
 	/// Any types displayed will be in debug view
 	pub debug_types: bool,
 
+	/// For post type check optimisations and
 	pub store_expression_type_mappings: bool,
 
 	/// TODO WIP
 	pub parse_comments: bool,
+	/// Allows partial syntax and collects other information for using in editor
+	pub lsp_mode: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -32,6 +35,7 @@ impl Default for TypeCheckOptions {
 			parse_comments: true,
 			strict_casts: false,
 			store_expression_type_mappings: false,
+			lsp_mode: false,
 		}
 	}
 }

@@ -9,7 +9,7 @@ use crate::{
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	CursorId, ExpressionPosition, FunctionHeader, NumberRepresentation, ParseResult, Quoted,
+	ExpressionPosition, FunctionHeader, Marker, NumberRepresentation, ParseResult, Quoted,
 	TSXKeyword,
 };
 
@@ -166,10 +166,10 @@ pub enum Expression {
 	/// Not to be confused with binary operator `is`
 	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
-	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(cursor_id))]
-	Cursor {
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(marker_id))]
+	Marker {
 		#[visit_skip_field]
-		cursor_id: CursorId<Expression>,
+		marker_id: Marker<Expression>,
 		position: Span,
 	},
 }
@@ -185,7 +185,7 @@ pub enum PropertyReference {
 		is_private: bool,
 	},
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(CursorId<PropertyReference>),
+	Marker(Marker<PropertyReference>),
 }
 
 impl ASTNode for Expression {
@@ -194,7 +194,7 @@ impl ASTNode for Expression {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Expression> {
-		Self::from_reader_with_precedence(reader, state, options, COMMA_PRECEDENCE)
+		Self::from_reader_with_precedence(reader, state, options, COMMA_PRECEDENCE, None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -213,19 +213,33 @@ impl ASTNode for Expression {
 
 impl Expression {
 	#[allow(clippy::similar_names)]
-	pub(self) fn from_reader_with_precedence(
+	pub fn from_reader_with_precedence(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 		return_precedence: u8,
+		// For partial syntax
+		start: Option<TokenStart>,
 	) -> ParseResult<Self> {
-		let first_expression = match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::Cursor(cursor_id), position) => {
-				return Ok(Expression::Cursor {
-					cursor_id: cursor_id.into_cursor(),
-					position: Span { start: position.0, end: position.0, source: () },
+		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
+			let next_is_not_expression_like = peek.is_expression_delimiter()
+				|| start.map_or(false, |start| {
+					peek.is_statement_or_declaration_start()
+						&& state
+							.line_starts
+							.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
+				});
+
+			if next_is_not_expression_like {
+				let point = start.unwrap_or(*at);
+				return Ok(Expression::Marker {
+					marker_id: state.new_partial_point_marker(point),
+					position: point.with_length(0),
 				});
 			}
+		}
+
+		let first_expression = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let position = start.with_length(content.len() + 2);
 				Expression::StringLiteral(content, quoted, position)
@@ -342,6 +356,7 @@ impl Expression {
 					state,
 					options,
 					operator.precedence(),
+					Some(s),
 				)?;
 				let position = s.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
@@ -361,16 +376,17 @@ impl Expression {
 				});
 				if let Some(Token(token_type, _)) = after_bracket {
 					if let TSXToken::Assign = token_type {
-						let (members, end_span) =
+						let (members, end) =
 							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-						reader.next();
+						let Token(_assignment, assignment_pos) = reader.next().unwrap();
 						let rhs = Expression::from_reader_with_precedence(
 							reader,
 							state,
 							options,
 							ASSIGNMENT_PRECEDENCE,
+							Some(assignment_pos),
 						)?;
-						let array_position = start.union(end_span);
+						let array_position = start.union(end);
 						Expression::Assignment {
 							position: array_position.union(rhs.get_position()),
 							lhs: LHSOfAssignment::ArrayDestructuring(members, array_position),
@@ -429,12 +445,13 @@ impl Expression {
 					if let TSXToken::Assign = token_type {
 						let (members, end) =
 							parse_bracketed(reader, state, options, None, TSXToken::CloseBrace)?;
-						reader.next();
+						let Token(_assignment, assignment_pos) = reader.next().unwrap();
 						let rhs = Box::new(Expression::from_reader_with_precedence(
 							reader,
 							state,
 							options,
 							ASSIGNMENT_PRECEDENCE,
+							Some(assignment_pos),
 						)?);
 						let object_position = start.union(end);
 						Expression::Assignment {
@@ -503,6 +520,7 @@ impl Expression {
 						state,
 						options,
 						FUNCTION_CALL_PRECEDENCE,
+						Some(start),
 					)?;
 					let position = start.union(constructor_expression.get_position());
 
@@ -543,16 +561,24 @@ impl Expression {
 			//     2
 			// ]
 			// ```
-			Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), start) => {
+			Token(
+				TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment),
+				comment_start,
+			) => {
 				if let Some(Token(TSXToken::CloseParentheses | TSXToken::JSXExpressionEnd, _)) =
 					reader.peek()
 				{
-					let with_length = start.with_length(comment.len() + 2);
+					let with_length = comment_start.with_length(comment.len() + 2);
 					return Ok(Expression::Comment(comment, with_length));
 				}
-				let expression =
-					Self::from_reader_with_precedence(reader, state, options, return_precedence)?;
-				let position = start.union(expression.get_position());
+				let expression = Self::from_reader_with_precedence(
+					reader,
+					state,
+					options,
+					return_precedence,
+					start,
+				)?;
+				let position = comment_start.union(expression.get_position());
 				Expression::PrefixComment(comment, Box::new(expression), position)
 			}
 			Token(tok @ (TSXToken::JSXOpeningTagStart | TSXToken::JSXFragmentStart), span) => {
@@ -777,12 +803,13 @@ impl Expression {
 					reader.next().ok_or_else(parse_lexing_error)?,
 					"private in expression",
 				)?;
-				let _ = state.expect_keyword(reader, TSXKeyword::In)?;
+				let in_pos = state.expect_keyword(reader, TSXKeyword::In)?;
 				let rhs = Expression::from_reader_with_precedence(
 					reader,
 					state,
 					options,
 					RELATION_PRECEDENCE,
+					Some(in_pos),
 				)?;
 				let position = start.union(rhs.get_position());
 				Self::SpecialOperators(
@@ -796,8 +823,13 @@ impl Expression {
 			token => {
 				if let Ok(unary_operator) = UnaryOperator::try_from(&token.0) {
 					let precedence = unary_operator.precedence();
-					let operand =
-						Self::from_reader_with_precedence(reader, state, options, precedence)?;
+					let operand = Self::from_reader_with_precedence(
+						reader,
+						state,
+						options,
+						precedence,
+						Some(token.1),
+					)?;
 					let position = token.get_span().union(operand.get_position());
 					Expression::UnaryOperation {
 						operand: Box::new(operand),
@@ -824,7 +856,10 @@ impl Expression {
 				} else {
 					// else if options.partial_syntax
 					let (name, position) = token_as_identifier(token, "variable reference")?;
-					if let Some(Token(TSXToken::Arrow, _)) = reader.peek() {
+					if options.interpolation_points && name == crate::marker::MARKER {
+						let marker_id = state.new_partial_point_marker(position.get_start());
+						Expression::Marker { marker_id, position }
+					} else if let Some(Token(TSXToken::Arrow, _)) = reader.peek() {
 						let function = ArrowFunction::from_reader_with_first_parameter(
 							reader,
 							state,
@@ -933,10 +968,10 @@ impl Expression {
 					// TODO should check adjacency
 					let start = TokenStart::new(top.get_position().start);
 					let tag = Some(Box::new(top));
-					let template_lit = TemplateLiteral::from_reader_sub_start_with_tag(
+					let template_literal = TemplateLiteral::from_reader_sub_start_with_tag(
 						reader, state, options, tag, start,
 					);
-					top = template_lit.map(Expression::TemplateLiteral)?;
+					top = template_literal.map(Expression::TemplateLiteral)?;
 				}
 				TSXToken::Dot | TSXToken::OptionalChain => {
 					if AssociativityDirection::LeftToRight
@@ -944,18 +979,21 @@ impl Expression {
 					{
 						return Ok(top);
 					}
-					let next = reader.next().unwrap();
-					let is_optional = matches!(next.0, TSXToken::OptionalChain);
+					let Token(accessor, accessor_position) = reader.next().unwrap();
+					let is_optional = matches!(accessor, TSXToken::OptionalChain);
 
-					let (property, position) = if let Some(Token(TSXToken::Cursor(_), _)) =
-						reader.peek()
-					{
-						let Token(TSXToken::Cursor(cursor_id), start) = reader.next().unwrap()
-						else {
-							unreachable!()
-						};
+					let Token(peek, at) = reader.peek().ok_or_else(parse_lexing_error)?;
+					let is_next_not_identifier = peek.is_expression_delimiter()
+						|| (peek.is_statement_or_declaration_start()
+							&& state.line_starts.byte_indexes_on_different_lines(
+								accessor_position.0 as usize,
+								at.0 as usize,
+							));
 
-						(PropertyReference::Cursor(cursor_id.into_cursor()), start.with_length(1))
+					let (property, position) = if options.partial_syntax && is_next_not_identifier {
+						let marker = state.new_partial_point_marker(accessor_position);
+						// TODO maybe just ""
+						(PropertyReference::Marker(marker), accessor_position.with_length(1))
 					} else {
 						let is_private =
 							reader.conditional_next(|t| matches!(t, TSXToken::HashTag)).is_some();
@@ -979,12 +1017,13 @@ impl Expression {
 					{
 						return Ok(top);
 					}
-					reader.next();
+					let Token(_assignment, assignment_pos) = reader.next().unwrap();
 					let new_rhs = Self::from_reader_with_precedence(
 						reader,
 						state,
 						options,
 						parent_precedence,
+						Some(assignment_pos),
 					)?;
 					top = Expression::Assignment {
 						position: top.get_position().union(new_rhs.get_position()),
@@ -1046,12 +1085,13 @@ impl Expression {
 						return Ok(top);
 					}
 
-					let _token = reader.next().unwrap();
+					let Token(_token, in_pos) = reader.next().unwrap();
 					let rhs = Expression::from_reader_with_precedence(
 						reader,
 						state,
 						options,
 						RELATION_PRECEDENCE,
+						Some(in_pos),
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
@@ -1069,12 +1109,13 @@ impl Expression {
 						return Ok(top);
 					}
 
-					let _token = reader.next().unwrap();
+					let Token(_, instance_of_pos) = reader.next().unwrap();
 					let rhs = Expression::from_reader_with_precedence(
 						reader,
 						state,
 						options,
 						RELATION_PRECEDENCE,
+						Some(instance_of_pos),
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
@@ -1137,13 +1178,14 @@ impl Expression {
 						{
 							return Ok(top);
 						}
-						let _ = reader.next().unwrap();
+						let Token(_, op_pos) = reader.next().unwrap();
 						// Note precedence is already handled
 						let rhs = Self::from_reader_with_precedence(
 							reader,
 							state,
 							options,
 							operator.precedence(),
+							Some(op_pos),
 						)?;
 
 						top = Expression::BinaryOperation {
@@ -1159,12 +1201,13 @@ impl Expression {
 						{
 							return Ok(top);
 						}
-						let _ = reader.next().unwrap();
+						let Token(_, op_pos) = reader.next().unwrap();
 						let new_rhs = Self::from_reader_with_precedence(
 							reader,
 							state,
 							options,
 							operator.precedence(),
+							Some(op_pos),
 						)?;
 						top = Expression::BinaryAssignmentOperation {
 							position: top.get_position().union(new_rhs.get_position()),
@@ -1202,7 +1245,7 @@ impl Expression {
             | Self::ClassExpression(..)
             // TODO unsure about this one...?
             | Self::DynamicImport { .. }
-            | Self::Cursor { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
+            | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
             Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
@@ -1237,8 +1280,8 @@ impl Expression {
 		_parent_precedence: u8,
 	) {
 		match self {
-			Self::Cursor { .. } => {
-				assert!(options.expect_cursors,);
+			Self::Marker { .. } => {
+				assert!(options.expect_markers,);
 			}
 			Self::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
 			Self::StringLiteral(string, quoted, _) => {
@@ -1358,8 +1401,8 @@ impl Expression {
 						buf.push('#');
 					}
 					buf.push_str(property);
-				} else if !options.expect_cursors {
-					panic!("found cursor");
+				} else if !options.expect_markers {
+					panic!("found marker");
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
@@ -1512,11 +1555,12 @@ fn function_header_ish(
 	kw: TSXKeyword,
 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 ) -> bool {
-	let x = reader.peek().map_or(
-		false,
-		|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-	);
-	kw.is_in_function_header() || (kw.is_special_function_header() && x)
+	kw.is_in_function_header()
+		|| (kw.is_special_function_header()
+			&& reader.peek().map_or(
+				false,
+				|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+			))
 }
 
 /// Represents expressions that can be `,`

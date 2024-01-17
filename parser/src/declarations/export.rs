@@ -75,9 +75,10 @@ impl ASTNode for ExportDeclaration {
 				} else {
 					None
 				};
-				let _ = state.expect_keyword(reader, TSXKeyword::From)?;
-				let (from, end) =
-					ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+				let start = state.expect_keyword(reader, TSXKeyword::From)?;
+
+				let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
+
 				Ok(ExportDeclaration::Variable {
 					exported: Exportable::ImportAll { r#as, from },
 					position: start.union(end),
@@ -124,10 +125,10 @@ impl ASTNode for ExportDeclaration {
 						TSXToken::CloseBrace,
 					)?;
 
-					let _ = state.expect_keyword(reader, TSXKeyword::From)?;
+					let from_pos = state.expect_keyword(reader, TSXKeyword::From)?;
 
 					let (from, end) =
-						ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+						ImportLocation::from_reader(reader, state, options, Some(from_pos))?;
 
 					Ok(Self::Variable {
 						exported: Exportable::ImportParts {
@@ -166,11 +167,11 @@ impl ASTNode for ExportDeclaration {
 							None,
 							TSXToken::CloseBrace,
 						)?;
-						// Know this is 'from' from above
-						let _ = reader.next().unwrap();
-						let (from, end) = ImportLocation::from_token(
-							reader.next().ok_or_else(parse_lexing_error)?,
-						)?;
+						let Token(_from_kw, start) = reader.next().unwrap();
+						state.append_keyword_at_pos(start.0, TSXKeyword::From);
+
+						let (from, end) =
+							ImportLocation::from_reader(reader, state, options, Some(start))?;
 						Ok(Self::Variable {
 							exported: Exportable::ImportParts {
 								parts,
@@ -342,8 +343,7 @@ impl ASTNode for ExportPart {
 			let mut value = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
 			{
 				reader.next();
-				let token = reader.next().ok_or_else(parse_lexing_error)?;
-				let (alias, end) = ImportExportName::from_token(token, state)?;
+				let (alias, end) = ImportExportName::from_reader(reader, state, options)?;
 				let position = pos.union(end);
 				Self::NameWithAlias { name, alias, position }
 			} else {
@@ -379,7 +379,7 @@ impl ASTNode for ExportPart {
 						buf.push_str(alias);
 						buf.push(q.as_char());
 					}
-					ImportExportName::Cursor(_) => {}
+					ImportExportName::Marker(_) => {}
 				}
 			}
 			ExportPart::PrefixComment(comment, inner, _) => {

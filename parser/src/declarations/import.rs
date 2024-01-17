@@ -1,12 +1,12 @@
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use source_map::{End, Span};
+use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, ASTNode, CursorId, ParseOptions, ParseResult, ParsingState,
-	Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	tokens::token_as_identifier, ASTNode, Marker, ParseOptions, ParseResult, ParsingState, Quoted,
+	TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -46,23 +46,34 @@ pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(CursorId<Self>),
+	Marker(Marker<Self>),
 }
 
 impl ImportExportName {
-	pub(crate) fn from_token(
-		token: Token<TSXToken, TokenStart>,
-		state: &mut ParsingState,
-	) -> ParseResult<(Self, End)> {
+	pub(crate) fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<(Self, source_map::End)> {
+		if let Some(Token(TSXToken::Comma, pos)) = reader.peek() {
+			let marker = state.new_partial_point_marker(pos.clone());
+			return Ok((ImportExportName::Marker(marker), pos.get_end_after(0)));
+		}
+		let token = reader.next().unwrap();
 		if let Token(TSXToken::StringLiteral(alias, quoted), start) = token {
 			let with_length = start.get_end_after(alias.len() + 1);
 			state.constant_imports.push(alias.clone());
 			Ok((ImportExportName::Quoted(alias, quoted), with_length))
-		} else if let Token(TSXToken::Cursor(id), start) = token {
-			Ok((Self::Cursor(id.into_cursor()), End(start.0)))
 		} else {
 			let (ident, pos) = token_as_identifier(token, "import alias")?;
-			Ok((ImportExportName::Reference(ident), pos.get_end()))
+			if options.interpolation_points && ident == crate::marker::MARKER {
+				Ok((
+					ImportExportName::Marker(state.new_partial_point_marker(pos.get_start())),
+					pos.get_end(),
+				))
+			} else {
+				Ok((ImportExportName::Reference(ident), pos.get_end()))
+			}
 		}
 	}
 }
@@ -75,12 +86,13 @@ impl ASTNode for ImportDeclaration {
 	) -> ParseResult<Self> {
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
-		if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
-			let _ = state.expect_keyword(reader, TSXKeyword::From)?;
-		}
+		let start = if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
+			state.expect_keyword(reader, TSXKeyword::From)?
+		} else {
+			out.start
+		};
 
-		let (from, end) =
-			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+		let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
 		Ok(ImportDeclaration {
 			default: out.default,
@@ -168,8 +180,7 @@ impl ImportDeclaration {
 	) -> ParseResult<Self> {
 		let start = state.expect_keyword(reader, TSXKeyword::From)?;
 
-		let (from, _end) =
-			ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+		let (from, _end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
@@ -213,10 +224,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 	let peek = reader.peek();
 
 	let default = if let Some(Token(
-		TSXToken::OpenBrace
-		| TSXToken::Multiply
-		| TSXToken::StringLiteral(..)
-		| TSXToken::Cursor(_),
+		TSXToken::OpenBrace | TSXToken::Multiply | TSXToken::StringLiteral(..),
 		_,
 	)) = peek
 	{
@@ -341,9 +349,9 @@ impl ASTNode for ImportPart {
 						Self::Name(VariableIdentifier::Standard(reference, alias_pos))
 					}
 				}
-				ImportExportName::Cursor(_id) => {
-					todo!("cursor id change")
-					// Self::Name(VariableIdentifier::Cursor(id, pos))
+				ImportExportName::Marker(_id) => {
+					todo!("marker id change")
+					// Self::Name(VariableIdentifier::Marker(id, pos))
 				}
 			};
 			while let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
@@ -373,7 +381,7 @@ impl ASTNode for ImportPart {
 						buf.push_str(alias);
 						buf.push(q.as_char());
 					}
-					ImportExportName::Cursor(_) => {}
+					ImportExportName::Marker(_) => {}
 				}
 				buf.push_str(" as ");
 				buf.push_str(name);

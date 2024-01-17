@@ -18,11 +18,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	const STACK_SIZE_MB: usize = 32;
 
 	let display_keywords = args.iter().any(|item| item == "--keywords");
+	let partial_syntax = args.iter().any(|item| item == "--partial");
 
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,
 		record_keyword_positions: display_keywords,
+		partial_syntax,
 		..ParseOptions::all_features()
 	};
 
@@ -42,8 +44,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				println!("{module:#?}");
 			}
 			if render_output {
-				let output = module
-					.to_string(&ToStringOptions { trailing_semicolon: true, ..Default::default() });
+				let output = module.to_string(&ToStringOptions {
+					trailing_semicolon: true,
+					expect_markers: true,
+					include_types: true,
+					..Default::default()
+				});
 				println!("{output}");
 			}
 			if display_keywords {

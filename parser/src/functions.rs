@@ -179,7 +179,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			.transpose()?;
 		let parameters = FunctionParameters::from_reader(reader, state, options)?;
 		let return_type = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
+			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
 			.then(|| TypeAnnotation::from_reader(reader, state, options))
 			.transpose()?;

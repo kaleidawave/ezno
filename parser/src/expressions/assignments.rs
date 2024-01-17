@@ -64,8 +64,8 @@ impl ASTNode for VariableOrPropertyAccess {
 						buf.push('#');
 					}
 					buf.push_str(property);
-				} else if !options.expect_cursors {
-					panic!("found cursor");
+				} else if !options.expect_markers {
+					panic!("found marker");
 				}
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, .. } => {
@@ -85,7 +85,7 @@ impl VariableOrPropertyAccess {
 		options: &crate::ParseOptions,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		Expression::from_reader_with_precedence(reader, state, options, return_precedence)?
+		Expression::from_reader_with_precedence(reader, state, options, return_precedence, None)?
 			.try_into()
 	}
 }
@@ -163,7 +163,7 @@ impl VariableOrPropertyAccess {
 
 /// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
-/// TODO cursor
+/// TODO marker
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]

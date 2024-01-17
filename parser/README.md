@@ -58,9 +58,14 @@ cargo run --example parse path/to/file.js
 
 All syntax has reference to where it was in the source using a [Span](https://docs.rs/ezno-parser/0.0.2/ezno_parser/struct.Span.html). This uses the [source-map](https://github.com/kaleidawave/source-map) crate, so it can generate source maps.
 
-### "Cursors"
+### Partial AST
 
-Allows holes in AST where a cursor exists. This allows for LSP to provide suggestions here while the whole source might not be valid.
+Most of the parser requires exact AST. However under a option you can enable a option which can add marked nodes for cases where a expression might be missing. This allows tools that require an AST to work with a source that is still being edited (such as in a LSP).
+
+It checks two cases
+- Whether the expression ends in `)` etc (useful in function calls, ifs etc)
+- Whether the next token is `const` etc and on the next line
+if either of these cases is encountered, then it
 
 ### Visiting
 

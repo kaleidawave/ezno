@@ -369,7 +369,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									);
 									return if result { TypeId::TRUE } else { TypeId::FALSE };
 								}
-								parser::PropertyReference::Cursor(_) => todo!(),
+								parser::PropertyReference::Marker(_) => todo!(),
 							}
 						}
 						Expression::Index { indexee, indexer, is_optional: _, position: _ } => {
@@ -707,7 +707,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ClassExpression(class) => {
 			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
 		}
-		Expression::Cursor { cursor_id: _, position: _ } => todo!(),
+		Expression::Marker { marker_id: _, position: _ } => todo!(),
 		Expression::SpecialOperators(operator, position) => match operator {
 			SpecialOperators::AsExpression { value, .. } => {
 				checking_data.diagnostics_container.add_warning(

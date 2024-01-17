@@ -348,6 +348,9 @@ pub(crate) fn parse_statements_and_declarations(
 		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
 		if value.requires_semi_colon() {
 			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
+		} else {
+			// Skip over semi colons regardless
+			reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
 		}
 		items.push(value);
 	}

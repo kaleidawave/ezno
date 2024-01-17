@@ -171,12 +171,14 @@ impl ArrowFunction {
 		let parameters =
 			FunctionParameters::from_reader_sub_open_parenthesis(reader, state, options, start)?;
 
-		let return_type =
-			if reader.conditional_next(|token| matches!(token, TSXToken::Colon)).is_some() {
-				Some(TypeAnnotation::from_reader(reader, state, options)?)
-			} else {
-				None
-			};
+		let return_type = if reader
+			.conditional_next(|token| options.type_annotations && matches!(token, TSXToken::Colon))
+			.is_some()
+		{
+			Some(TypeAnnotation::from_reader(reader, state, options)?)
+		} else {
+			None
+		};
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		Ok(FunctionBase {

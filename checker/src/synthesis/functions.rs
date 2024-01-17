@@ -441,7 +441,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 					pos.with_source(environment.get_source()),
 					&mut checking_data.diagnostics_container,
 				),
-			VariableIdentifier::Cursor(_, _) => todo!(),
+			VariableIdentifier::Marker(_, _) => todo!(),
 		};
 
 		SynthesisedRestParameter {

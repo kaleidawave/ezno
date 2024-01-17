@@ -10,7 +10,7 @@ use crate::{
 	throw_unexpected_token_with_token,
 	tokens::token_as_identifier,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, CursorId, Expression, ParseError, ParseOptions, ParseResult, Span, TSXToken, Token,
+	ASTNode, Expression, Marker, ParseError, ParseOptions, ParseResult, Span, TSXToken, Token,
 	VisitOptions, Visitable, WithComment,
 };
 
@@ -26,21 +26,21 @@ use tokenizer_lib::TokenReader;
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
+	// TODO does this need Span
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(CursorId<Self>, Span),
+	Marker(Marker<Self>, Span),
 }
 
 impl ASTNode for VariableIdentifier {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
-		_options: &ParseOptions,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		Ok(if let Token(TSXToken::Cursor(id), start) = token {
-			Self::Cursor(id.into_cursor(), start.with_length(0))
+		let (ident, span) = token_as_identifier(reader.next().unwrap(), "variable identifier")?;
+		Ok(if options.interpolation_points && ident == crate::marker::MARKER {
+			Self::Marker(state.new_partial_point_marker(span.get_start()), span)
 		} else {
-			let (ident, span) = token_as_identifier(token, "variable identifier")?;
 			Self::Standard(ident, span)
 		})
 	}
@@ -65,7 +65,7 @@ impl VariableIdentifier {
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableIdentifier::Standard(name, _) => name.as_str(),
-			VariableIdentifier::Cursor(_, _) => "",
+			VariableIdentifier::Marker(_, _) => "",
 		}
 	}
 }
@@ -374,7 +374,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 			Ok(Self::Spread(identifier, position))
 		} else {
 			let key = PropertyKey::from_reader(reader, state, options)?;
-			if matches!(reader.peek(), Some(Token(TSXToken::Colon, _))) {
+			if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
 				reader.next();
 				let variable_name =
 					WithComment::<VariableField<U>>::from_reader(reader, state, options)?;

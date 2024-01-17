@@ -14,8 +14,8 @@ use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 
 use super::{
-	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, ParseOptions,
-	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	expressions::MultipleExpression, ASTNode, Block, Expression, Marker, ParseOptions, ParseResult,
+	Span, TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
@@ -65,7 +65,7 @@ pub enum Statement {
 	Empty(Span),
 	/// TODO under cfg
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
+	Marker(#[visit_skip_field] Marker<Statement>, Span),
 }
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
@@ -103,12 +103,11 @@ impl ASTNode for Statement {
 		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 		match token {
-			TSXToken::Cursor(_) => {
-				if let Token(TSXToken::Cursor(cursor_id), start) = reader.next().unwrap() {
-					Ok(Statement::Cursor(cursor_id.into_cursor(), start.with_length(1)))
-				} else {
-					unreachable!()
-				}
+			TSXToken::Identifier(n)
+				if options.interpolation_points && n == crate::marker::MARKER =>
+			{
+				todo!()
+				// Ok(Statement::Marker(marker_id.into_marker(), start.with_length(1)))
 			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
 				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
@@ -216,8 +215,8 @@ impl ASTNode for Statement {
 		depth: u8,
 	) {
 		match self {
-			Statement::Cursor(..) => {
-				assert!(options.expect_cursors, "tried to to-string cursor");
+			Statement::Marker(..) => {
+				assert!(options.expect_markers, "tried to to-string marker");
 			}
 			Statement::Empty(..) => {
 				buf.push(';');
