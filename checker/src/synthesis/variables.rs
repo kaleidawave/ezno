@@ -90,7 +90,11 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 			for field in items {
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, ..) => {
-						let key = PropertyKey::String(Cow::Borrowed(variable.as_str()));
+						let name = match variable {
+							VariableIdentifier::Standard(ref name, _) => name,
+							VariableIdentifier::Marker(_, _) => "?",
+						};
+						let key = PropertyKey::String(Cow::Borrowed(name));
 						let argument = get_new_register_argument_under(
 							&argument,
 							key,
@@ -211,7 +215,11 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				if let crate::Scope::Module { ref mut exported, .. } =
 					environment.context_type.scope
 				{
-					exported.named.push((name.as_str().to_owned(), (id, mutability)));
+					let name = match name {
+						VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+						VariableIdentifier::Marker(_, _) => "?".to_owned(),
+					};
+					exported.named.push((name, (id, mutability)));
 				} else {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::NonTopLevelExport(

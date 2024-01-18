@@ -165,7 +165,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Ident(ident, _pos, _) => buf.push_str(ident.as_str()),
@@ -177,7 +177,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 		}

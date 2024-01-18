@@ -447,7 +447,10 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 		SynthesisedRestParameter {
 			item_type,
 			ty,
-			name: rest_parameter.name.as_str().to_owned(),
+			name: match rest_parameter.name {
+				VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+				VariableIdentifier::Marker(_, _) => "".to_owned(),
+			},
 			position: rest_parameter.position.with_source(environment.get_source()),
 		}
 	});
@@ -531,7 +534,10 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 	parameter: &parser::VariableField<T>,
 ) -> String {
 	match parameter {
-		VariableField::Name(name) => name.as_str().to_owned(),
+		VariableField::Name(name) => match name {
+			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+			VariableIdentifier::Marker(_, _) => "".to_owned(),
+		},
 		VariableField::Array(_items, _) => "todo".to_owned(),
 		VariableField::Object(_, _) => "todo".to_owned(),
 	}

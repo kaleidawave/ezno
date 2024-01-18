@@ -414,7 +414,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.register_type(ty)
 		}
 		TypeAnnotation::Marker(_, _) => {
-			todo!("Dump available object types in environment to somewhere..?")
+			crate::utils::notify!("Dump available object types in environment to somewhere..?");
+			TypeId::ANY_TYPE
 		}
 		// TODO these are all work in progress
 		TypeAnnotation::Decorated(decorator, inner, _) => {

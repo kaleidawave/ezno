@@ -212,7 +212,7 @@ impl ASTNode for Statement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Statement::Marker(..) => {
@@ -225,15 +225,15 @@ impl ASTNode for Statement {
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
-					expression.to_string_from_buffer(buf, options, depth);
+					expression.to_string_from_buffer(buf, options, local);
 				}
 			}
-			Statement::If(is) => is.to_string_from_buffer(buf, options, depth),
-			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, depth),
-			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, depth),
-			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, depth),
-			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, depth),
-			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, depth),
+			Statement::If(is) => is.to_string_from_buffer(buf, options, local),
+			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, local),
+			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
+			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, local),
+			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
+			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			Statement::Comment(comment, _) => {
 				if options.should_add_comment(false) {
 					buf.push_str("//");
@@ -248,7 +248,7 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Block(block) => {
-				block.to_string_from_buffer(buf, options, depth + 1);
+				block.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Statement::Debugger(_) => buf.push_str("debugger"),
 			Statement::Continue(label, _) => {
@@ -266,18 +266,18 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				val.to_string_from_buffer(buf, options, depth);
+				val.to_string_from_buffer(buf, options, local);
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);
 				buf.push(':');
-				statement.to_string_from_buffer(buf, options, depth);
+				statement.to_string_from_buffer(buf, options, local);
 			}
 			Statement::Throw(ThrowStatement(thrown_expression, _)) => {
 				buf.push_str("throw ");
-				thrown_expression.to_string_from_buffer(buf, options, depth);
+				thrown_expression.to_string_from_buffer(buf, options, local);
 			}
-			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, depth),
+			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, local),
 		}
 	}
 }
@@ -327,6 +327,14 @@ impl ASTNode for VarVariableStatement {
 		loop {
 			let value =
 				VariableDeclarationItem::<Option<Expression>>::from_reader(reader, state, options)?;
+			if value.expression.is_none()
+				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::DestructuringRequiresValue,
+					*value.name.get_ast_ref().get_position(),
+				));
+			}
 			declarations.push(value);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
@@ -344,9 +352,9 @@ impl ASTNode for VarVariableStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("var ");
-		declarations_to_string(&self.declarations, buf, options, depth);
+		declarations_to_string(&self.declarations, buf, options, local);
 	}
 }

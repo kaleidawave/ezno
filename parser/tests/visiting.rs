@@ -60,8 +60,10 @@ impl VisitorMut<BlockItemMut<'_>, ()> for AddElseClause {
 						.unwrap()
 						.into();
 
-				if_statement.trailing_else =
-					Some(UnconditionalElseStatement { inner, position: Span::NULL_SPAN });
+				if_statement.trailing_else = Some(UnconditionalElseStatement {
+					inner,
+					position: source_map::Nullable::NULL,
+				});
 			}
 		}
 	}

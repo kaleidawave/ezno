@@ -227,32 +227,32 @@ impl ASTNode for ExportDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			ExportDeclaration::Variable { exported, .. } => {
 				buf.push_str("export ");
 				match exported {
 					Exportable::Class(class_declaration) => {
-						class_declaration.to_string_from_buffer(buf, options, depth);
+						class_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Function(function_declaration) => {
-						function_declaration.to_string_from_buffer(buf, options, depth);
+						function_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Interface(interface_declaration) => {
-						interface_declaration.to_string_from_buffer(buf, options, depth);
+						interface_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Variable(variable_dec_stmt) => {
-						variable_dec_stmt.to_string_from_buffer(buf, options, depth);
+						variable_dec_stmt.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::TypeAlias(type_alias) => {
-						type_alias.to_string_from_buffer(buf, options, depth);
+						type_alias.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
 						buf.push('{');
 						options.add_gap(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, depth);
+							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
 								options.add_gap(buf);
@@ -265,7 +265,7 @@ impl ASTNode for ExportDeclaration {
 						buf.push_str("* ");
 						if let Some(r#as) = r#as {
 							buf.push_str("as ");
-							r#as.to_string_from_buffer(buf, options, depth);
+							r#as.to_string_from_buffer(buf, options, local);
 							buf.push(' ');
 						}
 						buf.push_str("from \"");
@@ -280,7 +280,7 @@ impl ASTNode for ExportDeclaration {
 						buf.push('{');
 						options.add_gap(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, depth);
+							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
 								options.add_gap(buf);
@@ -297,7 +297,7 @@ impl ASTNode for ExportDeclaration {
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -365,10 +365,12 @@ impl ASTNode for ExportPart {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExportPart::Name(identifier) => buf.push_str(identifier.as_str()),
+			ExportPart::Name(name) => {
+				name.to_string_from_buffer(buf, options, local);
+			}
 			ExportPart::NameWithAlias { name, alias, .. } => {
 				buf.push_str(name);
 				buf.push_str(" as ");
@@ -392,11 +394,11 @@ impl ASTNode for ExportPart {
 					}
 				}
 				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, options, depth);
+					inner.to_string_from_buffer(buf, options, local);
 				}
 			}
 			ExportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, options, depth);
+				inner.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(comment);

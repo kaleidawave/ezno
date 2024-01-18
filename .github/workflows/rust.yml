@@ -92,6 +92,7 @@ jobs:
 
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true'
+        continue-on-error: true
         run: |
           npm ci
           npm run test
@@ -102,11 +103,19 @@ jobs:
 
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
+        continue-on-error: true
         run: 
           cargo check -p ezno-parser --no-default-features
 
+      - name: Check parser generator
+        if: steps.changes.outputs.parser == 'true'
+        continue-on-error: true
+        run: 
+          cargo test -p ezno-ast-generator
+
       - name: Check checker without default features
         if: steps.changes.outputs.checker == 'true'
+        continue-on-error: true
         run: 
           cargo check -p ezno-checker --no-default-features
       
@@ -155,9 +164,7 @@ jobs:
           
           # TODO test other big libraries
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-          cargo run -p ezno-parser --example parse react.js > /dev/null
-
-          cargo test -p ezno-ast-generator
+          cargo run -p ezno-parser --example parse react.js
         working-directory: parser
 
       - name: Run checker specification

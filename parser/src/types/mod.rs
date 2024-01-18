@@ -68,7 +68,7 @@ impl crate::ASTNode for AnnotationPerforms {
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		todo!()
 	}

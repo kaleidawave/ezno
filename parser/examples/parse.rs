@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let display_keywords = args.iter().any(|item| item == "--keywords");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
+	let source_maps = args.iter().any(|item| item == "--source-map");
 
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
@@ -37,21 +38,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	match result {
 		Ok((module, state)) => {
 			eprintln!("Parsed in: {:?}", now.elapsed());
+
 			let print_ast = args.iter().any(|item| item == "--ast");
 			let render_output = args.iter().any(|item| item == "--render");
 
 			if print_ast {
 				println!("{module:#?}");
 			}
-			if render_output {
-				let output = module.to_string(&ToStringOptions {
-					trailing_semicolon: true,
-					expect_markers: true,
-					include_types: true,
-					..Default::default()
-				});
-				println!("{output}");
+			if source_maps || render_output {
+				let (output, source_map) = module.to_string_with_source_map(
+					&ToStringOptions {
+						trailing_semicolon: true,
+						expect_markers: true,
+						include_types: true,
+						// TODO temp
+						pretty: false,
+						..Default::default()
+					},
+					source_id,
+					&fs,
+				);
+				if source_maps {
+					let sm = source_map.unwrap().to_json(&fs);
+					println!("{output}\n{sm}");
+				}
+				if render_output {
+					let output = module.to_string(&ToStringOptions {
+						trailing_semicolon: true,
+						expect_markers: true,
+						include_types: true,
+						..Default::default()
+					});
+					println!("{output}");
+				}
 			}
+
 			if display_keywords {
 				println!("{:?}", state.keyword_positions.unwrap());
 			}

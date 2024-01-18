@@ -139,7 +139,7 @@ impl ASTNode for ClassMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Property(
@@ -152,28 +152,28 @@ impl ASTNode for ClassMember {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				key.to_string_from_buffer(buf, options, depth);
+				key.to_string_from_buffer(buf, options, local);
 				if let (true, Some(type_annotation)) = (options.include_types, type_annotation) {
 					buf.push_str(": ");
-					type_annotation.to_string_from_buffer(buf, options, depth);
+					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 				if let Some(value) = value {
 					buf.push_str(if options.pretty { " = " } else { "=" });
-					value.to_string_from_buffer(buf, options, depth);
+					value.to_string_from_buffer(buf, options, local);
 				}
 			}
 			Self::Method(is_static, function) => {
 				if *is_static {
 					buf.push_str("static ");
 				}
-				function.to_string_from_buffer(buf, options, depth + 1);
+				function.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Self::Constructor(constructor) => {
-				constructor.to_string_from_buffer(buf, options, depth + 1);
+				constructor.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Self::StaticBlock(block) => {
 				buf.push_str("static ");
-				block.to_string_from_buffer(buf, options, depth + 1);
+				block.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Self::Comment(c, _) => {
 				if options.should_add_comment(c.starts_with('.')) {
@@ -227,10 +227,10 @@ impl FunctionBased for ClassFunctionBase {
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		header.to_string_from_buffer(buf);
-		name.to_string_from_buffer(buf, options, depth);
+		name.to_string_from_buffer(buf, options, local);
 	}
 
 	fn visit_name<TData>(
@@ -285,7 +285,7 @@ impl FunctionBased for ClassConstructorBase {
 		_header: &Self::Header,
 		_name: &Self::Name,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("constructor");
 	}

@@ -289,29 +289,9 @@ where
 			} else {
 				let content = (checking_data.modules.file_reader)(full_importer);
 				if let Some(content) = content {
-					let source = checking_data
-						.modules
-						.files
-						.new_source_id(full_importer.to_path_buf(), content.clone());
+					let (source, module) = get_source(checking_data, full_importer, content);
 
-					let is_js = full_importer
-						.extension()
-						.and_then(|s| s.to_str())
-						.map_or(false, |s| s.starts_with("ts"));
-
-					let parse_options = A::parse_options(
-						is_js,
-						checking_data.options.parse_comments,
-						checking_data.options.lsp_mode,
-					);
-
-					let module_from_string = A::module_from_string(
-						source,
-						content,
-						parse_options,
-						&mut checking_data.modules.parser_requirements,
-					);
-					match module_from_string {
+					match module {
 						Ok(module) => {
 							let new_module_context = environment.get_root().new_module_context(
 								source,
@@ -462,24 +442,8 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	for point in &entry_points {
 		let entry_content = (checking_data.modules.file_reader)(point);
 		if let Some(content) = entry_content {
-			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
+			let (source, module) = get_source(&mut checking_data, point, content);
 
-			// TODO abstract using similar to import logic
-			let is_js =
-				point.extension().and_then(|s| s.to_str()).map_or(false, |s| s.starts_with("ts"));
-
-			let parse_options = A::parse_options(
-				is_js,
-				checking_data.options.parse_comments,
-				checking_data.options.lsp_mode,
-			);
-
-			let module = A::module_from_string(
-				source,
-				content,
-				parse_options,
-				&mut checking_data.modules.parser_requirements,
-			);
 			match module {
 				Ok(module) => {
 					root.new_module_context(source, module, &mut checking_data);
@@ -512,6 +476,35 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		modules: modules.synthesised_modules,
 		diagnostics: diagnostics_container,
 	}
+}
+
+fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	checking_data: &mut CheckingData<T, A>,
+	path: &Path,
+	content: String,
+) -> (
+	SourceId,
+	Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError>,
+) {
+	let source = checking_data.modules.files.new_source_id(path.to_path_buf(), content.clone());
+
+	// TODO abstract using similar to import logic
+	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
+
+	let parse_options = A::parse_options(
+		is_js,
+		checking_data.options.parse_comments,
+		checking_data.options.lsp_mode,
+	);
+
+	let module = A::module_from_string(
+		source,
+		content,
+		parse_options,
+		&mut checking_data.modules.parser_requirements,
+	);
+
+	(source, module)
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(

@@ -113,19 +113,19 @@ impl ASTNode for InterfaceDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_types {
 			buf.push_str("interface ");
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {
-				to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 			}
 			options.add_gap(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
-					extends.to_string_from_buffer(buf, options, depth);
+					extends.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
 					}
@@ -136,8 +136,8 @@ impl ASTNode for InterfaceDeclaration {
 				buf.push_new_line();
 			}
 			for member in &self.members {
-				options.add_indent(depth + 1, buf);
-				member.to_string_from_buffer(buf, options, depth + 1);
+				options.add_indent(local.depth + 1, buf);
+				member.to_string_from_buffer(buf, options, local.next_level());
 				if options.pretty {
 					buf.push_new_line();
 				}
@@ -599,17 +599,17 @@ impl ASTNode for InterfaceMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			InterfaceMember::Property { name, type_annotation, is_readonly, .. } => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 				buf.push(':');
 				options.add_gap(buf);
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 			InterfaceMember::Method {
 				name,
@@ -619,18 +619,18 @@ impl ASTNode for InterfaceMember {
 				is_optional,
 				..
 			} => {
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 				if *is_optional {
 					buf.push('?');
 				}
 				if let Some(type_parameters) = &type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 				}
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
 					buf.push(':');
 					options.add_gap(buf);
-					return_type.to_string_from_buffer(buf, options, depth);
+					return_type.to_string_from_buffer(buf, options, local);
 				}
 			}
 			InterfaceMember::Indexer { name, indexer_type, return_type, is_readonly, .. } => {
@@ -640,11 +640,11 @@ impl ASTNode for InterfaceMember {
 				buf.push('[');
 				buf.push_str(name.as_str());
 				buf.push(':');
-				indexer_type.to_string_from_buffer(buf, options, depth);
+				indexer_type.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 				buf.push(':');
 				options.add_gap(buf);
-				return_type.to_string_from_buffer(buf, options, depth);
+				return_type.to_string_from_buffer(buf, options, local);
 			}
 			InterfaceMember::Constructor { .. } => todo!(),
 			InterfaceMember::Caller { .. } => todo!(),

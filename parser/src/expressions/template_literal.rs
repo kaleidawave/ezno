@@ -67,10 +67,10 @@ impl ASTNode for TemplateLiteral {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if let Some(tag) = &self.tag {
-			tag.to_string_from_buffer(buf, options, depth);
+			tag.to_string_from_buffer(buf, options, local);
 		}
 		buf.push('`');
 		for part in &self.parts {
@@ -80,7 +80,7 @@ impl ASTNode for TemplateLiteral {
 				}
 				TemplateLiteralPart::Dynamic(expression) => {
 					buf.push_str("${");
-					expression.to_string_from_buffer(buf, options, depth);
+					expression.to_string_from_buffer(buf, options, local);
 					buf.push('}');
 				}
 			}

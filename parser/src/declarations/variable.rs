@@ -13,17 +13,17 @@ use visitable_derive::Visitable;
 pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self>;
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	fn get_decl_position(&self) -> Option<&Span>;
@@ -34,10 +34,11 @@ pub trait DeclarationExpression:
 }
 
 impl DeclarationExpression for Option<Expression> {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
+		// expect_value: bool,
 	) -> ParseResult<Self> {
 		if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
 			Expression::from_reader_with_precedence(
@@ -53,15 +54,15 @@ impl DeclarationExpression for Option<Expression> {
 		}
 	}
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if let Some(expr) = self {
 			buf.push_str(if options.pretty { " = " } else { "=" });
-			expr.to_string_from_buffer(buf, options, depth);
+			expr.to_string_from_buffer(buf, options, local);
 		}
 	}
 
@@ -79,7 +80,7 @@ impl DeclarationExpression for Option<Expression> {
 }
 
 impl DeclarationExpression for crate::Expression {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
@@ -94,14 +95,14 @@ impl DeclarationExpression for crate::Expression {
 		)
 	}
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str(if options.pretty { " = " } else { "=" });
-		ASTNode::to_string_from_buffer(self, buf, options, depth);
+		ASTNode::to_string_from_buffer(self, buf, options, local);
 	}
 
 	fn get_decl_position(&self) -> Option<&Span> {
@@ -148,7 +149,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		} else {
 			None
 		};
-		let expression = TExpr::decl_from_reader(reader, state, options)?;
+		let expression = TExpr::expression_from_reader(reader, state, options)?;
 		let position = name.get_position().union(
 			expression
 				.get_decl_position()
@@ -156,21 +157,21 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 				.unwrap_or(name.get_position()),
 		);
 
-		Ok(Self { position, name, type_annotation, expression })
+		Ok(Self { name, type_annotation, expression, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.name.to_string_from_buffer(buf, options, depth);
+		self.name.to_string_from_buffer(buf, options, local);
 		if let (true, Some(type_annotation)) = (options.include_types, &self.type_annotation) {
 			buf.push_str(": ");
-			type_annotation.to_string_from_buffer(buf, options, depth);
+			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		self.expression.decl_to_string_from_buffer(buf, options, depth);
+		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -245,6 +246,16 @@ impl ASTNode for VariableDeclaration {
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
 						reader, state, options,
 					)?;
+
+					if value.expression.is_none()
+						&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
+					{
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::DestructuringRequiresValue,
+							*value.name.get_ast_ref().get_position(),
+						));
+					}
+
 					declarations.push(value);
 					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
@@ -282,7 +293,7 @@ impl ASTNode for VariableDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			VariableDeclaration::LetDeclaration { declarations, .. } => {
@@ -290,14 +301,14 @@ impl ASTNode for VariableDeclaration {
 					return;
 				}
 				buf.push_str("let ");
-				declarations_to_string(declarations, buf, options, depth);
+				declarations_to_string(declarations, buf, options, local);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				if declarations.is_empty() {
 					return;
 				}
 				buf.push_str("const ");
-				declarations_to_string(declarations, buf, options, depth);
+				declarations_to_string(declarations, buf, options, local);
 			}
 		}
 	}
@@ -321,10 +332,10 @@ pub(crate) fn declarations_to_string<
 	declarations: &[VariableDeclarationItem<U>],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
-		declaration.to_string_from_buffer(buf, options, depth);
+		declaration.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
 			options.add_gap(buf);

@@ -1,4 +1,5 @@
 use ezno_parser::{ASTNode, Module};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn arrow_functions() {

@@ -59,7 +59,7 @@ use tokenizer_lib::{
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
-use std::{borrow::Cow, marker::PhantomData, str::FromStr};
+use std::{borrow::Cow, str::FromStr};
 
 /// The notation of a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -246,6 +246,23 @@ pub enum Comments {
 	None,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LocalToStringInformation {
+	under: SourceId,
+	depth: u8,
+}
+
+impl LocalToStringInformation {
+	pub(crate) fn next_level(self) -> LocalToStringInformation {
+		LocalToStringInformation { under: self.under, depth: self.depth + 1 }
+	}
+
+	/// TODO for bundling
+	pub(crate) fn _change_source(self, new: SourceId) -> LocalToStringInformation {
+		LocalToStringInformation { under: new, depth: self.depth }
+	}
+}
+
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from options.
 ///
@@ -261,7 +278,6 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		options: ParseOptions,
 		offset: Option<u32>,
 	) -> ParseResult<(Self, ParsingState)> {
-		// TODO take from argument
 		let line_starts = source_map::LineStarts::new(script.as_str());
 		lex_and_parse_script(line_starts, options, &script, offset)
 	}
@@ -279,14 +295,18 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	/// Returns structure as valid string
 	fn to_string(&self, options: &crate::ToStringOptions) -> String {
-		let mut buf = String::new();
-		self.to_string_from_buffer(&mut buf, options, 0);
-		buf
+		let mut buf = source_map::StringWithOptionalSourceMap::new(false);
+		self.to_string_from_buffer(
+			&mut buf,
+			options,
+			LocalToStringInformation { under: source_map::Nullable::NULL, depth: 0 },
+		);
+		buf.source
 	}
 }
 
@@ -432,7 +452,7 @@ impl ParsingState {
 	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
 		let id = self.partial_points.len();
 		self.partial_points.push(at);
-		Marker(id as u8, PhantomData::default())
+		Marker(id as u8, Default::default())
 	}
 }
 
@@ -1010,11 +1030,11 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	brackets: (char, char),
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	buf.push(brackets.0);
 	for (at_end, node) in nodes.iter().endiate() {
-		node.to_string_from_buffer(buf, options, depth);
+		node.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
 			options.add_gap(buf);

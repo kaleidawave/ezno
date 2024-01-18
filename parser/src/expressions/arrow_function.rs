@@ -37,7 +37,7 @@ impl FunctionBased for ArrowFunctionBase {
 		is_async: &Self::Header,
 		_name: &Self::Name,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		if *is_async {
 			buf.push_str("async ");
@@ -79,19 +79,19 @@ impl FunctionBased for ArrowFunctionBase {
 		buf: &mut T,
 		parameters: &FunctionParameters,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
 		if let (true, [Parameter { name, .. }]) =
 			(parameters.rest_parameter.is_none(), parameters.parameters.as_slice())
 		{
 			if let VariableField::Name(name, ..) = name.get_ast_ref() {
-				buf.push_str(name.as_str());
+				name.to_string_from_buffer(buf, options, local);
 			} else {
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 			}
 		} else {
-			parameters.to_string_from_buffer(buf, options, depth);
+			parameters.to_string_from_buffer(buf, options, local);
 		}
 	}
 
@@ -227,11 +227,11 @@ impl ASTNode for ExpressionOrBlock {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExpressionOrBlock::Expression(expr) => expr.to_string_from_buffer(buf, options, depth),
-			ExpressionOrBlock::Block(block) => block.to_string_from_buffer(buf, options, depth),
+			ExpressionOrBlock::Expression(expr) => expr.to_string_from_buffer(buf, options, local),
+			ExpressionOrBlock::Block(block) => block.to_string_from_buffer(buf, options, local),
 		}
 	}
 }

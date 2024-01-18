@@ -16,10 +16,14 @@ keywords = ["javascript", "typechecker", "checker", "typescript", "types"]
 workspace = true
 
 [features]
+default = ["ezno-parser"]
 ezno-parser = ["parser"]
 
 [dependencies]
-source-map = { version = "0.14.7", features = ["serde-serialize"] }
+source-map = { git = "https://github.com/kaleidawave/source-map", branch = "source-mappings-fix", version = "0.14.7", features = [
+  "serde-serialize",
+  "self-rust-tokenize",
+] }
 
 binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
 

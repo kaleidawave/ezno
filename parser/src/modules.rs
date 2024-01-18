@@ -1,4 +1,4 @@
-use source_map::SourceId;
+use source_map::{Nullable, SourceId};
 use tokenizer_lib::sized_tokens::TokenStart;
 
 use crate::{
@@ -14,8 +14,8 @@ use crate::{
 		type_alias::TypeAlias,
 		InterfaceDeclaration,
 	},
-	BlockLike, BlockLikeMut, Decorated, Decorator, ParseOptions, ParseResult,
-	StatementOrDeclaration, TSXKeyword, VisitOptions,
+	BlockLike, BlockLikeMut, Decorated, Decorator, LocalToStringInformation, ParseOptions,
+	ParseResult, StatementOrDeclaration, TSXKeyword, VisitOptions,
 };
 
 use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
@@ -38,9 +38,9 @@ impl ASTNode for Module {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		statements_and_declarations_to_string(&self.items, buf, options, depth);
+		statements_and_declarations_to_string(&self.items, buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -64,19 +64,28 @@ impl Module {
 	pub fn to_string_with_source_map(
 		&self,
 		options: &crate::ToStringOptions,
+		this: SourceId,
 		fs: &impl source_map::FileSystem,
-	) -> (String, source_map::SourceMap) {
-		let mut buf = source_map::StringWithSourceMap::new();
-		self.to_string_from_buffer(&mut buf, options, 0);
+	) -> (String, Option<source_map::SourceMap>) {
+		let mut buf = source_map::StringWithOptionalSourceMap::new(true);
+		self.to_string_from_buffer(
+			&mut buf,
+			options,
+			LocalToStringInformation { depth: 0, under: this },
+		);
 		buf.build(fs)
 	}
 
-	#[must_use]
-	pub fn length(&self, options: &crate::ToStringOptions) -> usize {
-		let mut buf = source_map::Counter::new();
-		self.to_string_from_buffer(&mut buf, options, 0);
-		buf.get_count()
-	}
+	// #[must_use]
+	// pub fn length(&self, options: &crate::ToStringOptions) -> usize {
+	// 	let mut buf = source_map::Counter::new();
+	// 	self.to_string_from_buffer(
+	// 		&mut buf,
+	// 		options,
+	// 		LocalToStringInformation { depth: 0, under: SourceId::NULL },
+	// 	);
+	// 	buf.get_count()
+	// }
 }
 
 impl Module {
@@ -213,7 +222,7 @@ impl ASTNode for TypeDefinitionModule {
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		todo!("tdm to buffer")
 	}
@@ -272,7 +281,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		todo!("tdms to_string_from_buffer");
 	}

@@ -39,7 +39,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_types {
 			buf.push_str("declare ");
@@ -48,7 +48,7 @@ impl ASTNode for DeclareVariableDeclaration {
 				&self.declarations,
 				buf,
 				options,
-				depth,
+				local,
 			);
 		}
 	}
@@ -115,18 +115,18 @@ impl ASTNode for DeclareFunctionDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_types {
 			buf.push_str("declare function ");
 			buf.push_str(self.name.as_str());
 			if let Some(type_parameters) = &self.type_parameters {
-				to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 			}
-			self.parameters.to_string_from_buffer(buf, options, depth);
+			self.parameters.to_string_from_buffer(buf, options, local);
 			if let Some(return_type) = &self.return_type {
 				buf.push_str(": ");
-				return_type.to_string_from_buffer(buf, options, depth);
+				return_type.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -208,7 +208,7 @@ impl ASTNode for DeclareClassDeclaration {
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		todo!()
 	}

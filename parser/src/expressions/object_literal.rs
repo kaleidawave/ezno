@@ -93,10 +93,10 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		header.to_string_from_buffer(buf);
-		name.to_string_from_buffer(buf, options, depth);
+		name.to_string_from_buffer(buf, options, local);
 	}
 
 	fn visit_name<TData>(
@@ -148,12 +148,12 @@ impl ASTNode for ObjectLiteral {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push('{');
 		options.add_gap(buf);
 		for (at_end, member) in self.members.iter().endiate() {
-			member.to_string_from_buffer(buf, options, depth);
+			member.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
 				options.add_gap(buf);
@@ -252,24 +252,24 @@ impl ASTNode for ObjectLiteralMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Property(name, expression, _) => {
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 				buf.push(':');
 				options.add_gap(buf);
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 			Self::Shorthand(name, ..) => {
 				buf.push_str(name.as_str());
 			}
 			Self::Method(func) => {
-				func.to_string_from_buffer(buf, options, depth);
+				func.to_string_from_buffer(buf, options, local);
 			}
 			Self::Spread(spread_expr, _) => {
 				buf.push_str("...");
-				spread_expr.to_string_from_buffer(buf, options, depth);
+				spread_expr.to_string_from_buffer(buf, options, local);
 			}
 		};
 	}

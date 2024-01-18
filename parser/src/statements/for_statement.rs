@@ -41,13 +41,13 @@ impl ASTNode for ForLoopStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("for");
 		options.add_gap(buf);
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
 
@@ -228,7 +228,7 @@ impl ASTNode for ForLoopCondition {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push('(');
 		match self {
@@ -236,43 +236,43 @@ impl ASTNode for ForLoopCondition {
 				if let Some(keyword) = keyword {
 					buf.push_str(keyword.as_str());
 				}
-				variable.to_string_from_buffer(buf, options, depth);
+				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" of ");
-				of.to_string_from_buffer(buf, options, depth);
+				of.to_string_from_buffer(buf, options, local);
 			}
 			Self::ForIn { keyword, variable, r#in, position: _ } => {
 				if let Some(keyword) = keyword {
 					buf.push_str(keyword.as_str());
 				}
-				variable.to_string_from_buffer(buf, options, depth);
+				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" in ");
-				r#in.to_string_from_buffer(buf, options, depth);
+				r#in.to_string_from_buffer(buf, options, local);
 			}
 			Self::Statements { initialiser: initializer, condition, afterthought, position: _ } => {
 				if let Some(initializer) = initializer {
 					match initializer {
 						ForLoopStatementInitializer::VariableDeclaration(stmt) => {
-							stmt.to_string_from_buffer(buf, options, depth);
+							stmt.to_string_from_buffer(buf, options, local);
 						}
 						ForLoopStatementInitializer::Expression(expr) => {
-							expr.to_string_from_buffer(buf, options, depth);
+							expr.to_string_from_buffer(buf, options, local);
 						}
 						ForLoopStatementInitializer::VarStatement(stmt) => {
-							stmt.to_string_from_buffer(buf, options, depth);
+							stmt.to_string_from_buffer(buf, options, local);
 						}
 					}
 				}
 				buf.push(';');
 				if let Some(condition) = condition {
 					options.add_gap(buf);
-					condition.to_string_from_buffer(buf, options, depth);
+					condition.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(';');
 				if let Some(afterthought) = afterthought {
 					options.add_gap(buf);
-					afterthought.to_string_from_buffer(buf, options, depth);
+					afterthought.to_string_from_buffer(buf, options, local);
 				}
 			}
 		}

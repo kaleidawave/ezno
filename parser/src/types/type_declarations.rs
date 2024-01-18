@@ -42,11 +42,11 @@ impl ASTNode for TypeDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str(&self.name);
 		if let Some(ref type_parameters) = self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
 	}
 
@@ -120,32 +120,32 @@ impl ASTNode for GenericTypeConstraint {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			GenericTypeConstraint::Parameter { name, default } => {
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, options, depth);
+					default.to_string_from_buffer(buf, options, local);
 				}
 			}
 			GenericTypeConstraint::Extends(name, extends) => {
 				buf.push_str(name);
 				buf.push_str(" extends ");
-				extends.to_string_from_buffer(buf, options, depth);
+				extends.to_string_from_buffer(buf, options, local);
 			}
 			GenericTypeConstraint::ExtendsKeyOf(name, extends_key_of) => {
 				buf.push_str(name);
 				buf.push_str(" extends keyof ");
-				extends_key_of.to_string_from_buffer(buf, options, depth);
+				extends_key_of.to_string_from_buffer(buf, options, local);
 			}
 			GenericTypeConstraint::Spread { name, default } => {
 				buf.push_str("...");
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, options, depth);
+					default.to_string_from_buffer(buf, options, local);
 				}
 			}
 		}

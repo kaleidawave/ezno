@@ -311,7 +311,7 @@ mod structures {
 			if let ChainVariable::Module(source) = self.0.first().unwrap() {
 				source.to_owned()
 			} else {
-				SourceId::NULL
+				source_map::Nullable::NULL
 			}
 		}
 
@@ -369,19 +369,29 @@ mod structures {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
 				ImmutableVariableOrProperty::ArrayDestructuringMember(a) => match a {
-					ArrayDestructuringField::Spread(_, a) => Some(a.as_str()),
-					ArrayDestructuringField::Name(_, _) | ArrayDestructuringField::None => None,
+					ArrayDestructuringField::Spread(_, VariableIdentifier::Standard(a, _)) => {
+						Some(a.as_str())
+					}
+					_ => None,
 				},
 				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
 					match o.get_ast_ref() {
-						ObjectDestructuringField::Spread(name, _)
-						| ObjectDestructuringField::Name(name, _, _) => Some(name.as_str()),
-						ObjectDestructuringField::Map { .. } => None,
+						ObjectDestructuringField::Spread(VariableIdentifier::Standard(a, _), _)
+						| ObjectDestructuringField::Name(
+							VariableIdentifier::Standard(a, _),
+							_,
+							_,
+						) => Some(a.as_str()),
+						_ => None,
 					}
 				}
 				ImmutableVariableOrProperty::FunctionName(name)
 				| ImmutableVariableOrProperty::ClassName(name) => {
-					name.map(crate::variable_fields::VariableIdentifier::as_str)
+					if let Some(VariableIdentifier::Standard(name, _)) = name {
+						Some(name)
+					} else {
+						None
+					}
 				}
 				ImmutableVariableOrProperty::ObjectPropertyKey(_property) => {
 					// Just want variable names
@@ -411,7 +421,7 @@ mod structures {
 				ImmutableVariableOrProperty::FunctionName(pos)
 				| ImmutableVariableOrProperty::ClassName(pos) => match pos {
 					Some(p) => p.get_position(),
-					None => &Span::NULL_SPAN,
+					None => &source_map::Nullable::NULL,
 				},
 				ImmutableVariableOrProperty::VariableFieldName(_, pos) => pos,
 				ImmutableVariableOrProperty::ArrayDestructuringMember(m) => m.get_position(),

@@ -12,15 +12,15 @@ fn expr() {
 				lhs: ezno_parser::ast::LHSOfAssignment::VariableOrPropertyAccess(
 					ezno_parser::ast::VariableOrPropertyAccess::Variable(
 						"x".to_owned(),
-						Span::NULL_SPAN
+						source_map::Nullable::NULL
 					)
 				),
 				rhs: Expression::NumberLiteral(
 					ezno_parser::NumberRepresentation::from(4f64),
-					Span::NULL_SPAN
+					source_map::Nullable::NULL
 				)
 				.into(),
-				position: Span::NULL_SPAN
+				position: source_map::Nullable::NULL
 			}
 		);
 	}
@@ -38,19 +38,22 @@ fn stmt_with_expr_interpolation() {
 		};
 		let declaration = VariableDeclarationItem {
 			name: ezno_parser::WithComment::None(ezno_parser::VariableField::Name(
-				ezno_parser::VariableIdentifier::Standard("y".to_owned(), Span::NULL_SPAN),
+				ezno_parser::VariableIdentifier::Standard(
+					"y".to_owned(),
+					source_map::Nullable::NULL,
+				),
 			)),
 			expression: Some(Expression::NumberLiteral(
 				ezno_parser::NumberRepresentation::from(-0.8715757724135882),
-				Span::NULL_SPAN,
+				source_map::Nullable::NULL,
 			)),
 			type_annotation: None,
-			position: Span::NULL_SPAN,
+			position: source_map::Nullable::NULL,
 		};
 		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
 			VariableDeclaration::LetDeclaration {
 				declarations: vec![declaration],
-				position: Span::NULL_SPAN,
+				position: source_map::Nullable::NULL,
 			},
 		));
 		assert_eq!(y, expected);
@@ -70,19 +73,22 @@ fn stmt_with_var_name_interpolation() {
 		eprintln!("{:#?}", statement);
 		let declaration = VariableDeclarationItem {
 			name: ezno_parser::WithComment::None(ezno_parser::VariableField::Name(
-				ezno_parser::VariableIdentifier::Standard("test".to_owned(), Span::NULL_SPAN),
+				ezno_parser::VariableIdentifier::Standard(
+					"test".to_owned(),
+					source_map::Nullable::NULL,
+				),
 			)),
 			expression: Some(Expression::NumberLiteral(
 				ezno_parser::NumberRepresentation::from(4f64),
-				Span::NULL_SPAN,
+				source_map::Nullable::NULL,
 			)),
 			type_annotation: None,
-			position: Span::NULL_SPAN,
+			position: source_map::Nullable::NULL,
 		};
 		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
 			VariableDeclaration::LetDeclaration {
 				declarations: vec![declaration],
-				position: Span::NULL_SPAN,
+				position: source_map::Nullable::NULL,
 			},
 		));
 		assert_eq!(statement, expected);

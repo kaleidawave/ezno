@@ -39,7 +39,7 @@ This project is a workspace consisting of a few crates:
 <!-- | ezno-web-framework | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
 <!-- | ezno-lsp | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
 
-Also checkout [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis), a crate which allows using the type checker inside [oxc](https://github.com/web-infra-dev/oxc/tree/main)!
+<!-- Also checkout [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis), a crate which allows using the type checker inside [oxc](https://github.com/web-infra-dev/oxc/tree/main)! -->
 
 ## Help contribute
 

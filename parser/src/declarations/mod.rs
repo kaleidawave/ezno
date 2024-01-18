@@ -280,23 +280,23 @@ impl crate::ASTNode for Declaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Declaration::Function(f) => f.to_string_from_buffer(buf, options, depth),
-			Declaration::Variable(var) => var.to_string_from_buffer(buf, options, depth),
-			Declaration::Class(cls) => cls.to_string_from_buffer(buf, options, depth),
-			Declaration::Import(is) => is.to_string_from_buffer(buf, options, depth),
-			Declaration::Export(es) => es.to_string_from_buffer(buf, options, depth),
-			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, depth),
-			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, depth),
-			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, depth),
+			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
+			Declaration::Variable(var) => var.to_string_from_buffer(buf, options, local),
+			Declaration::Class(cls) => cls.to_string_from_buffer(buf, options, local),
+			Declaration::Import(is) => is.to_string_from_buffer(buf, options, local),
+			Declaration::Export(es) => es.to_string_from_buffer(buf, options, local),
+			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
+			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
+			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
 			// TODO should skip these under no types
-			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, depth),
-			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, depth),
+			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
+			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareInterface(did) => {
 				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, options, depth);
+				did.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}

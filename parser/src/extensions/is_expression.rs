@@ -32,15 +32,15 @@ impl ASTNode for IsExpression {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("is (");
-		self.matcher.to_string_from_buffer(buf, options, depth);
+		self.matcher.to_string_from_buffer(buf, options, local);
 		buf.push_str(") {");
 		for (at_end, (l, r)) in self.branches.iter().endiate() {
-			l.to_string_from_buffer(buf, options, depth);
+			l.to_string_from_buffer(buf, options, local);
 			buf.push_str(" => ");
-			r.to_string_from_buffer(buf, options, depth);
+			r.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push_str(", ");
 			}

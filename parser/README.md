@@ -1,12 +1,12 @@
 # Ezno's Parser
 
-Contains "string to AST" parser, AST definitions, AST back to text/string form methods and hooks for traversing/visiting AST. Used in the Ezno checker.
+Contains "string to AST" parser, AST definitions, AST back to text/string form methods and hooks for traversing/visiting AST. Used in `ezno-checker` and the Ezno toolchain.
 
 ![parser lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge)
 [![crates.io badge](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
 [![docs.rs badge](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
 
-This is more of an exercise project in getting better at writing Rust and doesn't offer too much over other great Rust based JS parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/web-infra-dev/oxc) and [boa](https://github.com/boa-dev/boa).
+<!-- This is more of an exercise project in getting better at writing Rust and doesn't offer too much over other great Rust based JS parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/web-infra-dev/oxc) and [boa](https://github.com/boa-dev/boa). -->
 
 ## Goals
 
@@ -16,7 +16,7 @@ This is more of an exercise project in getting better at writing Rust and doesn'
 - Keep readable and maintainable
 - **Designed for analysis and transformations**
    	- See expression identifiers can be used to bind information to
-   	- Retain source positions for throwing errors
+   	- Retain source positions for use in analysis diagnostics and generating source maps
    	- All AST should be visitable. Immutably to collect facts or mutable to transform/remove
 - Optionally via configuration extend the ECMAscript language definition
    	- TypeScript type annotations
@@ -32,7 +32,6 @@ This is more of an exercise project in getting better at writing Rust and doesn'
 - CSTs, close to source operations etc
    	- Source with unbalanced parenthesis/brackets
 - Increase code size or decrease readability for minor speed improvements
-- Allow injecting additional syntax, that would require modifying the lexer at runtime adding new tokens which isn't technically possible with the setup
 
 ### Testing
 
@@ -50,7 +49,7 @@ and parse
 cargo run --example parse path/to/file.js
 ```
 
-> Note the Ezno CLI includes `ast-playground`: a more user focused version of these commands
+> Note the Ezno CLI includes the `ast-playground` subcommand: a more user oriented version of these commands
 
 ## Features
 

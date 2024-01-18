@@ -45,9 +45,9 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_from_buffer(buf, options, depth);
+		self.to_string_from_buffer(buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -122,27 +122,27 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("class ");
 		if let Some(name) = self.name.as_option_str() {
 			buf.push_str(name);
 		}
 		if let Some(type_parameters) = &self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
 		if let Some(extends) = &self.extends {
 			buf.push_str(" extends ");
-			extends.to_string_from_buffer(buf, options, depth);
+			extends.to_string_from_buffer(buf, options, local);
 		}
 		options.add_gap(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
 			if options.pretty {
 				buf.push_new_line();
-				options.add_indent(depth + 1, buf);
+				options.add_indent(local.depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, options, depth);
+			member.to_string_from_buffer(buf, options, local);
 			if !options.pretty && !at_end {
 				buf.push(';');
 			}

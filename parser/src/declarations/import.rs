@@ -56,7 +56,7 @@ impl ImportExportName {
 		options: &ParseOptions,
 	) -> ParseResult<(Self, source_map::End)> {
 		if let Some(Token(TSXToken::Comma, pos)) = reader.peek() {
-			let marker = state.new_partial_point_marker(pos.clone());
+			let marker = state.new_partial_point_marker(*pos);
 			return Ok((ImportExportName::Marker(marker), pos.get_end_after(0)));
 		}
 		let token = reader.next().unwrap();
@@ -86,10 +86,10 @@ impl ASTNode for ImportDeclaration {
 	) -> ParseResult<Self> {
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
-		let start = if !(matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none()) {
-			state.expect_keyword(reader, TSXKeyword::From)?
-		} else {
+		let start = if matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none() {
 			out.start
+		} else {
+			state.expect_keyword(reader, TSXKeyword::From)?
 		};
 
 		let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
@@ -111,7 +111,7 @@ impl ASTNode for ImportDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("import");
 		if self.is_type_annotation_import_only && options.include_types {
@@ -120,7 +120,7 @@ impl ASTNode for ImportDeclaration {
 
 		if let Some(ref default) = self.default {
 			buf.push(' ');
-			default.to_string_from_buffer(buf, options, depth);
+			default.to_string_from_buffer(buf, options, local);
 			if matches!(self.items, ImportedItems::Parts(None)) {
 				buf.push(' ');
 			}
@@ -134,7 +134,7 @@ impl ASTNode for ImportDeclaration {
 					buf.push_str(", ");
 				}
 				buf.push_str("* as ");
-				under.to_string_from_buffer(buf, options, depth);
+				under.to_string_from_buffer(buf, options, local);
 				buf.push(' ');
 			}
 			ImportedItems::Parts(ref parts) => {
@@ -146,7 +146,7 @@ impl ASTNode for ImportDeclaration {
 						buf.push('{');
 						options.add_gap(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, depth);
+							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
 								options.add_gap(buf);
@@ -369,10 +369,12 @@ impl ASTNode for ImportPart {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ImportPart::Name(identifier) => buf.push_str(identifier.as_str()),
+			ImportPart::Name(name) => {
+				name.to_string_from_buffer(buf, options, local);
+			}
 			ImportPart::NameWithAlias { name, alias, .. } => {
 				match alias {
 					ImportExportName::Reference(alias) => buf.push_str(alias),
@@ -396,11 +398,11 @@ impl ASTNode for ImportPart {
 					}
 				}
 				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, options, depth);
+					inner.to_string_from_buffer(buf, options, local);
 				}
 			}
 			ImportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, options, depth);
+				inner.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(comment);

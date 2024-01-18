@@ -369,7 +369,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									);
 									return if result { TypeId::TRUE } else { TypeId::FALSE };
 								}
-								parser::PropertyReference::Marker(_) => todo!(),
+								parser::PropertyReference::Marker(_) => {
+									crate::utils::notify!("Deleting property marker found");
+									return TypeId::ERROR_TYPE;
+								}
 							}
 						}
 						Expression::Index { indexee, indexer, is_optional: _, position: _ } => {
@@ -514,12 +517,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::PropertyAccess { parent, position, property, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
-			let property =
-				if let parser::PropertyReference::Standard { property, is_private: _ } = property {
+			let property = match property {
+				parser::PropertyReference::Standard { property, is_private: _ } => {
 					PropertyKey::String(Cow::Borrowed(property.as_str()))
-				} else {
-					todo!()
-				};
+				}
+				parser::PropertyReference::Marker(_) => {
+					crate::utils::notify!("Property marker found. TODO union of properties");
+					return TypeId::ERROR_TYPE;
+				}
+			};
 
 			// TODO
 			let publicity = Publicity::Public;
@@ -707,7 +713,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ClassExpression(class) => {
 			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
 		}
-		Expression::Marker { marker_id: _, position: _ } => todo!(),
+		Expression::Marker { marker_id: _, position: _ } => {
+			crate::utils::notify!("Marker expression found");
+			return TypeId::ERROR_TYPE;
+		}
 		Expression::SpecialOperators(operator, position) => match operator {
 			SpecialOperators::AsExpression { value, .. } => {
 				checking_data.diagnostics_container.add_warning(

@@ -53,7 +53,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	/// For [`crate::ArrowFunction`]
@@ -76,9 +76,9 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		buf: &mut T,
 		parameters: &FunctionParameters,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		parameters.to_string_from_buffer(buf, options, depth);
+		parameters.to_string_from_buffer(buf, options, local);
 	}
 
 	/// For [`crate::ArrowFunction`]
@@ -140,19 +140,19 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		&self,
 		buf: &mut TS,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, depth);
+		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, local);
 		if let (true, Some(type_parameters)) = (options.include_types, &self.type_parameters) {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
-		T::parameters_to_string_from_buffer(buf, &self.parameters, options, depth);
+		T::parameters_to_string_from_buffer(buf, &self.parameters, options, local);
 		if let (true, Some(return_type)) = (options.include_types, &self.return_type) {
 			buf.push_str(": ");
-			return_type.to_string_from_buffer(buf, options, depth);
+			return_type.to_string_from_buffer(buf, options, local);
 		}
 		T::parameter_body_boundary_token_to_string_from_buffer(buf, options);
-		self.body.to_string_from_buffer(buf, options, depth + 1);
+		self.body.to_string_from_buffer(buf, options, local.next_level());
 	}
 
 	fn get_position(&self) -> &Span {
@@ -261,9 +261,9 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		header.to_string_from_buffer(buf, options, depth);
+		header.to_string_from_buffer(buf, options, local);
 		if let Some(name) = name.as_option_str() {
 			buf.push_str(name);
 		}
@@ -354,7 +354,7 @@ impl ASTNode for FunctionHeader {
 		&self,
 		buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		if self.is_async() {
 			buf.push_str("async ");

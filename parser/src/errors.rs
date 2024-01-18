@@ -20,6 +20,7 @@ pub enum ParseErrors<'a> {
 	LexingFailed,
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
+	DestructuringRequiresValue,
 }
 
 #[allow(missing_docs)]
@@ -151,6 +152,9 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::InvalidDeclareItem(item) => {
 				write!(f, "Declare item '{item}' must be in .d.ts file")
 			}
+			ParseErrors::DestructuringRequiresValue => {
+				write!(f, "RHS of destructured declaration requires expression")
+			}
 		}
 	}
 }
@@ -171,7 +175,7 @@ impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
+	ParseError::new(ParseErrors::LexingFailed, source_map::Nullable::NULL)
 }
 
 pub trait ParserErrorReason: Display {}

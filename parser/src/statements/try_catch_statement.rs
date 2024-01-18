@@ -93,12 +93,12 @@ impl ASTNode for TryCatchStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		// Required `try` block
 		buf.push_str("try");
 		options.add_gap(buf);
-		self.try_inner.to_string_from_buffer(buf, options, depth + 1);
+		self.try_inner.to_string_from_buffer(buf, options, local.next_level());
 
 		// Optional `catch` block
 		if let Some(catch) = &self.catch_inner {
@@ -109,18 +109,18 @@ impl ASTNode for TryCatchStatement {
 			// Optional exception variable: `catch (e)`
 			if let Some((exception_var, exception_var_type)) = &self.exception_var {
 				buf.push('(');
-				exception_var.to_string_from_buffer(buf, options, depth);
+				exception_var.to_string_from_buffer(buf, options, local);
 
 				// Optional type annotation: `catch (e: any)`
 				if let Some(exception_var_type) = exception_var_type {
 					buf.push_str(": ");
-					exception_var_type.to_string_from_buffer(buf, options, depth);
+					exception_var_type.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(')');
 				options.add_gap(buf);
 			}
 
-			catch.to_string_from_buffer(buf, options, depth + 1);
+			catch.to_string_from_buffer(buf, options, local.next_level());
 		}
 
 		// Optional `finally` block
@@ -128,7 +128,7 @@ impl ASTNode for TryCatchStatement {
 			options.add_gap(buf);
 			buf.push_str("finally");
 			options.add_gap(buf);
-			finally.to_string_from_buffer(buf, options, depth + 1);
+			finally.to_string_from_buffer(buf, options, local.next_level());
 		}
 	}
 }

@@ -132,20 +132,20 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		&self,
 		buf: &mut U,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::None(ast) => ast.to_string_from_buffer(buf, options, depth),
+			Self::None(ast) => ast.to_string_from_buffer(buf, options, local),
 			Self::PrefixComment(comment, ast, _) => {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
 				}
-				ast.to_string_from_buffer(buf, options, depth);
+				ast.to_string_from_buffer(buf, options, local);
 			}
 			Self::PostfixComment(ast, comment, _) => {
-				ast.to_string_from_buffer(buf, options, depth);
+				ast.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());

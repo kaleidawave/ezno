@@ -39,7 +39,7 @@ impl ASTNode for Decorator {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_decorators {
 			buf.push('@');
@@ -52,7 +52,7 @@ impl ASTNode for Decorator {
 			if let Some(arguments) = &self.arguments {
 				buf.push('(');
 				for (at_end, argument) in arguments.iter().endiate() {
-					argument.to_string_from_buffer(buf, options, depth);
+					argument.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
 						options.add_gap(buf);
@@ -137,10 +137,10 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_from_buffer_just_decorators(buf, options, depth);
-		self.on.to_string_from_buffer(buf, options, depth);
+		self.to_string_from_buffer_just_decorators(buf, options, local);
+		self.on.to_string_from_buffer(buf, options, local);
 	}
 }
 
@@ -159,11 +159,11 @@ impl<U: ASTNode> Decorated<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_decorators {
 			for decorator in &self.decorators {
-				decorator.to_string_from_buffer(buf, options, depth);
+				decorator.to_string_from_buffer(buf, options, local);
 				if options.pretty {
 					buf.push_new_line();
 				} else {

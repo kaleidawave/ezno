@@ -201,9 +201,9 @@ impl ASTNode for Expression {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_using_precedence(buf, options, depth, COMMA_PRECEDENCE);
+		self.to_string_using_precedence(buf, options, local, COMMA_PRECEDENCE);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -1041,7 +1041,9 @@ impl Expression {
 					};
 					top = Expression::PostfixComment(Box::new(top), comment, position);
 				}
-				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is) => {
+				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is)
+					if options.type_annotations =>
+				{
 					if AssociativityDirection::LeftToRight
 						.should_return(parent_precedence, RELATION_PRECEDENCE)
 					{
@@ -1276,12 +1278,12 @@ impl Expression {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 		_parent_precedence: u8,
 	) {
 		match self {
 			Self::Marker { .. } => {
-				assert!(options.expect_markers,);
+				assert!(options.expect_markers, "marker found");
 			}
 			Self::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
 			Self::StringLiteral(string, quoted, _) => {
@@ -1302,23 +1304,23 @@ impl Expression {
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
 				let op_precedence = operator.precedence();
-				lhs.to_string_using_precedence(buf, options, depth, op_precedence);
+				lhs.to_string_using_precedence(buf, options, local, op_precedence);
 				options.add_gap(buf);
 				buf.push_str(operator.to_str());
 				options.add_gap(buf);
-				rhs.to_string_using_precedence(buf, options, depth, op_precedence);
+				rhs.to_string_using_precedence(buf, options, local, op_precedence);
 			}
 			Self::SpecialOperators(special, _) => match special {
 				SpecialOperators::AsExpression { value, type_annotation, .. }
 				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
-					value.to_string_from_buffer(buf, options, depth);
+					value.to_string_from_buffer(buf, options, local);
 					if options.include_types {
 						buf.push_str(match special {
 							SpecialOperators::AsExpression { .. } => " as ",
 							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
 							_ => unreachable!(),
 						});
-						type_annotation.to_string_from_buffer(buf, options, depth);
+						type_annotation.to_string_from_buffer(buf, options, local);
 					}
 				}
 				SpecialOperators::InExpression { lhs, rhs } => {
@@ -1331,52 +1333,53 @@ impl Expression {
 							lhs.to_string_using_precedence(
 								buf,
 								options,
-								depth,
+								local,
 								RELATION_PRECEDENCE,
 							);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
 				}
 				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
-					lhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
+					lhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, depth, RELATION_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
 				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {
-					value.to_string_from_buffer(buf, options, depth);
-					type_annotation.to_string_from_buffer(buf, options, depth);
+					value.to_string_from_buffer(buf, options, local);
+					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
-				operand.to_string_from_buffer(buf, options, depth);
+				operand.to_string_from_buffer(buf, options, local);
 			}
 			Self::Assignment { lhs, rhs, .. } => {
-				lhs.to_string_from_buffer(buf, options, depth);
+				lhs.to_string_from_buffer(buf, options, local);
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				rhs.to_string_from_buffer(buf, options, depth);
+				rhs.to_string_from_buffer(buf, options, local);
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
-				lhs.to_string_from_buffer(buf, options, depth);
+				lhs.to_string_from_buffer(buf, options, local);
 				options.add_gap(buf);
 				buf.push_str(operator.to_str());
 				options.add_gap(buf);
-				rhs.to_string_from_buffer(buf, options, depth);
+				rhs.to_string_from_buffer(buf, options, local);
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
-				operand.to_string_from_buffer(buf, options, depth);
+				operand.to_string_from_buffer(buf, options, local);
 			}
 			Self::UnaryPostfixAssignmentOperation { operand, operator, .. } => {
-				operand.to_string_from_buffer(buf, options, depth);
+				operand.to_string_from_buffer(buf, options, local);
 				buf.push_str(operator.to_str());
 			}
-			Self::VariableReference(name, _position) => {
+			Self::VariableReference(name, position) => {
+				buf.add_mapping(&position.with_source(local.under));
 				buf.push_str(name);
 			}
 			Self::ThisReference(..) => {
@@ -1387,22 +1390,27 @@ impl Expression {
 			}
 			Self::DynamicImport { path, .. } => {
 				buf.push_str("import(");
-				path.to_string_from_buffer(buf, options, depth);
+				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Self::PropertyAccess { parent, property, is_optional, position: _, .. } => {
-				parent.to_string_from_buffer(buf, options, depth);
+			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
+				buf.add_mapping(&position.with_source(local.under));
+
+				parent.to_string_from_buffer(buf, options, local);
 				if *is_optional {
 					buf.push('?');
 				}
 				buf.push('.');
-				if let PropertyReference::Standard { property, is_private } = property {
-					if *is_private {
-						buf.push('#');
+				match property {
+					PropertyReference::Standard { property, is_private } => {
+						if *is_private {
+							buf.push('#');
+						}
+						buf.push_str(property);
 					}
-					buf.push_str(property);
-				} else if !options.expect_markers {
-					panic!("found marker");
+					PropertyReference::Marker(..) => {
+						assert!(options.expect_markers, "found marker");
+					}
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
@@ -1410,26 +1418,26 @@ impl Expression {
 				if let MultipleExpression::Single(inner @ Expression::VariableReference(..)) =
 					&**expr
 				{
-					inner.to_string_from_buffer(buf, options, depth);
+					inner.to_string_from_buffer(buf, options, local);
 				} else {
 					buf.push('(');
-					expr.to_string_from_buffer(buf, options, depth);
+					expr.to_string_from_buffer(buf, options, local);
 					buf.push(')');
 				}
 			}
 			Self::Index { indexee: expression, indexer, is_optional, .. } => {
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 				if *is_optional {
 					buf.push_str("?.");
 				}
 				buf.push('[');
-				indexer.to_string_from_buffer(buf, options, depth);
+				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 			Self::FunctionCall { function, type_arguments, arguments, is_optional, .. } => {
 				// TODO is this okay?
 				if let Some(ExpressionOrBlock::Expression(expression)) = self.is_iife() {
-					expression.to_string_from_buffer(buf, options, depth);
+					expression.to_string_from_buffer(buf, options, local);
 					return;
 				}
 				let is_raw_function = matches!(
@@ -1440,55 +1448,55 @@ impl Expression {
 				if is_raw_function {
 					buf.push('(');
 				}
-				function.to_string_from_buffer(buf, options, depth);
+				function.to_string_from_buffer(buf, options, local);
 				if is_raw_function {
 					buf.push(')');
 				}
 				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
-					to_string_bracketed(type_arguments, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				if *is_optional {
 					buf.push_str("?.");
 				}
-				arguments_to_string(arguments, buf, options, depth);
+				arguments_to_string(arguments, buf, options, local);
 			}
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
-				constructor.to_string_from_buffer(buf, options, depth);
+				constructor.to_string_from_buffer(buf, options, local);
 				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
-					to_string_bracketed(type_arguments, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				if let Some(arguments) = arguments {
 					// Constructor calls can drop arguments if none
 					if !arguments.is_empty() || options.pretty {
-						arguments_to_string(arguments, buf, options, depth);
+						arguments_to_string(arguments, buf, options, local);
 					}
 				}
 			}
 			Self::ArrayLiteral(values, _) => {
-				to_string_bracketed(values, ('[', ']'), buf, options, depth);
+				to_string_bracketed(values, ('[', ']'), buf, options, local);
 			}
-			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, depth),
+			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
 			Self::ObjectLiteral(object_literal) => {
-				object_literal.to_string_from_buffer(buf, options, depth);
+				object_literal.to_string_from_buffer(buf, options, local);
 			}
 			Self::ArrowFunction(arrow_function) => {
-				arrow_function.to_string_from_buffer(buf, options, depth);
+				arrow_function.to_string_from_buffer(buf, options, local);
 			}
 			Self::ExpressionFunction(function) => {
-				function.to_string_from_buffer(buf, options, depth);
+				function.to_string_from_buffer(buf, options, local);
 			}
-			Self::ClassExpression(class) => class.to_string_from_buffer(buf, options, depth),
+			Self::ClassExpression(class) => class.to_string_from_buffer(buf, options, local),
 			Self::PrefixComment(comment, expression, _) => {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					buf.push_str_contains_new_line(comment.as_str());
 					buf.push_str("*/ ");
 				}
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 			Self::PostfixComment(expression, comment, _) => {
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str(" /*");
 					buf.push_str_contains_new_line(comment.as_str());
@@ -1503,38 +1511,38 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
-				template_literal.to_string_from_buffer(buf, options, depth);
+				template_literal.to_string_from_buffer(buf, options, local);
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
 				condition.to_string_using_precedence(
 					buf,
 					options,
-					depth,
+					local,
 					CONDITIONAL_TERNARY_PRECEDENCE,
 				);
 				buf.push_str(if options.pretty { " ? " } else { "?" });
 				truthy_result.to_string_using_precedence(
 					buf,
 					options,
-					depth,
+					local,
 					CONDITIONAL_TERNARY_PRECEDENCE,
 				);
 				buf.push_str(if options.pretty { " : " } else { ":" });
 				falsy_result.to_string_using_precedence(
 					buf,
 					options,
-					depth,
+					local,
 					CONDITIONAL_TERNARY_PRECEDENCE,
 				);
 			}
 			Self::Null(..) => buf.push_str("null"),
 			#[cfg(feature = "extras")]
-			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, options, depth),
+			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, options, local),
 			Self::SuperExpression(super_expr, _) => {
 				buf.push_str("super");
 				match super_expr {
 					SuperReference::Call { arguments } => {
-						arguments_to_string(arguments, buf, options, depth);
+						arguments_to_string(arguments, buf, options, local);
 					}
 					SuperReference::PropertyAccess { property } => {
 						buf.push('.');
@@ -1542,7 +1550,7 @@ impl Expression {
 					}
 					SuperReference::Index { indexer: index } => {
 						buf.push('[');
-						index.to_string_from_buffer(buf, options, depth);
+						index.to_string_from_buffer(buf, options, local);
 						buf.push(']');
 					}
 				}
@@ -1609,16 +1617,16 @@ impl ASTNode for MultipleExpression {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-				lhs.to_string_from_buffer(buf, options, depth);
+				lhs.to_string_from_buffer(buf, options, local);
 				buf.push(',');
-				rhs.to_string_from_buffer(buf, options, depth);
+				rhs.to_string_from_buffer(buf, options, local);
 			}
 			MultipleExpression::Single(rhs) => {
-				rhs.to_string_from_buffer(buf, options, depth);
+				rhs.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -1691,21 +1699,21 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	nodes: &[SpreadExpression],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
 	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
 		// Hack for arrays, this is just easier for generators
 		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			for (at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter()) {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 				if !at_end {
 					buf.push(',');
 					options.add_gap(buf);
 				}
 			}
 		} else {
-			node.to_string_from_buffer(buf, options, depth);
+			node.to_string_from_buffer(buf, options, local);
 		}
 		if !at_end {
 			buf.push(',');
@@ -1814,15 +1822,15 @@ impl ASTNode for SpreadExpression {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			SpreadExpression::Spread(expression, _) => {
 				buf.push_str("...");
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 			SpreadExpression::NonSpread(expression) => {
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 			SpreadExpression::Empty => {}
 		}
@@ -1832,7 +1840,7 @@ impl ASTNode for SpreadExpression {
 		match self {
 			SpreadExpression::Spread(_, pos) => pos,
 			SpreadExpression::NonSpread(expr) => expr.get_position(),
-			SpreadExpression::Empty => &Span::NULL_SPAN,
+			SpreadExpression::Empty => &source_map::Nullable::NULL,
 		}
 	}
 }

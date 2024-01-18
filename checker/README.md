@@ -7,7 +7,9 @@ Contains type checking logic.
 
 See [specification](./specification/specification.md) for what is currently implemented.
 
-The `synthesis` folder contains logic for [Ezno's parser](https://github.com/kaleidawave/ezno/tree/main/parser). See [oxc_type_synthesis](https://github.com/web-infra-dev/oxc) for similar code that connects the logic with OXCs AST.
+## Adding type checking outside of the Ezno toolchain
+
+While the checker is indented for the Ezno toolchain and its parser, most (3/4) of the checker code is AST agnostic. The synthesis directory that contains the bindings with `ezno-parser` can disabled with `no-default-features`. You can build your own `AST <-> Type checking APIs` using it for adding Ezno's type checking features into other toolchains (without needing to parse or convert ASTs).
 
 ## Testing
 

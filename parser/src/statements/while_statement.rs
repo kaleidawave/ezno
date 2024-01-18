@@ -37,15 +37,15 @@ impl ASTNode for WhileStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("while");
 		options.add_gap(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
 		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
 
@@ -84,16 +84,16 @@ impl ASTNode for DoWhileStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("do");
 		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth);
+		self.inner.to_string_from_buffer(buf, options, local);
 		options.add_gap(buf);
 		buf.push_str("while");
 		options.add_gap(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
 	}
 }

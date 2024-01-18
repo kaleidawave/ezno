@@ -104,8 +104,7 @@ pub fn lex_script(
 	#[derive(PartialEq, Debug)]
 	enum NumberLiteralType {
 		BinaryLiteral,
-		/// Note that leading zero entries are not registered at this
-		/// stage, but work through NumberRepresentation parsing
+		/// strict mode done at the parse level
 		OctalLiteral,
 		HexadecimalLiteral,
 		/// Base 10
@@ -163,7 +162,7 @@ pub fn lex_script(
 	}
 
 	if script.len() > u32::MAX as usize {
-		return Err((LexingErrors::CannotLoadLargeFile(script.len()), Span::NULL_SPAN));
+		return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 	}
 
 	let mut state: LexingState = LexingState::None;
@@ -235,6 +234,7 @@ pub fn lex_script(
 				match chr {
 					_ if matches!(literal_type, NumberLiteralType::BigInt) => {
 						if is_number_delimiter(chr) {
+							// Content already checked
 							push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
 							set_state!(LexingState::None);
 						} else {
@@ -282,6 +282,7 @@ pub fn lex_script(
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}
+						// all above allowed
 						NumberLiteralType::HexadecimalLiteral => {}
 						NumberLiteralType::BigInt => unreachable!(),
 					},
@@ -905,6 +906,11 @@ pub fn lex_script(
 		// This is done later as state may have been set to none by the matching
 		if state == LexingState::None {
 			match chr {
+				'0' if matches!(script.as_bytes().get(idx + 1), Some(b'0'..=b'7')) => {
+					dbg!();
+					// strict mode should be done in the parser stage (as that is where context is)
+					set_state!(LexingState::Number(NumberLiteralType::OctalLiteral))
+				}
 				'0'..='9' => set_state!(LexingState::Number(Default::default())),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),

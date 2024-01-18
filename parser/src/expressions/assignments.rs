@@ -50,14 +50,14 @@ impl ASTNode for VariableOrPropertyAccess {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			VariableOrPropertyAccess::Variable(name, ..) => {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, options, depth);
+				parent.to_string_from_buffer(buf, options, local);
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
@@ -69,9 +69,9 @@ impl ASTNode for VariableOrPropertyAccess {
 				}
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, .. } => {
-				indexee.to_string_from_buffer(buf, options, depth);
+				indexee.to_string_from_buffer(buf, options, local);
 				buf.push('[');
-				indexer.to_string_from_buffer(buf, options, depth);
+				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 		}
@@ -196,14 +196,14 @@ impl LHSOfAssignment {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(members, _) => {
 				buf.push('{');
 				options.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
 						options.add_gap(buf);
@@ -215,7 +215,7 @@ impl LHSOfAssignment {
 			LHSOfAssignment::ArrayDestructuring(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end || matches!(member, ArrayDestructuringField::None) {
 						buf.push(',');
 					}
@@ -223,7 +223,7 @@ impl LHSOfAssignment {
 				buf.push(']');
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(variable_or_property_access) => {
-				variable_or_property_access.to_string_from_buffer(buf, options, depth);
+				variable_or_property_access.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}

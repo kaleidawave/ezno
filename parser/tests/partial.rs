@@ -1,4 +1,5 @@
 use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn declarations() {

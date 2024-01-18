@@ -48,25 +48,21 @@ impl ASTNode for VariableIdentifier {
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
-		_options: &crate::ToStringOptions,
-		_depth: u8,
+		options: &crate::ToStringOptions,
+		_local: crate::LocalToStringInformation,
 	) {
-		buf.push_str(self.as_str());
+		match self {
+			VariableIdentifier::Standard(name, _) => buf.push_str(&name),
+			VariableIdentifier::Marker(_, _) => {
+				if !options.expect_markers {
+					panic!("variable marker attempted to convert to string")
+				}
+			}
+		}
 	}
 
 	fn get_position(&self) -> &Span {
 		self.get()
-	}
-}
-
-impl VariableIdentifier {
-	/// TODO temp
-	#[must_use]
-	pub fn as_str(&self) -> &str {
-		match self {
-			VariableIdentifier::Standard(name, _) => name.as_str(),
-			VariableIdentifier::Marker(_, _) => "",
-		}
 	}
 }
 
@@ -175,7 +171,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	fn optional_expression_get_position(
@@ -207,11 +203,11 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 		optional_expression: &Self::OptionalExpression,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if let Some(optional_expression) = optional_expression {
 			buf.push_str(if options.pretty { " = " } else { "=" });
-			optional_expression.to_string_from_buffer(buf, options, depth);
+			optional_expression.to_string_from_buffer(buf, options, local);
 		}
 	}
 
@@ -243,7 +239,7 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 		_optional_expression: &Self::OptionalExpression,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 	}
 
@@ -270,7 +266,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let mut items: Vec<_> = Vec::new();
-				// No trailing comments
+				// No trailing commas
 				loop {
 					if let Some(token) =
 						reader.conditional_next(|token| *token == TSXToken::CloseBracket)
@@ -303,17 +299,22 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Name(identifier) => buf.push_str(identifier.as_str()),
+			Self::Name(identifier) => {
+				buf.add_mapping(&identifier.get_position().with_source(local.under));
+				identifier.to_string_from_buffer(buf, options, local)
+			}
 			Self::Array(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
-					if !at_end || matches!(member, ArrayDestructuringField::None) {
+					member.to_string_from_buffer(buf, options, local);
+					if !at_end {
 						buf.push(',');
-						options.add_gap(buf);
+						if !matches!(member, ArrayDestructuringField::None) {
+							options.add_gap(buf);
+						}
 					}
 				}
 				buf.push(']');
@@ -322,7 +323,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 				buf.push('{');
 				options.add_gap(buf);
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
 						options.add_gap(buf);
@@ -407,22 +408,22 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Spread(name, _) => {
 				buf.push_str("...");
-				buf.push_str(name.as_str());
+				name.to_string_from_buffer(buf, options, local);
 			}
 			Self::Name(name, default_value, _) => {
-				buf.push_str(name.as_str());
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, local);
 			}
 			Self::Map { from, name: variable_name, default_value, .. } => {
-				from.to_string_from_buffer(buf, options, depth);
+				from.to_string_from_buffer(buf, options, local);
 				buf.push(':');
-				variable_name.to_string_from_buffer(buf, options, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
+				variable_name.to_string_from_buffer(buf, options, local);
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, local);
 			}
 		}
 	}
@@ -481,20 +482,18 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Spread(_, name) => {
 				buf.push_str("...");
-				buf.push_str(name.as_str());
+				name.to_string_from_buffer(buf, options, local);
 			}
 			Self::Name(name, default_value) => {
-				name.to_string_from_buffer(buf, options, depth);
-				U::optional_expression_to_string_from_buffer(default_value, buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
+				U::optional_expression_to_string_from_buffer(default_value, buf, options, local);
 			}
-			Self::None => {
-				options.add_gap(buf);
-			}
+			Self::None => {}
 		}
 	}
 
@@ -503,7 +502,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 			ArrayDestructuringField::Spread(pos, _) => pos,
 			// TODO misses out optional expression
 			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
-			ArrayDestructuringField::None => &Span::NULL_SPAN,
+			ArrayDestructuringField::None => &source_map::Nullable::NULL,
 		}
 	}
 }

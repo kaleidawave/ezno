@@ -78,14 +78,14 @@ impl ASTNode for StatementOrDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			StatementOrDeclaration::Statement(item) => {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Declaration(item) => {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -142,18 +142,18 @@ impl ASTNode for Block {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push('{');
-		if depth > 0 && options.pretty {
+		if local.depth > 0 && options.pretty {
 			buf.push_new_line();
 		}
-		statements_and_declarations_to_string(&self.0, buf, options, depth);
+		statements_and_declarations_to_string(&self.0, buf, options, local);
 		if options.pretty && !self.0.is_empty() {
 			buf.push_new_line();
 		}
-		if depth > 1 {
-			options.add_indent(depth - 1, buf);
+		if local.depth > 1 {
+			options.add_indent(local.depth - 1, buf);
 		}
 		buf.push('}');
 	}
@@ -311,19 +311,19 @@ impl ASTNode for BlockOrSingleStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			BlockOrSingleStatement::Braced(block) => {
-				block.to_string_from_buffer(buf, options, depth);
+				block.to_string_from_buffer(buf, options, local);
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
 				if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.add_gap(buf);
-					stmt.to_string_from_buffer(buf, options, depth + 1);
+					stmt.to_string_from_buffer(buf, options, local.next_level());
 				} else {
-					stmt.to_string_from_buffer(buf, options, depth);
+					stmt.to_string_from_buffer(buf, options, local);
 					if stmt.requires_semi_colon() {
 						buf.push(';');
 					}
@@ -361,7 +361,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	items: &[StatementOrDeclaration],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
@@ -373,8 +373,8 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			}
 		}
 
-		options.add_indent(depth, buf);
-		item.to_string_from_buffer(buf, options, depth);
+		options.add_indent(local.depth, buf);
+		item.to_string_from_buffer(buf, options, local);
 		if (!at_end || options.trailing_semicolon) && item.requires_semi_colon() {
 			buf.push(';');
 		}

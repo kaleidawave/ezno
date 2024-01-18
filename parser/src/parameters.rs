@@ -76,25 +76,25 @@ impl ASTNode for FunctionParameters {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
 		buf.push('(');
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()
 		{
-			// decorators_to_string_from_buffer(decorators, buf, options, depth);
-			name.to_string_from_buffer(buf, options, depth);
+			// decorators_to_string_from_buffer(decorators, buf, options, local);
+			name.to_string_from_buffer(buf, options, local);
 			if let (true, Some(ref type_annotation)) = (options.include_types, type_annotation) {
 				if let Some(ParameterData::Optional) = additionally {
 					buf.push('?');
 				}
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				value.to_string_from_buffer(buf, options, depth);
+				value.to_string_from_buffer(buf, options, local);
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
@@ -103,10 +103,10 @@ impl ASTNode for FunctionParameters {
 		}
 		if let Some(rest_parameter) = rest_parameter {
 			buf.push_str("...");
-			buf.push_str(rest_parameter.name.as_str());
+			rest_parameter.name.to_string_from_buffer(buf, options, local);
 			if let Some(ref type_annotation) = rest_parameter.type_annotation {
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 		}
 		buf.push(')');
