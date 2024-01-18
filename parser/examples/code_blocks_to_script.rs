@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			&mut visitors,
 			&mut names,
 			&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
-			SourceId::NULL,
+			source_map::Nullable::NULL,
 		);
 
 		// TODO quick fix to also register interface and type alias names to prevent conflicts

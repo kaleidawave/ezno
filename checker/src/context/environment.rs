@@ -350,7 +350,7 @@ impl<'a> Environment<'a> {
 								}
 							}
 							.into(),
-							(TypeId::ONE, SpanWithSource::NULL_SPAN),
+							(TypeId::ONE, source_map::Nullable::NULL),
 							checking_data,
 							self,
 						);

@@ -52,7 +52,7 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 			use ezno_parser::generator_helpers::IntoAST;
 
 			#(#interpolation_tokens;)*
-			const CURRENT_SOURCE_ID: SourceId = SourceId::NULL;
+			const CURRENT_SOURCE_ID: SourceId = source_map::Nullable::NULL;
 			#node_as_tokens
 		}
 	};

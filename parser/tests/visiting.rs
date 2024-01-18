@@ -25,7 +25,7 @@ fn visiting() {
 		variable_visitors_mut: Default::default(),
 		block_visitors_mut: Default::default(),
 	};
-	module.visit_mut(&mut visitors, &mut (), &VisitOptions::default(), SourceId::NULL);
+	module.visit_mut(&mut visitors, &mut (), &VisitOptions::default(), source_map::Nullable::NULL);
 
 	let output = module.to_string(&ToStringOptions::minified());
 

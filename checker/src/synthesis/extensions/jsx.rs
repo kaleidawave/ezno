@@ -336,7 +336,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 		.call(
 	// 			// 			&[synthesisedArgument::NonSpread {
 	// 			// 				ty: props,
-	// 			// 				position: Span { start: 0, end: 0, source_id: SourceId::NULL },
+	// 			// 				position: Span { start: 0, end: 0, source_id: source_map::Nullable::NULL },
 	// 			// 			}],
 	// 			// 			None,
 	// 			// 			None,

@@ -1,4 +1,3 @@
-use source_map::{Nullable, SourceId};
 use tokenizer_lib::sized_tokens::TokenStart;
 
 use crate::{
@@ -64,7 +63,7 @@ impl Module {
 	pub fn to_string_with_source_map(
 		&self,
 		options: &crate::ToStringOptions,
-		this: SourceId,
+		this: source_map::SourceId,
 		fs: &impl source_map::FileSystem,
 	) -> (String, Option<source_map::SourceMap>) {
 		let mut buf = source_map::StringWithOptionalSourceMap::new(true);
@@ -82,7 +81,7 @@ impl Module {
 	// 	self.to_string_from_buffer(
 	// 		&mut buf,
 	// 		options,
-	// 		LocalToStringInformation { depth: 0, under: SourceId::NULL },
+	// 		LocalToStringInformation { depth: 0, under: source_map::Nullable::NULL },
 	// 	);
 	// 	buf.get_count()
 	// }
@@ -94,7 +93,7 @@ impl Module {
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
-		source: SourceId,
+		source: source_map::SourceId,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));
@@ -117,7 +116,7 @@ impl Module {
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
-		source: SourceId,
+		source: source_map::SourceId,
 	) {
 		use crate::visiting::Visitable;
 		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));

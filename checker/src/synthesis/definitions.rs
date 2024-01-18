@@ -1,5 +1,4 @@
 use parser::ASTNode;
-use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
@@ -25,7 +24,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 	let mut idx_to_types = HashMap::new();
 	// TODO NULL
-	let source = SourceId::NULL;
+	let source = source_map::Nullable::NULL;
 	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
@@ -269,7 +268,7 @@ pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 // TODO temp
 // pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
 // 	let now = std::time::Instant::now();
-// 	let ctx = RootContext::deserialize(file, source_map::SourceId::NULL).unwrap();
+// 	let ctx = RootContext::deserialize(file, source_map::source_map::Nullable::NULL).unwrap();
 // 	println!("From binary {:?}", now.elapsed());
 // 	ctx
 // }

@@ -113,7 +113,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					crate::diagnostics::Diagnostic::Position {
 						reason: warning.0,
 						// TODO temp
-						position: source_map::SpanWithSource::NULL_SPAN,
+						position: source_map::Nullable::NULL,
 						kind: crate::diagnostics::DiagnosticKind::Info,
 					},
 				);

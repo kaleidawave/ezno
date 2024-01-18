@@ -197,7 +197,7 @@ pub struct VariableId(pub SourceId, pub u32);
 pub struct FunctionId(pub SourceId, pub u32);
 
 impl FunctionId {
-	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
+	pub const AUTO_CONSTRUCTOR: Self = FunctionId(source_map::Nullable::NULL, 0);
 }
 
 #[derive(Debug)]

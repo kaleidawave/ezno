@@ -9,7 +9,7 @@ use crate::{
 	types::TypeId,
 	CheckingData, GeneralContext,
 };
-use source_map::{SourceId, SpanWithSource};
+use source_map::{SourceId};
 use std::{collections::HashMap, iter::FromIterator};
 
 pub type RootContext = Context<Root>;
@@ -75,7 +75,7 @@ impl RootContext {
 		let variables = {
 			let variable_or_import = VariableOrImport::Variable {
 				mutability: crate::features::variables::VariableMutability::Constant,
-				declared_at: SpanWithSource::NULL_SPAN,
+				declared_at: source_map::Nullable::NULL,
 				context: None,
 			};
 			let undefined_id = variable_or_import.get_id();

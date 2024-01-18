@@ -270,7 +270,7 @@ impl ASTNode for JSXNode {
 	) {
 		match self {
 			JSXNode::Element(element) => {
-				element.to_string_from_buffer(buf, options, local.next_level())
+				element.to_string_from_buffer(buf, options, local.next_level());
 			}
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {

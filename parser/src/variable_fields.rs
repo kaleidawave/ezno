@@ -52,11 +52,9 @@ impl ASTNode for VariableIdentifier {
 		_local: crate::LocalToStringInformation,
 	) {
 		match self {
-			VariableIdentifier::Standard(name, _) => buf.push_str(&name),
+			VariableIdentifier::Standard(name, _) => buf.push_str(name),
 			VariableIdentifier::Marker(_, _) => {
-				if !options.expect_markers {
-					panic!("variable marker attempted to convert to string")
-				}
+				assert!(!options.expect_markers, "variable marker attempted to convert to string");
 			}
 		}
 	}
@@ -304,7 +302,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 		match self {
 			Self::Name(identifier) => {
 				buf.add_mapping(&identifier.get_position().with_source(local.under));
-				identifier.to_string_from_buffer(buf, options, local)
+				identifier.to_string_from_buffer(buf, options, local);
 			}
 			Self::Array(members, _) => {
 				buf.push('[');

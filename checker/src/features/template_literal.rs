@@ -1,4 +1,4 @@
-use source_map::{Span, SpanWithSource};
+use source_map::Span;
 
 use crate::{
 	context::invocation::CheckThings,
@@ -84,7 +84,7 @@ where
 					arguments.push(SynthesisedArgument {
 						value: part_to_type(p, environment, checking_data),
 						// TODO position
-						position: SpanWithSource::NULL_SPAN,
+						position: source_map::Nullable::NULL,
 						spread: false,
 					});
 				}
@@ -96,7 +96,7 @@ where
 			SynthesisedArgument {
 				value: static_parts.build_object(),
 				// TODO position
-				position: SpanWithSource::NULL_SPAN,
+				position: source_map::Nullable::NULL,
 				spread: false,
 			},
 		);

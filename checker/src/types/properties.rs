@@ -286,7 +286,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								called_with_new: CalledWithNew::None,
 								this_value: state,
 								call_site_type_arguments: None,
-								call_site: SpanWithSource::NULL_SPAN,
+								call_site: source_map::Nullable::NULL,
 							},
 							// TODO
 							None,
@@ -517,7 +517,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				// This is important for free variables, sometimes ?
 				add_property_restrictions: true,
 				// TODO position here
-				position: source_map::SpanWithSource::NULL_SPAN,
+				position: source_map::Nullable::NULL,
 			};
 
 			match new {
