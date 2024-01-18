@@ -1,8 +1,7 @@
 use ezno_parser::{
 	statements::UnconditionalElseStatement,
 	visiting::{BlockItemMut, Chain, VisitOptions, VisitorMut, VisitorsMut},
-	ASTNode, Expression, Module, SourceId, Span, Statement, StatementOrDeclaration,
-	ToStringOptions,
+	ASTNode, Expression, Module, Statement, StatementOrDeclaration, ToStringOptions,
 };
 use pretty_assertions::assert_eq;
 

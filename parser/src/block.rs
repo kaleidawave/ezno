@@ -313,6 +313,10 @@ impl ASTNode for BlockOrSingleStatement {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		// should halt
+		if buf.halt() {
+			return;
+		}
 		match self {
 			BlockOrSingleStatement::Braced(block) => {
 				block.to_string_from_buffer(buf, options, local);

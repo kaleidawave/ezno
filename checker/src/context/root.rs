@@ -9,7 +9,7 @@ use crate::{
 	types::TypeId,
 	CheckingData, GeneralContext,
 };
-use source_map::{SourceId};
+use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator};
 
 pub type RootContext = Context<Root>;

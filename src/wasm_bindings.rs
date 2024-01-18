@@ -7,7 +7,8 @@ extern "C" {
 	pub(crate) fn log(s: &str);
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, serde::Deserialize)]
+#[wasm_bindgen]
 pub struct CheckOptions {
 	pub lsp_mode: bool,
 }
@@ -53,10 +54,9 @@ impl WASMCheckOutput {
 }
 
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm1(
+pub fn check_wasm_no_options(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	options: CheckOptions,
 ) -> WASMCheckOutput {
 	check_wasm(entry_path, fs_resolver_js, Default::default())
 }
@@ -65,19 +65,17 @@ pub fn check_wasm1(
 pub fn check_wasm(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	options: CheckOptions,
+	options: checker::TypeCheckOptions,
 ) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-
-	let options =
-		Some(checker::TypeCheckOptions { lsp_mode: options.lsp_mode, ..Default::default() });
 
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+
 		res.ok().and_then(|res| res.as_string())
 	};
-	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, options))
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some(options)))
 }
 
 #[wasm_bindgen(js_name = run_cli)]

@@ -8,7 +8,6 @@ use parser::{
 	source_map::{MapFileStore, WithPathMap},
 	ToStringOptions,
 };
-use serde::Deserialize;
 
 use crate::check::CheckingOutputWithoutDiagnostics;
 
@@ -38,9 +37,9 @@ pub struct FailedBuildOutput {
 	pub fs: MapFileStore<WithPathMap>,
 }
 
-#[derive(Deserialize)]
+#[cfg_attr(target_family = "wasm", derive(serde::Deserialize))]
 pub struct BuildConfig {
-	#[serde(default)]
+	#[cfg_attr(target_family = "wasm", serde(default))]
 	pub strip_whitespace: bool,
 }
 
@@ -73,7 +72,8 @@ pub fn build<T: crate::ReadFromFS>(
 		// TODO For all modules
 		let keys = data.modules.keys().cloned().collect::<Vec<_>>();
 
-		let null_module = parser::Module { items: Default::default(), span: parser::source_map::Nullable::NULL };
+		let null_module =
+			parser::Module { items: Default::default(), span: parser::source_map::Nullable::NULL };
 
 		let mut outputs = Vec::new();
 

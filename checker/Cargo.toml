@@ -17,10 +17,11 @@ workspace = true
 
 [features]
 default = ["ezno-parser"]
-ezno-parser = ["parser"]
+ezno-parser = ["dep:parser"]
+serde = ["dep:serde"]
 
 [dependencies]
-source-map = { git = "https://github.com/kaleidawave/source-map", branch = "source-mappings-fix", version = "0.14.7", features = [
+source-map = { version = "0.14.8", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }
@@ -44,9 +45,7 @@ once_cell = "1.10.0"
 ordered-float = "4.2.0"
 map_vec = "0.3.0"
 
-serde = { version = "1.0", features = ["derive"] }
-# For trait object safe thingy
-erased-serde = "0.4.1"
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dependencies.parser]
 path = "../parser"

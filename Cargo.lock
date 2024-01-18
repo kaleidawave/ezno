@@ -244,15 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
-name = "erased-serde"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55d05712b2d8d88102bc9868020c9e5c7a1f5527c452b9b97450a1d006140ba7"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "ezno"
 version = "0.0.19"
 dependencies = [
@@ -295,7 +286,6 @@ dependencies = [
  "derive-enum-from-into",
  "either",
  "enum-variants-strings",
- "erased-serde",
  "ezno-parser",
  "indexmap",
  "iterator-endiate",
@@ -715,8 +705,9 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.14.7"
-source = "git+https://github.com/kaleidawave/source-map?branch=source-mappings-fix#3293f8c6ce06e54abd9bf4a2d8042829a8806b56"
+version = "0.14.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7ed4183334f6d64bc159d7b3dd87956ac1caa44bbeef114219738a092b7b0fd"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",

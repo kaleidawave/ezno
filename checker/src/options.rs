@@ -1,6 +1,6 @@
 /// Options for type checking
 /// TODO figure out compat with tsc
-#[derive(serde::Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[allow(clippy::struct_excessive_bools)]
 pub struct TypeCheckOptions {
 	/// Parameters cannot be reassigned

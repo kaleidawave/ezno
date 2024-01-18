@@ -117,6 +117,22 @@ function add() {
 
 - Type "hi" is not assignable to argument of type number
 
+#### Object function inference
+
+```ts
+interface MyObject {
+    a(b: string): any;
+}
+
+const obj: MyObject = {
+    a(b) {
+        print_type(b)
+    }
+}
+```
+
+- TODO?
+
 ### Narrowing
 
 > TODO `typeof`, `instanceof`, conditional, across a function

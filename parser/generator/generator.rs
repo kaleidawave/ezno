@@ -49,10 +49,10 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	let tokens = quote! {
 		{
 			use ezno_parser::ast::*;
-			use ezno_parser::generator_helpers::IntoAST;
+			use ezno_parser::{generator_helpers::IntoAST, source_map};
 
 			#(#interpolation_tokens;)*
-			const CURRENT_SOURCE_ID: SourceId = source_map::Nullable::NULL;
+			const CURRENT_SOURCE_ID: source_map::SourceId = source_map::Nullable::NULL;
 			#node_as_tokens
 		}
 	};

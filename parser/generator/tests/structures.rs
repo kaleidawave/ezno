@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 fn expr() {
 	let x = expr!(x = 4);
 	{
-		use ezno_parser::{source_map::Span, Expression};
+		use ezno_parser::{source_map, Expression};
 		assert_eq!(
 			x,
 			Expression::Assignment {
@@ -33,8 +33,7 @@ fn stmt_with_expr_interpolation() {
 	{
 		use ezno_parser::{
 			declarations::{VariableDeclaration, VariableDeclarationItem},
-			source_map::Span,
-			Declaration, Expression, StatementOrDeclaration,
+			source_map, Declaration, Expression, StatementOrDeclaration,
 		};
 		let declaration = VariableDeclarationItem {
 			name: ezno_parser::WithComment::None(ezno_parser::VariableField::Name(
@@ -67,8 +66,7 @@ fn stmt_with_var_name_interpolation() {
 	{
 		use ezno_parser::{
 			declarations::{VariableDeclaration, VariableDeclarationItem},
-			source_map::Span,
-			Declaration, Expression, StatementOrDeclaration,
+			source_map, Declaration, Expression, StatementOrDeclaration,
 		};
 		eprintln!("{:#?}", statement);
 		let declaration = VariableDeclarationItem {

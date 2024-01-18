@@ -4,7 +4,6 @@ use ezno_parser::{
 	visiting::{VisitOptions, Visitors},
 	ASTNode, Declaration, Module, StatementOrDeclaration,
 };
-use source_map::SourceId;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut args = std::env::args().skip(1);

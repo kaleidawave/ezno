@@ -1939,7 +1939,7 @@ console.log(a.prop);
 export default const x = 2;
 ```
 
-- Expected SemiColon found x
+- Expected SemiColon found Identifier(\"x\")
 
 #### Only synthesis module once
 
