@@ -18,7 +18,7 @@ workspace = true
 [features]
 default = ["ezno-parser"]
 ezno-parser = ["dep:parser"]
-serde = ["dep:serde"]
+serde_input_and_output = ["dep:serde"]
 
 [dependencies]
 source-map = { version = "0.14.8", features = [

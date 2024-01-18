@@ -907,7 +907,6 @@ pub fn lex_script(
 		if state == LexingState::None {
 			match chr {
 				'0' if matches!(script.as_bytes().get(idx + 1), Some(b'0'..=b'7')) => {
-					dbg!();
 					// strict mode should be done in the parser stage (as that is where context is)
 					set_state!(LexingState::Number(NumberLiteralType::OctalLiteral));
 				}

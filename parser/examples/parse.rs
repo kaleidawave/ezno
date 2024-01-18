@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 			let print_ast = args.iter().any(|item| item == "--ast");
 			let render_output = args.iter().any(|item| item == "--render");
+			let pretty = args.iter().any(|item| item == "--pretty");
 
 			if print_ast {
 				println!("{module:#?}");
@@ -51,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						trailing_semicolon: true,
 						expect_markers: true,
 						include_types: true,
-						// TODO temp
-						pretty: false,
+						pretty,
+						max_length: if pretty { 60 } else { u32::MAX },
 						..Default::default()
 					},
 					source_id,
@@ -63,12 +64,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					println!("{output}\n{sm}");
 				}
 				if render_output {
-					let output = module.to_string(&ToStringOptions {
-						trailing_semicolon: true,
-						expect_markers: true,
-						include_types: true,
-						..Default::default()
-					});
 					println!("{output}");
 				}
 			}

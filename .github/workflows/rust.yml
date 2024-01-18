@@ -81,20 +81,13 @@ jobs:
         with:
           node-version: 18
 
-      - name: Check WASM
-        if: steps.changes.outputs.src == 'true'
-        run: |
-          rustup target add wasm32-unknown-unknown
-          # Need to build to check that the JS builds
-          npm ci
-          npm run build
-        working-directory: src/js-cli-and-library
-
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true'
         continue-on-error: true
         run: |
+          rustup target add wasm32-unknown-unknown
           npm ci
+          npm run build
           npm run test
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info

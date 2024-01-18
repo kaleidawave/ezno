@@ -54,21 +54,28 @@ impl WASMCheckOutput {
 }
 
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm_no_options(
-	entry_path: String,
-	fs_resolver_js: &js_sys::Function,
-) -> WASMCheckOutput {
-	check_wasm(entry_path, fs_resolver_js, Default::default())
+pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASMCheckOutput {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+	let fs_resolver = |path: &std::path::Path| {
+		let res =
+			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+
+		res.ok().and_then(|res| res.as_string())
+	};
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
 }
 
 #[wasm_bindgen(js_name = check_with_options)]
-pub fn check_wasm(
+pub fn check_wasm_with_options(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
 	options: checker::TypeCheckOptions,
 ) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
+	let options: checker::TypeCheckOptions =
+		options.into_serde().expect("invalid TypeCheckOptions");
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));

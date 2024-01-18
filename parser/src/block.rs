@@ -313,8 +313,7 @@ impl ASTNode for BlockOrSingleStatement {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		// should halt
-		if buf.halt() {
+		if buf.should_halt() {
 			return;
 		}
 		match self {

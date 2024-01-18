@@ -1702,6 +1702,23 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
+	let add_new_lines = if options.pretty {
+		let mut acc = 0;
+		let available_space = options.max_length;
+		for node in nodes.iter() {
+			acc += crate::get_length_of_node(node, options, local, available_space as i32);
+			if acc > available_space {
+				break;
+			}
+		}
+		acc > available_space
+	} else {
+		false
+	};
+	if add_new_lines {
+		buf.push_new_line();
+		options.add_indent(local.depth + 1, buf);
+	}
 	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
 		// Hack for arrays, this is just easier for generators
 		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
@@ -1717,8 +1734,17 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		}
 		if !at_end {
 			buf.push(',');
-			options.add_gap(buf);
+			if add_new_lines {
+				buf.push_new_line();
+				options.add_indent(local.depth + 1, buf);
+			} else {
+				options.add_gap(buf);
+			}
 		}
+	}
+	if add_new_lines {
+		buf.push_new_line();
+		options.add_indent(local.depth, buf);
 	}
 	buf.push(')');
 }

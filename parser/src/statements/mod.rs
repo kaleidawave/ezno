@@ -96,6 +96,7 @@ impl ASTNode for Statement {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
+			// TODO statement.can_be_labelled()
 			let position = label_name_pos.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });
 		}
@@ -106,8 +107,9 @@ impl ASTNode for Statement {
 			TSXToken::Identifier(n)
 				if options.interpolation_points && n == crate::marker::MARKER =>
 			{
-				todo!()
-				// Ok(Statement::Marker(marker_id.into_marker(), start.with_length(1)))
+				let start = reader.next().unwrap().1;
+				let marker = state.new_partial_point_marker(start);
+				Ok(Statement::Marker(marker, start.with_length(0)))
 			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
 				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
@@ -270,7 +272,8 @@ impl ASTNode for Statement {
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);
-				buf.push(':');
+				buf.push_str(": ");
+				// TODO new line?
 				statement.to_string_from_buffer(buf, options, local);
 			}
 			Statement::Throw(ThrowStatement(thrown_expression, _)) => {

@@ -185,6 +185,8 @@ pub struct ToStringOptions {
 	///
 	/// if `false` and a marker node is found, printing will panic
 	pub expect_markers: bool,
+	/// has no effect under !pretty
+	pub max_length: u32,
 }
 
 impl Default for ToStringOptions {
@@ -199,6 +201,7 @@ impl Default for ToStringOptions {
 			trailing_semicolon: false,
 			expect_markers: false,
 			indent_with: "\t".to_owned(),
+			max_length: u32::MAX,
 		}
 	}
 }
@@ -1105,6 +1108,47 @@ impl VariableKeyword {
 			Self::Var => "var ",
 		}
 	}
+}
+
+/// TODO WIP!
+pub fn is_node_over_length<T: ASTNode>(
+	e: &T,
+	options: &ToStringOptions,
+	local: crate::LocalToStringInformation,
+	available_space: i32,
+) -> bool {
+	use source_map::ToString;
+
+	if available_space <= 0 || !options.pretty || options.max_length == u32::MAX {
+		return false;
+	}
+	let mut buf = source_map::StringWithOptionalSourceMap {
+		source: String::new(),
+		source_map: None,
+		quit_after: Some(available_space as usize),
+		since_new_line: 0,
+	};
+	e.to_string_from_buffer(&mut buf, options, local);
+
+	// If is halted, then went over
+	dbg!(buf.should_halt())
+}
+
+fn get_length_of_node<T: ASTNode>(
+	e: &T,
+	options: &ToStringOptions,
+	local: LocalToStringInformation,
+	available_space: i32,
+) -> u32 {
+	// TODO swap under "release" mode
+	let mut buf = source_map::StringWithOptionalSourceMap {
+		source: String::new(),
+		source_map: None,
+		quit_after: Some(available_space as usize),
+		since_new_line: 0,
+	};
+	e.to_string_from_buffer(&mut buf, options, local);
+	buf.source.len() as u32
 }
 
 /// Re-exports or generator and general use

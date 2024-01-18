@@ -706,8 +706,7 @@ dependencies = [
 [[package]]
 name = "source-map"
 version = "0.14.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7ed4183334f6d64bc159d7b3dd87956ac1caa44bbeef114219738a092b7b0fd"
+source = "git+https://github.com/kaleidawave/source-map.git?branch=characters-on-line#abb2de30000bd9ce8b677307fe07d2c5dc54d5c5"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",
