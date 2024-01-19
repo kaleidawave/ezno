@@ -32,9 +32,6 @@ members = ["."]
 [profile.release]
 debug = 1
 
-[patch.crates-io]
-source-map = { git = "https://github.com/kaleidawave/source-map.git", branch = "characters-on-line" }
-
 [[bin]]
 name = "module_roundtrip_naive"
 path = "fuzz_targets/module_roundtrip_naive.rs"

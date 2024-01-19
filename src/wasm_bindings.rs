@@ -70,7 +70,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASM
 pub fn check_wasm_with_options(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	options: checker::TypeCheckOptions,
+	options: &JsValue,
 ) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 

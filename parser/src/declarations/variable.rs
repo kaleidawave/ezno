@@ -171,10 +171,11 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let last = options.max_length as i32 - buf.characters_on_current_line() as i32;
-		// TODO more conditionally
+		let available_space =
+			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
+
 		if let Some(e) = TExpr::as_option_expr_ref(&self.expression) {
-			let extends_limit = crate::is_node_over_length(e, options, local, last);
+			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
 			if extends_limit {
 				buf.push_new_line();
 				options.add_indent(local.depth + 1, buf);

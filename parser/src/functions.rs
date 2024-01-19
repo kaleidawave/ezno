@@ -397,7 +397,7 @@ pub(crate) fn parse_special_then_regular_header(
 	}
 
 	#[cfg(not(feature = "extras"))]
-	parse_regular_header(reader, is_async)
+	parse_regular_header(reader, state, async_kw_pos)
 }
 
 #[cfg(feature = "extras")]

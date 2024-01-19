@@ -145,7 +145,7 @@ impl ASTNode for Statement {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
 				if matches!(
 					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
+					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS, _))
 				) {
 					let position = start.with_length(TSXKeyword::Return.length() as usize);
 					Statement::Return(ReturnStatement(None, position))

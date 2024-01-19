@@ -83,7 +83,7 @@ jobs:
 
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true'
-        continue-on-error: true
+        # TODO want `continue-on-error: true` but doesn't report error
         run: |
           rustup target add wasm32-unknown-unknown
           npm ci
@@ -96,19 +96,19 @@ jobs:
 
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
-        continue-on-error: true
+        # TODO want `continue-on-error: true` but doesn't report error
         run: 
           cargo check -p ezno-parser --no-default-features
 
       - name: Check parser generator
         if: steps.changes.outputs.parser == 'true'
-        continue-on-error: true
+        # TODO want `continue-on-error: true` but doesn't report error
         run: 
           cargo test -p ezno-ast-generator
 
       - name: Check checker without default features
         if: steps.changes.outputs.checker == 'true'
-        continue-on-error: true
+        # TODO want `continue-on-error: true` but doesn't report error
         run: 
           cargo check -p ezno-checker --no-default-features
       
@@ -240,6 +240,8 @@ jobs:
   publish-ability:
     # TODO only need to do for `.toml` file changes
     runs-on: ubuntu-latest
+    # `publish --dry-run` reports too many false positives and doesn't catch actual errors. So disabling for now
+    if: false
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable

@@ -186,7 +186,7 @@ pub struct ToStringOptions {
 	/// if `false` and a marker node is found, printing will panic
 	pub expect_markers: bool,
 	/// has no effect under !pretty
-	pub max_length: u32,
+	pub max_line_length: u8,
 }
 
 impl Default for ToStringOptions {
@@ -201,7 +201,7 @@ impl Default for ToStringOptions {
 			trailing_semicolon: false,
 			expect_markers: false,
 			indent_with: "\t".to_owned(),
-			max_length: u32::MAX,
+			max_line_length: u8::MAX,
 		}
 	}
 }
@@ -238,6 +238,10 @@ impl ToStringOptions {
 		if self.pretty {
 			buf.push(' ');
 		}
+	}
+
+	pub(crate) fn enforce_limit_length_limit(&self) -> bool {
+		self.pretty && self.max_line_length != u8::MAX
 	}
 }
 
@@ -1111,27 +1115,36 @@ impl VariableKeyword {
 }
 
 /// TODO WIP!
+///
+/// Conditionally computes the node length
+/// Does nothing under pretty == false or no max line length
 pub fn is_node_over_length<T: ASTNode>(
 	e: &T,
 	options: &ToStringOptions,
 	local: crate::LocalToStringInformation,
-	available_space: i32,
+	// None = 'no space'
+	available_space: Option<u32>,
 ) -> bool {
 	use source_map::ToString;
 
-	if available_space <= 0 || !options.pretty || options.max_length == u32::MAX {
+	if available_space.is_none() {
+		return true;
+	}
+
+	if !options.enforce_limit_length_limit() {
 		return false;
 	}
+
 	let mut buf = source_map::StringWithOptionalSourceMap {
 		source: String::new(),
 		source_map: None,
-		quit_after: Some(available_space as usize),
+		quit_after: available_space.map(|s| s as usize),
 		since_new_line: 0,
 	};
 	e.to_string_from_buffer(&mut buf, options, local);
 
 	// If is halted, then went over
-	dbg!(buf.should_halt())
+	buf.should_halt()
 }
 
 fn get_length_of_node<T: ASTNode>(
@@ -1139,7 +1152,7 @@ fn get_length_of_node<T: ASTNode>(
 	options: &ToStringOptions,
 	local: LocalToStringInformation,
 	available_space: i32,
-) -> u32 {
+) -> u16 {
 	// TODO swap under "release" mode
 	let mut buf = source_map::StringWithOptionalSourceMap {
 		source: String::new(),
@@ -1148,7 +1161,7 @@ fn get_length_of_node<T: ASTNode>(
 		since_new_line: 0,
 	};
 	e.to_string_from_buffer(&mut buf, options, local);
-	buf.source.len() as u32
+	buf.source.len() as u16
 }
 
 /// Re-exports or generator and general use

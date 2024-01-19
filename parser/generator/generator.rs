@@ -99,7 +99,10 @@ fn parse_token_stream(
 					} else {
 						panic!("Expected ident")
 					}
-					string.push('\u{03A9}');
+					// spaces break up the node
+					string.push(' ');
+					string.push_str(ezno_parser::marker::MARKER);
+					string.push(' ');
 				} else {
 					let spacing = matches!(punctuation.spacing(), Spacing::Alone)
 						&& !matches!(chr, '<' | '>' | '/');

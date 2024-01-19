@@ -53,7 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						expect_markers: true,
 						include_types: true,
 						pretty,
-						max_length: if pretty { 60 } else { u32::MAX },
+						// 60 is temp
+						max_line_length: if pretty { 60 } else { u8::MAX },
 						..Default::default()
 					},
 					source_id,

@@ -777,6 +777,8 @@ let x: number = 5;
 
 - Variable x used before declaration
 
+> Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
+
 #### Assignment to union
 
 > Solves the common subtyping issue between read and write properties
@@ -792,9 +794,11 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-> Error could be better. Full one contains labels with more information
+> Error message could be better. Full one contains labels with more information
 
 - Assignment mismatch
+
+> Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
 #### Property assignment from conditional
 

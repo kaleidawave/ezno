@@ -29,7 +29,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -652,8 +652,8 @@ impl Expression {
 						);
 					};
 
-					let function_end = function_start
-						.get_end_after(TSXToken::Keyword(TSXKeyword::Function).length() as usize);
+					let function_end =
+						function_start.get_end_after(TSXKeyword::Function.length() as usize);
 
 					if generator_keyword.is_some() {
 						let position = start.union(function_end);
@@ -734,25 +734,24 @@ impl Expression {
 						.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 						.map(|token| token.get_span());
 
-					let position = async_keyword
-						.as_ref()
-						.map_or(function_keyword.get_position(), |kw| kw.get_position())
-						.union(
-							generator_star_token_position
-								.as_ref()
-								.unwrap_or(function_keyword.get_position()),
-						);
+					let position = start.union(
+						generator_star_token_position
+							.as_ref()
+							.unwrap_or(&start.with_length(TSXKeyword::Function.length() as usize)),
+					);
 
 					let header = FunctionHeader::VirginFunctionHeader {
 						position,
 						is_async,
 						generator_star_token_position,
 					};
+
 					let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
 						None
 					} else {
 						let (token, span) =
 							token_as_identifier(reader.next().unwrap(), "function name")?;
+
 						Some(crate::VariableIdentifier::Standard(token, span))
 					};
 					let function: ExpressionFunction =
@@ -760,7 +759,7 @@ impl Expression {
 							reader,
 							state,
 							options,
-							header,
+							(Some(start), header),
 							ExpressionPosition(name),
 						)?;
 
@@ -1396,7 +1395,13 @@ impl Expression {
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				buf.add_mapping(&position.with_source(local.under));
 
-				parent.to_string_from_buffer(buf, options, local);
+				if let Self::NumberLiteral(..) = &**parent {
+					buf.push('(');
+					parent.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					parent.to_string_from_buffer(buf, options, local);
+				}
 				if *is_optional {
 					buf.push('?');
 				}
@@ -1702,11 +1707,11 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
-	let add_new_lines = if options.pretty {
-		let mut acc = 0;
-		let available_space = options.max_length;
-		for node in nodes.iter() {
-			acc += crate::get_length_of_node(node, options, local, available_space as i32);
+	let add_new_lines = if options.enforce_limit_length_limit() {
+		let mut acc = 0u16;
+		let available_space = u16::from(options.max_line_length);
+		for node in nodes {
+			acc += crate::get_length_of_node(node, options, local, i32::from(available_space));
 			if acc > available_space {
 				break;
 			}
