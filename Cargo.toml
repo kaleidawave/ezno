@@ -65,7 +65,7 @@ serde_json = "1.0.107"
 [dependencies.checker]
 path = "./checker"
 version = "0.0.14"
-features = ["ezno-parser", "serde_input_and_output"]
+features = ["ezno-parser", "serde-serialize"]
 package = "ezno-checker"
 
 [dependencies.parser]

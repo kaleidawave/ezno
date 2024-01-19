@@ -98,7 +98,7 @@ impl ASTNode for IfStatement {
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 		if !options.pretty
 			&& matches!(self.inner, BlockOrSingleStatement::SingleStatement(_))
-			&& (!self.else_conditions.is_empty() || self.trailing_else.is_some())
+			&& (self.else_conditions.is_empty() || self.trailing_else.is_none())
 		{
 			buf.push(';');
 		}

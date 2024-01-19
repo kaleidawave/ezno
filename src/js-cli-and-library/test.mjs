@@ -24,7 +24,7 @@ function checkTest() {
 					},
 				],
 			],
-			kind: "Error"
+			kind: "error"
 		},
 	],
 	);

@@ -230,7 +230,9 @@ impl ToStringOptions {
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {
-		(0..indent).for_each(|_| buf.push_str(&self.indent_with));
+		if self.pretty {
+			(0..indent).for_each(|_| buf.push_str(&self.indent_with));
+		}
 	}
 
 	/// Adds whitespace **conditionally** (based on pretty setting)
@@ -1127,24 +1129,23 @@ pub fn is_node_over_length<T: ASTNode>(
 ) -> bool {
 	use source_map::ToString;
 
-	if available_space.is_none() {
-		return true;
+	if options.enforce_limit_length_limit() {
+		if available_space.is_none() {
+			return true;
+		}
+		let mut buf = source_map::StringWithOptionalSourceMap {
+			source: String::new(),
+			source_map: None,
+			quit_after: available_space.map(|s| s as usize),
+			since_new_line: 0,
+		};
+		e.to_string_from_buffer(&mut buf, options, local);
+
+		// If is halted, then went over
+		buf.should_halt()
+	} else {
+		false
 	}
-
-	if !options.enforce_limit_length_limit() {
-		return false;
-	}
-
-	let mut buf = source_map::StringWithOptionalSourceMap {
-		source: String::new(),
-		source_map: None,
-		quit_after: available_space.map(|s| s as usize),
-		since_new_line: 0,
-	};
-	e.to_string_from_buffer(&mut buf, options, local);
-
-	// If is halted, then went over
-	buf.should_halt()
 }
 
 fn get_length_of_node<T: ASTNode>(

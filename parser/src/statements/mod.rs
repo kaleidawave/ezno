@@ -140,13 +140,14 @@ impl ASTNode for Statement {
 				TryCatchStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
+			TSXToken::Keyword(TSXKeyword::Debugger) => {
+				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
+			}
 			TSXToken::Keyword(TSXKeyword::Return) => Ok({
 				let Token(_, start) = reader.next().unwrap();
 				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
-				if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS, _))
-				) {
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
 					let position = start.with_length(TSXKeyword::Return.length() as usize);
 					Statement::Return(ReturnStatement(None, position))
 				} else {
@@ -156,34 +157,35 @@ impl ASTNode for Statement {
 					Statement::Return(ReturnStatement(Some(multiple_expression), position))
 				}
 			}),
-			TSXToken::Keyword(TSXKeyword::Debugger) => {
-				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
-			}
 			TSXToken::Keyword(TSXKeyword::Break) => {
-				let break_token = reader.next().unwrap();
-				// TODO token is semi-colon
-				let label = if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
-				) {
-					None
+				let Token(_break_token, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Break);
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
+					Ok(Statement::Break(
+						None,
+						start.with_length(TSXKeyword::Break.length() as usize),
+					))
 				} else {
-					Some(token_as_identifier(reader.next().unwrap(), "break label")?.0)
-				};
-				Ok(Statement::Break(label, break_token.get_span()))
+					let (label, position) =
+						token_as_identifier(reader.next().unwrap(), "break label")?;
+					Ok(Statement::Break(Some(label), start.union(position)))
+				}
 			}
 			TSXToken::Keyword(TSXKeyword::Continue) => {
-				let continue_token = reader.next().unwrap();
-				// TODO token is semi-colon
-				let label = if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
-				) {
-					None
+				let Token(_continue_token, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Continue);
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
+					Ok(Statement::Continue(
+						None,
+						start.with_length(TSXKeyword::Continue.length() as usize),
+					))
 				} else {
-					Some(token_as_identifier(reader.next().unwrap(), "continue label")?.0)
-				};
-				Ok(Statement::Continue(label, continue_token.get_span()))
+					let (label, position) =
+						token_as_identifier(reader.next().unwrap(), "continue label")?;
+					Ok(Statement::Continue(Some(label), start.union(position)))
+				}
 			}
 			TSXToken::Comment(_) => {
 				if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
@@ -360,4 +362,13 @@ impl ASTNode for VarVariableStatement {
 		buf.push_str("var ");
 		declarations_to_string(&self.declarations, buf, options, local);
 	}
+}
+
+fn on_different_lines_or_line_end(
+	line_starts: &source_map::LineStarts,
+	keyword_position: crate::TokenStart,
+	Token(kind, next): &Token<TSXToken, crate::TokenStart>,
+) -> bool {
+	matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
+		|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
 }

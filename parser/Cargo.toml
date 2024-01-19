@@ -16,7 +16,7 @@ keywords = ["javascript", "parser", "ast", "compiler", "visitor"]
 workspace = true
 
 [features]
-# TODO these shouldn't be default
+# TODO some of these shouldn't be default
 default = [
   "self-rust-tokenize",
   "extras",

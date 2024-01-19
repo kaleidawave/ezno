@@ -6,7 +6,6 @@ use source_map::FileSystem;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut args: Vec<_> = std::env::args().skip(1).collect();
 	let path = args.drain(0..1).next().ok_or("expected argument")?;
-	let now = Instant::now();
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
@@ -20,6 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let display_keywords = args.iter().any(|item| item == "--keywords");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
 	let source_maps = args.iter().any(|item| item == "--source-map");
+	let timings = args.iter().any(|item| item == "--timings");
+	let now = Instant::now();
 
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
@@ -37,7 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	match result {
 		Ok((module, state)) => {
-			eprintln!("Parsed in: {:?}", now.elapsed());
+			if timings {
+				eprintln!("Parsed in: {:?}", now.elapsed());
+			}
 
 			let print_ast = args.iter().any(|item| item == "--ast");
 			let render_output = args.iter().any(|item| item == "--render");
@@ -47,12 +50,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				println!("{module:#?}");
 			}
 			if source_maps || render_output {
+				let now = Instant::now();
 				let (output, source_map) = module.to_string_with_source_map(
 					&ToStringOptions {
 						trailing_semicolon: true,
 						expect_markers: true,
 						include_types: true,
 						pretty,
+						comments: if pretty { Comments::All } else { Comments::None },
 						// 60 is temp
 						max_line_length: if pretty { 60 } else { u8::MAX },
 						..Default::default()
@@ -60,6 +65,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					source_id,
 					&fs,
 				);
+				if timings {
+					eprintln!("ToString'ed in: {:?}", now.elapsed());
+				}
 				if source_maps {
 					let sm = source_map.unwrap().to_json(&fs);
 					println!("{output}\n{sm}");

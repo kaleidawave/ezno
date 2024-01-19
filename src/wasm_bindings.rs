@@ -49,7 +49,8 @@ impl WASMCheckOutput {
 	}
 
 	pub fn get_type_at_position(&self, path: &str, pos: u32) -> String {
-		self.0.get_type_at_position(path, pos)
+		todo!("requires facts_chain change")
+		// self.0.get_type_at_position(path, pos)
 	}
 }
 
@@ -70,12 +71,12 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASM
 pub fn check_wasm_with_options(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	options: &JsValue,
+	options: JsValue,
 ) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let options: checker::TypeCheckOptions =
-		options.into_serde().expect("invalid TypeCheckOptions");
+		serde_wasm_bindgen::from_value(options).expect("invalid TypeCheckOptions");
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
@@ -126,7 +127,7 @@ pub fn run_cli_wasm(
 
 #[wasm_bindgen(js_name = parse_expression)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
-	use parser::{ASTNode, Expression, SourceId};
+	use parser::{ASTNode, Expression};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Expression::from_string(input, Default::default());
@@ -140,7 +141,7 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 
 #[wasm_bindgen(js_name = parse_module)]
 pub fn parse_module_to_json(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Module::from_string(input, Default::default());
@@ -154,7 +155,7 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 
 #[wasm_bindgen]
 pub fn just_imports(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Module::from_string(input, Default::default());
@@ -173,7 +174,7 @@ pub fn just_imports(input: String) -> JsValue {
 /// Removes whitespace in module
 #[wasm_bindgen]
 pub fn minify_module(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Module::from_string(input, Default::default());

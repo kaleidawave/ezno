@@ -327,9 +327,6 @@ impl ASTNode for BlockOrSingleStatement {
 					stmt.to_string_from_buffer(buf, options, local.next_level());
 				} else {
 					stmt.to_string_from_buffer(buf, options, local);
-					if stmt.requires_semi_colon() {
-						buf.push(';');
-					}
 				}
 			}
 		}
@@ -353,7 +350,7 @@ pub(crate) fn parse_statements_and_declarations(
 			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
 		} else {
 			// Skip over semi colons regardless
-			reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
+			// reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
 		}
 		items.push(value);
 	}
