@@ -560,7 +560,10 @@ impl TypeAnnotation {
 						Token(TSXToken::TemplateLiteralEnd, end_position) => {
 							end = Some(TokenEnd::new(end_position.0));
 						}
-						_ => unreachable!(),
+						token => {
+							eprintln!("Found token {:?}", token);
+							return Err(parse_lexing_error());
+						}
 					}
 				}
 				Self::TemplateLiteral(parts, start.union(end.unwrap()))

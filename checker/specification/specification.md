@@ -1373,7 +1373,7 @@ y.not_a_key
 ```
 
 - Expected 3, found 7
-- 'not_a_key' does not exist on { ezno: 7 }
+- No property 'not_a_key' on { ezno: 7 }
 
 #### Shorthand object literal
 

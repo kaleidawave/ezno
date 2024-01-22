@@ -300,7 +300,7 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					expect_semi_colon(reader, &state.line_starts, stmt.get_position().start)?;
+					expect_semi_colon(reader, &state.line_starts, stmt.get_position().end)?;
 				}
 				Box::new(stmt).into()
 			}
@@ -327,6 +327,9 @@ impl ASTNode for BlockOrSingleStatement {
 					stmt.to_string_from_buffer(buf, options, local.next_level());
 				} else {
 					stmt.to_string_from_buffer(buf, options, local);
+					if stmt.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 		}

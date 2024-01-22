@@ -86,11 +86,9 @@ impl ASTNode for DoWhileStatement {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		buf.push_str("do");
-		options.add_gap(buf);
+		buf.push_str("do ");
 		self.inner.to_string_from_buffer(buf, options, local);
-		options.add_gap(buf);
-		buf.push_str("while");
+		buf.push_str(" while");
 		options.add_gap(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, options, local);
