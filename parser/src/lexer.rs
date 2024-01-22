@@ -269,6 +269,7 @@ pub fn lex_script(
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}
+						// Handling for 'e' & 'E'
 						NumberLiteralType::Decimal { fractional } => {
 							if matches!(chr, 'e' | 'E')
 								&& !(*fractional || script[..idx].ends_with('_'))
@@ -289,7 +290,7 @@ pub fn lex_script(
 					},
 					'.' => {
 						if let NumberLiteralType::Decimal { fractional } = literal_type {
-							if script[..idx].ends_with('_') {
+							if script[..idx].ends_with(['_']) {
 								return_err!(LexingErrors::InvalidUnderscore)
 							} else if *fractional {
 								// Catch for spread token `...`
@@ -331,15 +332,15 @@ pub fn lex_script(
 						*literal_type = NumberLiteralType::BigInt;
 					}
 					// `10e-5` is a valid literal
-					'-' if matches!(literal_type, NumberLiteralType::Exponent)
-						&& matches!(script[..idx].as_bytes().last(), Some(b'e' | b'E')) => {}
+					'-' if matches!(literal_type, NumberLiteralType::Exponent if script[..idx].ends_with(['e', 'E'])) =>
+						{}
 					chr => {
 						if is_number_delimiter(chr) {
 							// Note not = as don't want to include chr
 							let num_slice = &script[start..idx];
 							if num_slice.trim_end() == "."
 								|| num_slice
-									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
+									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
 							{
 								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 							}
@@ -1032,8 +1033,9 @@ pub fn lex_script(
 	// If source ends while there is still a parsing state
 	match state {
 		LexingState::Number(..) => {
+			// Just `.` or ends with combination token
 			if script[start..].trim_end() == "."
-				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
+				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
 			{
 				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}

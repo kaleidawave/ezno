@@ -470,7 +470,7 @@ func("hello world")
 
 - Argument of type "hello world" is not assignable to parameter of type number
 
-#### Parameters are always considered generic
+#### Parameters retain argument values
 
 ```ts
 function id(a) {
@@ -1324,7 +1324,7 @@ const name = "Ben";
 
 - Expected "Hi Ben", found "Hello Ben"
 
-#### In operator
+#### `in` operator
 
 ```ts
 const obj = { a: 2 };
@@ -1344,7 +1344,7 @@ declare var x: number;
 
 - Expected string, found number
 
-#### Type of equality operators
+#### Type of relation operators
 
 ```ts
 declare var x: number;
@@ -1369,9 +1369,11 @@ declare var x: number, y: boolean;
 ```ts
 const y = { ["EZNO".toLowerCase()]: 7 }
 y.ezno satisfies 3
+y.not_a_key
 ```
 
 - Expected 3, found 7
+- 'not_a_key' does not exist on { ezno: 7 }
 
 #### Shorthand object literal
 

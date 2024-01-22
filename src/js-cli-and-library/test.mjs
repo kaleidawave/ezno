@@ -9,7 +9,7 @@ buildTest()
 
 function checkTest() {
 	const example = "const x: 4 = 2;"
-	const output = check("input.js", (_path) => example);
+	const output = check("input.ts", (_path) => example);
 	deepStrictEqual(output.diagnostics, [
 		{
 			reason: "Type 2 is not assignable to type 4",

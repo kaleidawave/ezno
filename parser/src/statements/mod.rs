@@ -96,6 +96,13 @@ impl ASTNode for Statement {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
+			if statement.requires_semi_colon() {
+				crate::expect_semi_colon(
+					reader,
+					&state.line_starts,
+					statement.get_position().start,
+				)?;
+			}
 			// TODO statement.can_be_labelled()
 			let position = label_name_pos.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });

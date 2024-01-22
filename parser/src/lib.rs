@@ -84,6 +84,7 @@ impl Quoted {
 #[derive(Copy, Clone)]
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(default))]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
@@ -165,6 +166,7 @@ impl Default for ParseOptions {
 /// Settings for serializing `ASTNodes`
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(default))]
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
@@ -248,6 +250,7 @@ impl ToStringOptions {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Comments {
 	All,
 	/// Only multiline comments starting with `/**`
