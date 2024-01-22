@@ -370,7 +370,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, _expression_position) => {
-			if matches!(&**expression, Expression::Comment(..)) {
+			if matches!(&**expression, Expression::Comment { .. }) {
 				return TypeId::UNDEFINED_TYPE;
 			}
 

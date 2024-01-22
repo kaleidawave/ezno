@@ -359,15 +359,16 @@ impl TSXToken {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
 
+	/// Returns `(*content*, *is_multiline*, *position*)`
 	pub fn try_into_comment(
 		token: Token<TSXToken, TokenStart>,
-	) -> Result<(String, Span), Token<TSXToken, TokenStart>> {
+	) -> Result<(String, bool, Span), Token<TSXToken, TokenStart>> {
 		if let Token(TSXToken::MultiLineComment(c), d) = token {
 			let len = c.len();
-			Ok((c, d.with_length(len + 4)))
+			Ok((c, true, d.with_length(len + 4)))
 		} else if let Token(TSXToken::Comment(c), d) = token {
 			let len = c.len();
-			Ok((c, d.with_length(len + 2)))
+			Ok((c, false, d.with_length(len + 2)))
 		} else {
 			Err(token)
 		}

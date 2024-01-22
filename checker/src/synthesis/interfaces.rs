@@ -237,7 +237,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					"interface rule",
 					position.with_source(environment.get_source()),
 				),
-				InterfaceMember::Comment(_, _) => {}
+				InterfaceMember::Comment { .. } => {}
 			}
 		}
 	}

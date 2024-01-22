@@ -226,9 +226,9 @@ impl ToStringOptions {
 	}
 
 	/// Whether to include comment in source
-	pub(crate) fn should_add_comment(&self, document_comment: bool) -> bool {
+	pub(crate) fn should_add_comment(&self, is_document_comment: bool) -> bool {
 		matches!(self.comments, Comments::All)
-			|| (matches!(self.comments, Comments::JustDocumentation) && document_comment)
+			|| (matches!(self.comments, Comments::JustDocumentation) && is_document_comment)
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {

@@ -24,7 +24,7 @@ pub enum ClassMember {
 	Method(IsStatic, ClassFunction),
 	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
-	Comment(String, Span),
+	Comment(String, bool, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -53,7 +53,7 @@ impl ASTNode for ClassMember {
 			Self::Method(_, mtd) => mtd.get_position(),
 			Self::Property(_, prop) => &prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
-			Self::Comment(_, pos) => pos,
+			Self::Comment(.., pos) => pos,
 		}
 	}
 
@@ -64,10 +64,9 @@ impl ASTNode for ClassMember {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		if reader.peek().map_or(false, |t| t.0.is_comment()) {
-			let Ok((comment, span)) = TSXToken::try_into_comment(reader.next().unwrap()) else {
-				unreachable!()
-			};
-			return Ok(Self::Comment(comment, span));
+			let (comment, is_multiline, span) =
+				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+			return Ok(Self::Comment(comment, is_multiline, span));
 		}
 
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
@@ -175,11 +174,17 @@ impl ASTNode for ClassMember {
 				buf.push_str("static ");
 				block.to_string_from_buffer(buf, options, local.next_level());
 			}
-			Self::Comment(c, _) => {
+			Self::Comment(c, is_multiline, _) => {
 				if options.should_add_comment(c.starts_with('.')) {
-					buf.push_str("/*");
-					buf.push_str(c);
-					buf.push_str("*/");
+					if *is_multiline {
+						buf.push_str("/*");
+						buf.push_str(c);
+						buf.push_str("*/");
+					} else {
+						buf.push_str("//");
+						buf.push_str(c);
+						buf.push_new_line();
+					}
 				}
 			}
 		}

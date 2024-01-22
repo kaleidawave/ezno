@@ -159,7 +159,7 @@ pub fn parse_module_and_into_string(
 	parse_options: JsValue,
 	to_string_options: JsValue,
 ) -> JsValue {
-	use parser::{ASTNode, Expression};
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 	let item = Module::from_string(

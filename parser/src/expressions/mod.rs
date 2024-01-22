@@ -155,11 +155,14 @@ pub enum Expression {
 	/// Yes classes can exist in expr position :?
 	ClassExpression(ClassDeclaration<ExpressionPosition>),
 	Null(Span),
-	// Comments
-	PrefixComment(String, Box<Expression>, Span),
-	PostfixComment(Box<Expression>, String, Span),
-	/// Allowed in trailing functions and JSX for some reason
-	Comment(String, Span),
+	Comment {
+		content: String,
+		/// Allowed to be `None` in trailing functions arguments and JSX for some reason
+		on: Option<Box<Expression>>,
+		position: Span,
+		is_multiline: bool,
+		prefix: bool,
+	},
 	/// TODO under cfg
 	/// A start of a JSXNode
 	JSXRoot(JSXRoot),
@@ -561,15 +564,20 @@ impl Expression {
 			//     2
 			// ]
 			// ```
-			Token(
-				TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment),
-				comment_start,
-			) => {
+			t @ Token(TSXToken::MultiLineComment(_) | TSXToken::Comment(_), _) => {
+				// TODO discern between multi-line here
+				let (content, is_multiline, position) = TSXToken::try_into_comment(t).unwrap();
+
 				if let Some(Token(TSXToken::CloseParentheses | TSXToken::JSXExpressionEnd, _)) =
 					reader.peek()
 				{
-					let with_length = comment_start.with_length(comment.len() + 2);
-					return Ok(Expression::Comment(comment, with_length));
+					return Ok(Expression::Comment {
+						is_multiline,
+						content,
+						position,
+						on: None,
+						prefix: false,
+					});
 				}
 				let expression = Self::from_reader_with_precedence(
 					reader,
@@ -578,8 +586,14 @@ impl Expression {
 					return_precedence,
 					start,
 				)?;
-				let position = comment_start.union(expression.get_position());
-				Expression::PrefixComment(comment, Box::new(expression), position)
+				let position = position.union(expression.get_position());
+				Expression::Comment {
+					is_multiline,
+					content,
+					position,
+					on: Some(Box::new(expression)),
+					prefix: true,
+				}
 			}
 			Token(tok @ (TSXToken::JSXOpeningTagStart | TSXToken::JSXFragmentStart), span) => {
 				let var_name = matches!(tok, TSXToken::JSXFragmentStart);
@@ -1031,14 +1045,15 @@ impl Expression {
 					};
 				}
 				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
-					let token = reader.next().unwrap();
-					let position = token.get_span();
-					let Token(TSXToken::MultiLineComment(comment) | TSXToken::Comment(comment), _) =
-						token
-					else {
-						unreachable!()
+					let (content, is_multiline, position) =
+						TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+					top = Expression::Comment {
+						content,
+						on: Some(Box::new(top)),
+						position,
+						is_multiline,
+						prefix: false,
 					};
-					top = Expression::PostfixComment(Box::new(top), comment, position);
 				}
 				TSXToken::Keyword(TSXKeyword::As | TSXKeyword::Satisfies | TSXKeyword::Is)
 					if options.type_annotations =>
@@ -1261,10 +1276,10 @@ impl Expression {
             }
             Self::Index { .. } => INDEX_PRECEDENCE,
             Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
-            Self::PrefixComment(_, expression, _) | Self::PostfixComment(expression, _, _) => {
-                expression.get_precedence()
+            Self::Comment { on: Some(ref on), .. } => {
+                on.get_precedence()
             }
-            Self::Comment(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+            Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
 			// All these are relational and have the same precedence
             Self::SpecialOperators(..) => RELATION_PRECEDENCE,
 			// TODO unsure about this one...?
@@ -1492,27 +1507,31 @@ impl Expression {
 				function.to_string_from_buffer(buf, options, local);
 			}
 			Self::ClassExpression(class) => class.to_string_from_buffer(buf, options, local),
-			Self::PrefixComment(comment, expression, _) => {
-				if options.should_add_comment(comment.starts_with('*')) {
-					buf.push_str("/*");
-					buf.push_str_contains_new_line(comment.as_str());
-					buf.push_str("*/ ");
+			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
+				if *prefix && options.should_add_comment(content.starts_with('*')) {
+					if *is_multiline {
+						buf.push_str("/*");
+						buf.push_str_contains_new_line(content.as_str());
+						buf.push_str("*/ ");
+					} else {
+						buf.push_str("//");
+						buf.push_str(&content);
+						buf.push_new_line();
+					}
 				}
-				expression.to_string_from_buffer(buf, options, local);
-			}
-			Self::PostfixComment(expression, comment, _) => {
-				expression.to_string_from_buffer(buf, options, local);
-				if options.should_add_comment(comment.starts_with('*')) {
-					buf.push_str(" /*");
-					buf.push_str_contains_new_line(comment.as_str());
-					buf.push_str("*/");
+				if let Some(on) = on {
+					on.to_string_from_buffer(buf, options, local);
 				}
-			}
-			Self::Comment(comment, _) => {
-				if options.should_add_comment(comment.starts_with('*')) {
-					buf.push_str("/*");
-					buf.push_str_contains_new_line(comment.as_str());
-					buf.push_str("*/");
+				if !prefix && options.should_add_comment(content.starts_with('*')) {
+					if *is_multiline {
+						buf.push_str("/*");
+						buf.push_str_contains_new_line(content.as_str());
+						buf.push_str("*/ ");
+					} else {
+						buf.push_str("//");
+						buf.push_str(&content);
+						buf.push_new_line();
+					}
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
@@ -1820,29 +1839,37 @@ impl ASTNode for SpreadExpression {
 			}
 			TSXToken::Comma | TSXToken::CloseParentheses | TSXToken::CloseBrace => Ok(Self::Empty),
 			t if t.is_comment() => {
-				let Ok((comment, span)) = TSXToken::try_into_comment(reader.next().unwrap()) else {
-					unreachable!()
-				};
-				let e = Self::from_reader(reader, state, options)?;
-				Ok(match e {
-					SpreadExpression::Spread(e, end) => {
-						let pos = span.union(end);
-						SpreadExpression::Spread(
-							Expression::PrefixComment(comment, Box::new(e), pos),
-							pos,
-						)
+				let (content, is_multiline, position) =
+					TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+				let expr = Self::from_reader(reader, state, options)?;
+				let position = position.union(expr.get_position());
+				Ok(match expr {
+					SpreadExpression::Spread(expr, _end) => SpreadExpression::Spread(
+						Expression::Comment {
+							content,
+							on: Some(Box::new(expr)),
+							position,
+							is_multiline,
+							prefix: true,
+						},
+						position,
+					),
+					SpreadExpression::NonSpread(expr) => {
+						SpreadExpression::NonSpread(Expression::Comment {
+							content,
+							on: Some(Box::new(expr)),
+							position,
+							is_multiline,
+							prefix: true,
+						})
 					}
-					SpreadExpression::NonSpread(e) => {
-						let pos = span.union(e.get_position().get_end());
-						SpreadExpression::NonSpread(Expression::PrefixComment(
-							comment,
-							Box::new(e),
-							pos,
-						))
-					}
-					SpreadExpression::Empty => {
-						SpreadExpression::NonSpread(Expression::Comment(comment, span))
-					}
+					SpreadExpression::Empty => SpreadExpression::NonSpread(Expression::Comment {
+						content,
+						on: None,
+						position,
+						is_multiline,
+						prefix: false,
+					}),
 				})
 			}
 			_ => Ok(Self::NonSpread(Expression::from_reader(reader, state, options)?)),
@@ -1957,10 +1984,8 @@ impl Expression {
 				// TODO could return a variant here...
 				self
 			}
-		} else if let Expression::PrefixComment(_, expr, ..)
-		| Expression::PostfixComment(expr, ..) = self
-		{
-			expr.get_non_parenthesized()
+		} else if let Expression::Comment { on: Some(on), .. } = self {
+			on.get_non_parenthesized()
 		} else {
 			self
 		}

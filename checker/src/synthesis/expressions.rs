@@ -73,7 +73,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 	expecting: TypeId,
 ) -> TypeId {
 	let instance: Instance = match expression {
-		Expression::Comment(..) => unreachable!("Should have skipped this higher up"),
 		Expression::StringLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
@@ -703,10 +702,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::JSXRoot(jsx_root) => {
 			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
 		}
-		Expression::PostfixComment(expression, _comment, _)
-		| Expression::PrefixComment(_comment, expression, _) => {
-			return synthesise_expression(expression, environment, checking_data, expecting)
+		Expression::Comment { on: Some(on), .. } => {
+			return synthesise_expression(on, environment, checking_data, expecting);
 		}
+		Expression::Comment { on: None, .. } => return TypeId::ERROR_TYPE,
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),

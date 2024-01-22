@@ -561,7 +561,7 @@ impl TypeAnnotation {
 							end = Some(TokenEnd::new(end_position.0));
 						}
 						token => {
-							eprintln!("Found token {:?}", token);
+							eprintln!("Found token {token:?}");
 							return Err(parse_lexing_error());
 						}
 					}

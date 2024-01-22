@@ -213,7 +213,7 @@ pub enum InterfaceMember {
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
-	Comment(String, Span),
+	Comment(String, bool, Span),
 }
 
 #[allow(clippy::similar_names)]
@@ -323,8 +323,8 @@ impl ASTNode for InterfaceMember {
 			}
 			token if token.is_comment() => {
 				let token = reader.next().unwrap();
-				if let Ok((comment, span)) = TSXToken::try_into_comment(token) {
-					Ok(InterfaceMember::Comment(comment, span))
+				if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
+					Ok(InterfaceMember::Comment(comment, is_multiline, span))
 				} else {
 					unreachable!()
 				}
@@ -649,7 +649,7 @@ impl ASTNode for InterfaceMember {
 			InterfaceMember::Constructor { .. } => todo!(),
 			InterfaceMember::Caller { .. } => todo!(),
 			InterfaceMember::Rule { .. } => todo!(),
-			InterfaceMember::Comment(_, _) => todo!(),
+			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
 		}
 	}
 
