@@ -1434,16 +1434,16 @@ impl Expression {
 				}
 			}
 			Self::ParenthesizedExpression(expr, _) => {
-				// TODO more expressions could be considered fro parenthesis elision
-				if let MultipleExpression::Single(inner @ Expression::VariableReference(..)) =
-					&**expr
-				{
-					inner.to_string_from_buffer(buf, options, local);
-				} else {
-					buf.push('(');
-					expr.to_string_from_buffer(buf, options, local);
-					buf.push(')');
+				// TODO more expressions could be considered for parenthesis elision
+				if let MultipleExpression::Single(inner) = &**expr {
+					if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE {
+						inner.to_string_from_buffer(buf, options, local);
+						return;
+					}
 				}
+				buf.push('(');
+				expr.to_string_from_buffer(buf, options, local);
+				buf.push(')');
 			}
 			Self::Index { indexee: expression, indexer, is_optional, .. } => {
 				expression.to_string_from_buffer(buf, options, local);
@@ -1511,11 +1511,11 @@ impl Expression {
 				if *prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
 						buf.push_str("/*");
-						buf.push_str_contains_new_line(content.as_str());
+						buf.push_str_contains_new_line(content);
 						buf.push_str("*/ ");
 					} else {
 						buf.push_str("//");
-						buf.push_str(&content);
+						buf.push_str(content);
 						buf.push_new_line();
 					}
 				}
@@ -1525,11 +1525,11 @@ impl Expression {
 				if !prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
 						buf.push_str("/*");
-						buf.push_str_contains_new_line(content.as_str());
+						buf.push_str_contains_new_line(content);
 						buf.push_str("*/ ");
 					} else {
 						buf.push_str("//");
-						buf.push_str(&content);
+						buf.push_str(content);
 						buf.push_new_line();
 					}
 				}
