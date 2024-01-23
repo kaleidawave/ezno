@@ -323,7 +323,7 @@ impl ASTNode for BlockOrSingleStatement {
 			BlockOrSingleStatement::SingleStatement(stmt) => {
 				if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
-					options.add_gap(buf);
+					options.push_gap_optionally(buf);
 					stmt.to_string_from_buffer(buf, options, local.next_level());
 				} else {
 					stmt.to_string_from_buffer(buf, options, local);

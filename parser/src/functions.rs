@@ -86,7 +86,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		buf: &mut T,
 		options: &crate::ToStringOptions,
 	) {
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 	}
 
 	fn visit_name<TData>(

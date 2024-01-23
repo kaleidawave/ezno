@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							}
 						}
 						Err(parse_err) => {
-							eprintln!("error parsing output: {output:?}");
+							eprintln!("error parsing output: {output:?} from {module:?}");
 							return Err(Box::<dyn std::error::Error>::from(parse_err));
 						}
 					};

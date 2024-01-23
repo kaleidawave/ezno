@@ -121,7 +121,7 @@ impl ASTNode for InterfaceDeclaration {
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 			}
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
@@ -608,7 +608,7 @@ impl ASTNode for InterfaceMember {
 				}
 				name.to_string_from_buffer(buf, options, local);
 				buf.push(':');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 			InterfaceMember::Method {
@@ -629,7 +629,7 @@ impl ASTNode for InterfaceMember {
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
 					buf.push(':');
-					options.add_gap(buf);
+					options.push_gap_optionally(buf);
 					return_type.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -643,7 +643,7 @@ impl ASTNode for InterfaceMember {
 				indexer_type.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 				buf.push(':');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				return_type.to_string_from_buffer(buf, options, local);
 			}
 			InterfaceMember::Constructor { .. } => todo!(),

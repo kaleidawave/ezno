@@ -90,11 +90,11 @@ impl ASTNode for IfStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("if");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 		if !options.pretty
 			&& matches!(self.inner, BlockOrSingleStatement::SingleStatement(_))
@@ -104,7 +104,7 @@ impl ASTNode for IfStatement {
 		}
 
 		for (at_end, else_statement) in self.else_conditions.iter().endiate() {
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			else_statement.to_string_from_buffer(buf, options, local);
 			if !options.pretty
 				&& matches!(else_statement.inner, BlockOrSingleStatement::SingleStatement(_))
@@ -114,7 +114,7 @@ impl ASTNode for IfStatement {
 			}
 		}
 		if let Some(else_statement) = &self.trailing_else {
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			else_statement.to_string_from_buffer(buf, options, local);
 		}
 	}
@@ -141,11 +141,11 @@ impl ASTNode for ConditionalElseStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("else if");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
@@ -194,7 +194,7 @@ impl ASTNode for UnconditionalElseStatement {
 		if !options.pretty && matches!(self.inner, BlockOrSingleStatement::SingleStatement(_)) {
 			buf.push(' ');
 		}
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }

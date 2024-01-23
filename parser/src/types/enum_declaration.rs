@@ -66,7 +66,7 @@ impl ASTNode for EnumDeclaration {
 		}
 		buf.push_str("enum ");
 		buf.push_str(&self.name);
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push_str("{");
 		for (at_end, member) in self.members.iter().endiate() {
 			if options.pretty {

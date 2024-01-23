@@ -201,15 +201,15 @@ impl LHSOfAssignment {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(members, _) => {
 				buf.push('{');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 					}
 				}
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				buf.push('}');
 			}
 			LHSOfAssignment::ArrayDestructuring(members, _) => {

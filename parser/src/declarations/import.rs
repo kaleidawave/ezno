@@ -125,7 +125,7 @@ impl ASTNode for ImportDeclaration {
 				buf.push(' ');
 			}
 		} else {
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 		}
 
 		match self.items {
@@ -144,24 +144,24 @@ impl ASTNode for ImportDeclaration {
 							buf.push_str(", ");
 						}
 						buf.push('{');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						for (at_end, part) in parts.iter().endiate() {
 							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
-								options.add_gap(buf);
+								options.push_gap_optionally(buf);
 							}
 						}
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push('}');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 					}
 				}
 			}
 		}
 		if !(matches!(self.items, ImportedItems::Parts(None)) && self.default.is_none()) {
 			buf.push_str("from");
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 		}
 		self.from.to_string_from_buffer(buf);
 	}

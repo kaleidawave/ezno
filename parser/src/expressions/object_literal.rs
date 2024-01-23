@@ -151,15 +151,15 @@ impl ASTNode for ObjectLiteral {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push('{');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		for (at_end, member) in self.members.iter().endiate() {
 			member.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 			}
 		}
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('}');
 	}
 }
@@ -258,7 +258,7 @@ impl ASTNode for ObjectLiteralMember {
 			Self::Property(name, expression, _) => {
 				name.to_string_from_buffer(buf, options, local);
 				buf.push(':');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				expression.to_string_from_buffer(buf, options, local);
 			}
 			Self::Shorthand(name, ..) => {

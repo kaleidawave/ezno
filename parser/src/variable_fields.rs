@@ -311,7 +311,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 					if !at_end {
 						buf.push(',');
 						if !matches!(member, ArrayDestructuringField::None) {
-							options.add_gap(buf);
+							options.push_gap_optionally(buf);
 						}
 					}
 				}
@@ -319,15 +319,15 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			}
 			Self::Object(members, _) => {
 				buf.push('{');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 					}
 				}
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				buf.push('}');
 			}
 		}

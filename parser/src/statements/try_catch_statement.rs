@@ -97,14 +97,14 @@ impl ASTNode for TryCatchStatement {
 	) {
 		// Required `try` block
 		buf.push_str("try");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.try_inner.to_string_from_buffer(buf, options, local.next_level());
 
 		// Optional `catch` block
 		if let Some(catch) = &self.catch_inner {
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			buf.push_str("catch");
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 
 			// Optional exception variable: `catch (e)`
 			if let Some((exception_var, exception_var_type)) = &self.exception_var {
@@ -117,7 +117,7 @@ impl ASTNode for TryCatchStatement {
 					exception_var_type.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(')');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 			}
 
 			catch.to_string_from_buffer(buf, options, local.next_level());
@@ -125,9 +125,9 @@ impl ASTNode for TryCatchStatement {
 
 		// Optional `finally` block
 		if let Some(finally) = &self.finally_inner {
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			buf.push_str("finally");
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			finally.to_string_from_buffer(buf, options, local.next_level());
 		}
 	}

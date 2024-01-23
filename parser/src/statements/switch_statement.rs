@@ -101,11 +101,11 @@ impl ASTNode for SwitchStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("switch");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
 		self.case.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('{');
 		for branch in &self.branches {
 			if options.pretty {

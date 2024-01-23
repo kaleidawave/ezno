@@ -238,7 +238,7 @@ impl ToStringOptions {
 	}
 
 	/// Adds whitespace **conditionally** (based on pretty setting)
-	pub(crate) fn add_gap<T: source_map::ToString>(&self, buf: &mut T) {
+	pub(crate) fn push_gap_optionally<T: source_map::ToString>(&self, buf: &mut T) {
 		if self.pretty {
 			buf.push(' ');
 		}
@@ -1050,7 +1050,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 		node.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 		}
 	}
 	buf.push(brackets.1);

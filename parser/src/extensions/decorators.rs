@@ -55,7 +55,7 @@ impl ASTNode for Decorator {
 					argument.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 					}
 				}
 				buf.push(')');

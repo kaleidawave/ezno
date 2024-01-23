@@ -44,9 +44,9 @@ impl ASTNode for ForLoopStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("for");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.condition.to_string_from_buffer(buf, options, local);
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
@@ -266,12 +266,12 @@ impl ASTNode for ForLoopCondition {
 				}
 				buf.push(';');
 				if let Some(condition) = condition {
-					options.add_gap(buf);
+					options.push_gap_optionally(buf);
 					condition.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(';');
 				if let Some(afterthought) = afterthought {
-					options.add_gap(buf);
+					options.push_gap_optionally(buf);
 					afterthought.to_string_from_buffer(buf, options, local);
 				}
 			}

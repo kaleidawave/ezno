@@ -98,7 +98,7 @@ impl ASTNode for FunctionParameters {
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {

@@ -135,7 +135,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_str(" extends ");
 			extends.to_string_from_buffer(buf, options, local);
 		}
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
 			if options.pretty {

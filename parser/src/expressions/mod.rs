@@ -206,7 +206,7 @@ impl ASTNode for Expression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_using_precedence(buf, options, local, COMMA_PRECEDENCE);
+		self.to_string_using_precedence(buf, options, local, u8::MAX);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -1297,6 +1297,11 @@ impl Expression {
 		local: crate::LocalToStringInformation,
 		_parent_precedence: u8,
 	) {
+		let self_precedence = self.get_precedence();
+		// let inverted = parent_precedence < self_precedence;
+		// if inverted {
+		// 	buf.push('(');
+		// }
 		match self {
 			Self::Marker { .. } => {
 				assert!(options.expect_markers, "marker found");
@@ -1319,12 +1324,55 @@ impl Expression {
 				}
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
-				let op_precedence = operator.precedence();
-				lhs.to_string_using_precedence(buf, options, local, op_precedence);
-				options.add_gap(buf);
+				lhs.to_string_using_precedence(buf, options, local, self_precedence);
+				if options.pretty
+					|| matches!(
+						(operator, &**lhs),
+						(
+							BinaryOperator::Subtract,
+							Expression::UnaryPostfixAssignmentOperation {
+								operator: UnaryPostfixAssignmentOperator(
+									IncrementOrDecrement::Decrement
+								),
+								..
+							},
+						) | (
+							BinaryOperator::Add,
+							Expression::UnaryPostfixAssignmentOperation {
+								operator: UnaryPostfixAssignmentOperator(
+									IncrementOrDecrement::Increment
+								),
+								..
+							},
+						)
+					) {
+					buf.push(' ');
+				}
 				buf.push_str(operator.to_str());
-				options.add_gap(buf);
-				rhs.to_string_using_precedence(buf, options, local, op_precedence);
+				if options.pretty
+					|| matches!(
+						(operator, &**rhs),
+						(
+							BinaryOperator::Subtract,
+							Expression::UnaryPrefixAssignmentOperation {
+								operator: UnaryPrefixAssignmentOperator::IncrementOrDecrement(
+									IncrementOrDecrement::Decrement
+								),
+								..
+							},
+						) | (
+							BinaryOperator::Add,
+							Expression::UnaryPrefixAssignmentOperation {
+								operator: UnaryPrefixAssignmentOperator::IncrementOrDecrement(
+									IncrementOrDecrement::Increment
+								),
+								..
+							},
+						)
+					) {
+					buf.push(' ');
+				}
+				rhs.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::SpecialOperators(special, _) => match special {
 				SpecialOperators::AsExpression { value, type_annotation, .. }
@@ -1346,23 +1394,18 @@ impl Expression {
 							buf.push_str(property);
 						}
 						InExpressionLHS::Expression(lhs) => {
-							lhs.to_string_using_precedence(
-								buf,
-								options,
-								local,
-								RELATION_PRECEDENCE,
-							);
+							lhs.to_string_using_precedence(buf, options, local, self_precedence);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, local, self_precedence);
 				}
 				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
-					lhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
+					lhs.to_string_using_precedence(buf, options, local, self_precedence);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, local, RELATION_PRECEDENCE);
+					rhs.to_string_using_precedence(buf, options, local, self_precedence);
 				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {
@@ -1372,19 +1415,42 @@ impl Expression {
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
-				operand.to_string_from_buffer(buf, options, local);
+				if let (
+					UnaryOperator::Negation,
+					Expression::UnaryPrefixAssignmentOperation {
+						operator:
+							UnaryPrefixAssignmentOperator::IncrementOrDecrement(
+								IncrementOrDecrement::Decrement,
+							),
+						..
+					},
+				)
+				| (
+					UnaryOperator::Plus,
+					Expression::UnaryPrefixAssignmentOperation {
+						operator:
+							UnaryPrefixAssignmentOperator::IncrementOrDecrement(
+								IncrementOrDecrement::Increment,
+							),
+						..
+					},
+				) = (operator, &**operand)
+				{
+					buf.push(' ');
+				}
+				operand.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::Assignment { lhs, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				rhs.to_string_from_buffer(buf, options, local);
+				rhs.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				buf.push_str(operator.to_str());
-				options.add_gap(buf);
-				rhs.to_string_from_buffer(buf, options, local);
+				options.push_gap_optionally(buf);
+				rhs.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
@@ -1586,6 +1652,9 @@ impl Expression {
 				}
 			}
 		}
+		// if inverted {
+		// 	buf.push(')');
+		// }
 	}
 }
 
@@ -1756,7 +1825,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 				item.to_string_from_buffer(buf, options, local);
 				if !at_end {
 					buf.push(',');
-					options.add_gap(buf);
+					options.push_gap_optionally(buf);
 				}
 			}
 		} else {
@@ -1768,7 +1837,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 				buf.push_new_line();
 				options.add_indent(local.depth + 1, buf);
 			} else {
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 			}
 		}
 	}

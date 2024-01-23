@@ -40,11 +40,11 @@ impl ASTNode for WhileStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("while");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
@@ -89,7 +89,7 @@ impl ASTNode for DoWhileStatement {
 		buf.push_str("do ");
 		self.inner.to_string_from_buffer(buf, options, local);
 		buf.push_str(" while");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
 		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');

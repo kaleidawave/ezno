@@ -250,15 +250,15 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::Parts(parts) => {
 						buf.push('{');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						for (at_end, part) in parts.iter().endiate() {
 							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
-								options.add_gap(buf);
+								options.push_gap_optionally(buf);
 							}
 						}
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push('}');
 					}
 					Exportable::ImportAll { r#as, from } => {
@@ -278,17 +278,17 @@ impl ASTNode for ExportDeclaration {
 						}
 
 						buf.push('{');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						for (at_end, part) in parts.iter().endiate() {
 							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
-								options.add_gap(buf);
+								options.push_gap_optionally(buf);
 							}
 						}
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push('}');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push_str("from \"");
 						from.to_string_from_buffer(buf);
 						buf.push('"');
