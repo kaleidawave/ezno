@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v3
         with:
           path: |
@@ -73,9 +74,13 @@ jobs:
       - name: Run parser, minfier/stringer performance
         shell: bash
         run: |
-          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
+          strings=(
+            "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
+            "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
+          )
 
-          echo "### Parsing and writing out minified form of \`react-dom\`
-          \`\`\`shell">> $GITHUB_STEP_SUMMARY
-          hyperfine './target/release/ezno ast-explorer --file react.js uglifier' >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          for url in "${strings[@]}"; do
+              curl $url > input.js
+              cargo run -p ezno-parser --example parse input.js --timings --render-timings
+              cargo run -p ezno-parser --release --example parse input.js --timings --render-timings
+          done

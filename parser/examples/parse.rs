@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let partial_syntax = args.iter().any(|item| item == "--partial");
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
+	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let now = Instant::now();
 
 	let options = ParseOptions {
@@ -53,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if print_ast {
 				println!("{module:#?}");
 			}
-			if source_maps || render_output || double {
+			if source_maps || render_output || double || render_timings {
 				let now = Instant::now();
 
 				let to_string_options = ToStringOptions {
@@ -70,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let (output, source_map) =
 					module.to_string_with_source_map(&to_string_options, source_id, &fs);
 
-				if timings {
+				if timings || render_timings {
 					eprintln!("ToString'ed in: {:?}", now.elapsed());
 				}
 				if source_maps {

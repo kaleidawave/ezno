@@ -1359,6 +1359,9 @@ impl Expression {
 									IncrementOrDecrement::Decrement
 								),
 								..
+							} | Expression::UnaryOperation {
+								operator: UnaryOperator::Negation,
+								..
 							},
 						) | (
 							BinaryOperator::Add,
@@ -1367,7 +1370,7 @@ impl Expression {
 									IncrementOrDecrement::Increment
 								),
 								..
-							},
+							} | Expression::UnaryOperation { operator: UnaryOperator::Plus, .. },
 						)
 					) {
 					buf.push(' ');
@@ -1423,7 +1426,8 @@ impl Expression {
 								IncrementOrDecrement::Decrement,
 							),
 						..
-					},
+					}
+					| Expression::UnaryOperation { operator: UnaryOperator::Negation, .. },
 				)
 				| (
 					UnaryOperator::Plus,
@@ -1433,7 +1437,8 @@ impl Expression {
 								IncrementOrDecrement::Increment,
 							),
 						..
-					},
+					}
+					| Expression::UnaryOperation { operator: UnaryOperator::Plus, .. },
 				) = (operator, &**operand)
 				{
 					buf.push(' ');
@@ -1687,6 +1692,14 @@ impl MultipleExpression {
 			inner.is_iife()
 		} else {
 			None
+		}
+	}
+
+	pub(crate) fn left_is_object_literal(&self) -> bool {
+		match self {
+			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_object_literal(),
+			MultipleExpression::Single(Expression::ObjectLiteral(_)) => true,
+			MultipleExpression::Single(_) => false,
 		}
 	}
 }

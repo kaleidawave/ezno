@@ -277,7 +277,13 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				val.to_string_from_buffer(buf, options, local);
+				if val.left_is_object_literal() {
+					buf.push('(');
+					val.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					val.to_string_from_buffer(buf, options, local);
+				}
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);

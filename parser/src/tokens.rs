@@ -380,7 +380,6 @@ impl TSXToken {
 		matches!(
 			self,
 			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw)
-				| TSXToken::Assign
 				| TSXToken::Arrow
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
@@ -392,7 +391,11 @@ impl TSXToken {
 				| TSXToken::LogicalOr
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon
-		)
+				| TSXToken::Multiply
+				| TSXToken::Add
+				| TSXToken::Subtract
+				| TSXToken::Divide
+		) || self.is_assignment()
 	}
 
 	/// Returns a keyword token else an identifier literal
@@ -444,6 +447,10 @@ impl TSXToken {
 				| TSXToken::SubtractAssign
 				| TSXToken::DivideAssign
 				| TSXToken::ModuloAssign
+				| TSXToken::BitwiseOrAssign
+				| TSXToken::BitwiseAndAssign
+				| TSXToken::LogicalOrAssign
+				| TSXToken::LogicalAndAssign
 		)
 	}
 }
