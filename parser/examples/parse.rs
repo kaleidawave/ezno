@@ -113,7 +113,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			Ok(())
 		}
 		Err(parse_err) => {
-			eprint!("here");
 			let mut line_column = parse_err
 				.position
 				.with_source(source_id)
