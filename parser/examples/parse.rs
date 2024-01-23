@@ -34,37 +34,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source = read_to_string(path.clone())?;
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
+	eprintln!("parsing {:?} bytes", source.len());
 	let result = Module::from_string_with_options(source, options, None);
 
 	match result {
 		Ok((module, state)) => {
 			if timings {
-				eprintln!("Parsed in: {:?}", now.elapsed());
+				eprintln!("parsed in: {:?}", now.elapsed());
 			}
 
 			let print_ast = args.iter().any(|item| item == "--ast");
 			let render_output = args.iter().any(|item| item == "--render");
 			let pretty = args.iter().any(|item| item == "--pretty");
 
+			// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
+			let double = args.iter().any(|item| item == "--double");
+
 			if print_ast {
 				println!("{module:#?}");
 			}
-			if source_maps || render_output {
+			if source_maps || render_output || double {
 				let now = Instant::now();
-				let (output, source_map) = module.to_string_with_source_map(
-					&ToStringOptions {
-						trailing_semicolon: true,
-						expect_markers: true,
-						include_types: true,
-						pretty,
-						comments: if pretty { Comments::All } else { Comments::None },
-						// 60 is temp
-						max_line_length: if pretty { 60 } else { u8::MAX },
-						..Default::default()
-					},
-					source_id,
-					&fs,
-				);
+
+				let to_string_options = ToStringOptions {
+					trailing_semicolon: true,
+					expect_markers: true,
+					include_types: true,
+					pretty,
+					comments: if pretty { Comments::All } else { Comments::None },
+					// 60 is temp
+					max_line_length: if pretty { 60 } else { u8::MAX },
+					..Default::default()
+				};
+
+				let (output, source_map) =
+					module.to_string_with_source_map(&to_string_options, source_id, &fs);
+
 				if timings {
 					eprintln!("ToString'ed in: {:?}", now.elapsed());
 				}
@@ -75,21 +80,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				if render_output {
 					println!("{output}");
 				}
+				if double {
+					let result2 = Module::from_string_with_options(output.clone(), options, None);
+					return match result2 {
+						Ok((module2, _state)) => {
+							let output2 = module2
+								.to_string_with_source_map(&to_string_options, source_id, &fs)
+								.0;
+
+							eprintln!("{output:?}\n{output2:?}");
+							if output != output2 {
+								return Err(Box::<dyn std::error::Error>::from("not equal"));
+							} else {
+								eprintln!("re-parse was equal ✅");
+								Ok(())
+							}
+						}
+						Err(parse_err) => {
+							eprintln!("error parsing output: {output:?}");
+							return Err(Box::<dyn std::error::Error>::from(parse_err));
+						}
+					};
+				}
+			} else if !timings {
+				eprintln!("parsed in: {:?}", now.elapsed());
 			}
 
 			if display_keywords {
 				println!("{:?}", state.keyword_positions.unwrap());
 			}
+
 			Ok(())
 		}
 		Err(parse_err) => {
-			eprintln!(
-				"error on {:?}",
-				parse_err
-					.position
-					.with_source(source_id)
-					.into_line_column_span::<source_map::encodings::Utf8>(&fs)
-			);
+			eprint!("here");
+			let mut line_column = parse_err
+				.position
+				.with_source(source_id)
+				.into_line_column_span::<source_map::encodings::Utf8>(&fs);
+			{
+				// Editor are one indexed
+				line_column.line_start += 1;
+				line_column.line_end += 1;
+				line_column.column_start += 1;
+				line_column.column_end += 1;
+			}
+			eprintln!("error on {:?}", line_column);
+
 			Err(Box::<dyn std::error::Error>::from(parse_err))
 		}
 	}

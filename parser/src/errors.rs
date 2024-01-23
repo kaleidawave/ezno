@@ -21,6 +21,7 @@ pub enum ParseErrors<'a> {
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
+	CannotAccessObjectLiteralDirectly,
 }
 
 #[allow(missing_docs)]
@@ -154,6 +155,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::DestructuringRequiresValue => {
 				write!(f, "RHS of destructured declaration requires expression")
+			}
+			ParseErrors::CannotAccessObjectLiteralDirectly => {
+				write!(f, "Cannot get property on object literal directly")
 			}
 		}
 	}

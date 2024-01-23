@@ -9,8 +9,8 @@ use crate::{
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	ExpressionPosition, FunctionHeader, Marker, NumberRepresentation, ParseResult, Quoted,
-	TSXKeyword,
+	ExpressionPosition, FunctionHeader, Marker, NumberRepresentation, ParseErrors, ParseResult,
+	Quoted, TSXKeyword,
 };
 
 use self::{
@@ -342,9 +342,8 @@ impl Expression {
 			t @ Token(TSXToken::Keyword(TSXKeyword::Null), _) => Expression::Null(t.get_span()),
 			Token(TSXToken::Keyword(kw @ TSXKeyword::Class), start) => {
 				state.append_keyword_at_pos(start.0, kw);
-				Expression::ClassExpression(ClassDeclaration::from_reader_sub_class_keyword(
-					reader, state, options, start,
-				)?)
+				ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)
+					.map(Expression::ClassExpression)?
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Yield), s) => {
 				// TODO could we do better?
@@ -366,6 +365,7 @@ impl Expression {
 			}
 			t @ Token(TSXToken::OpenBracket, start) => {
 				let mut bracket_depth = 1;
+				// TODO this can be bad for large object literals, needs to exit if expression without =
 				let after_bracket = reader.scan(|token, _| match token {
 					TSXToken::OpenBracket => {
 						bracket_depth += 1;
@@ -463,10 +463,8 @@ impl Expression {
 							rhs,
 						}
 					} else {
-						let object_literal = ObjectLiteral::from_reader_sub_open_curly(
-							reader, state, options, start,
-						)?;
-						Expression::ObjectLiteral(object_literal)
+						ObjectLiteral::from_reader_sub_open_curly(reader, state, options, start)
+							.map(Expression::ObjectLiteral)?
 					}
 				} else {
 					return Err(ParseError::new(
@@ -687,16 +685,15 @@ impl Expression {
 								token_as_identifier(reader.next().unwrap(), "function name")?;
 							Some(crate::VariableIdentifier::Standard(token, span))
 						};
-						let function: ExpressionFunction =
-							FunctionBase::from_reader_with_header_and_name(
-								reader,
-								state,
-								options,
-								(Some(header.get_position().get_start()), header),
-								ExpressionPosition(name),
-							)?;
 
-						Expression::ExpressionFunction(function)
+						FunctionBase::from_reader_with_header_and_name(
+							reader,
+							state,
+							options,
+							(Some(header.get_position().get_start()), header),
+							ExpressionPosition(name),
+						)
+						.map(Expression::ExpressionFunction)?
 					} else {
 						let generator_star_token_position = reader
 							.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
@@ -722,16 +719,14 @@ impl Expression {
 							Some(crate::VariableIdentifier::Standard(token, span))
 						};
 
-						let function: ExpressionFunction =
-							FunctionBase::from_reader_with_header_and_name(
-								reader,
-								state,
-								options,
-								(Some(header.get_position().get_start()), header),
-								ExpressionPosition(name),
-							)?;
-
-						Expression::ExpressionFunction(function)
+						FunctionBase::from_reader_with_header_and_name(
+							reader,
+							state,
+							options,
+							(Some(header.get_position().get_start()), header),
+							ExpressionPosition(name),
+						)
+						.map(Expression::ExpressionFunction)?
 					}
 				}
 
@@ -768,16 +763,14 @@ impl Expression {
 
 						Some(crate::VariableIdentifier::Standard(token, span))
 					};
-					let function: ExpressionFunction =
-						FunctionBase::from_reader_with_header_and_name(
-							reader,
-							state,
-							options,
-							(Some(start), header),
-							ExpressionPosition(name),
-						)?;
-
-					Expression::ExpressionFunction(function)
+					FunctionBase::from_reader_with_header_and_name(
+						reader,
+						state,
+						options,
+						(Some(start), header),
+						ExpressionPosition(name),
+					)
+					.map(Expression::ExpressionFunction)?
 				}
 			}
 			#[cfg(feature = "extras")]
@@ -880,7 +873,7 @@ impl Expression {
 							(name, position),
 							false,
 						)?;
-						Expression::ArrowFunction(function)
+						return Ok(Expression::ArrowFunction(function));
 					} else {
 						Expression::VariableReference(name, position)
 					}
@@ -992,7 +985,16 @@ impl Expression {
 					{
 						return Ok(top);
 					}
+
 					let Token(accessor, accessor_position) = reader.next().unwrap();
+					// TODO not sure
+					if matches!(top, Self::ObjectLiteral(..)) {
+						return Err(ParseError::new(
+							ParseErrors::CannotAccessObjectLiteralDirectly,
+							accessor_position.with_length(1),
+						));
+					}
+
 					let is_optional = matches!(accessor, TSXToken::OptionalChain);
 
 					let Token(peek, at) = reader.peek().ok_or_else(parse_lexing_error)?;
@@ -1410,17 +1412,22 @@ impl Expression {
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				buf.add_mapping(&position.with_source(local.under));
 
-				if let Self::NumberLiteral(..) = &**parent {
+				if let Self::NumberLiteral(..) | Self::ObjectLiteral(..) | Self::ArrowFunction(..) =
+					parent.get_non_parenthesized()
+				{
 					buf.push('(');
 					parent.to_string_from_buffer(buf, options, local);
 					buf.push(')');
 				} else {
 					parent.to_string_from_buffer(buf, options, local);
 				}
+
 				if *is_optional {
-					buf.push('?');
+					buf.push_str("?.");
+				} else {
+					buf.push('.');
 				}
-				buf.push('.');
+
 				match property {
 					PropertyReference::Standard { property, is_private } => {
 						if *is_private {
@@ -1460,23 +1467,22 @@ impl Expression {
 					expression.to_string_from_buffer(buf, options, local);
 					return;
 				}
-				let is_raw_function = matches!(
-					&**function,
-					Expression::ArrowFunction(..) | Expression::ExpressionFunction(..)
-				);
-				// Fixes precedence from badly created ASTs
-				if is_raw_function {
+
+				if let Self::ArrowFunction(..) | Self::ObjectLiteral(..) =
+					function.get_non_parenthesized()
+				{
 					buf.push('(');
-				}
-				function.to_string_from_buffer(buf, options, local);
-				if is_raw_function {
+					function.to_string_from_buffer(buf, options, local);
 					buf.push(')');
+				} else {
+					function.to_string_from_buffer(buf, options, local);
+				}
+
+				if *is_optional {
+					buf.push_str("?.");
 				}
 				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
-				}
-				if *is_optional {
-					buf.push_str("?.");
 				}
 				arguments_to_string(arguments, buf, options, local);
 			}

@@ -50,11 +50,11 @@ a.a(...expr, y)
 #[test]
 fn objects() {
 	let input = r"
-({ a: 5 });
-({ ...b, a: 5, ...c, d: 4 });
-({ async e() {
+const a = { a: 5 };
+const b = { ...b, a: 5, ...c, d: 4 };
+const c = { async e() {
 	return 2
-} })
+} }
     "
 	.trim();
 

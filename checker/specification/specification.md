@@ -593,7 +593,7 @@ function getToUpperCase(s: string) {
 	return s.toUpperCase
 }
 
-(getToUpperCase("hi")() satisfies "HEY")
+getToUpperCase("hi")() satisfies "HEY";
 ```
 
 - Expected "HEY", found "HI"
@@ -605,7 +605,7 @@ function callToUpperCase(s: string) {
 	return s.toUpperCase()
 }
 
-(callToUpperCase("hi") satisfies "HEY")
+callToUpperCase("hi") satisfies "HEY";
 ```
 
 - Expected "HEY", found "HI"
@@ -768,7 +768,7 @@ function getX() {
 	return x
 }
 
-(getX satisfies () => number);
+getX satisfies () => number;
 
 getX();
 
@@ -827,7 +827,7 @@ function doThingWithCallback(callback: (obj: { x: number }) => any) {
 }
 
 const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
-(object.x satisfies string);
+object.x satisfies string;
 ```
 
 - Expected 8, found number
@@ -842,7 +842,7 @@ function add_property(obj: { prop: number }) {
 
 const obj = { prop: 4 };
 add_property(obj);
-(obj.prop satisfies 8);
+obj.prop satisfies 8;
 ```
 
 - Expected 8, found 6
@@ -1078,7 +1078,7 @@ while (i < 5) {
 	i++;
 }
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 32
@@ -1092,7 +1092,7 @@ while (i++ < 5) {
 	a *= 2;
 }
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 32
@@ -1105,7 +1105,7 @@ do {
 	a++
 } while (a < 3)
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 3
@@ -1118,7 +1118,7 @@ for (let i: number = 0; i < 10; i++) {
 	a = a + i;
 }
 
-(a satisfies number)
+a satisfies number;
 ```
 
 - Expected number, found "0123456789"
@@ -1132,7 +1132,7 @@ while (a < i) {
 	a++;
 }
 
-(a satisfies string)
+a satisfies string;
 ```
 
 - Expected string, found number
@@ -1153,7 +1153,7 @@ a satisfies string;
 
 - Expected string, found number
 
-#### While loop unrolling as an effect
+#### While loop unrolling as a side-effect
 
 ```ts
 function loop(n: number, c: string) {
@@ -1165,7 +1165,7 @@ function loop(n: number, c: string) {
 	return a
 }
 
-(loop(10, "!") satisfies number);
+loop(10, "!") satisfies number;
 ```
 
 - Expected number, found "!!!!!!!!!!"
@@ -1182,7 +1182,7 @@ while (i++ < 10) {
 	}
 }
 
-(a satisfies 2);
+a satisfies 2;
 ```
 
 - Expected 2, found 8
@@ -1224,7 +1224,7 @@ while (i++ < 10) {
 	a *= 2;
 }
 
-(a satisfies 2);
+a satisfies 2;
 ```
 
 - Expected 2, found 64
@@ -1611,7 +1611,7 @@ const a: X<number> = 2;
 ```ts
 type X<T> = T;
 
-(2 satisfies X<string>);
+2 satisfies X<string>;
 ```
 
 - Expected string, found 2
@@ -1621,7 +1621,7 @@ type X<T> = T;
 ```ts
 type X<T> = T;
 
-(2 satisfies X);
+2 satisfies X;
 ```
 
 - Type X requires type arguments
@@ -1702,7 +1702,7 @@ interface ThePrimitives {
 	c: boolean
 }
 
-(2 satisfies ThePrimitives["b"]);
+2 satisfies ThePrimitives["b"];
 ```
 
 - Expected string, found 2
@@ -1728,7 +1728,7 @@ function getFirst(array: number[]) {
 	return array[0]
 }
 
-(getFirst satisfies boolean);
+getFirst satisfies boolean;
 ```
 
 - Expected boolean, found (array: Array\<number>) => number | undefined
@@ -1740,8 +1740,8 @@ function getSecondCharacter(s: string) {
 	return s[1]
 }
 
-(getSecondCharacter satisfies boolean);
-(getSecondCharacter("string") satisfies "b");
+getSecondCharacter satisfies boolean;
+getSecondCharacter("string") satisfies "b";
 ```
 
 - Expected boolean, found (s: string) => string | undefined

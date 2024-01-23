@@ -83,7 +83,6 @@ jobs:
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true'
-        continue-on-error: true
         run: |
           cargo test
           

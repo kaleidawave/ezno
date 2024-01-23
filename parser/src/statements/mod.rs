@@ -108,7 +108,7 @@ impl ASTNode for Statement {
 			return Ok(Statement::Labelled { name, statement, position });
 		}
 
-		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
+		let Token(token, _s) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 		match token {
 			TSXToken::Identifier(n)

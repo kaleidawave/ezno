@@ -13,12 +13,12 @@ use pretty_assertions::assert_eq;
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
-	let Ok(module) = Module::from_string(input.to_owned(), Default::default()) else {
+	let parse_options = ParseOptions { jsx: true, type_annotations: true, ..Default::default() };
+	let Ok(module) = Module::from_string(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};
 
-	let to_string_options =
-		ToStringOptions { trailing_semicolon: true, ..ToStringOptions::default() };
+	let to_string_options = ToStringOptions { trailing_semicolon: true, ..Default::default() };
 
 	let output1 = module.to_string(&to_string_options);
 
