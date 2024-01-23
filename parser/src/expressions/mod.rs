@@ -1695,10 +1695,15 @@ impl MultipleExpression {
 		}
 	}
 
-	pub(crate) fn left_is_object_literal(&self) -> bool {
+	/// These are valid in expression position but are parsed different in statement mode
+	pub(crate) fn left_is_object_literal_or_expression_function(&self) -> bool {
 		match self {
-			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_object_literal(),
-			MultipleExpression::Single(Expression::ObjectLiteral(_)) => true,
+			MultipleExpression::Multiple { lhs, .. } => {
+				lhs.left_is_object_literal_or_expression_function()
+			}
+			MultipleExpression::Single(
+				Expression::ObjectLiteral(_) | Expression::ExpressionFunction(_),
+			) => true,
 			MultipleExpression::Single(_) => false,
 		}
 	}

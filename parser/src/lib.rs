@@ -526,11 +526,9 @@ impl std::fmt::Display for NumberSign {
 	}
 }
 
-/// TODO a mix between runtime numbers and source syntax based number
-/// TODO hex cases lost in input :(
-/// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
+/// Some of these can't be parsed, but are there to make so that a number expression can be generated from a f64
 ///
-/// Some of these can't be parsed, but are there to make is so that a number can be generated from just a f64
+/// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -538,36 +536,11 @@ pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
 	NaN,
-	Hex {
-		sign: NumberSign,
-		identifier_uppercase: bool,
-		value: u64,
-	},
-	Bin {
-		sign: NumberSign,
-		identifier_uppercase: bool,
-		value: u64,
-	},
-	Octal {
-		sign: NumberSign,
-		/// None = leading 0 (boo 👎)
-		identifier_uppercase: Option<bool>,
-		value: u64,
-	},
-	Number {
-		/// TODO could do as something other than f64
-		value: f64,
-		/// To preserve formatting
-		before_point: u8,
-		/// To preserve formatting
-		after_point: Option<u8>,
-	},
-	Exponential {
-		sign: NumberSign,
-		value: f64,
-		exponent: i32,
-		identifier_uppercase: bool,
-	},
+	Hex { sign: NumberSign, value: u64 },
+	Bin { sign: NumberSign, value: u64 },
+	Octal { sign: NumberSign, value: u64 },
+	Number(f64),
+	Exponential { sign: NumberSign, value: f64, exponent: i32 },
 	BigInt(NumberSign, String),
 }
 
@@ -586,16 +559,13 @@ impl TryFrom<NumberRepresentation> for f64 {
 			NumberRepresentation::Infinity => Ok(f64::INFINITY),
 			NumberRepresentation::NegativeInfinity => Ok(f64::NEG_INFINITY),
 			NumberRepresentation::NaN => Ok(f64::NAN),
-			NumberRepresentation::Number { value: internal, .. } => Ok(internal),
+			NumberRepresentation::Number(value) => Ok(value),
 			NumberRepresentation::Hex { sign, value, .. }
 			| NumberRepresentation::Bin { sign, value, .. }
 			| NumberRepresentation::Octal { sign, value, .. } => Ok(sign.apply(value as f64)),
-			NumberRepresentation::Exponential {
-				sign,
-				value,
-				exponent,
-				identifier_uppercase: _,
-			} => Ok(sign.apply(value * 10f64.powi(exponent))),
+			NumberRepresentation::Exponential { sign, value, exponent } => {
+				Ok(sign.apply(value * 10f64.powi(exponent)))
+			}
 			NumberRepresentation::BigInt(..) => Err(()),
 		}
 	}
@@ -611,12 +581,7 @@ impl From<f64> for NumberRepresentation {
 		} else if value.is_nan() {
 			Self::NaN
 		} else {
-			Self::Number {
-				value,
-				// These values should be fine
-				before_point: 0,
-				after_point: None,
-			}
+			Self::Number(value)
 		}
 	}
 }
@@ -647,20 +612,13 @@ impl FromStr for NumberRepresentation {
 			let next_char = s.chars().next();
 			match next_char {
 				Some('.') => {
-					let after_point = Some(s.len() as u8 - 1);
-					let before_point = 1;
 					if s.len() == 1 {
-						Ok(Self::Number { value: 0f64, before_point, after_point })
+						Ok(Self::Number(0f64))
 					} else {
-						Ok(Self::Number {
-							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
-							before_point,
-							after_point,
-						})
+						Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
 					}
 				}
-				Some(c @ ('X' | 'x')) => {
-					let identifier_uppercase = c.is_uppercase();
+				Some('X' | 'x') => {
 					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
 						value <<= 4; // 16=2^4
@@ -677,10 +635,9 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Hex { sign, identifier_uppercase, value })
+					Ok(Self::Hex { sign, value })
 				}
-				Some(c @ ('B' | 'b')) => {
-					let identifier_uppercase = c.is_uppercase();
+				Some('B' | 'b') => {
 					let mut value = 0u64;
 					for c in s[2..].as_bytes() {
 						value <<= 1;
@@ -691,32 +648,18 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Bin { identifier_uppercase, sign, value })
+					Ok(Self::Bin { sign, value })
 				}
-				Some(c @ ('e' | 'E')) => {
+				Some('e' | 'E') => {
 					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
-					Ok(Self::Exponential {
-						sign,
-						value: 0f64,
-						exponent,
-						identifier_uppercase: c.is_uppercase(),
-					})
+					Ok(Self::Exponential { sign, value: 0f64, exponent })
 				}
 				// 'o' | 'O' but can also be missed
 				Some(c) => {
 					let uses_character = matches!(c, 'o' | 'O');
 
 					if !uses_character && s.contains(['8', '9', '.']) {
-						let (before_point, after_point) =
-							s.split_once('.').map_or((s.len() as u8 + 1, None), |(l, r)| {
-								(l.len() as u8 + 1, Some(r.len() as u8))
-							});
-
-						return Ok(Self::Number {
-							value: sign.apply(s.parse().map_err(|_| s.to_owned())?),
-							before_point,
-							after_point,
-						});
+						return Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)));
 					}
 
 					// If it uses the the character then skip one, else skip zero
@@ -731,45 +674,25 @@ impl FromStr for NumberRepresentation {
 							return Err(s.to_owned());
 						}
 					}
-					Ok(Self::Octal {
-						sign,
-						value,
-						identifier_uppercase: uses_character.then_some(c.is_uppercase()),
-					})
+					Ok(Self::Octal { sign, value })
 				}
-				None => Ok(Self::Number { value: 0f64, before_point: 1, after_point: None }),
+				None => Ok(Self::Number(0f64)),
 			}
 		} else if s.starts_with('.') {
 			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
-			Ok(Self::Number {
-				value: sign.apply(value),
-				before_point: 0,
-				after_point: Some(s.len() as u8 - 1),
-			})
+			Ok(Self::Number(sign.apply(value)))
 		} else if let Some(s) = s.strip_suffix('.') {
-			Ok(Self::Number {
-				value: sign.apply(s.parse().map_err(|_| s)?),
-				before_point: s.len() as u8,
-				after_point: Some(0),
-			})
+			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s)?)))
 		} else if let Some((left, right)) = s.split_once('e') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
 			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: false })
+			Ok(Self::Exponential { sign, value, exponent })
 		} else if let Some((left, right)) = s.split_once('E') {
 			let value: f64 = left.parse().map_err(|_| s.clone())?;
 			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Exponential { sign, value, exponent, identifier_uppercase: true })
+			Ok(Self::Exponential { sign, value, exponent })
 		} else {
-			let (before_point, after_point) = s
-				.split_once('.')
-				.map_or((s.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
-
-			Ok(Self::Number {
-				value: sign.apply(s.parse().map_err(|_| s.clone())?),
-				before_point,
-				after_point,
-			})
+			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.clone())?)))
 		}
 	}
 }
@@ -800,60 +723,18 @@ impl NumberRepresentation {
 			NumberRepresentation::Infinity => "Infinity".to_owned(),
 			NumberRepresentation::NegativeInfinity => "-Infinity".to_owned(),
 			NumberRepresentation::NaN => "NaN".to_owned(),
-			NumberRepresentation::Hex { sign, identifier_uppercase: true, value, .. } => {
-				format!("{sign}0X{value:X}")
-			}
-			NumberRepresentation::Hex { sign, identifier_uppercase: false, value, .. } => {
+			NumberRepresentation::Hex { sign, value, .. } => {
 				format!("{sign}0x{value:x}")
 			}
-			NumberRepresentation::Bin { sign, identifier_uppercase: true, value, .. } => {
-				format!("{sign}0B{value}")
-			}
-			NumberRepresentation::Bin { sign, identifier_uppercase: false, value, .. } => {
+			NumberRepresentation::Bin { sign, value, .. } => {
 				format!("{sign}0b{value}")
 			}
-			NumberRepresentation::Octal { identifier_uppercase: None, sign, value } => {
-				format!("{sign}0{value:o}")
-			}
-			NumberRepresentation::Octal { identifier_uppercase: Some(true), sign, value } => {
-				format!("{sign}0O{value:o}")
-			}
-			NumberRepresentation::Octal { identifier_uppercase: Some(false), sign, value } => {
+			NumberRepresentation::Octal { sign, value } => {
 				format!("{sign}0o{value:o}")
 			}
-			NumberRepresentation::Number { value, after_point, before_point } => {
-				let is_negative = value.is_sign_negative();
-				let mut buf = value.abs().to_string();
-
-				// TODO only `options.preserve_formatting`
-				let (bp, ap) = buf
-					.split_once('.')
-					.map_or((buf.len() as u8, None), |(l, r)| (l.len() as u8, Some(r.len() as u8)));
-
-				// Remove leading zero
-				if bp > before_point {
-					let removed = buf.remove(0);
-					debug_assert_eq!(removed, '0');
-				}
-
-				(bp..before_point).for_each(|_| buf.insert(0, '0'));
-				if let Some(after_point) = after_point {
-					if ap.is_none() {
-						buf.push('.');
-					}
-					(ap.unwrap_or_default()..after_point).for_each(|_| buf.push('0'));
-				}
-				if is_negative {
-					buf.insert(0, '-');
-				}
-				buf
-			}
-			NumberRepresentation::Exponential { sign, value, exponent, identifier_uppercase } => {
-				if identifier_uppercase {
-					format!("{sign}{value}E{exponent}")
-				} else {
-					format!("{sign}{value}e{exponent}")
-				}
+			NumberRepresentation::Number(value) => value.to_string(),
+			NumberRepresentation::Exponential { sign, value, exponent } => {
+				format!("{sign}{value}e{exponent}")
 			}
 			NumberRepresentation::BigInt(s, value) => format!("{s}{value}n"),
 		}

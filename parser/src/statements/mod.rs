@@ -277,7 +277,7 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				if val.left_is_object_literal() {
+				if val.left_is_object_literal_or_expression_function() {
 					buf.push('(');
 					val.to_string_from_buffer(buf, options, local);
 					buf.push(')');

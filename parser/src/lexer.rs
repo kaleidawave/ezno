@@ -245,8 +245,7 @@ pub fn lex_script(
 					}
 					// For binary/hexadecimal/octal literals
 					'b' | 'B' | 'x' | 'X' | 'o' | 'O' if start + 1 == idx => {
-						// Check starts '0*'
-						if let [b'0', _] = &script[start..].as_bytes() {
+						if script[start..].starts_with('0') {
 							*literal_type = match chr {
 								'b' | 'B' => NumberLiteralType::BinaryLiteral,
 								'o' | 'O' => NumberLiteralType::OctalLiteral,
@@ -321,8 +320,23 @@ pub fn lex_script(
 						}
 					}
 					'_' => {
-						if !matches!(script[..idx].as_bytes().last(), Some(b'0'..=b'9')) {
-							return_err!(LexingErrors::InvalidUnderscore)
+						let invalid = match literal_type {
+							NumberLiteralType::BinaryLiteral |
+							NumberLiteralType::OctalLiteral |
+							// Second `(idx - start) < 1` is for octal with prefix 0
+							NumberLiteralType::HexadecimalLiteral => {
+								if start + 2 == idx {
+									script[..idx].ends_with(['b', 'B', 'x', 'X', 'o' , 'O'])
+								} else {
+									false
+								}
+							},
+							NumberLiteralType::Decimal { .. } => script[..idx].ends_with('.') || &script[start..idx] == "0",
+							NumberLiteralType::Exponent => script[..idx].ends_with(['e', 'E']),
+							NumberLiteralType::BigInt => false
+						};
+						if invalid {
+							return_err!(LexingErrors::InvalidUnderscore);
 						}
 					}
 					'n' if matches!(
