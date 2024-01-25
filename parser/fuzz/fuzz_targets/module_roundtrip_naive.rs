@@ -20,7 +20,7 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let output1 = module.to_string(&to_string_options);
 
-	let Ok(module) = Module::from_string(output1.to_owned(), Default::default()) else {
+	let Ok(module) = Module::from_string(output1.to_owned(), parse_options) else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 

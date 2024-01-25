@@ -21,6 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
+	let no_type_annotations = args.iter().any(|item| item == "--no-type-annotations");
+
 	let now = Instant::now();
 
 	let options = ParseOptions {
@@ -28,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		comments,
 		record_keyword_positions: display_keywords,
 		partial_syntax,
+		type_annotations: !no_type_annotations,
 		..ParseOptions::all_features()
 	};
 

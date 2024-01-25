@@ -1615,12 +1615,25 @@ impl Expression {
 				template_literal.to_string_from_buffer(buf, options, local);
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
-				condition.to_string_using_precedence(
-					buf,
-					options,
-					local,
-					CONDITIONAL_TERNARY_PRECEDENCE,
-				);
+				if let Self::ArrowFunction(..) | Self::ExpressionFunction(..) =
+					condition.get_non_parenthesized()
+				{
+					buf.push('(');
+					condition.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						CONDITIONAL_TERNARY_PRECEDENCE,
+					);
+					buf.push(')');
+				} else {
+					condition.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						CONDITIONAL_TERNARY_PRECEDENCE,
+					);
+				}
 				buf.push_str(if options.pretty { " ? " } else { "?" });
 				truthy_result.to_string_using_precedence(
 					buf,

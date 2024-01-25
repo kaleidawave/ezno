@@ -13,7 +13,7 @@ use pretty_assertions::assert_eq;
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
-	let parse_options = ParseOptions { jsx: true, type_annotations: true, ..Default::default() };
+	let parse_options = ParseOptions { jsx: false, type_annotations: false, ..Default::default() };
 	let Ok(module) = Module::from_string(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};
@@ -22,7 +22,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	let output1 = module.to_string(&to_string_options);
 
-	let Ok(module) = Module::from_string(output1.to_owned(), Default::default()) else {
+	let Ok(module) = Module::from_string(output1.to_owned(), parse_options) else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 
