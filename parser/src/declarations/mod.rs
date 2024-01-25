@@ -63,29 +63,34 @@ impl Declaration {
 		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
 		options: &ParseOptions,
 	) -> bool {
-		let token = reader.peek();
+		let Some(Token(token, _)) = reader.peek() else { return false };
 		let result = matches!(
 			token,
-			Some(Token(
-				TSXToken::Keyword(
-					TSXKeyword::Let
-						| TSXKeyword::Const | TSXKeyword::Function
-						| TSXKeyword::Class | TSXKeyword::Import
-						| TSXKeyword::Export | TSXKeyword::Async
-				) | TSXToken::At,
-				_
-			))
+			TSXToken::Keyword(
+				TSXKeyword::Let
+					| TSXKeyword::Const | TSXKeyword::Function
+					| TSXKeyword::Class | TSXKeyword::Import
+					| TSXKeyword::Export
+			) | TSXToken::At,
 		);
 
 		#[cfg(feature = "extras")]
 		return result
-			|| matches!(token, Some(Token(TSXToken::Keyword(kw), _)) if (options.custom_function_headers && kw.is_special_function_header()))
-			|| (options.type_annotations
-				&& matches!(
+			|| matches!(token, TSXToken::Keyword(kw) if options.custom_function_headers && kw.is_special_function_header())
+			|| {
+				let TSXToken::Keyword(token) = *token else { return false };
+				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
+
+				matches!(
 					token,
-					Some(Token(TSXToken::Keyword(TSXKeyword::Declare | TSXKeyword::Interface), _))
-				)) || (matches!(token, Some(Token(TSXToken::Keyword(TSXKeyword::From), _)))
-			&& matches!(reader.peek_n(1), Some(Token(TSXToken::StringLiteral(..), _))));
+					TSXKeyword::Declare | TSXKeyword::Interface
+					if options.type_annotations
+				) || matches!(
+					(token, after),
+					(TSXKeyword::From, TSXToken::StringLiteral(..))
+						| (TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function))
+				)
+			};
 
 		#[cfg(not(feature = "extras"))]
 		return result;

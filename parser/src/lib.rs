@@ -631,7 +631,7 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('X' | 'x') => {
 					let mut value = 0u64;
-					for c in s[2..].as_bytes() {
+					for c in s[1..].as_bytes() {
 						value <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
@@ -650,7 +650,7 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('B' | 'b') => {
 					let mut value = 0u64;
-					for c in s[2..].as_bytes() {
+					for c in s[1..].as_bytes() {
 						value <<= 1;
 						match c {
 							b'0' | b'1' => {
@@ -662,6 +662,7 @@ impl FromStr for NumberRepresentation {
 					Ok(Self::Bin { sign, value })
 				}
 				Some('e' | 'E') => {
+					// Lol
 					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
 					Ok(Self::Exponential { sign, value: 0f64, exponent })
 				}
