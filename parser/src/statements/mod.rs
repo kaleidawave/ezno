@@ -14,8 +14,8 @@ use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 
 use super::{
-	expressions::MultipleExpression, ASTNode, Block, Expression, Marker, ParseOptions, ParseResult,
-	Span, TSXKeyword, TSXToken, Token, TokenReader,
+	expressions::MultipleExpression, ASTNode, Block, Expression, ParseOptions, ParseResult, Span,
+	TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
@@ -63,9 +63,6 @@ pub enum Statement {
 	VarVariable(VarVariableStatement),
 	// TODO position
 	Empty(Span),
-	/// TODO under cfg
-	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(#[visit_skip_field] Marker<Statement>, Span),
 }
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
@@ -111,13 +108,6 @@ impl ASTNode for Statement {
 		let Token(token, _s) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 		match token {
-			TSXToken::Identifier(n)
-				if options.interpolation_points && n == crate::marker::MARKER =>
-			{
-				let start = reader.next().unwrap().1;
-				let marker = state.new_partial_point_marker(start);
-				Ok(Statement::Marker(marker, start.with_length(0)))
-			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
 				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
 				Ok(Statement::VarVariable(stmt))
@@ -226,9 +216,6 @@ impl ASTNode for Statement {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Statement::Marker(..) => {
-				assert!(options.expect_markers, "tried to to-string marker");
-			}
 			Statement::Empty(..) => {
 				buf.push(';');
 			}
@@ -330,8 +317,8 @@ impl Statement {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
-	declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
-	position: Span,
+	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
+	pub position: Span,
 }
 
 impl ASTNode for VarVariableStatement {

@@ -91,6 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 							eprintln!("{output:?}\n{output2:?}");
 							if output != output2 {
+								eprintln!("re-parsed was {:?}", module2);
 								return Err(Box::<dyn std::error::Error>::from("not equal"));
 							} else {
 								eprintln!("re-parse was equal ✅");

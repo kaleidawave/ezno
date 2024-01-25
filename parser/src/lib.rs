@@ -516,6 +516,17 @@ impl NumberSign {
 	}
 }
 
+impl std::ops::Neg for NumberSign {
+	type Output = Self;
+
+	fn neg(self) -> Self::Output {
+		match self {
+			NumberSign::Positive => NumberSign::Negative,
+			NumberSign::Negative => NumberSign::Positive,
+		}
+	}
+}
+
 impl std::fmt::Display for NumberSign {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if matches!(self, Self::Negative) {
@@ -682,17 +693,19 @@ impl FromStr for NumberRepresentation {
 			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
 			Ok(Self::Number(sign.apply(value)))
 		} else if let Some(s) = s.strip_suffix('.') {
-			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s)?)))
-		} else if let Some((left, right)) = s.split_once('e') {
-			let value: f64 = left.parse().map_err(|_| s.clone())?;
-			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Exponential { sign, value, exponent })
-		} else if let Some((left, right)) = s.split_once('E') {
-			let value: f64 = left.parse().map_err(|_| s.clone())?;
-			let exponent: i32 = right.parse().map_err(|_| s.clone())?;
-			Ok(Self::Exponential { sign, value, exponent })
+			Ok(Self::Number(sign.apply(s.parse::<f64>().map_err(|_| s)?)))
+		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
+			let value = left.parse::<f64>().map_err(|_| s.clone())?;
+			if let Ok(exponent) = right.parse::<i32>() {
+				Ok(Self::Exponential { sign, value, exponent })
+			} else if right.starts_with('-') || value == 0f64 {
+				// lol
+				Ok(Self::Number(0f64))
+			} else {
+				Ok(Self::Infinity)
+			}
 		} else {
-			Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.clone())?)))
+			Ok(Self::Number(sign.apply(s.parse::<f64>().map_err(|_| s.clone())?)))
 		}
 	}
 }
@@ -715,6 +728,30 @@ impl PartialEq for NumberRepresentation {
 }
 
 impl Eq for NumberRepresentation {}
+
+impl std::ops::Neg for NumberRepresentation {
+	type Output = Self;
+
+	fn neg(self) -> Self::Output {
+		match self {
+			NumberRepresentation::Infinity => NumberRepresentation::NegativeInfinity,
+			NumberRepresentation::NegativeInfinity => NumberRepresentation::Infinity,
+			NumberRepresentation::NaN => NumberRepresentation::NaN,
+			NumberRepresentation::Hex { sign, value } => {
+				NumberRepresentation::Hex { sign: sign.neg(), value }
+			}
+			NumberRepresentation::Bin { sign, value } => {
+				NumberRepresentation::Bin { sign: sign.neg(), value }
+			}
+			NumberRepresentation::Octal { sign, value } => {
+				NumberRepresentation::Octal { sign: sign.neg(), value }
+			}
+			NumberRepresentation::Number(n) => NumberRepresentation::Number(n.neg()),
+			NumberRepresentation::Exponential { .. } => todo!(),
+			NumberRepresentation::BigInt(_, _) => todo!(),
+		}
+	}
+}
 
 impl NumberRepresentation {
 	#[must_use]
@@ -768,7 +805,7 @@ pub trait ExpressionOrStatementPosition:
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct StatementPosition(VariableIdentifier);
+pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
 	fn from_reader(
@@ -791,7 +828,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ExpressionPosition(Option<VariableIdentifier>);
+pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
 	fn from_reader(
@@ -1062,8 +1099,8 @@ pub mod ast {
 			ParameterData, SpreadParameter,
 		},
 		statements::*,
-		Block, Decorated, NumberRepresentation, PropertyKey, StatementOrDeclaration, VariableField,
-		VariableIdentifier, WithComment,
+		Block, Decorated, ExpressionPosition, NumberRepresentation, PropertyKey,
+		StatementOrDeclaration, StatementPosition, VariableField, VariableIdentifier, WithComment,
 	};
 
 	pub use source_map::{BaseSpan, SourceId};

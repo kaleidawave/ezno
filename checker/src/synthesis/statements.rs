@@ -190,9 +190,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
-		Statement::Marker(_marker_id, _) => {
-			todo!("Dump environment data somewhere")
-		}
 		Statement::Continue(label, position) => {
 			if let Err(err) = environment.add_continue(label.as_deref(), *position) {
 				checking_data

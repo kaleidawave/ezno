@@ -38,6 +38,9 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Declaration(declaration) => {
 				synthesise_declaration(declaration, environment, checking_data);
 			}
+			StatementOrDeclaration::Marker(_, _) => {
+				crate::utils::notify!("should be unreachable");
+			}
 		}
 	}
 

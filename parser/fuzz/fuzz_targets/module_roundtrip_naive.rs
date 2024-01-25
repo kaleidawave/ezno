@@ -26,7 +26,7 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let output2 = module.to_string(&to_string_options);
 
-	assert_eq!(output1, output2);
+	assert_eq!(output1, output2, "outputs different");
 
 	Corpus::Keep
 }

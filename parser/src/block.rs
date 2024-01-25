@@ -6,8 +6,10 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, TSXKeyword,
-	VisitOptions, Visitable,
+	expect_semi_colon,
+	marker::MARKER,
+	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, TSXKeyword, VisitOptions,
+	Visitable,
 };
 
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
@@ -18,6 +20,9 @@ use crate::{
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
+	/// TODO under cfg
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Marker(#[visit_skip_field] Marker<Statement>, Span),
 }
 
 impl StatementOrDeclaration {
@@ -37,6 +42,7 @@ impl StatementOrDeclaration {
 						..
 					}) | Declaration::Import(..)
 			),
+			Self::Marker(..) => false,
 		}
 	}
 }
@@ -46,6 +52,7 @@ impl ASTNode for StatementOrDeclaration {
 		match self {
 			StatementOrDeclaration::Statement(item) => item.get_position(),
 			StatementOrDeclaration::Declaration(item) => item.get_position(),
+			StatementOrDeclaration::Marker(_, pos) => pos,
 		}
 	}
 
@@ -54,6 +61,14 @@ impl ASTNode for StatementOrDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		if options.interpolation_points
+			&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
+		{
+			let Token(_, position) = reader.next().unwrap();
+			let marker_id = state.new_partial_point_marker(position);
+			return Ok(Self::Marker(marker_id, position.with_length(0)));
+		}
+
 		if Declaration::is_declaration_start(reader, options) {
 			let dec = Declaration::from_reader(reader, state, options)?;
 			// TODO nested blocks? Interfaces...?
@@ -86,6 +101,9 @@ impl ASTNode for StatementOrDeclaration {
 			}
 			StatementOrDeclaration::Declaration(item) => {
 				item.to_string_from_buffer(buf, options, local);
+			}
+			StatementOrDeclaration::Marker(_, _) => {
+				panic!()
 			}
 		}
 	}

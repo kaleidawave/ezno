@@ -352,6 +352,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				| parser::Declaration::DeclareInterface(_)
 				| parser::Declaration::Import(_) => {}
 			},
+			StatementOrDeclaration::Marker(_, _) => {}
 		}
 	}
 

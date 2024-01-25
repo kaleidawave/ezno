@@ -1701,10 +1701,10 @@ impl MultipleExpression {
 			MultipleExpression::Multiple { lhs, .. } => {
 				lhs.left_is_object_literal_or_expression_function()
 			}
-			MultipleExpression::Single(
-				Expression::ObjectLiteral(_) | Expression::ExpressionFunction(_),
-			) => true,
-			MultipleExpression::Single(_) => false,
+			MultipleExpression::Single(e) => matches!(
+				e.get_non_parenthesized(),
+				Expression::ObjectLiteral(_) | Expression::ExpressionFunction(_)
+			),
 		}
 	}
 }

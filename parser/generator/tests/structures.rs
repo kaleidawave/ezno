@@ -1,4 +1,5 @@
 use ezno_ast_generator::{expr, stmt};
+use ezno_parser::ASTNode;
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -91,4 +92,18 @@ fn stmt_with_var_name_interpolation() {
 		));
 		assert_eq!(statement, expected);
 	}
+}
+
+#[test]
+fn interpolation_of_a_statement() {
+	let statement = stmt!(let x = 4);
+	let my_func = stmt!(function x() {
+		console.log(3);
+		#statement
+	});
+	let out = "function x() {
+	console.log(3);
+	let x = 4
+}";
+	assert_eq!(my_func.to_string(&Default::default()), out);
 }
