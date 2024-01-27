@@ -369,7 +369,7 @@ mod structures {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
 				ImmutableVariableOrProperty::ArrayDestructuringMember(a) => match a {
-					ArrayDestructuringField::Spread(_, VariableIdentifier::Standard(a, _)) => {
+					ArrayDestructuringField::Spread(VariableIdentifier::Standard(a, _), _) => {
 						Some(a.as_str())
 					}
 					_ => None,

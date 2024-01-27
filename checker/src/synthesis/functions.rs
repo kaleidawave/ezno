@@ -470,15 +470,15 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 		VariableField::Array(items, _) => {
 			let mut buf = String::from("[");
 			for (not_at_end, item) in items.iter().nendiate() {
-				match item {
-					parser::ArrayDestructuringField::Spread(_, name) => {
+				match item.get_ast_ref() {
+					parser::ArrayDestructuringField::Spread(name, _) => {
 						buf.push_str("...");
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
 						}
 					}
 					parser::ArrayDestructuringField::Name(name, _) => {
-						buf.push_str(&param_name_to_string(name.get_ast_ref()));
+						buf.push_str(&param_name_to_string(name));
 					}
 					parser::ArrayDestructuringField::None => {}
 				}

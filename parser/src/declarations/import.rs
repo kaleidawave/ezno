@@ -5,8 +5,8 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, ASTNode, Marker, ParseOptions, ParseResult, ParsingState, Quoted,
-	TSXKeyword, TSXToken, VariableIdentifier,
+	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
+	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -291,6 +291,8 @@ pub enum ImportPart {
 	PrefixComment(String, Option<Box<Self>>, Span),
 	PostfixComment(Box<Self>, String, Span),
 }
+
+impl ListItem for ImportPart {}
 
 impl ASTNode for ImportPart {
 	fn get_position(&self) -> &Span {

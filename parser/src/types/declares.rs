@@ -140,24 +140,21 @@ impl DeclareFunctionDeclaration {
 		decorators: Vec<Decorator>,
 	) -> ParseResult<Self> {
 		let start = state.expect_keyword(reader, TSXKeyword::Function)?;
-		let (name, _) = token_as_identifier(
-			reader.next().ok_or_else(parse_lexing_error)?,
-			"declare function name",
-		)?;
-		let type_parameters =
-			if reader.conditional_next(|tok| *tok == TSXToken::OpenChevron).is_some() {
-				Some(parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?.0)
-			} else {
-				None
-			};
+		let token = reader.next().ok_or_else(parse_lexing_error)?;
+		let (name, _) = token_as_identifier(token, "declare function name")?;
+		let type_parameters = reader
+			.conditional_next(|tok| *tok == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| parse_bracketed(reader, state, options, None, TSXToken::CloseChevron))
+			.transpose()?
+			.map(|(tp, _)| tp);
+
 		let parameters = TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-		let return_type = if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-			Some(type_annotation)
-		} else {
-			None
-		};
+		let return_type = reader
+			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
+			.is_some()
+			.then(|| TypeAnnotation::from_reader(reader, state, options))
+			.transpose()?;
 
 		#[cfg(feature = "extras")]
 		let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {

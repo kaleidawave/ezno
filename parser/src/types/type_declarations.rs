@@ -1,6 +1,6 @@
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
-	ASTNode, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ASTNode, ListItem, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
 use tokenizer_lib::{Token, TokenReader};
 
@@ -80,6 +80,8 @@ impl GenericTypeConstraint {
 		}
 	}
 }
+
+impl ListItem for GenericTypeConstraint {}
 
 impl ASTNode for GenericTypeConstraint {
 	fn from_reader(

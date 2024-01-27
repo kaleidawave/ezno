@@ -94,11 +94,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ArrayLiteral(elements, _) => {
 			fn synthesise_array_item<T: crate::ReadFromFS>(
 				idx: &Decidable<usize>,
-				element: &SpreadExpression,
+				element: &ArrayElement,
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
-			) -> (PropertyKey<'static>, TypeId) {
-				match element {
+			) -> Option<(PropertyKey<'static>, TypeId)> {
+				element.0.as_ref().map(|element| match element {
 					SpreadExpression::NonSpread(element) => {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
@@ -128,17 +128,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							TypeId::ERROR_TYPE,
 						)
 					}
-					SpreadExpression::Empty => {
-						crate::utils::notify!("Empty expression temp as empty. Should be ");
-						(
-							PropertyKey::from_usize(match idx {
-								Decidable::Known(idx) => *idx,
-								Decidable::Unknown(_) => todo!(),
-							}),
-							TypeId::UNDEFINED_TYPE,
-						)
-					}
-				}
+				})
 			}
 
 			let mut basis = ObjectBuilder::new(
@@ -152,22 +142,21 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				let spread_expression_position =
 					value.get_position().with_source(environment.get_source());
 
-				let (key, value) = synthesise_array_item(
-					&Decidable::Known(idx),
-					value,
-					environment,
-					checking_data,
-				);
-
-				basis.append(
-					environment,
-					Publicity::Public,
-					key,
-					crate::types::properties::PropertyValue::Value(value),
-					Some(spread_expression_position),
-				);
+				if let Some((key, value)) =
+					synthesise_array_item(&Decidable::Known(idx), value, environment, checking_data)
+				{
+					basis.append(
+						environment,
+						Publicity::Public,
+						key,
+						crate::types::properties::PropertyValue::Value(value),
+						Some(spread_expression_position),
+					);
+				}
 			}
-			let len = checking_data
+
+			// TODO spread
+			let length = checking_data
 				.types
 				.new_constant_type(Constant::Number((elements.len() as f64).try_into().unwrap()));
 
@@ -176,7 +165,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment,
 				Publicity::Public,
 				PropertyKey::String("length".into()),
-				crate::types::properties::PropertyValue::Value(len),
+				crate::types::properties::PropertyValue::Value(length),
 				None,
 			);
 

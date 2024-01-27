@@ -89,6 +89,9 @@ impl Declaration {
 					(token, after),
 					(TSXKeyword::From, TSXToken::StringLiteral(..))
 						| (TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function))
+				) || matches!(
+					(token, after),
+					(TSXKeyword::Async, TSXToken::Keyword(kw)) if options.custom_function_headers && kw.is_special_function_header()
 				)
 			};
 

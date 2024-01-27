@@ -73,9 +73,9 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 		LHSOfAssignment::ArrayDestructuring(items, _) => Assignable::ArrayDestructuring(
 			items
 				.iter()
-				.map(|item| match item {
+				.map(|item| match item.get_ast_ref() {
 					parser::ArrayDestructuringField::Spread(_, _) => todo!(),
-					parser::ArrayDestructuringField::Name(name, _) => match name.get_ast_ref() {
+					parser::ArrayDestructuringField::Name(name, _) => match name {
 						parser::VariableField::Name(name) => {
 							Some(synthesise_object_shorthand_assignable(
 								name,

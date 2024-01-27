@@ -56,8 +56,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 		}
 		parser::VariableField::Array(items, _) => {
 			for (idx, field) in items.iter().enumerate() {
-				match field {
-					ArrayDestructuringField::Spread(_pos, variable) => {
+				match field.get_ast_ref() {
+					ArrayDestructuringField::Spread(variable, _pos) => {
 						register_variable_identifier(
 							variable,
 							environment,
@@ -80,7 +80,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							checking_data,
 							*name.get_position(),
 						);
-						register_variable(name.get_ast_ref(), environment, checking_data, argument);
+						register_variable(name, environment, checking_data, argument);
 					}
 					ArrayDestructuringField::None => {}
 				}
@@ -231,7 +231,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 		}
 		VariableField::Array(items, _) => {
 			for (idx, item) in items.iter().enumerate() {
-				match item {
+				match item.get_ast_ref() {
 					ArrayDestructuringField::Spread(_, _) => todo!(),
 					ArrayDestructuringField::Name(variable_field, _) => {
 						let idx = PropertyKey::from_usize(idx);
@@ -247,7 +247,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						if let Some((_, value)) = value {
 							assign_to_fields(
-								variable_field.get_ast_ref(),
+								variable_field,
 								environment,
 								checking_data,
 								value,

@@ -86,9 +86,8 @@ jobs:
         run: |
           cargo test
           
-          # TODO test other big libraries
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-          cargo run -p ezno-parser --example parse react.js
+          cargo run -p ezno-parser --example parse react.js --timings --render-timings
         working-directory: parser
 
       - name: Run checker specification

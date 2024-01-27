@@ -54,7 +54,7 @@ pub(crate) use visiting::{
 
 use tokenizer_lib::{
 	sized_tokens::{SizedToken, TokenEnd},
-	Token, TokenReader,
+	Token, TokenReader, TokenTrait,
 };
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
@@ -860,10 +860,18 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	}
 }
 
+pub trait ListItem: Sized {
+	const EMPTY: Option<Self> = None;
+
+	fn allow_comma_after(&self) -> bool {
+		true
+	}
+}
+
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
-pub(crate) fn parse_bracketed<T: ASTNode>(
+pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
@@ -878,9 +886,44 @@ pub(crate) fn parse_bracketed<T: ASTNode>(
 		if let Some(token) = reader.conditional_next(|token| *token == end) {
 			return Ok((nodes, token.get_end()));
 		}
-		nodes.push(T::from_reader(reader, state, options)?);
+
+		if let Some(empty) = T::EMPTY {
+			// TODO bad. Because [/* hi */, x] is valid. Need to adjust the scan tokenizer reader API
+			let mut is_comma = false;
+			let _ = reader.scan(|t, _| {
+				if t.is_skippable() {
+					false
+				} else if let TSXToken::Comma = t {
+					is_comma = true;
+					true
+				} else {
+					true
+				}
+			});
+			if is_comma {
+				while let Some(token) = reader.next() {
+					if let TSXToken::Comma = token.0 {
+						break;
+					}
+				}
+				nodes.push(empty);
+				continue;
+			}
+		}
+
+		let node = T::from_reader(reader, state, options)?;
+		let allow_comma = T::allow_comma_after(&node);
+		nodes.push(node);
+
 		match reader.next().ok_or_else(errors::parse_lexing_error)? {
-			Token(TSXToken::Comma, _) => {}
+			Token(TSXToken::Comma, s) => {
+				if !allow_comma {
+					return Err(ParseError::new(
+						crate::ParseErrors::TrailingCommaNotAllowedHere,
+						s.with_length(1),
+					));
+				}
+			}
 			token => {
 				if token.0 == end {
 					let get_end = token.get_end();

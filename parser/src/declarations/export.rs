@@ -1,5 +1,5 @@
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ParseError,
+	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ListItem, ParseError,
 	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
 	VariableIdentifier,
 };
@@ -316,6 +316,8 @@ pub enum ExportPart {
 	PrefixComment(String, Option<Box<Self>>, Span),
 	PostfixComment(Box<Self>, String, Span),
 }
+
+impl ListItem for ExportPart {}
 
 impl ASTNode for ExportPart {
 	fn get_position(&self) -> &Span {

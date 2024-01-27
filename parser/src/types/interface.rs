@@ -277,14 +277,12 @@ impl ASTNode for InterfaceMember {
 			// Constructor
 			TSXToken::Keyword(TSXKeyword::New) => {
 				let new_span = reader.next().unwrap().get_span();
-				let type_parameters = if reader
+				let type_parameters = reader
 					.conditional_next(|token| *token == TSXToken::OpenChevron)
 					.is_some()
-				{
-					Some(parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?.0)
-				} else {
-					None
-				};
+					.then(|| parse_bracketed(reader, state, options, None, TSXToken::CloseChevron))
+					.transpose()?
+					.map(|(tp, _)| tp);
 
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
@@ -457,11 +455,7 @@ impl ASTNode for InterfaceMember {
 						})
 						.transpose()?;
 
-					if let Some((type_parameters, _last_chevron)) = type_parameters {
-						(property_key, Some(type_parameters))
-					} else {
-						(property_key, None)
-					}
+					(property_key, type_parameters.map(|(tp, _)| tp))
 				};
 
 				let start = readonly_position.as_ref().unwrap_or_else(|| name.get_position());

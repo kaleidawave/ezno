@@ -22,6 +22,7 @@ pub enum ParseErrors<'a> {
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
 	CannotAccessObjectLiteralDirectly,
+	TrailingCommaNotAllowedHere,
 }
 
 #[allow(missing_docs)]
@@ -158,6 +159,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::CannotAccessObjectLiteralDirectly => {
 				write!(f, "Cannot get property on object literal directly")
+			}
+			ParseErrors::TrailingCommaNotAllowedHere => {
+				write!(f, "Trailing comma not allowed here")
 			}
 		}
 	}

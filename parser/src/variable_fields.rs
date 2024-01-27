@@ -10,8 +10,8 @@ use crate::{
 	throw_unexpected_token_with_token,
 	tokens::token_as_identifier,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Expression, Marker, ParseError, ParseOptions, ParseResult, Span, TSXToken, Token,
-	VisitOptions, Visitable, WithComment,
+	ASTNode, Expression, ListItem, Marker, ParseError, ParseOptions, ParseResult, Span, TSXToken,
+	Token, VisitOptions, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -72,7 +72,7 @@ pub enum VariableField<T: VariableFieldKind> {
 	Name(VariableIdentifier),
 	/// `[x, y, z]`
 	/// TODO spread last
-	Array(Vec<ArrayDestructuringField<T>>, Span),
+	Array(Vec<WithComment<ArrayDestructuringField<T>>>, Span),
 	/// `{ x, y: z }`.
 	/// TODO spread last
 	Object(Vec<WithComment<ObjectDestructuringField<T>>>, Span),
@@ -248,6 +248,8 @@ impl VariableFieldKind for VariableFieldInTypeAnnotation {
 	}
 }
 
+impl<T: VariableFieldKind> ListItem for WithComment<ObjectDestructuringField<T>> {}
+
 impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -263,31 +265,9 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 			}
 			TSXToken::OpenBracket => {
 				let Token(_, start_pos) = reader.next().unwrap();
-				let mut items: Vec<_> = Vec::new();
-				// No trailing commas
-				loop {
-					if let Some(token) =
-						reader.conditional_next(|token| *token == TSXToken::CloseBracket)
-					{
-						return Ok(Self::Array(items, start_pos.union(token.get_end())));
-					}
-
-					items.push(ArrayDestructuringField::from_reader(reader, state, options)?);
-
-					if !reader
-						.peek()
-						.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
-					{
-						reader.expect_next(TSXToken::Comma)?;
-						// TODO not great fix
-						if reader
-							.peek()
-							.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
-						{
-							items.push(ArrayDestructuringField::None);
-						}
-					}
-				}
+				let (items, end) =
+					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
+				Ok(Self::Array(items, start_pos.union(end)))
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
 		}
@@ -310,7 +290,7 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						if !matches!(member, ArrayDestructuringField::None) {
+						if !matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
 							options.push_gap_optionally(buf);
 						}
 					}
@@ -436,8 +416,8 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
-	Spread(Span, VariableIdentifier),
-	Name(WithComment<VariableField<T>>, T::OptionalExpression),
+	Spread(VariableIdentifier, Span),
+	Name(VariableField<T>, T::OptionalExpression),
 	None,
 }
 
@@ -453,26 +433,30 @@ impl<T: VariableFieldKind + PartialEq> PartialEq for ArrayDestructuringField<T> 
 
 impl<T: VariableFieldKind> Eq for ArrayDestructuringField<T> {}
 
+impl<T: VariableFieldKind> ListItem for WithComment<ArrayDestructuringField<T>> {
+	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
+
+	fn allow_comma_after(&self) -> bool {
+		!matches!(self.get_ast_ref(), ArrayDestructuringField::Spread(..))
+	}
+}
+
 impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
-			TSXToken::Spread => {
-				let token = reader.next().unwrap();
-				Ok(Self::Spread(
-					token.get_span(),
-					VariableIdentifier::from_reader(reader, state, options)?,
-				))
-			}
-			TSXToken::Comma | TSXToken::CloseBracket => Ok(Self::None),
-			_ => {
-				let name = WithComment::<VariableField<U>>::from_reader(reader, state, options)?;
-				let expression = U::optional_expression_from_reader(reader, state, options)?;
-				Ok(Self::Name(name, expression))
-			}
+		if let TSXToken::Spread = reader.peek().ok_or_else(parse_lexing_error)?.0 {
+			let token = reader.next().unwrap();
+			Ok(Self::Spread(
+				VariableIdentifier::from_reader(reader, state, options)?,
+				token.get_span(),
+			))
+		} else {
+			let name = VariableField::<U>::from_reader(reader, state, options)?;
+			let expression = U::optional_expression_from_reader(reader, state, options)?;
+			Ok(Self::Name(name, expression))
 		}
 	}
 
@@ -483,7 +467,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Spread(_, name) => {
+			Self::Spread(name, _) => {
 				buf.push_str("...");
 				name.to_string_from_buffer(buf, options, local);
 			}
@@ -497,7 +481,7 @@ impl<U: VariableFieldKind> ASTNode for ArrayDestructuringField<U> {
 
 	fn get_position(&self) -> &Span {
 		match self {
-			ArrayDestructuringField::Spread(pos, _) => pos,
+			ArrayDestructuringField::Spread(_, pos) => pos,
 			// TODO misses out optional expression
 			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
 			ArrayDestructuringField::None => &source_map::Nullable::NULL,
@@ -524,6 +508,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
 				for field in array_destructuring_fields {
+					let field = field.get_ast_ref();
 					let array_destructuring_member =
 						ImmutableVariableOrProperty::ArrayDestructuringMember(field);
 					visitors.visit_variable(&array_destructuring_member, data, chain);
@@ -581,7 +566,7 @@ impl Visitable for VariableField<VariableFieldInSourceCode> {
 				}
 			}
 			VariableField::Array(array_destructuring_fields, _) => {
-				for field in array_destructuring_fields.iter_mut() {
+				for field in array_destructuring_fields.iter_mut().map(WithComment::get_ast_mut) {
 					let mut array_destructuring_member =
 						MutableVariableOrProperty::ArrayDestructuringMember(field);
 					visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
@@ -644,46 +629,31 @@ mod tests {
 		assert_matches_ast!(
 			"[x, y, z]",
 			VariableField::Array(
-				Deref @ [ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "x",
-						span!(1, 2),
-					))),
+				Deref @ [WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
 					None,
-				), ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "y",
-						span!(4, 5),
-					))),
+				)), WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(4, 5))),
 					None,
-				), ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "z",
-						span!(7, 8),
-					))),
+				)), WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(7, 8))),
 					None,
-				)],
+				))],
 				_,
 			)
 		);
 
 		assert_matches_ast!(
-			"[x,, z]",
+			"[x,,z]",
 			VariableField::Array(
-				Deref @ [ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "x",
-						span!(1, 2),
-					))),
+				Deref @ [WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
 					None,
-				), ArrayDestructuringField::None, ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "z",
-						span!(5, 6),
-					))),
+				)), WithComment::None(ArrayDestructuringField::None), WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(4, 5))),
 					None,
-				)],
-				span!(0, 7),
+				))],
+				span!(0, 6),
 			)
 		);
 	}
@@ -734,16 +704,13 @@ mod tests {
 		assert_matches_ast!(
 			"[x, ...y]",
 			VariableField::Array(
-				Deref @ [ArrayDestructuringField::Name(
-					WithComment::None(VariableField::Name(VariableIdentifier::Standard(
-						Deref @ "x",
-						span!(1, 2),
-					))),
+				Deref @ [WithComment::None(ArrayDestructuringField::Name(
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
 					None,
-				), ArrayDestructuringField::Spread(
-					span!(4, 7),
+				)), WithComment::None(ArrayDestructuringField::Spread(
 					VariableIdentifier::Standard(Deref @ "y", span!(7, 8)),
-				)],
+					span!(4, 7),
+				))],
 				span!(0, 9),
 			)
 		);

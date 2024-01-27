@@ -174,7 +174,7 @@ pub enum LHSOfAssignment {
 		Span,
 	),
 	ArrayDestructuring(
-		#[visit_skip_field] Vec<ArrayDestructuringField<VariableFieldInSourceCode>>,
+		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<VariableFieldInSourceCode>>>,
 		Span,
 	),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
@@ -216,7 +216,7 @@ impl LHSOfAssignment {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
-					if !at_end || matches!(member, ArrayDestructuringField::None) {
+					if !at_end || matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
 						buf.push(',');
 					}
 				}

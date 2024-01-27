@@ -9,8 +9,8 @@ use crate::{
 	},
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	ExpressionPosition, FunctionHeader, Marker, NumberRepresentation, ParseErrors, ParseResult,
-	Quoted, TSXKeyword,
+	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
+	ParseResult, Quoted, TSXKeyword,
 };
 
 use self::{
@@ -29,6 +29,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
+use source_map::Nullable;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
@@ -64,7 +65,7 @@ pub enum Expression {
 		flags: Option<String>,
 		position: Span,
 	},
-	ArrayLiteral(Vec<SpreadExpression>, Span),
+	ArrayLiteral(Vec<ArrayElement>, Span),
 	ObjectLiteral(ObjectLiteral),
 	TemplateLiteral(TemplateLiteral),
 	ParenthesizedExpression(Box<MultipleExpression>, Span),
@@ -396,32 +397,9 @@ impl Expression {
 							rhs: Box::new(rhs),
 						}
 					} else {
-						let mut items: Vec<_> = Vec::new();
-						let end;
-						// No trailing comments
-						loop {
-							if let Some(token) =
-								reader.conditional_next(|token| *token == TSXToken::CloseBracket)
-							{
-								end = token.get_end();
-								break;
-							}
+						let (items, end) =
+							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
 
-							items.push(SpreadExpression::from_reader(reader, state, options)?);
-
-							if !reader
-								.peek()
-								.map_or(false, |Token(t, _)| matches!(t, TSXToken::CloseBracket))
-							{
-								reader.expect_next(TSXToken::Comma)?;
-								// TODO not great fix
-								if reader.peek().map_or(false, |Token(t, _)| {
-									matches!(t, TSXToken::CloseBracket)
-								}) {
-									items.push(SpreadExpression::Empty);
-								}
-							}
-						}
 						Expression::ArrayLiteral(items, start.union(end))
 					}
 				} else {
@@ -1709,14 +1687,14 @@ impl MultipleExpression {
 	}
 
 	/// These are valid in expression position but are parsed different in statement mode
-	pub(crate) fn left_is_object_literal_or_expression_function(&self) -> bool {
+	pub(crate) fn left_is_statement_like(&self) -> bool {
 		match self {
-			MultipleExpression::Multiple { lhs, .. } => {
-				lhs.left_is_object_literal_or_expression_function()
-			}
+			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
 			MultipleExpression::Single(e) => matches!(
 				e.get_non_parenthesized(),
-				Expression::ObjectLiteral(_) | Expression::ExpressionFunction(_)
+				Expression::ObjectLiteral(_)
+					| Expression::ExpressionFunction(_)
+					| Expression::ClassExpression(_)
 			),
 		}
 	}
@@ -1919,15 +1897,15 @@ pub enum SpecialOperators {
 	},
 }
 
-/// A either spread expression or not
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
-	Empty,
 }
+
+impl ListItem for SpreadExpression {}
 
 impl ASTNode for SpreadExpression {
 	fn from_reader(
@@ -1943,7 +1921,6 @@ impl ASTNode for SpreadExpression {
 				let position = start_pos.union(expression.get_position());
 				Ok(Self::Spread(expression, position))
 			}
-			TSXToken::Comma | TSXToken::CloseParentheses | TSXToken::CloseBrace => Ok(Self::Empty),
 			t if t.is_comment() => {
 				let (content, is_multiline, position) =
 					TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
@@ -1969,13 +1946,6 @@ impl ASTNode for SpreadExpression {
 							prefix: true,
 						})
 					}
-					SpreadExpression::Empty => SpreadExpression::NonSpread(Expression::Comment {
-						content,
-						on: None,
-						position,
-						is_multiline,
-						prefix: false,
-					}),
 				})
 			}
 			_ => Ok(Self::NonSpread(Expression::from_reader(reader, state, options)?)),
@@ -1996,7 +1966,6 @@ impl ASTNode for SpreadExpression {
 			SpreadExpression::NonSpread(expression) => {
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			SpreadExpression::Empty => {}
 		}
 	}
 
@@ -2004,19 +1973,6 @@ impl ASTNode for SpreadExpression {
 		match self {
 			SpreadExpression::Spread(_, pos) => pos,
 			SpreadExpression::NonSpread(expr) => expr.get_position(),
-			SpreadExpression::Empty => &source_map::Nullable::NULL,
-		}
-	}
-}
-
-impl SpreadExpression {
-	/// Only for walking
-	fn _get_inner_expression_ref(&self) -> &Expression {
-		match self {
-			SpreadExpression::Spread(expression, _) | SpreadExpression::NonSpread(expression) => {
-				expression
-			}
-			SpreadExpression::Empty => panic!(),
 		}
 	}
 }
@@ -2025,6 +1981,40 @@ impl From<Expression> for SpreadExpression {
 	fn from(value: Expression) -> Self {
 		SpreadExpression::NonSpread(value)
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub struct ArrayElement(pub Option<SpreadExpression>);
+
+impl ASTNode for ArrayElement {
+	fn get_position(&self) -> &Span {
+		self.0.as_ref().map_or(&Span::NULL, |s| s.get_position())
+	}
+
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<Self> {
+		Ok(Self(Some(ASTNode::from_reader(reader, state, options)?)))
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if let Some(ref s) = self.0 {
+			s.to_string_from_buffer(buf, options, local);
+		}
+	}
+}
+
+impl ListItem for ArrayElement {
+	const EMPTY: Option<Self> = Some(Self(None));
 }
 
 // Utils for Expression

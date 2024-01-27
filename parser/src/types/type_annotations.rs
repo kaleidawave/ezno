@@ -3,7 +3,9 @@ use crate::{
 	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
 };
-use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, Quoted};
+use crate::{
+	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, ListItem, Quoted,
+};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
@@ -83,6 +85,8 @@ pub enum TypeAnnotation {
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(Marker<TypeAnnotation>, Span),
 }
+
+impl ListItem for TypeAnnotation {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
