@@ -3,7 +3,8 @@ use std::{borrow::Cow, convert::TryInto};
 use parser::{
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		MultipleExpression, SpecialOperators, SpreadExpression, SuperReference, TemplateLiteral,
+		ArrayElement, MultipleExpression, SpecialOperators, SpreadExpression, SuperReference,
+		TemplateLiteral,
 	},
 	functions::MethodHeader,
 	operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
@@ -867,9 +868,6 @@ fn call_function<T: crate::ReadFromFS>(
 					}
 					SpreadExpression::NonSpread(e) => {
 						UnsynthesisedArgument { spread: false, expression: e }
-					}
-					SpreadExpression::Empty => {
-						todo!()
 					}
 				})
 				.collect()
