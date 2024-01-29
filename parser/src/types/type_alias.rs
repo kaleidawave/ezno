@@ -19,7 +19,7 @@ impl ASTNode for TypeAlias {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(crate::TSXKeyword::Type))?;
+		let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
 		let type_name = TypeDeclaration::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::Assign)?;
 		let type_expression = TypeAnnotation::from_reader(reader, state, options)?;
@@ -31,13 +31,13 @@ impl ASTNode for TypeAlias {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_types {
 			buf.push_str("type ");
-			self.type_name.to_string_from_buffer(buf, options, depth);
+			self.type_name.to_string_from_buffer(buf, options, local);
 			buf.push_str(" = ");
-			self.type_expression.to_string_from_buffer(buf, options, depth);
+			self.type_expression.to_string_from_buffer(buf, options, local);
 		}
 	}
 

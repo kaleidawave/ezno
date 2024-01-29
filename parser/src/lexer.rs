@@ -2,10 +2,12 @@
 //!
 //! Uses [`TSXToken`]s for data, uses [Span] for location data. Uses [`tokenizer_lib`] for logic.
 
+#![allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+
 use super::{Span, TSXToken};
 use crate::{
-	cursor::EmptyCursorId, errors::LexingErrors, html_tag_contains_literal_content,
-	html_tag_is_self_closing, Comments, Quoted,
+	errors::LexingErrors, html_tag_contains_literal_content, html_tag_is_self_closing, Comments,
+	Quoted,
 };
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
@@ -36,14 +38,16 @@ impl Default for LexerOptions {
 fn is_number_delimiter(chr: char) -> bool {
 	matches!(
 		chr,
-		'*' | '-'
-			| '+' | '/' | '&'
-			| '|' | ')' | '}'
-			| ']' | '!' | '^'
-			| '%' | '=' | ';'
-			| ':' | '<' | '>'
-			| ',' | '?' | ' '
+		' ' | ','
 			| '\n' | '\r'
+			| ';' | '+' | '-'
+			| '*' | '/' | '&'
+			| '|' | '!' | '^'
+			| '(' | '{' | '['
+			| ')' | '}' | ']'
+			| '%' | '=' | ':'
+			| '<' | '>' | '?'
+			| '"' | '\'' | '`'
 	)
 }
 
@@ -52,14 +56,13 @@ fn is_number_delimiter(chr: char) -> bool {
 ///
 /// Returns () if successful, if runs into lexing error will short-circuit
 ///
-/// **CURSORS HAVE TO BE IN FORWARD ORDER**
+/// **MARKERS HAVE TO BE IN FORWARD ORDER**
 #[doc(hidden)]
 pub fn lex_script(
 	script: &str,
 	sender: &mut impl TokenSender<TSXToken, crate::TokenStart>,
 	options: &LexerOptions,
 	offset: Option<u32>,
-	mut cursors: Vec<(usize, EmptyCursorId)>,
 ) -> Result<(), (LexingErrors, Span)> {
 	#[derive(PartialEq, Debug)]
 	enum JSXAttributeValueDelimiter {
@@ -103,8 +106,7 @@ pub fn lex_script(
 	#[derive(PartialEq, Debug)]
 	enum NumberLiteralType {
 		BinaryLiteral,
-		/// Note that leading zero entries are not registered at this
-		/// stage, but work through NumberRepresentation parsing
+		/// strict mode done at the parse level
 		OctalLiteral,
 		HexadecimalLiteral,
 		/// Base 10
@@ -161,7 +163,9 @@ pub fn lex_script(
 		},
 	}
 
-	cursors.reverse();
+	if script.len() > u32::MAX as usize {
+		return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
+	}
 
 	let mut state: LexingState = LexingState::None;
 
@@ -202,11 +206,6 @@ pub fn lex_script(
 	}
 
 	for (idx, chr) in script.char_indices() {
-		// TODO somewhat temp
-		if matches!(cursors.last(), Some((x, _)) if *x < idx) {
-			cursors.pop();
-		}
-
 		// Sets current parser state and updates start track
 		macro_rules! set_state {
 			($s:expr) => {{
@@ -237,6 +236,7 @@ pub fn lex_script(
 				match chr {
 					_ if matches!(literal_type, NumberLiteralType::BigInt) => {
 						if is_number_delimiter(chr) {
+							// Content already checked
 							push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
 							set_state!(LexingState::None);
 						} else {
@@ -245,8 +245,7 @@ pub fn lex_script(
 					}
 					// For binary/hexadecimal/octal literals
 					'b' | 'B' | 'x' | 'X' | 'o' | 'O' if start + 1 == idx => {
-						// Check starts '0*'
-						if let [b'0', _] = &script[start..].as_bytes() {
+						if script[start..].starts_with('0') {
 							*literal_type = match chr {
 								'b' | 'B' => NumberLiteralType::BinaryLiteral,
 								'o' | 'O' => NumberLiteralType::OctalLiteral,
@@ -270,6 +269,7 @@ pub fn lex_script(
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}
+						// Handling for 'e' & 'E'
 						NumberLiteralType::Decimal { fractional } => {
 							if matches!(chr, 'e' | 'E')
 								&& !(*fractional || script[..idx].ends_with('_'))
@@ -284,12 +284,13 @@ pub fn lex_script(
 								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							}
 						}
+						// all above allowed
 						NumberLiteralType::HexadecimalLiteral => {}
 						NumberLiteralType::BigInt => unreachable!(),
 					},
 					'.' => {
 						if let NumberLiteralType::Decimal { fractional } = literal_type {
-							if script[..idx].ends_with('_') {
+							if script[..idx].ends_with(['_']) {
 								return_err!(LexingErrors::InvalidUnderscore)
 							} else if *fractional {
 								// Catch for spread token `...`
@@ -319,8 +320,23 @@ pub fn lex_script(
 						}
 					}
 					'_' => {
-						if !matches!(script[..idx].as_bytes().last(), Some(b'0'..=b'9')) {
-							return_err!(LexingErrors::InvalidUnderscore)
+						let invalid = match literal_type {
+							NumberLiteralType::BinaryLiteral |
+							NumberLiteralType::OctalLiteral |
+							// Second `(idx - start) < 1` is for octal with prefix 0
+							NumberLiteralType::HexadecimalLiteral => {
+								if start + 2 == idx {
+									script[..idx].ends_with(['b', 'B', 'x', 'X', 'o' , 'O'])
+								} else {
+									false
+								}
+							},
+							NumberLiteralType::Decimal { .. } => script[..idx].ends_with('.') || &script[start..idx] == "0",
+							NumberLiteralType::Exponent => script[..idx].ends_with(['e', 'E']),
+							NumberLiteralType::BigInt => false
+						};
+						if invalid {
+							return_err!(LexingErrors::InvalidUnderscore);
 						}
 					}
 					'n' if matches!(
@@ -331,15 +347,15 @@ pub fn lex_script(
 						*literal_type = NumberLiteralType::BigInt;
 					}
 					// `10e-5` is a valid literal
-					'-' if matches!(literal_type, NumberLiteralType::Exponent)
-						&& matches!(script[..idx].as_bytes().last(), Some(b'e' | b'E')) => {}
+					'-' if matches!(literal_type, NumberLiteralType::Exponent if script[..idx].ends_with(['e', 'E'])) =>
+						{}
 					chr => {
 						if is_number_delimiter(chr) {
 							// Note not = as don't want to include chr
 							let num_slice = &script[start..idx];
 							if num_slice.trim_end() == "."
 								|| num_slice
-									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
+									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
 							{
 								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 							}
@@ -906,10 +922,11 @@ pub fn lex_script(
 
 		// This is done later as state may have been set to none by the matching
 		if state == LexingState::None {
-			if matches!(cursors.last(), Some((cursor_idx, _)) if *cursor_idx == idx) {
-				sender.push(Token(TSXToken::Cursor(cursors.pop().unwrap().1), current_position!()));
-			}
 			match chr {
+				'0' if matches!(script.as_bytes().get(idx + 1), Some(b'0'..=b'7')) => {
+					// strict mode should be done in the parser stage (as that is where context is)
+					set_state!(LexingState::Number(NumberLiteralType::OctalLiteral));
+				}
 				'0'..='9' => set_state!(LexingState::Number(Default::default())),
 				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
 				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
@@ -1031,8 +1048,9 @@ pub fn lex_script(
 	// If source ends while there is still a parsing state
 	match state {
 		LexingState::Number(..) => {
+			// Just `.` or ends with combination token
 			if script[start..].trim_end() == "."
-				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_'])
+				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
 			{
 				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}
@@ -1091,10 +1109,6 @@ pub fn lex_script(
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}
-	}
-
-	if matches!(cursors.last(), Some((idx, _)) if *idx == script.len()) {
-		sender.push(Token(TSXToken::Cursor(cursors.pop().unwrap().1), current_position!()));
 	}
 
 	sender.push(Token(TSXToken::EOS, current_position!()));

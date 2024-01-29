@@ -6,8 +6,10 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon, Declaration, Decorated, ParseOptions, ParseResult, Statement, TSXKeyword,
-	VisitOptions, Visitable,
+	expect_semi_colon,
+	marker::MARKER,
+	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, TSXKeyword, VisitOptions,
+	Visitable,
 };
 
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
@@ -18,6 +20,9 @@ use crate::{
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
+	/// TODO under cfg
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Marker(#[visit_skip_field] Marker<Statement>, Span),
 }
 
 impl StatementOrDeclaration {
@@ -37,6 +42,7 @@ impl StatementOrDeclaration {
 						..
 					}) | Declaration::Import(..)
 			),
+			Self::Marker(..) => false,
 		}
 	}
 }
@@ -46,6 +52,7 @@ impl ASTNode for StatementOrDeclaration {
 		match self {
 			StatementOrDeclaration::Statement(item) => item.get_position(),
 			StatementOrDeclaration::Declaration(item) => item.get_position(),
+			StatementOrDeclaration::Marker(_, pos) => pos,
 		}
 	}
 
@@ -54,6 +61,14 @@ impl ASTNode for StatementOrDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		if options.interpolation_points
+			&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
+		{
+			let Token(_, position) = reader.next().unwrap();
+			let marker_id = state.new_partial_point_marker(position);
+			return Ok(Self::Marker(marker_id, position.with_length(0)));
+		}
+
 		if Declaration::is_declaration_start(reader, options) {
 			let dec = Declaration::from_reader(reader, state, options)?;
 			// TODO nested blocks? Interfaces...?
@@ -78,14 +93,17 @@ impl ASTNode for StatementOrDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			StatementOrDeclaration::Statement(item) => {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Declaration(item) => {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
+			}
+			StatementOrDeclaration::Marker(_, _) => {
+				panic!()
 			}
 		}
 	}
@@ -142,18 +160,18 @@ impl ASTNode for Block {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push('{');
-		if depth > 0 && options.pretty {
+		if local.depth > 0 && options.pretty {
 			buf.push_new_line();
 		}
-		statements_and_declarations_to_string(&self.0, buf, options, depth);
+		statements_and_declarations_to_string(&self.0, buf, options, local);
 		if options.pretty && !self.0.is_empty() {
 			buf.push_new_line();
 		}
-		if depth > 1 {
-			options.add_indent(depth - 1, buf);
+		if local.depth > 1 {
+			options.add_indent(local.depth - 1, buf);
 		}
 		buf.push('}');
 	}
@@ -300,7 +318,7 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					expect_semi_colon(reader, &state.line_starts, stmt.get_position().start)?;
+					expect_semi_colon(reader, &state.line_starts, stmt.get_position().end)?;
 				}
 				Box::new(stmt).into()
 			}
@@ -311,19 +329,22 @@ impl ASTNode for BlockOrSingleStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
+		if buf.should_halt() {
+			return;
+		}
 		match self {
 			BlockOrSingleStatement::Braced(block) => {
-				block.to_string_from_buffer(buf, options, depth);
+				block.to_string_from_buffer(buf, options, local);
 			}
 			BlockOrSingleStatement::SingleStatement(stmt) => {
 				if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
-					options.add_gap(buf);
-					stmt.to_string_from_buffer(buf, options, depth + 1);
+					options.push_gap_optionally(buf);
+					stmt.to_string_from_buffer(buf, options, local.next_level());
 				} else {
-					stmt.to_string_from_buffer(buf, options, depth);
+					stmt.to_string_from_buffer(buf, options, local);
 					if stmt.requires_semi_colon() {
 						buf.push(';');
 					}
@@ -348,6 +369,9 @@ pub(crate) fn parse_statements_and_declarations(
 		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
 		if value.requires_semi_colon() {
 			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
+		} else {
+			// Skip over semi colons regardless
+			// reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
 		}
 		items.push(value);
 	}
@@ -358,7 +382,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	items: &[StatementOrDeclaration],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
@@ -370,8 +394,8 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			}
 		}
 
-		options.add_indent(depth, buf);
-		item.to_string_from_buffer(buf, options, depth);
+		options.add_indent(local.depth, buf);
+		item.to_string_from_buffer(buf, options, local);
 		if (!at_end || options.trailing_semicolon) && item.requires_semi_colon() {
 			buf.push(';');
 		}

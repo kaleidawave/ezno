@@ -2,23 +2,25 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{throw_unexpected_token_with_token, to_string_bracketed, tsx_keywords, Expression};
+use crate::{throw_unexpected_token_with_token, to_string_bracketed, Expression};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	GenericTypeConstraint, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
-	TypeAnnotation, VisitOptions,
+	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	VisitOptions,
 };
-use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
+use tokenizer_lib::{
+	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
+	Token, TokenReader,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
-	pub class_keyword: Keyword<tsx_keywords::Class>,
 	pub name: T,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	pub extends: Option<Box<Expression>>,
@@ -35,17 +37,17 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let class_keyword = Keyword::from_reader(reader)?;
-		Self::from_reader_sub_class_keyword(reader, state, options, class_keyword)
+		let start = state.expect_keyword(reader, TSXKeyword::Class)?;
+		Self::from_reader_sub_class_keyword(reader, state, options, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_from_buffer(buf, options, depth);
+		self.to_string_from_buffer(buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -58,7 +60,7 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		class_keyword: Keyword<tsx_keywords::Class>,
+		start: TokenStart,
 	) -> ParseResult<Self> {
 		let name = U::from_reader(reader, state, options)?;
 		let type_parameters = reader
@@ -111,44 +113,36 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 				reader.next();
 			}
 		}
-		let position =
-			class_keyword.get_position().union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
-		Ok(ClassDeclaration {
-			class_keyword,
-			name,
-			type_parameters,
-			extends,
-			implements,
-			members,
-			position,
-		})
+		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
+
+		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("class ");
 		if let Some(name) = self.name.as_option_str() {
 			buf.push_str(name);
 		}
 		if let Some(type_parameters) = &self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
 		if let Some(extends) = &self.extends {
 			buf.push_str(" extends ");
-			extends.to_string_from_buffer(buf, options, depth);
+			extends.to_string_from_buffer(buf, options, local);
 		}
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
 			if options.pretty {
 				buf.push_new_line();
-				options.add_indent(depth + 1, buf);
+				options.add_indent(local.depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, options, depth);
+			member.to_string_from_buffer(buf, options, local);
 			if !options.pretty && !at_end {
 				buf.push(';');
 			}

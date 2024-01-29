@@ -26,6 +26,9 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
 	) -> ParseResult<(String, Span, Self::Private)>;
 
 	fn is_private(p: Self::Private) -> bool;
+
+	/// TODO temp
+	fn new_public() -> Self::Private;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,8 +45,10 @@ impl PropertyKeyKind for AlwaysPublic {
 	}
 
 	fn is_private(_p: Self::Private) -> bool {
-		true
+		false
 	}
+
+	fn new_public() {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +72,10 @@ impl PropertyKeyKind for PublicOrPrivate {
 
 	fn is_private(p: Self::Private) -> bool {
 		p
+	}
+
+	fn new_public() -> Self::Private {
+		true
 	}
 }
 
@@ -156,7 +165,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Ident(ident, _pos, _) => buf.push_str(ident.as_str()),
@@ -168,7 +177,7 @@ impl<U: PropertyKeyKind + 'static> ASTNode for PropertyKey<U> {
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 		}

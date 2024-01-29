@@ -36,7 +36,7 @@ impl ASTNode for SwitchStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Switch))?;
+		let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
 		let case = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;
@@ -98,29 +98,30 @@ impl ASTNode for SwitchStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("switch");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
-		self.case.to_string_from_buffer(buf, options, depth);
+		self.case.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('{');
 		for branch in &self.branches {
 			if options.pretty {
 				buf.push_new_line();
-				options.add_indent(depth + 1, buf);
+				options.add_indent(local.depth + 1, buf);
 			}
+			let local = local.next_level();
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
 					for (at_end, stmt) in statements.iter().endiate() {
 						if options.pretty {
 							buf.push_new_line();
-							options.add_indent(depth + 2, buf);
+							options.add_indent(local.depth + 1, buf);
 						}
-						stmt.to_string_from_buffer(buf, options, depth + 2);
+						stmt.to_string_from_buffer(buf, options, local.next_level());
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
@@ -131,14 +132,14 @@ impl ASTNode for SwitchStatement {
 				}
 				SwitchBranch::Case(case, statements) => {
 					buf.push_str("case ");
-					case.to_string_from_buffer(buf, options, depth);
+					case.to_string_from_buffer(buf, options, local);
 					buf.push(':');
 					for (at_end, stmt) in statements.iter().endiate() {
 						if options.pretty {
 							buf.push_new_line();
-							options.add_indent(depth + 2, buf);
+							options.add_indent(local.depth + 1, buf);
 						}
-						stmt.to_string_from_buffer(buf, options, depth + 2);
+						stmt.to_string_from_buffer(buf, options, local.next_level());
 						if stmt.requires_semi_colon() {
 							buf.push(';');
 						}
@@ -151,7 +152,7 @@ impl ASTNode for SwitchStatement {
 		}
 		if options.pretty {
 			buf.push_new_line();
-			options.add_indent(depth, buf);
+			options.add_indent(local.depth, buf);
 		}
 		buf.push('}');
 	}

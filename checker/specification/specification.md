@@ -88,6 +88,15 @@ const b = my_obj.b
 
 - No property 'b' on { a: 3 }
 
+#### Reading property (via accessor)
+
+```ts
+const my_obj = { a: 2 }
+const three: 3 = my_obj.a
+```
+
+- Type 2 is not assignable to type 3
+
 #### Property updates registered
 
 ```ts
@@ -97,15 +106,6 @@ let b: 3 = my_obj.a
 ```
 
 - Type 4 is not assignable to type 3
-
-#### Property references
-
-```ts
-const my_obj = { a: 2 }
-const three: 3 = my_obj.a
-```
-
-- Type 2 is not assignable to type 3
 
 #### Object property constraints
 
@@ -129,8 +129,9 @@ const my_obj: { b: 3 } = { a: 2 }
 ```ts
 let global = 0;
 const object = {
+	// This getter has an impure side effect
 	get getValue() {
-		return global++
+		return ++global
 	},
 }
 
@@ -138,10 +139,8 @@ object.getValue satisfies string
 object.getValue satisfies boolean
 ```
 
-> Also test that side effects work here
-
-- Expected string, found 0
-- Expected boolean, found 1
+- Expected string, found 1
+- Expected boolean, found 2
 
 #### Object spread
 
@@ -471,7 +470,7 @@ func("hello world")
 
 - Argument of type "hello world" is not assignable to parameter of type number
 
-#### Parameters are always considered generic
+#### Parameters retain argument values
 
 ```ts
 function id(a) {
@@ -594,7 +593,7 @@ function getToUpperCase(s: string) {
 	return s.toUpperCase
 }
 
-(getToUpperCase("hi")() satisfies "HEY")
+getToUpperCase("hi")() satisfies "HEY";
 ```
 
 - Expected "HEY", found "HI"
@@ -606,7 +605,7 @@ function callToUpperCase(s: string) {
 	return s.toUpperCase()
 }
 
-(callToUpperCase("hi") satisfies "HEY")
+callToUpperCase("hi") satisfies "HEY";
 ```
 
 - Expected "HEY", found "HI"
@@ -769,7 +768,7 @@ function getX() {
 	return x
 }
 
-(getX satisfies () => number);
+getX satisfies () => number;
 
 getX();
 
@@ -777,6 +776,8 @@ let x: number = 5;
 ```
 
 - Variable x used before declaration
+
+> Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
 #### Assignment to union
 
@@ -793,9 +794,11 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-> Error could be better. Full one contains labels with more information
+> Error message could be better. Full one contains labels with more information
 
 - Assignment mismatch
+
+> Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
 #### Property assignment from conditional
 
@@ -824,7 +827,7 @@ function doThingWithCallback(callback: (obj: { x: number }) => any) {
 }
 
 const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
-(object.x satisfies string);
+object.x satisfies string;
 ```
 
 - Expected 8, found number
@@ -839,7 +842,7 @@ function add_property(obj: { prop: number }) {
 
 const obj = { prop: 4 };
 add_property(obj);
-(obj.prop satisfies 8);
+obj.prop satisfies 8;
 ```
 
 - Expected 8, found 6
@@ -1075,7 +1078,7 @@ while (i < 5) {
 	i++;
 }
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 32
@@ -1089,7 +1092,7 @@ while (i++ < 5) {
 	a *= 2;
 }
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 32
@@ -1102,7 +1105,7 @@ do {
 	a++
 } while (a < 3)
 
-(a satisfies 8);
+a satisfies 8;
 ```
 
 - Expected 8, found 3
@@ -1115,7 +1118,7 @@ for (let i: number = 0; i < 10; i++) {
 	a = a + i;
 }
 
-(a satisfies number)
+a satisfies number;
 ```
 
 - Expected number, found "0123456789"
@@ -1129,7 +1132,7 @@ while (a < i) {
 	a++;
 }
 
-(a satisfies string)
+a satisfies string;
 ```
 
 - Expected string, found number
@@ -1150,7 +1153,7 @@ a satisfies string;
 
 - Expected string, found number
 
-#### While loop unrolling as an effect
+#### While loop unrolling as a side-effect
 
 ```ts
 function loop(n: number, c: string) {
@@ -1162,7 +1165,7 @@ function loop(n: number, c: string) {
 	return a
 }
 
-(loop(10, "!") satisfies number);
+loop(10, "!") satisfies number;
 ```
 
 - Expected number, found "!!!!!!!!!!"
@@ -1179,7 +1182,7 @@ while (i++ < 10) {
 	}
 }
 
-(a satisfies 2);
+a satisfies 2;
 ```
 
 - Expected 2, found 8
@@ -1221,7 +1224,7 @@ while (i++ < 10) {
 	a *= 2;
 }
 
-(a satisfies 2);
+a satisfies 2;
 ```
 
 - Expected 2, found 64
@@ -1321,7 +1324,7 @@ const name = "Ben";
 
 - Expected "Hi Ben", found "Hello Ben"
 
-#### In operator
+#### `in` operator
 
 ```ts
 const obj = { a: 2 };
@@ -1341,7 +1344,7 @@ declare var x: number;
 
 - Expected string, found number
 
-#### Type of equality operators
+#### Type of relation operators
 
 ```ts
 declare var x: number;
@@ -1366,9 +1369,11 @@ declare var x: number, y: boolean;
 ```ts
 const y = { ["EZNO".toLowerCase()]: 7 }
 y.ezno satisfies 3
+y.not_a_key
 ```
 
 - Expected 3, found 7
+- No property 'not_a_key' on { ezno: 7 }
 
 #### Shorthand object literal
 
@@ -1606,7 +1611,7 @@ const a: X<number> = 2;
 ```ts
 type X<T> = T;
 
-(2 satisfies X<string>);
+2 satisfies X<string>;
 ```
 
 - Expected string, found 2
@@ -1616,7 +1621,7 @@ type X<T> = T;
 ```ts
 type X<T> = T;
 
-(2 satisfies X);
+2 satisfies X;
 ```
 
 - Type X requires type arguments
@@ -1697,7 +1702,7 @@ interface ThePrimitives {
 	c: boolean
 }
 
-(2 satisfies ThePrimitives["b"]);
+2 satisfies ThePrimitives["b"];
 ```
 
 - Expected string, found 2
@@ -1723,7 +1728,7 @@ function getFirst(array: number[]) {
 	return array[0]
 }
 
-(getFirst satisfies boolean);
+getFirst satisfies boolean;
 ```
 
 - Expected boolean, found (array: Array\<number>) => number | undefined
@@ -1735,8 +1740,8 @@ function getSecondCharacter(s: string) {
 	return s[1]
 }
 
-(getSecondCharacter satisfies boolean);
-(getSecondCharacter("string") satisfies "b");
+getSecondCharacter satisfies boolean;
+getSecondCharacter("string") satisfies "b";
 ```
 
 - Expected boolean, found (s: string) => string | undefined
@@ -1940,7 +1945,7 @@ console.log(a.prop);
 export default const x = 2;
 ```
 
-- Expected SemiColon found x
+- Expected SemiColon found Identifier(\"x\")
 
 #### Only synthesis module once
 

@@ -1,11 +1,9 @@
 #[cfg(feature = "self-rust-tokenize")]
 fn main() {
-	use ezno_parser::{ASTNode, Expression, SourceId};
+	use ezno_parser::{ASTNode, Expression};
 	use self_rust_tokenize::SelfRustTokenize;
 
-	let expression =
-		Expression::from_string("2 + 3".to_string(), Default::default(), SourceId::NULL, None)
-			.unwrap();
+	let expression = Expression::from_string("2 + 3".to_string(), Default::default()).unwrap();
 
 	let tokens = SelfRustTokenize::to_tokens(&expression);
 

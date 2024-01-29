@@ -52,7 +52,7 @@ cargo run -p ezno-parser --example lex path/to/file.ts
 - Check source is valid with `cargo check --workspace`
 - Check that code is formatted in accordance with the configuration with `cargo fmt --all --check`
 - Run all tests `cargo test --workspace --verbose`
-- Use `cargo clippy -- --allow warnings` to find blocking lints
+- Use `cargo clippy -- -A warnings` to find blocking lints
 
 ### The notify! macro
 

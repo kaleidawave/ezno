@@ -16,7 +16,7 @@ keywords = ["javascript", "parser", "ast", "compiler", "visitor"]
 workspace = true
 
 [features]
-# TODO these shouldn't be default
+# TODO some of these shouldn't be default
 default = [
   "self-rust-tokenize",
   "extras",
@@ -29,7 +29,7 @@ serde-serialize = ["dep:serde"]
 extras = []
 
 [dependencies]
-visitable-derive = { path = "./visitable-derive", version = "0.0.4", package = "ezno-parser-visitable-derive" }
+visitable-derive = { path = "./visitable-derive", version = "0.0.5", package = "ezno-parser-visitable-derive" }
 
 derive-finite-automaton = "0.1.3"
 derive-debug-extras = { version = "0.2.2", features = [
@@ -41,7 +41,6 @@ derive-enum-from-into = "0.1.1"
 temporary-annex = "0.1.0"
 iterator-endiate = "0.2.1"
 
-enum_variant_type = "0.3.1"
 enum-variants-strings = "0.2"
 
 get-field-by-type = "0.0.3"
@@ -49,7 +48,7 @@ get-field-by-type = "0.0.3"
 serde = { version = "1.0", features = ["derive"], optional = true }
 self-rust-tokenize = { version = "0.3.3", optional = true }
 
-source-map = { version = "0.14.7", features = [
+source-map = { version = "0.14.9", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }

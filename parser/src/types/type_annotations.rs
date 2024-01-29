@@ -1,10 +1,11 @@
-use crate::tsx_keywords::New;
 use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
-	extensions::decorators::Decorated, CursorId, Decorator, Keyword, ParseResult, VariableField,
+	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
 };
-use crate::{parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, Quoted};
+use crate::{
+	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, ListItem, Quoted,
+};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
@@ -55,7 +56,6 @@ pub enum TypeAnnotation {
 	},
 	/// Construction literal e.g. `new (x: string) => string`
 	ConstructorLiteral {
-		new_keyword: Keyword<New>,
 		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Box<TypeAnnotation>,
@@ -83,8 +83,10 @@ pub enum TypeAnnotation {
 	},
 	Decorated(Decorator, Box<Self>, Span),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(CursorId<TypeAnnotation>, Span),
+	Marker(Marker<TypeAnnotation>, Span),
 }
+
+impl ListItem for TypeAnnotation {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
@@ -122,15 +124,15 @@ impl ASTNode for AnnotationWithBinder {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			AnnotationWithBinder::Annotated { name, ty, position: _ } => {
 				buf.push_str(name);
 				buf.push_str(": ");
-				ty.to_string_from_buffer(buf, options, depth);
+				ty.to_string_from_buffer(buf, options, local);
 			}
-			AnnotationWithBinder::NoAnnotation(ty) => ty.to_string_from_buffer(buf, options, depth),
+			AnnotationWithBinder::NoAnnotation(ty) => ty.to_string_from_buffer(buf, options, local),
 		}
 	}
 }
@@ -167,18 +169,18 @@ impl TypeCondition {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			TypeCondition::Extends { ty, extends, .. } => {
-				ty.to_string_from_buffer(buf, options, depth);
+				ty.to_string_from_buffer(buf, options, local);
 				buf.push_str(" extends ");
-				extends.to_string_from_buffer(buf, options, depth);
+				extends.to_string_from_buffer(buf, options, local);
 			}
 			TypeCondition::Is { ty, is, .. } => {
-				ty.to_string_from_buffer(buf, options, depth);
+				ty.to_string_from_buffer(buf, options, local);
 				buf.push_str(" is ");
-				is.to_string_from_buffer(buf, options, depth);
+				is.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -231,15 +233,15 @@ impl ASTNode for TypeConditionResult {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			TypeConditionResult::Infer(inferred_type, _) => {
 				buf.push_str("infer ");
-				inferred_type.to_string_from_buffer(buf, options, depth);
+				inferred_type.to_string_from_buffer(buf, options, local);
 			}
 			TypeConditionResult::Reference(reference) => {
-				reference.to_string_from_buffer(buf, options, depth);
+				reference.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -251,18 +253,18 @@ impl ASTNode for TypeAnnotation {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, options, false, false)
+		Self::from_reader_with_config(reader, state, options, false, false, None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Cursor(..) => {
-				assert!(options.expect_cursors,);
+			Self::Marker(..) => {
+				assert!(options.expect_markers,);
 			}
 			Self::CommonName(name, _) => buf.push_str(match name {
 				CommonTypes::String => "string",
@@ -270,22 +272,22 @@ impl ASTNode for TypeAnnotation {
 				CommonTypes::Boolean => "boolean",
 			}),
 			Self::Decorated(decorator, on_type_annotation, _) => {
-				decorator.to_string_from_buffer(buf, options, depth);
+				decorator.to_string_from_buffer(buf, options, local);
 				buf.push(' ');
-				on_type_annotation.to_string_from_buffer(buf, options, depth);
+				on_type_annotation.to_string_from_buffer(buf, options, local);
 			}
 			Self::Name(name, _) => buf.push_str(name),
 			Self::NameWithGenericArguments(name, arguments, _) => {
 				buf.push_str(name);
-				to_string_bracketed(arguments, ('<', '>'), buf, options, depth);
+				to_string_bracketed(arguments, ('<', '>'), buf, options, local);
 			}
 			Self::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
 				if let Some(type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 				}
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 				buf.push_str(" => ");
-				return_type.to_string_from_buffer(buf, options, depth);
+				return_type.to_string_from_buffer(buf, options, local);
 			}
 			Self::BooleanLiteral(expression, _) => {
 				buf.push_str(if *expression { "true" } else { "false" });
@@ -300,7 +302,7 @@ impl ASTNode for TypeAnnotation {
 			}
 			Self::Union(union_members, _) => {
 				for (at_end, member) in union_members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push_str(" | ");
 					}
@@ -308,7 +310,7 @@ impl ASTNode for TypeAnnotation {
 			}
 			Self::Intersection(intersection_members, _) => {
 				for (at_end, member) in intersection_members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push_str(" & ");
 					}
@@ -318,7 +320,7 @@ impl ASTNode for TypeAnnotation {
 			Self::ObjectLiteral(members, _) => {
 				buf.push('{');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push_str(", ");
 					}
@@ -331,7 +333,7 @@ impl ASTNode for TypeAnnotation {
 					if matches!(spread, SpreadKind::Spread) {
 						buf.push_str("...");
 					}
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push_str(", ");
 					}
@@ -339,42 +341,42 @@ impl ASTNode for TypeAnnotation {
 				buf.push(']');
 			}
 			Self::Index(on, with, _) => {
-				on.to_string_from_buffer(buf, options, depth);
+				on.to_string_from_buffer(buf, options, local);
 				buf.push('[');
-				with.to_string_from_buffer(buf, options, depth);
+				with.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 			Self::KeyOf(item, _) => {
 				buf.push_str("keyof ");
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 			}
 			Self::Conditional { condition, resolve_true, resolve_false, .. } => {
-				condition.to_string_from_buffer(buf, options, depth);
+				condition.to_string_from_buffer(buf, options, local);
 				buf.push_str(" ? ");
-				resolve_true.to_string_from_buffer(buf, options, depth);
+				resolve_true.to_string_from_buffer(buf, options, local);
 				buf.push_str(" : ");
-				resolve_false.to_string_from_buffer(buf, options, depth);
+				resolve_false.to_string_from_buffer(buf, options, local);
 			}
 			Self::ArrayLiteral(item, _) => {
-				item.to_string_from_buffer(buf, options, depth);
+				item.to_string_from_buffer(buf, options, local);
 				buf.push_str("[]");
 			}
 			Self::ConstructorLiteral { parameters, type_parameters, return_type, .. } => {
 				buf.push_str("new ");
 				if let Some(type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 				}
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 				buf.push_str(" => ");
-				return_type.to_string_from_buffer(buf, options, depth);
+				return_type.to_string_from_buffer(buf, options, local);
 			}
 			Self::Readonly(readonly_type, _) => {
 				buf.push_str("readonly ");
-				readonly_type.to_string_from_buffer(buf, options, depth);
+				readonly_type.to_string_from_buffer(buf, options, local);
 			}
 			Self::ParenthesizedReference(reference, _) => {
 				buf.push('(');
-				reference.to_string_from_buffer(buf, options, depth);
+				reference.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			Self::TemplateLiteral(parts, _) => {
@@ -384,7 +386,7 @@ impl ASTNode for TypeAnnotation {
 						TemplateLiteralPart::Static(chunk) => buf.push_str(chunk),
 						TemplateLiteralPart::Dynamic(reference) => {
 							buf.push_str("${");
-							reference.to_string_from_buffer(buf, options, depth);
+							reference.to_string_from_buffer(buf, options, local);
 							buf.push('}');
 						}
 					}
@@ -400,7 +402,7 @@ impl ASTNode for TypeAnnotation {
 }
 
 impl TypeAnnotation {
-	/// Also returns the depth the generic arguments ran over
+	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
 	pub(crate) fn from_reader_with_config(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -408,7 +410,32 @@ impl TypeAnnotation {
 		options: &ParseOptions,
 		return_on_union_or_intersection: bool,
 		return_on_arrow: bool,
+		start: Option<TokenStart>,
 	) -> ParseResult<Self> {
+		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
+			let next_is_not_type_annotation_like = matches!(
+				peek,
+				TSXToken::CloseParentheses
+					| TSXToken::CloseBracket
+					| TSXToken::CloseBrace
+					| TSXToken::Comma | TSXToken::OpenChevron
+			) || peek.is_assignment()
+				|| (start.map_or(false, |start| {
+					peek.is_statement_or_declaration_start()
+						&& state
+							.line_starts
+							.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
+				}));
+
+			if next_is_not_type_annotation_like {
+				let point = start.unwrap_or(*at);
+				return Ok(TypeAnnotation::Marker(
+					state.new_partial_point_marker(point),
+					point.with_length(0),
+				));
+			}
+		}
+
 		while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
 			reader.peek()
 		{
@@ -433,7 +460,7 @@ impl TypeAnnotation {
 			Token(TSXToken::At, pos) => {
 				let decorator = Decorator::from_reader_sub_at_symbol(reader, state, options, pos)?;
 				let this_declaration =
-					Self::from_reader_with_config(reader, state, options, true, false)?;
+					Self::from_reader_with_config(reader, state, options, true, false, start)?;
 				let position = pos.union(this_declaration.get_position());
 				Self::Decorated(decorator, Box::new(this_declaration), position)
 			}
@@ -537,7 +564,10 @@ impl TypeAnnotation {
 						Token(TSXToken::TemplateLiteralEnd, end_position) => {
 							end = Some(TokenEnd::new(end_position.0));
 						}
-						_ => unreachable!(),
+						token => {
+							eprintln!("Found token {token:?}");
+							return Err(parse_lexing_error());
+						}
 					}
 				}
 				Self::TemplateLiteral(parts, start.union(end.unwrap()))
@@ -568,7 +598,6 @@ impl TypeAnnotation {
 				let return_type = Self::from_reader(reader, state, options)?;
 				Self::ConstructorLiteral {
 					position: start.union(return_type.get_position()),
-					new_keyword: Keyword::new(start.with_length(3)),
 					parameters,
 					type_parameters,
 					return_type: Box::new(return_type),
@@ -635,9 +664,10 @@ impl TypeAnnotation {
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
-				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, true, false)?;
-				// TODO depth
+				let extends_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, true, false, start,
+				)?;
+				// TODO local
 				let position = reference.get_position().union(extends_type.get_position());
 				let condition = TypeCondition::Extends {
 					ty: Box::new(reference),
@@ -663,9 +693,10 @@ impl TypeAnnotation {
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) => {
 				reader.next();
-				let is_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, true, false)?;
-				// TODO depth
+				let is_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, true, false, start,
+				)?;
+				// TODO local
 				let position = reference.get_position().union(is_type.get_position());
 				let condition =
 					TypeCondition::Is { ty: Box::new(reference), is: Box::new(is_type), position };
@@ -687,8 +718,9 @@ impl TypeAnnotation {
 				let mut union_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseOr, _)) = reader.peek() {
 					reader.next();
-					union_members
-						.push(Self::from_reader_with_config(reader, state, options, true, false)?);
+					union_members.push(Self::from_reader_with_config(
+						reader, state, options, true, false, start,
+					)?);
 				}
 				let position = union_members
 					.first()
@@ -704,8 +736,9 @@ impl TypeAnnotation {
 				let mut intersection_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseAnd, _)) = reader.peek() {
 					reader.next();
-					intersection_members
-						.push(Self::from_reader_with_config(reader, state, options, true, false)?);
+					intersection_members.push(Self::from_reader_with_config(
+						reader, state, options, true, false, start,
+					)?);
 				}
 				let position = intersection_members
 					.first()
@@ -720,7 +753,7 @@ impl TypeAnnotation {
 				}
 				reader.next();
 				let return_type =
-					Self::from_reader_with_config(reader, state, options, true, false)?;
+					Self::from_reader_with_config(reader, state, options, true, false, start)?;
 				let parameters_position = *reference.get_position();
 				let position = parameters_position.union(return_type.get_position());
 				Ok(Self::FunctionLiteral {
@@ -763,11 +796,12 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 			options,
 			return_on_union_or_intersection,
 			false,
+			None,
 		)?;
 		generic_arguments.push(argument);
 
 		// Handling for the fact that concessive chevrons are grouped into bitwise shifts
-		// One option is to keep track of depth but as a simpler way mutate the upcoming token
+		// One option is to keep track of local but as a simpler way mutate the upcoming token
 		// TODO spans
 
 		let peek_mut = reader.peek_mut();
@@ -827,23 +861,23 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		for parameter in &self.parameters {
 			if let Some(ref name) = parameter.name {
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 			}
 			if parameter.is_optional {
 				buf.push_str("?: ");
 			} else {
 				buf.push_str(": ");
 			}
-			parameter.type_annotation.to_string_from_buffer(buf, options, depth);
+			parameter.type_annotation.to_string_from_buffer(buf, options, local);
 		}
 		if let Some(ref rest_parameter) = self.rest_parameter {
 			buf.push_str("...");
 			buf.push_str(&rest_parameter.name);
-			rest_parameter.type_annotation.to_string_from_buffer(buf, options, depth);
+			rest_parameter.type_annotation.to_string_from_buffer(buf, options, local);
 		}
 	}
 }
@@ -883,17 +917,17 @@ impl TypeAnnotationFunctionParameters {
 				break;
 			}
 
-			let mut depth = 0;
+			let mut local = 0;
 			let after_variable_field = reader.scan(|token, _| match token {
 				TSXToken::OpenBracket | TSXToken::OpenBrace | TSXToken::OpenParentheses => {
-					depth += 1;
+					local += 1;
 					false
 				}
 				TSXToken::CloseBracket | TSXToken::CloseBrace | TSXToken::CloseParentheses => {
-					depth -= 1;
-					depth == 0
+					local -= 1;
+					local == 0
 				}
-				_ => depth == 0,
+				_ => local == 0,
 			});
 			let name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>> =
 				if let Some(Token(TSXToken::Colon | TSXToken::OptionalMember, _)) =

@@ -1,6 +1,6 @@
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token, tsx_keywords, ASTNode, Expression, Keyword,
-	ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
+	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ListItem, ParseError,
+	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
 	VariableIdentifier,
 };
 
@@ -40,15 +40,8 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	Parts(Vec<ExportPart>),
-	ImportAll {
-		r#as: Option<VariableIdentifier>,
-		from: ImportLocation,
-	},
-	ImportParts {
-		parts: Vec<ExportPart>,
-		from: ImportLocation,
-		type_keyword: Option<Keyword<tsx_keywords::Type>>,
-	},
+	ImportAll { r#as: Option<VariableIdentifier>, from: ImportLocation },
+	ImportParts { parts: Vec<ExportPart>, from: ImportLocation, type_definitions_only: bool },
 }
 
 impl ASTNode for ExportDeclaration {
@@ -64,7 +57,7 @@ impl ASTNode for ExportDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Export))?;
+		let start = state.expect_keyword(reader, TSXKeyword::Export)?;
 
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
@@ -77,25 +70,25 @@ impl ASTNode for ExportDeclaration {
 				reader.next();
 				let r#as = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
 				{
-					reader.next();
+					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
 					Some(VariableIdentifier::from_reader(reader, state, options)?)
 				} else {
 					None
 				};
-				reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
-				let (from, end) =
-					ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+				let start = state.expect_keyword(reader, TSXKeyword::From)?;
+
+				let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
+
 				Ok(ExportDeclaration::Variable {
 					exported: Exportable::ImportAll { r#as, from },
 					position: start.union(end),
 				})
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-				let token = reader.next().unwrap();
-				let keyword = Keyword::new(token.get_span());
-				let class_declaration = ClassDeclaration::from_reader_sub_class_keyword(
-					reader, state, options, keyword,
-				)?;
+				let Token(_, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Class);
+				let class_declaration =
+					ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)?;
 				let position = start.union(class_declaration.get_position());
 				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
 			}
@@ -121,8 +114,7 @@ impl ASTNode for ExportDeclaration {
 				if let Token(TSXToken::OpenBrace, _) =
 					reader.peek_n(1).ok_or_else(parse_lexing_error)?
 				{
-					let type_keyword = reader.next().map(|tok| Keyword::new(tok.get_span()));
-
+					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
 					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
 					let (parts, _end) = crate::parse_bracketed::<ExportPart>(
@@ -133,13 +125,17 @@ impl ASTNode for ExportDeclaration {
 						TSXToken::CloseBrace,
 					)?;
 
-					reader.expect_next(TSXToken::Keyword(TSXKeyword::From))?;
+					let from_pos = state.expect_keyword(reader, TSXKeyword::From)?;
 
 					let (from, end) =
-						ImportLocation::from_token(reader.next().ok_or_else(parse_lexing_error)?)?;
+						ImportLocation::from_reader(reader, state, options, Some(from_pos))?;
 
 					Ok(Self::Variable {
-						exported: Exportable::ImportParts { parts, from, type_keyword },
+						exported: Exportable::ImportParts {
+							parts,
+							from,
+							type_definitions_only: true,
+						},
 						position: start.union(end),
 					})
 				} else {
@@ -171,13 +167,17 @@ impl ASTNode for ExportDeclaration {
 							None,
 							TSXToken::CloseBrace,
 						)?;
-						// Know this is 'from' from above
-						let _ = reader.next().unwrap();
-						let (from, end) = ImportLocation::from_token(
-							reader.next().ok_or_else(parse_lexing_error)?,
-						)?;
+						let Token(_from_kw, start) = reader.next().unwrap();
+						state.append_keyword_at_pos(start.0, TSXKeyword::From);
+
+						let (from, end) =
+							ImportLocation::from_reader(reader, state, options, Some(start))?;
 						Ok(Self::Variable {
-							exported: Exportable::ImportParts { parts, from, type_keyword: None },
+							exported: Exportable::ImportParts {
+								parts,
+								from,
+								type_definitions_only: false,
+							},
 							position: start.union(end),
 						})
 					} else {
@@ -227,68 +227,68 @@ impl ASTNode for ExportDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			ExportDeclaration::Variable { exported, .. } => {
 				buf.push_str("export ");
 				match exported {
 					Exportable::Class(class_declaration) => {
-						class_declaration.to_string_from_buffer(buf, options, depth);
+						class_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Function(function_declaration) => {
-						function_declaration.to_string_from_buffer(buf, options, depth);
+						function_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Interface(interface_declaration) => {
-						interface_declaration.to_string_from_buffer(buf, options, depth);
+						interface_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Variable(variable_dec_stmt) => {
-						variable_dec_stmt.to_string_from_buffer(buf, options, depth);
+						variable_dec_stmt.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::TypeAlias(type_alias) => {
-						type_alias.to_string_from_buffer(buf, options, depth);
+						type_alias.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
 						buf.push('{');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, depth);
+							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
-								options.add_gap(buf);
+								options.push_gap_optionally(buf);
 							}
 						}
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push('}');
 					}
 					Exportable::ImportAll { r#as, from } => {
 						buf.push_str("* ");
 						if let Some(r#as) = r#as {
 							buf.push_str("as ");
-							r#as.to_string_from_buffer(buf, options, depth);
+							r#as.to_string_from_buffer(buf, options, local);
 							buf.push(' ');
 						}
 						buf.push_str("from \"");
 						from.to_string_from_buffer(buf);
 						buf.push('"');
 					}
-					Exportable::ImportParts { parts, from, type_keyword } => {
-						if type_keyword.is_some() {
+					Exportable::ImportParts { parts, from, type_definitions_only } => {
+						if *type_definitions_only {
 							buf.push_str("type ");
 						}
 
 						buf.push('{');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, depth);
+							part.to_string_from_buffer(buf, options, local);
 							if !at_end {
 								buf.push(',');
-								options.add_gap(buf);
+								options.push_gap_optionally(buf);
 							}
 						}
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push('}');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 						buf.push_str("from \"");
 						from.to_string_from_buffer(buf);
 						buf.push('"');
@@ -297,7 +297,7 @@ impl ASTNode for ExportDeclaration {
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}
@@ -316,6 +316,8 @@ pub enum ExportPart {
 	PrefixComment(String, Option<Box<Self>>, Span),
 	PostfixComment(Box<Self>, String, Span),
 }
+
+impl ListItem for ExportPart {}
 
 impl ASTNode for ExportPart {
 	fn get_position(&self) -> &Span {
@@ -343,8 +345,7 @@ impl ASTNode for ExportPart {
 			let mut value = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
 			{
 				reader.next();
-				let token = reader.next().ok_or_else(parse_lexing_error)?;
-				let (alias, end) = ImportExportName::from_token(token, state)?;
+				let (alias, end) = ImportExportName::from_reader(reader, state, options)?;
 				let position = pos.union(end);
 				Self::NameWithAlias { name, alias, position }
 			} else {
@@ -366,10 +367,12 @@ impl ASTNode for ExportPart {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExportPart::Name(identifier) => buf.push_str(identifier.as_str()),
+			ExportPart::Name(name) => {
+				name.to_string_from_buffer(buf, options, local);
+			}
 			ExportPart::NameWithAlias { name, alias, .. } => {
 				buf.push_str(name);
 				buf.push_str(" as ");
@@ -380,7 +383,7 @@ impl ASTNode for ExportPart {
 						buf.push_str(alias);
 						buf.push(q.as_char());
 					}
-					ImportExportName::Cursor(_) => {}
+					ImportExportName::Marker(_) => {}
 				}
 			}
 			ExportPart::PrefixComment(comment, inner, _) => {
@@ -393,11 +396,11 @@ impl ASTNode for ExportPart {
 					}
 				}
 				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, options, depth);
+					inner.to_string_from_buffer(buf, options, local);
 				}
 			}
 			ExportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, options, depth);
+				inner.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('.')) {
 					buf.push_str("/*");
 					buf.push_str(comment);

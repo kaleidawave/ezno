@@ -7,7 +7,6 @@ mod while_statement;
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
 	tokens::token_as_identifier,
-	tsx_keywords,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -15,8 +14,8 @@ use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 
 use super::{
-	expressions::MultipleExpression, ASTNode, Block, CursorId, Expression, Keyword, ParseOptions,
-	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	expressions::MultipleExpression, ASTNode, Block, Expression, ParseOptions, ParseResult, Span,
+	TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
@@ -64,26 +63,19 @@ pub enum Statement {
 	VarVariable(VarVariableStatement),
 	// TODO position
 	Empty(Span),
-	/// TODO under cfg
-	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Cursor(#[visit_skip_field] CursorId<Statement>, Span),
 }
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ReturnStatement(
-	pub Keyword<tsx_keywords::Return>,
-	pub Option<MultipleExpression>,
-	pub Span,
-);
+pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ThrowStatement(pub Keyword<tsx_keywords::Throw>, pub Box<MultipleExpression>, pub Span);
+pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
 
@@ -101,29 +93,30 @@ impl ASTNode for Statement {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
+			if statement.requires_semi_colon() {
+				crate::expect_semi_colon(
+					reader,
+					&state.line_starts,
+					statement.get_position().start,
+				)?;
+			}
+			// TODO statement.can_be_labelled()
 			let position = label_name_pos.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });
 		}
 
-		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
+		let Token(token, _s) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 		match token {
-			TSXToken::Cursor(_) => {
-				if let Token(TSXToken::Cursor(cursor_id), start) = reader.next().unwrap() {
-					Ok(Statement::Cursor(cursor_id.into_cursor(), start.with_length(1)))
-				} else {
-					unreachable!()
-				}
-			}
 			TSXToken::Keyword(TSXKeyword::Var) => {
 				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
 				Ok(Statement::VarVariable(stmt))
 			}
 			TSXToken::Keyword(TSXKeyword::Throw) => {
-				let throw_pos = Keyword::new(reader.next().unwrap().get_span());
+				let Token(_, start) = reader.next().unwrap();
 				let expression = MultipleExpression::from_reader(reader, state, options)?;
-				let position = throw_pos.get_position().union(expression.get_position());
-				Ok(Statement::Throw(ThrowStatement(throw_pos, Box::new(expression), position)))
+				let position = start.union(expression.get_position());
+				Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
 			}
 			TSXToken::Keyword(TSXKeyword::If) => {
 				IfStatement::from_reader(reader, state, options).map(Into::into)
@@ -144,54 +137,52 @@ impl ASTNode for Statement {
 				TryCatchStatement::from_reader(reader, state, options).map(Into::into)
 			}
 			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
-			TSXToken::Keyword(TSXKeyword::Return) => Ok({
-				let return_keyword = Keyword::new(reader.next().unwrap().get_span());
-				if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
-				) {
-					let position = *return_keyword.get_position();
-					Statement::Return(ReturnStatement(return_keyword, None, position))
-				} else {
-					let multiple_expression =
-						MultipleExpression::from_reader(reader, state, options)?;
-					let position =
-						return_keyword.get_position().union(multiple_expression.get_position());
-					Statement::Return(ReturnStatement(
-						return_keyword,
-						Some(multiple_expression),
-						position,
-					))
-				}
-			}),
 			TSXToken::Keyword(TSXKeyword::Debugger) => {
 				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
 			}
-			TSXToken::Keyword(TSXKeyword::Break) => {
-				let break_token = reader.next().unwrap();
-				// TODO token is semi-colon
-				let label = if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
-				) {
-					None
+			TSXToken::Keyword(TSXKeyword::Return) => Ok({
+				let Token(_, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
+					let position = start.with_length(TSXKeyword::Return.length() as usize);
+					Statement::Return(ReturnStatement(None, position))
 				} else {
-					Some(token_as_identifier(reader.next().unwrap(), "break label")?.0)
-				};
-				Ok(Statement::Break(label, break_token.get_span()))
+					let multiple_expression =
+						MultipleExpression::from_reader(reader, state, options)?;
+					let position = start.union(multiple_expression.get_position());
+					Statement::Return(ReturnStatement(Some(multiple_expression), position))
+				}
+			}),
+			TSXToken::Keyword(TSXKeyword::Break) => {
+				let Token(_break_token, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Break);
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
+					Ok(Statement::Break(
+						None,
+						start.with_length(TSXKeyword::Break.length() as usize),
+					))
+				} else {
+					let (label, position) =
+						token_as_identifier(reader.next().unwrap(), "break label")?;
+					Ok(Statement::Break(Some(label), start.union(position)))
+				}
 			}
 			TSXToken::Keyword(TSXKeyword::Continue) => {
-				let continue_token = reader.next().unwrap();
-				// TODO token is semi-colon
-				let label = if matches!(
-					reader.peek(),
-					Some(Token(TSXToken::SemiColon | TSXToken::CloseBrace, _))
-				) {
-					None
+				let Token(_continue_token, start) = reader.next().unwrap();
+				state.append_keyword_at_pos(start.0, TSXKeyword::Continue);
+				let next = reader.peek().ok_or_else(parse_lexing_error)?;
+				if on_different_lines_or_line_end(&state.line_starts, start, next) {
+					Ok(Statement::Continue(
+						None,
+						start.with_length(TSXKeyword::Continue.length() as usize),
+					))
 				} else {
-					Some(token_as_identifier(reader.next().unwrap(), "continue label")?.0)
-				};
-				Ok(Statement::Continue(label, continue_token.get_span()))
+					let (label, position) =
+						token_as_identifier(reader.next().unwrap(), "continue label")?;
+					Ok(Statement::Continue(Some(label), start.union(position)))
+				}
 			}
 			TSXToken::Comment(_) => {
 				if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
@@ -222,28 +213,25 @@ impl ASTNode for Statement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Statement::Cursor(..) => {
-				assert!(options.expect_cursors, "tried to to-string cursor");
-			}
 			Statement::Empty(..) => {
 				buf.push(';');
 			}
-			Statement::Return(ReturnStatement(_, expression, _)) => {
+			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
 					buf.push(' ');
-					expression.to_string_from_buffer(buf, options, depth);
+					expression.to_string_from_buffer(buf, options, local);
 				}
 			}
-			Statement::If(is) => is.to_string_from_buffer(buf, options, depth),
-			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, depth),
-			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, depth),
-			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, depth),
-			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, depth),
-			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, depth),
+			Statement::If(is) => is.to_string_from_buffer(buf, options, local),
+			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, local),
+			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
+			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, local),
+			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
+			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			Statement::Comment(comment, _) => {
 				if options.should_add_comment(false) {
 					buf.push_str("//");
@@ -258,7 +246,7 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Block(block) => {
-				block.to_string_from_buffer(buf, options, depth + 1);
+				block.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Statement::Debugger(_) => buf.push_str("debugger"),
 			Statement::Continue(label, _) => {
@@ -276,18 +264,29 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				val.to_string_from_buffer(buf, options, depth);
+				if val.left_is_statement_like() {
+					buf.push('(');
+					val.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					val.to_string_from_buffer(buf, options, local);
+				}
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);
-				buf.push(':');
-				statement.to_string_from_buffer(buf, options, depth);
+				buf.push_str(": ");
+
+				// TODO new line?
+				statement.to_string_from_buffer(buf, options, local);
+				if statement.requires_semi_colon() {
+					buf.push(';');
+				}
 			}
-			Statement::Throw(ThrowStatement(_, thrown_expression, _)) => {
+			Statement::Throw(ThrowStatement(thrown_expression, _)) => {
 				buf.push_str("throw ");
-				thrown_expression.to_string_from_buffer(buf, options, depth);
+				thrown_expression.to_string_from_buffer(buf, options, local);
 			}
-			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, depth),
+			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, local),
 		}
 	}
 }
@@ -318,9 +317,8 @@ impl Statement {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
-	keyword: Keyword<tsx_keywords::Var>,
-	declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
-	position: Span,
+	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
+	pub position: Span,
 }
 
 impl ASTNode for VarVariableStatement {
@@ -333,11 +331,19 @@ impl ASTNode for VarVariableStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let keyword = Keyword::from_reader(reader)?;
+		let Token(_, start) = reader.next().unwrap();
 		let mut declarations = Vec::new();
 		loop {
 			let value =
 				VariableDeclarationItem::<Option<Expression>>::from_reader(reader, state, options)?;
+			if value.expression.is_none()
+				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::DestructuringRequiresValue,
+					*value.name.get_ast_ref().get_position(),
+				));
+			}
 			declarations.push(value);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
@@ -346,8 +352,7 @@ impl ASTNode for VarVariableStatement {
 			}
 		}
 		Ok(VarVariableStatement {
-			position: keyword.get_position().union(declarations.last().unwrap().get_position()),
-			keyword,
+			position: start.union(declarations.last().unwrap().get_position()),
 			declarations,
 		})
 	}
@@ -356,9 +361,18 @@ impl ASTNode for VarVariableStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("var ");
-		declarations_to_string(&self.declarations, buf, options, depth);
+		declarations_to_string(&self.declarations, buf, options, local);
 	}
+}
+
+fn on_different_lines_or_line_end(
+	line_starts: &source_map::LineStarts,
+	keyword_position: crate::TokenStart,
+	Token(kind, next): &Token<TSXToken, crate::TokenStart>,
+) -> bool {
+	matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
+		|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
 }

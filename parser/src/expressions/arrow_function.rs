@@ -1,22 +1,22 @@
-use crate::{tsx_keywords, VariableIdentifier};
+use crate::{functions::HeadingAndPosition, VariableIdentifier};
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
-	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Keyword, Parameter,
-	ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
-	WithComment,
+	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Parameter, ParseOptions,
+	ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+pub type IsAsync = bool;
 
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
-	type Header = Option<Keyword<tsx_keywords::Async>>;
+	type Header = IsAsync;
 	type Body = ExpressionOrBlock;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
@@ -25,11 +25,11 @@ impl FunctionBased for ArrowFunctionBase {
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
+		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)> {
-		let async_keyword = Keyword::optionally_from_reader(reader);
-		Ok((async_keyword, ()))
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
+		let async_pos = state.optionally_expect_keyword(reader, crate::TSXKeyword::Async);
+		Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -37,9 +37,9 @@ impl FunctionBased for ArrowFunctionBase {
 		is_async: &Self::Header,
 		_name: &Self::Name,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
-		if is_async.is_some() {
+		if *is_async {
 			buf.push_str("async ");
 		}
 	}
@@ -79,19 +79,19 @@ impl FunctionBased for ArrowFunctionBase {
 		buf: &mut T,
 		parameters: &FunctionParameters,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
 		if let (true, [Parameter { name, .. }]) =
 			(parameters.rest_parameter.is_none(), parameters.parameters.as_slice())
 		{
 			if let VariableField::Name(name, ..) = name.get_ast_ref() {
-				buf.push_str(name.as_str());
+				name.to_string_from_buffer(buf, options, local);
 			} else {
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 			}
 		} else {
-			parameters.to_string_from_buffer(buf, options, depth);
+			parameters.to_string_from_buffer(buf, options, local);
 		}
 	}
 
@@ -100,10 +100,6 @@ impl FunctionBased for ArrowFunctionBase {
 		options: &crate::ToStringOptions,
 	) {
 		buf.push_str(if options.pretty { " => " } else { "=>" });
-	}
-
-	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		header.as_ref().map(|kw| kw.get_position().get_start())
 	}
 
 	fn visit_name<TData>(
@@ -135,7 +131,7 @@ impl ArrowFunction {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 		first_parameter: (String, Span),
-		is_async: Option<Keyword<tsx_keywords::Async>>,
+		is_async: IsAsync,
 	) -> ParseResult<Self> {
 		let parameters = vec![crate::Parameter {
 			name: WithComment::None(
@@ -169,18 +165,20 @@ impl ArrowFunction {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		is_async: Option<Keyword<tsx_keywords::Async>>,
+		is_async: IsAsync,
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		let parameters =
 			FunctionParameters::from_reader_sub_open_parenthesis(reader, state, options, start)?;
 
-		let return_type =
-			if reader.conditional_next(|token| matches!(token, TSXToken::Colon)).is_some() {
-				Some(TypeAnnotation::from_reader(reader, state, options)?)
-			} else {
-				None
-			};
+		let return_type = if reader
+			.conditional_next(|token| options.type_annotations && matches!(token, TSXToken::Colon))
+			.is_some()
+		{
+			Some(TypeAnnotation::from_reader(reader, state, options)?)
+		} else {
+			None
+		};
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		Ok(FunctionBase {
@@ -229,11 +227,11 @@ impl ASTNode for ExpressionOrBlock {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExpressionOrBlock::Expression(expr) => expr.to_string_from_buffer(buf, options, depth),
-			ExpressionOrBlock::Block(block) => block.to_string_from_buffer(buf, options, depth),
+			ExpressionOrBlock::Expression(expr) => expr.to_string_from_buffer(buf, options, local),
+			ExpressionOrBlock::Block(block) => block.to_string_from_buffer(buf, options, local),
 		}
 	}
 }

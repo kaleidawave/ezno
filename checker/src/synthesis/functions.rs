@@ -441,13 +441,16 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 					pos.with_source(environment.get_source()),
 					&mut checking_data.diagnostics_container,
 				),
-			VariableIdentifier::Cursor(_, _) => todo!(),
+			VariableIdentifier::Marker(_, _) => todo!(),
 		};
 
 		SynthesisedRestParameter {
 			item_type,
 			ty,
-			name: rest_parameter.name.as_str().to_owned(),
+			name: match rest_parameter.name {
+				VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+				VariableIdentifier::Marker(_, _) => String::new(),
+			},
 			position: rest_parameter.position.with_source(environment.get_source()),
 		}
 	});
@@ -467,15 +470,15 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 		VariableField::Array(items, _) => {
 			let mut buf = String::from("[");
 			for (not_at_end, item) in items.iter().nendiate() {
-				match item {
-					parser::ArrayDestructuringField::Spread(_, name) => {
+				match item.get_ast_ref() {
+					parser::ArrayDestructuringField::Spread(name, _) => {
 						buf.push_str("...");
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
 						}
 					}
 					parser::ArrayDestructuringField::Name(name, _) => {
-						buf.push_str(&param_name_to_string(name.get_ast_ref()));
+						buf.push_str(&param_name_to_string(name));
 					}
 					parser::ArrayDestructuringField::None => {}
 				}
@@ -531,7 +534,10 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 	parameter: &parser::VariableField<T>,
 ) -> String {
 	match parameter {
-		VariableField::Name(name) => name.as_str().to_owned(),
+		VariableField::Name(name) => match name {
+			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+			VariableIdentifier::Marker(_, _) => String::new(),
+		},
 		VariableField::Array(_items, _) => "todo".to_owned(),
 		VariableField::Object(_, _) => "todo".to_owned(),
 	}

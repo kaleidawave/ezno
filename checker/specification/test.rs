@@ -74,8 +74,8 @@ fn check_errors(
 
 	// panic::set_hook(old_panic_hook);
 
-	let (diagnostics, ..) = result;
-	let diagnostics: Vec<String> = diagnostics
+	let diagnostics: Vec<String> = result
+		.diagnostics
 		.into_iter()
 		.map(|diag| {
 			let (reason, pos) = diag.reason_and_position();

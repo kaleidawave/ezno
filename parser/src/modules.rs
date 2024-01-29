@@ -1,4 +1,3 @@
-use source_map::SourceId;
 use tokenizer_lib::sized_tokens::TokenStart;
 
 use crate::{
@@ -14,27 +13,16 @@ use crate::{
 		type_alias::TypeAlias,
 		InterfaceDeclaration,
 	},
-	BlockLike, BlockLikeMut, Decorated, Decorator, ParseOptions, ParseResult,
-	StatementOrDeclaration, TSXKeyword, VisitOptions,
+	BlockLike, BlockLikeMut, Decorated, Decorator, LocalToStringInformation, ParseOptions,
+	ParseResult, StatementOrDeclaration, TSXKeyword, VisitOptions,
 };
 
 use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
-use std::io::Error as IOError;
-
-#[cfg(not(target_family = "wasm"))]
-use std::{fs, path::Path};
-
-#[derive(Debug)]
-pub enum FromFileError {
-	FileError(IOError),
-	ParseError(ParseError, SourceId),
-}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Module {
 	pub items: Vec<StatementOrDeclaration>,
-	pub source: SourceId,
 	pub span: Span,
 }
 
@@ -49,9 +37,9 @@ impl ASTNode for Module {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		statements_and_declarations_to_string(&self.items, buf, options, depth);
+		statements_and_declarations_to_string(&self.items, buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -65,7 +53,6 @@ impl ASTNode for Module {
 	) -> ParseResult<Self> {
 		let end = state.length_of_source;
 		parse_statements_and_declarations(reader, state, options).map(|statements| Module {
-			source: state.source,
 			items: statements,
 			span: Span { start: 0, source: (), end },
 		})
@@ -76,31 +63,28 @@ impl Module {
 	pub fn to_string_with_source_map(
 		&self,
 		options: &crate::ToStringOptions,
+		this: source_map::SourceId,
 		fs: &impl source_map::FileSystem,
-	) -> (String, source_map::SourceMap) {
-		let mut buf = source_map::StringWithSourceMap::new();
-		self.to_string_from_buffer(&mut buf, options, 0);
+	) -> (String, Option<source_map::SourceMap>) {
+		let mut buf = source_map::StringWithOptionalSourceMap::new(true);
+		self.to_string_from_buffer(
+			&mut buf,
+			options,
+			LocalToStringInformation { depth: 0, under: this },
+		);
 		buf.build(fs)
 	}
 
-	#[must_use]
-	pub fn length(&self, options: &crate::ToStringOptions) -> usize {
-		let mut buf = source_map::Counter::new();
-		self.to_string_from_buffer(&mut buf, options, 0);
-		buf.get_count()
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_file(
-		path: impl AsRef<Path>,
-		options: ParseOptions,
-		fs: &mut impl source_map::FileSystem,
-	) -> Result<Self, FromFileError> {
-		let source = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
-		let source_id = SourceId::new(fs, path.as_ref().to_path_buf(), source.clone());
-		Self::from_string(source, options, source_id, None)
-			.map_err(|err| FromFileError::ParseError(err, source_id))
-	}
+	// #[must_use]
+	// pub fn length(&self, options: &crate::ToStringOptions) -> usize {
+	// 	let mut buf = source_map::Counter::new();
+	// 	self.to_string_from_buffer(
+	// 		&mut buf,
+	// 		options,
+	// 		LocalToStringInformation { depth: 0, under: source_map::Nullable::NULL },
+	// 	);
+	// 	buf.get_count()
+	// }
 }
 
 impl Module {
@@ -109,9 +93,10 @@ impl Module {
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
+		source: source_map::SourceId,
 	) {
 		use crate::visiting::Visitable;
-		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
+		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));
 		let mut chain = temporary_annex::Annex::new(&mut chain);
 
 		{
@@ -131,9 +116,10 @@ impl Module {
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
 		options: &VisitOptions,
+		source: source_map::SourceId,
 	) {
 		use crate::visiting::Visitable;
-		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(self.source));
+		let mut chain = crate::Chain::new_with_initial(crate::ChainVariable::Module(source));
 		let mut chain = temporary_annex::Annex::new(&mut chain);
 
 		{
@@ -185,33 +171,16 @@ pub enum TypeDefinitionModuleDeclaration {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDefinitionModule {
 	pub declarations: Vec<TypeDefinitionModuleDeclaration>,
-	pub source: SourceId,
 	pub position: Span,
 }
 
 impl TypeDefinitionModule {
-	pub fn from_string(
-		script: &str,
-		mut options: ParseOptions,
-		source: SourceId,
-	) -> ParseResult<Self> {
+	pub fn from_string(script: &str, mut options: ParseOptions) -> ParseResult<Self> {
 		// Important not to parse JSX as <> is used for casting
 		options.jsx = false;
 
 		let line_starts = source_map::LineStarts::new(script);
-		super::lex_and_parse_script(line_starts, options, script, source, None, Default::default())
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	pub fn from_file(
-		path: impl AsRef<Path>,
-		options: ParseOptions,
-		fs: &mut impl source_map::FileSystem,
-	) -> Result<Self, FromFileError> {
-		let script = fs::read_to_string(&path).map_err(FromFileError::FileError)?;
-		let source = SourceId::new(fs, path.as_ref().to_path_buf(), script.clone());
-		Self::from_string(&script, options, source)
-			.map_err(|err| FromFileError::ParseError(err, source))
+		super::lex_and_parse_script(line_starts, options, script, None).map(|(ast, _)| ast)
 	}
 }
 
@@ -245,20 +214,16 @@ impl ASTNode for TypeDefinitionModule {
 			}
 		}
 		let end = state.length_of_source;
-		Ok(Self {
-			declarations,
-			source: state.source,
-			position: Span { start: 0, end, source: () },
-		})
+		Ok(Self { declarations, position: Span { start: 0, end, source: () } })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
-		todo!()
+		todo!("tdm to buffer")
 	}
 }
 
@@ -315,7 +280,7 @@ impl ASTNode for TypeDefinitionModuleDeclaration {
 		&self,
 		_buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		todo!("tdms to_string_from_buffer");
 	}

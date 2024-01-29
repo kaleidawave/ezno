@@ -1,2 +1,5 @@
-import init, { initSync, experimental_build, check, parse_expression, parse_module, just_imports, minify_module, get_version } from "../build/ezno_lib.js";
-export { init, initSync, experimental_build, check, parse_expression, parse_module, just_imports, minify_module, get_version };
+import wasm_init, { initSync } from "../build/ezno_lib.js";
+
+export const init = wasm_init;
+export const init_sync = initSync;
+export * from "../build/ezno_lib.js";

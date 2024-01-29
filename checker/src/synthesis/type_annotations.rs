@@ -302,7 +302,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			type_parameters: _,
 			parameters: _,
 			return_type: _,
-			new_keyword: _,
 			position: _,
 		} => unimplemented!(),
 		// Object literals are first turned into types as if they were interface declarations and then
@@ -414,8 +413,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Cursor(_, _) => {
-			todo!("Dump available object types in environment to somewhere..?")
+		TypeAnnotation::Marker(_, _) => {
+			crate::utils::notify!("Dump available object types in environment to somewhere..?");
+			TypeId::ANY_TYPE
 		}
 		// TODO these are all work in progress
 		TypeAnnotation::Decorated(decorator, inner, _) => {
@@ -468,13 +468,12 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
 
-	let annotation = parser::TypeAnnotation::from_string(
+	let annotation = parser::TypeAnnotation::from_string_with_options(
 		possible_declaration.to_owned(),
 		Default::default(),
-		source,
 		offset,
 	);
-	if let Ok(annotation) = annotation {
+	if let Ok((annotation, _)) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
 			annotation.get_position().with_source(source),

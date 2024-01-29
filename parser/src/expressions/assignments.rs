@@ -50,28 +50,28 @@ impl ASTNode for VariableOrPropertyAccess {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			VariableOrPropertyAccess::Variable(name, ..) => {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, options, depth);
+				parent.to_string_from_buffer(buf, options, local);
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
 						buf.push('#');
 					}
 					buf.push_str(property);
-				} else if !options.expect_cursors {
-					panic!("found cursor");
+				} else if !options.expect_markers {
+					panic!("found marker");
 				}
 			}
 			VariableOrPropertyAccess::Index { indexee, indexer, .. } => {
-				indexee.to_string_from_buffer(buf, options, depth);
+				indexee.to_string_from_buffer(buf, options, local);
 				buf.push('[');
-				indexer.to_string_from_buffer(buf, options, depth);
+				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
 		}
@@ -85,7 +85,7 @@ impl VariableOrPropertyAccess {
 		options: &crate::ParseOptions,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		Expression::from_reader_with_precedence(reader, state, options, return_precedence)?
+		Expression::from_reader_with_precedence(reader, state, options, return_precedence, None)?
 			.try_into()
 	}
 }
@@ -163,7 +163,7 @@ impl VariableOrPropertyAccess {
 
 /// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
-/// TODO cursor
+/// TODO marker
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -174,7 +174,7 @@ pub enum LHSOfAssignment {
 		Span,
 	),
 	ArrayDestructuring(
-		#[visit_skip_field] Vec<ArrayDestructuringField<VariableFieldInSourceCode>>,
+		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<VariableFieldInSourceCode>>>,
 		Span,
 	),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
@@ -196,34 +196,34 @@ impl LHSOfAssignment {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(members, _) => {
 				buf.push('{');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
+					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						options.add_gap(buf);
+						options.push_gap_optionally(buf);
 					}
 				}
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 				buf.push('}');
 			}
 			LHSOfAssignment::ArrayDestructuring(members, _) => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, depth);
-					if !at_end {
+					member.to_string_from_buffer(buf, options, local);
+					if !at_end || matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
 						buf.push(',');
 					}
 				}
 				buf.push(']');
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(variable_or_property_access) => {
-				variable_or_property_access.to_string_from_buffer(buf, options, depth);
+				variable_or_property_access.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}

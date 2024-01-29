@@ -36,7 +36,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::Return(return_statement) => {
-			let returned = if let Some(ref expression) = return_statement.1 {
+			let returned = if let Some(ref expression) = return_statement.0 {
 				// TODO expecting based of expected return type
 				synthesise_multiple_expression(
 					expression,
@@ -48,7 +48,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				TypeId::UNDEFINED_TYPE
 			};
 
-			let position = return_statement.2.with_source(environment.get_source());
+			let position = return_statement.1.with_source(environment.get_source());
 
 			environment.return_value(returned, position);
 		}
@@ -190,9 +190,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| synthesise_block(&block.0, environment, checking_data),
 			);
 		}
-		Statement::Cursor(_cursor_id, _) => {
-			todo!("Dump environment data somewhere")
-		}
 		Statement::Continue(label, position) => {
 			if let Err(err) = environment.add_continue(label.as_deref(), *position) {
 				checking_data
@@ -209,12 +206,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::Throw(stmt) => {
 			let thrown_value = synthesise_multiple_expression(
-				&stmt.1,
+				&stmt.0,
 				environment,
 				checking_data,
 				TypeId::ANY_TYPE,
 			);
-			let thrown_position = stmt.2.with_source(environment.get_source());
+			let thrown_position = stmt.1.with_source(environment.get_source());
 			environment.throw_value(thrown_value, thrown_position);
 		}
 		Statement::Labelled { position: _, name, statement } => {

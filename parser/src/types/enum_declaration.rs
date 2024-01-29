@@ -31,7 +31,7 @@ impl ASTNode for EnumDeclaration {
 			.map(|Token(_, pos)| pos);
 
 		let is_constant = const_pos.is_some();
-		let enum_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Enum))?;
+		let enum_pos = state.expect_keyword(reader, TSXKeyword::Enum)?;
 		let (name, _) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
 		reader.expect_next(TSXToken::OpenBrace)?;
@@ -59,21 +59,21 @@ impl ASTNode for EnumDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if self.is_constant {
 			buf.push_str("const ");
 		}
 		buf.push_str("enum ");
 		buf.push_str(&self.name);
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push_str("{");
 		for (at_end, member) in self.members.iter().endiate() {
 			if options.pretty {
 				buf.push_new_line();
-				options.add_indent(depth + 1, buf);
+				options.add_indent(local.depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, options, depth);
+			member.to_string_from_buffer(buf, options, local);
 			if !options.pretty && !at_end {
 				buf.push(',');
 			}
@@ -124,14 +124,14 @@ impl ASTNode for EnumMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			EnumMember::Variant { name, value, .. } => {
 				buf.push_str(name);
 				if let Some(value) = value {
 					buf.push_str(if options.pretty { " = " } else { "=" });
-					value.to_string_from_buffer(buf, options, depth);
+					value.to_string_from_buffer(buf, options, local);
 				}
 			}
 		}

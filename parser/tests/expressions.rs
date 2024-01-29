@@ -1,4 +1,5 @@
-use ezno_parser::{ASTNode, Module, SourceId};
+use ezno_parser::{ASTNode, Module};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn arrow_functions() {
@@ -19,8 +20,7 @@ param => {
     "
 	.trim_start();
 
-	let _module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let _module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	// let output = module.to_string(&ToStringOptions::typescript());
 	// assert_eq!(output, input);
@@ -39,8 +39,7 @@ a.a(...expr, y)
     "
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -51,16 +50,15 @@ a.a(...expr, y)
 #[test]
 fn objects() {
 	let input = r"
-({ a: 5 });
-({ ...b, a: 5, ...c, d: 4 });
-({ async e() {
+const a = { a: 5 };
+const b = { ...b, a: 5, ...c, d: 4 };
+const c = { async e() {
 	return 2
-} })
+} }
     "
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 

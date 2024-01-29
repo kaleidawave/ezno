@@ -336,7 +336,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 		.call(
 	// 			// 			&[synthesisedArgument::NonSpread {
 	// 			// 				ty: props,
-	// 			// 				position: Span { start: 0, end: 0, source_id: SourceId::NULL },
+	// 			// 				position: Span { start: 0, end: 0, source_id: source_map::Nullable::NULL },
 	// 			// 			}],
 	// 			// 			None,
 	// 			// 			None,
@@ -370,7 +370,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, _expression_position) => {
-			if matches!(&**expression, Expression::Comment(..)) {
+			if matches!(&**expression, Expression::Comment { .. }) {
 				return TypeId::UNDEFINED_TYPE;
 			}
 

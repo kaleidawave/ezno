@@ -1,7 +1,5 @@
 //! Type subtyping / order / subtype checking.
 
-use source_map::SpanWithSource;
-
 use crate::{
 	context::{Environment, GeneralContext, Logical},
 	types::{
@@ -759,8 +757,10 @@ pub(crate) fn check_satisfies(
 	if expr_ty == TypeId::ERROR_TYPE {
 		false
 	} else {
-		let mut basic_equality =
-			BasicEquality { add_property_restrictions: false, position: SpanWithSource::NULL_SPAN };
+		let mut basic_equality = BasicEquality {
+			add_property_restrictions: false,
+			position: source_map::Nullable::NULL,
+		};
 		let result = type_is_subtype(to_satisfy, expr_ty, &mut basic_equality, environment, types);
 		matches!(result, SubTypeResult::IsSubType)
 	}

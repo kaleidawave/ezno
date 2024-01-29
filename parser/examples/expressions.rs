@@ -1,4 +1,4 @@
-use ezno_parser::{ASTNode, Expression, SourceId};
+use ezno_parser::{ASTNode, Expression};
 
 fn main() {
 	let expressions = [
@@ -8,12 +8,7 @@ fn main() {
 		"console.log(4 * 2, t ? true : `Hi`) == 2 && 4 == 2",
 	];
 	for expression in expressions {
-		let expression = Expression::from_string(
-			expression.to_owned(),
-			Default::default(),
-			SourceId::NULL,
-			None,
-		);
+		let expression = Expression::from_string(expression.to_owned(), Default::default());
 		println!("{expression:#?}");
 	}
 }

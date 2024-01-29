@@ -1,10 +1,10 @@
 use crate::{
 	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
 	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
-	to_string_bracketed, tokens::token_as_identifier, tsx_keywords,
+	to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	GenericTypeConstraint, Keyword, NumberRepresentation, ParseOptions, ParseResult, PropertyKey,
-	Span, TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
+	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
+	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -18,7 +18,7 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
-	pub nominal_keyword: Option<Keyword<tsx_keywords::Nominal>>,
+	pub is_nominal: bool,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
@@ -51,10 +51,12 @@ impl ASTNode for InterfaceDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Interface))?;
+		let start = state.expect_keyword(reader, TSXKeyword::Interface)?;
 
 		#[cfg(feature = "extras")]
-		let nominal_keyword = Keyword::optionally_from_reader(reader);
+		let is_nominal = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
+			.is_some();
 
 		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
 		// 	Some((reader.next().unwrap().1))
@@ -99,7 +101,7 @@ impl ASTNode for InterfaceDeclaration {
 		Ok(InterfaceDeclaration {
 			name,
 			#[cfg(feature = "extras")]
-			nominal_keyword,
+			is_nominal,
 			type_parameters,
 			extends,
 			members,
@@ -111,19 +113,19 @@ impl ASTNode for InterfaceDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if options.include_types {
 			buf.push_str("interface ");
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {
-				to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 			}
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
-					extends.to_string_from_buffer(buf, options, depth);
+					extends.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
 					}
@@ -134,8 +136,8 @@ impl ASTNode for InterfaceDeclaration {
 				buf.push_new_line();
 			}
 			for member in &self.members {
-				options.add_indent(depth + 1, buf);
-				member.to_string_from_buffer(buf, options, depth + 1);
+				options.add_indent(local.depth + 1, buf);
+				member.to_string_from_buffer(buf, options, local.next_level());
 				if options.pretty {
 					buf.push_new_line();
 				}
@@ -211,7 +213,7 @@ pub enum InterfaceMember {
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
-	Comment(String, Span),
+	Comment(String, bool, Span),
 }
 
 #[allow(clippy::similar_names)]
@@ -221,9 +223,7 @@ impl ASTNode for InterfaceMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let readonly_keyword = Keyword::<tsx_keywords::Readonly>::optionally_from_reader(reader);
-
-		let is_readonly = readonly_keyword.is_some();
+		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
 		// This match will early return if not a method
 		let token = &reader.peek().ok_or_else(parse_lexing_error)?.0;
@@ -233,21 +233,18 @@ impl ASTNode for InterfaceMember {
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
 				// let parameters = function_parameters_from_reader(reader, state, options)?;
-				let return_type = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-					reader.next();
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
+				let return_type =
+					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
+						Some(TypeAnnotation::from_reader(reader, state, options)?)
+					} else {
+						None
+					};
 				// TODO parameter.pos can be union'ed with itself
-				let position = readonly_keyword
-					.as_ref()
-					.map_or(&parameters.position, |kw| kw.get_position())
-					.union(
-						return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
-					);
+				let position = readonly_position.as_ref().unwrap_or(&parameters.position).union(
+					return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
+				);
 				Ok(InterfaceMember::Caller {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					return_type,
@@ -260,17 +257,17 @@ impl ASTNode for InterfaceMember {
 					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-				let return_type = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-					reader.next();
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
+				let return_type =
+					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
+						Some(TypeAnnotation::from_reader(reader, state, options)?)
+					} else {
+						None
+					};
 				let position =
 					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
 				Ok(InterfaceMember::Caller {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					type_parameters: Some(type_parameters),
@@ -280,24 +277,26 @@ impl ASTNode for InterfaceMember {
 			// Constructor
 			TSXToken::Keyword(TSXKeyword::New) => {
 				let new_span = reader.next().unwrap().get_span();
-				let type_parameters = if reader
+				let type_parameters = reader
 					.conditional_next(|token| *token == TSXToken::OpenChevron)
 					.is_some()
-				{
-					Some(parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?.0)
-				} else {
-					None
-				};
+					.then(|| parse_bracketed(reader, state, options, None, TSXToken::CloseChevron))
+					.transpose()?
+					.map(|(tp, _)| tp);
 
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
 
-				let return_type =
-					if reader.conditional_next(|token| *token == TSXToken::Colon).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
+				let return_type = if reader
+					.conditional_next(|tok| {
+						options.type_annotations && matches!(tok, TSXToken::Colon)
+					})
+					.is_some()
+				{
+					Some(TypeAnnotation::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
 
 				#[cfg(feature = "extras")]
 				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
@@ -308,11 +307,10 @@ impl ASTNode for InterfaceMember {
 
 				let end = return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
 
-				let position =
-					readonly_keyword.as_ref().map_or(&new_span, |kw| kw.get_position()).union(end);
+				let position = readonly_position.as_ref().unwrap_or(&new_span).union(end);
 
 				Ok(InterfaceMember::Constructor {
-					is_readonly,
+					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
 					#[cfg(feature = "extras")]
@@ -323,8 +321,8 @@ impl ASTNode for InterfaceMember {
 			}
 			token if token.is_comment() => {
 				let token = reader.next().unwrap();
-				if let Ok((comment, span)) = TSXToken::try_into_comment(token) {
-					Ok(InterfaceMember::Comment(comment, span))
+				if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
+					Ok(InterfaceMember::Comment(comment, is_multiline, span))
 				} else {
 					unreachable!()
 				}
@@ -364,9 +362,7 @@ impl ASTNode for InterfaceMember {
 								let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 								PropertyKey::Computed(Box::new(expression), start.union(end))
 							} else {
-								let start_span = readonly_keyword
-									.as_ref()
-									.map_or(&name_span, |kw| kw.get_position());
+								let start_span = readonly_position.as_ref().unwrap_or(&name_span);
 								match reader.next().ok_or_else(parse_lexing_error)? {
 									// Indexed type
 									Token(TSXToken::Colon, _) => {
@@ -378,10 +374,10 @@ impl ASTNode for InterfaceMember {
 											TypeAnnotation::from_reader(reader, state, options)?;
 										return Ok(InterfaceMember::Indexer {
 											name,
+											is_readonly: readonly_position.is_some(),
 											indexer_type,
 											position: start_span.union(return_type.get_position()),
 											return_type,
-											is_readonly,
 										});
 									}
 									Token(TSXToken::Keyword(TSXKeyword::In), _) => {
@@ -431,7 +427,7 @@ impl ASTNode for InterfaceMember {
 										return Ok(InterfaceMember::Rule {
 											parameter: name,
 											optionality,
-											is_readonly,
+											is_readonly: readonly_position.is_some(),
 											matching_type: Box::new(matching_type),
 											rule,
 											output_type: Box::new(output_type),
@@ -459,24 +455,20 @@ impl ASTNode for InterfaceMember {
 						})
 						.transpose()?;
 
-					if let Some((type_parameters, _last_chevron)) = type_parameters {
-						(property_key, Some(type_parameters))
-					} else {
-						(property_key, None)
-					}
+					(property_key, type_parameters.map(|(tp, _)| tp))
 				};
 
-				let start = readonly_keyword.as_ref().map_or_else(
-					|| name.get_position().get_start(),
-					|kw| kw.get_position().get_start(),
-				);
+				let start = readonly_position.as_ref().unwrap_or_else(|| name.get_position());
 
 				// TODO a little weird as only functions can have type parameters:
 				match reader.next().ok_or_else(parse_lexing_error)? {
 					Token(TSXToken::OpenParentheses, _start_pos) => {
 						let parameters =
 							TypeAnnotationFunctionParameters::from_reader_sub_open_parenthesis(
-								reader, state, options, start,
+								reader,
+								state,
+								options,
+								start.get_start(),
 							)?;
 						let mut position = start.union(parameters.position);
 						let return_type = if reader
@@ -556,18 +548,20 @@ impl ASTNode for InterfaceMember {
 					Token(TSXToken::Colon, _) => {
 						let mut type_annotation =
 							TypeAnnotation::from_reader(reader, state, options)?;
-						if is_readonly {
+
+						if readonly_position.is_some() {
 							// TODO positioning:
 							let position = start.union(type_annotation.get_position());
 							type_annotation =
 								TypeAnnotation::Readonly(Box::new(type_annotation), position);
 						}
+						let position = start.union(type_annotation.get_position());
 						Ok(InterfaceMember::Property {
+							position,
 							name,
-							position: start.union(type_annotation.get_position()),
 							type_annotation,
 							is_optional: false,
-							is_readonly,
+							is_readonly: readonly_position.is_some(),
 						})
 					}
 					Token(TSXToken::OptionalMember, _) => {
@@ -577,7 +571,7 @@ impl ASTNode for InterfaceMember {
 							name,
 							type_annotation,
 							is_optional: true,
-							is_readonly,
+							is_readonly: readonly_position.is_some(),
 							position,
 						})
 					}
@@ -599,49 +593,57 @@ impl ASTNode for InterfaceMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Property { name, type_annotation, is_readonly, .. } => {
+			InterfaceMember::Property { name, type_annotation, is_readonly, .. } => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 				buf.push(':');
-				options.add_gap(buf);
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				options.push_gap_optionally(buf);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
-			Self::Method {
-				name, type_parameters, parameters, return_type, is_optional, ..
+			InterfaceMember::Method {
+				name,
+				type_parameters,
+				parameters,
+				return_type,
+				is_optional,
+				..
 			} => {
-				name.to_string_from_buffer(buf, options, depth);
+				name.to_string_from_buffer(buf, options, local);
 				if *is_optional {
 					buf.push('?');
 				}
 				if let Some(type_parameters) = &type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 				}
-				parameters.to_string_from_buffer(buf, options, depth);
+				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
 					buf.push(':');
-					options.add_gap(buf);
-					return_type.to_string_from_buffer(buf, options, depth);
+					options.push_gap_optionally(buf);
+					return_type.to_string_from_buffer(buf, options, local);
 				}
 			}
-			Self::Indexer { name, indexer_type, return_type, is_readonly, .. } => {
+			InterfaceMember::Indexer { name, indexer_type, return_type, is_readonly, .. } => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
 				buf.push('[');
 				buf.push_str(name.as_str());
 				buf.push(':');
-				indexer_type.to_string_from_buffer(buf, options, depth);
+				indexer_type.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 				buf.push(':');
-				options.add_gap(buf);
-				return_type.to_string_from_buffer(buf, options, depth);
+				options.push_gap_optionally(buf);
+				return_type.to_string_from_buffer(buf, options, local);
 			}
-			_ => todo!(),
+			InterfaceMember::Constructor { .. } => todo!(),
+			InterfaceMember::Caller { .. } => todo!(),
+			InterfaceMember::Rule { .. } => todo!(),
+			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
 		}
 	}
 

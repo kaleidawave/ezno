@@ -1,27 +1,30 @@
-use std::{fmt::Debug, mem};
+use std::fmt::Debug;
 
 use crate::{
-	errors::parse_lexing_error, property_key::PublicOrPrivate, tsx_keywords, visiting::Visitable,
+	errors::parse_lexing_error, functions::HeadingAndPosition, property_key::PublicOrPrivate,
+	visiting::Visitable,
 };
 use source_map::Span;
-use tokenizer_lib::{Token, TokenReader};
+use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
 use crate::{
 	functions::{FunctionBased, MethodHeader},
-	ASTNode, Block, Expression, FunctionBase, Keyword, ParseOptions, ParseResult, PropertyKey,
-	TSXKeyword, TSXToken, TypeAnnotation, WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
+	TSXToken, TypeAnnotation, WithComment,
 };
+
+pub type IsStatic = bool;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
-	Method(Option<Keyword<tsx_keywords::Static>>, ClassFunction),
-	Property(Option<Keyword<tsx_keywords::Static>>, ClassProperty),
+	Method(IsStatic, ClassFunction),
+	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
-	Comment(String, Span),
+	Comment(String, bool, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,7 +39,7 @@ pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ClassProperty {
-	pub readonly_keyword: Option<Keyword<tsx_keywords::Readonly>>,
+	pub is_readonly: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub value: Option<Box<Expression>>,
@@ -50,7 +53,7 @@ impl ASTNode for ClassMember {
 			Self::Method(_, mtd) => mtd.get_position(),
 			Self::Property(_, prop) => &prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
-			Self::Comment(_, pos) => pos,
+			Self::Comment(.., pos) => pos,
 		}
 	}
 
@@ -61,10 +64,9 @@ impl ASTNode for ClassMember {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		if reader.peek().map_or(false, |t| t.0.is_comment()) {
-			let Ok((comment, span)) = TSXToken::try_into_comment(reader.next().unwrap()) else {
-				unreachable!()
-			};
-			return Ok(Self::Comment(comment, span));
+			let (comment, is_multiline, span) =
+				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+			return Ok(Self::Comment(comment, is_multiline, span));
 		}
 
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
@@ -73,78 +75,54 @@ impl ASTNode for ClassMember {
 		}
 
 		let is_static = reader
-			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Static))
-			.map(|token| Keyword::new(token.get_span()));
+			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Static)))
+			.is_some();
 
 		if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, options)?));
 		}
 
-		let readonly_keyword = reader
-			.conditional_next(|tok| *tok == TSXToken::Keyword(TSXKeyword::Readonly))
-			.map(|token| Keyword::new(token.get_span()));
+		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
-		let mut header = MethodHeader::from_reader(reader);
+		// TODO not great
+		let start = reader.peek().unwrap().1;
 
-		// Catch for named get or set :(
-		let is_named_get_set_or_async = matches!(
-			(reader.peek(), &header),
-			(
-				Some(Token(
-					TSXToken::OpenParentheses
-						| TSXToken::OpenChevron | TSXToken::Colon
-						| TSXToken::Comma | TSXToken::CloseBrace,
-					_
-				)),
-				MethodHeader::Get(..)
-					| MethodHeader::Set(..)
-					| MethodHeader::Regular { r#async: Some(_), .. }
-			)
-		);
-
-		let key = if is_named_get_set_or_async {
-			// Backtrack allowing `get` to be a key
-			let (name, position) = match mem::take(&mut header) {
-				MethodHeader::Get(kw) => ("get", kw.1),
-				MethodHeader::Set(kw) => ("set", kw.1),
-				MethodHeader::Regular { r#async: Some(kw), .. } => ("async", kw.1),
-				MethodHeader::Regular { .. } => unreachable!(),
-			};
-			WithComment::None(PropertyKey::Ident(name.to_owned(), position, false))
-		} else {
-			WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?
-		};
+		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
 		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses, _)) if readonly_keyword.is_none() => {
-				let function =
-					ClassFunction::from_reader_with_config(reader, state, options, header, key)?;
+			Some(Token(TSXToken::OpenParentheses, _)) if readonly_position.is_none() => {
+				let function = ClassFunction::from_reader_with_config(
+					reader,
+					state,
+					options,
+					(Some(start), header),
+					key,
+				)?;
 				Ok(ClassMember::Method(is_static, function))
 			}
 			Some(Token(token, _)) => {
-				if header.is_some() {
+				if !header.is_no_modifiers() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
-				let member_type: Option<TypeAnnotation> = match token {
-					TSXToken::Colon => {
-						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-						Some(type_annotation)
-					}
-					_ => None,
+				let member_type: Option<TypeAnnotation> = if let TSXToken::Colon = token {
+					reader.next();
+					let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+					Some(type_annotation)
+				} else {
+					None
 				};
-				let member_expression: Option<Expression> = match reader.peek() {
-					Some(Token(TSXToken::Assign, _)) => {
+				let member_expression: Option<Expression> =
+					if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
 						reader.next();
 						let expression = Expression::from_reader(reader, state, options)?;
 						Some(expression)
-					}
-					_ => None,
-				};
+					} else {
+						None
+					};
 				Ok(Self::Property(
 					is_static,
 					ClassProperty {
-						readonly_keyword,
+						is_readonly: readonly_position.is_some(),
 						position: *key.get_position(),
 						key,
 						type_annotation: member_type,
@@ -160,47 +138,53 @@ impl ASTNode for ClassMember {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			Self::Property(
 				is_static,
-				ClassProperty { readonly_keyword, key, type_annotation, value, position: _ },
+				ClassProperty { is_readonly, key, type_annotation, value, position: _ },
 			) => {
-				if is_static.is_some() {
+				if *is_static {
 					buf.push_str("static ");
 				}
-				if readonly_keyword.is_some() {
+				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				key.to_string_from_buffer(buf, options, depth);
+				key.to_string_from_buffer(buf, options, local);
 				if let (true, Some(type_annotation)) = (options.include_types, type_annotation) {
 					buf.push_str(": ");
-					type_annotation.to_string_from_buffer(buf, options, depth);
+					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 				if let Some(value) = value {
 					buf.push_str(if options.pretty { " = " } else { "=" });
-					value.to_string_from_buffer(buf, options, depth);
+					value.to_string_from_buffer(buf, options, local);
 				}
 			}
 			Self::Method(is_static, function) => {
-				if is_static.is_some() {
+				if *is_static {
 					buf.push_str("static ");
 				}
-				function.to_string_from_buffer(buf, options, depth + 1);
+				function.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Self::Constructor(constructor) => {
-				constructor.to_string_from_buffer(buf, options, depth + 1);
+				constructor.to_string_from_buffer(buf, options, local.next_level());
 			}
 			Self::StaticBlock(block) => {
 				buf.push_str("static ");
-				block.to_string_from_buffer(buf, options, depth + 1);
+				block.to_string_from_buffer(buf, options, local.next_level());
 			}
-			Self::Comment(c, _) => {
+			Self::Comment(c, is_multiline, _) => {
 				if options.should_add_comment(c.starts_with('.')) {
-					buf.push_str("/*");
-					buf.push_str(c);
-					buf.push_str("*/");
+					if *is_multiline {
+						buf.push_str("/*");
+						buf.push_str(c);
+						buf.push_str("*/");
+					} else {
+						buf.push_str("//");
+						buf.push_str(c);
+						buf.push_new_line();
+					}
 				}
 			}
 		}
@@ -212,7 +196,7 @@ impl ClassFunction {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		get_set_generator: MethodHeader,
+		get_set_generator: (Option<TokenStart>, MethodHeader),
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
 		FunctionBase::from_reader_with_header_and_name(
@@ -235,10 +219,12 @@ impl FunctionBased for ClassFunctionBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
+		// TODO not great
+		let start = reader.peek().unwrap().1;
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
-		Ok((header, name))
+		Ok((((!header.is_no_modifiers()).then_some(start), header), name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -246,14 +232,10 @@ impl FunctionBased for ClassFunctionBase {
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		header.to_string_from_buffer(buf);
-		name.to_string_from_buffer(buf, options, depth);
-	}
-
-	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		header.get_start()
+		name.to_string_from_buffer(buf, options, local);
 	}
 
 	fn visit_name<TData>(
@@ -286,7 +268,7 @@ impl FunctionBased for ClassFunctionBase {
 }
 
 impl FunctionBased for ClassConstructorBase {
-	type Header = Keyword<tsx_keywords::Constructor>;
+	type Header = ();
 	type Name = ();
 	type Body = Block;
 
@@ -296,10 +278,11 @@ impl FunctionBased for ClassConstructorBase {
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
+		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)> {
-		Ok((Keyword::from_reader(reader)?, ()))
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
+		let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
+		Ok(((Some(start), ()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -307,13 +290,9 @@ impl FunctionBased for ClassConstructorBase {
 		_header: &Self::Header,
 		_name: &Self::Name,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("constructor");
-	}
-
-	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		Some(header.get_position().get_start())
 	}
 
 	fn visit_name<TData>(

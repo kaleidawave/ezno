@@ -46,7 +46,8 @@ impl ASTNode for IfStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start_span = reader.expect_next(TSXToken::Keyword(TSXKeyword::If))?;
+		let start = state.expect_keyword(reader, TSXKeyword::If)?;
+
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -74,7 +75,7 @@ impl ASTNode for IfStatement {
 				break;
 			}
 		}
-		let position = start_span.union(inner.get_position());
+		let position = start.union(inner.get_position());
 		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
 	}
 
@@ -86,25 +87,25 @@ impl ASTNode for IfStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("if");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		options.push_gap_optionally(buf);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 		if !options.pretty
 			&& matches!(self.inner, BlockOrSingleStatement::SingleStatement(_))
-			&& (!self.else_conditions.is_empty() || self.trailing_else.is_some())
+			&& (self.else_conditions.is_empty() || self.trailing_else.is_none())
 		{
 			buf.push(';');
 		}
 
 		for (at_end, else_statement) in self.else_conditions.iter().endiate() {
-			options.add_gap(buf);
-			else_statement.to_string_from_buffer(buf, options, depth);
+			options.push_gap_optionally(buf);
+			else_statement.to_string_from_buffer(buf, options, local);
 			if !options.pretty
 				&& matches!(else_statement.inner, BlockOrSingleStatement::SingleStatement(_))
 				&& at_end
@@ -113,8 +114,8 @@ impl ASTNode for IfStatement {
 			}
 		}
 		if let Some(else_statement) = &self.trailing_else {
-			options.add_gap(buf);
-			else_statement.to_string_from_buffer(buf, options, depth);
+			options.push_gap_optionally(buf);
+			else_statement.to_string_from_buffer(buf, options, local);
 		}
 	}
 }
@@ -125,8 +126,8 @@ impl ASTNode for ConditionalElseStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let else_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Else))?;
-		Self::from_reader_sub_without_else(reader, state, options, else_position)
+		let else_start = state.expect_keyword(reader, TSXKeyword::Else)?;
+		Self::from_reader_sub_without_else(reader, state, options, else_start)
 	}
 
 	fn get_position(&self) -> &Span {
@@ -137,15 +138,15 @@ impl ASTNode for ConditionalElseStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("else if");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		options.push_gap_optionally(buf);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
 
@@ -156,7 +157,7 @@ impl ConditionalElseStatement {
 		options: &ParseOptions,
 		else_position: TokenStart,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::If))?;
+		let _ = state.expect_keyword(reader, TSXKeyword::If)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -175,7 +176,7 @@ impl ASTNode for UnconditionalElseStatement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let else_position = reader.expect_next(TSXToken::Keyword(TSXKeyword::Else))?;
+		let else_position = state.expect_keyword(reader, TSXKeyword::Else)?;
 		Self::from_reader_sub_without_else(reader, state, options, else_position)
 	}
 
@@ -187,14 +188,14 @@ impl ASTNode for UnconditionalElseStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("else");
 		if !options.pretty && matches!(self.inner, BlockOrSingleStatement::SingleStatement(_)) {
 			buf.push(' ');
 		}
-		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		options.push_gap_optionally(buf);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
 

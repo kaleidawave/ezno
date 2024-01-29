@@ -94,6 +94,7 @@ jobs:
     # Important that everything here works in all the above OSes!
     steps:
       - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v3
         with:
           path: ${{ env.CACHE_PATHS }}

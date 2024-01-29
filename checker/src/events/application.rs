@@ -231,7 +231,7 @@ pub(crate) fn apply_event(
 							this_value: Default::default(),
 							call_site_type_arguments: None,
 							// TODO:
-							call_site: source_map::SpanWithSource::NULL_SPAN,
+							call_site: source_map::Nullable::NULL,
 						},
 						environment,
 						target,

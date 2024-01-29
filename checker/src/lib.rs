@@ -151,7 +151,7 @@ pub trait ASTImplementation: Sized {
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
-	fn parse_options(is_js: bool, parse_comments: bool) -> Self::ParseOptions;
+	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 }
@@ -197,7 +197,7 @@ pub struct VariableId(pub SourceId, pub u32);
 pub struct FunctionId(pub SourceId, pub u32);
 
 impl FunctionId {
-	pub const AUTO_CONSTRUCTOR: Self = FunctionId(SourceId::NULL, 0);
+	pub const AUTO_CONSTRUCTOR: Self = FunctionId(source_map::Nullable::NULL, 0);
 }
 
 #[derive(Debug)]
@@ -289,26 +289,9 @@ where
 			} else {
 				let content = (checking_data.modules.file_reader)(full_importer);
 				if let Some(content) = content {
-					let source = checking_data
-						.modules
-						.files
-						.new_source_id(full_importer.to_path_buf(), content.clone());
+					let (source, module) = get_source(checking_data, full_importer, content);
 
-					let is_js = full_importer
-						.extension()
-						.and_then(|s| s.to_str())
-						.map_or(false, |s| s.starts_with("ts"));
-
-					let parse_options =
-						A::parse_options(is_js, checking_data.options.parse_comments);
-
-					let module_from_string = A::module_from_string(
-						source,
-						content,
-						parse_options,
-						&mut checking_data.modules.parser_requirements,
-					);
-					match module_from_string {
+					match module {
 						Ok(module) => {
 							let new_module_context = environment.get_root().new_module_context(
 								source,
@@ -419,11 +402,12 @@ where
 }
 
 /// Used for transformers and other things after checking!!!!
-pub struct PostCheckData<A: crate::ASTImplementation> {
+pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
+	pub diagnostics: crate::DiagnosticsContainer,
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -433,7 +417,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	resolver: T,
 	options: Option<TypeCheckOptions>,
 	parser_requirements: A::ParserRequirements,
-) -> (crate::DiagnosticsContainer, Result<PostCheckData<A>, MapFileStore<WithPathMap>>) {
+) -> CheckOutput<A> {
 	let mut checking_data = CheckingData::<T, A>::new(
 		options.unwrap_or_default(),
 		&resolver,
@@ -446,26 +430,20 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 	if checking_data.diagnostics_container.has_error() {
-		return (checking_data.diagnostics_container, Err(checking_data.modules.files));
+		return CheckOutput {
+			type_mappings: checking_data.type_mappings,
+			types: checking_data.types,
+			module_contents: checking_data.modules.files,
+			modules: Default::default(),
+			diagnostics: checking_data.diagnostics_container,
+		};
 	}
 
 	for point in &entry_points {
 		let entry_content = (checking_data.modules.file_reader)(point);
 		if let Some(content) = entry_content {
-			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
+			let (source, module) = get_source(&mut checking_data, point, content);
 
-			// TODO abstract using similar to import logic
-			let is_js =
-				point.extension().and_then(|s| s.to_str()).map_or(false, |s| s.starts_with("ts"));
-
-			let parse_options = A::parse_options(is_js, checking_data.options.parse_comments);
-
-			let module = A::module_from_string(
-				source,
-				content,
-				parse_options,
-				&mut checking_data.modules.parser_requirements,
-			);
 			match module {
 				Ok(module) => {
 					root.new_module_context(source, module, &mut checking_data);
@@ -491,17 +469,42 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		unimplemented_items: _,
 	} = checking_data;
 
-	if diagnostics_container.has_error() {
-		(diagnostics_container, Err(modules.files))
-	} else {
-		let post_check_data = Ok(PostCheckData {
-			type_mappings,
-			types,
-			module_contents: modules.files,
-			modules: modules.synthesised_modules,
-		});
-		(diagnostics_container, post_check_data)
+	CheckOutput {
+		type_mappings,
+		types,
+		module_contents: modules.files,
+		modules: modules.synthesised_modules,
+		diagnostics: diagnostics_container,
 	}
+}
+
+fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	checking_data: &mut CheckingData<T, A>,
+	path: &Path,
+	content: String,
+) -> (
+	SourceId,
+	Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError>,
+) {
+	let source = checking_data.modules.files.new_source_id(path.to_path_buf(), content.clone());
+
+	// TODO abstract using similar to import logic
+	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
+
+	let parse_options = A::parse_options(
+		is_js,
+		checking_data.options.parse_comments,
+		checking_data.options.lsp_mode,
+	);
+
+	let module = A::module_from_string(
+		source,
+		content,
+		parse_options,
+		&mut checking_data.modules.parser_requirements,
+	);
+
+	(source, module)
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -580,12 +583,5 @@ impl TypeCombinable for TypeId {
 
 	fn default() -> Self {
 		TypeId::UNDEFINED_TYPE
-	}
-}
-
-impl<A: crate::ASTImplementation> PostCheckData<A> {
-	#[must_use]
-	pub fn is_function_called(&self, function_id: FunctionId) -> bool {
-		self.types.called_functions.contains(&function_id)
 	}
 }

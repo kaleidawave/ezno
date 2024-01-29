@@ -1,8 +1,7 @@
 use ezno_parser::{
 	statements::UnconditionalElseStatement,
 	visiting::{BlockItemMut, Chain, VisitOptions, VisitorMut, VisitorsMut},
-	ASTNode, Expression, Module, SourceId, Span, Statement, StatementOrDeclaration,
-	ToStringOptions,
+	ASTNode, Expression, Module, Statement, StatementOrDeclaration, ToStringOptions,
 };
 use pretty_assertions::assert_eq;
 
@@ -17,8 +16,7 @@ fn visiting() {
         }
         "#;
 
-	let mut module =
-		Module::from_string(input.to_owned(), Default::default(), SourceId::NULL, None).unwrap();
+	let mut module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
 	let mut visitors = VisitorsMut {
 		expression_visitors_mut: vec![Box::new(MakeStringsUppercase)],
@@ -26,7 +24,7 @@ fn visiting() {
 		variable_visitors_mut: Default::default(),
 		block_visitors_mut: Default::default(),
 	};
-	module.visit_mut(&mut visitors, &mut (), &VisitOptions::default());
+	module.visit_mut(&mut visitors, &mut (), &VisitOptions::default(), source_map::Nullable::NULL);
 
 	let output = module.to_string(&ToStringOptions::minified());
 
@@ -56,17 +54,15 @@ impl VisitorMut<BlockItemMut<'_>, ()> for AddElseClause {
 		)) = item
 		{
 			if if_statement.trailing_else.is_none() {
-				let inner = Statement::from_string(
-					"console.log(\"else!\")".to_owned(),
-					Default::default(),
-					SourceId::NULL,
-					None,
-				)
-				.unwrap()
-				.into();
+				let inner =
+					Statement::from_string("console.log(\"else!\")".to_owned(), Default::default())
+						.unwrap()
+						.into();
 
-				if_statement.trailing_else =
-					Some(UnconditionalElseStatement { inner, position: Span::NULL_SPAN });
+				if_statement.trailing_else = Some(UnconditionalElseStatement {
+					inner,
+					position: source_map::Nullable::NULL,
+				});
 			}
 		}
 	}

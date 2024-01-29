@@ -1,6 +1,6 @@
 use crate::{
 	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
-	ASTNode, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ASTNode, ListItem, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
 };
 use tokenizer_lib::{Token, TokenReader};
 
@@ -42,11 +42,11 @@ impl ASTNode for TypeDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str(&self.name);
 		if let Some(ref type_parameters) = self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
 	}
 
@@ -81,6 +81,8 @@ impl GenericTypeConstraint {
 	}
 }
 
+impl ListItem for GenericTypeConstraint {}
+
 impl ASTNode for GenericTypeConstraint {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -96,8 +98,9 @@ impl ASTNode for GenericTypeConstraint {
 				let key_of = reader
 					.conditional_next(|token| *token == TSXToken::Keyword(TSXKeyword::KeyOf))
 					.is_some();
-				let extends_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
+				let extends_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, false, false, None,
+				)?;
 				if key_of {
 					Ok(Self::ExtendsKeyOf(name, extends_type))
 				} else {
@@ -106,8 +109,9 @@ impl ASTNode for GenericTypeConstraint {
 			}
 			Some(Token(TSXToken::Assign, _)) => {
 				reader.next();
-				let default_type =
-					TypeAnnotation::from_reader_with_config(reader, state, options, false, false)?;
+				let default_type = TypeAnnotation::from_reader_with_config(
+					reader, state, options, false, false, None,
+				)?;
 				Ok(Self::Parameter { name, default: Some(default_type) })
 			}
 			_ => Ok(Self::Parameter { name, default: None }),
@@ -118,32 +122,32 @@ impl ASTNode for GenericTypeConstraint {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			GenericTypeConstraint::Parameter { name, default } => {
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, options, depth);
+					default.to_string_from_buffer(buf, options, local);
 				}
 			}
 			GenericTypeConstraint::Extends(name, extends) => {
 				buf.push_str(name);
 				buf.push_str(" extends ");
-				extends.to_string_from_buffer(buf, options, depth);
+				extends.to_string_from_buffer(buf, options, local);
 			}
 			GenericTypeConstraint::ExtendsKeyOf(name, extends_key_of) => {
 				buf.push_str(name);
 				buf.push_str(" extends keyof ");
-				extends_key_of.to_string_from_buffer(buf, options, depth);
+				extends_key_of.to_string_from_buffer(buf, options, local);
 			}
 			GenericTypeConstraint::Spread { name, default } => {
 				buf.push_str("...");
 				buf.push_str(name);
 				if let Some(default) = default {
 					buf.push('=');
-					default.to_string_from_buffer(buf, options, depth);
+					default.to_string_from_buffer(buf, options, local);
 				}
 			}
 		}

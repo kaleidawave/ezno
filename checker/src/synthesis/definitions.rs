@@ -23,7 +23,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	};
 
 	let mut idx_to_types = HashMap::new();
-	let source = definition.source;
+	// TODO NULL
+	let source = source_map::Nullable::NULL;
 	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
@@ -33,7 +34,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			TypeDefinitionModuleDeclaration::Interface(interface) => {
 				let ty = env.new_interface(
 					&interface.on.name,
-					interface.on.nominal_keyword.is_some(),
+					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
 					interface.on.position.with_source(source),
@@ -240,14 +241,7 @@ pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 
 	let definition_file = if let Some(source) = handler(file) {
 		let now = std::time::Instant::now();
-		// TODO
-		let cursors = Default::default();
-		let from_string = parser::TypeDefinitionModule::from_string(
-			source,
-			Default::default(),
-			source_map::SourceId::NULL,
-			cursors,
-		);
+		let from_string = parser::TypeDefinitionModule::from_string(source, Default::default());
 
 		println!("Parsing {:?}", now.elapsed());
 		match from_string {
@@ -274,7 +268,7 @@ pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
 // TODO temp
 // pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
 // 	let now = std::time::Instant::now();
-// 	let ctx = RootContext::deserialize(file, source_map::SourceId::NULL).unwrap();
+// 	let ctx = RootContext::deserialize(file, source_map::source_map::Nullable::NULL).unwrap();
 // 	println!("From binary {:?}", now.elapsed());
 // 	ctx
 // }

@@ -76,37 +76,37 @@ impl ASTNode for FunctionParameters {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
 		buf.push('(');
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()
 		{
-			// decorators_to_string_from_buffer(decorators, buf, options, depth);
-			name.to_string_from_buffer(buf, options, depth);
+			// decorators_to_string_from_buffer(decorators, buf, options, local);
+			name.to_string_from_buffer(buf, options, local);
 			if let (true, Some(ref type_annotation)) = (options.include_types, type_annotation) {
 				if let Some(ParameterData::Optional) = additionally {
 					buf.push('?');
 				}
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				value.to_string_from_buffer(buf, options, depth);
+				value.to_string_from_buffer(buf, options, local);
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
-				options.add_gap(buf);
+				options.push_gap_optionally(buf);
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {
 			buf.push_str("...");
-			buf.push_str(rest_parameter.name.as_str());
+			rest_parameter.name.to_string_from_buffer(buf, options, local);
 			if let Some(ref type_annotation) = rest_parameter.type_annotation {
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, depth);
+				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 		}
 		buf.push(')');
@@ -139,12 +139,13 @@ impl FunctionParameters {
 					reader.next().ok_or_else(parse_lexing_error)?,
 					"spread function parameter",
 				)?;
-				let type_annotation =
-					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
+				let type_annotation = if options.type_annotations
+					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
+				{
+					Some(TypeAnnotation::from_reader(reader, state, options)?)
+				} else {
+					None
+				};
 
 				let position = spread_pos
 					.union(type_annotation.as_ref().map_or(&name_pos, ASTNode::get_position));
@@ -156,14 +157,18 @@ impl FunctionParameters {
 				}));
 				break;
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::This))
+				options.type_annotations
+					&& parameters.is_empty()
+					&& matches!(tok, TSXToken::Keyword(TSXKeyword::This))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 				let position = start.union(type_annotation.get_position());
 				this_type = Some((type_annotation, position));
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				parameters.is_empty() && matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
+				options.type_annotations
+					&& parameters.is_empty()
+					&& matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
 				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
@@ -175,12 +180,12 @@ impl FunctionParameters {
 				)?;
 
 				let (is_optional, type_annotation) = match reader.peek() {
-					Some(Token(TSXToken::Colon, _)) => {
+					Some(Token(TSXToken::Colon, _)) if options.type_annotations => {
 						reader.next();
 						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(false, Some(type_annotation))
 					}
-					Some(Token(TSXToken::OptionalMember, _)) => {
+					Some(Token(TSXToken::OptionalMember, _)) if options.type_annotations => {
 						reader.next();
 						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						(true, Some(type_annotation))

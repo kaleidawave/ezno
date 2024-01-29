@@ -4,7 +4,6 @@
 
 use derive_finite_automaton::FiniteAutomataConstructor;
 use derive_partial_eq_extras::PartialEqExtras;
-use enum_variant_type::EnumVariantType;
 use enum_variants_strings::EnumVariantsStrings;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token};
@@ -165,22 +164,20 @@ pub enum TSXToken {
     #[cfg(feature = "extras")]
     PipeOperator,
 
-    /// Special cursor marker
-    Cursor(crate::EmptyCursorId),
-
     EOS
 }
 
 impl tokenizer_lib::TokenTrait for TSXToken {
 	fn is_skippable(&self) -> bool {
-		matches!(self, TSXToken::Cursor(_))
+		// TODO is this correct?
+		self.is_comment()
 	}
 }
 
 impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 	fn length(&self) -> u32 {
 		match self {
-			TSXToken::Keyword(kw) => kw.to_str().len() as u32,
+			TSXToken::Keyword(kw) => kw.length(),
 
 			TSXToken::JSXClosingTagName(lit)
 			| TSXToken::TemplateLiteralChunk(lit)
@@ -277,12 +274,11 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
-			// TODO
+			// Marker nodes with no length
 			TSXToken::JSXClosingTagStart
 			| TSXToken::JSXSelfClosingTag
 			| TSXToken::JSXContentLineBreak
-			| TSXToken::EOS
-			| TSXToken::Cursor(_) => 0,
+			| TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
 			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
@@ -294,11 +290,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 impl Eq for TSXToken {}
 
-pub trait TSXKeywordNode: Into<TSXKeyword> + Copy + Default {}
-
-#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, EnumVariantType)]
+#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, Clone, Copy)]
 #[enum_variants_strings_transform(transform = "lower_case")]
-#[evt(module = "tsx_keywords", implement_marker_traits(TSXKeywordNode), derive(Clone, Copy, PartialEq, Eq, Debug, Default))]
 #[rustfmt::skip]
 pub enum TSXKeyword {
     Const, Var, Let,
@@ -342,7 +335,7 @@ pub enum TSXKeyword {
 
 impl TSXKeyword {
 	#[cfg(feature = "extras")]
-	pub(crate) fn is_special_function_header(&self) -> bool {
+	pub(crate) fn is_special_function_header(self) -> bool {
 		matches!(self, TSXKeyword::Worker | TSXKeyword::Server | TSXKeyword::Generator)
 	}
 
@@ -351,25 +344,12 @@ impl TSXKeyword {
 		false
 	}
 
-	pub(crate) fn is_in_function_header(&self) -> bool {
+	pub(crate) fn is_in_function_header(self) -> bool {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
-}
 
-impl std::fmt::Display for TSXKeyword {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		std::fmt::Debug::fmt(&self, f)
-	}
-}
-
-impl std::fmt::Display for TSXToken {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			TSXToken::Keyword(kw) => std::fmt::Debug::fmt(kw, f),
-			TSXToken::NumberLiteral(num) => std::fmt::Display::fmt(num, f),
-			TSXToken::Identifier(value) => std::fmt::Display::fmt(value, f),
-			_ => std::fmt::Debug::fmt(&self, f),
-		}
+	pub(crate) fn length(self) -> u32 {
+		self.to_str().len() as u32
 	}
 }
 
@@ -379,15 +359,16 @@ impl TSXToken {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
 
+	/// Returns `(*content*, *is_multiline*, *position*)`
 	pub fn try_into_comment(
 		token: Token<TSXToken, TokenStart>,
-	) -> Result<(String, Span), Token<TSXToken, TokenStart>> {
+	) -> Result<(String, bool, Span), Token<TSXToken, TokenStart>> {
 		if let Token(TSXToken::MultiLineComment(c), d) = token {
 			let len = c.len();
-			Ok((c, d.with_length(len + 4)))
+			Ok((c, true, d.with_length(len + 4)))
 		} else if let Token(TSXToken::Comment(c), d) = token {
 			let len = c.len();
-			Ok((c, d.with_length(len + 2)))
+			Ok((c, false, d.with_length(len + 2)))
 		} else {
 			Err(token)
 		}
@@ -398,8 +379,7 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw)
-				| TSXToken::Assign
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
 				| TSXToken::Arrow
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
@@ -411,7 +391,11 @@ impl TSXToken {
 				| TSXToken::LogicalOr
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon
-		)
+				| TSXToken::Multiply
+				| TSXToken::Add
+				| TSXToken::Subtract
+				| TSXToken::Divide
+		) || self.is_assignment()
 	}
 
 	/// Returns a keyword token else an identifier literal
@@ -425,6 +409,49 @@ impl TSXToken {
 
 	pub(crate) fn is_symbol(&self) -> bool {
 		!matches!(self, TSXToken::Keyword(_) | TSXToken::Identifier(..))
+	}
+
+	pub(crate) fn is_statement_or_declaration_start(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Keyword(
+				TSXKeyword::Function
+					| TSXKeyword::If | TSXKeyword::For
+					| TSXKeyword::While | TSXKeyword::Const
+					| TSXKeyword::Let | TSXKeyword::Break
+					| TSXKeyword::Import | TSXKeyword::Export
+			)
+		)
+	}
+
+	pub(crate) fn is_expression_delimiter(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Comma
+				| TSXToken::SemiColon
+				| TSXToken::Colon
+				| TSXToken::LogicalOr
+				| TSXToken::LogicalAnd
+				| TSXToken::CloseBrace
+				| TSXToken::CloseParentheses
+				| TSXToken::CloseBracket
+		) || self.is_assignment()
+	}
+
+	pub(crate) fn is_assignment(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Assign
+				| TSXToken::MultiplyAssign
+				| TSXToken::AddAssign
+				| TSXToken::SubtractAssign
+				| TSXToken::DivideAssign
+				| TSXToken::ModuloAssign
+				| TSXToken::BitwiseOrAssign
+				| TSXToken::BitwiseAndAssign
+				| TSXToken::LogicalOrAssign
+				| TSXToken::LogicalAndAssign
+		)
 	}
 }
 

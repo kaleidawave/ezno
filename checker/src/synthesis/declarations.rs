@@ -22,11 +22,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		VariableDeclaration::LetDeclaration {
-			declarations,
-			keyword: parser::Keyword(_, _position),
-			..
-		} => {
+		VariableDeclaration::LetDeclaration { declarations, .. } => {
 			for variable_declaration in declarations {
 				let exported = exported.then(|| {
 					let restriction = checking_data

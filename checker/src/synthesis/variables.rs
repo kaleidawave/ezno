@@ -46,7 +46,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 					&mut checking_data.diagnostics_container,
 				);
 			}
-			parser::VariableIdentifier::Cursor(..) => todo!(),
+			parser::VariableIdentifier::Marker(..) => todo!(),
 		}
 	}
 
@@ -56,8 +56,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 		}
 		parser::VariableField::Array(items, _) => {
 			for (idx, field) in items.iter().enumerate() {
-				match field {
-					ArrayDestructuringField::Spread(_pos, variable) => {
+				match field.get_ast_ref() {
+					ArrayDestructuringField::Spread(variable, _pos) => {
 						register_variable_identifier(
 							variable,
 							environment,
@@ -80,7 +80,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 							checking_data,
 							*name.get_position(),
 						);
-						register_variable(name.get_ast_ref(), environment, checking_data, argument);
+						register_variable(name, environment, checking_data, argument);
 					}
 					ArrayDestructuringField::None => {}
 				}
@@ -90,7 +90,11 @@ pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKi
 			for field in items {
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, ..) => {
-						let key = PropertyKey::String(Cow::Borrowed(variable.as_str()));
+						let name = match variable {
+							VariableIdentifier::Standard(ref name, _) => name,
+							VariableIdentifier::Marker(_, _) => "?",
+						};
+						let key = PropertyKey::String(Cow::Borrowed(name));
 						let argument = get_new_register_argument_under(
 							&argument,
 							key,
@@ -211,7 +215,11 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				if let crate::Scope::Module { ref mut exported, .. } =
 					environment.context_type.scope
 				{
-					exported.named.push((name.as_str().to_owned(), (id, mutability)));
+					let name = match name {
+						VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+						VariableIdentifier::Marker(_, _) => "?".to_owned(),
+					};
+					exported.named.push((name, (id, mutability)));
 				} else {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::NonTopLevelExport(
@@ -223,7 +231,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 		}
 		VariableField::Array(items, _) => {
 			for (idx, item) in items.iter().enumerate() {
-				match item {
+				match item.get_ast_ref() {
 					ArrayDestructuringField::Spread(_, _) => todo!(),
 					ArrayDestructuringField::Name(variable_field, _) => {
 						let idx = PropertyKey::from_usize(idx);
@@ -239,7 +247,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						if let Some((_, value)) = value {
 							assign_to_fields(
-								variable_field.get_ast_ref(),
+								variable_field,
 								environment,
 								checking_data,
 								value,
@@ -265,7 +273,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(name, _) => {
 								crate::types::properties::PropertyKey::String(Cow::Borrowed(name))
 							}
-							VariableIdentifier::Cursor(..) => todo!(),
+							VariableIdentifier::Marker(..) => todo!(),
 						};
 
 						// TODO if LHS = undefined ...? conditional

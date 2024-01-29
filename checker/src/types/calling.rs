@@ -652,7 +652,7 @@ impl FunctionType {
 			type_arguments: map_vec::Map::new(),
 			type_restrictions: local_type_argument_as_restrictions,
 			locally_held_functions: map_vec::Map::new(),
-			argument_position_and_parameter_idx: (SpanWithSource::NULL_SPAN, 0),
+			argument_position_and_parameter_idx: (source_map::Nullable::NULL, 0),
 		};
 
 		match self.behavior {
@@ -670,7 +670,7 @@ impl FunctionType {
 				// TODO checking
 				seeding_context
 					.type_arguments
-					.insert(free_this_id, vec![(value_of_this, SpanWithSource::NULL_SPAN, 0)]);
+					.insert(free_this_id, vec![(value_of_this, source_map::Nullable::NULL, 0)]);
 			}
 			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
 				match called_with_new {
@@ -684,7 +684,7 @@ impl FunctionType {
 						seeding_context.type_arguments.insert(
 							// TODO
 							free_this_id,
-							vec![(value_of_this, SpanWithSource::NULL_SPAN, 0)],
+							vec![(value_of_this, source_map::Nullable::NULL, 0)],
 						);
 					}
 					CalledWithNew::SpecialSuperCall { this_type: _ } => todo!(),
@@ -694,7 +694,7 @@ impl FunctionType {
 
 						seeding_context.type_arguments.insert(
 							free_this_id,
-							vec![(value_of_this, SpanWithSource::NULL_SPAN, 0)],
+							vec![(value_of_this, source_map::Nullable::NULL, 0)],
 						);
 					}
 				}
@@ -730,7 +730,7 @@ impl FunctionType {
 			// TODO on type arguments, not seeding context
 			seeding_context.type_arguments.insert(
 				TypeId::NEW_TARGET_ARG,
-				vec![(import_new_argument, SpanWithSource::NULL_SPAN, 0)],
+				vec![(import_new_argument, source_map::Nullable::NULL, 0)],
 			);
 		}
 
@@ -1018,7 +1018,7 @@ impl FunctionType {
 			} else if parameter.optional {
 				seeding_context.set_id(
 					parameter.ty,
-					(TypeId::UNDEFINED_TYPE, SpanWithSource::NULL_SPAN, parameter_idx),
+					(TypeId::UNDEFINED_TYPE, source_map::Nullable::NULL, parameter_idx),
 					false,
 				);
 			} else {
@@ -1098,7 +1098,7 @@ impl FunctionType {
 				// TODO what does the 0 mean here?
 				seeding_context.set_id(
 					rest_parameter.ty,
-					(rest_parameter_array_type, SpanWithSource::NULL_SPAN, 0),
+					(rest_parameter_array_type, source_map::Nullable::NULL, 0),
 					false,
 				);
 			} else {

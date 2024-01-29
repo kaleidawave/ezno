@@ -3,8 +3,8 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token_with_token, tsx_keywords, ASTNode,
-	Expression, Keyword, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	errors::parse_lexing_error, operators::COMMA_PRECEDENCE, throw_unexpected_token_with_token,
+	ASTNode, Expression, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
 	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
@@ -13,17 +13,17 @@ use visitable_derive::Visitable;
 pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self>;
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	fn get_decl_position(&self) -> Option<&Span>;
@@ -34,29 +34,35 @@ pub trait DeclarationExpression:
 }
 
 impl DeclarationExpression for Option<Expression> {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
+		// expect_value: bool,
 	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
-			reader.next();
-			let expression = Expression::from_reader(reader, state, options)?;
-			Ok(Some(expression))
+		if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
+			Expression::from_reader_with_precedence(
+				reader,
+				state,
+				options,
+				COMMA_PRECEDENCE,
+				Some(start),
+			)
+			.map(Some)
 		} else {
 			Ok(None)
 		}
 	}
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		if let Some(expr) = self {
 			buf.push_str(if options.pretty { " = " } else { "=" });
-			expr.to_string_from_buffer(buf, options, depth);
+			expr.to_string_from_buffer(buf, options, local);
 		}
 	}
 
@@ -74,23 +80,29 @@ impl DeclarationExpression for Option<Expression> {
 }
 
 impl DeclarationExpression for crate::Expression {
-	fn decl_from_reader(
+	fn expression_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::Assign)?;
-		Expression::from_reader(reader, state, options)
+		let start = reader.expect_next(TSXToken::Assign)?;
+		Expression::from_reader_with_precedence(
+			reader,
+			state,
+			options,
+			COMMA_PRECEDENCE,
+			Some(start),
+		)
 	}
 
-	fn decl_to_string_from_buffer<T: source_map::ToString>(
+	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str(if options.pretty { " = " } else { "=" });
-		ASTNode::to_string_from_buffer(self, buf, options, depth);
+		ASTNode::to_string_from_buffer(self, buf, options, local);
 	}
 
 	fn get_decl_position(&self) -> Option<&Span> {
@@ -128,40 +140,48 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
 			reader, state, options,
 		)?;
-		let type_annotation = if let Some(Token(TSXToken::Colon, _)) = reader.peek() {
-			reader.next();
+		let type_annotation = if reader
+			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
+			.is_some()
+		{
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			Some(type_annotation)
 		} else {
 			None
 		};
-		let expression = TExpr::decl_from_reader(reader, state, options)?;
-		Ok(Self {
-			position: name.get_position().union(
-				expression
-					.get_decl_position()
-					.or(type_annotation.as_ref().map(ASTNode::get_position))
-					// TODO lol
-					.unwrap_or(name.get_position()),
-			),
-			name,
-			type_annotation,
-			expression,
-		})
+		let expression = TExpr::expression_from_reader(reader, state, options)?;
+		let position = name.get_position().union(
+			expression
+				.get_decl_position()
+				.or(type_annotation.as_ref().map(ASTNode::get_position))
+				.unwrap_or(name.get_position()),
+		);
+
+		Ok(Self { name, type_annotation, expression, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		self.name.to_string_from_buffer(buf, options, depth);
+		self.name.to_string_from_buffer(buf, options, local);
 		if let (true, Some(type_annotation)) = (options.include_types, &self.type_annotation) {
 			buf.push_str(": ");
-			type_annotation.to_string_from_buffer(buf, options, depth);
+			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		self.expression.decl_to_string_from_buffer(buf, options, depth);
+		let available_space =
+			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
+
+		if let Some(e) = TExpr::as_option_expr_ref(&self.expression) {
+			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
+			if extends_limit {
+				buf.push_new_line();
+				options.add_indent(local.depth + 1, buf);
+			}
+		}
+		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -176,12 +196,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
-		keyword: Keyword<tsx_keywords::Const>,
 		declarations: Vec<VariableDeclarationItem<Expression>>,
 		position: Span,
 	},
 	LetDeclaration {
-		keyword: Keyword<tsx_keywords::Let>,
 		declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 		position: Span,
 	},
@@ -191,8 +209,8 @@ pub enum VariableDeclaration {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclarationKeyword {
-	Const(Keyword<tsx_keywords::Const>),
-	Let(Keyword<tsx_keywords::Let>),
+	Const,
+	Let,
 }
 
 impl VariableDeclarationKeyword {
@@ -201,13 +219,10 @@ impl VariableDeclarationKeyword {
 		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
 	}
 
-	pub(crate) fn from_reader(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
-		let position = token.get_span();
+	pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
 		match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => {
-				Ok(Self::Const(Keyword::new(position)))
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let(Keyword::new(position))),
+			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
+			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
 			token => throw_unexpected_token_with_token(
 				token,
 				&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
@@ -218,16 +233,8 @@ impl VariableDeclarationKeyword {
 	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
-			VariableDeclarationKeyword::Const(_) => "const ",
-			VariableDeclarationKeyword::Let(_) => "let ",
-		}
-	}
-
-	#[must_use]
-	pub fn get_position(&self) -> &Span {
-		match self {
-			VariableDeclarationKeyword::Const(kw) => kw.get_position(),
-			VariableDeclarationKeyword::Let(kw) => kw.get_position(),
+			VariableDeclarationKeyword::Const => "const ",
+			VariableDeclarationKeyword::Let => "let ",
 		}
 	}
 }
@@ -239,14 +246,26 @@ impl ASTNode for VariableDeclaration {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let kind = VariableDeclarationKeyword::from_reader(token)?;
+		let start = token.1;
+		let kind = VariableDeclarationKeyword::from_token(token)?;
 		Ok(match kind {
-			VariableDeclarationKeyword::Let(keyword) => {
+			VariableDeclarationKeyword::Let => {
+				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
 				let mut declarations = Vec::new();
 				loop {
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
 						reader, state, options,
 					)?;
+
+					if value.expression.is_none()
+						&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
+					{
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::DestructuringRequiresValue,
+							*value.name.get_ast_ref().get_position(),
+						));
+					}
+
 					declarations.push(value);
 					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
@@ -255,14 +274,12 @@ impl ASTNode for VariableDeclaration {
 					}
 				}
 				VariableDeclaration::LetDeclaration {
-					position: keyword
-						.get_position()
-						.union(declarations.last().unwrap().get_position()),
-					keyword,
+					position: start.union(declarations.last().unwrap().get_position()),
 					declarations,
 				}
 			}
-			VariableDeclarationKeyword::Const(keyword) => {
+			VariableDeclarationKeyword::Const => {
+				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
 				let mut declarations = Vec::new();
 				loop {
 					let value =
@@ -275,10 +292,7 @@ impl ASTNode for VariableDeclaration {
 					}
 				}
 				VariableDeclaration::ConstDeclaration {
-					position: keyword
-						.get_position()
-						.union(declarations.last().unwrap().get_position()),
-					keyword,
+					position: start.union(declarations.last().unwrap().get_position()),
 					declarations,
 				}
 			}
@@ -289,7 +303,7 @@ impl ASTNode for VariableDeclaration {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			VariableDeclaration::LetDeclaration { declarations, .. } => {
@@ -297,14 +311,14 @@ impl ASTNode for VariableDeclaration {
 					return;
 				}
 				buf.push_str("let ");
-				declarations_to_string(declarations, buf, options, depth);
+				declarations_to_string(declarations, buf, options, local);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				if declarations.is_empty() {
 					return;
 				}
 				buf.push_str("const ");
-				declarations_to_string(declarations, buf, options, depth);
+				declarations_to_string(declarations, buf, options, local);
 			}
 		}
 	}
@@ -328,13 +342,13 @@ pub(crate) fn declarations_to_string<
 	declarations: &[VariableDeclarationItem<U>],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
-		declaration.to_string_from_buffer(buf, options, depth);
+		declaration.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
-			options.add_gap(buf);
+			options.push_gap_optionally(buf);
 		}
 	}
 }

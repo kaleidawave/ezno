@@ -55,19 +55,19 @@ impl ASTNode for JSXElement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push('<');
 		buf.push_str(&self.tag_name);
 		for attribute in &self.attributes {
 			buf.push(' ');
-			attribute.to_string_from_buffer(buf, options, depth);
+			attribute.to_string_from_buffer(buf, options, local);
 		}
 
 		match self.children {
 			JSXElementChildren::Children(ref children) => {
 				buf.push('>');
-				jsx_children_to_string(children, buf, options, depth);
+				jsx_children_to_string(children, buf, options, local);
 				buf.push_str("</");
 				buf.push_str(&self.tag_name);
 				buf.push('>');
@@ -110,10 +110,10 @@ impl ASTNode for JSXFragment {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("<>");
-		jsx_children_to_string(&self.children, buf, options, depth);
+		jsx_children_to_string(&self.children, buf, options, local);
 		buf.push_str("</>");
 	}
 }
@@ -149,11 +149,11 @@ impl ASTNode for JSXRoot {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, depth),
-			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, depth),
+			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, local),
+			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, local),
 		}
 	}
 
@@ -186,19 +186,19 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	children: &[JSXNode],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
-	depth: u8,
+	local: crate::LocalToStringInformation,
 ) {
 	let indent =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
 	for node in children {
 		if indent {
-			options.add_indent(depth + 1, buf);
+			options.add_indent(local.depth + 1, buf);
 		}
-		node.to_string_from_buffer(buf, options, depth);
+		node.to_string_from_buffer(buf, options, local);
 	}
 
-	if options.pretty && depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
-		options.add_indent(depth, buf);
+	if options.pretty && local.depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
+		options.add_indent(local.depth, buf);
 	}
 }
 
@@ -234,7 +234,7 @@ impl ASTNode for JSXNode {
 		match self {
 			JSXNode::TextNode(_, pos) | JSXNode::InterpolatedExpression(_, pos) => pos,
 			JSXNode::Element(element) => element.get_position(),
-			JSXNode::LineBreak => &Span::NULL_SPAN,
+			JSXNode::LineBreak => &source_map::Nullable::NULL,
 		}
 	}
 
@@ -266,19 +266,21 @@ impl ASTNode for JSXNode {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			JSXNode::Element(element) => element.to_string_from_buffer(buf, options, depth + 1),
+			JSXNode::Element(element) => {
+				element.to_string_from_buffer(buf, options, local.next_level());
+			}
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
 				if !options.should_add_comment(false)
-					&& matches!(&**expression, Expression::Comment(..))
+					&& matches!(&**expression, Expression::Comment { .. })
 				{
 					return;
 				}
 				buf.push('{');
-				expression.to_string_from_buffer(buf, options, depth + 1);
+				expression.to_string_from_buffer(buf, options, local.next_level());
 				buf.push('}');
 			}
 			JSXNode::LineBreak => {
@@ -327,7 +329,7 @@ impl ASTNode for JSXAttribute {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		match self {
 			JSXAttribute::Static(key, expression, _) => {
@@ -341,7 +343,7 @@ impl ASTNode for JSXAttribute {
 				buf.push_str(key.as_str());
 				buf.push('=');
 				buf.push('{');
-				expression.to_string_from_buffer(buf, options, depth);
+				expression.to_string_from_buffer(buf, options, local);
 				buf.push('}');
 			}
 			JSXAttribute::BooleanAttribute(key, _) => {
@@ -349,10 +351,10 @@ impl ASTNode for JSXAttribute {
 			}
 			JSXAttribute::Spread(expr, _) => {
 				buf.push_str("...");
-				expr.to_string_from_buffer(buf, options, depth);
+				expr.to_string_from_buffer(buf, options, local);
 			}
 			JSXAttribute::Shorthand(expr) => {
-				expr.to_string_from_buffer(buf, options, depth);
+				expr.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}

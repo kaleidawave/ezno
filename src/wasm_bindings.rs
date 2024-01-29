@@ -7,6 +7,12 @@ extern "C" {
 	pub(crate) fn log(s: &str);
 }
 
+#[derive(Clone, Copy, Default, serde::Deserialize)]
+#[wasm_bindgen]
+pub struct CheckOptions {
+	pub lsp_mode: bool,
+}
+
 #[wasm_bindgen(js_name = experimental_build)]
 pub fn experimental_build_wasm(
 	entry_path: String,
@@ -32,18 +38,52 @@ pub fn experimental_build_wasm(
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
+#[wasm_bindgen]
+pub struct WASMCheckOutput(checker::CheckOutput<checker::synthesis::EznoParser>);
+
+#[wasm_bindgen]
+impl WASMCheckOutput {
+	#[wasm_bindgen(js_name = diagnostics, getter)]
+	pub fn get_diagnostics(&self) -> JsValue {
+		serde_wasm_bindgen::to_value(&self.0.diagnostics).unwrap()
+	}
+
+	pub fn get_type_at_position(&self, path: &str, pos: u32) -> String {
+		todo!("requires facts_chain change")
+		// self.0.get_type_at_position(path, pos)
+	}
+}
+
 #[wasm_bindgen(js_name = check)]
-pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> JsValue {
+pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
 	let fs_resolver = |path: &std::path::Path| {
 		let res =
 			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+
 		res.ok().and_then(|res| res.as_string())
 	};
-	let (diagnostics, _) = crate::check::check(vec![entry_path.into()], &fs_resolver, None, None);
-	// TODO also emit mappings
-	serde_wasm_bindgen::to_value(&diagnostics).unwrap()
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
+}
+
+#[wasm_bindgen(js_name = check_with_options)]
+pub fn check_wasm_with_options(
+	entry_path: String,
+	fs_resolver_js: &js_sys::Function,
+	options: JsValue,
+) -> WASMCheckOutput {
+	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+	let options: checker::TypeCheckOptions =
+		serde_wasm_bindgen::from_value(options).expect("invalid TypeCheckOptions");
+	let fs_resolver = |path: &std::path::Path| {
+		let res =
+			fs_resolver_js.call1(&JsValue::null(), &JsValue::from(path.display().to_string()));
+
+		res.ok().and_then(|res| res.as_string())
+	};
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some(options)))
 }
 
 #[wasm_bindgen(js_name = run_cli)]
@@ -87,10 +127,10 @@ pub fn run_cli_wasm(
 
 #[wasm_bindgen(js_name = parse_expression)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
-	use parser::{ASTNode, Expression, SourceId};
+	use parser::{ASTNode, Expression};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Expression::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Expression::from_string(input, Default::default());
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -101,10 +141,10 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 
 #[wasm_bindgen(js_name = parse_module)]
 pub fn parse_module_to_json(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(input, Default::default());
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -113,33 +153,39 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 	}
 }
 
-#[wasm_bindgen]
-pub fn just_imports(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+#[wasm_bindgen(js_name = parse_module_and_into_string)]
+pub fn parse_module_and_into_string(
+	input: String,
+	parse_options: JsValue,
+	to_string_options: JsValue,
+) -> JsValue {
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(
+		input,
+		serde_wasm_bindgen::from_value(parse_options).expect("invalid ParseOptions"),
+	);
 	match item {
-		Ok(mut item) => {
-			crate::transformers::filter_imports(&mut item);
-			serde_wasm_bindgen::to_value(&item.to_string(&parser::ToStringOptions::minified()))
-				.unwrap()
-		}
+		Ok(item) => serde_wasm_bindgen::to_value(&item.to_string(
+			&serde_wasm_bindgen::from_value(to_string_options).expect("invalid ToStringOptions"),
+		))
+		.unwrap(),
 		Err(parse_error) => {
 			serde_wasm_bindgen::to_value(&(parse_error.reason, parse_error.position)).unwrap()
 		}
 	}
 }
 
-/// Removes whitespace in module
 #[wasm_bindgen]
-pub fn minify_module(input: String) -> JsValue {
-	use parser::{ASTNode, Module, SourceId};
+pub fn just_imports(input: String) -> JsValue {
+	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default(), SourceId::NULL, None);
+	let item = Module::from_string(input, Default::default());
 	match item {
-		Ok(item) => {
+		Ok(mut item) => {
+			crate::transformers::filter_imports(&mut item);
 			serde_wasm_bindgen::to_value(&item.to_string(&parser::ToStringOptions::minified()))
 				.unwrap()
 		}

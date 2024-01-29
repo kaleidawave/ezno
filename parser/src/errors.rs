@@ -20,6 +20,9 @@ pub enum ParseErrors<'a> {
 	LexingFailed,
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
+	DestructuringRequiresValue,
+	CannotAccessObjectLiteralDirectly,
+	TrailingCommaNotAllowedHere,
 }
 
 #[allow(missing_docs)]
@@ -45,6 +48,7 @@ pub enum LexingErrors {
 	ExpectedEndToTemplateLiteral,
 	InvalidExponentUsage,
 	InvalidUnderscore,
+	CannotLoadLargeFile(usize),
 }
 
 impl Display for LexingErrors {
@@ -88,6 +92,9 @@ impl Display for LexingErrors {
 			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
 				f.write_str("Invalid item in binary, hex or octal literal")
 			}
+			LexingErrors::CannotLoadLargeFile(size) => {
+				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
+			}
 		}
 	}
 }
@@ -99,22 +106,22 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Expected ")?;
 				match expected {
 					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a}")),
-					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
-					[head @ .., end] => f.write_fmt(format_args!(
-						"{} or {}",
-						head.iter()
-							.map(|token| format!("{token}"))
+					[a] => f.write_fmt(format_args!("{a:?}")),
+					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
+					[head @ .., end] => {
+						let start = head
+							.iter()
+							.map(|token| format!("{token:?}"))
 							.reduce(|mut acc, token| {
 								acc.push_str(", ");
 								acc.push_str(&token);
 								acc
 							})
-							.unwrap(),
-						end
-					)),
+							.unwrap();
+						f.write_fmt(format_args!("{start} or {end:?}"))
+					}
 				}?;
-				write!(f, " found {found}")
+				write!(f, " found {found:?}")
 			}
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
@@ -131,7 +138,7 @@ impl<'a> Display for ParseErrors<'a> {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found}")
+				write!(f, "Expected identifier at {at_location}, found {found:?}")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
 				f.write_str("Function parameter cannot be have default value here")
@@ -146,6 +153,15 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::InvalidDeclareItem(item) => {
 				write!(f, "Declare item '{item}' must be in .d.ts file")
+			}
+			ParseErrors::DestructuringRequiresValue => {
+				write!(f, "RHS of destructured declaration requires expression")
+			}
+			ParseErrors::CannotAccessObjectLiteralDirectly => {
+				write!(f, "Cannot get property on object literal directly")
+			}
+			ParseErrors::TrailingCommaNotAllowedHere => {
+				write!(f, "Trailing comma not allowed here")
 			}
 		}
 	}
@@ -167,7 +183,7 @@ impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
 
 // For TokenReader::next which only
 pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, Span::NULL_SPAN)
+	ParseError::new(ParseErrors::LexingFailed, source_map::Nullable::NULL)
 }
 
 pub trait ParserErrorReason: Display {}

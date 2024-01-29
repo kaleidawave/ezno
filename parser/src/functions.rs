@@ -1,14 +1,16 @@
 use std::{fmt::Debug, marker::PhantomData};
 
+use crate::property_key::PropertyKeyKind;
 use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
 	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
-	ExpressionPosition, GenericTypeConstraint, Keyword, ParseOptions, ParseResult, TSXToken,
-	TypeAnnotation, VisitOptions, Visitable,
+	ExpressionPosition, GenericTypeConstraint, ParseOptions, ParseResult, TSXToken, TypeAnnotation,
+	VisitOptions, Visitable, WithComment,
 };
-use crate::{tsx_keywords, TSXKeyword};
+use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Span, ToString};
+use tokenizer_lib::sized_tokens::TokenStart;
 use tokenizer_lib::{Token, TokenReader};
 
 pub use crate::parameters::*;
@@ -26,6 +28,8 @@ pub mod bases {
 	};
 }
 
+pub type HeadingAndPosition<T> = (Option<TokenStart>, <T as FunctionBased>::Header);
+
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// Includes a keyword and/or modifiers
@@ -35,8 +39,6 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// The body of the function
 	type Body: ASTNode;
 
-	fn header_left(header: &Self::Header) -> Option<source_map::Start>;
-
 	/// For debugging only
 	fn get_name(name: &Self::Name) -> Option<&str>;
 
@@ -44,14 +46,14 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)>;
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	);
 
 	/// For [`crate::ArrowFunction`]
@@ -74,9 +76,9 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		buf: &mut T,
 		parameters: &FunctionParameters,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		parameters.to_string_from_buffer(buf, options, depth);
+		parameters.to_string_from_buffer(buf, options, local);
 	}
 
 	/// For [`crate::ArrowFunction`]
@@ -84,7 +86,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		buf: &mut T,
 		options: &crate::ToStringOptions,
 	) {
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 	}
 
 	fn visit_name<TData>(
@@ -130,27 +132,27 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let (header, name) = T::header_and_name_from_reader(reader, state, options)?;
-		Self::from_reader_with_header_and_name(reader, state, options, header, name)
+		let (header_and_left, name) = T::header_and_name_from_reader(reader, state, options)?;
+		Self::from_reader_with_header_and_name(reader, state, options, header_and_left, name)
 	}
 
 	fn to_string_from_buffer<TS: source_map::ToString>(
 		&self,
 		buf: &mut TS,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, depth);
+		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, local);
 		if let (true, Some(type_parameters)) = (options.include_types, &self.type_parameters) {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, depth);
+			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
-		T::parameters_to_string_from_buffer(buf, &self.parameters, options, depth);
+		T::parameters_to_string_from_buffer(buf, &self.parameters, options, local);
 		if let (true, Some(return_type)) = (options.include_types, &self.return_type) {
 			buf.push_str(": ");
-			return_type.to_string_from_buffer(buf, options, depth);
+			return_type.to_string_from_buffer(buf, options, local);
 		}
 		T::parameter_body_boundary_token_to_string_from_buffer(buf, options);
-		self.body.to_string_from_buffer(buf, options, depth + 1);
+		self.body.to_string_from_buffer(buf, options, local.next_level());
 	}
 
 	fn get_position(&self) -> &Span {
@@ -164,7 +166,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		header: T::Header,
+		(header_left, header): (Option<TokenStart>, T::Header),
 		name: T::Name,
 	) -> ParseResult<Self> {
 		let type_parameters = reader
@@ -177,7 +179,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			.transpose()?;
 		let parameters = FunctionParameters::from_reader(reader, state, options)?;
 		let return_type = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Colon))
+			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
 			.then(|| TypeAnnotation::from_reader(reader, state, options))
 			.transpose()?;
@@ -187,11 +189,8 @@ impl<T: FunctionBased> FunctionBase<T> {
 		}
 		let body = T::Body::from_reader(reader, state, options)?;
 		let body_pos = body.get_position();
-		let position = if let Some(header_pos) = T::header_left(&header) {
-			header_pos.union(body_pos)
-		} else {
-			parameters.position.clone().union(body_pos)
-		};
+		let position =
+			header_left.unwrap_or_else(|| parameters.position.get_start()).union(body_pos);
 		Ok(Self { header, name, type_parameters, parameters, return_type, body, position })
 	}
 }
@@ -251,10 +250,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
-	) -> ParseResult<(Self::Header, Self::Name)> {
+	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader, state, options)?;
 		let name = T::from_reader(reader, state, options)?;
-		Ok((header, name))
+		Ok(((Some(header.get_position().get_start()), header), name))
 	}
 
 	fn header_and_name_to_string_from_buffer<U: source_map::ToString>(
@@ -262,16 +261,12 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		header: &Self::Header,
 		name: &Self::Name,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		header.to_string_from_buffer(buf, options, depth);
+		header.to_string_from_buffer(buf, options, local);
 		if let Some(name) = name.as_option_str() {
 			buf.push_str(name);
 		}
-	}
-
-	fn header_left(header: &Self::Header) -> Option<source_map::Start> {
-		Some(header.get_position().get_start())
 	}
 
 	fn visit_name<TData>(
@@ -312,8 +307,8 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum FunctionLocationModifier {
-	Server(Keyword<tsx_keywords::Server>),
-	Worker(Keyword<tsx_keywords::Worker>),
+	Server,
+	Worker,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -321,19 +316,17 @@ pub enum FunctionLocationModifier {
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
-		async_keyword: Option<Keyword<tsx_keywords::Async>>,
+		is_async: bool,
 		#[cfg(feature = "extras")]
 		location: Option<FunctionLocationModifier>,
-		function_keyword: Keyword<tsx_keywords::Function>,
 		generator_star_token_position: Option<Span>,
 		position: Span,
 	},
 	#[cfg(feature = "extras")]
 	ChadFunctionHeader {
-		async_keyword: Option<Keyword<tsx_keywords::Async>>,
-		generator_keyword: Option<Keyword<tsx_keywords::Generator>>,
+		is_async: bool,
+		is_generator: bool,
 		location: Option<FunctionLocationModifier>,
-		function_keyword: Keyword<tsx_keywords::Function>,
 		position: Span,
 	},
 }
@@ -349,19 +342,19 @@ impl ASTNode for FunctionHeader {
 
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
+		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let async_keyword = Keyword::optionally_from_reader(reader);
-
-		function_header_from_reader_with_async_keyword(reader, async_keyword)
+		let async_start =
+			state.optionally_expect_keyword(reader, TSXKeyword::Async).map(|kw| kw.get_start());
+		parse_special_then_regular_header(reader, state, async_start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		_options: &crate::ToStringOptions,
-		_depth: u8,
+		_local: crate::LocalToStringInformation,
 	) {
 		if self.is_async() {
 			buf.push_str("async ");
@@ -375,9 +368,10 @@ impl ASTNode for FunctionHeader {
 	}
 }
 
-pub(crate) fn function_header_from_reader_with_async_keyword(
-	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
-	async_keyword: Option<Keyword<tsx_keywords::Async>>,
+pub(crate) fn parse_special_then_regular_header(
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+	state: &mut crate::ParsingState,
+	async_kw_pos: Option<TokenStart>,
 ) -> Result<FunctionHeader, crate::ParseError> {
 	#[cfg(feature = "extras")]
 	{
@@ -386,45 +380,36 @@ pub(crate) fn function_header_from_reader_with_async_keyword(
 
 		if let Some(token) = next_generator {
 			let span = token.get_span();
-			let generator_keyword = Some(Keyword::new(span));
 			let location = parse_function_location(reader);
 
-			let function_keyword = Keyword::from_reader(reader)?;
-			let position = async_keyword
-				.as_ref()
-				.map_or(&span, |kw| kw.get_position())
-				.union(function_keyword.get_position());
+			let pos = state.expect_keyword_get_full_span(reader, TSXKeyword::Function)?;
+			let position = span.union(pos);
 
 			Ok(FunctionHeader::ChadFunctionHeader {
-				async_keyword,
+				is_async: async_kw_pos.is_some(),
 				location,
-				generator_keyword,
-				function_keyword,
+				is_generator: true,
 				position,
 			})
 		} else {
-			parse_regular_header(reader, async_keyword)
+			parse_regular_header(reader, state, async_kw_pos)
 		}
 	}
 
 	#[cfg(not(feature = "extras"))]
-	parse_regular_header(reader, async_keyword)
+	parse_regular_header(reader, state, async_kw_pos)
 }
 
 #[cfg(feature = "extras")]
 pub(crate) fn parse_function_location(
-	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 ) -> Option<FunctionLocationModifier> {
 	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Worker), _)) =
 		reader.peek()
 	{
 		Some(match reader.next().unwrap() {
-			t @ Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
-				FunctionLocationModifier::Server(Keyword::new(t.get_span()))
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
-				FunctionLocationModifier::Worker(Keyword::new(t.get_span()))
-			}
+			Token(TSXToken::Keyword(TSXKeyword::Server), _) => FunctionLocationModifier::Server,
+			Token(TSXToken::Keyword(TSXKeyword::Worker), _) => FunctionLocationModifier::Worker,
 			_ => unreachable!(),
 		})
 	} else {
@@ -433,27 +418,30 @@ pub(crate) fn parse_function_location(
 }
 
 fn parse_regular_header(
-	reader: &mut impl TokenReader<TSXToken, source_map::Start>,
-	async_keyword: Option<Keyword<tsx_keywords::Async>>,
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+	state: &mut crate::ParsingState,
+	async_kw_pos: Option<TokenStart>,
 ) -> Result<FunctionHeader, crate::ParseError> {
 	#[cfg(feature = "extras")]
 	let location = parse_function_location(reader);
 
-	let function_keyword = Keyword::from_reader(reader)?;
+	let function_start = state.expect_keyword(reader, TSXKeyword::Function)?;
+	let is_async = async_kw_pos.is_some();
+
 	let generator_star_token_position = reader
 		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 		.map(|token| token.get_span());
 
-	let mut position =
-		*async_keyword.as_ref().map_or(function_keyword.get_position(), |kw| kw.get_position());
+	let start = async_kw_pos.unwrap_or(function_start);
 
-	if let Some(ref generator_star_token_position) = generator_star_token_position {
-		position = position.union(generator_star_token_position);
-	}
+	let position = if let Some(ref generator_star_token_position) = generator_star_token_position {
+		start.union(generator_star_token_position)
+	} else {
+		function_start.with_length(TSXKeyword::Function.length() as usize)
+	};
 
 	Ok(FunctionHeader::VirginFunctionHeader {
-		async_keyword,
-		function_keyword,
+		is_async,
 		generator_star_token_position,
 		position,
 		#[cfg(feature = "extras")]
@@ -470,17 +458,16 @@ impl FunctionHeader {
 				..
 			} => generator_star_token_pos.is_some(),
 			#[cfg(feature = "extras")]
-			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { generator_keyword, .. } => generator_keyword.is_some(),
+			FunctionHeader::ChadFunctionHeader { is_generator, .. } => *is_generator,
 		}
 	}
 
 	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
+			FunctionHeader::VirginFunctionHeader { is_async, .. } => *is_async,
 			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { async_keyword, .. } => async_keyword.is_some(),
+			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
 		}
 	}
 
@@ -499,24 +486,24 @@ impl FunctionHeader {
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum MethodHeader {
-	Get(Keyword<tsx_keywords::Get>),
-	Set(Keyword<tsx_keywords::Set>),
-	Regular { r#async: Option<Keyword<tsx_keywords::Async>>, generator: Option<GeneratorSpecifier> },
+	Get,
+	Set,
+	Regular { is_async: bool, generator: Option<GeneratorSpecifier> },
 }
 
 impl Default for MethodHeader {
 	fn default() -> Self {
-		Self::Regular { r#async: None, generator: None }
+		Self::Regular { is_async: false, generator: None }
 	}
 }
 
 impl MethodHeader {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		match self {
-			MethodHeader::Get(_) => buf.push_str("get "),
-			MethodHeader::Set(_) => buf.push_str("set "),
-			MethodHeader::Regular { r#async, generator } => {
-				if r#async.is_some() {
+			MethodHeader::Get => buf.push_str("get "),
+			MethodHeader::Set => buf.push_str("set "),
+			MethodHeader::Regular { is_async, generator } => {
+				if *is_async {
 					buf.push_str("async ");
 				}
 				if let Some(_generator) = generator {
@@ -529,38 +516,27 @@ impl MethodHeader {
 	pub(crate) fn from_reader(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> Self {
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Get), _)) => {
-				MethodHeader::Get(Keyword::new(reader.next().unwrap().get_span()))
+				let _ = reader.next();
+				MethodHeader::Get
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Set), _)) => {
-				MethodHeader::Set(Keyword::new(reader.next().unwrap().get_span()))
+				let _ = reader.next();
+				MethodHeader::Set
 			}
 			_ => {
-				let r#async = reader
+				let is_async = reader
 					.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Async)))
-					.map(|tok| Keyword::new(tok.get_span()));
+					.is_some();
 
 				let generator = GeneratorSpecifier::from_reader(reader);
-
-				MethodHeader::Regular { r#async, generator }
+				MethodHeader::Regular { is_async, generator }
 			}
-		}
-	}
-
-	pub(crate) fn get_start(&self) -> Option<source_map::Start> {
-		match self {
-			MethodHeader::Get(kw) => Some(kw.1.get_start()),
-			MethodHeader::Set(kw) => Some(kw.1.get_start()),
-			MethodHeader::Regular { r#async: Some(r#async), .. } => {
-				Some(r#async.get_position().get_start())
-			}
-			MethodHeader::Regular { generator: Some(generator), .. } => Some(generator.get_start()),
-			MethodHeader::Regular { .. } => None,
 		}
 	}
 
 	#[must_use]
 	pub fn is_async(&self) -> bool {
-		matches!(self, Self::Regular { r#async: Some(_), .. })
+		matches!(self, Self::Regular { is_async: true, .. })
 	}
 
 	#[must_use]
@@ -569,8 +545,8 @@ impl MethodHeader {
 	}
 
 	#[must_use]
-	pub fn is_some(&self) -> bool {
-		!matches!(self, Self::Regular { r#async: None, generator: None })
+	pub fn is_no_modifiers(&self) -> bool {
+		matches!(self, Self::Regular { is_async: false, generator: None })
 	}
 }
 
@@ -580,7 +556,7 @@ impl MethodHeader {
 pub enum GeneratorSpecifier {
 	Star(Span),
 	#[cfg(feature = "extras")]
-	Keyword(Keyword<tsx_keywords::Generator>),
+	Keyword,
 }
 
 impl GeneratorSpecifier {
@@ -592,18 +568,50 @@ impl GeneratorSpecifier {
 				Some(GeneratorSpecifier::Star(reader.next().unwrap().get_span()))
 			}
 			#[cfg(feature = "extras")]
-			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => {
-				Some(GeneratorSpecifier::Keyword(Keyword::new(reader.next().unwrap().get_span())))
-			}
+			Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => Some(GeneratorSpecifier::Keyword),
 			_ => None,
 		}
 	}
+}
 
-	fn get_start(&self) -> source_map::Start {
-		match self {
-			GeneratorSpecifier::Star(pos) => pos.get_start(),
-			#[cfg(feature = "extras")]
-			GeneratorSpecifier::Keyword(kw) => kw.get_position().get_start(),
-		}
-	}
+/// Accounts for methods named `get` and `set` etc
+pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
+	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+	state: &mut crate::ParsingState,
+	options: &ParseOptions,
+) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
+	let is_named_get_set_or_async = matches!(
+		reader.peek(),
+		Some(Token(TSXToken::Keyword(TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async), _))
+	) && matches!(
+		reader.peek_n(1),
+		Some(Token(
+			TSXToken::OpenParentheses
+				| TSXToken::Colon
+				| TSXToken::OpenChevron
+				| TSXToken::CloseBrace
+				| TSXToken::Comma,
+			_
+		))
+	);
+
+	let (function_header, key) = if is_named_get_set_or_async {
+		let token = reader.next().unwrap();
+		let position = token.get_span();
+		let name = match token.0 {
+			TSXToken::Keyword(TSXKeyword::Get) => "get",
+			TSXToken::Keyword(TSXKeyword::Set) => "set",
+			TSXToken::Keyword(TSXKeyword::Async) => "async",
+			_ => unreachable!(),
+		};
+		// TODO
+		let new_public = T::new_public();
+		(
+			MethodHeader::default(),
+			WithComment::None(PropertyKey::Ident(name.to_owned(), position, new_public)),
+		)
+	} else {
+		(MethodHeader::from_reader(reader), WithComment::from_reader(reader, state, options)?)
+	};
+	Ok((function_header, key))
 }

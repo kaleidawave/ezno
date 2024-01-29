@@ -25,7 +25,7 @@ impl ASTNode for WhileStatement {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
+		let start = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -37,15 +37,15 @@ impl ASTNode for WhileStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("while");
-		options.add_gap(buf);
+		options.push_gap_optionally(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
-		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth + 1);
+		options.push_gap_optionally(buf);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }
 
@@ -71,9 +71,9 @@ impl ASTNode for DoWhileStatement {
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 	) -> Result<Self, crate::ParseError> {
-		let start = reader.expect_next(TSXToken::Keyword(TSXKeyword::Do))?;
+		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
+		let _ = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -84,16 +84,14 @@ impl ASTNode for DoWhileStatement {
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
-		depth: u8,
+		local: crate::LocalToStringInformation,
 	) {
-		buf.push_str("do");
-		options.add_gap(buf);
-		self.inner.to_string_from_buffer(buf, options, depth);
-		options.add_gap(buf);
-		buf.push_str("while");
-		options.add_gap(buf);
+		buf.push_str("do ");
+		self.inner.to_string_from_buffer(buf, options, local);
+		buf.push_str(" while");
+		options.push_gap_optionally(buf);
 		buf.push('(');
-		self.condition.to_string_from_buffer(buf, options, depth);
+		self.condition.to_string_from_buffer(buf, options, local);
 		buf.push(')');
 	}
 }
