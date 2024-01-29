@@ -15,6 +15,7 @@ use crate::{types::FunctionType, FunctionId, TypeId};
 pub(crate) struct SeedingContext {
 	/// usize = argument position
 	pub type_arguments: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource, usize)>>,
+
 	/// Produced by explicit call site type arguments (TODO explain) and function parameters (TODO explain)
 	pub type_restrictions: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>>,
 

@@ -2,7 +2,10 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::HashSet;
 
 use crate::{
-	diagnostics::{NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeStringRepresentation, TDZ},
+	diagnostics::{
+		NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+		TDZ,
+	},
 	events::{Event, FinalEvent, RootReference},
 	features::{
 		assignments::{Assignable, AssignmentKind, Reference},
@@ -19,15 +22,17 @@ use crate::{
 		is_type_truthy_falsy,
 		properties::{PropertyKey, PropertyKind, PropertyValue},
 		subtyping::{type_is_subtype, SubTypeResult},
-		PolyNature, Type, TypeStore,
+		PolyNature, Type, TypeCombinable, TypeStore,
 	},
-	CheckingData, Decidable, Instance, RootContext, TypeCombinable, TypeId,
+	CheckingData, Decidable, Instance, RootContext, TypeId,
 };
 
 use super::{
-	facts::Publicity, get_on_ctx, get_value_of_variable, invocation::CheckThings, AssignmentError,
-	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
-	SetPropertyError,
+	facts::{merge_facts, FactsChain, Publicity},
+	get_on_ctx, get_value_of_variable,
+	invocation::CheckThings,
+	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
+	GeneralContext, SetPropertyError,
 };
 
 pub type ContextLocation = Option<String>;
@@ -246,7 +251,7 @@ impl<'a> Environment<'a> {
 				}
 
 				fn set_property_error_to_type_check_error(
-					ctx: &GeneralContext,
+					ctx: &impl FactsChain,
 					error: SetPropertyError,
 					assignment_span: SpanWithSource,
 					types: &TypeStore,
@@ -282,7 +287,7 @@ impl<'a> Environment<'a> {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.as_general_context(),
+									self,
 									error,
 									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
@@ -320,7 +325,7 @@ impl<'a> Environment<'a> {
 							Ok(ty) => ty,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.as_general_context(),
+									self,
 									error,
 									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
@@ -366,7 +371,7 @@ impl<'a> Environment<'a> {
 							},
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.as_general_context(),
+									self,
 									error,
 									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
@@ -378,11 +383,10 @@ impl<'a> Environment<'a> {
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
-						let _span = reference.get_position();
 						let existing = get_reference(self, reference.clone(), checking_data);
 						let expression = expression.unwrap();
 						let new = evaluate_logical_operation_with_expression(
-							existing,
+							(existing, reference.get_position().without_source()),
 							operator,
 							expression,
 							checking_data,
@@ -396,7 +400,7 @@ impl<'a> Environment<'a> {
 							Ok(new) => new,
 							Err(error) => {
 								let error = set_property_error_to_type_check_error(
-									&self.as_general_context(),
+									self,
 									error,
 									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
@@ -492,15 +496,12 @@ impl<'a> Environment<'a> {
 									return Err(AssignmentError::DoesNotMeetConstraint {
 										variable_type: TypeStringRepresentation::from_type_id(
 											reassignment_constraint,
-											&self.as_general_context(),
+											self,
 											store,
 											false,
 										),
 										value_type: TypeStringRepresentation::from_type_id(
-											new_type,
-											&self.as_general_context(),
-											store,
-											false,
+											new_type, self, store, false,
 										),
 										variable_site,
 										value_site: assignment_position,
@@ -554,7 +555,7 @@ impl<'a> Environment<'a> {
 	/// TODO decidable & private?
 	#[must_use]
 	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
-		self.facts_chain().any(|facts| match facts.current_properties.get(&on) {
+		self.get_chain_of_facts().any(|facts| match facts.current_properties.get(&on) {
 			Some(v) => {
 				v.iter().any(
 					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
@@ -636,8 +637,6 @@ impl<'a> Environment<'a> {
 				PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
 			})
 		} else {
-			let types = &checking_data.types;
-			let ctx = &self.as_general_context();
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
 				// TODO printing temp
 				property: match key {
@@ -645,16 +644,14 @@ impl<'a> Environment<'a> {
 						crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
 					}
 					PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(
-						crate::types::printing::print_type(
-							t,
-							&checking_data.types,
-							&self.as_general_context(),
-							false,
-						),
+						crate::types::printing::print_type(t, &checking_data.types, self, false),
 					),
 				},
 				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
-					on, ctx, types, false,
+					on,
+					self,
+					&checking_data.types,
+					false,
 				),
 				site: site.with_source(self.get_source()),
 			});
@@ -724,7 +721,7 @@ impl<'a> Environment<'a> {
 					// TODO temp
 					{
 						let current_value = get_value_of_variable(
-							self.facts_chain(),
+							self,
 							og_var.get_id(),
 							None::<&crate::types::poly_types::FunctionTypeArguments>,
 						);
@@ -833,7 +830,7 @@ impl<'a> Environment<'a> {
 				og_var.clone()
 			{
 				let current_value = get_value_of_variable(
-					self.facts_chain(),
+					self,
 					of,
 					None::<&crate::types::poly_types::FunctionTypeArguments>,
 				)
@@ -842,7 +839,7 @@ impl<'a> Environment<'a> {
 			}
 
 			let current_value = get_value_of_variable(
-				self.facts_chain(),
+				self,
 				og_var.get_id(),
 				None::<&crate::types::poly_types::FunctionTypeArguments>,
 			);
@@ -860,7 +857,7 @@ impl<'a> Environment<'a> {
 
 	pub fn new_conditional_context<T, A, R>(
 		&mut self,
-		condition: TypeId,
+		(condition, pos): (TypeId, Span),
 		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
 		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R>,
 		checking_data: &mut CheckingData<T, A>,
@@ -871,8 +868,12 @@ impl<'a> Environment<'a> {
 		T: crate::ReadFromFS,
 	{
 		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
-			// TODO emit warning
-			crate::utils::notify!("Constant result {:?}", result);
+			// TODO could be better
+			checking_data.diagnostics_container.add_warning(TypeCheckWarning::DeadBranch {
+				expression_span: pos.with_source(self.get_source()),
+				expression_value: result,
+			});
+
 			return if result {
 				then_evaluate(self, checking_data)
 			} else if let Some(else_evaluate) = else_evaluate {
@@ -882,7 +883,7 @@ impl<'a> Environment<'a> {
 			};
 		}
 
-		let (truthy_result, truthy_events) = {
+		let (truthy_result, truthy_facts) = {
 			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: condition,
 				is_switch: None,
@@ -890,47 +891,47 @@ impl<'a> Environment<'a> {
 
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
-			(result, truthy_environment.facts.events)
+			(result, truthy_environment.facts)
 		};
 
-		if let Some(else_evaluate) = else_evaluate {
+		let (falsy_result, falsy_facts) = if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 				is_switch: None,
 			});
 
-			let falsy_result = else_evaluate(&mut falsy_environment, checking_data);
-
-			let combined_result =
-				R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
-
-			let falsy_events = falsy_environment.facts.events;
-
-			// TODO It might be possible to get position from one of the SynthesisableConditional but its `get_position` is not implemented yet
-			self.facts.events.push(Event::Conditionally {
-				condition,
-				true_events: truthy_events.into_boxed_slice(),
-				else_events: falsy_events.into_boxed_slice(),
-				position: None,
-			});
-
-			// TODO all things that are
-			// - variable and property values (these aren't read from events)
-			// - immutable, mutable, prototypes etc
-
-			combined_result
+			(else_evaluate(&mut falsy_environment, checking_data), Some(falsy_environment.facts))
 		} else {
-			self.facts.events.push(Event::Conditionally {
-				condition,
-				true_events: truthy_events.into_boxed_slice(),
-				else_events: Default::default(),
-				position: None,
-			});
+			(R::default(), None)
+		};
 
-			// TODO above
+		let combined_result =
+			R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
 
-			truthy_result
+		match self.context_type.parent {
+			GeneralContext::Syntax(syn) => {
+				merge_facts(
+					syn,
+					&mut self.facts,
+					condition,
+					truthy_facts,
+					falsy_facts,
+					&mut checking_data.types,
+				);
+			}
+			GeneralContext::Root(root) => {
+				merge_facts(
+					root,
+					&mut self.facts,
+					condition,
+					truthy_facts,
+					falsy_facts,
+					&mut checking_data.types,
+				);
+			}
 		}
+
+		combined_result
 	}
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {

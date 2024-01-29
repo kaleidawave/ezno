@@ -19,45 +19,45 @@ interface nominal Array<T> {
     }
 
     // TODO this argument
-    map<U>(cb: (t: T, i?: number, self: Array<T>) => U): Array<U> performs {
+    map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
         const { length } = this, u: Array<U> = [];
         let i: number = 0;
         while (i < length) {
             const value = this[i];
-            u.push(cb(value, i++, this))
+            u.push(cb(value, i++))
         }
         return u;
     }
 
-    filter(cb: (t: T, i?: number, self: Array<T>) => boolean): Array<T> performs {
+    filter(cb: (t: T, i?: number) => boolean): Array<T> performs {
         const { length } = this, filtered: Array<T> = [];
         let i: number = 0;
         while (i < length) {
-            const value = this[i++];
-            if (cb(value)) {
+            const value = this[i];
+            if (cb(value, i++)) {
                 filtered.push(value)
             }
         }
         return filtered;
     }
 
-    find(cb: (t: T, i?: number, self: Array<T>) => boolean): T | undefined performs {
+    find(cb: (t: T, i?: number) => boolean): T | undefined performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
-            const value = this[i++];
-            if (cb(value)) {
+            const value = this[i];
+            if (cb(value, i++)) {
                 return value
             }
         }
     }
 
-    every(cb: (t: T, i?: number, self: Array<T>) => boolean): boolean performs {
+    every(cb: (t: T, i?: number) => boolean): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
-            const value = this[i++];
-            if (!cb(value)) {
+            const value = this[i];
+            if (!cb(value, i++)) {
                 return false
             }
         }
@@ -65,43 +65,44 @@ interface nominal Array<T> {
         return true
     }
 
-    some(cb: (t: T, i?: number, self: Array<T>) => boolean): boolean performs {
+    some(cb: (t: T, i?: number) => boolean): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
-            const value = this[i++];
-            if (cb(value)) {
+            const value = this[i];
+            if (cb(value, i++)) {
                 return true
             }
         }
         return false
     }
 
-    includes(searchElement: T, fromIndex?: number): boolean performs {
-        const { length } = this;
-        let i: number = fromIndex ?? 0;
-        while (i < length) {
-            const value = this[i++];
-            if (value === searchElement) {
-                return true
-            }
-        }
-        return false
-    }
+    // includes(searchElement: T, fromIndex?: number): boolean performs {
+    //     const { length } = this;
+    //     let i: number = fromIndex ?? 0;
+    //     while (i < length) {
+    //         const value = this[i++];
+    //         if (value === searchElement) {
+    //             return true
+    //         }
+    //     }
+    //     return false
+    // }
 
-    join(joiner: string = ","): string performs {
-        const { length } = this;
-        let i = 1;
-        if (length === 0) {
-            return ""
-        }
-        // TODO conversion
-        let s: string = "" + this[0];
-        while (i < length) {
-            s += this[i++];
-        }
-        return s
-    }
+    // join(joiner?: string): string performs {
+    //     const j = joiner ?? ",";
+    //     const { length } = this;
+    //     let i = 1;
+    //     if (length === 0) {
+    //         return ""
+    //     }
+    //     let s: string = "" + this[0];
+    //     while (i < length) {
+    //         s += j;
+    //         s += this[i++];
+    //     }
+    //     return s
+    // }
 }
 
 interface Math {
@@ -177,6 +178,14 @@ interface Object {
     //     Object.setProtoTypeOf(n, prototype);
     //     return n
     // }
+
+    // keys(on: object): Array<string> performs {
+    //     const array = [];
+    //     for (const key in on) {
+    //         array.push(key);
+    //     }
+    //     return array
+    // }
 }
 
 declare var JSON: JSON;
@@ -200,3 +209,23 @@ declare const document: Document;
 
 // @server
 // declare function createItem(a: any);
+
+// ↓↓ Ezno Functions ↓↓
+declare function debug_context(): void performs const debug_context;
+declare function print_type(t: any): void performs const print_type;
+declare function debug_type(t: any): void performs const debug_type;
+declare function debug_type_independent(t: any): void performs const debug_type_independent;
+declare function debug_type_rust(t: any): void performs const debug_type_rust;
+declare function debug_type_rust_independent(t: any): void performs const debug_type_rust_independent;
+declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
+declare function debug_effects(t: () => {}): void performs const debug_effects;
+declare function is_dependent(t: any): void performs const is_dependent;
+
+declare function context_id(): void performs const context_id;
+declare function context_id_chain(): void performs const context_id_chain;
+
+// A function, as it should be!
+declare function satisfies<T>(t: T): T performs const satisfies;
+
+declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
+// ↑↑ Ezno Functions ↑↑

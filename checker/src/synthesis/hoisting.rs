@@ -30,7 +30,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 ) {
 	let mut idx_to_types = HashMap::new();
 
-	// First stage
+	// First stage: imports and types
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
@@ -182,11 +182,25 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
-				if let Statement::VarVariable(_) = stmt {
-					checking_data.raise_unimplemented_error(
-						"var statement hoisting",
-						stmt.get_position().with_source(environment.get_source()),
-					);
+				if let Statement::VarVariable(stmt) = stmt {
+					for declaration in &stmt.declarations {
+						let constraint = get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
+						register_variable(
+							declaration.name.get_ast_ref(),
+							environment,
+							checking_data,
+							VariableRegisterArguments {
+								constant: false,
+								space: constraint,
+								// Important!
+								initial_value: Some(TypeId::UNDEFINED_TYPE),
+							},
+						);
+					}
 				}
 			}
 			StatementOrDeclaration::Declaration(dec) => match dec {

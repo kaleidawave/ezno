@@ -2,7 +2,7 @@
 use std::{
 	collections::HashSet,
 	panic,
-	path::PathBuf,
+	path::{Path, PathBuf},
 	sync::{Arc, Mutex},
 };
 
@@ -55,16 +55,18 @@ fn check_errors(
 	let result = checker::check_project::<_, EznoParser>(
 		vec![PathBuf::from("main.ts")],
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
-		|path| {
+		|path: &Path| -> Option<Vec<u8>> {
 			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 			} else if code.len() == 1 {
-				Some(code[0].1.to_owned())
+				Some(code[0].1.to_owned().into())
 			} else {
-				code.iter().find_map(|(code_path, content)| {
-					(std::path::Path::new(code_path) == path)
-						.then_some(content.to_owned().to_owned())
-				})
+				code.iter()
+					.find_map(|(code_path, content)| {
+						(std::path::Path::new(code_path) == path)
+							.then_some(content.to_owned().to_owned())
+					})
+					.map(Into::into)
 			}
 		},
 		type_check_options,

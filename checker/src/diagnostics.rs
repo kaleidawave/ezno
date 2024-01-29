@@ -3,11 +3,11 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::{
-	context::environment::Label,
+	context::{environment::Label, facts::FactsChain},
 	diagnostics,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_generics,
+		printing::print_type_with_type_arguments, TypeArguments,
 	},
 };
 use source_map::{SourceId, SpanWithSource};
@@ -166,10 +166,7 @@ impl IntoIterator for DiagnosticsContainer {
 
 pub(super) use defined_errors_and_warnings::*;
 
-use crate::{
-	context::GeneralContext,
-	types::{printing::print_type, TypeId, TypeStore},
-};
+use crate::types::{printing::print_type, TypeId, TypeStore};
 
 /// TODO could be more things, for instance a property missing etc
 pub enum TypeStringRepresentation {
@@ -185,11 +182,23 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id(
 		id: TypeId,
-		ctx: &GeneralContext,
+		ctx: &impl FactsChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
 		let value = print_type(id, types, ctx, debug_mode);
+		Self::Type(value)
+	}
+
+	#[must_use]
+	pub fn from_type_id_with_generics(
+		id: TypeId,
+		type_arguments: Option<&TypeArguments>,
+		ctx: &impl FactsChain,
+		types: &TypeStore,
+		debug_mode: bool,
+	) -> Self {
+		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
 		Self::Type(value)
 	}
 
@@ -198,7 +207,7 @@ impl TypeStringRepresentation {
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
 		// TODO chain
 		generics: Option<&StructureGenericArguments>,
-		ctx: &GeneralContext,
+		ctx: &impl FactsChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
@@ -206,7 +215,7 @@ impl TypeStringRepresentation {
 			crate::context::Logical::Pure(p) => match p {
 				crate::PropertyValue::Value(v) => {
 					// TODO pass down generics!!!
-					let value = print_type_with_generics(
+					let value = print_type_with_type_arguments(
 						v,
 						generics.map(|g| &g.type_arguments),
 						types,

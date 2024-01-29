@@ -27,17 +27,15 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		get_constraint,
-		poly_types::generic_type_arguments::StructureGenericArguments,
-		properties::{PropertyKey, PropertyValue},
-		FunctionType, PolyNature, Type, TypeId, TypeStore,
+		poly_types::generic_type_arguments::StructureGenericArguments, FunctionType, PolyNature,
+		Type, TypeId, TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
 };
 
 use self::{
 	environment::{DynamicBoundaryKind, FunctionScope},
-	facts::{Facts, Publicity},
+	facts::{Facts, FactsChain},
 };
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
@@ -469,7 +467,9 @@ impl<T: ContextType> Context<T> {
 			let is_dynamic_boundary = self.context_type.is_dynamic_boundary();
 
 			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
-				if !self.facts_chain().any(|f| f.variable_current_value.contains_key(&var.get_id()))
+				if !self
+					.get_chain_of_facts()
+					.any(|facts| facts.variable_current_value.contains_key(&var.get_id()))
 				{
 					// Cannot use yet in loop
 					return None;
@@ -484,104 +484,6 @@ impl<T: ContextType> Context<T> {
 			};
 			Some((is_root, boundary, var))
 		}
-	}
-
-	/// Get all properties on a type (for printing and other non one property uses)
-	///
-	/// - TODO make aware of ands and aliases
-	/// - TODO prototypes
-	/// - TODO could this be an iterator
-	/// - TODO return whether it is fixed
-	pub fn get_properties_on_type(
-		&self,
-		base: TypeId,
-	) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
-		let reversed_flattened_properties = self
-			.parents_iter()
-			.filter_map(|ctx| {
-				let _id = get_on_ctx!(ctx.context_id);
-				let properties = get_on_ctx!(ctx.facts.current_properties.get(&base));
-				properties.map(|v| v.iter().rev())
-			})
-			.flatten();
-
-		let mut deleted_or_existing_properties = HashSet::<PropertyKey>::new();
-
-		let mut properties = Vec::new();
-		for (publicity, key, prop) in reversed_flattened_properties {
-			if let PropertyValue::Deleted = prop {
-				// TODO doesn't cover constants :(
-				deleted_or_existing_properties.insert(key.clone());
-			} else if deleted_or_existing_properties.insert(key.clone()) {
-				properties.push((*publicity, key.to_owned(), prop.as_get_type()));
-			}
-		}
-
-		properties.reverse();
-		properties
-	}
-
-	pub(crate) fn get_property_unbound(
-		&self,
-		on: TypeId,
-		publicity: Publicity,
-		under: PropertyKey,
-		types: &TypeStore,
-	) -> Option<Logical<PropertyValue>> {
-		fn get_property(
-			env: &GeneralContext,
-			_types: &TypeStore,
-			on: TypeId,
-			under: (Publicity, &PropertyKey),
-		) -> Option<PropertyValue> {
-			get_on_ctx!(env.facts.current_properties.get(&on)).and_then(|properties| {
-				// TODO rev is important
-				properties.iter().rev().find_map(move |(publicity, key, value)| {
-					let (want_publicity, want_key) = under;
-					if *publicity != want_publicity {
-						return None;
-					}
-
-					match key {
-						PropertyKey::String(string) => {
-							if let PropertyKey::String(want) = want_key {
-								(string == want).then_some(value.clone())
-							} else {
-								// TODO
-								None
-							}
-						}
-						PropertyKey::Type(key) => {
-							match want_key {
-								PropertyKey::Type(want) => {
-									// TODO backing type...
-									if key == want {
-										Some(value.clone())
-									} else {
-										None
-									}
-								}
-								PropertyKey::String(s) => {
-									// TODO ...
-									if s.parse::<usize>().is_ok() {
-										Some(value.clone())
-									} else {
-										None
-									}
-								}
-							}
-						}
-					}
-				})
-			})
-		}
-
-		let under = match under {
-			PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-			under @ PropertyKey::String(_) => under,
-		};
-
-		types.get_fact_about_type(self, on, &get_property, (publicity, &under))
 	}
 
 	/// Note: this also returns base generic types like `Array`
@@ -1031,10 +933,6 @@ impl<T: ContextType> Context<T> {
 			.collect()
 	}
 
-	pub(crate) fn facts_chain(&self) -> impl Iterator<Item = &'_ Facts> {
-		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
-	}
-
 	/// TODO is this the generic?
 	pub fn get_value_of_this(&mut self, _types: &TypeStore, _position: &SpanWithSource) -> TypeId {
 		self.parents_iter()
@@ -1086,15 +984,8 @@ impl<T: ContextType> Context<T> {
 			})
 	}
 
-	pub(crate) fn get_value_of_constant_import_variable(&self, variable: VariableId) -> TypeId {
-		*self
-			.parents_iter()
-			.find_map(|ctx| get_on_ctx!(ctx.facts.variable_current_value.get(&variable)))
-			.unwrap()
-	}
-
-	pub(crate) fn is_possibly_uncalled(&self) -> bool {
-		self.parents_iter().any(|c| {
+	pub(crate) fn is_always_run(&self) -> bool {
+		!self.parents_iter().any(|c| {
 			matches!(c, GeneralContext::Syntax(s) if (s.context_type.is_conditional() || s.context_type.is_dynamic_boundary().is_some()))
 		})
 	}
@@ -1158,12 +1049,12 @@ pub enum SetPropertyError {
 }
 
 /// TODO mutable let imports
-pub(crate) fn get_value_of_variable<'a>(
-	facts: impl Iterator<Item = &'a Facts>,
+pub(crate) fn get_value_of_variable(
+	facts: &impl FactsChain,
 	on: VariableId,
 	closures: Option<&impl ClosureChain>,
 ) -> Option<TypeId> {
-	for fact in facts {
+	for fact in facts.get_chain_of_facts() {
 		let res = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
 				crate::utils::notify!("Looking in {:?} for {:?}", closure, on);
@@ -1180,4 +1071,10 @@ pub(crate) fn get_value_of_variable<'a>(
 		}
 	}
 	None
+}
+
+impl<T: ContextType> FactsChain for Context<T> {
+	fn get_chain_of_facts(&self) -> impl Iterator<Item = &'_ Facts> {
+		self.parents_iter().map(|env| get_on_ctx!(&env.facts))
+	}
 }

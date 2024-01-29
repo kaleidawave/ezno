@@ -1,6 +1,6 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::facts::Publicity;
+use crate::context::facts::{get_property_unbound, Publicity};
 use crate::context::VariableRegisterArguments;
 use crate::context::{environment::ContextLocation, AssignmentError};
 use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
@@ -103,14 +103,14 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 			AssignmentError::DoesNotMeetConstraint {
 				variable_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					variable_declared_type,
-					&environment.as_general_context(),
+					environment,
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
 				variable_site: basic_subtyping.position,
 				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
-					&environment.as_general_context(),
+					environment,
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
@@ -132,11 +132,12 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 	VariableRegisterArguments {
 		constant: on.constant,
 		space: on.space.map(|space| {
-			let property_constraint = environment.get_property_unbound(
+			let property_constraint = get_property_unbound(
 				space,
 				Publicity::Public,
 				under.clone(),
 				&checking_data.types,
+				environment,
 			);
 			if let Some(value) = property_constraint {
 				match value {
@@ -157,13 +158,13 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 							PropertyKey::Type(t) => PropertyRepresentation::Type(print_type(
 								t,
 								&checking_data.types,
-								&environment.as_general_context(),
+								environment,
 								false,
 							)),
 						},
 						on: TypeStringRepresentation::from_type_id(
 							space,
-							&environment.as_general_context(),
+							environment,
 							&checking_data.types,
 							false,
 						),

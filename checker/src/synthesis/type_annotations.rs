@@ -34,12 +34,12 @@ use crate::{
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
+	types::{poly_types::generic_type_arguments::ExplicitTypeArguments, Constructor, TypeId},
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constant, PolyNature, StructureGenerics, Type,
 	},
-	types::{Constructor, TypeId},
 	CheckingData, Environment,
 };
 
@@ -188,13 +188,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
 							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
 								*parameter_restriction,
-								&environment.as_general_context(),
+								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
 							argument: crate::diagnostics::TypeStringRepresentation::from_type_id(
 								argument,
-								&environment.as_general_context(),
+								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
@@ -213,7 +213,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
 				if let Some(on) = is_type_alias_to {
-					substitute(on, &mut type_arguments, environment, &mut checking_data.types)
+					substitute(
+						on,
+						&mut ExplicitTypeArguments(&mut type_arguments),
+						environment,
+						&mut checking_data.types,
+					)
 				} else {
 					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 						on: inner_type_id,
@@ -440,15 +445,12 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match condition {
 		TypeCondition::Extends { ty, extends, position: _ } => {
-			let _item = synthesise_type_annotation(ty, environment, checking_data);
-			let _extends = synthesise_type_annotation(extends, environment, checking_data);
-			todo!();
-			// let ty = Type::Constructor(Constructor::BinaryOperator {
-			// 	operator: crate::structures::operators::CanonicalBinaryOperator::InstanceOf,
-			// 	lhs: item,
-			// 	rhs: extends,
-			// });
-			// checking_data.types.register_type(ty)
+			let item = synthesise_type_annotation(ty, environment, checking_data);
+			let extends = synthesise_type_annotation(extends, environment, checking_data);
+			let ty = Type::Constructor(Constructor::TypeRelationOperator(
+				crate::types::TypeRelationOperator::Extends { ty: item, extends },
+			));
+			checking_data.types.register_type(ty)
 		}
 		// TODO requires a kind of strict instance of ???
 		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),

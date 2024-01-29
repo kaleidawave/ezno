@@ -212,7 +212,12 @@ const y: 6 = 3 && false
 const z: false = true || 4
 ```
 
+> Lot of "Expression is always true" here
+
+- Expression is always true
+- Expression is always true
 - Type false is not assignable to type 6
+- Expression is always true
 - Type true is not assignable to type false
 
 #### Equality
@@ -902,6 +907,10 @@ function magicNumber(a: number) {
 }
 
 const myNumber = magicNumber(4);
+
+// Create a one in between to test they don't have a global state
+magicNumber(8).doubled() satisfies 16;
+
 myNumber.plusOne() satisfies 5
 myNumber.doubled() satisfies 6
 ```
@@ -1049,7 +1058,11 @@ b ||= (b = 10);
 b satisfies string;
 ```
 
+> a is always assigned ('Expression is always false') and b is always true (so the RHS never runs)
+
+- Expression is always false
 - Expected 3, found 4
+- Expression is always true
 - Expected string, found 5
 
 #### Conditional return type inference

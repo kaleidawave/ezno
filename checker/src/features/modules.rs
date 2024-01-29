@@ -1,6 +1,9 @@
 use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
-	context::{facts::Facts, VariableRegisterArguments},
+	context::{
+		facts::{get_value_of_constant_import_variable, Facts},
+		VariableRegisterArguments,
+	},
 	CheckingData, Environment, Scope, Type, TypeId, VariableId,
 };
 
@@ -171,7 +174,8 @@ pub fn import_items<
 						let constant = match mutability {
 							VariableMutability::Constant => {
 								let k = crate::VariableId(current_source, part.position.start);
-								let v = environment.get_value_of_constant_import_variable(variable);
+								let v =
+									get_value_of_constant_import_variable(variable, environment);
 								environment.facts.variable_current_value.insert(k, v);
 								true
 							}

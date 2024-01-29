@@ -1,20 +1,23 @@
 use std::borrow::Cow;
 
 use crate::{
-	context::{facts::Publicity, CallCheckingBehavior, Logical, SetPropertyError},
+	context::{
+		facts::{get_property_unbound, Publicity},
+		CallCheckingBehavior, Logical, SetPropertyError,
+	},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
 	features::functions::ThisValue,
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
-		calling::CallingInput, get_constraint,
-		poly_types::generic_type_arguments::StructureGenericArguments, substitute, FunctionType,
-		ObjectNature, StructureGenerics,
+		get_constraint,
+		poly_types::generic_type_arguments::{ExplicitTypeArguments, StructureGenericArguments},
+		substitute, FunctionType, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
 
-use source_map::{SourceId, SpanWithSource};
+use source_map::SpanWithSource;
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
@@ -32,6 +35,29 @@ pub enum PropertyKey<'a> {
 	String(Cow<'a, str>),
 	// Special
 	Type(TypeId),
+}
+
+impl crate::BinarySerializable for PropertyKey<'static> {
+	fn serialize(self, buf: &mut Vec<u8>) {
+		match self {
+			PropertyKey::String(s) => {
+				buf.push(0);
+				crate::BinarySerializable::serialize(s.into_owned(), buf);
+			}
+			PropertyKey::Type(t) => {
+				buf.push(1);
+				crate::BinarySerializable::serialize(t, buf);
+			}
+		}
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: source_map::SourceId) -> Self {
+		match iter.next().unwrap() {
+			0 => Self::String(Cow::Owned(crate::BinarySerializable::deserialize(iter, source))),
+			1 => Self::Type(crate::BinarySerializable::deserialize(iter, source)),
+			_ => panic!("bad code"),
+		}
+	}
 }
 
 impl<'a> PropertyKey<'a> {
@@ -68,16 +94,6 @@ impl<'a> PropertyKey<'a> {
 			// TODO
 			PropertyKey::Type(_) => None,
 		}
-	}
-}
-
-impl crate::serialization::BinarySerializable for PropertyKey<'static> {
-	fn serialize(self, _buf: &mut Vec<u8>) {
-		todo!()
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
-		todo!()
 	}
 }
 
@@ -280,17 +296,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						}
 					}
 					PropertyValue::Getter(getter) => {
-						let state = ThisValue::Passed(on);
 						let call = getter.call(
-							CallingInput {
-								called_with_new: CalledWithNew::None,
-								this_value: state,
-								call_site_type_arguments: None,
-								call_site: source_map::Nullable::NULL,
-							},
-							// TODO
-							None,
+							CalledWithNew::None,
+							ThisValue::Passed(on),
+							source_map::Nullable::NULL,
 							&[],
+							None,
+							// TODO structure generics
+							None,
 							environment,
 							behavior,
 							types,
@@ -328,7 +341,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		}
 	}
 
-	let result = environment.get_property_unbound(on, publicity, under, types)?;
+	let result = get_property_unbound(on, publicity, under, types, environment)?;
 
 	resolve_property_on_logical(result, types, on, environment, behavior)
 }
@@ -365,7 +378,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							let result = if let Some(arguments) = arguments {
 								substitute(
 									value,
-									&mut arguments.type_arguments.clone(),
+									&mut ExplicitTypeArguments(
+										&mut arguments.type_arguments.clone(),
+									),
 									environment,
 									types,
 								)
@@ -460,7 +475,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
-	let fact = top_environment.get_property_unbound(on, publicity, under.clone(), types)?;
+	let fact = get_property_unbound(on, publicity, under.clone(), types, top_environment)?;
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
@@ -501,14 +516,14 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	for constraint in object_constraint {
 		let property_constraint =
-			environment.get_property_unbound(constraint, publicity, under.clone(), types);
+			get_property_unbound(constraint, publicity, under.clone(), types, environment);
 
 		// crate::utils::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
 		// crate::utils::notify!(
 		// 	"Re-assignment constraint {}, prop={} {:?}",
-		// 	print_type(constraint, types, &environment.as_general_context(), true),
-		// 	print_type(under, types, &environment.as_general_context(), true),
+		// 	print_type(constraint, types, environment, true),
+		// 	print_type(under, types, environment, true),
 		// 	property_constraint
 		// );
 
@@ -535,7 +550,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 							property_constraint: TypeStringRepresentation::from_property_constraint(
 								property_constraint,
 								None,
-								&environment.as_general_context(),
+								environment,
 								types,
 								false,
 							),
@@ -558,17 +573,12 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	// crate::utils::notify!(
 	// 	"setting {:?} {:?} {:?}",
-	// 	crate::types::printing::print_type(types, on, &environment.into_general_context(), true),
-	// 	crate::types::printing::print_type(types, under, &environment.into_general_context(), true),
-	// 	crate::types::printing::print_type(
-	// 		types,
-	// 		new.as_get_type(),
-	// 		&environment.into_general_context(),
-	// 		true
-	// 	)
+	// 	crate::types::printing::print_type(types, on, environment, true),
+	// 	crate::types::printing::print_type(types, under, environment, true),
+	// 	crate::types::printing::print_type(types, new.as_get_type(), environment, true),
 	// );
 
-	let current_property = environment.get_property_unbound(on, publicity, under.clone(), types);
+	let current_property = get_property_unbound(on, publicity, under.clone(), types, environment);
 
 	// crate::utils::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 

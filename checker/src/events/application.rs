@@ -14,6 +14,7 @@ use crate::{
 		functions::SynthesisedArgument,
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
+		printing::print_type,
 		properties::{get_property, set_property, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
@@ -41,11 +42,7 @@ pub(crate) fn apply_event(
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
-						let value = get_value_of_variable(
-							environment.facts_chain(),
-							id,
-							Some(&*type_arguments),
-						);
+						let value = get_value_of_variable(environment, id, Some(&*type_arguments));
 						if let Some(ty) = value {
 							ty
 						} else {
@@ -84,7 +81,11 @@ pub(crate) fn apply_event(
 			facts.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency, publicity, position } => {
+			// let was = on;
 			let on = substitute(on, type_arguments, environment, types);
+
+			// crate::utils::notify!("was {:?} now {:?}", was, on);
+
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
@@ -93,21 +94,30 @@ pub(crate) fn apply_event(
 				under @ crate::types::properties::PropertyKey::String(_) => under,
 			};
 
-			let (_, value) =
-				get_property(on, publicity, under, None, environment, target, types, position)
-					.expect(
-						"Inferred or checking failed, could not get property when getting property",
-					);
+			let Some((_, value)) = get_property(
+				on,
+				publicity,
+				under.clone(),
+				None,
+				environment,
+				target,
+				types,
+				position,
+			) else {
+				panic!(
+					"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
+					print_type(on, types, environment, true)
+				);
+			};
 
 			if let Some(id) = reflects_dependency {
 				type_arguments.set_id_from_reference(id, value);
 			}
 		}
 		Event::Setter { on, under, new, initialization, publicity, position } => {
-			let was = on;
+			// let was = on;
 			let on = substitute(on, type_arguments, environment, types);
-
-			crate::utils::notify!("was {:?} now {:?}", was, on);
+			// crate::utils::notify!("was {:?} now {:?}", was, on);
 
 			let under = match under {
 				crate::types::properties::PropertyKey::Type(under) => {
@@ -178,12 +188,7 @@ pub(crate) fn apply_event(
 					} = err
 					{
 						let value_type = if let PropertyValue::Value(id) = new {
-							TypeStringRepresentation::from_type_id(
-								id,
-								&environment.as_general_context(),
-								types,
-								false,
-							)
+							TypeStringRepresentation::from_type_id(id, environment, types, false)
 						} else {
 							todo!()
 						};
@@ -210,7 +215,10 @@ pub(crate) fn apply_event(
 			called_with_new,
 			position: _,
 		} => {
+			let _was = on;
 			let on = substitute(on, type_arguments, environment, types);
+
+			// crate::utils::notify!("was {:?} now {:?}", was, on);
 
 			let with = with
 				.iter()
@@ -250,6 +258,10 @@ pub(crate) fn apply_event(
 						Err(mut calling_errors) => {
 							crate::utils::notify!("inference and or checking failed at function");
 							errors.errors.append(&mut calling_errors);
+							if let Some(reflects_dependency) = reflects_dependency {
+								type_arguments
+									.set_id_from_reference(reflects_dependency, TypeId::ERROR_TYPE);
+							}
 						}
 					}
 				}
@@ -454,12 +466,14 @@ pub(crate) fn apply_event(
 					under: under.map(|under| under.specialise(type_arguments, environment, types)),
 					postfix_condition,
 				},
-				IterationKind::Properties(on) => {
-					IterationKind::Properties(substitute(on, type_arguments, environment, types))
-				}
-				IterationKind::Iterator(on) => {
-					IterationKind::Iterator(substitute(on, type_arguments, environment, types))
-				}
+				IterationKind::Properties { on, variable } => IterationKind::Properties {
+					on: substitute(on, type_arguments, environment, types),
+					variable,
+				},
+				IterationKind::Iterator { on, variable } => IterationKind::Iterator {
+					on: substitute(on, type_arguments, environment, types),
+					variable,
+				},
 			};
 
 			let early_result = iteration::run_iteration_block(

@@ -283,8 +283,10 @@ pub struct StructureGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
+	/// Gets the prototype
 	PrototypeOf(TypeId),
-	PrimitiveTypeName(TypeId),
+	/// The `typeof` unary operator
+	TypeOf(TypeId),
 }
 
 /// TODO instance of?
@@ -355,6 +357,8 @@ pub trait SubtypeBehavior {
 		function_type: FunctionType,
 	);
 
+	fn get_restriction(&self, ty: TypeId) -> Option<TypeId>;
+
 	// TODO
 	// object reference type needs to meet constraint
 	// LHS is dependent + RHS argument
@@ -389,6 +393,11 @@ impl SubtypeBehavior for SeedingContext {
 	) {
 		self.locally_held_functions.insert(function_id, function_type);
 	}
+
+	fn get_restriction(&self, ty: TypeId) -> Option<TypeId> {
+		// TODO first temp
+		self.type_restrictions.get(&ty).and_then(|ty| ty.first()).map(|(a, _)| *a)
+	}
 }
 
 impl SubtypeBehavior for BasicEquality {
@@ -418,6 +427,10 @@ impl SubtypeBehavior for BasicEquality {
 			.insert(function_id, (function_type, self.position));
 
 		debug_assert!(result.is_none());
+	}
+
+	fn get_restriction(&self, _: TypeId) -> Option<TypeId> {
+		None
 	}
 }
 
@@ -671,4 +684,50 @@ fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	} else {
 		on
 	}
+}
+
+pub trait TypeCombinable {
+	fn combine(
+		condition: TypeId,
+		truthy_result: Self,
+		else_result: Self,
+		types: &mut TypeStore,
+	) -> Self;
+
+	fn default() -> Self;
+}
+
+// For if-else branches
+impl TypeCombinable for () {
+	fn combine(
+		_condition: TypeId,
+		_truthy_result: Self,
+		_else_result: Self,
+		_types: &mut TypeStore,
+	) -> Self {
+	}
+
+	fn default() -> Self {}
+}
+
+// For ternary conditional operators
+impl TypeCombinable for TypeId {
+	fn combine(
+		condition: TypeId,
+		truthy_result: Self,
+		else_result: Self,
+		types: &mut TypeStore,
+	) -> Self {
+		types.new_conditional_type(condition, truthy_result, else_result)
+	}
+
+	fn default() -> Self {
+		TypeId::UNDEFINED_TYPE
+	}
+}
+
+/// Used for **both** inference and narrowing
+pub enum Confirmation {
+	HasProperty { on: (), property: () },
+	IsType { on: (), ty: () },
 }

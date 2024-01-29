@@ -576,12 +576,14 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 									based_on: on_interface,
 								}),
 							);
+							// Modify this id to be a free this id ...
 							if let FunctionBehavior::Method { ref mut free_this_id, .. } = behavior
 							{
 								*free_this_id = free_this_type;
 							} else {
 								unreachable!()
 							}
+							crate::utils::notify!("FTT {:?}", free_this_type);
 							crate::context::environment::FunctionScope::MethodFunction {
 								free_this_type,
 								is_async: true,
@@ -593,6 +595,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 								is_async: true,
 							}
 						};
+
 						let mut env =
 							environment.new_lexical_environment(Scope::Function(new_scope));
 

@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -80,7 +80,9 @@ jobs:
           )
 
           for url in "${strings[@]}"; do
-              curl $url > input.js
+              curl -sS $url > input.js
+              echo "--- debug: $url ---"
               cargo run -p ezno-parser --example parse input.js --timings --render-timings
+              echo "--- release: $url ---"
               cargo run -p ezno-parser --release --example parse input.js --timings --render-timings
           done

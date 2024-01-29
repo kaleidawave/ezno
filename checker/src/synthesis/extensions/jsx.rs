@@ -95,13 +95,13 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 							},
 		// 							attribute_type: TypeStringRepresentation::from_type_id(
 		// 								attr_restriction,
-		// 								&environment.as_general_context(),
+		// 								environment,
 		// 								&checking_data.types,
 		// 								checking_data.options.debug_types,
 		// 							),
 		// 							value_type: TypeStringRepresentation::from_type_id(
 		// 								attr_value,
-		// 								&environment.as_general_context(),
+		// 								environment,
 		// 								&checking_data.types,
 		// 								checking_data.options.debug_types,
 		// 							),
@@ -190,7 +190,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		args,
 		CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
-			this_value: environment.facts.value_of_this,
+			this_value: None,
 			call_site: position,
 			call_site_type_arguments: None,
 		},

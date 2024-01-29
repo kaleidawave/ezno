@@ -1,11 +1,9 @@
 //! A low level flat representation for most Rust types. Suitable for saving and loading from files.
 //!
-//! Currently exists here as there may be some context related things. May become a separate crate at some point
+//! The trait and code currently exists here as there may be some context related things.
+//! May become a separate crate at some point
 
-use std::{
-	collections::{HashMap, HashSet},
-	convert::TryInto,
-};
+use std::collections::{HashMap, HashSet};
 
 use source_map::{SourceId, SpanWithSource};
 
@@ -29,7 +27,7 @@ impl BinarySerializable for String {
 	}
 }
 
-// TODO temp
+// TODO temp, some code uses () to temporary denote fields exist but type has not be confirmed
 impl BinarySerializable for () {
 	fn serialize(self, _buf: &mut Vec<u8>) {}
 
@@ -118,6 +116,23 @@ where
 	}
 }
 
+impl<T, U, V> BinarySerializable for (T, U, V)
+where
+	T: BinarySerializable,
+	U: BinarySerializable,
+	V: BinarySerializable,
+{
+	fn serialize(self, buf: &mut Vec<u8>) {
+		self.0.serialize(buf);
+		self.1.serialize(buf);
+		self.2.serialize(buf);
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
+		(T::deserialize(iter, source), U::deserialize(iter, source), V::deserialize(iter, source))
+	}
+}
+
 impl<K, V> BinarySerializable for HashMap<K, V>
 where
 	K: BinarySerializable + std::hash::Hash + std::cmp::Eq,
@@ -195,45 +210,40 @@ where
 
 impl BinarySerializable for SpanWithSource {
 	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&TryInto::<u32>::try_into(self.start).unwrap().to_le_bytes());
-		buf.extend_from_slice(&TryInto::<u32>::try_into(self.end).unwrap().to_le_bytes());
+		self.start.serialize(buf);
+		self.end.serialize(buf);
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		let start: u32 = u32::from_le_bytes([
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-		]);
-		let end: u32 = u32::from_le_bytes([
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-			iter.next().unwrap(),
-		]);
-
-		SpanWithSource { start, end, source }
+		SpanWithSource {
+			start: u32::deserialize(iter, source),
+			end: u32::deserialize(iter, source),
+			source,
+		}
 	}
 }
 
+// TODO fix for external references
 impl BinarySerializable for SourceId {
-	fn serialize(self, _buf: &mut Vec<u8>) {
-		todo!()
-	}
+	fn serialize(self, _buf: &mut Vec<u8>) {}
 
-	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
-		todo!()
+	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, source: SourceId) -> Self {
+		source
 	}
 }
 
 impl BinarySerializable for u32 {
-	fn serialize(self, _buf: &mut Vec<u8>) {
-		todo!()
+	fn serialize(self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.to_le_bytes());
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(_iter: &mut I, _source: SourceId) -> Self {
-		todo!()
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, _source: SourceId) -> Self {
+		u32::from_le_bytes([
+			iter.next().unwrap(),
+			iter.next().unwrap(),
+			iter.next().unwrap(),
+			iter.next().unwrap(),
+		])
 	}
 }
 

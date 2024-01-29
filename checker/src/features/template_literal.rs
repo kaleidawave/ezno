@@ -107,7 +107,7 @@ where
 			arguments,
 			CallingInput {
 				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: crate::features::functions::ThisValue::UseParent,
+				this_value: None,
 				call_site,
 				call_site_type_arguments: None,
 			},

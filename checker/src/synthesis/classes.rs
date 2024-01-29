@@ -90,6 +90,8 @@ pub(super) fn synthesise_class_declaration<
 						is_generator,
 						// TODO
 						super_type: None,
+						// TODO
+						expecting: TypeId::ANY_TYPE,
 					},
 				);
 
@@ -168,6 +170,8 @@ pub(super) fn synthesise_class_declaration<
 					is_generator: method.header.is_generator(),
 					// TODO
 					super_type: None,
+					// TODO
+					expecting: TypeId::ANY_TYPE,
 				};
 				let function = environment.new_function(checking_data, method, behavior);
 

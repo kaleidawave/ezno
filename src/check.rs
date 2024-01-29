@@ -49,7 +49,7 @@ pub fn check<T: crate::ReadFromFS>(
 		if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
 			Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 		} else {
-			read_from_filesystem.get_content_at_path(path)
+			read_from_filesystem.get_content_at_path(path).map(String::into_bytes)
 		}
 	};
 

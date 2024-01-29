@@ -1,13 +1,15 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use source_map::SpanWithSource;
 
 use crate::{
 	events::{Event, RootReference},
 	features::functions::{ClosureId, ThisValue},
-	types::properties::PropertyKey,
+	types::{get_constraint, properties::PropertyKey, TypeStore},
 	PropertyValue, Type, TypeId, VariableId,
 };
+
+use super::Logical;
 
 /// TODO explain usage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
@@ -17,7 +19,7 @@ pub enum Publicity {
 }
 
 /// Things that are currently true or have happened
-#[derive(Debug, Default)]
+#[derive(Debug, Default, binary_serialize_derive::BinarySerializable)]
 pub struct Facts {
 	pub(crate) events: Vec<Event>,
 	/// TODO think about tasks. These are things that may happen at next stop point
@@ -136,6 +138,7 @@ impl Facts {
 		self.frozen.extend(other.frozen);
 	}
 
+	/// TODO explain when `ref`
 	pub(crate) fn extend_ref(&mut self, other: &Facts) {
 		self.events.extend(other.events.iter().cloned());
 		self.queued_events.extend(other.queued_events.iter().cloned());
@@ -149,5 +152,174 @@ impl Facts {
 		self.enumerable.extend(other.enumerable.iter().clone());
 		self.writable.extend(other.writable.iter().clone());
 		self.frozen.extend(other.frozen.iter().clone());
+	}
+}
+
+pub trait FactsChain {
+	fn get_chain_of_facts(&self) -> impl Iterator<Item = &'_ Facts>;
+
+	/// For debugging
+	fn get_reference_name(&self, reference: &RootReference) -> &str {
+		match reference {
+			RootReference::Variable(variable_id) => self.get_variable_name(*variable_id),
+			RootReference::This => "this",
+		}
+	}
+
+	/// For debugging
+	fn get_variable_name(&self, _variable_id: VariableId) -> &str {
+		"TODO"
+	}
+}
+
+impl FactsChain for Facts {
+	fn get_chain_of_facts(&self) -> impl Iterator<Item = &'_ Facts> {
+		std::iter::once(self)
+	}
+}
+
+/// Get all properties on a type (for printing and other non one property uses)
+///
+/// - TODO make aware of ands and aliases
+/// - TODO prototypes
+/// - TODO could this be an iterator
+/// - TODO return whether it is fixed
+/// - TODO doesn't evaluate properties
+pub fn get_properties_on_type(
+	base: TypeId,
+	facts: &impl FactsChain,
+) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
+	let reversed_flattened_properties = facts
+		.get_chain_of_facts()
+		.filter_map(|facts| facts.current_properties.get(&base).map(|v| v.iter().rev()))
+		.flatten();
+
+	let mut deleted_or_existing_properties = std::collections::HashSet::<PropertyKey>::new();
+
+	let mut properties = Vec::new();
+	for (publicity, key, prop) in reversed_flattened_properties {
+		if let PropertyValue::Deleted = prop {
+			// TODO doesn't cover constants :(
+			deleted_or_existing_properties.insert(key.clone());
+		} else if deleted_or_existing_properties.insert(key.clone()) {
+			properties.push((*publicity, key.to_owned(), prop.as_get_type()));
+		}
+	}
+
+	properties.reverse();
+	properties
+}
+
+pub(crate) fn get_value_of_constant_import_variable(
+	variable: VariableId,
+	facts: &impl FactsChain,
+) -> TypeId {
+	facts
+		.get_chain_of_facts()
+		.find_map(|facts| facts.variable_current_value.get(&variable).copied())
+		.unwrap()
+}
+
+pub(crate) fn get_property_unbound(
+	on: TypeId,
+	publicity: Publicity,
+	under: PropertyKey,
+	types: &TypeStore,
+	facts: &impl FactsChain,
+) -> Option<Logical<PropertyValue>> {
+	fn get_property(
+		facts: &Facts,
+		_types: &TypeStore,
+		on: TypeId,
+		under: (Publicity, &PropertyKey),
+	) -> Option<PropertyValue> {
+		facts.current_properties.get(&on).and_then(|properties| {
+			// TODO rev is important
+			properties.iter().rev().find_map(move |(publicity, key, value)| {
+				let (want_publicity, want_key) = under;
+				if *publicity != want_publicity {
+					return None;
+				}
+
+				match key {
+					PropertyKey::String(string) => {
+						if let PropertyKey::String(want) = want_key {
+							(string == want).then_some(value.clone())
+						} else {
+							// TODO
+							None
+						}
+					}
+					PropertyKey::Type(key) => {
+						match want_key {
+							PropertyKey::Type(want) => {
+								// TODO backing type...
+								if key == want {
+									Some(value.clone())
+								} else {
+									None
+								}
+							}
+							PropertyKey::String(s) => {
+								// TODO ...
+								if s.parse::<usize>().is_ok() {
+									Some(value.clone())
+								} else {
+									None
+								}
+							}
+						}
+					}
+				}
+			})
+		})
+	}
+
+	let under = match under {
+		PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
+		under @ PropertyKey::String(_) => under,
+	};
+
+	types.get_fact_about_type(facts, on, &get_property, (publicity, &under))
+}
+
+pub fn merge_facts(
+	parents: &impl FactsChain,
+	onto: &mut Facts,
+	condition: TypeId,
+	truthy: Facts,
+	mut falsy: Option<Facts>,
+	types: &mut TypeStore,
+) {
+	onto.events.push(Event::Conditionally {
+		condition,
+		true_events: truthy.events.into_boxed_slice(),
+		else_events: falsy
+			.as_mut()
+			.map(|falsy| mem::take(&mut falsy.events).into_boxed_slice())
+			.unwrap_or_default(),
+		position: None,
+	});
+
+	// TODO don't need to do above some scope
+	for (var, true_value) in truthy.variable_current_value {
+		crate::utils::notify!("{:?} {:?}", var, true_value);
+		// TODO don't get value above certain scope...
+		let falsy_value = falsy
+			.as_mut()
+			// Remove is important here
+			.and_then(|falsy| falsy.variable_current_value.remove(&var))
+			.or_else(|| onto.variable_current_value.get(&var).copied())
+			.or_else(|| {
+				parents
+					.get_chain_of_facts()
+					.find_map(|facts| facts.variable_current_value.get(&var))
+					.copied()
+			})
+			.unwrap_or(TypeId::ERROR_TYPE);
+
+		let new = types.new_conditional_type(condition, true_value, falsy_value);
+
+		onto.variable_current_value.insert(var, new);
 	}
 }

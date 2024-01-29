@@ -8,8 +8,9 @@ use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	context::{
-		environment::FunctionScope, facts::Facts, get_on_ctx, get_value_of_variable,
-		CanReferenceThis, ContextType, Syntax,
+		environment::FunctionScope,
+		facts::{merge_facts, Facts},
+		get_on_ctx, get_value_of_variable, CanReferenceThis, ContextType, Syntax,
 	},
 	events::RootReference,
 	types::{
@@ -18,10 +19,11 @@ use crate::{
 		functions::SynthesisedParameters,
 		poly_types::GenericTypeParameters,
 		properties::{PropertyKey, PropertyValue},
-		Constructor, FunctionType, PolyNature, TypeStore,
+		substitute, Constructor, FunctionType, PolyNature, StructureGenerics, SynthesisedParameter,
+		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, ReadFromFS, Scope, Type, TypeId,
-	VariableId,
+	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, ReadFromFS, Scope,
+	Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -165,15 +167,18 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 			result_union: parameter_constraint,
 		}));
 
-	let creation_of_default_events = out.unwrap().0.events;
-	if !creation_of_default_events.is_empty() {
-		environment.facts.events.push(crate::events::Event::Conditionally {
-			condition: is_undefined_condition,
-			true_events: creation_of_default_events.into_boxed_slice(),
-			else_events: Box::new([]),
-			position: None,
-		});
-	}
+	// TODO don't share parent
+	let Some(GeneralContext::Syntax(parent)) = environment.context_type.get_parent() else {
+		unreachable!()
+	};
+	merge_facts(
+		*parent,
+		&mut environment.facts,
+		is_undefined_condition,
+		out.unwrap().0,
+		None,
+		&mut checking_data.types,
+	);
 
 	result
 }
@@ -286,14 +291,16 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		is_generator: bool,
 		location: Option<String>,
 	},
-	// TODO this will take PartialFunction
 	ObjectMethod {
+		// TODO this will take PartialFunction
+		expecting: TypeId,
 		is_async: bool,
 		is_generator: bool,
 		// location: Option<String>,
 	},
-	// TODO this will take PartialFunction
 	ClassMethod {
+		// TODO this will take PartialFunction
+		expecting: TypeId,
 		is_async: bool,
 		is_generator: bool,
 		super_type: Option<TypeId>,
@@ -379,16 +386,20 @@ where
 				None,
 			),
 			FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
-				crate::utils::notify!("expecting {:?}", expecting);
-				let (expecting_parameters, expected_return) =
-					if let Type::FunctionReference(func_id) =
-						checking_data.types.get_type_by_id(expecting)
-					{
-						let f = checking_data.types.get_function_from_id(*func_id);
-						(Some(f.parameters.clone()), Some(f.return_type))
-					} else {
-						(None, None)
-					};
+				// crate::utils::notify!(
+				// 	"expecting {}",
+				// 	types::printing::print_type(
+				// 		expecting,
+				// 		&checking_data.types,
+				// 		base_environment,
+				// 		false
+				// 	)
+				// );
+				let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
+					expecting,
+					&mut checking_data.types,
+					base_environment,
+				);
 
 				(
 					FunctionBehavior::ArrowFunction { is_async },
@@ -445,24 +456,36 @@ where
 				None,
 				None,
 			),
-			FunctionRegisterBehavior::ClassMethod { is_async, is_generator, super_type: _ }
-			| FunctionRegisterBehavior::ObjectMethod { is_async, is_generator } => (
-				FunctionBehavior::Method {
-					is_async,
-					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
-				},
-				// TODO eager super
-				FunctionScope::MethodFunction {
-					free_this_type: TypeId::ERROR_TYPE,
-					is_async,
-					is_generator,
-				},
-				None,
-				None,
-				None,
-				None,
-			),
+			FunctionRegisterBehavior::ClassMethod {
+				is_async,
+				is_generator,
+				super_type: _,
+				expecting,
+			}
+			| FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting } => {
+				let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
+					expecting,
+					&mut checking_data.types,
+					base_environment,
+				);
+				(
+					FunctionBehavior::Method {
+						is_async,
+						is_generator,
+						free_this_id: TypeId::ERROR_TYPE,
+					},
+					// TODO eager super
+					FunctionScope::MethodFunction {
+						free_this_type: TypeId::ERROR_TYPE,
+						is_async,
+						is_generator,
+					},
+					None,
+					None,
+					expecting_parameters,
+					expected_return,
+				)
+			}
 		};
 
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
@@ -631,7 +654,7 @@ where
 			let ty = match reference {
 				RootReference::Variable(on) => {
 					let get_value_of_variable = get_value_of_variable(
-						function_environment.facts_chain(),
+						&function_environment,
 						*on,
 						None::<&crate::types::poly_types::FunctionTypeArguments>,
 					);
@@ -731,5 +754,52 @@ where
 		effects: facts.events,
 		free_variables,
 		closed_over_variables: closes_over,
+	}
+}
+
+fn get_expected_parameters_from_type(
+	expecting: TypeId,
+	types: &mut TypeStore,
+	environment: &mut Environment,
+) -> (Option<SynthesisedParameters>, Option<TypeId>) {
+	let ty = types.get_type_by_id(expecting);
+	if let Type::FunctionReference(func_id) = ty {
+		let f = types.get_function_from_id(*func_id);
+		(Some(f.parameters.clone()), Some(f.return_type))
+	} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		arguments,
+		on,
+	})) = ty
+	{
+		let mut structure_generic_arguments = arguments.clone();
+
+		let (expected_parameters, expected_return_type) =
+			get_expected_parameters_from_type(*on, types, environment);
+
+		(
+			expected_parameters.map(|e| SynthesisedParameters {
+				parameters: e
+					.parameters
+					.into_iter()
+					.map(|p| SynthesisedParameter {
+						ty: substitute(p.ty, &mut structure_generic_arguments, environment, types),
+						..p
+					})
+					.collect(),
+				rest_parameter: e.rest_parameter.map(|rp| SynthesisedRestParameter {
+					item_type: substitute(
+						rp.item_type,
+						&mut structure_generic_arguments,
+						environment,
+						types,
+					),
+					..rp
+				}),
+			}),
+			expected_return_type
+				.map(|rt| substitute(rt, &mut structure_generic_arguments, environment, types)),
+		)
+	} else {
+		(None, None)
 	}
 }

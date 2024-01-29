@@ -12,7 +12,12 @@ use parser::{
 };
 
 use crate::{
+	context::{
+		facts::{get_properties_on_type, get_property_unbound},
+		Logical,
+	},
 	features::{
+		self,
 		functions::{register_arrow_function, register_expression_function},
 		variables::VariableWithValue,
 	},
@@ -215,7 +220,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					_ => unreachable!(),
 				};
 				return evaluate_logical_operation_with_expression(
-					lhs_ty,
+					(lhs_ty, *lhs.get_position()),
 					operator,
 					&**rhs,
 					checking_data,
@@ -316,11 +321,16 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					return TypeId::ERROR_TYPE;
 				}
 				UnaryOperator::TypeOf => {
-					checking_data.raise_unimplemented_error(
-						"TypeOf",
-						position.with_source(environment.get_source()),
+					let operand_type = synthesise_expression(
+						operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
 					);
-					return TypeId::ERROR_TYPE;
+					Instance::RValue(features::type_of_operator(
+						operand_type,
+						&mut checking_data.types,
+					))
 				}
 				UnaryOperator::Void => {
 					let _operand_type = synthesise_expression(
@@ -649,11 +659,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(result)
 		}
 		Expression::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
+			let condition_pos = *condition.get_position();
 			let condition =
 				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
 			Instance::RValue(environment.new_conditional_context(
-				condition,
+				(condition, condition_pos),
 				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 					synthesise_expression(truthy_result, env, data, expecting)
 				},
@@ -904,7 +915,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
 				// TODO use what about string, what about enumerable ...
-				for (_, key, value) in environment.get_properties_on_type(spread) {
+				for (_, key, value) in get_properties_on_type(spread, environment) {
 					object_builder.append(
 						environment,
 						Publicity::Public,
@@ -951,10 +962,23 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
-				// TODO base of above
-				let expecting = TypeId::ANY_TYPE;
-				let value =
-					synthesise_expression(expression, environment, checking_data, expecting);
+				// TODO needs improvement
+				let property_expecting = get_property_unbound(
+					expected,
+					Publicity::Public,
+					key.clone(),
+					&checking_data.types,
+					environment,
+				)
+				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.unwrap_or(TypeId::ANY_TYPE);
+
+				let value = synthesise_expression(
+					expression,
+					environment,
+					checking_data,
+					property_expecting,
+				);
 
 				let value = crate::types::properties::PropertyValue::Value(value);
 				object_builder.append(
@@ -990,9 +1014,21 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
+				// TODO needs improvement
+				let property_expecting = get_property_unbound(
+					expected,
+					Publicity::Public,
+					key.clone(),
+					&checking_data.types,
+					environment,
+				)
+				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.unwrap_or(TypeId::ANY_TYPE);
+
 				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {
 					is_async: method.header.is_async(),
 					is_generator: method.header.is_generator(),
+					expecting: property_expecting,
 				};
 
 				let function = environment.new_function(checking_data, method, behavior);

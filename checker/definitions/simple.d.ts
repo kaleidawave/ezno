@@ -40,6 +40,17 @@ interface nominal Array<T> {
         }
     }
 
+    // TODO this argument
+    map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
+        const { length } = this, u: Array<U> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            u.push(cb(value, i++))
+        }
+        return u;
+    }
+
     // last() performs {
     //     return this[this.length - 1]
     // }

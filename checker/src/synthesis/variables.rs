@@ -159,7 +159,6 @@ pub(super) fn synthesise_variable_declaration_item<
 >(
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
-	_is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
 ) {
@@ -172,11 +171,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		.map(|(ty, pos)| (*ty, *pos));
 
 	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
-		let expecting = if let Some((var_ty, _)) = var_ty_and_pos.as_ref() {
-			*var_ty
-		} else {
-			TypeId::ANY_TYPE
-		};
+		let expecting = var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 
 		let value_ty =
 			super::expressions::synthesise_expression(value, environment, checking_data, expecting);

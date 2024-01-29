@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::{
 	context::{
-		environment::Label, get_value_of_variable, invocation::InvocationContext,
-		CallCheckingBehavior,
+		environment::Label, facts::get_properties_on_type, get_value_of_variable,
+		invocation::InvocationContext, CallCheckingBehavior,
 	},
 	events::{
 		application::ErrorsAndInfo, apply_event, Event, FinalEvent, InitialVariables, RootReference,
@@ -69,7 +69,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 					loop_body(environment, checking_data);
 
-					crate::utils::notify!("Loop does {:#?}", environment.facts.events);
+					// crate::utils::notify!("Loop does {:#?}", environment.facts.events);
 
 					condition
 				},
@@ -311,8 +311,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				todo!("{early_return:?}")
 			}
 		}
-		IterationBehavior::ForIn { lhs: _, rhs } => {
-			// TODO for of Object.keys ???
+		IterationBehavior::ForIn { lhs, rhs } => {
 			let on = A::synthesise_multiple_expression(
 				rhs,
 				TypeId::ANY_TYPE,
@@ -320,10 +319,17 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				checking_data,
 			);
 
+			let variable =
+				checking_data.types.register_type(Type::RootPolyType(PolyNature::Parameter {
+					// TODO can do `"prop1" | "prop2" | "prop3" | ...`
+					fixed_to: TypeId::STRING_TYPE,
+				}));
+
 			let ((), result, ..) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
+					A::declare_and_assign_to_fields(lhs, environment, checking_data, variable);
 					loop_body(environment, checking_data);
 				},
 			);
@@ -331,7 +337,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			let events = result.unwrap().0.events;
 
 			if let Some(early_return) = run_iteration_block(
-				IterationKind::Properties(on),
+				IterationKind::Properties { on, variable },
 				events,
 				InitialVariablesInput::Compute,
 				&mut FunctionTypeArguments::new(),
@@ -361,8 +367,16 @@ pub enum IterationKind {
 		/// `true` for do-while loops
 		postfix_condition: bool,
 	},
-	Properties(TypeId),
-	Iterator(TypeId),
+	Properties {
+		on: TypeId,
+		/// To substitute
+		variable: TypeId,
+	},
+	Iterator {
+		on: TypeId,
+		/// To substitute
+		variable: TypeId,
+	},
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -376,8 +390,8 @@ pub(crate) fn run_iteration_block(
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<FinalEvent> {
-	/// TODO via config
-	const MAX_ITERATIONS: usize = 1000;
+	/// TODO via config and per line
+	const MAX_ITERATIONS: usize = 100;
 
 	match condition {
 		IterationKind::Condition { postfix_condition, under } => {
@@ -402,10 +416,10 @@ pub(crate) fn run_iteration_block(
 					iterations += 1;
 				}
 
-				crate::utils::notify!(
-					"Evaluating a constant amount of iterations {:?}",
-					iterations
-				);
+				// crate::utils::notify!(
+				// 	"Evaluating a constant amount of iterations {:?}",
+				// 	iterations
+				// );
 
 				if let InitialVariablesInput::Calculated(initial) = initial {
 					for (variable_id, initial_value) in &initial {
@@ -416,109 +430,187 @@ pub(crate) fn run_iteration_block(
 					}
 				}
 
-				evaluate_iterations(
-					iterations,
-					&events,
-					type_arguments,
-					top_environment,
-					invocation_context,
-					errors,
-					types,
-				)
-			} else {
-				let initial = match initial {
-					InitialVariablesInput::Calculated(initial) => {
-						for (id, value) in &initial {
-							invocation_context
-								.get_latest_facts(top_environment)
-								.variable_current_value
-								.insert(*id, *value);
-						}
+				for _ in 0..iterations {
+					let result = evaluate_single_loop_iteration(
+						&events,
+						type_arguments,
+						top_environment,
+						invocation_context,
+						errors,
+						types,
+					);
 
-						initial
-					}
-					InitialVariablesInput::Compute => {
-						// TODO maybe treat the same way as closures
-						let mut initial = map_vec::Map::new();
-
-						for event in &events {
-							// TODO also nested events right?
-							if let Event::ReadsReference {
-								reference: RootReference::Variable(variable_id),
-								reflects_dependency: Some(free_variable_id),
-								position: _,
-							} = event
-							{
-								let value_before_iterations = get_value_of_variable(
-									top_environment.facts_chain(),
-									*variable_id,
-									None::<&crate::types::poly_types::FunctionTypeArguments>,
-								)
-								.unwrap();
-
-								crate::utils::notify!(
-									"setting '{}' to have initial type {}",
-									top_environment.get_variable_name(*variable_id),
-									crate::types::printing::print_type(
-										value_before_iterations,
-										types,
-										&top_environment.as_general_context(),
-										true
-									)
-								);
-
-								initial.insert(*variable_id, value_before_iterations);
-
-								top_environment
-									.facts
-									.variable_current_value
-									.insert(*variable_id, *free_variable_id);
+					if let Some(result) = result {
+						match result {
+							FinalEvent::Continue { carry: 0, position: _ } => {}
+							FinalEvent::Break { carry: 0, position: _ } => {
+								break;
+							}
+							FinalEvent::Continue { carry, position } => {
+								return Some(FinalEvent::Continue { carry: carry - 1, position })
+							}
+							FinalEvent::Break { carry, position } => {
+								return Some(FinalEvent::Break { carry: carry - 1, position })
+							}
+							e @ (FinalEvent::Return { .. } | FinalEvent::Throw { .. }) => {
+								return Some(e)
 							}
 						}
-						initial
 					}
-				};
+				}
 
-				crate::utils::notify!("Saving events");
-
-				invocation_context.get_latest_facts(top_environment).events.push(Event::Iterate {
-					kind: IterationKind::Condition { under, postfix_condition },
-					initial,
-					iterate_over: events.into_boxed_slice(),
-				});
-
-				// TODO can skip if at the end of a function
-				// for event in events {
-				// 	let result = apply_event_unknown(
-				// 		event,
-				// 		crate::behavior::functions::ThisValue::UseParent,
-				// 		&mut arguments,
-				// 		top_environment,
-				// 		&mut crate::context::calling::InvocationContext::new_default(),
-				// 		&mut checking_data.types,
-				// 	);
-				// }
 				None
+			} else {
+				evaluate_unknown_iteration_for_loop(
+					initial,
+					condition,
+					invocation_context,
+					top_environment,
+					events,
+					types,
+				)
 			}
 		}
-		IterationKind::Properties(on) => {
+		IterationKind::Properties { on, variable } => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				for (_publicity, property, _value) in top_environment.get_properties_on_type(on) {
-					// TODO enumerable
+				for (_publicity, property, _value) in get_properties_on_type(on, top_environment) {
 					crate::utils::notify!("Property: {:?}", property);
+
+					let property_key_as_type = match property {
+						crate::types::properties::PropertyKey::String(str) => {
+							types.new_constant_type(Constant::String(str.to_string()))
+						}
+						crate::types::properties::PropertyKey::Type(ty) => ty,
+					};
+
+					type_arguments.set_id_from_reference(variable, property_key_as_type);
+
+					// TODO enumerable
+					let result = evaluate_single_loop_iteration(
+						&events,
+						type_arguments,
+						top_environment,
+						invocation_context,
+						errors,
+						types,
+					);
+
+					if let Some(result) = result {
+						match result {
+							FinalEvent::Continue { carry: 0, position: _ } => {}
+							FinalEvent::Break { carry: 0, position: _ } => {
+								break;
+							}
+							FinalEvent::Continue { carry, position } => {
+								return Some(FinalEvent::Continue { carry: carry - 1, position })
+							}
+							FinalEvent::Break { carry, position } => {
+								return Some(FinalEvent::Break { carry: carry - 1, position })
+							}
+							e @ (FinalEvent::Return { .. } | FinalEvent::Throw { .. }) => {
+								return Some(e)
+							}
+						}
+					}
 				}
 				None
 			} else {
-				todo!("dependent in")
+				evaluate_unknown_iteration_for_loop(
+					initial,
+					condition,
+					invocation_context,
+					top_environment,
+					events,
+					types,
+				)
 			}
 		}
-		IterationKind::Iterator(_) => todo!(),
+		IterationKind::Iterator { .. } => todo!(),
 	}
 }
 
-#[must_use]
-fn evaluate_iterations(
-	iterations: usize,
+fn evaluate_unknown_iteration_for_loop(
+	initial: InitialVariablesInput,
+	kind: IterationKind,
+	invocation_context: &mut InvocationContext,
+	top_environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	events: Vec<Event>,
+	types: &mut TypeStore,
+) -> Option<FinalEvent> {
+	let initial = match initial {
+		InitialVariablesInput::Calculated(initial) => {
+			for (id, value) in &initial {
+				invocation_context
+					.get_latest_facts(top_environment)
+					.variable_current_value
+					.insert(*id, *value);
+			}
+
+			initial
+		}
+		InitialVariablesInput::Compute => {
+			// TODO maybe treat the same way as closures
+			let mut initial = map_vec::Map::new();
+
+			for event in &events {
+				// TODO also nested events right?
+				if let Event::ReadsReference {
+					reference: RootReference::Variable(variable_id),
+					reflects_dependency: Some(free_variable_id),
+					position: _,
+				} = event
+				{
+					let value_before_iterations = get_value_of_variable(
+						top_environment,
+						*variable_id,
+						None::<&crate::types::poly_types::FunctionTypeArguments>,
+					)
+					.unwrap();
+
+					crate::utils::notify!(
+						"setting '{}' to have initial type {}",
+						top_environment.get_variable_name(*variable_id),
+						crate::types::printing::print_type(
+							value_before_iterations,
+							types,
+							top_environment,
+							true
+						)
+					);
+
+					initial.insert(*variable_id, value_before_iterations);
+
+					top_environment
+						.facts
+						.variable_current_value
+						.insert(*variable_id, *free_variable_id);
+				}
+			}
+			initial
+		}
+	};
+
+	invocation_context.get_latest_facts(top_environment).events.push(Event::Iterate {
+		kind,
+		initial,
+		iterate_over: events.into_boxed_slice(),
+	});
+
+	// TODO can skip if at the end of a function
+	// for event in events {
+	// 	let result = apply_event_unknown(
+	// 		event,
+	// 		crate::behavior::functions::ThisValue::UseParent,
+	// 		&mut arguments,
+	// 		top_environment,
+	// 		&mut crate::context::calling::InvocationContext::new_default(),
+	// 		&mut checking_data.types,
+	// 	);
+	// }
+	None
+}
+
+fn evaluate_single_loop_iteration(
 	events: &[Event],
 	arguments: &mut FunctionTypeArguments,
 	top_environment: &mut Environment,
@@ -526,50 +618,30 @@ fn evaluate_iterations(
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) -> Option<FinalEvent> {
-	// TODO temp fix
-	if !errors.errors.is_empty() {
-		return None;
-	}
-
-	'main_iterations: for _ in 0..iterations {
-		'inner_loop: for event in events {
-			let result = invocation_context.new_loop_iteration(|invocation_context| {
-				apply_event(
-					event.clone(),
-					crate::features::functions::ThisValue::UseParent,
-					arguments,
-					top_environment,
-					invocation_context,
-					types,
-					errors,
-				)
-			});
-
-			if !errors.errors.is_empty() {
-				unreachable!("errors when calling loop")
-			}
-
-			if let Some(result) = result {
-				match result {
-					FinalEvent::Continue { carry: 0, position: _ } => {
-						break 'inner_loop;
-					}
-					FinalEvent::Break { carry: 0, position: _ } => {
-						break 'main_iterations;
-					}
-					FinalEvent::Continue { carry, position } => {
-						return Some(FinalEvent::Continue { carry: carry - 1, position })
-					}
-					FinalEvent::Break { carry, position } => {
-						return Some(FinalEvent::Break { carry: carry - 1, position })
-					}
-					e @ (FinalEvent::Return { .. } | FinalEvent::Throw { .. }) => return Some(e),
-				}
+	let final_event = invocation_context.new_loop_iteration(|invocation_context| {
+		for event in events {
+			let result = apply_event(
+				event.clone(),
+				crate::features::functions::ThisValue::UseParent,
+				arguments,
+				top_environment,
+				invocation_context,
+				types,
+				errors,
+			);
+			if result.is_some() {
+				return result;
 			}
 		}
+		None
+	});
+
+	if !errors.errors.is_empty() {
+		// unreachable!("errors when calling loop")
+		crate::utils::notify!("errors when calling loop");
 	}
 
-	None
+	final_event
 }
 
 /// Denotes values at the end of a loop
@@ -632,7 +704,7 @@ impl LoopStructure {
 			// );
 			Ok(iterations.ceil() as usize)
 		} else {
-			crate::utils::notify!("Iterations was {:?}", values);
+			// crate::utils::notify!("Iterations was {:?}", values);
 			Err(self)
 		}
 	}

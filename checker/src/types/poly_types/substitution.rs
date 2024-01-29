@@ -68,12 +68,7 @@ pub(crate) fn substitute(
 				id
 			} else {
 				// Other root poly types cases handled by the early return
-				let on = crate::types::printing::print_type(
-					id,
-					types,
-					&environment.as_general_context(),
-					true,
-				);
+				let on = crate::types::printing::print_type(id, types, environment, true);
 				crate::utils::notify!("Could not find argument for {}", on);
 				TypeId::ERROR_TYPE
 			}
@@ -121,19 +116,19 @@ pub(crate) fn substitute(
 				// 	crate::types::printing::print_type(
 				// 		condition,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
 				// 		truthy_result,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
 				// 		else_result,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	)
 				// );
@@ -203,7 +198,8 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Image { .. } => {
-				todo!("Constructor::Image {id:?} should be covered by events");
+				let on = crate::types::printing::print_type(id, types, environment, true);
+				todo!("Constructor::Image {on} should be covered by events");
 				// id
 
 				// let on = substitute(on, arguments, environment);

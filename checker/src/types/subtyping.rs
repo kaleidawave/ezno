@@ -1,7 +1,10 @@
 //! Type subtyping / order / subtype checking.
 
 use crate::{
-	context::{Environment, GeneralContext, Logical},
+	context::{
+		facts::{get_properties_on_type, get_property_unbound},
+		Environment, GeneralContext, Logical,
+	},
 	types::{
 		poly_types::generic_type_arguments::TypeArgumentStore, printing::print_type, TypeStore,
 	},
@@ -125,6 +128,9 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 		return SubTypeResult::IsSubType;
 	}
 
+	// TODO in progress
+	let ty = behavior.get_restriction(ty).unwrap_or(ty);
+
 	if base_type == ty {
 		return SubTypeResult::IsSubType;
 	}
@@ -213,7 +219,11 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						}
 					}
 					None => {
-						return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter)
+						if !lhs_param.optional {
+							return SubTypeResult::IsNotSubType(
+								NonEqualityReason::MissingParameter,
+							);
+						}
 					}
 				}
 			}
@@ -259,7 +269,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 				environment,
 				restriction_mode,
 			);
-			let _left = print_type(base_type, types, &environment.as_general_context(), true);
+			let _left = print_type(base_type, types, environment, true);
 
 			// crate::utils::notify!("Left object {}", left);
 
@@ -394,7 +404,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 
 				// TODO temp fix for general parameters
 				if let Type::Object(_) = right_ty {
-					for (_publicity, property, value) in environment.get_properties_on_type(ty) {
+					for (_publicity, property, value) in get_properties_on_type(ty, environment) {
 						// Assume every property on itself is either number or 'length'
 						match property {
 							PropertyKey::String(a) if a == "length" => {
@@ -534,6 +544,7 @@ fn type_is_subtype2<T: SubtypeBehavior>(
 						| Type::Constructor(..) | Type::Constant(..)
 						| Type::Or(..)
 				);
+
 			if skip_check {
 				crate::utils::notify!("Short circuited for RHS ={:?} as it is nominal", right_ty);
 				// TODO not primitive error
@@ -670,8 +681,8 @@ fn check_properties<T: SubtypeBehavior>(
 	restriction_mode: bool,
 ) -> SubTypeResult {
 	let mut property_errors = Vec::new();
-	for (publicity, key, property) in environment.get_properties_on_type(base_type) {
-		let rhs_property = environment.get_property_unbound(ty, publicity, key.clone(), types);
+	for (publicity, key, property) in get_properties_on_type(base_type, environment) {
+		let rhs_property = get_property_unbound(ty, publicity, key.clone(), types, environment);
 
 		match rhs_property {
 			Some(rhs_property) => {
@@ -680,9 +691,9 @@ fn check_properties<T: SubtypeBehavior>(
 						let rhs_type = rhs_property.as_set_type();
 						// crate::utils::notify!(
 						// 	"Checking {} with {}, against {}, left={:?}",
-						// 	print_type(key, types, &environment.as_general_context(), true),
-						// 	print_type(property, types, &environment.as_general_context(), true),
-						// 	print_type(rhs_type, types, &environment.as_general_context(), true),
+						// 	print_type(key, types, environment, true),
+						// 	print_type(property, types, environment, true),
+						// 	print_type(rhs_type, types, environment, true),
 						// 	base_type_arguments
 						// );
 

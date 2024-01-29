@@ -1,6 +1,8 @@
 use super::{
-	expressions::synthesise_multiple_expression, synthesise_block,
-	type_annotations::synthesise_type_annotation, variables::register_variable,
+	expressions::synthesise_multiple_expression,
+	synthesise_block,
+	type_annotations::synthesise_type_annotation,
+	variables::{register_variable, synthesise_variable_declaration_item},
 };
 use crate::{
 	context::{Scope, VariableRegisterArguments},
@@ -60,6 +62,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) {
+				let condition_pos = *current.0.get_position();
 				let condition = synthesise_multiple_expression(
 					current.0,
 					environment,
@@ -68,7 +71,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 
 				environment.new_conditional_context(
-					condition,
+					(condition, condition_pos),
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 						synthesise_block_or_single_statement(current.1, env, data);
 					},
@@ -216,7 +219,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::Labelled { position: _, name, statement } => {
 			// Labels on invalid statements is caught at parse time
-
 			synthesise_statement(
 				statement,
 				Some(StatementInformation { label: Some(name.clone()) }),
@@ -224,11 +226,10 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				checking_data,
 			);
 		}
-		Statement::VarVariable(_) => {
-			checking_data.raise_unimplemented_error(
-				"var variables statements",
-				statement.get_position().with_source(environment.get_source()),
-			);
+		Statement::VarVariable(stmt) => {
+			for declaration in &stmt.declarations {
+				synthesise_variable_declaration_item(declaration, environment, checking_data, None);
+			}
 		}
 		Statement::TryCatch(stmt) => {
 			let thrown_type: TypeId =

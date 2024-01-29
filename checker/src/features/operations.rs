@@ -1,5 +1,5 @@
 use derive_enum_from_into::EnumFrom;
-use source_map::SpanWithSource;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
@@ -56,19 +56,18 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 			match result {
 				Ok(result) => result,
 				Err(_err) => {
-					let ctx = &environment.as_general_context();
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::InvalidMathematicalOrBitwiseOperation {
 							operator,
 							lhs: TypeStringRepresentation::from_type_id(
 								lhs,
-								ctx,
+								environment,
 								&checking_data.types,
 								false,
 							),
 							rhs: TypeStringRepresentation::from_type_id(
 								rhs,
-								ctx,
+								environment,
 								&checking_data.types,
 								false,
 							),
@@ -164,6 +163,10 @@ pub fn evaluate_mathematical_operation(
 				_ => Err(()),
 			}
 		}
+	}
+
+	if lhs == TypeId::ERROR_TYPE || rhs == TypeId::ERROR_TYPE {
+		return Ok(TypeId::ERROR_TYPE);
 	}
 
 	let is_dependent =
@@ -378,7 +381,7 @@ pub fn evaluate_logical_operation_with_expression<
 	T: crate::ReadFromFS,
 	A: crate::ASTImplementation,
 >(
-	lhs: TypeId,
+	lhs: (TypeId, Span),
 	operator: Logical,
 	rhs: &'a A::Expression<'a>,
 	checking_data: &mut CheckingData<T, A>,
@@ -390,12 +393,12 @@ pub fn evaluate_logical_operation_with_expression<
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			},
-			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
+			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 			checking_data,
 		)),
 		Logical::Or => Ok(environment.new_conditional_context(
 			lhs,
-			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs,
+			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			}),
@@ -403,24 +406,25 @@ pub fn evaluate_logical_operation_with_expression<
 		)),
 		Logical::NullCoalescing => {
 			let is_lhs_null = evaluate_equality_inequality_operation(
-				lhs,
+				lhs.0,
 				&EqualityAndInequality::StrictEqual,
 				TypeId::NULL_TYPE,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			)?;
 			Ok(environment.new_conditional_context(
-				is_lhs_null,
+				(is_lhs_null, lhs.1),
 				|env: &mut Environment, data: &mut CheckingData<T, A>| {
 					A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 				},
-				Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
+				Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 				checking_data,
 			))
 		}
 	}
 }
 
+/// `typeof` done elsewhere
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
 	LogicalNot,
@@ -434,6 +438,10 @@ pub fn evaluate_pure_unary_operator(
 	types: &mut TypeStore,
 	strict_casts: bool,
 ) -> Result<TypeId, ()> {
+	if operand == TypeId::ERROR_TYPE {
+		return Ok(operand);
+	}
+
 	match operator {
 		PureUnary::LogicalNot => {
 			if let Decidable::Known(value) = is_type_truthy_falsy(operand, types) {

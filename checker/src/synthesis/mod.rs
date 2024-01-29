@@ -22,8 +22,9 @@ use parser::{ASTNode, PropertyKey as ParserPropertyKey};
 use source_map::SourceId;
 
 use crate::{
-	context::Names, types::properties::PropertyKey, CheckingData, Diagnostic, Environment, Facts,
-	RootContext, TypeId,
+	context::{Names, VariableRegisterArguments},
+	types::properties::PropertyKey,
+	CheckingData, Diagnostic, Environment, Facts, RootContext, TypeId,
 };
 
 use self::{
@@ -31,6 +32,7 @@ use self::{
 	expressions::{synthesise_expression, synthesise_multiple_expression},
 	hoisting::hoist_variable_declaration,
 	type_annotations::synthesise_type_annotation,
+	variables::register_variable,
 };
 
 pub struct EznoParser;
@@ -160,6 +162,25 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
 		}
+	}
+
+	fn declare_and_assign_to_fields<'a, T: crate::ReadFromFS>(
+		field: &'a Self::VariableField<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+		value: TypeId,
+	) {
+		register_variable(
+			field,
+			environment,
+			checking_data,
+			VariableRegisterArguments {
+				// TODO
+				constant: true,
+				space: None,
+				initial_value: Some(value),
+			},
+		);
 	}
 }
 
@@ -298,12 +319,7 @@ pub mod interactive {
 							checking_data,
 							TypeId::ANY_TYPE,
 						);
-						Some(print_type(
-							result,
-							&checking_data.types,
-							&environment.as_general_context(),
-							false,
-						))
+						Some(print_type(result, &checking_data.types, environment, false))
 					} else {
 						synthesise_block(&item.items, environment, checking_data);
 						None

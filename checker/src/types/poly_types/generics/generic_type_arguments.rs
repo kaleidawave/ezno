@@ -157,10 +157,12 @@ impl TypeArgumentStore for FunctionTypeArguments {
 	}
 }
 
-// TODO temp: for type alias specialisation
-impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
+/// for type alias specialisation and inferred generic function type arguments
+pub struct ExplicitTypeArguments<'a>(pub &'a mut SmallMap<TypeId, (TypeId, SpanWithSource)>);
+
+impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
 	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.get(&id).map(|(value, _pos)| *value)
+		self.0.get(&id).map(|(value, _pos)| *value)
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
@@ -174,7 +176,7 @@ impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
 
 	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
 		crate::utils::notify!("to_structural_generic_arguments shouldn't be needed");
-		StructureGenericArguments { type_arguments: self.clone(), closures: Vec::new() }
+		StructureGenericArguments { type_arguments: self.0.clone(), closures: Vec::new() }
 	}
 
 	fn is_empty(&self) -> bool {

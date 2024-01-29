@@ -117,22 +117,6 @@ function add() {
 
 - Type "hi" is not assignable to argument of type number
 
-#### Object function inference
-
-```ts
-interface MyObject {
-    a(b: string): any;
-}
-
-const obj: MyObject = {
-    a(b) {
-        print_type(b)
-    }
-}
-```
-
-- TODO?
-
 ### Narrowing
 
 > TODO `typeof`, `instanceof`, conditional, across a function
@@ -165,38 +149,9 @@ x() satisfies 3
 
 ### Iteration
 
-#### For-in fixed object
-
-```ts
-let properties: string = "";
-for (const property in { a: 1, b: 2, c: 3 }) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
-
-#### For-in non fixed object
-
-> TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
-> properties than defined
-
-```ts
-declare const myObject: { a: 1, b: 2, c: 3 };
-
-let properties: string = "";
-for (const property in myObject) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found string
-
 > TODO for in and generators
 
-#### For loops
+#### For of loops
 
 ```ts
 function func(array: Array<string>) {
@@ -207,22 +162,6 @@ function func(array: Array<string>) {
 ```
 
 - Expected number found string
-
-#### Constant for loop
-
-```ts
-function join(array: Array<string>) {
-	let buf = ""
-	for (let item of array) {
-		buf += item
-	}
-	return buf
-}
-
-join(["a", "b", "c"]) satisfies "cba"
-```
-
-- Expected "cba" found "abc"
 
 ### Inference
 
@@ -460,18 +399,6 @@ try {
 
 - Thrown type 2, not assignable to catch variable of string
 
-#### `typeof` expression
-
-> TODO better test
-
-```ts
-(typeof "hello") satisfies "string";
-(typeof 5) satisfies "number";
-(typeof {}) satisfies "Number";
-```
-
-- Expected "Number", found "object"
-
 #### `instanceof` expression
 
 ```ts
@@ -543,7 +470,7 @@ function x(a: number) {
 	if (a > 10 || a < 0) {
 		return a
 	}
-	return a--
+	return x(a--)
 }
 
 print_type(x(4))
@@ -565,21 +492,6 @@ call(call)
 - TODO hopefully doesn't blow up
 
 ### Function checking
-
-#### Default parameter side effect on parameter
-
-> I don't think this works because of fact combining
-
-```ts
-function doThing(a, b = (a += 2)) {
-	return a
-}
-
-doThing(3) satisfies 2;
-doThing(6, 1) satisfies 6;
-```
-
-- Expected 2, found 5
 
 #### Default parameter type check
 
