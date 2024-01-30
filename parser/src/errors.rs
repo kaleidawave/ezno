@@ -23,6 +23,7 @@ pub enum ParseErrors<'a> {
 	DestructuringRequiresValue,
 	CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
+	InvalidNumberLiteral,
 }
 
 #[allow(missing_docs)]
@@ -162,6 +163,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
+			}
+			ParseErrors::InvalidNumberLiteral => {
+				write!(f, "Invalid number literal")
 			}
 		}
 	}

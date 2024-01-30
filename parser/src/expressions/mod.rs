@@ -253,7 +253,10 @@ impl Expression {
 				let res = value.parse::<NumberRepresentation>();
 				match res {
 					Ok(number) => Expression::NumberLiteral(number, position),
-					Err(_) => unreachable!("Could not parse {value}"),
+					Err(_) => {
+						// TODO this should never happen
+						return Err(ParseError::new(ParseErrors::InvalidNumberLiteral, position));
+					}
 				}
 			}
 			Token(TSXToken::RegexLiteral(pattern), start) => {
