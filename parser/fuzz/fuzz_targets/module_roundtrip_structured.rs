@@ -4,7 +4,7 @@ mod common {
 	include!(concat!(env!("OUT_DIR"), "/common.rs")); // from build.rs
 }
 
-use ezno_parser::{ASTNode, Module, ParseOptions, SourceId, ToStringOptions};
+use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 

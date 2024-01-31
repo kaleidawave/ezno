@@ -24,6 +24,7 @@ pub enum ParseErrors<'a> {
 	CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
+	ReservedIdentifier,
 }
 
 #[allow(missing_docs)]
@@ -166,6 +167,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::InvalidNumberLiteral => {
 				write!(f, "Invalid number literal")
+			}
+			ParseErrors::ReservedIdentifier => {
+				write!(f, "Reserved identifier")
 			}
 		}
 	}

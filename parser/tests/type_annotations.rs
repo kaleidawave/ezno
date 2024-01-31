@@ -2,12 +2,15 @@ use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
 use pretty_assertions::assert_eq;
 
 #[test]
-fn random_statements() {
+fn statements() {
 	let input = r#"
 interface X {}
-type Y = 2"#
-		.trim_start()
-		.replace("    ", "\t");
+interface Y extends number, Z2<T> {}
+type Z = 2
+type Z2<T> = T
+"#
+	.trim_start()
+	.replace("    ", "\t");
 
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());

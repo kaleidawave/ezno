@@ -841,8 +841,17 @@ impl Expression {
 						position,
 					}
 				} else {
-					// else if options.partial_syntax
+					if let TSXToken::Keyword(ref keyword) = token.0 {
+						if keyword.is_invalid_identifier() {
+							return Err(ParseError::new(
+								ParseErrors::ReservedIdentifier,
+								token.get_span(),
+							));
+						}
+					}
+
 					let (name, position) = token_as_identifier(token, "variable reference")?;
+
 					if options.interpolation_points && name == crate::marker::MARKER {
 						let marker_id = state.new_partial_point_marker(position.get_start());
 						Expression::Marker { marker_id, position }
@@ -1694,7 +1703,7 @@ impl MultipleExpression {
 		match self {
 			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
 			MultipleExpression::Single(e) => matches!(
-				e.get_non_parenthesized(),
+				e.get_non_parenthesized().get_left(),
 				Expression::ObjectLiteral(_)
 					| Expression::ExpressionFunction(_)
 					| Expression::ClassExpression(_)
@@ -2090,17 +2099,32 @@ impl Expression {
 		}
 	}
 
-	/// For prettier printing
-	///
-	/// TODO temp
+	/// Recurses to find first non parenthesized expression
 	#[must_use]
-	pub fn is_small(&self) -> bool {
+	pub fn get_left(&self) -> &Self {
 		match self {
-			Self::NumberLiteral(..) | Self::BooleanLiteral(..) | Self::VariableReference(..) => {
-				true
+			Expression::Assignment {
+				lhs: LHSOfAssignment::VariableOrPropertyAccess(lhs), ..
 			}
-			Self::StringLiteral(value, ..) => value.len() < 8,
-			_ => false,
+			| Expression::BinaryAssignmentOperation { lhs, .. }
+			| Expression::UnaryPostfixAssignmentOperation { operand: lhs, .. } => {
+				if let VariableOrPropertyAccess::PropertyAccess { parent, .. }
+				| VariableOrPropertyAccess::Index { indexee: parent, .. } = lhs
+				{
+					parent.get_left()
+				} else {
+					self
+				}
+			}
+			Expression::TemplateLiteral(TemplateLiteral { tag: Some(left), .. })
+			| Expression::BinaryOperation { lhs: left, .. }
+			| Expression::SpecialOperators(SpecialOperators::AsExpression { value: left, .. }, _)
+			| Expression::PropertyAccess { parent: left, .. }
+			| Expression::Index { indexee: left, .. }
+			| Expression::FunctionCall { function: left, .. }
+			| Expression::Comment { on: Some(left), prefix: false, .. }
+			| Expression::ConditionalTernary { condition: left, .. } => left.get_left(),
+			root => root,
 		}
 	}
 }

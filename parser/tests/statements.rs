@@ -27,9 +27,6 @@ try {
     doThing()
 } catch (e) {
     console.error(e)
-}
-interface X {
-    a: string
 }"#
 	.trim_start()
 	.replace("    ", "\t");

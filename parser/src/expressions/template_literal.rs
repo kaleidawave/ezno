@@ -70,7 +70,16 @@ impl ASTNode for TemplateLiteral {
 		local: crate::LocalToStringInformation,
 	) {
 		if let Some(tag) = &self.tag {
-			tag.to_string_from_buffer(buf, options, local);
+			if let Expression::ObjectLiteral(..)
+			| Expression::ArrowFunction(..)
+			| Expression::ExpressionFunction(..) = tag.get_non_parenthesized()
+			{
+				buf.push('(');
+				tag.to_string_from_buffer(buf, options, local);
+				buf.push(')');
+			} else {
+				tag.to_string_from_buffer(buf, options, local);
+			}
 		}
 		buf.push('`');
 		for part in &self.parts {

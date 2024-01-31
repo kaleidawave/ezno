@@ -351,6 +351,20 @@ impl TSXKeyword {
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
 	}
+
+	#[rustfmt::skip]
+	pub(crate) fn is_invalid_identifier(self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Const | TSXKeyword::Var | TSXKeyword::If | TSXKeyword::Else | TSXKeyword::For
+				| TSXKeyword::While | TSXKeyword::Do | TSXKeyword::Switch | TSXKeyword::Class | TSXKeyword::Function
+				| TSXKeyword::New | TSXKeyword::Super | TSXKeyword::Case | TSXKeyword::Return | TSXKeyword::Continue
+				| TSXKeyword::Break | TSXKeyword::Import | TSXKeyword::Export | TSXKeyword::Default | TSXKeyword::In 
+				| TSXKeyword::TypeOf | TSXKeyword::InstanceOf | TSXKeyword::Void | TSXKeyword::Delete
+				| TSXKeyword::Debugger | TSXKeyword::Try | TSXKeyword::Catch | TSXKeyword::Finally | TSXKeyword::Throw
+				| TSXKeyword::Extends | TSXKeyword::Enum
+		)
+	}
 }
 
 impl TSXToken {

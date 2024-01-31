@@ -67,23 +67,23 @@ impl ASTNode for InterfaceDeclaration {
 		let TypeDeclaration { name, type_parameters, .. } =
 			TypeDeclaration::from_reader(reader, state, options)?;
 
-		let extends = if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek()
+		let extends = if reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
+			.is_some()
 		{
-			reader.next();
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			let mut extends = vec![type_annotation];
-			if matches!(reader.peek(), Some(Token(TSXToken::Comma, _))) {
-				reader.next();
+			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
 				loop {
 					extends.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::Comma, _) => {
+					match reader.peek() {
+						Some(Token(TSXToken::Comma, _)) => {
 							reader.next();
 						}
-						Token(TSXToken::OpenBrace, _) => break,
-						token => {
+						Some(Token(TSXToken::OpenBrace, _)) | None => break,
+						_ => {
 							return throw_unexpected_token_with_token(
-								token,
+								reader.next().unwrap(),
 								&[TSXToken::Comma, TSXToken::OpenBrace],
 							)
 						}

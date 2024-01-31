@@ -883,32 +883,39 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if let Some(token) = reader.conditional_next(|token| *token == end) {
-			return Ok((nodes, token.get_end()));
-		}
-
 		if let Some(empty) = T::EMPTY {
-			// TODO bad. Because [/* hi */, x] is valid. Need to adjust the scan tokenizer reader API
-			let mut is_comma = false;
+			let (mut is_comma, mut is_end) = (false, false);
 			let _ = reader.scan(|t, _| {
 				if t.is_skippable() {
 					false
-				} else if let TSXToken::Comma = t {
+				} else if *t == TSXToken::Comma {
 					is_comma = true;
+					true
+				} else if *t == end {
+					is_end = true;
 					true
 				} else {
 					true
 				}
 			});
-			if is_comma {
-				while let Some(token) = reader.next() {
-					if let TSXToken::Comma = token.0 {
+			if is_comma || is_end {
+				if is_comma || (is_end && !nodes.is_empty()) {
+					nodes.push(empty);
+				}
+				while let Some(Token(t, s)) = reader.next() {
+					if t == TSXToken::Comma {
 						break;
+					} else if t == end {
+						return Ok((nodes, s.get_end_after(t.length() as usize)));
 					}
 				}
-				nodes.push(empty);
+
 				continue;
 			}
+		}
+
+		if let Some(token) = reader.conditional_next(|token| *token == end) {
+			return Ok((nodes, token.get_end()));
 		}
 
 		let node = T::from_reader(reader, state, options)?;
