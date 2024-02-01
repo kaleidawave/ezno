@@ -20,7 +20,7 @@ pub enum Publicity {
 
 /// Things that are currently true or have happened
 #[derive(Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub struct Facts {
+pub struct LocalInformation {
 	pub(crate) events: Vec<Event>,
 	/// TODO think about tasks. These are things that may happen at next stop point
 	pub(crate) queued_events: Vec<Event>,
@@ -38,13 +38,18 @@ pub struct Facts {
 	pub(crate) writable: HashMap<(TypeId, TypeId), TypeId>,
 	pub(crate) frozen: HashMap<TypeId, TypeId>,
 
+	/// Object type (LHS), must always be RHS
+	///
+	/// *not quite the best place, but used in InformationChain*
+	pub(crate) object_constraints: HashMap<TypeId, TypeId>,
+
 	/// For super calls etc
 	///
 	/// TODO not great that this has to be Option to satisfy Default
 	pub(crate) value_of_this: ThisValue,
 }
 
-impl Facts {
+impl LocalInformation {
 	/// TODO temp
 	pub fn register_property(
 		&mut self,
@@ -70,7 +75,7 @@ impl Facts {
 	}
 
 	/// This is how invocation contexts register throws...
-	pub(crate) fn throw_value_in_facts(&mut self, value: TypeId, position: SpanWithSource) {
+	pub(crate) fn throw_value_in_info(&mut self, value: TypeId, position: SpanWithSource) {
 		self.events.push(crate::events::FinalEvent::Throw { thrown: value, position }.into());
 	}
 
@@ -122,7 +127,7 @@ impl Facts {
 		self.current_properties.get(&ty)
 	}
 
-	pub(crate) fn extend(&mut self, other: Facts, condition: Option<TypeId>) {
+	pub(crate) fn extend(&mut self, other: LocalInformation, condition: Option<TypeId>) {
 		if condition.is_some() {
 			todo!()
 		}
@@ -139,7 +144,7 @@ impl Facts {
 	}
 
 	/// TODO explain when `ref`
-	pub(crate) fn extend_ref(&mut self, other: &Facts) {
+	pub(crate) fn extend_ref(&mut self, other: &LocalInformation) {
 		self.events.extend(other.events.iter().cloned());
 		self.queued_events.extend(other.queued_events.iter().cloned());
 		self.variable_current_value.extend(other.variable_current_value.iter().clone());
@@ -155,8 +160,8 @@ impl Facts {
 	}
 }
 
-pub trait FactsChain {
-	fn get_chain_of_facts(&self) -> impl Iterator<Item = &'_ Facts>;
+pub trait InformationChain {
+	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation>;
 
 	/// For debugging
 	fn get_reference_name(&self, reference: &RootReference) -> &str {
@@ -172,8 +177,8 @@ pub trait FactsChain {
 	}
 }
 
-impl FactsChain for Facts {
-	fn get_chain_of_facts(&self) -> impl Iterator<Item = &'_ Facts> {
+impl InformationChain for LocalInformation {
+	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
 		std::iter::once(self)
 	}
 }
@@ -187,11 +192,11 @@ impl FactsChain for Facts {
 /// - TODO doesn't evaluate properties
 pub fn get_properties_on_type(
 	base: TypeId,
-	facts: &impl FactsChain,
+	info: &impl InformationChain,
 ) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
-	let reversed_flattened_properties = facts
-		.get_chain_of_facts()
-		.filter_map(|facts| facts.current_properties.get(&base).map(|v| v.iter().rev()))
+	let reversed_flattened_properties = info
+		.get_chain_of_info()
+		.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
 		.flatten();
 
 	let mut deleted_or_existing_properties = std::collections::HashSet::<PropertyKey>::new();
@@ -212,11 +217,10 @@ pub fn get_properties_on_type(
 
 pub(crate) fn get_value_of_constant_import_variable(
 	variable: VariableId,
-	facts: &impl FactsChain,
+	info: &impl InformationChain,
 ) -> TypeId {
-	facts
-		.get_chain_of_facts()
-		.find_map(|facts| facts.variable_current_value.get(&variable).copied())
+	info.get_chain_of_info()
+		.find_map(|info| info.variable_current_value.get(&variable).copied())
 		.unwrap()
 }
 
@@ -225,15 +229,15 @@ pub(crate) fn get_property_unbound(
 	publicity: Publicity,
 	under: PropertyKey,
 	types: &TypeStore,
-	facts: &impl FactsChain,
+	info: &impl InformationChain,
 ) -> Option<Logical<PropertyValue>> {
 	fn get_property(
-		facts: &Facts,
+		info: &LocalInformation,
 		_types: &TypeStore,
 		on: TypeId,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
-		facts.current_properties.get(&on).and_then(|properties| {
+		info.current_properties.get(&on).and_then(|properties| {
 			// TODO rev is important
 			properties.iter().rev().find_map(move |(publicity, key, value)| {
 				let (want_publicity, want_key) = under;
@@ -280,15 +284,15 @@ pub(crate) fn get_property_unbound(
 		under @ PropertyKey::String(_) => under,
 	};
 
-	types.get_fact_about_type(facts, on, &get_property, (publicity, &under))
+	types.get_fact_about_type(info, on, &get_property, (publicity, &under))
 }
 
-pub fn merge_facts(
-	parents: &impl FactsChain,
-	onto: &mut Facts,
+pub fn merge_info(
+	parents: &impl InformationChain,
+	onto: &mut LocalInformation,
 	condition: TypeId,
-	truthy: Facts,
-	mut falsy: Option<Facts>,
+	truthy: LocalInformation,
+	mut falsy: Option<LocalInformation>,
 	types: &mut TypeStore,
 ) {
 	onto.events.push(Event::Conditionally {
@@ -312,8 +316,8 @@ pub fn merge_facts(
 			.or_else(|| onto.variable_current_value.get(&var).copied())
 			.or_else(|| {
 				parents
-					.get_chain_of_facts()
-					.find_map(|facts| facts.variable_current_value.get(&var))
+					.get_chain_of_info()
+					.find_map(|info| info.variable_current_value.get(&var))
 					.copied()
 			})
 			.unwrap_or(TypeId::ERROR_TYPE);

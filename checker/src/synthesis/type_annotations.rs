@@ -29,7 +29,7 @@ use parser::{
 use source_map::SpanWithSource;
 
 use crate::{
-	context::facts::Publicity,
+	context::information::Publicity,
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
@@ -164,6 +164,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						position: argument_type_annotation
 							.get_position()
 							.with_source(environment.get_source()),
+						// TODO not needed
+						object_constraints: Default::default(),
 					};
 
 					let Type::RootPolyType(PolyNature::Generic {
@@ -331,7 +333,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let mut obj = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
-				&mut environment.facts,
+				&mut environment.info,
 			);
 
 			for (idx, (spread, member)) in members.iter().enumerate() {

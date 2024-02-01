@@ -1,7 +1,7 @@
 use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
 	context::{
-		facts::{get_value_of_constant_import_variable, Facts},
+		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
 	},
 	CheckingData, Environment, Scope, Type, TypeId, VariableId,
@@ -30,7 +30,7 @@ pub struct SynthesisedModule<M> {
 	pub content: M,
 	pub exported: Exported,
 	/// TODO ...
-	pub facts: Facts,
+	pub info: LocalInformation,
 }
 
 /// TODO tidy
@@ -120,7 +120,7 @@ pub fn import_items<
 					to: None,
 					import_specified_at: position.with_source(current_source),
 				};
-				environment.facts.variable_current_value.insert(id, *item);
+				environment.info.variable_current_value.insert(id, *item);
 				let existing = environment.variables.insert(default_name.to_owned(), v);
 				if let Some(_existing) = existing {
 					todo!("diagnostic")
@@ -176,7 +176,7 @@ pub fn import_items<
 								let k = crate::VariableId(current_source, part.position.start);
 								let v =
 									get_value_of_constant_import_variable(variable, environment);
-								environment.facts.variable_current_value.insert(k, v);
+								environment.info.variable_current_value.insert(k, v);
 								true
 							}
 							VariableMutability::Mutable { reassignment_constraint: _ } => false,

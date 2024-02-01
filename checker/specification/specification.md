@@ -49,7 +49,15 @@ let b: boolean = a
 const a = c
 ```
 
-- Could not find variable c in scope
+- Could not find variable 'c' in scope
+
+#### Assignment to non-existent variable
+
+```ts
+doesNotExist = 4;
+```
+
+- Cannot assign to unknown variable 'doesNotExist'
 
 #### Variable declared twice
 
@@ -63,7 +71,7 @@ a satisfies 2;
 const a = 3;
 ```
 
-- Cannot redeclare variable a
+- Cannot redeclare variable 'a'
 
 #### Unintialised variables are undefined
 
@@ -341,8 +349,8 @@ func satisfies (a: string, b: number) => string;
 func satisfies (a: number, b: number) => boolean;
 ```
 
-- Expected (a: string, b: number) => string, found (a: string, b: number) => true
-- Expected (a: number, b: number) => boolean, found (a: string, b: number) => true
+- Expected (a: string, b: number) => string, found (a: string, b: number) => boolean
+- Expected (a: number, b: number) => boolean, found (a: string, b: number) => boolean
 
 #### Function that throws returns never
 
@@ -429,9 +437,9 @@ function alterParameter(a: number, b: { prop: string }) {
 
 	b.prop = 3;
 
-	// Observed
 	b.prop = "hello";
-	b.prop satisfies "hello";
+	// Observed. TODO disabled because of possible impure (getters etc)
+	// b.prop satisfies "hello";
 }
 ```
 
@@ -494,7 +502,7 @@ function func<T>(a: T) {}
 func<number>("hello world")
 ```
 
-- Argument of type "hello world" is not assignable to parameter of type number
+- Argument of type "hello world" is not assignable to parameter of type T
 
 #### Get value of property on parameter
 
@@ -780,7 +788,7 @@ getX();
 let x: number = 5;
 ```
 
-- Variable x used before declaration
+- Variable 'x' used before declaration
 
 > Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
@@ -791,18 +799,24 @@ let x: number = 5;
 ```ts
 let myObject: { a: number } = { a: 4 }
 
+function readA(someObject: { a: number | string }) {
+	return someObject.a;
+}
+
 function setAtoString(someObject: { a: number | string }) {
 	someObject.a = "hi";
 }
 
+// Allowed
+readA(myObject);
 setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-> Error message could be better. Full one contains labels with more information
-
 - Assignment mismatch
 
+> Error message could be better. Full diagnostic contains labels with more information
+> `readA` is allowed, which is disallowed in Hegel, but here is allowed to preserve TSC compatibility (and because how structural subtyping is implemented)
 > Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
 #### Property assignment from conditional
@@ -1496,12 +1510,12 @@ type X = { a: string }
 #### TDZ in statements
 
 ```ts
-let x = y;
+let first = second;
 
-let y = 2;
+let second = 2;
 ```
 
-- Variable y used before declaration
+- Variable 'second' used before declaration
 
 ### Classes
 
@@ -2003,7 +2017,7 @@ export const x = 2;
 const y = "122LH"
 ```
 
-- Could not find variable y in scope
+- Could not find variable 'y' in scope
 
 #### Import side effect
 

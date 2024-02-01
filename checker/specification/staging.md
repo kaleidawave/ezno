@@ -123,7 +123,44 @@ const obj: MyObject = {
 
 - Expected number, found string
 
-### Collection
+#### Return type annotation is used in constraint
+
+> While could use the returned type (as done in the second example). Using the annotation prevents other code breaking if the body changes
+> As shown later, this doesn't affect what is returned if called
+
+```ts
+function getNumber1(): number {
+    return 4
+}
+
+function getNumber2() {
+    return 6
+}
+
+getNumber1 satisfies () => 4;
+getNumber2 satisfies () => 6;
+
+getNumber1() satisfies 4;
+getNumber2() satisfies 6;
+```
+
+- Expected () => 4, found () => number
+
+#### Generic argument/constraint leads to inference
+
+```ts
+function callFunction<T>(fn: (p: T) => void) {
+    // ...
+}
+
+callFunction<string>(a => {
+    a satisfies number;
+})
+```
+
+- Expected number, found string
+
+### Collections
 
 > TODO other arguments
 
@@ -157,3 +194,47 @@ declare let aNumber: number;
 ```
 
 - Expected 4, found 2
+
+### Types
+
+#### And object constraint
+
+```ts
+const obj = { a: 2, b: 3 };
+obj.c = obj;
+const second: { a: number, c: { b: number } } = obj;
+
+obj.a = "hi";
+obj.b = "hello";
+```
+
+- Type "hi" does not meet property constraint number
+- Type "hello" does not meet property constraint number
+
+#### Double generics
+
+> Really want to only have one covariant and one contravariant but want to keep TSC semantics
+
+```ts
+declare function what<T>(a: T, b: T): T;
+
+what(2, 3) satisfies string;
+```
+
+- Expected string, found 2 | 3
+
+#### As casts
+
+> Disabled normally, allowed for these tests. Provides TSC compatibility and because narrowing not implemented (including secret feature)
+
+```ts
+declare let global: any;
+
+5 as boolean;
+global satisfies boolean;
+(global as string) satisfies number;
+```
+
+- Cannot cast 5 to boolean
+- Expected boolean, found any
+- Expected number, found string

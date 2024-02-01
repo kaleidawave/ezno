@@ -7,7 +7,7 @@ use parser::{
 
 use super::expressions::synthesise_expression;
 use crate::{
-	context::{facts::Publicity, Context, ContextType, VariableRegisterArguments},
+	context::{information::Publicity, Context, ContextType, VariableRegisterArguments},
 	diagnostics::TypeCheckError,
 	features::variables::{get_new_register_argument_under, VariableMutability},
 	synthesis::parser_property_key_to_checker_property_key,

@@ -33,7 +33,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use types::{printing::print_type, subtyping::check_satisfies, TypeStore};
+use types::{printing::print_type, TypeStore};
 
 pub use context::{GeneralContext, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
@@ -43,7 +43,7 @@ pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParamet
 pub use type_mappings::*;
 pub use types::{properties::PropertyValue, Constant, Type, TypeId};
 
-pub use context::{facts::Facts, Environment, Scope};
+pub use context::{information::LocalInformation, Environment, Scope};
 
 pub trait ReadFromFS {
 	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>>;
@@ -72,7 +72,7 @@ pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
 	pub(crate) files: MapFileStore<WithPathMap>,
 	/// To catch cyclic imports
 	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
-	/// The result of checking. Includes exported variables and facts
+	/// The result of checking. Includes exported variables and info
 	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
 }
 
@@ -126,7 +126,7 @@ pub trait ASTImplementation: Sized {
 		file: Self::DefinitionFile<'a>,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts);
+	) -> (Names, LocalInformation);
 
 	/// Expected is used for eagerly setting function parameters
 	fn synthesise_expression<'a, T: crate::ReadFromFS>(
@@ -375,7 +375,7 @@ where
 
 			match result {
 				Some(Ok(synthesised_module)) => {
-					environment.facts.extend_ref(&synthesised_module.facts);
+					environment.info.extend_ref(&synthesised_module.info);
 					Ok(Ok(synthesised_module.exported.clone()))
 				}
 				Some(Err(error)) => {
@@ -421,6 +421,33 @@ where
 		at: SpanWithSource,
 		environment: &mut Environment,
 	) {
+		pub(crate) fn check_satisfies(
+			expr_ty: TypeId,
+			to_satisfy: TypeId,
+			types: &TypeStore,
+			environment: &mut Environment,
+		) -> bool {
+			// TODO `behavior.allow_error = true` would be better
+			if expr_ty == TypeId::ERROR_TYPE {
+				false
+			} else {
+				let mut basic_equality = subtyping::BasicEquality {
+					add_property_restrictions: false,
+					position: source_map::Nullable::NULL,
+					object_constraints: Default::default(),
+				};
+				let result = subtyping::type_is_subtype(
+					to_satisfy,
+					expr_ty,
+					&mut basic_equality,
+					environment,
+					types,
+				);
+
+				matches!(result, subtyping::SubTypeResult::IsSubType)
+			}
+		}
+
 		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
@@ -450,7 +477,7 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub diagnostics: crate::DiagnosticsContainer,
-	pub top_level_facts: crate::Facts,
+	pub top_level_information: crate::LocalInformation,
 }
 
 impl<A: crate::ASTImplementation> CheckOutput<A> {
@@ -458,7 +485,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	pub fn get_type_at_position(&self, _path: &str, pos: u32, debug: bool) -> Option<String> {
 		// TODO TypeMappings need to be per file
 		self.type_mappings.expressions_to_instances.get(pos).map(|instance| {
-			print_type(instance.get_value_on_ref(), &self.types, &self.top_level_facts, debug)
+			print_type(instance.get_value_on_ref(), &self.types, &self.top_level_information, debug)
 		})
 	}
 }
@@ -489,7 +516,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			module_contents: checking_data.modules.files,
 			modules: Default::default(),
 			diagnostics: checking_data.diagnostics_container,
-			top_level_facts: Default::default(),
+			top_level_information: Default::default(),
 		};
 	}
 
@@ -530,7 +557,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		module_contents: modules.files,
 		modules: modules.synthesised_modules,
 		diagnostics: diagnostics_container,
-		top_level_facts: root.facts,
+		top_level_information: root.info,
 	}
 }
 
@@ -569,7 +596,7 @@ const CACHE_MARKER: &[u8] = b"ezno-cache-file";
 pub(crate) struct Cache {
 	pub(crate) variables: HashMap<String, features::variables::VariableOrImport>,
 	pub(crate) named_types: HashMap<String, TypeId>,
-	pub(crate) facts: Facts,
+	pub(crate) info: LocalInformation,
 	pub(crate) types: TypeStore,
 }
 
@@ -597,12 +624,12 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 				let mut bytes = content.drain(CACHE_MARKER.len()..);
 				// TODO WIP
 				let sid = SourceId::NULL;
-				let Cache { variables, named_types, facts, types } =
+				let Cache { variables, named_types, info, types } =
 					Cache::deserialize(&mut bytes, sid);
 
 				root.variables = variables;
 				root.named_types = named_types;
-				root.facts = facts;
+				root.info = info;
 				checking_data.types = types;
 			}
 			File::Source(source_id, content) => {
@@ -614,13 +641,12 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 
 				match result {
 					Ok(tdm) => {
-						let (names, facts) =
-							A::synthesise_definition_file(tdm, root, checking_data);
+						let (names, info) = A::synthesise_definition_file(tdm, root, checking_data);
 						root.variables.extend(names.variables);
 						root.named_types.extend(names.named_types);
 						root.variable_names.extend(names.variable_names);
 
-						root.facts.extend(facts, None);
+						root.info.extend(info, None);
 					}
 					Err(err) => {
 						checking_data.diagnostics_container.add_error(err);
@@ -656,7 +682,7 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	Cache {
 		variables: root.variables,
 		named_types: root.named_types,
-		facts: root.facts,
+		info: root.info,
 		types: checking_data.types,
 	}
 	.serialize(&mut buf);

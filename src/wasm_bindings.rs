@@ -49,8 +49,7 @@ impl WASMCheckOutput {
 	}
 
 	pub fn get_type_at_position(&self, path: &str, pos: u32) -> String {
-		todo!("requires facts_chain change")
-		// self.0.get_type_at_position(path, pos)
+		self.0.get_type_at_position(path, pos, false).unwrap_or_default()
 	}
 }
 

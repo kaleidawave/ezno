@@ -117,6 +117,26 @@ function add() {
 
 - Type "hi" is not assignable to argument of type number
 
+#### Interface extends
+
+```ts
+interface X {
+    a: string
+}
+
+interface Y {
+    b: string
+}
+
+interface Z extends X, Y {
+    c: string
+}
+
+({ c: "hi" }) satisfies Z;
+```
+
+- Type { c: "hi" } is not assignable to Z
+
 ### Narrowing
 
 > TODO `typeof`, `instanceof`, conditional, across a function

@@ -5,7 +5,7 @@ use crate::{
 	synthesis::{
 		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	},
-	Environment, Facts, TypeId,
+	Environment, LocalInformation, TypeId,
 };
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
@@ -14,7 +14,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	definition: parser::TypeDefinitionModule,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
-) -> (Names, Facts) {
+) -> (Names, LocalInformation) {
 	use std::collections::HashMap;
 
 	use parser::{
@@ -213,8 +213,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		}
 	}
 
-	let Environment { named_types, facts, variable_names, variables, .. } = env;
-	(Names { variables, named_types, variable_names }, facts)
+	let Environment { named_types, info, variable_names, variables, .. } = env;
+	(Names { variables, named_types, variable_names }, info)
 }
 
 pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {

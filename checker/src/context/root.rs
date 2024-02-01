@@ -69,7 +69,7 @@ impl RootContext {
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 		];
 
-		let mut facts = crate::Facts::default();
+		let mut info = crate::LocalInformation::default();
 
 		// Add undefined
 		let variables = {
@@ -80,7 +80,7 @@ impl RootContext {
 			};
 			let undefined_id = variable_or_import.get_id();
 			let variables = [("undefined".to_owned(), variable_or_import)];
-			facts.variable_current_value.insert(undefined_id, TypeId::UNDEFINED_TYPE);
+			info.variable_current_value.insert(undefined_id, TypeId::UNDEFINED_TYPE);
 			variables
 		};
 
@@ -92,10 +92,9 @@ impl RootContext {
 			variable_names: Default::default(),
 			deferred_function_constraints: Default::default(),
 			bases: Default::default(),
-			object_constraints: Default::default(),
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
-			facts,
+			info,
 			possibly_mutated_objects: Default::default(),
 		}
 	}
@@ -117,7 +116,7 @@ impl RootContext {
 		let module = SynthesisedModule {
 			content: A::owned_module_from_module(module),
 			exported,
-			facts: environment.facts,
+			info: environment.info,
 		};
 
 		// TODO better way to do this?

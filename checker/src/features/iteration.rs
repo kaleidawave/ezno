@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
 	context::{
-		environment::Label, facts::get_properties_on_type, get_value_of_variable,
+		environment::Label, get_value_of_variable, information::get_properties_on_type,
 		invocation::InvocationContext, CallCheckingBehavior,
 	},
 	events::{
@@ -13,7 +13,7 @@ use crate::{
 		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
-	CheckingData, Constant, Environment, Facts, Scope, Type, TypeId, VariableId,
+	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy)]
@@ -65,20 +65,22 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						]),
 						position: None,
 					};
-					environment.facts.events.push(break_event);
+					environment.info.events.push(break_event);
 
 					loop_body(environment, checking_data);
 
-					// crate::utils::notify!("Loop does {:#?}", environment.facts.events);
+					// crate::utils::notify!("Loop does {:#?}", environment.info.events);
 
 					condition
 				},
 			);
 
-			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
-				result.unwrap();
+			let (
+				LocalInformation { variable_current_value, current_properties, events, .. },
+				_closes_over,
+			) = result.unwrap();
 
-			let loop_facts = Values {
+			let loop_info = Values {
 				variable_values: variable_current_value,
 				_properties_values: current_properties,
 			};
@@ -88,7 +90,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				None,
 				environment,
 				&checking_data.types,
-				&loop_facts,
+				&loop_info,
 			);
 
 			let mut errors_and_info = ErrorsAndInfo::default();
@@ -97,14 +99,14 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new(),
+				&mut FunctionTypeArguments::new_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
 				&mut checking_data.types,
 			) {
 				crate::utils::notify!("Loop returned {:?}", early_return);
-				environment.facts.events.push(Event::FinalEvent(early_return));
+				environment.info.events.push(Event::FinalEvent(early_return));
 			}
 
 			// TODO for other blocks
@@ -145,16 +147,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						]),
 						position: None,
 					};
-					environment.facts.events.push(break_event);
+					environment.info.events.push(break_event);
 
 					condition
 				},
 			);
 
-			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
-				result.unwrap();
+			let (
+				LocalInformation { variable_current_value, current_properties, events, .. },
+				_closes_over,
+			) = result.unwrap();
 
-			let loop_facts = Values {
+			let loop_info = Values {
 				variable_values: variable_current_value,
 				_properties_values: current_properties,
 			};
@@ -164,14 +168,14 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				None,
 				environment,
 				&checking_data.types,
-				&loop_facts,
+				&loop_info,
 			);
 
 			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new(),
+				&mut FunctionTypeArguments::new_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -202,7 +206,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 									.map(|v| {
 										let id = v.get_id();
 										let end_value = environment
-											.facts
+											.info
 											.variable_current_value
 											.get(&id)
 											.expect("loop variable with no initial value");
@@ -240,7 +244,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 										.into()]),
 										position: None,
 									};
-									environment.facts.events.push(break_event);
+									environment.info.events.push(break_event);
 
 									loop_body(environment, checking_data);
 
@@ -259,7 +263,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 											.into_iter()
 											.map(|(id, start_value)| {
 												let end_value = environment
-													.facts
+													.info
 													.variable_current_value
 													.get(&id)
 													.expect("loop variable with no initial value");
@@ -277,10 +281,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					},
 				);
 
-			let (Facts { variable_current_value, current_properties, events, .. }, _closes_over) =
-				result.unwrap();
+			let (
+				LocalInformation { variable_current_value, current_properties, events, .. },
+				_closes_over,
+			) = result.unwrap();
 
-			let loop_facts = Values {
+			let loop_info = Values {
 				variable_values: variable_current_value,
 				_properties_values: current_properties,
 			};
@@ -290,18 +296,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				Some(&dependent_variables),
 				environment,
 				&checking_data.types,
-				&loop_facts,
+				&loop_info,
 			);
 
 			for (var, (start, _)) in dependent_variables {
-				environment.facts.variable_current_value.insert(var, start);
+				environment.info.variable_current_value.insert(var, start);
 			}
 
 			if let Some(early_return) = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new(),
+				&mut FunctionTypeArguments::new_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -340,7 +346,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Properties { on, variable },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new(),
+				&mut FunctionTypeArguments::new_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -424,7 +430,7 @@ pub(crate) fn run_iteration_block(
 				if let InitialVariablesInput::Calculated(initial) = initial {
 					for (variable_id, initial_value) in &initial {
 						invocation_context
-							.get_latest_facts(top_environment)
+							.get_latest_info(top_environment)
 							.variable_current_value
 							.insert(*variable_id, *initial_value);
 					}
@@ -541,7 +547,7 @@ fn evaluate_unknown_iteration_for_loop(
 		InitialVariablesInput::Calculated(initial) => {
 			for (id, value) in &initial {
 				invocation_context
-					.get_latest_facts(top_environment)
+					.get_latest_info(top_environment)
 					.variable_current_value
 					.insert(*id, *value);
 			}
@@ -581,7 +587,7 @@ fn evaluate_unknown_iteration_for_loop(
 					initial.insert(*variable_id, value_before_iterations);
 
 					top_environment
-						.facts
+						.info
 						.variable_current_value
 						.insert(*variable_id, *free_variable_id);
 				}
@@ -590,7 +596,7 @@ fn evaluate_unknown_iteration_for_loop(
 		}
 	};
 
-	invocation_context.get_latest_facts(top_environment).events.push(Event::Iterate {
+	invocation_context.get_latest_info(top_environment).events.push(Event::Iterate {
 		kind,
 		initial,
 		iterate_over: events.into_boxed_slice(),
@@ -651,7 +657,7 @@ struct Values {
 	pub _properties_values: HashMap<
 		TypeId,
 		Vec<(
-			crate::context::facts::Publicity,
+			crate::context::information::Publicity,
 			crate::types::properties::PropertyKey<'static>,
 			crate::PropertyValue,
 		)>,
@@ -768,7 +774,7 @@ fn calculate_result_of_loop(
 						{
 							end
 						} else {
-							*parent_environment.facts.variable_current_value.get(roof_id).unwrap()
+							*parent_environment.info.variable_current_value.get(roof_id).unwrap()
 						}
 					} else {
 						crate::utils::notify!("Roof changed in loop");
@@ -820,7 +826,7 @@ fn calculate_result_of_loop(
 						// 	unreachable!("this")
 						// };
 						*parent_environment
-							.facts
+							.info
 							.variable_current_value
 							.get(possible_changing_variable_id)
 							.unwrap()

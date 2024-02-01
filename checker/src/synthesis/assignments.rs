@@ -5,7 +5,7 @@ use parser::{
 };
 
 use crate::{
-	context::{facts::Publicity, Environment},
+	context::{information::Publicity, Environment},
 	features::assignments::{Assignable, Reference},
 	synthesis::expressions::synthesise_expression,
 	types::properties::PropertyKey,
@@ -153,7 +153,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					&checking_data.types,
 				),
 				span: position.with_source(environment.get_source()),
-				publicity: crate::context::facts::Publicity::Public,
+				publicity: crate::context::information::Publicity::Public,
 			}
 		}
 	}

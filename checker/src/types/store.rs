@@ -2,13 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
 	context::{
-		facts::{get_property_unbound, FactsChain},
+		information::{get_property_unbound, InformationChain},
 		Logical,
 	},
 	features::functions::{ClosureId, FunctionBehavior},
 	types::FunctionType,
 	types::{PolyNature, Type},
-	Environment, Facts, FunctionId, TypeId,
+	Environment, FunctionId, LocalInformation, TypeId,
 };
 
 use super::{
@@ -245,54 +245,54 @@ impl TypeStore {
 	/// - Properties
 	/// - Equality
 	/// - Functions
-	pub(crate) fn get_fact_about_type<C: FactsChain, TData: Copy, TResult>(
+	pub(crate) fn get_fact_about_type<C: InformationChain, TData: Copy, TResult>(
 		&self,
-		facts_chain: &C,
+		info_chain: &C,
 		on: TypeId,
-		resolver: &impl Fn(&Facts, &TypeStore, TypeId, TData) -> Option<TResult>,
+		resolver: &impl Fn(&LocalInformation, &TypeStore, TypeId, TData) -> Option<TResult>,
 		data: TData,
 	) -> Option<Logical<TResult>> {
 		match self.get_type_by_id(on) {
 			Type::Function(..) => {
-				let on_function = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let on_function = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				// TODO undecided on this
 				on_function.or_else(|| {
-					self.get_fact_about_type(facts_chain, TypeId::FUNCTION_TYPE, resolver, data)
+					self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
 			Type::FunctionReference(_) => {
-				let on_function = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let on_function = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				// TODO undecided on this
 				on_function.or_else(|| {
-					self.get_fact_about_type(facts_chain, TypeId::FUNCTION_TYPE, resolver, data)
+					self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
 				})
 			}
 			Type::AliasTo { to, .. } => {
-				let property_on_self = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let property_on_self = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				property_on_self
-					.or_else(|| self.get_fact_about_type(facts_chain, *to, resolver, data))
+					.or_else(|| self.get_fact_about_type(info_chain, *to, resolver, data))
 			}
 
 			Type::And(left, right) => self
-				.get_fact_about_type(facts_chain, *left, resolver, data)
-				.or_else(|| self.get_fact_about_type(facts_chain, *right, resolver, data)),
+				.get_fact_about_type(info_chain, *left, resolver, data)
+				.or_else(|| self.get_fact_about_type(info_chain, *right, resolver, data)),
 
 			Type::Or(left, right) => {
 				// TODO temp
-				let left = self.get_fact_about_type(facts_chain, *left, resolver, data);
-				let right = self.get_fact_about_type(facts_chain, *right, resolver, data);
+				let left = self.get_fact_about_type(info_chain, *left, resolver, data);
+				let right = self.get_fact_about_type(info_chain, *right, resolver, data);
 
 				match (left, right) {
 					(None, None) => None,
@@ -304,27 +304,27 @@ impl TypeStore {
 			}
 			Type::RootPolyType(_nature) => {
 				// Can assign to properties on parameters etc
-				let on_root_type = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let on_root_type = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				on_root_type.or_else(|| {
 					let aliases = get_constraint(on, self).expect("poly type with no constraint");
-					self.get_fact_about_type(facts_chain, aliases, resolver, data)
+					self.get_fact_about_type(info_chain, aliases, resolver, data)
 				})
 			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: sg_base,
 				arguments,
 			})) => {
-				let on_sg_type = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let on_sg_type = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				on_sg_type.or_else(|| {
-					let fact_opt = self.get_fact_about_type(facts_chain, *sg_base, resolver, data);
+					let fact_opt = self.get_fact_about_type(info_chain, *sg_base, resolver, data);
 
 					fact_opt.map(|fact| Logical::Implies {
 						on: Box::new(fact),
@@ -333,9 +333,9 @@ impl TypeStore {
 				})
 			}
 			Type::Constructor(_constructor) => {
-				let on_constructor_type = facts_chain
-					.get_chain_of_facts()
-					.find_map(|facts| resolver(facts, self, on, data))
+				let on_constructor_type = info_chain
+					.get_chain_of_info()
+					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
 				on_constructor_type.or_else(|| {
@@ -343,29 +343,100 @@ impl TypeStore {
 					let constraint =
 						get_constraint(on, self).expect("no constraint for constructor");
 					// TODO might need to send more information here, rather than forgetting via .get_type
-					self.get_fact_about_type(facts_chain, constraint, resolver, data)
+					self.get_fact_about_type(info_chain, constraint, resolver, data)
 				})
 			}
-			Type::Object(..) | Type::Interface { .. } => facts_chain
-				.get_chain_of_facts()
-				.find_map(|facts| resolver(facts, self, on, data))
+			Type::Object(..) => {
+				let object_constraint_structure_generics =
+					if let Some(object_constraint) = info_chain
+						.get_chain_of_info()
+						.find_map(|c| c.object_constraints.get(&on).cloned())
+					{
+						if let Type::Constructor(Constructor::StructureGenerics(
+							StructureGenerics { arguments, .. },
+						)) = self.get_type_by_id(object_constraint)
+						{
+							Some(arguments)
+						} else {
+							None
+						}
+					} else {
+						None
+					};
+
+				let prototype = info_chain
+					.get_chain_of_info()
+					.find_map(|facts| facts.prototypes.get(&on))
+					.copied();
+
+				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
+					gens
+				} else if let Some(prototype) = prototype {
+					if prototype == TypeId::ARRAY_TYPE {
+						// TODO cannot create a union here. Might be a special type. Maybe Logical::Implies => compute
+						todo!("compute by getting number based properties")
+					} else if let Type::Interface { parameters: Some(_parameters), .. } =
+						self.get_type_by_id(prototype)
+					{
+						todo!("compute using this.#internal")
+					} else {
+						None
+					}
+				} else {
+					None
+				};
+
+				info_chain
+					.get_chain_of_info()
+					.find_map(|env| resolver(&env, self, on, data))
+					.map(|result| {
+						let pure = Logical::Pure(result);
+						if let Some(generics) = generics {
+							// TODO clone
+							Logical::Implies { on: Box::new(pure), antecedent: generics.clone() }
+						} else {
+							pure
+						}
+					})
+					.or_else(|| {
+						info_chain
+							.get_chain_of_info()
+							.find_map(|env| resolver(&env, self, on, data))
+							.map(|result| {
+								let pure = Logical::Pure(result);
+								if let Some(generics) = generics {
+									Logical::Implies {
+										on: Box::new(pure),
+										// TODO clone
+										antecedent: generics.clone(),
+									}
+								} else {
+									pure
+								}
+							})
+					})
+			}
+			// TODO extends
+			Type::Interface { .. } => info_chain
+				.get_chain_of_info()
+				.find_map(|env| resolver(&env, self, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
-					if let Some(prototype) = facts_chain
-						.get_chain_of_facts()
-						.find_map(|facts| facts.prototypes.get(&on).copied())
+					if let Some(prototype) = info_chain
+						.get_chain_of_info()
+						.find_map(|info| info.prototypes.get(&on).copied())
 					{
-						self.get_fact_about_type(facts_chain, prototype, resolver, data)
+						self.get_fact_about_type(info_chain, prototype, resolver, data)
 					} else {
 						None
 					}
 				}),
-			Type::Constant(cst) => facts_chain
-				.get_chain_of_facts()
-				.find_map(|facts| resolver(facts, self, on, data))
+			Type::Constant(cst) => info_chain
+				.get_chain_of_info()
+				.find_map(|info| resolver(info, self, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
-					self.get_fact_about_type(facts_chain, cst.get_backing_type_id(), resolver, data)
+					self.get_fact_about_type(info_chain, cst.get_backing_type_id(), resolver, data)
 				}),
 			Type::SpecialObject(_) => todo!(),
 		}
@@ -406,7 +477,7 @@ impl TypeStore {
 			self.register_type(ty)
 		} else if let Some(prop) = get_property_unbound(
 			indexee,
-			crate::context::facts::Publicity::Public,
+			crate::context::information::Publicity::Public,
 			PropertyKey::from_type(indexer, self),
 			self,
 			environment,

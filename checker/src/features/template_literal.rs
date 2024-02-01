@@ -60,7 +60,7 @@ where
 		let mut static_parts = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
-			&mut environment.facts,
+			&mut environment.info,
 		);
 
 		// TODO position
@@ -72,7 +72,7 @@ where
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
-						crate::context::facts::Publicity::Public,
+						crate::context::information::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?

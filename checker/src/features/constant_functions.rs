@@ -1,7 +1,7 @@
 use crate::{
 	context::get_on_ctx,
 	// subtyping::check_satisfies,
-	types::{functions::SynthesisedArgument, printing::debug_effects},
+	types::{functions::SynthesisedArgument, printing::debug_effects, TypeRestrictions},
 	types::{printing::print_type, Type, TypeStore},
 	Constant,
 	Environment,
@@ -22,11 +22,17 @@ pub enum ConstantFunctionError {
 	BadCall,
 }
 
+/// ```
+/// f<number>(2, 3)
+///   ^^^^^^
+/// ``` is called
+pub(crate) type CallSiteTypeArguments = TypeRestrictions;
+
 /// Computes a constant value
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
-	// call_site_type_args: &Option<Vec<(TypeId, SpanWithSource)>>,
+	_call_site_type_args: Option<&CallSiteTypeArguments>,
 	arguments: &[SynthesisedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
@@ -173,7 +179,7 @@ pub(crate) fn call_constant_function(
 		"set_prototype" => {
 			if let [first, second] = arguments {
 				let _prototype = environment
-					.facts
+					.info
 					.prototypes
 					.insert(first.non_spread_type().unwrap(), second.non_spread_type().unwrap());
 				// TODO
@@ -186,7 +192,7 @@ pub(crate) fn call_constant_function(
 			if let Some(first) = arguments.first() {
 				crate::utils::notify!("TODO walk up chain");
 				let prototype = environment
-					.facts
+					.info
 					.prototypes
 					.get(&first.non_spread_type().unwrap())
 					.copied()

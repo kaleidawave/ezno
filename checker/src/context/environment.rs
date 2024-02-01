@@ -28,8 +28,8 @@ use crate::{
 };
 
 use super::{
-	facts::{merge_facts, FactsChain, Publicity},
 	get_on_ctx, get_value_of_variable,
+	information::{merge_info, InformationChain, Publicity},
 	invocation::CheckThings,
 	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
 	GeneralContext, SetPropertyError,
@@ -243,7 +243,7 @@ impl<'a> Environment<'a> {
 								publicity,
 								&with,
 								new,
-								&checking_data.types,
+								&mut checking_data.types,
 								Some(span),
 							)?
 							.unwrap_or(new)),
@@ -251,7 +251,7 @@ impl<'a> Environment<'a> {
 				}
 
 				fn set_property_error_to_type_check_error(
-					ctx: &impl FactsChain,
+					ctx: &impl InformationChain,
 					error: SetPropertyError,
 					assignment_span: SpanWithSource,
 					types: &TypeStore,
@@ -443,7 +443,7 @@ impl<'a> Environment<'a> {
 			variable_name,
 			assignment_position,
 			new_type,
-			&checking_data.types,
+			&mut checking_data.types,
 		);
 		match result {
 			Ok(ok) => ok,
@@ -462,7 +462,7 @@ impl<'a> Environment<'a> {
 		variable_name: &str,
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
-		store: &TypeStore,
+		types: &mut TypeStore,
 	) -> Result<TypeId, AssignmentError> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
@@ -483,13 +483,20 @@ impl<'a> Environment<'a> {
 								let mut basic_subtyping = BasicEquality {
 									add_property_restrictions: false,
 									position: *declared_at,
+									object_constraints: Default::default(),
 								};
+
 								let result = type_is_subtype(
 									reassignment_constraint,
 									new_type,
 									&mut basic_subtyping,
 									self,
-									store,
+									types,
+								);
+
+								self.add_object_constraints(
+									basic_subtyping.object_constraints,
+									types,
 								);
 
 								if let SubTypeResult::IsNotSubType(_mismatches) = result {
@@ -497,11 +504,11 @@ impl<'a> Environment<'a> {
 										variable_type: TypeStringRepresentation::from_type_id(
 											reassignment_constraint,
 											self,
-											store,
+											types,
 											false,
 										),
 										value_type: TypeStringRepresentation::from_type_id(
-											new_type, self, store, false,
+											new_type, self, types, false,
 										),
 										variable_site,
 										value_site: assignment_position,
@@ -511,12 +518,12 @@ impl<'a> Environment<'a> {
 
 							let variable_id = variable.get_id();
 
-							self.facts.events.push(Event::SetsVariable(
+							self.info.events.push(Event::SetsVariable(
 								variable_id,
 								new_type,
 								assignment_position,
 							));
-							self.facts.variable_current_value.insert(variable_id, new_type);
+							self.info.variable_current_value.insert(variable_id, new_type);
 
 							Ok(new_type)
 						}
@@ -555,7 +562,7 @@ impl<'a> Environment<'a> {
 	/// TODO decidable & private?
 	#[must_use]
 	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
-		self.get_chain_of_facts().any(|facts| match facts.current_properties.get(&on) {
+		self.get_chain_of_info().any(|info| match info.current_properties.get(&on) {
 			Some(v) => {
 				v.iter().any(
 					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
@@ -573,14 +580,14 @@ impl<'a> Environment<'a> {
 
 		// on_default() okay because might be in a nested context.
 		// entry empty does not mean no properties, just no properties set on this level
-		self.facts.current_properties.entry(on).or_default().push((
+		self.info.current_properties.entry(on).or_default().push((
 			Publicity::Public,
 			under.clone(),
 			PropertyValue::Deleted,
 		));
 
 		// TODO Event::Delete. Dependent result based on in
-		self.facts.events.push(Event::Setter {
+		self.info.events.push(Event::Setter {
 			on,
 			under,
 			new: PropertyValue::Deleted,
@@ -614,7 +621,7 @@ impl<'a> Environment<'a> {
 			property,
 			with,
 			self,
-			&mut CheckThings,
+			&mut CheckThings {},
 			types,
 			position.with_source(self.get_source()),
 		)
@@ -761,7 +768,7 @@ impl<'a> Environment<'a> {
 					// Look for reassignments
 					for p in self.parents_iter() {
 						if let Some(value) =
-							get_on_ctx!(p.facts.variable_current_value.get(&og_var.get_id()))
+							get_on_ctx!(p.info.variable_current_value.get(&og_var.get_id()))
 						{
 							return Ok(VariableWithValue(og_var.clone(), *value));
 						}
@@ -782,7 +789,7 @@ impl<'a> Environment<'a> {
 			// TODO temp position
 			let mut value = None;
 
-			for event in &self.facts.events {
+			for event in &self.info.events {
 				// TODO explain why don't need to detect sets
 				if let Event::ReadsReference {
 					reference: other_reference,
@@ -814,7 +821,7 @@ impl<'a> Environment<'a> {
 				// 	self.context_type.get_inferrable_constraints_mut().unwrap().insert(type_id);
 				// }
 
-				self.facts.events.push(Event::ReadsReference {
+				self.info.events.push(Event::ReadsReference {
 					reference: RootReference::Variable(og_var.get_id()),
 					reflects_dependency: Some(ty),
 					position,
@@ -883,7 +890,7 @@ impl<'a> Environment<'a> {
 			};
 		}
 
-		let (truthy_result, truthy_facts) = {
+		let (truthy_result, truthy_info) = {
 			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: condition,
 				is_switch: None,
@@ -891,16 +898,16 @@ impl<'a> Environment<'a> {
 
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
-			(result, truthy_environment.facts)
+			(result, truthy_environment.info)
 		};
 
-		let (falsy_result, falsy_facts) = if let Some(else_evaluate) = else_evaluate {
+		let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 				is_switch: None,
 			});
 
-			(else_evaluate(&mut falsy_environment, checking_data), Some(falsy_environment.facts))
+			(else_evaluate(&mut falsy_environment, checking_data), Some(falsy_environment.info))
 		} else {
 			(R::default(), None)
 		};
@@ -910,22 +917,22 @@ impl<'a> Environment<'a> {
 
 		match self.context_type.parent {
 			GeneralContext::Syntax(syn) => {
-				merge_facts(
+				merge_info(
 					syn,
-					&mut self.facts,
+					&mut self.info,
 					condition,
-					truthy_facts,
-					falsy_facts,
+					truthy_info,
+					falsy_info,
 					&mut checking_data.types,
 				);
 			}
 			GeneralContext::Root(root) => {
-				merge_facts(
+				merge_info(
 					root,
-					&mut self.facts,
+					&mut self.info,
 					condition,
-					truthy_facts,
-					falsy_facts,
+					truthy_info,
+					falsy_info,
 					&mut checking_data.types,
 				);
 			}
@@ -935,11 +942,11 @@ impl<'a> Environment<'a> {
 	}
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
-		self.facts.events.push(FinalEvent::Throw { thrown, position }.into());
+		self.info.events.push(FinalEvent::Throw { thrown, position }.into());
 	}
 
 	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
-		self.facts.events.push(FinalEvent::Return { returned, returned_position }.into());
+		self.info.events.push(FinalEvent::Return { returned, returned_position }.into());
 	}
 
 	pub fn add_continue(
@@ -948,7 +955,7 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
-			self.facts.events.push(
+			self.info.events.push(
 				FinalEvent::Continue {
 					position: Some(position.with_source(self.get_source())),
 					carry,
@@ -971,7 +978,7 @@ impl<'a> Environment<'a> {
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
 			crate::utils::notify!("Carry is {}", carry);
-			self.facts.events.push(
+			self.info.events.push(
 				FinalEvent::Break {
 					position: Some(position.with_source(self.get_source())),
 					carry,
@@ -996,7 +1003,7 @@ impl<'a> Environment<'a> {
 		publicity: Publicity,
 		under: &PropertyKey,
 		new: TypeId,
-		types: &TypeStore,
+		types: &mut TypeStore,
 		setter_position: Option<SpanWithSource>,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(

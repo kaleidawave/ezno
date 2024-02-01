@@ -278,7 +278,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+		environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
@@ -336,7 +336,9 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				})
 				.or_else(|| {
 					// Try use expected type
-					expected_parameters.as_ref().and_then(|p| p.get_type_constraint_at_index(idx))
+					expected_parameters
+						.as_ref()
+						.and_then(|p| p.get_type_constraint_at_index(idx).map(|(t, _pos)| t))
 				})
 				.unwrap_or(TypeId::ANY_TYPE);
 
@@ -355,7 +357,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 				parameter_constraint,
 				TypeId::NUMBER_TYPE | TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE
 			) {
-				environment.object_constraints.insert(ty, vec![parameter_constraint]);
+				environment.info.object_constraints.insert(ty, parameter_constraint);
 			}
 
 			let (optional, variable_ty) = match &parameter.additionally {
@@ -426,7 +428,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 
 		let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+		environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		match rest_parameter.name {
 			VariableIdentifier::Standard(ref name, pos) => environment
@@ -626,7 +628,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							parameters,
 							return_type,
 							type_parameters,
-							effects: env.facts.events,
+							effects: env.info.events,
 							free_variables: Default::default(),
 							closed_over_variables: Default::default(),
 							behavior,

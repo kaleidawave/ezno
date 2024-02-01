@@ -1,4 +1,4 @@
-use source_map::{SourceId, SpanWithSource};
+use source_map::{Nullable, SourceId, SpanWithSource};
 use std::vec;
 
 use crate::{
@@ -6,10 +6,12 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
 	features::{
-		constant_functions::{call_constant_function, ConstantFunctionError, ConstantOutput},
+		constant_functions::{
+			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
+		},
 		functions::{FunctionBehavior, ThisValue},
 	},
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	subtyping::{type_is_subtype, BasicEquality, Contributions, SubTypeResult},
 	types::{functions::SynthesisedArgument, substitute, ObjectNature},
 	types::{FunctionType, Type},
 	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
@@ -17,11 +19,9 @@ use crate::{
 
 use super::{
 	get_constraint, is_type_constant,
-	poly_types::{
-		generic_type_arguments::StructureGenericArguments, FunctionTypeArguments, SeedingContext,
-	},
+	poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
 	properties::PropertyKey,
-	Constructor, PolyNature, TypeStore,
+	Constructor, PolyNature, TypeArguments, TypeRestrictions, TypeStore,
 };
 
 pub struct CallingInput {
@@ -160,8 +160,12 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 				if let Type::RootPolyType(PolyNature::Generic { eager_fixed, .. }) =
 					types.get_type_by_id(param.id)
 				{
-					let mut basic_subtyping =
-						BasicEquality { add_property_restrictions: false, position };
+					let mut basic_subtyping = BasicEquality {
+						add_property_restrictions: false,
+						position,
+						// This shouldn't be needed in this scenario
+						object_constraints: Default::default(),
+					};
 
 					let type_is_subtype =
 						type_is_subtype(*eager_fixed, ty, &mut basic_subtyping, environment, types);
@@ -209,7 +213,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 				.map(|(idx, argument)| {
 					let expected_type = parameters.get_type_constraint_at_index(idx).map_or(
 						TypeId::ANY_TYPE,
-						|parameter_type| {
+						|(parameter_type, _)| {
 							get_constraint(parameter_type, &checking_data.types)
 								.unwrap_or(parameter_type)
 						},
@@ -229,8 +233,12 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 								// TODO clone bad!
 								structure_arguments: structure_generics.cloned(),
 								// TODO clone bad!
-								local_arguments: type_arguments_restrictions.clone(),
+								local_arguments: type_arguments_restrictions
+									.iter()
+									.map(|(k, (v, _))| (*k, *v))
+									.collect(),
 								closure_id: None,
+								call_site: SpanWithSource::NULL,
 							},
 							environment,
 							&mut checking_data.types,
@@ -384,7 +392,7 @@ fn call_logical<E: CallCheckingBehavior>(
 							Some(id)
 						};
 
-						behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
+						behavior.get_latest_info(top_environment).events.push(Event::CallsType {
 							on,
 							with,
 							timing: crate::events::CallingTiming::Synchronous,
@@ -590,7 +598,7 @@ impl FunctionType {
 		this_value: ThisValue,
 		call_site: SpanWithSource,
 		arguments: &[SynthesisedArgument],
-		local_type_argument_restrictions: Option<TypeArgumentRestrictions>,
+		call_site_type_arguments: Option<CallSiteTypeArguments>,
 		structure_generics: Option<StructureGenericArguments>,
 		environment: &mut Environment,
 		behavior: &mut E,
@@ -640,7 +648,7 @@ impl FunctionType {
 					const_fn_ident,
 					// TODO
 					this_value,
-					// &call_site_type_arguments,
+					call_site_type_arguments.as_ref(),
 					arguments,
 					types,
 					environment,
@@ -690,7 +698,7 @@ impl FunctionType {
 					this_value,
 					call_site,
 					arguments,
-					local_type_argument_restrictions,
+					call_site_type_arguments,
 					structure_generics,
 					environment,
 					behavior,
@@ -717,174 +725,42 @@ impl FunctionType {
 
 		let mut errors = ErrorsAndInfo::default();
 
-		let mut seeding_context = SeedingContext {
-			type_arguments: map_vec::Map::new(),
-			type_restrictions: match local_type_argument_restrictions {
-				// TODO temp
-				Some(res) => res.into_iter().map(|(lhs, rhs)| (lhs, vec![rhs])).collect(),
-				None => map_vec::Map::new(),
-			},
-			locally_held_functions: map_vec::Map::new(),
-			argument_position_and_parameter_idx: (source_map::Nullable::NULL, 0),
-		};
+		// Contravariant
+		let mut type_arguments = map_vec::Map::new();
+		// Covariant
+		let mut type_restrictions = call_site_type_arguments.unwrap_or(map_vec::Map::new());
 
-		match self.behavior {
-			FunctionBehavior::ArrowFunction { is_async: _ } => {}
-			FunctionBehavior::Method { free_this_id, .. } => {
-				// TODO
-				let value_of_this = if let Some(value) = this_value.get_passed() {
-					value
-				} else {
-					crate::utils::notify!("method has no 'this' passed :?");
-					TypeId::UNDEFINED_TYPE
-				};
-
-				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
-
-				// TODO checking
-				seeding_context
-					.type_arguments
-					.insert(free_this_id, vec![(value_of_this, source_map::Nullable::NULL, 0)]);
-			}
-			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
-				match called_with_new {
-					CalledWithNew::New { on: _ } => {
-						crate::utils::notify!("TODO set prototype");
-						// if let Some(prototype) = non_super_prototype {
-						// let this_ty = environment.create_this(prototype, types);
-						let value_of_this =
-							types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-
-						seeding_context.type_arguments.insert(
-							// TODO
-							free_this_id,
-							vec![(value_of_this, source_map::Nullable::NULL, 0)],
-						);
-					}
-					CalledWithNew::SpecialSuperCall { this_type: _ } => todo!(),
-					CalledWithNew::None => {
-						// TODO
-						let value_of_this = this_value.get(environment, types, &call_site);
-
-						seeding_context.type_arguments.insert(
-							free_this_id,
-							vec![(value_of_this, source_map::Nullable::NULL, 0)],
-						);
-					}
-				}
-			}
-			FunctionBehavior::Constructor { non_super_prototype: _, this_object_type: _ } => {
-				if let CalledWithNew::None = called_with_new {
-					errors
-						.errors
-						.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
-				}
-			}
+		if let Some(ref structure_generics) = structure_generics {
+			type_restrictions.extend(structure_generics.type_arguments.clone().into_iter())
 		}
 
-		{
-			let import_new_argument = match called_with_new {
-				CalledWithNew::New { on } => on,
-				CalledWithNew::SpecialSuperCall { .. } => {
-					todo!()
-					// let ty = this_value.0;
-					// let on = crate::types::printing::print_type(
-					// 	ty,
-					// 	types,
-					// 	environment,
-					// 	true,
-					// );
-					// crate::utils::notify!("This argument {}", on);
-					// ty
-				}
-				// In spec == undefined
-				CalledWithNew::None => TypeId::UNDEFINED_TYPE,
-			};
+		// let mut locally_held_functions = map_vec::Map::new();
 
-			// TODO on type arguments, not seeding context
-			seeding_context.type_arguments.insert(
-				TypeId::NEW_TARGET_ARG,
-				vec![(import_new_argument, source_map::Nullable::NULL, 0)],
-			);
-		}
-
-		let seeding_context = self.assign_arguments_to_parameters::<E>(
-			arguments,
-			seeding_context,
+		self.run_behavior(
+			called_with_new,
+			this_value,
+			&mut type_arguments,
 			environment,
 			types,
 			&mut errors,
-			&call_site,
+			call_site,
 		);
 
-		let SeedingContext {
-			type_arguments: found,
+		let local_arguments = self.assign_arguments_to_parameters::<E>(
+			arguments,
+			type_arguments,
 			type_restrictions,
-			locally_held_functions: _,
-			argument_position_and_parameter_idx: _,
-		} = seeding_context;
-
-		// take the found and inject back into what it resolved
-		let mut result_type_arguments = map_vec::Map::new();
-
-		for (item, values) in found {
-			// TODO only first ??
-			let (value, argument_position, param) =
-				values.into_iter().next().expect("no type argument ...?");
-
-			if let Some(restrictions_for_item) = type_restrictions.get(&item) {
-				// let (restriction, restriction_position) = restrictions_for_item;
-				for (restriction, restriction_position) in restrictions_for_item {
-					let mut behavior = BasicEquality {
-						add_property_restrictions: false,
-						position: *restriction_position,
-					};
-
-					let result =
-						type_is_subtype(*restriction, value, &mut behavior, environment, types);
-
-					if let SubTypeResult::IsNotSubType(_err) = result {
-						let argument_type = TypeStringRepresentation::from_type_id(
-							value,
-							environment,
-							types,
-							false,
-						);
-						let restriction_type = TypeStringRepresentation::from_type_id(
-							*restriction,
-							environment,
-							types,
-							false,
-						);
-
-						let restriction = Some((*restriction_position, restriction_type));
-						let synthesised_parameter = &self.parameters.parameters[param];
-						let parameter_type = TypeStringRepresentation::from_type_id(
-							synthesised_parameter.ty,
-							environment,
-							types,
-							false,
-						);
-
-						errors.errors.push(FunctionCallingError::InvalidArgumentType {
-							argument_type,
-							argument_position,
-							parameter_type,
-							parameter_position: synthesised_parameter.position,
-							restriction,
-						});
-					}
-				}
-			}
-
-			// TODO position is just the first
-			result_type_arguments.insert(item, (value, argument_position));
-		}
+			environment,
+			types,
+			&mut errors,
+			call_site,
+		);
 
 		let mut type_arguments = FunctionTypeArguments {
 			structure_arguments: structure_generics,
-			local_arguments: result_type_arguments,
+			local_arguments,
 			closure_id: None,
+			call_site,
 		};
 
 		if E::CHECK_PARAMETERS {
@@ -945,7 +821,7 @@ impl FunctionType {
 				self.closed_over_variables.iter().for_each(|(reference, value)| {
 					let value = substitute(*value, &mut type_arguments, environment, types);
 					environment
-						.facts
+						.info
 						.closure_current_values
 						.insert((closure_id, reference.clone()), value);
 
@@ -970,8 +846,7 @@ impl FunctionType {
 					let new_instance_type = type_arguments
 						.local_arguments
 						.remove(&free_this_id)
-						.expect("no this argument7")
-						.0;
+						.expect("no this argument?");
 
 					return Ok(FunctionCallResult {
 						returned_type: new_instance_type,
@@ -986,8 +861,7 @@ impl FunctionType {
 					let new_instance_type = type_arguments
 						.local_arguments
 						.remove(&this_object_type)
-						.expect("no this argument7")
-						.0;
+						.expect("no this argument?");
 
 					return Ok(FunctionCallResult {
 						returned_type: new_instance_type,
@@ -1006,7 +880,7 @@ impl FunctionType {
 					unreachable!("function ended on continue / break")
 				}
 				FinalEvent::Throw { thrown: value, position } => {
-					behavior.get_latest_facts(environment).throw_value_in_facts(value, position);
+					behavior.get_latest_info(environment).throw_value_in_info(value, position);
 					TypeId::NEVER_TYPE
 				}
 				FinalEvent::Return { returned, returned_position: _ } => {
@@ -1028,15 +902,93 @@ impl FunctionType {
 		})
 	}
 
-	fn assign_arguments_to_parameters<E: CallCheckingBehavior>(
+	fn run_behavior(
 		&self,
-		arguments: &[SynthesisedArgument],
-		mut seeding_context: SeedingContext,
+		called_with_new: CalledWithNew,
+		this_value: ThisValue,
+		type_arguments: &mut map_vec::Map<TypeId, TypeId>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
-		call_site: &source_map::BaseSpan<SourceId>,
-	) -> SeedingContext {
+		call_site: source_map::BaseSpan<SourceId>,
+	) {
+		match self.behavior {
+			FunctionBehavior::ArrowFunction { is_async: _ } => {}
+			FunctionBehavior::Method { free_this_id, .. } => {
+				// TODO
+				let value_of_this = if let Some(value) = this_value.get_passed() {
+					value
+				} else {
+					crate::utils::notify!("method has no 'this' passed :?");
+					TypeId::UNDEFINED_TYPE
+				};
+
+				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
+
+				type_arguments.insert(free_this_id, value_of_this);
+			}
+			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
+				match called_with_new {
+					CalledWithNew::New { on: _ } => {
+						crate::utils::notify!("TODO set prototype");
+						// if let Some(prototype) = non_super_prototype {
+						// let this_ty = environment.create_this(prototype, types);
+						let value_of_this =
+							types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
+						type_arguments.insert(free_this_id, value_of_this);
+					}
+					CalledWithNew::SpecialSuperCall { this_type: _ } => todo!(),
+					CalledWithNew::None => {
+						// TODO
+						let value_of_this = this_value.get(environment, types, &call_site);
+
+						type_arguments.insert(free_this_id, value_of_this);
+					}
+				}
+			}
+			FunctionBehavior::Constructor { non_super_prototype: _, this_object_type: _ } => {
+				if let CalledWithNew::None = called_with_new {
+					errors
+						.errors
+						.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
+				}
+			}
+		}
+
+		{
+			let import_new_argument = match called_with_new {
+				CalledWithNew::New { on } => on,
+				CalledWithNew::SpecialSuperCall { .. } => {
+					todo!()
+					// let ty = this_value.0;
+					// let on = crate::types::printing::print_type(
+					// 	ty,
+					// 	types,
+					// 	environment,
+					// 	true,
+					// );
+					// crate::utils::notify!("This argument {}", on);
+					// ty
+				}
+				// In spec == undefined
+				CalledWithNew::None => TypeId::UNDEFINED_TYPE,
+			};
+
+			type_arguments.insert(TypeId::NEW_TARGET_ARG, import_new_argument);
+		}
+	}
+
+	fn assign_arguments_to_parameters<E: CallCheckingBehavior>(
+		&self,
+		arguments: &[SynthesisedArgument],
+		mut type_arguments: TypeArguments,
+		restrictions: TypeRestrictions,
+		environment: &mut Environment,
+		types: &mut TypeStore,
+		errors: &mut ErrorsAndInfo,
+		call_site: source_map::BaseSpan<SourceId>,
+	) -> TypeArguments {
 		for (parameter_idx, parameter) in self.parameters.parameters.iter().enumerate() {
 			// TODO temp
 
@@ -1048,21 +1000,12 @@ impl FunctionType {
 					crate::utils::notify!("TODO spread arguments");
 				}
 
-				// TODO bad
-				seeding_context.argument_position_and_parameter_idx = (*position, parameter_idx);
-
-				// crate::utils::notify!(
-				// 	"param {}, arg {}",
-				// 	types.debug_type(parameter.ty),
-				// 	types.debug_type(*argument_type)
-				// );
-
 				if E::CHECK_PARAMETERS {
-					// crate::utils::notify!("Param {:?} :> {:?}", parameter.ty, *argument_type);
-					let result = type_is_subtype(
+					let result = check_parameter_type(
+						&mut type_arguments,
+						&restrictions,
 						parameter.ty,
 						*value,
-						&mut seeding_context,
 						environment,
 						types,
 					);
@@ -1088,93 +1031,61 @@ impl FunctionType {
 					}
 				} else {
 					// Already checked so can set
-					seeding_context.set_id(parameter.ty, (*value, *position, parameter_idx), false);
+					type_arguments.insert(parameter.ty, *value);
 				}
 			} else if parameter.optional {
-				seeding_context.set_id(
-					parameter.ty,
-					(TypeId::UNDEFINED_TYPE, source_map::Nullable::NULL, parameter_idx),
-					false,
-				);
+				type_arguments.insert(parameter.ty, TypeId::UNDEFINED_TYPE);
 			} else {
 				errors.errors.push(FunctionCallingError::MissingArgument {
 					parameter_position: parameter.position,
-					call_site: *call_site,
+					call_site,
 				});
 			}
-
-			// if let SubTypeResult::IsNotSubType(_reasons) = result {
-			// 	if auto_inserted_arg {
-			// 		todo!("different error");
-			// 	} else {
-			// 		errors.errors.push(FunctionCallingError::InvalidArgumentType {
-			// 			parameter_index: idx,
-			// 			argument_type: argument_type.into_owned(),
-			// 			parameter_type: parameter_type.clone(),
-			// 			parameter_pos: parameter.2.clone().unwrap(),
-			// 		});
-			// 	}
-			// }
-			// } else {
-			// 	errors.errors.push(FunctionCallingError::MissingArgument {
-			// 		parameter_pos: parameter.2.clone().unwrap(),
-			// 	});
-			// }
 		}
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
 				// TODO use object builder
 				let rest_parameter_array_type =
-					environment.facts.new_object(Some(TypeId::ARRAY_TYPE), types, true, false);
+					environment.info.new_object(Some(TypeId::ARRAY_TYPE), types, true, false);
 
 				for (idx, argument) in
 					arguments.iter().enumerate().skip(self.parameters.parameters.len())
 				{
 					if E::CHECK_PARAMETERS {
-						let result = type_is_subtype(
+						let result = check_parameter_type(
+							&mut type_arguments,
+							&restrictions,
 							rest_parameter.item_type,
 							argument.value,
-							&mut seeding_context,
 							environment,
 							types,
 						);
 
+						// TODO different diagnostic?
 						if let SubTypeResult::IsNotSubType(_reasons) = result {
 							errors.errors.push(FunctionCallingError::InvalidArgumentType {
-								parameter_type:
-									TypeStringRepresentation::from_type_id_with_generics(
-										rest_parameter.item_type,
-										// TODO temp
-										Some(
-											&seeding_context
-												.type_restrictions
-												.iter()
-												.map(|(l, r)| {
-													let (first, second) = r.first().unwrap();
-													(*l, (*first, *second))
-												})
-												.collect(),
-										),
-										environment,
-										types,
-										false,
-									),
+								parameter_type: TypeStringRepresentation::from_type_id(
+									rest_parameter.ty,
+									environment,
+									types,
+									false,
+								),
 								argument_type: TypeStringRepresentation::from_type_id(
 									argument.value,
 									environment,
 									types,
 									false,
 								),
-								argument_position: argument.position,
 								parameter_position: rest_parameter.position,
+								argument_position: argument.position,
 								restriction: None,
 							});
 						}
 					}
 
-					environment.facts.register_property(
+					environment.info.register_property(
 						rest_parameter_array_type,
-						crate::context::facts::Publicity::Public,
+						crate::context::information::Publicity::Public,
 						PropertyKey::from_usize(idx),
 						crate::PropertyValue::Value(argument.value),
 						true,
@@ -1182,12 +1093,8 @@ impl FunctionType {
 					);
 				}
 
-				// TODO what does the 0 mean here?
-				seeding_context.set_id(
-					rest_parameter.ty,
-					(rest_parameter_array_type, source_map::Nullable::NULL, 0),
-					false,
-				);
+				// TODO only if no error
+				type_arguments.insert(rest_parameter.ty, rest_parameter_array_type);
 			} else {
 				// TODO types.options.allow_extra_arguments
 				let mut left_over = arguments.iter().skip(self.parameters.parameters.len());
@@ -1208,11 +1115,60 @@ impl FunctionType {
 				} else {
 					first.position
 				};
+
 				if E::CHECK_PARAMETERS {
 					errors.errors.push(FunctionCallingError::ExcessArguments { count, position });
 				}
 			}
 		}
-		seeding_context
+
+		type_arguments
 	}
+}
+
+fn check_parameter_type(
+	type_arguments: &mut TypeArguments,
+	restrictions: &TypeRestrictions,
+	parameter_ty: TypeId,
+	value: TypeId,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> SubTypeResult {
+	let mut contributions = Contributions {
+		existing_covariant: type_arguments,
+		existing_contravariant: restrictions,
+		staging_covariant: map_vec::Map::new(),
+		staging_contravariant: map_vec::Map::new(),
+	};
+
+	let result = type_is_subtype(parameter_ty, value, &mut contributions, environment, types);
+
+	let Contributions { staging_covariant, staging_contravariant, .. } = contributions;
+
+	for (_res, _pos) in staging_contravariant {
+		crate::utils::notify!("TODO merge? pick highest?");
+	}
+
+	// TODO WIP
+	for (on, implementations) in staging_covariant {
+		let mut into_iter = implementations.into_iter();
+		let mut most_accurate = into_iter.next().unwrap();
+		for next in into_iter {
+			if next.1 > most_accurate.1 {
+				most_accurate = next
+			}
+		}
+
+		match type_arguments.entry(on) {
+			map_vec::map::Entry::Occupied(mut existing) => {
+				let new = types.new_or_type(*existing.get(), most_accurate.0);
+				existing.insert(new);
+			}
+			map_vec::map::Entry::Vacant(vacant) => {
+				vacant.insert(most_accurate.0);
+			}
+		}
+	}
+
+	result
 }

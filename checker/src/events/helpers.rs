@@ -23,6 +23,8 @@ pub(crate) fn get_return_from_events<'a, T: crate::ReadFromFS, A: crate::ASTImpl
 					let mut behavior = crate::subtyping::BasicEquality {
 						add_property_restrictions: true,
 						position: annotation_span,
+						// TODO...?
+						object_constraints: Default::default(),
 					};
 
 					let result = crate::subtyping::type_is_subtype(

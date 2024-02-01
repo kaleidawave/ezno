@@ -9,7 +9,7 @@ use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition, SourceId, StatementOrDeclaration,
 };
 
-use crate::check::CheckingOutputWithoutDiagnostics;
+use crate::build::CheckingOutputWithoutDiagnostics;
 
 /// A transformer that optimises expression code
 /// - Removes dead functions

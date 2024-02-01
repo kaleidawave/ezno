@@ -2,13 +2,14 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	context::facts::Facts,
+	context::information::LocalInformation,
 	features::functions::{ClosureChain, ClosureId},
+	types::TypeArguments,
 	TypeId,
 };
 
 use map_vec::Map as SmallMap;
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use std::{fmt::Debug, iter::FromIterator};
 
@@ -61,20 +62,23 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 pub(crate) struct FunctionTypeArguments {
 	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
-	pub local_arguments: SmallMap<TypeId, (TypeId, SpanWithSource)>,
+	pub local_arguments: TypeArguments,
 	pub closure_id: Option<ClosureId>,
+	pub call_site: SpanWithSource,
 }
 
 impl FunctionTypeArguments {
+	/// TODO!! explain
 	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId) {
-		self.local_arguments.insert(id, (value, source_map::Nullable::NULL));
+		self.local_arguments.insert(id, value);
 	}
 
-	pub(crate) fn new() -> Self {
+	pub(crate) fn new_loop() -> Self {
 		Self {
 			structure_arguments: Default::default(),
 			local_arguments: SmallMap::new(),
 			closure_id: Default::default(),
+			call_site: SpanWithSource::NULL,
 		}
 	}
 }
@@ -97,7 +101,7 @@ pub(crate) trait TypeArgumentStore {
 }
 
 impl ClosureChain for FunctionTypeArguments {
-	fn get_fact_from_closure<T, R>(&self, _fact: &Facts, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
@@ -125,7 +129,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.local_arguments.get(&id).map(|(ty, _)| *ty)
+		self.local_arguments.get(&id).cloned()
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
@@ -133,12 +137,13 @@ impl TypeArgumentStore for FunctionTypeArguments {
 	}
 
 	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
-		// self.structure_arguments.clone()
+		let type_arguments_with_positions =
+			self.local_arguments.iter().map(|(k, v)| (*k, (*v, self.call_site)));
+
 		match self.structure_arguments {
 			Some(ref parent) => {
 				let mut merged = parent.type_arguments.clone();
-				let iter = self.local_arguments.clone();
-				merged.extend(iter);
+				merged.extend(type_arguments_with_positions);
 
 				StructureGenericArguments {
 					type_arguments: merged,
@@ -146,7 +151,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 				}
 			}
 			None => StructureGenericArguments {
-				type_arguments: self.local_arguments.clone(),
+				type_arguments: type_arguments_with_positions.collect(),
 				closures: self.closure_id.into_iter().collect(),
 			},
 		}

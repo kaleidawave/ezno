@@ -1,6 +1,6 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::facts::{get_property_unbound, Publicity};
+use crate::context::information::{get_property_unbound, Publicity};
 use crate::context::VariableRegisterArguments;
 use crate::context::{environment::ContextLocation, AssignmentError};
 use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
@@ -87,8 +87,11 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 ) {
 	use crate::types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult};
 
-	let mut basic_subtyping =
-		BasicEquality { add_property_restrictions: true, position: variable_declared_pos };
+	let mut basic_subtyping = BasicEquality {
+		add_property_restrictions: true,
+		position: variable_declared_pos,
+		object_constraints: Default::default(),
+	};
 
 	let type_is_subtype = type_is_subtype(
 		variable_declared_type,
@@ -97,6 +100,9 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 		environment,
 		&checking_data.types,
 	);
+
+	environment
+		.add_object_constraints(basic_subtyping.object_constraints, &mut checking_data.types);
 
 	if let SubTypeResult::IsNotSubType(_matches) = type_is_subtype {
 		let error = crate::diagnostics::TypeCheckError::AssignmentError(

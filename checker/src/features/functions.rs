@@ -9,8 +9,9 @@ use source_map::{SourceId, SpanWithSource};
 use crate::{
 	context::{
 		environment::FunctionScope,
-		facts::{merge_facts, Facts},
-		get_on_ctx, get_value_of_variable, CanReferenceThis, ContextType, Syntax,
+		get_on_ctx, get_value_of_variable,
+		information::{merge_info, LocalInformation},
+		CanReferenceThis, ContextType, Syntax,
 	},
 	events::RootReference,
 	types::{
@@ -116,7 +117,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 
 	let function = environment.new_function(checking_data, function, behavior);
 	environment
-		.facts
+		.info
 		.variable_current_value
 		.insert(variable_id, checking_data.types.new_function_type(function));
 }
@@ -171,9 +172,9 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	let Some(GeneralContext::Syntax(parent)) = environment.context_type.get_parent() else {
 		unreachable!()
 	};
-	merge_facts(
+	merge_info(
 		*parent,
-		&mut environment.facts,
+		&mut environment.info,
 		is_undefined_condition,
 		out.unwrap().0,
 		None,
@@ -349,7 +350,7 @@ pub struct ClosedOverVariables(pub(crate) HashMap<VariableId, TypeId>);
 pub struct ClosureId(pub(crate) u32);
 
 pub trait ClosureChain {
-	fn get_fact_from_closure<T, R>(&self, fact: &Facts, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>;
 }
@@ -528,7 +529,7 @@ where
 							},
 						));
 
-						let this_constructed_object = function_environment.facts.new_object(
+						let this_constructed_object = function_environment.info.new_object(
 							Some(prototype),
 							&mut checking_data.types,
 							true,
@@ -545,7 +546,7 @@ where
 						(this_free_variable, this_constructed_object)
 					} else {
 						// TODO inferred prototype
-						let this_constructed_object = function_environment.facts.new_object(
+						let this_constructed_object = function_environment.info.new_object(
 							None,
 							&mut checking_data.types,
 							true,
@@ -579,7 +580,7 @@ where
 				if let Some((prototype, properties)) = constructor {
 					let new_this_object_type = types::create_this_before_function_synthesis(
 						&mut checking_data.types,
-						&mut function_environment.facts,
+						&mut function_environment.info,
 						prototype,
 					);
 
@@ -622,7 +623,7 @@ where
 	let returned = if function.has_body() {
 		function.body(&mut function_environment, checking_data);
 		// Temporary move events to satisfy borrow checker
-		let events = mem::take(&mut function_environment.facts.events);
+		let events = mem::take(&mut function_environment.info.events);
 
 		let returned = crate::events::helpers::get_return_from_events(
 			&mut events.iter(),
@@ -631,7 +632,7 @@ where
 			&mut function_environment,
 			return_type_annotation,
 		);
-		function_environment.facts.events = events;
+		function_environment.info.events = events;
 
 		match returned {
 			crate::events::helpers::ReturnedTypeFromBlock::ContinuedExecution => {
@@ -683,12 +684,12 @@ where
 	// 	function.get_name()
 	// );
 
-	let facts = function_environment.facts;
+	let info = function_environment.info;
 	let variable_names = function_environment.variable_names;
 
 	// TODO temp ...
-	for (on, properties) in facts.current_properties {
-		match base_environment.facts.current_properties.entry(on) {
+	for (on, properties) in info.current_properties {
+		match base_environment.info.current_properties.entry(on) {
 			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
@@ -696,8 +697,8 @@ where
 		}
 	}
 
-	for (on, properties) in facts.closure_current_values {
-		match base_environment.facts.closure_current_values.entry(on) {
+	for (on, properties) in info.closure_current_values {
+		match base_environment.info.closure_current_values.entry(on) {
 			Entry::Occupied(_occupied) => {}
 			Entry::Vacant(vacant) => {
 				vacant.insert(properties);
@@ -744,14 +745,18 @@ where
 	// TODO why
 	base_environment.variable_names.extend(variable_names);
 
+	// While could just use returned, if it uses the annotation as the return type
+	// Note that this is just aesthetic and for checking
+	let return_type = return_type_annotation.map_or(returned, |(first, _)| first);
+
 	FunctionType {
 		id,
 		constant_function: None,
 		behavior,
 		type_parameters,
 		parameters: synthesised_parameters,
-		return_type: returned,
-		effects: facts.events,
+		return_type,
+		effects: info.events,
 		free_variables,
 		closed_over_variables: closes_over,
 	}

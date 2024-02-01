@@ -66,19 +66,18 @@ pub(crate) fn apply_event(
 
 			// if not closed over!!
 			// TODO temp assigns to many contexts, which is bad
-			let facts = target.get_latest_facts(environment);
+			let info = target.get_latest_info(environment);
 			for closure_id in type_arguments
 				.closure_id
 				.iter()
 				.chain(type_arguments.structure_arguments.iter().flat_map(|s| s.closures.iter()))
 			{
-				facts
-					.closure_current_values
+				info.closure_current_values
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
 
-			facts.events.push(Event::SetsVariable(variable, new_value, position));
-			facts.variable_current_value.insert(variable, new_value);
+			info.events.push(Event::SetsVariable(variable, new_value, position));
+			info.variable_current_value.insert(variable, new_value);
 		}
 		Event::Getter { on, under, reflects_dependency, publicity, position } => {
 			// let was = on;
@@ -167,7 +166,7 @@ pub(crate) fn apply_event(
 						on
 					};
 				target
-					.get_latest_facts(environment)
+					.get_latest_info(environment)
 					.register_property(on, publicity, under, new, true, position);
 			} else {
 				let result = set_property(
@@ -318,7 +317,7 @@ pub(crate) fn apply_event(
 				// TODO early returns
 
 				// TODO could inject proofs but probably already worked out
-				let (mut truthy_facts, truthy_early_return) =
+				let (mut truthy_info, truthy_early_return) =
 					target.new_conditional_target(|target: &mut InvocationContext| {
 						for event in events_if_truthy.into_vec() {
 							if let Some(early) = apply_event(
@@ -336,7 +335,7 @@ pub(crate) fn apply_event(
 						None
 					});
 
-				let (mut else_facts, else_early_return) =
+				let (mut else_info, else_early_return) =
 					target.new_conditional_target(|target: &mut InvocationContext| {
 						for event in else_events.into_vec() {
 							if let Some(early) = apply_event(
@@ -358,34 +357,34 @@ pub(crate) fn apply_event(
 				// crate::utils::notify!("TER {:?}, EER {:?}", truthy_early_return, else_early_return);
 
 				if let Some(truthy_early_return) = truthy_early_return {
-					truthy_facts.events.push(truthy_early_return.into());
+					truthy_info.events.push(truthy_early_return.into());
 				}
 
 				if let Some(else_early_return) = else_early_return {
-					else_facts.events.push(else_early_return.into());
+					else_info.events.push(else_early_return.into());
 				}
 
 				// TODO all things that are
 				// - variable and property values (these aren't read from events)
 				// - immutable, mutable, prototypes etc
 				// }
-				let facts = target.get_latest_facts(environment);
+				let info = target.get_latest_info(environment);
 
-				// Merge variable current values conditionally. TODO other facts...?
-				for (var, truth) in truthy_facts.variable_current_value {
-					let entry = facts.variable_current_value.entry(var);
+				// Merge variable current values conditionally. TODO other info...?
+				for (var, truth) in truthy_info.variable_current_value {
+					let entry = info.variable_current_value.entry(var);
 					entry.and_modify(|existing| {
 						let else_result =
-							else_facts.variable_current_value.remove(&var).unwrap_or(*existing);
+							else_info.variable_current_value.remove(&var).unwrap_or(*existing);
 
 						*existing = types.new_conditional_type(condition, truth, else_result);
 					});
 				}
 
-				facts.events.push(Event::Conditionally {
+				info.events.push(Event::Conditionally {
 					condition,
-					true_events: truthy_facts.events.into_boxed_slice(),
-					else_events: else_facts.events.into_boxed_slice(),
+					true_events: truthy_info.events.into_boxed_slice(),
+					else_events: else_info.events.into_boxed_slice(),
 					position,
 				});
 			}
@@ -424,14 +423,14 @@ pub(crate) fn apply_event(
 			let new_object_id = match prototype {
 				PrototypeArgument::Yeah(prototype) => {
 					let prototype = substitute(prototype, type_arguments, environment, types);
-					target.get_latest_facts(environment).new_object(
+					target.get_latest_info(environment).new_object(
 						Some(prototype),
 						types,
 						is_under_dyn,
 						is_function_this,
 					)
 				}
-				PrototypeArgument::None => target.get_latest_facts(environment).new_object(
+				PrototypeArgument::None => target.get_latest_info(environment).new_object(
 					None,
 					types,
 					is_under_dyn,
@@ -517,7 +516,7 @@ pub(crate) fn apply_event(
 // 					types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)))
 // 				})
 // 				.unwrap_or(value);
-// 			environment.facts.variable_current_value.insert(variable, new_value);
+// 			environment.info.variable_current_value.insert(variable, new_value);
 // 		}
 // 		Event::Setter { on, under, new, initialization, publicity, position } => {
 // 			let on = substitute(on, type_arguments, environment, types);
@@ -537,7 +536,7 @@ pub(crate) fn apply_event(
 // 			match under {
 // 				crate::types::properties::PropertyKey::String(_) => {
 // 					environment
-// 						.facts
+// 						.info
 // 						.register_property(on, publicity, under, new_value, false, position);
 // 				}
 // 				crate::types::properties::PropertyKey::Type(_) => todo!(),

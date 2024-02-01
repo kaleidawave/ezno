@@ -13,9 +13,10 @@ use parser::{
 
 use crate::{
 	context::{
-		facts::{get_properties_on_type, get_property_unbound},
+		information::{get_properties_on_type, get_property_unbound},
 		Logical,
 	},
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::{
 		self,
 		functions::{register_arrow_function, register_expression_function},
@@ -30,8 +31,7 @@ use crate::{
 };
 
 use crate::{
-	context::facts::Publicity,
-	diagnostics::TypeCheckWarning,
+	context::information::Publicity,
 	features::{
 		assignments::Assignable,
 		objects::ObjectBuilder,
@@ -140,7 +140,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let mut basis = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
-				&mut environment.facts,
+				&mut environment.info,
 			);
 
 			// TODO remove enumerate, add add function and more
@@ -718,14 +718,42 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return TypeId::ERROR_TYPE;
 		}
 		Expression::SpecialOperators(operator, position) => match operator {
-			SpecialOperators::AsExpression { value, .. } => {
-				checking_data.diagnostics_container.add_warning(
-					TypeCheckWarning::IgnoringAsExpression(
-						position.with_source(environment.get_source()),
-					),
-				);
+			SpecialOperators::AsExpression { value, type_annotation } => {
+				let to_cast = synthesise_expression(value, environment, checking_data, expecting);
 
-				return synthesise_expression(value, environment, checking_data, expecting);
+				if checking_data.options.allow_cast {
+					let cast_to =
+						synthesise_type_annotation(type_annotation, environment, checking_data);
+
+					// TODO
+					let as_cast = features::as_cast(to_cast, cast_to, &mut checking_data.types);
+					match as_cast {
+						Ok(result) => return result,
+						Err(_) => {
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::InvalidCast {
+									position: position.with_source(environment.get_source()),
+									from: TypeStringRepresentation::from_type_id(
+										to_cast,
+										environment,
+										&checking_data.types,
+										checking_data.options.debug_types,
+									),
+									to: TypeStringRepresentation::from_type_id(
+										cast_to,
+										environment,
+										&checking_data.types,
+										checking_data.options.debug_types,
+									),
+								},
+							);
+							return TypeId::ERROR_TYPE;
+						}
+					}
+				} else {
+					// TODO emit warning
+					Instance::RValue(to_cast)
+				}
 			}
 			SpecialOperators::IsExpression { value: _, type_annotation: _ } => {
 				todo!()
@@ -906,7 +934,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	expected: TypeId,
 ) -> TypeId {
 	let mut object_builder =
-		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
+		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.info);
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());

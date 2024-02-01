@@ -31,12 +31,13 @@ use crate::{
 
 pub use self::functions::*;
 use self::{
-	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
-	properties::PropertyKey,
+	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
 };
 use crate::FunctionId;
 
-pub type TypeArguments = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
+/// Final
+pub type TypeArguments = map_vec::Map<TypeId, TypeId>;
+pub type TypeRestrictions = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
 
 /// References [Type]
 ///
@@ -332,23 +333,36 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 
 /// TODO `add_property_restrictions` via const generics
 pub struct BasicEquality {
-	pub add_property_restrictions: bool,
 	pub position: SpanWithSource,
+	pub add_property_restrictions: bool,
+	pub object_constraints: Vec<(TypeId, TypeId)>,
 }
 
 /// For subtyping
-pub trait SubtypeBehavior {
+pub trait SubTypeBehavior {
 	/// If false will error out if T >: U
 	const INFER_GENERICS: bool;
 
+	// TODO better return type
 	fn set_type_argument(
 		&mut self,
-		parameter: TypeId,
-		value: TypeId,
-		restriction_mode: bool,
-	) -> Result<(), NonEqualityReason>;
+		on: TypeId,
+		argument: TypeId,
+		depth: u8,
+		environment: &Environment,
+		types: &TypeStore,
+	) -> SubTypeResult;
 
-	fn add_property_restrictions(&self) -> bool;
+	fn try_set_contravariant(
+		&mut self,
+		on: TypeId,
+		restriction: TypeId,
+		position: SpanWithSource,
+		environment: &Environment,
+		types: &TypeStore,
+	) -> SubTypeResult;
+
+	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId);
 
 	fn add_function_restriction(
 		&mut self,
@@ -357,63 +371,38 @@ pub trait SubtypeBehavior {
 		function_type: FunctionType,
 	);
 
-	fn get_restriction(&self, ty: TypeId) -> Option<TypeId>;
-
 	// TODO
 	// object reference type needs to meet constraint
 	// LHS is dependent + RHS argument
 }
 
-impl SubtypeBehavior for SeedingContext {
-	// Want to match/infer, so false here
-	const INFER_GENERICS: bool = true;
-
-	/// Does not check thingy
-	fn set_type_argument(
-		&mut self,
-		parameter: TypeId,
-		value: TypeId,
-		restriction_mode: bool,
-	) -> Result<(), NonEqualityReason> {
-		// TODO
-		let (parameter_pos, parameter_idx) = self.argument_position_and_parameter_idx;
-		self.set_id(parameter, (value, parameter_pos, parameter_idx), restriction_mode);
-		Ok(())
-	}
-
-	fn add_property_restrictions(&self) -> bool {
-		false
-	}
-
-	fn add_function_restriction(
-		&mut self,
-		_environment: &mut Environment,
-		function_id: FunctionId,
-		function_type: FunctionType,
-	) {
-		self.locally_held_functions.insert(function_id, function_type);
-	}
-
-	fn get_restriction(&self, ty: TypeId) -> Option<TypeId> {
-		// TODO first temp
-		self.type_restrictions.get(&ty).and_then(|ty| ty.first()).map(|(a, _)| *a)
-	}
-}
-
-impl SubtypeBehavior for BasicEquality {
+impl SubTypeBehavior for BasicEquality {
 	const INFER_GENERICS: bool = false;
 
 	fn set_type_argument(
 		&mut self,
-		_parameter: TypeId,
-		_value: TypeId,
-		_restriction_mode: bool,
-	) -> Result<(), NonEqualityReason> {
-		Ok(())
+		_on: TypeId,
+		_argument: TypeId,
+		_depth: u8,
+		_environment: &Environment,
+		_types: &TypeStore,
+	) -> SubTypeResult {
+		SubTypeResult::IsSubType
 	}
 
-	fn add_property_restrictions(&self) -> bool {
-		self.add_property_restrictions
+	fn try_set_contravariant(
+		&mut self,
+		_on: TypeId,
+		_restriction: TypeId,
+		_position: SpanWithSource,
+		_environment: &Environment,
+		_types: &TypeStore,
+	) -> SubTypeResult {
+		SubTypeResult::IsSubType
+	}
+
+	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId) {
+		self.object_constraints.push((on, constraint));
 	}
 
 	fn add_function_restriction(
@@ -428,23 +417,48 @@ impl SubtypeBehavior for BasicEquality {
 
 		debug_assert!(result.is_none());
 	}
-
-	fn get_restriction(&self, _: TypeId) -> Option<TypeId> {
-		None
-	}
 }
 
+/// TODO implement `Try` / `?` on SupertypeResult
 #[derive(Debug)]
 pub enum SubTypeResult {
 	IsSubType,
 	IsNotSubType(NonEqualityReason),
 }
 
-// impl SubTypeResult {
-// 	type Error = NonEqualityReason;
-// }
+#[derive(Default, Clone, Copy)]
+pub enum GenericChain<'a> {
+	#[default]
+	None,
+	Restriction {
+		parent: Option<&'a GenericChain<'a>>,
+		value: &'a TypeRestrictions,
+	},
+}
 
-// TODO implement `?` on SupertypeResult
+impl<'a> GenericChain<'a> {
+	pub(crate) fn is_empty(&self) -> bool {
+		matches!(self, Self::None)
+	}
+
+	pub(crate) fn get_arg(&self, on: TypeId) -> Option<TypeId> {
+		std::iter::successors(self.into_option(), |(parent, _)| {
+			parent.map(|parent| parent.into_option()).flatten()
+		})
+		.find_map(|(_, maps)| maps.get(&on).map(|(v, _)| *v))
+	}
+
+	fn into_option(&self) -> Option<(Option<&'a GenericChain<'a>>, &TypeRestrictions)> {
+		match self {
+			GenericChain::None => None,
+			GenericChain::Restriction { parent, value } => Some((parent.clone(), value)),
+		}
+	}
+
+	pub(crate) fn append(&'a self, value: &'a TypeRestrictions) -> GenericChain<'a> {
+		GenericChain::Restriction { parent: Some(self), value }
+	}
+}
 
 // TODO maybe positions and extra information here
 // SomeLiteralMismatch

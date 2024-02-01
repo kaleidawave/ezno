@@ -51,7 +51,7 @@ fn main() {
 	if args.iter().any(|arg| arg == "--events") {
 		eprintln!("Events on entry:");
 		let (_, entry_module) = result.modules.into_iter().next().unwrap();
-		for item in entry_module.facts.get_events() {
+		for item in entry_module.info.get_events() {
 			eprintln!("\t{item:?}");
 		}
 	}

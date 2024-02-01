@@ -3,11 +3,11 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::{
-	context::{environment::Label, facts::FactsChain},
+	context::{environment::Label, information::InformationChain},
 	diagnostics,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_type_arguments, TypeArguments,
+		printing::print_type_with_type_arguments, GenericChain,
 	},
 };
 use source_map::{SourceId, SpanWithSource};
@@ -182,7 +182,7 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id(
 		id: TypeId,
-		ctx: &impl FactsChain,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
@@ -193,8 +193,8 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id_with_generics(
 		id: TypeId,
-		type_arguments: Option<&TypeArguments>,
-		ctx: &impl FactsChain,
+		type_arguments: GenericChain,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
@@ -207,17 +207,22 @@ impl TypeStringRepresentation {
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
 		// TODO chain
 		generics: Option<&StructureGenericArguments>,
-		ctx: &impl FactsChain,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
 			crate::context::Logical::Pure(p) => match p {
 				crate::PropertyValue::Value(v) => {
-					// TODO pass down generics!!!
 					let value = print_type_with_type_arguments(
 						v,
-						generics.map(|g| &g.type_arguments),
+						match generics {
+							Some(sgs) => GenericChain::Restriction {
+								parent: None,
+								value: &sgs.type_arguments,
+							},
+							None => GenericChain::None,
+						},
 						types,
 						ctx,
 						debug_mode,
@@ -395,6 +400,11 @@ mod defined_errors_and_warnings {
 			rhs: TypeStringRepresentation,
 			position: SpanWithSource,
 		},
+		InvalidCast {
+			position: SpanWithSource,
+			from: TypeStringRepresentation,
+			to: TypeStringRepresentation,
+		},
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -404,7 +414,7 @@ mod defined_errors_and_warnings {
 				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable {variable} in scope",
+							"Could not find variable '{variable}' in scope",
 							// possibles Consider '{:?}'
 						),
 						position,
@@ -508,7 +518,7 @@ mod defined_errors_and_warnings {
 					FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position { reason: format!("no logic for constant function {name}"), kind, position },
 					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
 					FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => Diagnostic::PositionWithAdditionalLabels {
-						reason: format!("Variable {variable_name} used before declaration"),
+						reason: format!("Variable '{variable_name}' used before declaration"),
 						position: call_site.unwrap(),
 						kind,
 						labels: vec![(
@@ -563,7 +573,7 @@ mod defined_errors_and_warnings {
 					},
 					AssignmentError::VariableNotFound { variable, assignment_position } => {
 						Diagnostic::Position {
-							reason: format!("Cannot assign to unknown variable {variable}"),
+							reason: format!("Cannot assign to unknown variable '{variable}'"),
 							position: assignment_position,
 							kind,
 						}
@@ -663,7 +673,7 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::CannotRedeclareVariable { name, position } => {
 					Diagnostic::Position {
-						reason: format!("Cannot redeclare variable {name}"),
+						reason: format!("Cannot redeclare variable '{name}'"),
 						position,
 						kind,
 					}
@@ -674,7 +684,7 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
-					reason: "property not writeable".into(),
+					reason: "Property not writeable".into(),
 					position,
 					kind,
 				},
@@ -710,7 +720,7 @@ mod defined_errors_and_warnings {
 					current_context,
 					position,
 				} => Diagnostic::Position {
-					reason: format!("{variable} is only available on the {expected_context}, currently in {current_context}"),
+					reason: format!("'{variable}' is only available on the {expected_context}, currently in {current_context}"),
 					position,
 					kind,
 				},
@@ -725,12 +735,12 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
-					reason: format!("Type {name} already declared"),
+					reason: format!("Type named '{name}' already declared"),
 					position,
 					kind,
 				},
 				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
-					reason: format!("Variable {variable_name} used before declaration"),
+					reason: format!("Variable '{variable_name}' used before declaration"),
 					position,
 					kind,
 				},
@@ -741,6 +751,13 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
+				TypeCheckError::InvalidCast { position, from, to } => {
+					Diagnostic::Position {
+						reason: format!("Cannot cast {from} to {to}"),
+						position,
+						kind,
+					}
+				}
 			}
 		}
 	}

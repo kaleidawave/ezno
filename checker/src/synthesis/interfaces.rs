@@ -4,7 +4,7 @@ use parser::{
 };
 
 use crate::{
-	context::{facts::Publicity, Context, Environment},
+	context::{information::Publicity, Context, Environment},
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
@@ -98,7 +98,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		};
 
 		// TODO: `None` position passed
-		environment.facts.register_property(self.0, publicity, under, ty, false, None);
+		environment.info.register_property(self.0, publicity, under, ty, false, None);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {

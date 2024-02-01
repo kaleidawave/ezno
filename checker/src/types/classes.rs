@@ -1,5 +1,5 @@
 use crate::{
-	context::facts::Publicity, events::Event, features::functions::ClassPropertiesToRegister,
+	context::information::Publicity, events::Event, features::functions::ClassPropertiesToRegister,
 	CheckingData, Environment, PropertyValue, TypeId,
 };
 
@@ -94,6 +94,6 @@ pub(crate) fn register_properties_into_environment<
 		} else {
 			PropertyValue::Value(TypeId::UNDEFINED_TYPE)
 		};
-		environment.facts.register_property(on, publicity, key, value, true, None);
+		environment.info.register_property(on, publicity, key, value, true, None);
 	}
 }

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
 	context::{
-		facts::{get_property_unbound, Publicity},
+		information::{get_property_unbound, Publicity},
 		CallCheckingBehavior, Logical, SetPropertyError,
 	},
 	diagnostics::TypeStringRepresentation,
@@ -171,7 +171,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 
 	if get_constraint(on, types).is_some() {
 		// // TODO temp fix for assigning to a poly type. What about unions etc
-		// if let Some(value) = top_environment.facts_chain().find_map(|f| {
+		// if let Some(value) = top_environment.info_chain().find_map(|f| {
 		// 	f.current_properties.get(&on).and_then(|props| {
 		// 		props.iter().find_map(|(_publicity, key, value)| (key == &under).then_some(value))
 		// 	})
@@ -191,13 +191,10 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			position,
 		)
 	} else if top_environment.possibly_mutated_objects.contains(&on) {
-		let items = top_environment.get_object_constraints(on);
-		let constraint = if items.len() == 1 {
-			items.into_iter().next().unwrap()
-		} else if items.is_empty() {
-			todo!("inference")
+		let constraint = if let Some(item) = top_environment.get_object_constraint(on) {
+			item
 		} else {
-			todo!("build and type")
+			todo!("inference")
 		};
 		// TODO ...
 		evaluate_get_on_poly(
@@ -481,7 +478,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 	let value = resolve_logical_with_poly(fact, on, under.clone(), None, top_environment, types)?;
 
-	behavior.get_latest_facts(top_environment).events.push(Event::Getter {
+	behavior.get_latest_info(top_environment).events.push(Event::Getter {
 		on,
 		under: under.into_owned(),
 		reflects_dependency: Some(value),
@@ -503,7 +500,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	new: PropertyValue,
 	environment: &mut Environment,
 	behavior: &mut E,
-	types: &TypeStore,
+	types: &mut TypeStore,
 	setter_position: Option<SpanWithSource>,
 ) -> Result<Option<TypeId>, SetPropertyError> {
 	// TODO
@@ -512,9 +509,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// }
 
 	// if E::CHECK_PARAMETERS {
-	let object_constraint = environment.get_object_constraints(on);
-
-	for constraint in object_constraint {
+	if let Some(constraint) = environment.get_object_constraint(on) {
 		let property_constraint =
 			get_property_unbound(constraint, publicity, under.clone(), types, environment);
 
@@ -533,13 +528,14 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				add_property_restrictions: true,
 				// TODO position here
 				position: source_map::Nullable::NULL,
+				object_constraints: Default::default(),
 			};
 
 			match new {
 				PropertyValue::Value(value) => {
 					let result = type_is_subtype_of_property(
 						&property_constraint,
-						None,
+						super::GenericChain::None,
 						value,
 						&mut basic_subtyping,
 						environment,
@@ -562,6 +558,8 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				PropertyValue::Setter(_) => todo!(),
 				PropertyValue::Deleted => todo!(),
 			}
+
+			environment.add_object_constraints(basic_subtyping.object_constraints, types);
 		} else {
 			// TODO does not exist warning
 			// return Err(SetPropertyError::DoesNotMeetConstraint(
@@ -590,8 +588,10 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		result_union: _,
 	}) = types.get_type_by_id(on)
 	{
+		let truthy = *truthy_result;
+		let else_result = *else_result;
 		set_property(
-			*truthy_result,
+			truthy,
 			publicity,
 			under,
 			new.clone(),
@@ -601,7 +601,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			setter_position,
 		)?;
 		return set_property(
-			*else_result,
+			else_result,
 			publicity,
 			under,
 			new,
@@ -616,13 +616,13 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		match fact {
 			Logical::Pure(og) => match og {
 				PropertyValue::Deleted | PropertyValue::Value(..) => {
-					let facts = behavior.get_latest_facts(environment);
-					facts.current_properties.entry(on).or_default().push((
+					let info = behavior.get_latest_info(environment);
+					info.current_properties.entry(on).or_default().push((
 						publicity,
 						under.into_owned(),
 						new.clone(),
 					));
-					facts.events.push(Event::Setter {
+					info.events.push(Event::Setter {
 						on,
 						new,
 						under: under.into_owned(),
@@ -639,13 +639,13 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: _implies_on, antecedent: _ } => {
 				crate::utils::notify!("Check that `implies_on` could be a setter here");
-				let facts = behavior.get_latest_facts(environment);
-				facts.current_properties.entry(on).or_default().push((
+				let info = behavior.get_latest_info(environment);
+				info.current_properties.entry(on).or_default().push((
 					publicity,
 					under.into_owned(),
 					new.clone(),
 				));
-				facts.events.push(Event::Setter {
+				info.events.push(Event::Setter {
 					on,
 					new,
 					under: under.into_owned(),
@@ -659,7 +659,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		// TODO abstract
 		// TODO only if dependent?
 		let register_setter_event = true;
-		behavior.get_latest_facts(environment).register_property(
+		behavior.get_latest_info(environment).register_property(
 			on,
 			publicity,
 			under.into_owned(),

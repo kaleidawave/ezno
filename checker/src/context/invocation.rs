@@ -1,6 +1,6 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
-use super::facts::Facts;
+use super::information::LocalInformation;
 use crate::{events::FinalEvent, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
@@ -8,7 +8,10 @@ pub trait CallCheckingBehavior {
 	// TODO
 	const CHECK_PARAMETERS: bool;
 
-	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
+	fn get_latest_info<'a>(
+		&'a mut self,
+		environment: &'a mut Environment,
+	) -> &'a mut LocalInformation;
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
 
@@ -24,8 +27,11 @@ pub struct CheckThings;
 impl CallCheckingBehavior for CheckThings {
 	const CHECK_PARAMETERS: bool = true;
 
-	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
-		&mut environment.facts
+	fn get_latest_info<'a>(
+		&'a mut self,
+		environment: &'a mut Environment,
+	) -> &'a mut LocalInformation {
+		&mut environment.info
 	}
 
 	fn in_recursive_cycle(&self, _function_id: FunctionId) -> bool {
@@ -46,7 +52,7 @@ impl CallCheckingBehavior for CheckThings {
 pub struct InvocationContext(Vec<InvocationKind>);
 
 pub(crate) enum InvocationKind {
-	Conditional(Facts),
+	Conditional(LocalInformation),
 	Function(FunctionId),
 	LoopIteration,
 }
@@ -54,18 +60,23 @@ pub(crate) enum InvocationKind {
 impl CallCheckingBehavior for InvocationContext {
 	const CHECK_PARAMETERS: bool = false;
 
-	fn get_latest_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
+	fn get_latest_info<'b>(
+		&'b mut self,
+		environment: &'b mut Environment,
+	) -> &'b mut LocalInformation {
 		self.0
 			.iter_mut()
 			.rev()
-			.find_map(|kind| {
-				if let InvocationKind::Conditional(facts) = kind {
-					Some(facts)
-				} else {
-					None
-				}
-			})
-			.unwrap_or(&mut environment.facts)
+			.find_map(
+				|kind| {
+					if let InvocationKind::Conditional(info) = kind {
+						Some(info)
+					} else {
+						None
+					}
+				},
+			)
+			.unwrap_or(&mut environment.info)
 	}
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
@@ -93,11 +104,11 @@ impl InvocationContext {
 	pub(crate) fn new_conditional_target(
 		&mut self,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<FinalEvent>,
-	) -> (Facts, Option<FinalEvent>) {
-		self.0.push(InvocationKind::Conditional(Facts::default()));
+	) -> (LocalInformation, Option<FinalEvent>) {
+		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
 		let result = cb(self);
-		if let Some(InvocationKind::Conditional(facts)) = self.0.pop() {
-			(facts, result)
+		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {
+			(info, result)
 		} else {
 			unreachable!()
 		}

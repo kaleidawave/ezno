@@ -24,7 +24,7 @@ use source_map::SourceId;
 use crate::{
 	context::{Names, VariableRegisterArguments},
 	types::properties::PropertyKey,
-	CheckingData, Diagnostic, Environment, Facts, RootContext, TypeId,
+	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId,
 };
 
 use self::{
@@ -118,7 +118,7 @@ impl crate::ASTImplementation for EznoParser {
 		file: Self::DefinitionFile<'a>,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts) {
+	) -> (Names, LocalInformation) {
 		definitions::type_definition_file(file, checking_data, root)
 	}
 

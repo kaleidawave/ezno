@@ -1,7 +1,7 @@
 // Types to runtime behavior
 
 use crate::{
-	context::facts::{get_properties_on_type, Publicity},
+	context::information::{get_properties_on_type, Publicity},
 	features::objects::ObjectBuilder,
 	Constant, Environment, Type, TypeId,
 };
@@ -15,7 +15,7 @@ pub(crate) fn create_object_for_type(
 	// &mut to create new objects
 	types: &mut TypeStore,
 ) -> TypeId {
-	let mut obj = ObjectBuilder::new(None, types, &mut environment.facts);
+	let mut obj = ObjectBuilder::new(None, types, &mut environment.info);
 	match types.get_type_by_id(ty) {
 		Type::AliasTo { to: _, name: _, parameters: _ } => todo!(),
 		ty @ (Type::And(left, right) | Type::Or(left, right)) => {
@@ -63,7 +63,7 @@ pub(crate) fn create_object_for_type(
 
 			if !matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::STRING_TYPE | TypeId::NUMBER_TYPE) {
 				// TODO array
-				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
+				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 				// let properties = env.create_array();
 				for (_, key, property) in get_properties_on_type(ty, environment) {
@@ -110,7 +110,7 @@ pub(crate) fn create_object_for_type(
 			);
 
 			// TODO array
-			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
+			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 			// let properties = env.create_array();
 			for (_, key, property) in get_properties_on_type(ty, environment) {
