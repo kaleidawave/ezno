@@ -65,6 +65,7 @@
 				"input": "./src/cli"
 			}
 		],
+		"declaration": true,
 		"rollup": {
 			"commonjs": true,
 			"esbuild": {
@@ -73,6 +74,6 @@
 		}
 	},
 	"devDependencies": {
-		"unbuild": "^1.1.2"
+		"unbuild": "^2.0.0"
 	}
 }
