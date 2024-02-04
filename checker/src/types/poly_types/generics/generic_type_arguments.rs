@@ -2,9 +2,9 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	context::information::LocalInformation,
+	context::information::{InformationChain, LocalInformation},
 	features::functions::{ClosureChain, ClosureId},
-	types::TypeArguments,
+	types::{LookUpGeneric, TypeArguments, TypeRestrictions, TypeStore},
 	TypeId,
 };
 
@@ -60,6 +60,7 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 /// TODO working out environment thingy
 #[derive(Debug)]
 pub(crate) struct FunctionTypeArguments {
+	/// TODO this shouldn't be here
 	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
 	pub local_arguments: TypeArguments,
@@ -69,11 +70,11 @@ pub(crate) struct FunctionTypeArguments {
 
 impl FunctionTypeArguments {
 	/// TODO!! explain
-	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId) {
+	pub(crate) fn set_id_from_event_application(&mut self, id: TypeId, value: TypeId) {
 		self.local_arguments.insert(id, value);
 	}
 
-	pub(crate) fn new_loop() -> Self {
+	pub(crate) fn new_arguments_for_use_in_loop() -> Self {
 		Self {
 			structure_arguments: Default::default(),
 			local_arguments: SmallMap::new(),
@@ -84,13 +85,25 @@ impl FunctionTypeArguments {
 }
 
 pub(crate) trait TypeArgumentStore {
-	/// Gets the value, not the constraint
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId>;
+	/// Gets the constraint
+	fn get_structure_argument<C: InformationChain>(
+		&self,
+		id: TypeId,
+		info: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId>;
+
+	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId>;
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId>;
 
-	fn get_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.get_local_argument(id).or_else(|| self.get_structure_argument(id))
+	fn get_argument<C: InformationChain>(
+		&self,
+		id: TypeId,
+		info: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId> {
+		self.get_local_argument(id).or_else(|| self.get_structure_argument(id, info, types))
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>>;
@@ -124,8 +137,19 @@ impl ClosureChain for FunctionTypeArguments {
 }
 
 impl TypeArgumentStore for FunctionTypeArguments {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.structure_arguments.as_ref().and_then(|args| args.get_structure_argument(id))
+	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
+		self.structure_arguments.as_ref().and_then(|args| args.get_structure_restriction(id))
+	}
+
+	fn get_structure_argument<C: InformationChain>(
+		&self,
+		id: TypeId,
+		info: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId> {
+		self.structure_arguments
+			.as_ref()
+			.and_then(|args| args.get_structure_argument(id, info, types))
 	}
 
 	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
@@ -142,37 +166,49 @@ impl TypeArgumentStore for FunctionTypeArguments {
 
 		match self.structure_arguments {
 			Some(ref parent) => {
-				let mut merged = parent.type_arguments.clone();
+				let mut merged = parent.type_restrictions.clone();
+
 				merged.extend(type_arguments_with_positions);
 
 				StructureGenericArguments {
-					type_arguments: merged,
+					type_restrictions: merged,
+					properties: SmallMap::new(),
 					closures: parent.closures.iter().copied().chain(self.closure_id).collect(),
 				}
 			}
 			None => StructureGenericArguments {
-				type_arguments: type_arguments_with_positions.collect(),
+				properties: SmallMap::new(),
+				type_restrictions: type_arguments_with_positions.collect(),
 				closures: self.closure_id.into_iter().collect(),
 			},
 		}
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closure_id.is_none() && self.local_arguments.len() == 0
+		self.closure_id.is_none()
+			&& self.local_arguments.keys().any(|t| !matches!(*t, TypeId::NEW_TARGET_ARG))
 	}
 }
 
 /// for type alias specialisation and inferred generic function type arguments
-pub struct ExplicitTypeArguments<'a>(pub &'a mut SmallMap<TypeId, (TypeId, SpanWithSource)>);
+pub struct ExplicitTypeArguments<'a>(pub &'a mut map_vec::Map<TypeId, (TypeId, SpanWithSource)>);
 
 impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
+	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
 		self.0.get(&id).map(|(value, _pos)| *value)
 	}
 
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		// ???
-		self.get_structure_argument(id)
+	fn get_structure_argument<C: InformationChain>(
+		&self,
+		id: TypeId,
+		_info: &C,
+		_types: &mut TypeStore,
+	) -> Option<TypeId> {
+		self.get_structure_restriction(id)
+	}
+
+	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
+		None
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
@@ -181,7 +217,12 @@ impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
 
 	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
 		crate::utils::notify!("to_structural_generic_arguments shouldn't be needed");
-		StructureGenericArguments { type_arguments: self.0.clone(), closures: Vec::new() }
+		let type_restrictions = self.0.iter().map(|(a, (b, c))| (*a, (*b, *c))).collect();
+		StructureGenericArguments {
+			type_restrictions,
+			properties: SmallMap::new(),
+			closures: Vec::new(),
+		}
 	}
 
 	fn is_empty(&self) -> bool {
@@ -192,13 +233,32 @@ impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
 /// These are curried between structures
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenericArguments {
-	pub type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)>,
+	pub type_restrictions: TypeRestrictions,
+	pub properties: SmallMap<TypeId, LookUpGeneric>,
 	pub closures: Vec<ClosureId>,
 }
 
 impl TypeArgumentStore for StructureGenericArguments {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.type_arguments.get(&id).map(|(ty, _)| *ty)
+	fn get_structure_argument<C: InformationChain>(
+		&self,
+		id: TypeId,
+		info: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId> {
+		if let Some(restriction) = self.get_structure_restriction(id) {
+			Some(restriction)
+		} else if let Some(lookup) = self.properties.get(&id) {
+			let res = lookup.calculate_lookup(info);
+			let mut iter = res.into_iter();
+			let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);
+			let mut acc = first;
+			for ty in iter {
+				acc = types.new_or_type(acc, ty);
+			}
+			Some(acc)
+		} else {
+			None
+		}
 	}
 
 	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
@@ -214,6 +274,10 @@ impl TypeArgumentStore for StructureGenericArguments {
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closures.is_empty() && self.type_arguments.len() == 0
+		self.closures.is_empty() && self.type_restrictions.len() == 0
+	}
+
+	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
+		self.type_restrictions.get(&id).map(|(ty, _)| *ty)
 	}
 }

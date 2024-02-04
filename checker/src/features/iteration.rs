@@ -99,7 +99,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new_loop(),
+				&mut FunctionTypeArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
@@ -175,7 +175,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new_loop(),
+				&mut FunctionTypeArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -307,7 +307,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new_loop(),
+				&mut FunctionTypeArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -346,7 +346,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				IterationKind::Properties { on, variable },
 				events,
 				InitialVariablesInput::Compute,
-				&mut FunctionTypeArguments::new_loop(),
+				&mut FunctionTypeArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				// TODO shouldn't be needed
@@ -489,7 +489,7 @@ pub(crate) fn run_iteration_block(
 						crate::types::properties::PropertyKey::Type(ty) => ty,
 					};
 
-					type_arguments.set_id_from_reference(variable, property_key_as_type);
+					type_arguments.set_id_from_event_application(variable, property_key_as_type);
 
 					// TODO enumerable
 					let result = evaluate_single_loop_iteration(

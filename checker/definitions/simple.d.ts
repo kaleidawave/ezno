@@ -1,6 +1,7 @@
 // ↓↓ Ezno Functions ↓↓
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
+declare function print_constraint(t: any): void performs const print_constraint;
 declare function debug_type(t: any): void performs const debug_type;
 declare function debug_type_independent(t: any): void performs const debug_type_independent;
 declare function debug_type_rust(t: any): void performs const debug_type_rust;
@@ -30,15 +31,15 @@ interface nominal Array<T> {
         return ++this.length
     }
 
-    pop(): T | undefined performs {
-        if (this.length === 0) {
-            return undefined
-        } else {
-            const value = this[--this.length];
-            delete this[this.length];
-            return value
-        }
-    }
+    // pop(): T | undefined performs {
+    //     if (this.length === 0) {
+    //         return undefined
+    //     } else {
+    //         const value = this[--this.length];
+    //         delete this[this.length];
+    //         return value
+    //     }
+    // }
 
     // TODO this argument
     map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
@@ -49,6 +50,10 @@ interface nominal Array<T> {
             u.push(cb(value, i++))
         }
         return u;
+    }
+
+    map2<U>(cb: (t: T, i?: number) => U): any performs {
+        return cb;
     }
 
     // last() performs {

@@ -19,6 +19,8 @@ pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/inter
 pub mod synthesis;
 
 use context::Names;
+pub use map_vec::Map as SmallMap;
+
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 

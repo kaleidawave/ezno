@@ -14,14 +14,15 @@ use crate::{
 	subtyping::{type_is_subtype, BasicEquality, Contributions, SubTypeResult},
 	types::{functions::SynthesisedArgument, substitute, ObjectNature},
 	types::{FunctionType, Type},
-	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
+	FunctionId, GenericTypeParameters, ReadFromFS, SmallMap, SpecialExpressions, TypeId,
 };
 
 use super::{
 	get_constraint, is_type_constant,
 	poly_types::{generic_type_arguments::StructureGenericArguments, FunctionTypeArguments},
 	properties::PropertyKey,
-	Constructor, PolyNature, TypeArguments, TypeRestrictions, TypeStore,
+	Constructor, GenericChain, LookUpGeneric, PolyNature, TypeArguments, TypeRestrictions,
+	TypeStore,
 };
 
 pub struct CallingInput {
@@ -136,22 +137,20 @@ pub fn call_type<E: CallCheckingBehavior>(
 	try_call_logical(callable, input, arguments, None, top_environment, types, behavior, on)
 }
 
-type TypeArgumentRestrictions = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
-
 fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation>(
 	callable: Option<&Logical<FunctionLike>>,
 	arguments: &Vec<UnsynthesisedArgument<A>>,
 	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
-	structure_generics: Option<&StructureGenericArguments>,
+	parent_arguments: Option<&StructureGenericArguments>,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T, A>,
-) -> (Vec<SynthesisedArgument>, Option<TypeArgumentRestrictions>) {
+) -> (Vec<SynthesisedArgument>, Option<TypeRestrictions>) {
 	fn synthesise_call_site_type_argument_hints(
 		type_parameters: &GenericTypeParameters,
 		call_site_type_arguments: Vec<(TypeId, SpanWithSource)>,
 		types: &crate::types::TypeStore,
 		environment: &mut Environment,
-	) -> TypeArgumentRestrictions {
+	) -> TypeRestrictions {
 		type_parameters
 			.0
 			.iter()
@@ -227,16 +226,18 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 					let expected_type = if let Some(ref mut type_arguments_restrictions) =
 						type_arguments_restrictions
 					{
+						let local_arguments = type_arguments_restrictions
+							.iter()
+							.map(|(k, (v, _))| (*k, *v))
+							.collect();
+
 						substitute(
 							expected_type,
 							&mut FunctionTypeArguments {
 								// TODO clone bad!
-								structure_arguments: structure_generics.cloned(),
+								structure_arguments: parent_arguments.cloned(),
 								// TODO clone bad!
-								local_arguments: type_arguments_restrictions
-									.iter()
-									.map(|(k, (v, _))| (*k, *v))
-									.collect(),
+								local_arguments,
 								closure_id: None,
 								call_site: SpanWithSource::NULL,
 							},
@@ -275,7 +276,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 			)
 		}
 		// TODO could do this
-		Some(Logical::Or { .. }) | None => (
+		Some(Logical::Or { .. }) | Some(Logical::Error) | None => (
 			arguments
 				.into_iter()
 				.map(|argument| SynthesisedArgument {
@@ -299,7 +300,7 @@ fn try_call_logical<E: CallCheckingBehavior>(
 	callable: Option<Logical<FunctionLike>>,
 	input: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	type_argument_restrictions: Option<TypeArgumentRestrictions>,
+	type_argument_restrictions: Option<TypeRestrictions>,
 	top_environment: &mut Environment,
 	types: &mut TypeStore,
 	behavior: &mut E,
@@ -334,7 +335,7 @@ fn call_logical<E: CallCheckingBehavior>(
 	logical: Logical<FunctionLike>,
 	called_with_new: CalledWithNew,
 	call_site: SpanWithSource,
-	type_argument_restrictions: Option<TypeArgumentRestrictions>,
+	explicit_type_arguments: Option<CallSiteTypeArguments>,
 	structure_generics: Option<StructureGenericArguments>,
 	arguments: Vec<SynthesisedArgument>,
 	top_environment: &mut Environment,
@@ -342,6 +343,13 @@ fn call_logical<E: CallCheckingBehavior>(
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	match logical {
+		Logical::Error => Ok(FunctionCallResult {
+			called: None,
+			returned_type: TypeId::ERROR_TYPE,
+			warnings: Default::default(),
+			special: Default::default(),
+			result_was_const_computation: false,
+		}),
 		Logical::Pure(function) => {
 			if let Some(function_type) = types.functions.get(&function.function) {
 				let function_type = function_type.clone();
@@ -351,7 +359,7 @@ fn call_logical<E: CallCheckingBehavior>(
 					function.this_value,
 					call_site,
 					&arguments,
-					type_argument_restrictions,
+					explicit_type_arguments,
 					structure_generics,
 					top_environment,
 					behavior,
@@ -413,7 +421,7 @@ fn call_logical<E: CallCheckingBehavior>(
 			*on,
 			called_with_new,
 			call_site,
-			type_argument_restrictions,
+			explicit_type_arguments,
 			Some(antecedent),
 			// this_value,
 			arguments,
@@ -431,6 +439,10 @@ fn get_logical_callable_from_type(
 	from: Option<TypeId>,
 	types: &TypeStore,
 ) -> Option<Logical<FunctionLike>> {
+	if ty == TypeId::ERROR_TYPE {
+		return Some(Logical::Error);
+	}
+
 	match types.get_type_by_id(ty) {
 		Type::And(_, _) => todo!(),
 		Type::Or(left, right) => {
@@ -731,12 +743,12 @@ impl FunctionType {
 		let mut type_restrictions = call_site_type_arguments.unwrap_or(map_vec::Map::new());
 
 		if let Some(ref structure_generics) = structure_generics {
-			type_restrictions.extend(structure_generics.type_arguments.clone().into_iter())
+			type_restrictions.extend(structure_generics.type_restrictions.clone().into_iter())
 		}
 
 		// let mut locally_held_functions = map_vec::Map::new();
 
-		self.run_behavior(
+		self.set_this_for_behavior(
 			called_with_new,
 			this_value,
 			&mut type_arguments,
@@ -746,10 +758,14 @@ impl FunctionType {
 			call_site,
 		);
 
+		let empty = &SmallMap::new();
+
+		let sgs = structure_generics.as_ref().map_or(empty, |sg| &sg.properties);
 		let local_arguments = self.assign_arguments_to_parameters::<E>(
 			arguments,
 			type_arguments,
 			type_restrictions,
+			sgs,
 			environment,
 			types,
 			&mut errors,
@@ -890,6 +906,9 @@ impl FunctionType {
 			}
 		} else {
 			crate::utils::notify!("Substituting return type (no return)");
+
+			type_arguments.local_arguments.remove(&TypeId::NEW_TARGET_ARG);
+
 			substitute(self.return_type, &mut type_arguments, environment, types)
 		};
 
@@ -902,7 +921,7 @@ impl FunctionType {
 		})
 	}
 
-	fn run_behavior(
+	fn set_this_for_behavior(
 		&self,
 		called_with_new: CalledWithNew,
 		this_value: ThisValue,
@@ -971,7 +990,7 @@ impl FunctionType {
 					// crate::utils::notify!("This argument {}", on);
 					// ty
 				}
-				// In spec == undefined
+				// In spec, not `new` -> `new.target === undefined`
 				CalledWithNew::None => TypeId::UNDEFINED_TYPE,
 			};
 
@@ -983,7 +1002,8 @@ impl FunctionType {
 		&self,
 		arguments: &[SynthesisedArgument],
 		mut type_arguments: TypeArguments,
-		restrictions: TypeRestrictions,
+		mut restrictions: TypeRestrictions,
+		properties: &SmallMap<TypeId, LookUpGeneric>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
@@ -1003,7 +1023,7 @@ impl FunctionType {
 				if E::CHECK_PARAMETERS {
 					let result = check_parameter_type(
 						&mut type_arguments,
-						&restrictions,
+						&mut restrictions,
 						parameter.ty,
 						*value,
 						environment,
@@ -1011,15 +1031,23 @@ impl FunctionType {
 					);
 
 					if let SubTypeResult::IsNotSubType(_reasons) = result {
+						let type_arguments =
+							GenericChain::new_from_ref(super::StructureGenericArgumentsRef {
+								type_restrictions: &restrictions,
+								properties,
+							});
+
 						errors.errors.push(FunctionCallingError::InvalidArgumentType {
-							parameter_type: TypeStringRepresentation::from_type_id(
+							parameter_type: TypeStringRepresentation::from_type_id_with_generics(
 								parameter.ty,
+								type_arguments,
 								environment,
 								types,
 								false,
 							),
-							argument_type: TypeStringRepresentation::from_type_id(
+							argument_type: TypeStringRepresentation::from_type_id_with_generics(
 								*value,
+								type_arguments,
 								environment,
 								types,
 								false,
@@ -1054,7 +1082,7 @@ impl FunctionType {
 					if E::CHECK_PARAMETERS {
 						let result = check_parameter_type(
 							&mut type_arguments,
-							&restrictions,
+							&mut restrictions,
 							rest_parameter.item_type,
 							argument.value,
 							environment,
@@ -1063,15 +1091,23 @@ impl FunctionType {
 
 						// TODO different diagnostic?
 						if let SubTypeResult::IsNotSubType(_reasons) = result {
+							let type_arguments =
+								GenericChain::new_from_ref(super::StructureGenericArgumentsRef {
+									type_restrictions: &restrictions,
+									properties,
+								});
 							errors.errors.push(FunctionCallingError::InvalidArgumentType {
-								parameter_type: TypeStringRepresentation::from_type_id(
-									rest_parameter.ty,
-									environment,
-									types,
-									false,
-								),
-								argument_type: TypeStringRepresentation::from_type_id(
+								parameter_type:
+									TypeStringRepresentation::from_type_id_with_generics(
+										rest_parameter.ty,
+										type_arguments,
+										environment,
+										types,
+										false,
+									),
+								argument_type: TypeStringRepresentation::from_type_id_with_generics(
 									argument.value,
+									type_arguments,
 									environment,
 									types,
 									false,
@@ -1122,13 +1158,18 @@ impl FunctionType {
 			}
 		}
 
+		// Set restrictions as arguments IF not set already. So can
+		for (on, (arg, _)) in restrictions {
+			type_arguments.entry(on).or_insert(arg);
+		}
+
 		type_arguments
 	}
 }
 
 fn check_parameter_type(
 	type_arguments: &mut TypeArguments,
-	restrictions: &TypeRestrictions,
+	restrictions: &mut CallSiteTypeArguments,
 	parameter_ty: TypeId,
 	value: TypeId,
 	environment: &mut Environment,

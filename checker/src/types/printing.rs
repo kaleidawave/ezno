@@ -24,22 +24,14 @@ pub fn print_type(
 	debug: bool,
 ) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(
-		id,
-		&mut buf,
-		&mut HashSet::new(),
-		GenericChain::None,
-		types,
-		info_chain,
-		debug,
-	);
+	print_type_into_buf(id, &mut buf, &mut HashSet::new(), None, types, info_chain, debug);
 	buf
 }
 
 #[must_use]
 pub fn print_type_with_type_arguments(
 	id: TypeId,
-	type_arguments: GenericChain,
+	type_arguments: Option<GenericChain>,
 	types: &TypeStore,
 	info_chain: &impl InformationChain,
 	debug: bool,
@@ -62,7 +54,7 @@ fn print_type_into_buf<C: InformationChain>(
 	id: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
-	args: GenericChain,
+	args: Option<GenericChain>,
 	types: &TypeStore,
 	info_chain: &C,
 	debug: bool,
@@ -92,8 +84,13 @@ fn print_type_into_buf<C: InformationChain>(
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::Generic { name, eager_fixed } => {
-				if let Some(value) = args.get_arg(id) {
-					print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
+				if let Some(argvs) = args.and_then(|args| args.get_arg(id, info_chain)) {
+					for (more, arg) in argvs.iter().nendiate() {
+						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
+						if more {
+							buf.push_str(" | ");
+						}
+					}
 				} else if debug {
 					// TODO restriction
 					write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
@@ -161,7 +158,9 @@ fn print_type_into_buf<C: InformationChain>(
 					{
 						print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 						buf.push('<');
-						for (not_at_end, (arg, _)) in arguments.type_arguments.values().nendiate() {
+						for (not_at_end, (arg, _)) in
+							arguments.type_restrictions.values().nendiate()
+						{
 							print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
 							if not_at_end {
 								buf.push_str(", ");
@@ -173,7 +172,7 @@ fn print_type_into_buf<C: InformationChain>(
 							*on,
 							buf,
 							cycles,
-							args.append(&arguments.type_arguments),
+							Some(GenericChain::append(args.as_ref(), arguments)),
 							types,
 							info_chain,
 							debug,
@@ -281,7 +280,7 @@ fn print_type_into_buf<C: InformationChain>(
 			if debug {
 				write!(
 					buf,
-					"[func #{}, fvs {:?}, co {:?}, const {:?}] ", // this {:?},
+					"[func #{}, fvs {:?}, clo {:?}, const {:?}] ", // this {:?},
 					id.0,
 					func.free_variables,
 					func.closed_over_variables,
@@ -329,9 +328,9 @@ fn print_type_into_buf<C: InformationChain>(
 			if debug {
 				write!(buf, "[obj {}]", id.0).unwrap();
 			}
-			if let Some(TypeId::ARRAY_TYPE) =
-				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&id).cloned())
-			{
+			let prototype =
+				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&id).cloned());
+			if let Some(TypeId::ARRAY_TYPE) = prototype {
 				if let Some(n) = get_array_length(info_chain, id, types) {
 					buf.push('[');
 					for i in 0..(n.into_inner() as usize) {
@@ -349,6 +348,13 @@ fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "Array").unwrap();
 				}
 			} else {
+				if let Some(prototype) = prototype {
+					crate::utils::notify!("Proto during print {:?}", prototype);
+					buf.push('[');
+					print_type_into_buf(prototype, buf, cycles, args, types, info_chain, debug);
+					buf.push_str("] ");
+				}
+				crate::utils::notify!("no Proto on {:?} during print", id);
 				buf.push_str("{ ");
 				let properties = get_properties_on_type(id, info_chain);
 				for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
@@ -408,19 +414,23 @@ fn print_type_into_buf<C: InformationChain>(
 	cycles.remove(&id);
 }
 
+/// For getting `length` and stuff
 fn get_simple_value(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	property: PropertyKey,
 	types: &TypeStore,
 ) -> Option<TypeId> {
-	information::get_property_unbound(on, Publicity::Public, property, types, ctx).and_then(|v| {
-		if let Logical::Pure(PropertyValue::Value(t)) = v {
-			Some(t)
-		} else {
-			None
+	fn get_logical(v: Logical<PropertyValue>) -> Option<TypeId> {
+		match v {
+			Logical::Pure(PropertyValue::Value(t)) => Some(t),
+			Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			_ => None,
 		}
-	})
+	}
+
+	information::get_property_unbound(on, Publicity::Public, property, types, ctx)
+		.and_then(|v| get_logical(v))
 }
 
 fn get_array_length(
@@ -428,12 +438,8 @@ fn get_array_length(
 	on: TypeId,
 	types: &TypeStore,
 ) -> Option<ordered_float::NotNan<f64>> {
-	let id = get_simple_value(
-		ctx,
-		on,
-		PropertyKey::String(std::borrow::Cow::Borrowed("length")),
-		types,
-	)?;
+	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
+	let id = get_simple_value(ctx, on, length_property, types)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
 		Some(*n)
 	} else {
@@ -449,15 +455,7 @@ pub fn print_property_key<C: InformationChain>(
 	debug: bool,
 ) -> String {
 	let mut string = String::new();
-	print_property_key_into_buf(
-		&mut string,
-		key,
-		&mut HashSet::new(),
-		GenericChain::None,
-		types,
-		info,
-		debug,
-	);
+	print_property_key_into_buf(&mut string, key, &mut HashSet::new(), None, types, info, debug);
 	string
 }
 
@@ -465,7 +463,7 @@ pub(crate) fn print_property_key_into_buf<C: InformationChain>(
 	buf: &mut String,
 	key: &PropertyKey,
 	cycles: &mut HashSet<TypeId>,
-	args: GenericChain,
+	args: Option<GenericChain>,
 	types: &TypeStore,
 	info: &C,
 	debug: bool,
@@ -489,7 +487,7 @@ pub fn debug_effects<C: InformationChain>(
 ) {
 	use std::fmt::Write;
 
-	let args = GenericChain::None;
+	let args = None;
 
 	for event in events {
 		match event {

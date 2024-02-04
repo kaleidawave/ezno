@@ -237,7 +237,9 @@ pub(crate) fn get_property_unbound(
 		on: TypeId,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
-		info.current_properties.get(&on).and_then(|properties| {
+		let get = info.current_properties.get(&on);
+
+		get.and_then(|properties| {
 			// TODO rev is important
 			properties.iter().rev().find_map(move |(publicity, key, value)| {
 				let (want_publicity, want_key) = under;

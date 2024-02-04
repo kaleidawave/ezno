@@ -19,7 +19,10 @@ use source_map::SpanWithSource;
 pub use store::TypeStore;
 pub use terms::Constant;
 
+use crate::SmallMap;
+
 use crate::{
+	context::information::InformationChain,
 	events::RootReference,
 	features::{
 		functions::ThisValue,
@@ -35,9 +38,11 @@ use self::{
 };
 use crate::FunctionId;
 
+pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
+
 /// Final
 pub type TypeArguments = map_vec::Map<TypeId, TypeId>;
-pub type TypeRestrictions = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
+pub type TypeRestrictions = map_vec::Map<TypeId, ExplicitTypeArgument>;
 
 /// References [Type]
 ///
@@ -426,37 +431,66 @@ pub enum SubTypeResult {
 	IsNotSubType(NonEqualityReason),
 }
 
-#[derive(Default, Clone, Copy)]
-pub enum GenericChain<'a> {
-	#[default]
-	None,
-	Restriction {
-		parent: Option<&'a GenericChain<'a>>,
-		value: &'a TypeRestrictions,
-	},
+/// Used for printing and subtyping. Handles nested restrictions
+#[derive(Clone, Copy)]
+pub struct GenericChain<'a> {
+	parent: Option<&'a GenericChain<'a>>,
+	value: StructureGenericArgumentsRef<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub struct StructureGenericArgumentsRef<'a> {
+	type_restrictions: &'a TypeRestrictions,
+	properties: &'a SmallMap<TypeId, LookUpGeneric>,
+}
+
+impl<'a> StructureGenericArgumentsRef<'a> {
+	pub(crate) fn from_owned(owned: &'a StructureGenericArguments) -> Self {
+		Self { type_restrictions: &owned.type_restrictions, properties: &owned.properties }
+	}
+
+	pub(crate) fn into_owned(self) -> StructureGenericArguments {
+		StructureGenericArguments {
+			type_restrictions: self.type_restrictions.clone(),
+			properties: self.properties.clone(),
+			// TODO
+			closures: Vec::new(),
+		}
+	}
 }
 
 impl<'a> GenericChain<'a> {
-	pub(crate) fn is_empty(&self) -> bool {
-		matches!(self, Self::None)
+	pub(crate) fn new(value: &'a StructureGenericArguments) -> Self {
+		Self::new_from_ref(StructureGenericArgumentsRef::from_owned(value))
 	}
 
-	pub(crate) fn get_arg(&self, on: TypeId) -> Option<TypeId> {
-		std::iter::successors(self.into_option(), |(parent, _)| {
-			parent.map(|parent| parent.into_option()).flatten()
-		})
-		.find_map(|(_, maps)| maps.get(&on).map(|(v, _)| *v))
+	pub(crate) fn new_from_ref(value: StructureGenericArgumentsRef<'a>) -> Self {
+		Self { value, parent: None }
 	}
 
-	fn into_option(&self) -> Option<(Option<&'a GenericChain<'a>>, &TypeRestrictions)> {
-		match self {
-			GenericChain::None => None,
-			GenericChain::Restriction { parent, value } => Some((parent.clone(), value)),
+	/// TODO wip
+	pub(crate) fn get_arg(&self, on: TypeId, info: &impl InformationChain) -> Option<Vec<TypeId>> {
+		if let Some((t, _pos)) = self.value.type_restrictions.get(&on) {
+			Some(vec![*t])
+		} else if let Some(lookup) = self.value.properties.get(&on) {
+			Some(lookup.calculate_lookup(info))
+		} else {
+			self.parent.and_then(|parent| parent.get_arg(on, info))
 		}
 	}
 
-	pub(crate) fn append(&'a self, value: &'a TypeRestrictions) -> GenericChain<'a> {
-		GenericChain::Restriction { parent: Some(self), value }
+	pub(crate) fn append(
+		parent: Option<&'a GenericChain>,
+		value: &'a StructureGenericArguments,
+	) -> GenericChain<'a> {
+		Self::append_ref(parent, StructureGenericArgumentsRef::from_owned(value))
+	}
+
+	pub(crate) fn append_ref(
+		parent: Option<&'a GenericChain>,
+		value: StructureGenericArgumentsRef<'a>,
+	) -> GenericChain<'a> {
+		GenericChain { parent, value }
 	}
 }
 
@@ -697,6 +731,37 @@ fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 		cst.get_backing_type_id()
 	} else {
 		on
+	}
+}
+
+/// TODO T on `Array`, U, V on `Map` etc. Works around not having `&mut TypeStore` and mutations inbetween
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum LookUpGeneric {
+	NumberPropertyOf(TypeId),
+	Property(Box<Self>, PropertyKey<'static>),
+}
+
+impl LookUpGeneric {
+	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain) -> Vec<TypeId> {
+		match self {
+			LookUpGeneric::NumberPropertyOf(t) => {
+				let number_values = info
+					.get_chain_of_info()
+					.filter_map(|info| info.current_properties.get(t).map(|v| v.iter()))
+					.flatten()
+					.filter_map(|(_publicity, key, value)| {
+						// TODO filter more
+						if matches!(key, PropertyKey::String(s) if s == "length") {
+							None
+						} else {
+							Some(value.as_get_type())
+						}
+					})
+					.collect();
+				number_values
+			}
+			LookUpGeneric::Property(_, _) => todo!(),
+		}
 	}
 }
 

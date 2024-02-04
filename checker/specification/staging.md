@@ -146,54 +146,16 @@ getNumber2() satisfies 6;
 
 - Expected () => 4, found () => number
 
-#### Generic argument/constraint leads to inference
-
-```ts
-function callFunction<T>(fn: (p: T) => void) {
-    // ...
-}
-
-callFunction<string>(a => {
-    a satisfies number;
-})
-```
-
-- Expected number, found string
-
 ### Collections
 
-> TODO other arguments
-
-#### `map` and `filter`
+#### Array push restriction
 
 ```ts
-[1, 2, 3].map(x => x + 1) satisfies [2, 3, 4];
-
-[1, 2, 3].filter(x => x % 2) satisfies [6];
+const x: Array<number> = [1]
+x.push("hi");
 ```
 
-- Expected [6], found [2]
-
-#### `some` and `every`
-
-```ts
-declare let aNumber: number;
-
-[1, 2, 3].some(x => x > 0) satisfies true;
-[-5].some(x => x > 0) satisfies false;
-
-[1, aNumber, 3].every(x => x > 0) satisfies string;
-```
-
-- Expected string, found boolean
-
-#### `find` and `includes`
-
-```ts
-[1, 2, 3].find(x => x % 2) satisfies 4
-```
-
-- Expected 4, found 2
+- Argument of type \"hi\" is not assignable to parameter of type number
 
 ### Types
 
@@ -222,6 +184,16 @@ what(2, 3) satisfies string;
 ```
 
 - Expected string, found 2 | 3
+
+#### More accurate generic
+
+```ts
+declare function unwrap<T>(a: T | { item: T }): T;
+
+unwrap({ item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
 
 #### As casts
 

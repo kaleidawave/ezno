@@ -1,5 +1,5 @@
 use crate::{
-	context::get_on_ctx,
+	context::{get_on_ctx, information::InformationChain},
 	// subtyping::check_satisfies,
 	types::{functions::SynthesisedArgument, printing::debug_effects, TypeRestrictions},
 	types::{printing::print_type, Type, TypeStore},
@@ -117,6 +117,24 @@ pub(crate) fn call_constant_function(
 				.map_err(|()| ConstantFunctionError::BadCall)?;
 			let ty_as_string = print_type(ty, types, environment, debug);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
+		}
+		"print_constraint" => {
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::BadCall)?
+				.non_spread_type()
+				.map_err(|()| ConstantFunctionError::BadCall)?;
+
+			let constraint = environment
+				.get_chain_of_info()
+				.find_map(|i| i.object_constraints.get(&ty).cloned());
+
+			if let Some(constraint) = constraint {
+				let constraint_as_string = print_type(constraint, types, environment, false);
+				Ok(ConstantOutput::Diagnostic(format!("Constraint is: {constraint_as_string}")))
+			} else {
+				Ok(ConstantOutput::Diagnostic("No associate constraint".to_owned()))
+			}
 		}
 		"debug_type_rust" | "debug_type_rust_independent" => {
 			let id = arguments

@@ -7,6 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 use source_map::{SourceId, SpanWithSource};
 
+use crate::TypeId;
+
 /// TODO unsure about iterator
 /// This is automated by the derive macro TODO link
 pub(crate) trait BinarySerializable {
@@ -247,7 +249,7 @@ impl BinarySerializable for u32 {
 	}
 }
 
-impl BinarySerializable for crate::TypeId {
+impl BinarySerializable for TypeId {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&self.0.to_le_bytes());
 	}

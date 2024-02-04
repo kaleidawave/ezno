@@ -1025,22 +1025,17 @@ pub enum AssignmentError {
 /// Completely magic!
 #[derive(Debug)]
 pub enum Logical<T> {
+	Error,
 	Pure(T),
-	Or {
-		left: Box<Self>,
-		right: Box<Self>,
-	},
-	/// TODO better name, from StructureGenerics
-	Implies {
-		on: Box<Self>,
-		antecedent: StructureGenericArguments,
-	},
+	Or { left: Box<Self>, right: Box<Self> },
+	Implies { on: Box<Self>, antecedent: StructureGenericArguments },
 }
 
 impl<'a, T: Clone> Logical<&'a T> {
 	#[must_use]
 	pub fn cloned(self) -> Logical<T> {
 		match self {
+			Logical::Error => Logical::Error,
 			Logical::Pure(t) => Logical::Pure(t.clone()),
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on, antecedent } => {

@@ -495,15 +495,6 @@ const d: 3 = id(2)
 
 - Type 2 is not assignable to type 3
 
-#### Generic type argument parameter
-
-```ts
-function func<T>(a: T) {}
-func<number>("hello world")
-```
-
-- Argument of type "hello world" is not assignable to parameter of type T
-
 #### Get value of property on parameter
 
 ```ts
@@ -950,6 +941,9 @@ value.getValue() satisfies 6
 - Expected 6, found 10
 
 ### Collection types
+
+> Some of these are built of exiting features.
+> But they are important enough in code for them to have their own usage tests
 
 #### Array push
 

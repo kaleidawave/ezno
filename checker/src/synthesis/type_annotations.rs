@@ -18,7 +18,7 @@
 //! - To allow for compat it treats it as inferred generic **so it can get properties off of it**. Would be better
 //! to allow this as a condition in the future
 
-use std::{convert::TryInto, iter::FromIterator};
+use std::convert::TryInto;
 
 use parser::{
 	type_annotations::{
@@ -225,7 +225,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 						on: inner_type_id,
 						arguments: StructureGenericArguments {
-							type_arguments,
+							type_restrictions: type_arguments,
+							properties: map_vec::Map::new(),
 							closures: Default::default(),
 						},
 					}));
@@ -292,18 +293,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
 			let item_type = synthesise_type_annotation(item_annotation, environment, checking_data);
-			let with_source = item_annotation.get_position().with_source(environment.get_source());
-			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on: TypeId::ARRAY_TYPE,
-				arguments: StructureGenericArguments {
-					type_arguments: FromIterator::from_iter([(
-						TypeId::T_TYPE,
-						(item_type, with_source),
-					)]),
-					closures: Default::default(),
-				},
-			}));
-			checking_data.types.register_type(ty)
+			let position = item_annotation.get_position().with_source(environment.get_source());
+			checking_data.types.new_array_type(item_type, position)
 		}
 		TypeAnnotation::ConstructorLiteral {
 			type_parameters: _,

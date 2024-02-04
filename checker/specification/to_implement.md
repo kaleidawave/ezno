@@ -103,6 +103,29 @@ print_type(callFunc)
 
 - Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
 
+#### Generic type argument parameter
+
+```ts
+function func<T>(a: T) {}
+func<number>("hello world")
+```
+
+- Argument of type "hello world" is not assignable to parameter of type T
+
+#### Generic argument/constraint leads to inference
+
+```ts
+function callFunction<T>(fn: (p: T) => void) {
+    // ...
+}
+
+callFunction<string>(a => {
+    a satisfies number;
+})
+```
+
+- Expected number, found string
+
 #### Generics pass down
 
 > Too many generics here, doesn't get caught for some reason?
@@ -136,6 +159,18 @@ interface Z extends X, Y {
 ```
 
 - Type { c: "hi" } is not assignable to Z
+
+#### Across alias
+
+```ts
+type WithLabel<T> = { label: string, item: T };
+
+declare function getItem<T>(a: WithLabel<T>): T;
+
+getItem({ label: "item 1", item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
 
 ### Narrowing
 
@@ -313,7 +348,38 @@ a.prop3 satisfies "prop2"
 
 ### Collections
 
-> TODO filter, every and all, find, etc
+> TODO other arguments (index and `this`)
+
+#### `map` and `filter`
+
+```ts
+[1, 2, 3].map(x => x + 1) satisfies [2, 3, 4];
+
+[1, 2, 3].filter(x => x % 2) satisfies [6];
+```
+
+- Expected [6], found [2]
+
+#### `some` and `every`
+
+```ts
+declare let aNumber: number;
+
+[1, 2, 3].some(x => x > 0) satisfies true;
+[-5].some(x => x > 0) satisfies false;
+
+[1, aNumber, 3].every(x => x > 0) satisfies string;
+```
+
+- Expected string, found boolean
+
+#### `find` and `includes`
+
+```ts
+[1, 2, 3].find(x => x % 2) satisfies 4
+```
+
+- Expected 4, found 2
 
 #### Simple array map
 
@@ -481,6 +547,39 @@ class MyClass {
 - Cannot get private property "#a"
 - Expected 3, found 2
 
+#### Implements
+
+```ts
+interface Draw {
+	draw(c: CanvasRenderingContext2D): void;
+}
+
+class MyNumber implements Draw { }
+
+class Rectangle implements Draw {
+	draw(c) {
+		c satisfies string;
+	}
+}
+```
+
+- Class "MyNumber", does not implement draw
+- Expected string, found CanvasRenderingContext2D
+
+#### Nominal-ness
+
+```ts
+class X { a: number }
+class Y { a: number }
+
+function doThingWithX(x: X) {}
+
+doThingWithX(new X())
+doThingWithX(new Y())
+```
+
+- Cannot Y with X
+
 ### Recursion
 
 #### Application
@@ -510,6 +609,25 @@ call(call)
 ```
 
 - TODO hopefully doesn't blow up
+
+#### Cyclic object check
+
+```ts
+interface X {
+	a: number
+	b: X
+}
+
+const myObject = { a: 2 };
+
+myObject satisfies X;
+
+myObject.b = myObject;
+
+myObject satisfies X;
+```
+
+- Expected X, found { a: 2 }
 
 ### Function checking
 

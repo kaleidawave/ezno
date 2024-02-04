@@ -147,6 +147,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 			);
 			if let Some(value) = property_constraint {
 				match value {
+					crate::context::Logical::Error => TypeId::ERROR_TYPE,
 					crate::context::Logical::Pure(crate::PropertyValue::Value(value)) => value,
 					crate::context::Logical::Pure(_) => todo!(),
 					crate::context::Logical::Or { left: _, right: _ } => todo!(),

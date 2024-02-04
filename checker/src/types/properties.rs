@@ -12,7 +12,7 @@ use crate::{
 	types::{
 		get_constraint,
 		poly_types::generic_type_arguments::{ExplicitTypeArguments, StructureGenericArguments},
-		substitute, FunctionType, ObjectNature, StructureGenerics,
+		substitute, FunctionType, GenericChain, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
@@ -33,8 +33,8 @@ pub enum PropertyKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyKey<'a> {
 	String(Cow<'a, str>),
-	// Special
 	Type(TypeId),
+	// SomeThingLike(TypeId),
 }
 
 impl crate::BinarySerializable for PropertyKey<'static> {
@@ -88,11 +88,20 @@ impl<'a> PropertyKey<'a> {
 		}
 	}
 
-	pub(crate) fn as_number(&self) -> Option<usize> {
+	pub(crate) fn as_number(&self, types: &TypeStore) -> Option<usize> {
 		match self {
 			PropertyKey::String(s) => s.parse::<usize>().ok(),
-			// TODO
-			PropertyKey::Type(_) => None,
+			PropertyKey::Type(t) => {
+				if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(*t) {
+					if n.trunc() == **n {
+						Some(**n as usize)
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			}
 		}
 	}
 }
@@ -227,12 +236,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	/// Generates closure arguments, values of this and more. Runs getters
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
 		logical: Logical<PropertyValue>,
-		types: &mut TypeStore,
 		on: TypeId,
+		generics: Option<GenericChain>,
 		environment: &mut Environment,
+		types: &mut TypeStore,
 		behavior: &mut E,
 	) -> Option<(PropertyKind, TypeId)> {
 		match logical {
+			Logical::Error => Some((PropertyKind::Direct, TypeId::ERROR_TYPE)),
 			Logical::Pure(property) => {
 				match property {
 					PropertyValue::Value(value) => {
@@ -242,15 +253,30 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							Type::Function(func, _state) => {
 								let func = types
 									.register_type(Type::Function(*func, ThisValue::Passed(on)));
+
 								Some((PropertyKind::Direct, func))
 							}
 							Type::FunctionReference(func) => {
-								crate::utils::notify!("TODO temp reference function business");
-								// TODO a little bit weird how it goes from FunctionReference -> Function... but should be okay. For example `"hi".toUpperCase()`;
+								// used for `"hi".toUpperCase()`;
+								// TODO a little bit weird how it goes from FunctionReference -> Function... but should be okay.
 								let func = types
 									.register_type(Type::Function(*func, ThisValue::Passed(on)));
-								Some((PropertyKind::Direct, func))
+
+								let ty = if let Some(chain) = generics {
+									assert!(chain.parent.is_none());
+									types.register_type(Type::Constructor(
+										Constructor::StructureGenerics(StructureGenerics {
+											on: func,
+											arguments: chain.value.into_owned(),
+										}),
+									))
+								} else {
+									func
+								};
+
+								Some((PropertyKind::Direct, ty))
 							}
+							// TODO if uses generics
 							Type::SpecialObject(..)
 							| Type::Object(..)
 							| Type::RootPolyType { .. }
@@ -260,11 +286,13 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
 								    property, ty
 							    );
+
 								let value = types.register_type(Type::RootPolyType(
 									crate::types::PolyNature::Open(value),
 								));
 								Some((PropertyKind::Direct, value))
 							}
+							// For closures
 							Type::Constructor(Constructor::StructureGenerics(
 								StructureGenerics { on: sg_on, arguments },
 							)) => {
@@ -318,20 +346,20 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 				}
 			}
 			Logical::Or { .. } => todo!(),
-			Logical::Implies { on: log_on, mut antecedent } => {
-				let (kind, ty) =
-					resolve_property_on_logical(*log_on, types, on, environment, behavior)?;
-
-				crate::utils::notify!("Specialising implies");
-				let ty = substitute(ty, &mut antecedent, environment, types);
-				Some((kind, ty))
-			}
+			Logical::Implies { on: log_on, antecedent } => resolve_property_on_logical(
+				*log_on,
+				on,
+				Some(GenericChain::append(generics.as_ref(), &antecedent)),
+				environment,
+				types,
+				behavior,
+			),
 		}
 	}
 
 	// TODO explain what happens around non constant strings
 	if let Type::Constant(Constant::String(s)) = types.get_type_by_id(on) {
-		if let Some(n) = under.as_number() {
+		if let Some(n) = under.as_number(&types) {
 			return s.chars().nth(n).map(|s| {
 				(PropertyKind::Direct, types.new_constant_type(Constant::String(s.to_string())))
 			});
@@ -340,7 +368,9 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 
 	let result = get_property_unbound(on, publicity, under, types, environment)?;
 
-	resolve_property_on_logical(result, types, on, environment, behavior)
+	crate::utils::notify!("Found {:?}", result);
+
+	resolve_property_on_logical(result, on, None, environment, types, behavior)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -365,6 +395,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		types: &mut TypeStore,
 	) -> Option<TypeId> {
 		match fact {
+			Logical::Error => Some(TypeId::ERROR_TYPE),
 			Logical::Pure(og) => {
 				match og {
 					PropertyValue::Value(value) => match types.get_type_by_id(value) {
@@ -376,7 +407,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								substitute(
 									value,
 									&mut ExplicitTypeArguments(
-										&mut arguments.type_arguments.clone(),
+										&mut arguments.type_restrictions.clone(),
 									),
 									environment,
 									types,
@@ -385,6 +416,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								crate::utils::notify!("Here, getting property on {:?}", t);
 								value
 							};
+
 							let constructor_result =
 								types.register_type(Type::Constructor(Constructor::Property {
 									on,
@@ -535,7 +567,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				PropertyValue::Value(value) => {
 					let result = type_is_subtype_of_property(
 						&property_constraint,
-						super::GenericChain::None,
+						None,
 						value,
 						&mut basic_subtyping,
 						environment,
@@ -614,6 +646,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	if let Some(fact) = current_property {
 		match fact {
+			Logical::Error => {}
 			Logical::Pure(og) => match og {
 				PropertyValue::Deleted | PropertyValue::Value(..) => {
 					let info = behavior.get_latest_info(environment);

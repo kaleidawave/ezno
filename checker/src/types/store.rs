@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use map_vec::Map as SmallMap;
+use source_map::SpanWithSource;
+
 use crate::{
 	context::{
 		information::{get_property_unbound, InformationChain},
@@ -12,7 +15,8 @@ use crate::{
 };
 
 use super::{
-	get_constraint, properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator,
+	get_constraint, poly_types::generic_type_arguments::StructureGenericArguments,
+	properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -153,9 +157,21 @@ impl TypeStore {
 			return lhs;
 		}
 
-		// TODO distribute or types
-		let ty = Type::And(lhs, rhs);
-		self.register_type(ty)
+		// (left and right) distributivity. TODO are there any problems here
+		if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(lhs) {
+			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
+			let new_lhs = self.new_and_type(or_lhs, rhs);
+			let new_rhs = self.new_and_type(or_rhs, rhs);
+			self.new_or_type(new_lhs, new_rhs)
+		} else if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(rhs) {
+			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
+			let new_lhs = self.new_and_type(lhs, or_lhs);
+			let new_rhs = self.new_and_type(lhs, or_rhs);
+			self.new_or_type(new_lhs, new_rhs)
+		} else {
+			let ty = Type::And(lhs, rhs);
+			self.register_type(ty)
+		}
 	}
 
 	/// TODO temp
@@ -252,6 +268,10 @@ impl TypeStore {
 		resolver: &impl Fn(&LocalInformation, &TypeStore, TypeId, TData) -> Option<TResult>,
 		data: TData,
 	) -> Option<Logical<TResult>> {
+		if on == TypeId::ERROR_TYPE {
+			return Some(Logical::Error);
+		}
+
 		match self.get_type_by_id(on) {
 			Type::Function(..) => {
 				let on_function = info_chain
@@ -315,7 +335,7 @@ impl TypeStore {
 				})
 			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on: sg_base,
+				on: base,
 				arguments,
 			})) => {
 				let on_sg_type = info_chain
@@ -324,7 +344,7 @@ impl TypeStore {
 					.map(Logical::Pure);
 
 				on_sg_type.or_else(|| {
-					let fact_opt = self.get_fact_about_type(info_chain, *sg_base, resolver, data);
+					let fact_opt = self.get_fact_about_type(info_chain, *base, resolver, data);
 
 					fact_opt.map(|fact| Logical::Implies {
 						on: Box::new(fact),
@@ -370,11 +390,19 @@ impl TypeStore {
 					.copied();
 
 				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
-					gens
+					gens.cloned()
 				} else if let Some(prototype) = prototype {
+					// TODO this relationship should be on TypeStore
 					if prototype == TypeId::ARRAY_TYPE {
-						// TODO cannot create a union here. Might be a special type. Maybe Logical::Implies => compute
-						todo!("compute by getting number based properties")
+						// Cannot create a union here
+						Some(StructureGenericArguments {
+							type_restrictions: SmallMap::new(),
+							properties: SmallMap::from_iter([(
+								TypeId::T_TYPE,
+								super::LookUpGeneric::NumberPropertyOf(on),
+							)]),
+							closures: Vec::new(),
+						})
 					} else if let Type::Interface { parameters: Some(_parameters), .. } =
 						self.get_type_by_id(prototype)
 					{
@@ -391,7 +419,7 @@ impl TypeStore {
 					.find_map(|env| resolver(&env, self, on, data))
 					.map(|result| {
 						let pure = Logical::Pure(result);
-						if let Some(generics) = generics {
+						if let Some(ref generics) = generics {
 							// TODO clone
 							Logical::Implies { on: Box::new(pure), antecedent: generics.clone() }
 						} else {
@@ -399,21 +427,24 @@ impl TypeStore {
 						}
 					})
 					.or_else(|| {
-						info_chain
-							.get_chain_of_info()
-							.find_map(|env| resolver(&env, self, on, data))
-							.map(|result| {
-								let pure = Logical::Pure(result);
-								if let Some(generics) = generics {
-									Logical::Implies {
-										on: Box::new(pure),
-										// TODO clone
-										antecedent: generics.clone(),
+						crate::utils::notify!("Prototype is {:?}", prototype);
+						if let Some(prototype) = prototype {
+							self.get_fact_about_type(info_chain, prototype, resolver, data).map(
+								|result| {
+									if let Some(generics) = generics {
+										Logical::Implies {
+											on: Box::new(result),
+											// TODO clone
+											antecedent: generics.clone(),
+										}
+									} else {
+										result
 									}
-								} else {
-									pure
-								}
-							})
+								},
+							)
+						} else {
+							None
+						}
 					})
 			}
 			// TODO extends
@@ -483,9 +514,10 @@ impl TypeStore {
 			environment,
 		) {
 			match prop {
-				crate::context::Logical::Pure(ty) => ty.as_get_type(),
-				crate::context::Logical::Or { .. } => todo!(),
-				crate::context::Logical::Implies { .. } => todo!(),
+				Logical::Error => TypeId::ERROR_TYPE,
+				Logical::Pure(ty) => ty.as_get_type(),
+				Logical::Or { .. } => todo!(),
+				Logical::Implies { .. } => todo!(),
 			}
 		} else {
 			crate::utils::notify!("Error: no index on type annotation");
@@ -508,5 +540,20 @@ impl TypeStore {
 				fixed_to: parameter_constraint,
 			}))
 		}
+	}
+
+	pub fn new_array_type(&mut self, item_type: TypeId, position: SpanWithSource) -> TypeId {
+		let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			on: TypeId::ARRAY_TYPE,
+			arguments: StructureGenericArguments {
+				type_restrictions: FromIterator::from_iter([(
+					TypeId::T_TYPE,
+					(item_type, position),
+				)]),
+				properties: map_vec::Map::new(),
+				closures: Default::default(),
+			},
+		}));
+		self.register_type(ty)
 	}
 }

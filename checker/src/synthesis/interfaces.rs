@@ -153,6 +153,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						parser::functions::MethodHeader::Set => GetterSetter::Setter,
 						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
 					};
+
 					let function = synthesise_function_annotation(
 						type_parameters,
 						parameters,
@@ -164,6 +165,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						behavior,
 						interface_register_behavior.interface_type(),
 					);
+
 					interface_register_behavior.register(
 						ParserPropertyKeyType::ClassProperty(name),
 						InterfaceValue::Function(function, getter),

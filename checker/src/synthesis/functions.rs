@@ -263,7 +263,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			arguments,
 		})) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
-			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
 			} else {
 				unreachable!()
@@ -413,7 +413,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			arguments,
 		})) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
-			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
 			} else {
 				unreachable!()

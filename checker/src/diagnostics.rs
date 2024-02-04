@@ -5,10 +5,7 @@
 use crate::{
 	context::{environment::Label, information::InformationChain},
 	diagnostics,
-	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_type_arguments, GenericChain,
-	},
+	types::{printing::print_type_with_type_arguments, GenericChain},
 };
 use source_map::{SourceId, SpanWithSource};
 use std::{
@@ -198,15 +195,15 @@ impl TypeStringRepresentation {
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
-		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
+		let value =
+			print_type_with_type_arguments(id, Some(type_arguments), types, ctx, debug_mode);
 		Self::Type(value)
 	}
 
 	/// TODO working it out
 	pub(crate) fn from_property_constraint(
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
-		// TODO chain
-		generics: Option<&StructureGenericArguments>,
+		generics: Option<GenericChain>,
 		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
@@ -214,19 +211,7 @@ impl TypeStringRepresentation {
 		match property_constraint {
 			crate::context::Logical::Pure(p) => match p {
 				crate::PropertyValue::Value(v) => {
-					let value = print_type_with_type_arguments(
-						v,
-						match generics {
-							Some(sgs) => GenericChain::Restriction {
-								parent: None,
-								value: &sgs.type_arguments,
-							},
-							None => GenericChain::None,
-						},
-						types,
-						ctx,
-						debug_mode,
-					);
+					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
 					Self::Type(value)
 				}
 				crate::PropertyValue::Getter(_) => todo!(),
@@ -251,8 +236,15 @@ impl TypeStringRepresentation {
 				if generics.is_some() {
 					todo!("chaining")
 				}
-				Self::from_property_constraint(*on, Some(&antecedent), ctx, types, debug_mode)
+				Self::from_property_constraint(
+					*on,
+					Some(GenericChain::new(&antecedent)),
+					ctx,
+					types,
+					debug_mode,
+				)
 			}
+			crate::context::Logical::Error => TypeStringRepresentation::Type("Error".to_owned()),
 		}
 	}
 }

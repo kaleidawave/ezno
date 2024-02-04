@@ -24,7 +24,7 @@ pub(crate) fn substitute(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	if let Some(value) = arguments.get_argument(id) {
+	if let Some(value) = arguments.get_argument(id, environment, types) {
 		return value;
 	}
 
@@ -51,13 +51,13 @@ pub(crate) fn substitute(
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.register_type(Type::And(lhs, rhs))
+			types.new_and_type(lhs, rhs)
 		}
 		Type::Or(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.register_type(Type::Or(lhs, rhs))
+			types.new_or_type(lhs, rhs)
 		}
 		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } => id,
 		Type::RootPolyType(nature) => {
@@ -163,9 +163,9 @@ pub(crate) fn substitute(
 				})) = types.get_type_by_id(id)
 				{
 					// Try get the constant
-					if under.as_number().is_some() {
+					if under.as_number(&types).is_some() {
 						crate::utils::notify!("Temp array index property get");
-						let value = arguments.get_argument(TypeId::T_TYPE).unwrap();
+						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
 					} else {
 						let mut structure_generic_arguments = arguments.clone();
@@ -234,10 +234,10 @@ pub(crate) fn substitute(
 				arguments: structure_arguments,
 			}) => {
 				let type_arguments = structure_arguments
-					.type_arguments
+					.type_restrictions
 					.into_iter()
-					.map(|(lhs, (with, pos))| {
-						(lhs, (substitute(with, arguments, environment, types), pos))
+					.map(|(lhs, (argument, pos))| {
+						(lhs, (substitute(argument, arguments, environment, types), pos))
 					})
 					.collect();
 
@@ -245,8 +245,9 @@ pub(crate) fn substitute(
 					StructureGenerics {
 						on,
 						arguments: StructureGenericArguments {
-							type_arguments,
+							type_restrictions: type_arguments,
 							closures: structure_arguments.closures,
+							properties: structure_arguments.properties,
 						},
 					},
 				)))

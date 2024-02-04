@@ -15,7 +15,7 @@ use crate::{
 		is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
 		printing::print_type,
-		properties::{get_property, set_property, PropertyValue},
+		properties::{get_property, set_property, PropertyKey, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
 	},
 	Decidable, Environment, Type,
@@ -58,7 +58,7 @@ pub(crate) fn apply_event(
 					}
 					RootReference::This => this_value.get(environment, types, &position),
 				};
-				type_arguments.set_id_from_reference(id, value);
+				type_arguments.set_id_from_event_application(id, value);
 			}
 		}
 		Event::SetsVariable(variable, value, position) => {
@@ -110,7 +110,7 @@ pub(crate) fn apply_event(
 			};
 
 			if let Some(id) = reflects_dependency {
-				type_arguments.set_id_from_reference(id, value);
+				type_arguments.set_id_from_event_application(id, value);
 			}
 		}
 		Event::Setter { on, under, new, initialization, publicity, position } => {
@@ -119,11 +119,11 @@ pub(crate) fn apply_event(
 			// crate::utils::notify!("was {:?} now {:?}", was, on);
 
 			let under = match under {
-				crate::types::properties::PropertyKey::Type(under) => {
+				PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
-					crate::types::properties::PropertyKey::from_type(ty, types)
+					PropertyKey::from_type(ty, types)
 				}
-				under @ crate::types::properties::PropertyKey::String(_) => under,
+				under @ PropertyKey::String(_) => under,
 			};
 
 			let new = match new {
@@ -248,7 +248,7 @@ pub(crate) fn apply_event(
 						Ok(mut result) => {
 							errors.warnings.append(&mut result.warnings);
 							if let Some(reflects_dependency) = reflects_dependency {
-								type_arguments.set_id_from_reference(
+								type_arguments.set_id_from_event_application(
 									reflects_dependency,
 									result.returned_type,
 								);
@@ -258,8 +258,10 @@ pub(crate) fn apply_event(
 							crate::utils::notify!("inference and or checking failed at function");
 							errors.errors.append(&mut calling_errors);
 							if let Some(reflects_dependency) = reflects_dependency {
-								type_arguments
-									.set_id_from_reference(reflects_dependency, TypeId::ERROR_TYPE);
+								type_arguments.set_id_from_event_application(
+									reflects_dependency,
+									TypeId::ERROR_TYPE,
+								);
 							}
 						}
 					}
@@ -451,7 +453,7 @@ pub(crate) fn apply_event(
 			// 	new_object_id_with_curried_arguments
 			// );
 
-			type_arguments.set_id_from_reference(referenced_in_scope_as, new_object_id);
+			type_arguments.set_id_from_event_application(referenced_in_scope_as, new_object_id);
 		}
 		Event::Iterate { kind, iterate_over, initial } => {
 			// TODO this might clash
