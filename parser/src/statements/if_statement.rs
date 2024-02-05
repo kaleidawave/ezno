@@ -13,6 +13,7 @@ use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct IfStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -25,6 +26,7 @@ pub struct IfStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ConditionalElseStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -35,6 +37,7 @@ pub struct ConditionalElseStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,

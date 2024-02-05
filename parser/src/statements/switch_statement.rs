@@ -12,6 +12,7 @@ use crate::{
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct SwitchStatement {
 	pub case: MultipleExpression,
 	pub branches: Vec<SwitchBranch>,
@@ -21,6 +22,7 @@ pub struct SwitchStatement {
 #[derive(Debug, PartialEq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
 	Case(Expression, Vec<StatementOrDeclaration>),

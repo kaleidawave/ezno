@@ -14,6 +14,7 @@ use super::{
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ForLoopStatement {
 	pub condition: ForLoopCondition,
 	pub inner: BlockOrSingleStatement,
@@ -54,6 +55,7 @@ impl ASTNode for ForLoopStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ForLoopStatementInitializer {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
@@ -63,6 +65,7 @@ pub enum ForLoopStatementInitializer {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,

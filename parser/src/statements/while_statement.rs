@@ -9,6 +9,7 @@ use crate::{
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct WhileStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -54,6 +55,7 @@ impl ASTNode for WhileStatement {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DoWhileStatement {
 	pub condition: MultipleExpression,
 	// TODO unsure about true here
