@@ -6,6 +6,7 @@ use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]

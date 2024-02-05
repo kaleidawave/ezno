@@ -13,6 +13,7 @@ use crate::{
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareVariableDeclaration {
 	pub keyword: VariableKeyword,
 	/// TODO expressions advised against, but still parse
@@ -86,6 +87,7 @@ impl DeclareVariableDeclaration {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareFunctionDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -180,6 +182,7 @@ impl DeclareFunctionDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareClassDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,

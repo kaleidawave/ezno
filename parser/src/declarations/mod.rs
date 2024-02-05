@@ -18,6 +18,14 @@ pub use self::{
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_STATEMENT_FUNCTION: &str = r###"
+	export interface StatementFunction extends FunctionBase {
+		header: FunctionHeader,
+		body: Block,
+		name: StatementPosition
+	}
+"###;
 pub mod classes;
 pub mod export;
 pub mod import;
@@ -39,6 +47,7 @@ pub use import::{ImportDeclaration, ImportExportName, ImportPart};
 #[try_into_references(&, &mut)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Declaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),
@@ -103,6 +112,7 @@ impl Declaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ImportLocation {
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
