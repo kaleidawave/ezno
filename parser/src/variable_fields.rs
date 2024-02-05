@@ -24,6 +24,7 @@ use tokenizer_lib::TokenReader;
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
 	// TODO does this need Span
@@ -67,6 +68,7 @@ impl ASTNode for VariableIdentifier {
 /// A variable declaration name, used in variable declarations and function parameters.
 /// See [destructuring](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
 #[derive(Debug, Clone)]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableField<T: VariableFieldKind> {
 	/// `x`
 	Name(VariableIdentifier),
@@ -326,15 +328,20 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	/// `{ x }`
-	Name(VariableIdentifier, T::OptionalExpression, Span),
+	Name(VariableIdentifier,
+		#[cfg_attr(target_family = "wasm", tsify(type = "Expression | null"))]
+		T::OptionalExpression, Span
+	),
 	/// `{ ...x }`
 	Spread(VariableIdentifier, Span),
 	/// `{ x: y }`
 	Map {
 		from: PropertyKey<crate::property_key::AlwaysPublic>,
 		name: WithComment<VariableField<T>>,
+		#[cfg_attr(target_family = "wasm", tsify(type = "Expression | null"))]
 		default_value: T::OptionalExpression,
 		position: Span,
 	},
@@ -415,9 +422,12 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(VariableIdentifier, Span),
-	Name(VariableField<T>, T::OptionalExpression),
+	Name(VariableField<T>, #[cfg_attr(target_family = "wasm", tsify(
+		type = "Expression?"
+	))] T::OptionalExpression),
 	None,
 }
 

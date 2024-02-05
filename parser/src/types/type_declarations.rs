@@ -9,6 +9,7 @@ use tokenizer_lib::{Token, TokenReader};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct TypeDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -61,6 +62,7 @@ impl ASTNode for TypeDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum GenericTypeConstraint {
 	Parameter { name: String, default: Option<TypeAnnotation> },
 	Extends(String, TypeAnnotation),

@@ -26,6 +26,7 @@ use crate::{
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum TypeAnnotation {
 	/// A name e.g. `IPost`
 	Name(String, Span),
@@ -91,6 +92,7 @@ impl ListItem for TypeAnnotation {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum AnnotationWithBinder {
 	Annotated { name: String, ty: TypeAnnotation, position: Span },
 	NoAnnotation(TypeAnnotation),
@@ -140,6 +142,7 @@ impl ASTNode for AnnotationWithBinder {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SpreadKind {
 	NonSpread,
 	Spread,
@@ -149,6 +152,7 @@ pub enum SpreadKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum TypeCondition {
 	Extends { ty: Box<TypeAnnotation>, extends: Box<TypeAnnotation>, position: Span },
 	Is { ty: Box<TypeAnnotation>, is: Box<TypeAnnotation>, position: Span },
@@ -158,6 +162,7 @@ pub enum TypeCondition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum CommonTypes {
 	String,
 	Number,
@@ -198,6 +203,7 @@ impl TypeCondition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum TypeConditionResult {
 	/// TODO e.g. `infer number`
 	Infer(Box<TypeAnnotation>, Span),
@@ -837,6 +843,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct TypeAnnotationFunctionParameters {
 	pub parameters: Vec<TypeAnnotationFunctionParameter>,
 	pub rest_parameter: Option<Box<TypeAnnotationSpreadFunctionParameter>>,
@@ -975,6 +982,7 @@ impl TypeAnnotationFunctionParameters {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	/// Ooh nice optional
@@ -987,6 +995,7 @@ pub struct TypeAnnotationFunctionParameter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	pub name: String,
