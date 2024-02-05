@@ -32,6 +32,7 @@ pub use interface::InterfaceDeclaration;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum AnnotationPerforms {
 	PerformsStatements { body: crate::Block },
 	PerformsConst { identifier: String },
