@@ -18,6 +18,7 @@ use crate::{
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
 	pub position: Span,
@@ -27,6 +28,7 @@ pub struct ObjectLiteral {
 #[partial_eq_ignore_types(Span, VariableId)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
@@ -69,6 +71,15 @@ impl crate::Visitable for ObjectLiteralMember {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES: &str = r###"
+	export interface ObjectLiteralMethod extends FunctionBase {
+		header: MethodHeader,
+		body: Block,
+		name: WithComment<PropertyKey<AlwaysPublic>>
+	}
+"###;
 
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
