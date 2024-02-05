@@ -32,6 +32,7 @@ pub use while_statement::{DoWhileStatement, WhileStatement};
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
@@ -69,12 +70,14 @@ pub enum Statement {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
@@ -316,6 +319,7 @@ impl Statement {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct VarVariableStatement {
 	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 	pub position: Span,

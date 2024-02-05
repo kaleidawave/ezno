@@ -55,6 +55,7 @@ use std::convert::{TryFrom, TryInto};
 #[visit_self]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
@@ -183,6 +184,7 @@ impl Eq for Expression {}
 #[derive(PartialEq, Eq, Debug, Clone)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum PropertyReference {
 	Standard {
 		property: String,
@@ -1671,6 +1673,7 @@ fn function_header_ish(
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum MultipleExpression {
 	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
 	Single(Expression),
@@ -1861,6 +1864,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
@@ -1871,6 +1875,7 @@ pub enum InExpressionLHS {
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
@@ -1900,6 +1905,7 @@ pub enum SpecialOperators {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1986,6 +1992,7 @@ impl From<Expression> for SpreadExpression {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ArrayElement(pub Option<SpreadExpression>);
 
 impl ASTNode for ArrayElement {
@@ -2107,6 +2114,7 @@ impl Expression {
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SuperReference {
 	Call { arguments: Vec<SpreadExpression> },
 	PropertyAccess { property: String },
