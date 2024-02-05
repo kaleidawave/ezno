@@ -139,7 +139,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.src == 'true'
         with:
-          packages: wasm-bindgen-cli@0.2.89
+          packages: wasm-pack@0.12.1
       - uses: denoland/setup-deno@v1
         if: steps.changes.outputs.src == 'true'
         with:
