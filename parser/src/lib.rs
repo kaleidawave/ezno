@@ -61,11 +61,20 @@ pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
 use std::{borrow::Cow, str::FromStr};
 
+#[macro_use]
+extern crate macro_rules_attribute;
+
+attribute_alias! {
+	// TODO: consult on a better name, determine if derive(serde::Serialize) implies SelfRustTokenize
+	#[apply(default_derive_bundle!)] = 
+        #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
+}
+
 /// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle!)]
 pub enum Quoted {
 	Single,
 	Double,
