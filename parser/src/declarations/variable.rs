@@ -194,6 +194,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		declarations: Vec<VariableDeclarationItem<Expression>>,
@@ -208,6 +209,7 @@ pub enum VariableDeclaration {
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableDeclarationKeyword {
 	Const,
 	Let,

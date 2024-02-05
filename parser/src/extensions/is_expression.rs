@@ -11,6 +11,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 #[get_field_by_type_target(Span)]
 pub struct IsExpression {
 	pub matcher: Box<MultipleExpression>,

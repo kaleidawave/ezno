@@ -18,6 +18,7 @@ use super::MultipleExpression;
 #[partial_eq_ignore_types(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -167,6 +168,7 @@ impl VariableOrPropertyAccess {
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	ObjectDestructuring(

@@ -9,6 +9,7 @@ use visitable_derive::Visitable;
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,
 	pub parts: Vec<TemplateLiteralPart<Expression>>,
@@ -18,6 +19,7 @@ pub struct TemplateLiteral {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum TemplateLiteralPart<T: ASTNode> {
 	Static(String),
 	Dynamic(Box<T>),
