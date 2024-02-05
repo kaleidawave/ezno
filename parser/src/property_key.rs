@@ -34,6 +34,11 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlwaysPublic;
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_ALWAYS_PUBLIC: &str = r###"
+	export type AlwaysPublic = false;
+"###;
+
 impl PropertyKeyKind for AlwaysPublic {
 	type Private = ();
 
@@ -53,6 +58,10 @@ impl PropertyKeyKind for AlwaysPublic {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicOrPrivate;
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_PUBLIC_OR_PRIVATE: &'static str = r#"
+	export type PublicOrPrivate = boolean;
+"#;
 
 impl PropertyKeyKind for PublicOrPrivate {
 	type Private = bool;
@@ -90,6 +99,15 @@ pub enum PropertyKey<T: PropertyKeyKind> {
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
 }
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_PROPERTY_KEY: &str = r###"
+export type PropertyKey<T> =
+  | { Ident: [string, Span, T] }
+  | { StringLiteral: [string, Quoted, Span] }
+  | { NumberLiteral: [NumberRepresentation, Span] }
+  | { Computed: [Expression, Span] };
+"###;
 
 impl<U: PropertyKeyKind> PropertyKey<U> {
 	pub fn get_position(&self) -> &Span {

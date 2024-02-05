@@ -29,7 +29,11 @@ pub enum VariableIdentifier {
 	Standard(String, Span),
 	// TODO does this need Span
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(Marker<Self>, Span),
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "VariableIdentifier"))]
+		Marker<Self>,
+		Span
+	),
 }
 
 impl ASTNode for VariableIdentifier {
@@ -182,6 +186,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct VariableFieldInSourceCode;
 
 impl VariableFieldKind for VariableFieldInSourceCode {
@@ -222,6 +227,7 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct VariableFieldInTypeAnnotation;
 
 impl VariableFieldKind for VariableFieldInTypeAnnotation {
