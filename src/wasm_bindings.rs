@@ -38,12 +38,22 @@ pub fn experimental_build_wasm(
 	serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES: &str = r###"
+interface WASMCheckOutput {
+	readonly diagnostics: DiagnosticsContainer
+}
+
+export function parse_expression(input: string): {Ok: Expression} | {Err: [string, Span]}
+export function parse_module(input: string): {Ok: Module} | {Err: [string, Span]}
+"###;
+
 #[wasm_bindgen]
 pub struct WASMCheckOutput(checker::CheckOutput<checker::synthesis::EznoParser>);
 
 #[wasm_bindgen]
 impl WASMCheckOutput {
-	#[wasm_bindgen(js_name = diagnostics, getter)]
+	#[wasm_bindgen(js_name = diagnostics, getter, skip_typescript)]
 	pub fn get_diagnostics(&self) -> JsValue {
 		serde_wasm_bindgen::to_value(&self.0.diagnostics).unwrap()
 	}
@@ -125,7 +135,7 @@ pub fn run_cli_wasm(
 	crate::run_cli(&arguments, &read_from_file, write_to_file, cli_input_resolver);
 }
 
-#[wasm_bindgen(js_name = parse_expression)]
+#[wasm_bindgen(js_name = parse_expression, skip_typescript)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Expression};
 
@@ -139,7 +149,7 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 	}
 }
 
-#[wasm_bindgen(js_name = parse_module)]
+#[wasm_bindgen(js_name = parse_module, skip_typescript)]
 pub fn parse_module_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Module};
 
