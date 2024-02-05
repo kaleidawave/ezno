@@ -82,7 +82,11 @@ pub enum TypeAnnotation {
 		resolve_false: TypeConditionResult,
 		position: Span,
 	},
-	Decorated(Decorator, Box<Self>, Span),
+	Decorated(
+		Decorator,
+		#[cfg_attr(target_family = "wasm", tsify(type = "TypeAnnotation"))] Box<Self>,
+		Span,
+	),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(Marker<TypeAnnotation>, Span),
 }

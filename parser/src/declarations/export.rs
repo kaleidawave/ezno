@@ -315,9 +315,21 @@ impl ASTNode for ExportDeclaration {
 #[get_field_by_type_target(Span)]
 pub enum ExportPart {
 	Name(VariableIdentifier),
-	NameWithAlias { name: String, alias: ImportExportName, position: Span },
-	PrefixComment(String, Option<Box<Self>>, Span),
-	PostfixComment(Box<Self>, String, Span),
+	NameWithAlias {
+		name: String,
+		alias: ImportExportName,
+		position: Span,
+	},
+	PrefixComment(
+		String,
+		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart | null"))] Option<Box<Self>>,
+		Span,
+	),
+	PostfixComment(
+		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart"))] Box<Self>,
+		String,
+		Span,
+	),
 }
 
 impl ListItem for ExportPart {}

@@ -331,9 +331,11 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	/// `{ x }`
-	Name(VariableIdentifier,
+	Name(
+		VariableIdentifier,
 		#[cfg_attr(target_family = "wasm", tsify(type = "Expression | null"))]
-		T::OptionalExpression, Span
+		T::OptionalExpression,
+		Span,
 	),
 	/// `{ ...x }`
 	Spread(VariableIdentifier, Span),
@@ -425,9 +427,10 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(VariableIdentifier, Span),
-	Name(VariableField<T>, #[cfg_attr(target_family = "wasm", tsify(
-		type = "Expression?"
-	))] T::OptionalExpression),
+	Name(
+		VariableField<T>,
+		#[cfg_attr(target_family = "wasm", tsify(type = "Expression?"))] T::OptionalExpression,
+	),
 	None,
 }
 
