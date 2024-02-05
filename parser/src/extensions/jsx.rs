@@ -9,6 +9,7 @@ use visitable_derive::Visitable;
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum JSXRoot {
 	Element(JSXElement),
 	Fragment(JSXFragment),
@@ -18,6 +19,7 @@ pub enum JSXRoot {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
 	pub tag_name: String,
@@ -29,6 +31,7 @@ pub struct JSXElement {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum JSXElementChildren {
 	Children(Vec<JSXNode>),
 	/// For img elements
@@ -87,6 +90,7 @@ impl ASTNode for JSXElement {
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct JSXFragment {
 	pub children: Vec<JSXNode>,
 	pub position: Span,
@@ -222,6 +226,7 @@ impl JSXRoot {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum JSXNode {
 	TextNode(String, Span),
 	InterpolatedExpression(Box<Expression>, Span),
@@ -296,6 +301,7 @@ impl ASTNode for JSXNode {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),
