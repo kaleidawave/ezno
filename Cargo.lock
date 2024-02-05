@@ -261,6 +261,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "tsify",
  "wasm-bindgen",
  "wasm-bindgen-derive",
 ]
@@ -297,6 +298,8 @@ dependencies = [
  "serde",
  "source-map",
  "temporary-annex",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -327,6 +330,8 @@ dependencies = [
  "source-map",
  "temporary-annex",
  "tokenizer-lib",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -374,6 +379,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c1777fe05ec14229f7eede7ecb245051776a405a90501139aa6967a9eba7feb"
 dependencies = [
  "syn-helpers",
+]
+
+[[package]]
+name = "gloo-utils"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037fcb07216cb3a30f7292bd0176b050b7b9a052ba830ef7d5d65f6dc64ba58e"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -693,6 +711,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_derive_internals"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e578a843d40b4189a4d66bba51d7684f57da5bd7c304c64e14bd63efbef49509"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.46",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.110"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,6 +805,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedcdc3b4760676e1ed01c749e219c98f8da59ef08c62547c19a74bea228c5d8"
 dependencies = [
  "source-map",
+]
+
+[[package]]
+name = "tsify"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6b26cf145f2f3b9ff84e182c448eaf05468e247f148cf3d2a7d67d78ff023a0"
+dependencies = [
+ "gloo-utils",
+ "serde",
+ "serde_json",
+ "tsify-macros",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "tsify-macros"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a94b0f0954b3e59bfc2c246b4c8574390d94a4ad4ad246aaf2fb07d7dfd3b47"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.46",
 ]
 
 [[package]]
@@ -881,6 +935,16 @@ name = "wasm-bindgen-shared"
 version = "0.2.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ab9b36309365056cd639da3134bf87fa8f3d86008abf99e612384a6eecd459f"
+
+[[package]]
+name = "web-sys"
+version = "0.3.66"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50c24a44ec86bb68fbecd1b3efed7e85ea5621b39b35ef2766b66cd984f8010f"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "winapi"
