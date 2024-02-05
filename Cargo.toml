@@ -87,8 +87,3 @@ tsify = "0.4.5"
 multiline-term-input = "0.1.0"
 notify = "6.1.0"
 
-# [profile.release]
-# lto = true
-
-# [patch.crates-io]
-# source-map = { path = "../source-map"}

@@ -22,8 +22,8 @@
 		"clean": "rmdir dist && rmdir build",
 		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind && npm run build-js",
 		"build-release": "npm run bind-release && npm run build-js",
-		"bind": "wasm-pack build --dev --out-dir build --target web --no-pack",
-		"bind-release": "wasm-pack build --release --out-dir build --target web --no-pack",
+		"bind": "wasm-pack build --dev --out-dir src/js-cli-and-library/build --target web --no-pack",
+		"bind-release": "wasm-pack build --release --out-dir src/js-cli-and-library/build --target web --no-pack",
 		"build-js": "unbuild && cp ./build/ezno_lib_bg.wasm dist/shared && cp src/cli_node.cjs dist/cli.cjs",
 		"test": "npm run build && npm run run-tests",
 		"run-tests": "node test.mjs && deno run -A test.mjs"
