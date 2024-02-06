@@ -65,6 +65,12 @@ use std::{borrow::Cow, str::FromStr};
 extern crate macro_rules_attribute;
 
 attribute_alias! {
+	// Warning: known to break under the following circumstances:
+	// 1. in combination with partial_eq_ignore_types (from the PartialEqExtras derive macro)
+	// 2. in combination with get_field_by_type_target (from the crate of the same name)
+	// any variation (even just a single, straightforward, cfg_attr) will break the other macros.
+	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
+	// keep this macro in mind.
 	// TODO: consult on a better name, determine if derive(serde::Serialize) implies SelfRustTokenize
 	#[apply(default_derive_bundle!)] = 
         #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
