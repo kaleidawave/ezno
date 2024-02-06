@@ -7,6 +7,7 @@ use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 #[derive(Debug, Clone, Eq, Visitable)]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum WithComment<T> {
 	None(T),
 	PrefixComment(String, T, Span),
