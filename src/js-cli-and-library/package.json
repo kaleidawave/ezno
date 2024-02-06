@@ -20,7 +20,7 @@
 	},
 	"scripts": {
 		"clean": "rmdir dist && rmdir build",
-		"build": "cargo build --lib --target wasm32-unknown-unknown && npm run bind && npm run build-js",
+		"build": "npm run bind && npm run build-js",
 		"build-release": "npm run bind-release && npm run build-js",
 		"bind": "wasm-pack build --dev --out-dir src/js-cli-and-library/build --target web --no-pack",
 		"bind-release": "wasm-pack build --release --out-dir src/js-cli-and-library/build --target web --no-pack",
