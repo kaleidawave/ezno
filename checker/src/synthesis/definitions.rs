@@ -1,4 +1,5 @@
 use parser::ASTNode;
+use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
@@ -12,6 +13,7 @@ use crate::{
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	definition: parser::TypeDefinitionModule,
+	source: SourceId,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
 ) -> (Names, LocalInformation) {
@@ -23,8 +25,6 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	};
 
 	let mut idx_to_types = HashMap::new();
-	// TODO NULL
-	let source = source_map::Nullable::NULL;
 	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types

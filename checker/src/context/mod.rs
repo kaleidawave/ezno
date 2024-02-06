@@ -489,10 +489,11 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
-		// TODO map_or temp
-		self.parents_iter()
-			.find_map(|env| get_on_ctx!(env.variable_names.get(&id)))
-			.map_or("error", String::as_str)
+		match self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))) {
+			Some(s) => s.as_str(),
+			// TODO temp
+			None => format!("could not find name for variable @ {:?}", id).leak(),
+		}
 	}
 
 	pub fn as_general_context(&self) -> GeneralContext {

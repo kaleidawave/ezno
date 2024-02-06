@@ -13,12 +13,11 @@ use crate::{
 		synthesise_function_default_value, FunctionBehavior, SynthesisableFunction,
 	},
 	types::poly_types::GenericTypeParameters,
+	types::{functions::FunctionType, Constructor, Type, TypeId},
 	types::{
 		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},
-		poly_types::generic_type_arguments::TypeArgumentStore,
-		FunctionType, StructureGenerics,
+		StructureGenerics,
 	},
-	types::{Constructor, Type, TypeId},
 	CheckingData, Environment, FunctionId,
 };
 

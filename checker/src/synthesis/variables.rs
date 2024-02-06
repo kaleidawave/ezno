@@ -238,6 +238,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							&mut checking_data.types,
 							None,
 							*variable_field.get_position(),
+							&checking_data.options,
 						);
 
 						if let Some((_, value)) = value {
@@ -280,6 +281,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							&mut checking_data.types,
 							None,
 							*name.get_position(),
+							&checking_data.options,
 						);
 						let value = match property {
 							Some((_, value)) => value,
@@ -318,6 +320,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							&mut checking_data.types,
 							None,
 							*position,
+							&checking_data.options,
 						);
 
 						let value = match property_value {

@@ -20,16 +20,17 @@ interface nominal Array<T> {
 
     // TODO this argument
     map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
-        const { length } = this, u: Array<U> = [];
+        const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
             const value = this[i];
-            u.push(cb(value, i++))
+            mapped.push(cb(value, i++))
         }
-        return u;
+        return mapped;
     }
 
-    filter(cb: (t: T, i?: number) => boolean): Array<T> performs {
+    // TODO any is debatable
+    filter(cb: (t: T, i?: number) => any): Array<T> performs {
         const { length } = this, filtered: Array<T> = [];
         let i: number = 0;
         while (i < length) {
@@ -41,7 +42,8 @@ interface nominal Array<T> {
         return filtered;
     }
 
-    find(cb: (t: T, i?: number) => boolean): T | undefined performs {
+    // TODO any is debatable
+    find(cb: (t: T, i?: number) => any): T | undefined performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -52,7 +54,8 @@ interface nominal Array<T> {
         }
     }
 
-    every(cb: (t: T, i?: number) => boolean): boolean performs {
+    // TODO any is debatable
+    every(cb: (t: T, i?: number) => any): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -65,7 +68,7 @@ interface nominal Array<T> {
         return true
     }
 
-    some(cb: (t: T, i?: number) => boolean): boolean performs {
+    some(cb: (t: T, i?: number) => any): boolean performs {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -210,10 +213,11 @@ declare const document: Document;
 // @server
 // declare function createItem(a: any);
 
-// ↓↓ Ezno Functions ↓↓
+// ↓↓ Ezno testing functions ↓↓
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
 declare function debug_type(t: any): void performs const debug_type;
+declare function print_and_debug_type(t: any): void performs const print_and_debug_type;
 declare function debug_type_independent(t: any): void performs const debug_type_independent;
 declare function debug_type_rust(t: any): void performs const debug_type_rust;
 declare function debug_type_rust_independent(t: any): void performs const debug_type_rust_independent;

@@ -116,10 +116,11 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
 		file: Self::DefinitionFile<'a>,
+		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
 	) -> (Names, LocalInformation) {
-		definitions::type_definition_file(file, checking_data, root)
+		definitions::type_definition_file(file, source, checking_data, root)
 	}
 
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {

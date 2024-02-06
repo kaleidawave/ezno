@@ -173,7 +173,7 @@ pub trait InformationChain {
 
 	/// For debugging
 	fn get_variable_name(&self, _variable_id: VariableId) -> &str {
-		"TODO"
+		"trying to get variable name in information chain"
 	}
 }
 

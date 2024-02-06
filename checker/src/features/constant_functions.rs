@@ -1,7 +1,10 @@
 use crate::{
 	context::{get_on_ctx, information::InformationChain},
 	// subtyping::check_satisfies,
-	types::{functions::SynthesisedArgument, printing::debug_effects, TypeRestrictions},
+	types::{
+		functions::SynthesisedArgument, printing::debug_effects, Constructor, StructureGenerics,
+		TypeRestrictions,
+	},
 	types::{printing::print_type, Type, TypeStore},
 	Constant,
 	Environment,
@@ -22,10 +25,12 @@ pub enum ConstantFunctionError {
 	BadCall,
 }
 
-/// ```
+/// From when
+/// ```typescript
 /// f<number>(2, 3)
 ///   ^^^^^^
-/// ``` is called
+/// ```
+/// is called
 pub(crate) type CallSiteTypeArguments = TypeRestrictions;
 
 /// Computes a constant value
@@ -108,15 +113,23 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"print_type" | "debug_type" | "debug_type_independent" => {
-			let debug = id.starts_with("debug");
+		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
 				.non_spread_type()
 				.map_err(|()| ConstantFunctionError::BadCall)?;
-			let ty_as_string = print_type(ty, types, environment, debug);
-			Ok(ConstantOutput::Diagnostic(format!("Type is: {ty_as_string}")))
+
+			let print = id.contains("print").then(|| print_type(ty, types, environment, false));
+			let debug = id.contains("debug").then(|| print_type(ty, types, environment, true));
+
+			let result = match (print, debug) {
+				(Some(print), Some(debug)) => format!("Type is: {print} / {debug}"),
+				(None, Some(out)) | (Some(out), None) => format!("Type is: {out}"),
+				(None, None) => unreachable!(),
+			};
+
+			Ok(ConstantOutput::Diagnostic(result))
 		}
 		"print_constraint" => {
 			let ty = arguments
@@ -142,41 +155,41 @@ pub(crate) fn call_constant_function(
 				.ok_or(ConstantFunctionError::BadCall)?
 				.non_spread_type()
 				.map_err(|()| ConstantFunctionError::BadCall)?;
+
 			let ty = types.get_type_by_id(id);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
 		}
-		"debug_effects_rust" => {
+		"debug_effects" | "debug_effects_rust" => {
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::BadCall)?
 				.non_spread_type()
 				.map_err(|()| ConstantFunctionError::BadCall)?;
-			if let Type::Function(func, _) | Type::FunctionReference(func) =
-				types.get_type_by_id(ty)
+
+			// Unwrap structure generics
+			let ty = if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on,
+				..
+			})) = types.get_type_by_id(ty)
 			{
+				*on
+			} else {
+				ty
+			};
+
+			let get_type_by_id = types.get_type_by_id(ty);
+			if let Type::Function(func, _) | Type::FunctionReference(func) = get_type_by_id {
 				let effects =
 					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
-				Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+				if id.ends_with("rust") {
+					Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+				} else {
+					let mut buf = String::new();
+					debug_effects(&mut buf, effects, types, environment, true);
+					Ok(ConstantOutput::Diagnostic(buf))
+				}
 			} else {
-				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
-			}
-		}
-		"debug_effects" => {
-			let ty = arguments
-				.first()
-				.ok_or(ConstantFunctionError::BadCall)?
-				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::BadCall)?;
-			if let Type::Function(func, _) | Type::FunctionReference(func) =
-				types.get_type_by_id(ty)
-			{
-				let effects =
-					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
-				let mut buf = String::new();
-				debug_effects(&mut buf, effects, types, environment, true);
-				Ok(ConstantOutput::Diagnostic(buf))
-			} else {
-				Ok(ConstantOutput::Diagnostic("not a function".to_owned()))
+				Ok(ConstantOutput::Diagnostic(format!("{get_type_by_id:?} is not a function")))
 			}
 		}
 		// For functions

@@ -10,9 +10,8 @@ use crate::{
 	features::functions::ThisValue,
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
-		get_constraint,
-		poly_types::generic_type_arguments::{ExplicitTypeArguments, StructureGenericArguments},
-		substitute, FunctionType, GenericChain, ObjectNature, StructureGenerics,
+		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, substitute,
+		FunctionType, GenericChain, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
@@ -368,8 +367,6 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 
 	let result = get_property_unbound(on, publicity, under, types, environment)?;
 
-	crate::utils::notify!("Found {:?}", result);
-
 	resolve_property_on_logical(result, on, None, environment, types, behavior)
 }
 
@@ -404,14 +401,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::RootPolyType(_)
 						| Type::Constructor(_)) => {
 							let result = if let Some(arguments) = arguments {
-								substitute(
-									value,
-									&mut ExplicitTypeArguments(
-										&mut arguments.type_restrictions.clone(),
-									),
-									environment,
-									types,
-								)
+								substitute(value, &mut arguments.clone(), environment, types)
 							} else {
 								crate::utils::notify!("Here, getting property on {:?}", t);
 								value
@@ -462,7 +452,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							bind_this: false,
 						})))
 					}
-					PropertyValue::Setter(_) => todo!("error"),
+					PropertyValue::Setter(_) => todo!(),
 					// Very important
 					PropertyValue::Deleted => None,
 				}

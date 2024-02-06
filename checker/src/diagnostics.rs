@@ -190,13 +190,12 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id_with_generics(
 		id: TypeId,
-		type_arguments: GenericChain,
+		type_arguments: Option<GenericChain>,
 		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
-		let value =
-			print_type_with_type_arguments(id, Some(type_arguments), types, ctx, debug_mode);
+		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
 		Self::Type(value)
 	}
 

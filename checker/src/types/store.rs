@@ -16,7 +16,8 @@ use crate::{
 
 use super::{
 	get_constraint, poly_types::generic_type_arguments::StructureGenericArguments,
-	properties::PropertyKey, Constructor, StructureGenerics, TypeRelationOperator,
+	properties::PropertyKey, Constructor, LookUpGeneric, LookUpGenericMap, StructureGenerics,
+	TypeRelationOperator,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -392,24 +393,13 @@ impl TypeStore {
 				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
 					gens.cloned()
 				} else if let Some(prototype) = prototype {
-					// TODO this relationship should be on TypeStore
-					if prototype == TypeId::ARRAY_TYPE {
-						// Cannot create a union here
-						Some(StructureGenericArguments {
+					self.get_look_up_generic_map_from_prototype(prototype, on).map(|properties| {
+						StructureGenericArguments {
 							type_restrictions: SmallMap::new(),
-							properties: SmallMap::from_iter([(
-								TypeId::T_TYPE,
-								super::LookUpGeneric::NumberPropertyOf(on),
-							)]),
+							properties,
 							closures: Vec::new(),
-						})
-					} else if let Type::Interface { parameters: Some(_parameters), .. } =
-						self.get_type_by_id(prototype)
-					{
-						todo!("compute using this.#internal")
-					} else {
-						None
-					}
+						}
+					})
 				} else {
 					None
 				};
@@ -427,7 +417,6 @@ impl TypeStore {
 						}
 					})
 					.or_else(|| {
-						crate::utils::notify!("Prototype is {:?}", prototype);
 						if let Some(prototype) = prototype {
 							self.get_fact_about_type(info_chain, prototype, resolver, data).map(
 								|result| {
@@ -470,6 +459,43 @@ impl TypeStore {
 					self.get_fact_about_type(info_chain, cst.get_backing_type_id(), resolver, data)
 				}),
 			Type::SpecialObject(_) => todo!(),
+		}
+	}
+
+	pub(crate) fn get_look_up_generic_map_from_prototype(
+		&self,
+		prototype: TypeId,
+		on: TypeId,
+	) -> Option<LookUpGenericMap> {
+		if prototype == TypeId::ARRAY_TYPE {
+			// Cannot create a union here
+			Some(SmallMap::from_iter([(
+				TypeId::T_TYPE,
+				super::LookUpGeneric::NumberPropertyOf(on),
+			)]))
+		} else if let Type::Interface { parameters: Some(_parameters), .. } =
+			self.get_type_by_id(prototype)
+		{
+			todo!("Should be stored during type definition synthesis")
+		} else {
+			None
+		}
+	}
+
+	pub(crate) fn get_look_up_generic_from_prototype(
+		&self,
+		prototype: TypeId,
+		on: TypeId,
+	) -> Option<LookUpGeneric> {
+		if prototype == TypeId::ARRAY_TYPE {
+			// Cannot create a union here
+			Some(super::LookUpGeneric::NumberPropertyOf(on))
+		} else if let Type::Interface { parameters: Some(_parameters), .. } =
+			self.get_type_by_id(prototype)
+		{
+			todo!("Should be stored during type definition synthesis")
+		} else {
+			None
 		}
 	}
 

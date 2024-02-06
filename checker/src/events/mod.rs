@@ -95,11 +95,11 @@ pub enum Event {
 	/// Run events multiple times
 	Iterate {
 		kind: IterationKind,
+		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
+		initial: InitialVariables,
 		/// TODO for of and in variants here:
 		// condition: TypeId,
 		iterate_over: Box<[Event]>,
-		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
-		initial: InitialVariables,
 	},
 
 	/// *lil bit magic*, handles:

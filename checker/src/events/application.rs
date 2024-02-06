@@ -64,14 +64,10 @@ pub(crate) fn apply_event(
 		Event::SetsVariable(variable, value, position) => {
 			let new_value = substitute(value, type_arguments, environment, types);
 
-			// if not closed over!!
-			// TODO temp assigns to many contexts, which is bad
+			// TODO temp assigns to many contexts, which is bad.
+			// Closures should have an indicator of what they close over #56
 			let info = target.get_latest_info(environment);
-			for closure_id in type_arguments
-				.closure_id
-				.iter()
-				.chain(type_arguments.structure_arguments.iter().flat_map(|s| s.closures.iter()))
-			{
+			for closure_id in type_arguments.closure_id.iter() {
 				info.closure_current_values
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}

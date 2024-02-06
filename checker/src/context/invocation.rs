@@ -20,9 +20,15 @@ pub trait CallCheckingBehavior {
 		function_id: FunctionId,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T;
+
+	fn debug_types(&self) -> bool {
+		false
+	}
 }
 
-pub struct CheckThings;
+pub struct CheckThings {
+	pub debug_types: bool,
+}
 
 impl CallCheckingBehavior for CheckThings {
 	const CHECK_PARAMETERS: bool = true;
@@ -46,6 +52,10 @@ impl CallCheckingBehavior for CheckThings {
 	) -> T {
 		let mut target = InvocationContext(vec![InvocationKind::Function(function_id)]);
 		cb(&mut target)
+	}
+
+	fn debug_types(&self) -> bool {
+		self.debug_types
 	}
 }
 

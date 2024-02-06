@@ -24,7 +24,7 @@ use crate::{
 		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeCombinable, TypeStore,
 	},
-	CheckingData, Decidable, Instance, RootContext, TypeId,
+	CheckingData, Decidable, Instance, RootContext, TypeCheckOptions, TypeId,
 };
 
 use super::{
@@ -245,6 +245,7 @@ impl<'a> Environment<'a> {
 								new,
 								&mut checking_data.types,
 								Some(span),
+								&checking_data.options,
 							)?
 							.unwrap_or(new)),
 					}
@@ -614,6 +615,7 @@ impl<'a> Environment<'a> {
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 		position: Span,
+		options: &TypeCheckOptions,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -621,7 +623,7 @@ impl<'a> Environment<'a> {
 			property,
 			with,
 			self,
-			&mut CheckThings {},
+			&mut CheckThings { debug_types: options.debug_types },
 			types,
 			position.with_source(self.get_source()),
 		)
@@ -635,8 +637,15 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<U, A>,
 		site: Span,
 	) -> Result<Instance, ()> {
-		let get_property =
-			self.get_property(on, publicity, key.clone(), &mut checking_data.types, None, site);
+		let get_property = self.get_property(
+			on,
+			publicity,
+			key.clone(),
+			&mut checking_data.types,
+			None,
+			site,
+			&checking_data.options,
+		);
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
@@ -1005,6 +1014,7 @@ impl<'a> Environment<'a> {
 		new: TypeId,
 		types: &mut TypeStore,
 		setter_position: Option<SpanWithSource>,
+		options: &TypeCheckOptions,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
@@ -1012,7 +1022,7 @@ impl<'a> Environment<'a> {
 			under,
 			PropertyValue::Value(new),
 			self,
-			&mut CheckThings,
+			&mut CheckThings { debug_types: options.debug_types },
 			types,
 			setter_position,
 		)

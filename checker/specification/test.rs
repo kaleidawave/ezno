@@ -47,7 +47,7 @@ fn check_errors(
 	// });
 
 	// TODO could test these
-	let type_check_options = None;
+	let type_check_options = Default::default();
 
 	// eprintln!("{:?}", code);
 

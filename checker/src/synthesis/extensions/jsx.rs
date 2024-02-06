@@ -185,6 +185,8 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		args.push(SynthesisedArgument { value: child_nodes, position, spread: false });
 	}
 
+	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+
 	match call_type(
 		jsx_function,
 		args,
@@ -195,7 +197,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			call_site_type_arguments: None,
 		},
 		environment,
-		&mut CheckThings,
+		&mut check_things,
 		&mut checking_data.types,
 	) {
 		Ok(res) => res.returned_type,

@@ -19,7 +19,8 @@ pub(crate) trait BinarySerializable {
 
 impl BinarySerializable for String {
 	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.push(u8::try_from(self.len()).unwrap());
+		// TODO VLQ?
+		buf.push(u8::try_from(self.len()).expect("serializing a large string"));
 		buf.extend_from_slice(self.as_bytes());
 	}
 

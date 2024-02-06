@@ -31,6 +31,25 @@ properties satisfies boolean;
 
 - Expected boolean, found string
 
+#### Early return
+
+> TODO bit of a complex example
+
+```ts
+function findInRange(start: number, end: number, cb: (a: number) => boolean): number {
+    let i = start;
+    while (i++ < end) {
+        if (cb(i)) {
+            return i
+        }
+    }
+}
+
+findInRange(0, 10, i => (i > 2) && (i % 3 == 1)) satisfies 5
+```
+
+- Expected 5, found 4
+
 ### Control flow
 
 #### Unknown condition assignment
@@ -123,6 +142,20 @@ const obj: MyObject = {
 
 - Expected number, found string
 
+#### Generic argument/constraint leads to inference
+
+```ts
+function callFunction<T>(fn: (p: T) => void) {
+    // ...
+}
+
+callFunction<string>(a => {
+    a satisfies number;
+})
+```
+
+- Expected number, found string
+
 #### Return type annotation is used in constraint
 
 > While could use the returned type (as done in the second example). Using the annotation prevents other code breaking if the body changes
@@ -157,21 +190,83 @@ x.push("hi");
 
 - Argument of type \"hi\" is not assignable to parameter of type number
 
-### Types
+#### `map` and `filter`
+
+> TODO other arguments (index and `this`)
+
+```ts
+[6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
+
+[1, 2, 3].filter(x => x % 2 == 0) satisfies [6];
+```
+
+- Expected [7, 8, 11], found [7, 9, 11]
+
+#### `find` and `includes`
+
+> TODO other arguments (index and `this`). and poly
+
+```ts
+[1, 2, 3].find(x => x % 2 === 0) satisfies 4
+```
+
+- Expected 4, found 2
+
+### Object constraint
+
+> Any references to a annotated variable **must** be within its LHS type. These test that it carries down to objects.
+
+#### Nested constraint
+
+```ts
+const obj1 = { a: 5 };
+const obj2: { prop: { a: number } } = { prop: obj1 }
+
+obj1.a = 6;
+obj1.a = "hello";
+```
+
+- Type "hello" does not meet property constraint number
 
 #### And object constraint
 
 ```ts
-const obj = { a: 2, b: 3 };
-obj.c = obj;
-const second: { a: number, c: { b: number } } = obj;
+{
+    const obj = { a: true, b: false };
+    const x: { a: boolean } = obj, y: { b: boolean } = obj;
 
-obj.a = "hi";
-obj.b = "hello";
+    obj.a = "yo";
+    obj.b = "wassup";
+}
+
+{
+    // and in the same assignment through a cycle
+    const obj = { a: 2, b: 3 }; obj.c = obj;
+    const something: { a: number, c: { b: number } } = obj;
+
+    obj.a = "hi";
+    obj.b = "hello";
+}
 ```
 
+- Type "yo" does not meet property constraint boolean
+- Type "wassup" does not meet property constraint boolean
 - Type "hi" does not meet property constraint number
 - Type "hello" does not meet property constraint number
+
+#### After assignment
+
+```ts
+const obj1 = { a: 5 };
+const obj2: { prop: { a: number } } = { prop: obj1 }
+
+obj1.a = 6;
+obj1.a = "hello";
+```
+
+- Type "hello" does not meet property constraint number
+
+### Types
 
 #### Double generics
 

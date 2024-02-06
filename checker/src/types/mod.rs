@@ -19,8 +19,6 @@ use source_map::SpanWithSource;
 pub use store::TypeStore;
 pub use terms::Constant;
 
-use crate::SmallMap;
-
 use crate::{
 	context::information::InformationChain,
 	events::RootReference,
@@ -29,20 +27,22 @@ use crate::{
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	Decidable, Environment,
+	Decidable, Environment, FunctionId, SmallMap,
 };
 
+// Export
 pub use self::functions::*;
+
 use self::{
 	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
 };
-use crate::FunctionId;
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
 
 /// Final
-pub type TypeArguments = map_vec::Map<TypeId, TypeId>;
-pub type TypeRestrictions = map_vec::Map<TypeId, ExplicitTypeArgument>;
+pub type TypeArguments = SmallMap<TypeId, TypeId>;
+pub type TypeRestrictions = SmallMap<TypeId, ExplicitTypeArgument>;
+pub type LookUpGenericMap = SmallMap<TypeId, LookUpGeneric>;
 
 /// References [Type]
 ///
@@ -376,9 +376,13 @@ pub trait SubTypeBehavior {
 		function_type: FunctionType,
 	);
 
-	// TODO
-	// object reference type needs to meet constraint
-	// LHS is dependent + RHS argument
+	// /// TODO can go faster than Vec, by passing all options,
+	// fn get_constraint<C: InformationChain>(&self, under: TypeId, info: &C) -> Option<ArgumentOrLookup>;
+}
+
+pub enum ArgumentOrLookup {
+	Argument(TypeId),
+	LookUpGeneric(LookUpGeneric),
 }
 
 impl SubTypeBehavior for BasicEquality {
@@ -386,13 +390,16 @@ impl SubTypeBehavior for BasicEquality {
 
 	fn set_type_argument(
 		&mut self,
-		_on: TypeId,
-		_argument: TypeId,
+		on: TypeId,
+		argument: TypeId,
 		_depth: u8,
-		_environment: &Environment,
-		_types: &TypeStore,
+		environment: &Environment,
+		types: &TypeStore,
 	) -> SubTypeResult {
-		SubTypeResult::IsSubType
+		// TODO shouldn't be here
+		let constraint = get_constraint(on, types).unwrap();
+		subtyping::type_is_subtype(constraint, argument, self, environment, types)
+		// type_is_subtype(on, argument, self, environment, types)
 	}
 
 	fn try_set_contravariant(
@@ -403,6 +410,7 @@ impl SubTypeBehavior for BasicEquality {
 		_environment: &Environment,
 		_types: &TypeStore,
 	) -> SubTypeResult {
+		crate::utils::notify!("Here!");
 		SubTypeResult::IsSubType
 	}
 
@@ -432,13 +440,13 @@ pub enum SubTypeResult {
 }
 
 /// Used for printing and subtyping. Handles nested restrictions
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct GenericChain<'a> {
 	parent: Option<&'a GenericChain<'a>>,
 	value: StructureGenericArgumentsRef<'a>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct StructureGenericArgumentsRef<'a> {
 	type_restrictions: &'a TypeRestrictions,
 	properties: &'a SmallMap<TypeId, LookUpGeneric>,
@@ -717,7 +725,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::StructureGenerics { .. } => None,
 		},
 		Type::Object(ObjectNature::RealDeal) => {
-			crate::utils::notify!("Might be missing some obj here");
+			// crate::utils::notify!("Might be missing some mutations that are possible here");
 			None
 		}
 		_ => None,
@@ -734,19 +742,19 @@ fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	}
 }
 
-/// TODO T on `Array`, U, V on `Map` etc. Works around not having `&mut TypeStore` and mutations inbetween
+/// TODO T on `Array`, U, V on `Map` etc. Works around not having `&mut TypeStore` and mutations in-between
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum LookUpGeneric {
 	NumberPropertyOf(TypeId),
-	Property(Box<Self>, PropertyKey<'static>),
+	// Property(Box<Self>, PropertyKey<'static>),
 }
 
 impl LookUpGeneric {
 	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain) -> Vec<TypeId> {
+		#[allow(unreachable_code)]
 		match self {
 			LookUpGeneric::NumberPropertyOf(t) => {
-				let number_values = info
-					.get_chain_of_info()
+				info.get_chain_of_info()
 					.filter_map(|info| info.current_properties.get(t).map(|v| v.iter()))
 					.flatten()
 					.filter_map(|(_publicity, key, value)| {
@@ -757,10 +765,9 @@ impl LookUpGeneric {
 							Some(value.as_get_type())
 						}
 					})
-					.collect();
-				number_values
+					.collect()
 			}
-			LookUpGeneric::Property(_, _) => todo!(),
+			_ => unreachable!(), // LookUpGeneric::Property(_, _) => todo!(),
 		}
 	}
 }

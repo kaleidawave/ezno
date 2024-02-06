@@ -553,7 +553,7 @@ fn get_annotation_from_declaration<
 	U: parser::declarations::variable::DeclarationExpression + 'static,
 >(
 	declaration: &parser::declarations::VariableDeclarationItem<U>,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {

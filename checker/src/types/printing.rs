@@ -149,7 +149,7 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 				if debug {
-					buf.push_str("SG (");
+					write!(buf, "SG{id:?}(").unwrap();
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 					buf.push(')');
 					buf.write_fmt(format_args!("<{arguments:?}>")).unwrap();

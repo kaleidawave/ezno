@@ -4,7 +4,7 @@
 use crate::{
 	context::information::{InformationChain, LocalInformation},
 	features::functions::{ClosureChain, ClosureId},
-	types::{LookUpGeneric, TypeArguments, TypeRestrictions, TypeStore},
+	types::{LookUpGenericMap, TypeArguments, TypeRestrictions, TypeStore},
 	TypeId,
 };
 
@@ -21,50 +21,12 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 	}
 }
 
-// impl CurriedGenericsValue {
-// 	pub(crate) fn as_type(&self) -> TypeId {
-// 		let (CurriedGenericsValue::Type(value) | CurriedGenericsValue::StructureGeneric(value)) =
-// 			self;
-// 		value
-// 	}
-// }
-
-// #[derive(Debug, Clone)]
-// pub enum CurriedGenericsValue {
-// 	Type(TypeId),
-// 	/// TODO this is different in that it can differ maybe... or is that closure values
-// 	StructureGeneric(TypeId),
-// }
-
-// impl From<GenericStructureTypeArguments> for CurriedFunctionTypeArguments {
-// 	fn from(args: GenericStructureTypeArguments) -> Self {
-// 		Self(
-// 			args.0
-// 				.clone()
-// 				.into_iter()
-// 				.map(|GenericStructureTypeArgument { ref matching_id, ref ty, .. }| {
-// 					(
-// 						matching_id.clone().into(),
-// 						todo!(),
-// 						// CurriedGenericsValue::StructureGeneric(match ty.clone() {
-// 						// 	super::GenericStructureArgumentValue::Type(ty) => ty,
-// 						// 	super::GenericStructureArgumentValue::Unknown => todo!(),
-// 						// }),
-// 					)
-// 				})
-// 				.collect(),
-// 		)
-// 	}
-// }
-
-/// TODO working out environment thingy
+/// For when a function is called
 #[derive(Debug)]
 pub(crate) struct FunctionTypeArguments {
-	/// TODO this shouldn't be here
-	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
 	pub local_arguments: TypeArguments,
-	pub closure_id: Option<ClosureId>,
+	pub closure_id: Vec<ClosureId>,
 	pub call_site: SpanWithSource,
 }
 
@@ -76,7 +38,6 @@ impl FunctionTypeArguments {
 
 	pub(crate) fn new_arguments_for_use_in_loop() -> Self {
 		Self {
-			structure_arguments: Default::default(),
 			local_arguments: SmallMap::new(),
 			closure_id: Default::default(),
 			call_site: SpanWithSource::NULL,
@@ -85,26 +46,12 @@ impl FunctionTypeArguments {
 }
 
 pub(crate) trait TypeArgumentStore {
-	/// Gets the constraint
-	fn get_structure_argument<C: InformationChain>(
-		&self,
-		id: TypeId,
-		info: &C,
-		types: &mut TypeStore,
-	) -> Option<TypeId>;
-
-	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId>;
-
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId>;
-
 	fn get_argument<C: InformationChain>(
 		&self,
-		id: TypeId,
-		info: &C,
+		under: TypeId,
+		c: &C,
 		types: &mut TypeStore,
-	) -> Option<TypeId> {
-		self.get_local_argument(id).or_else(|| self.get_structure_argument(id, info, types))
-	}
+	) -> Option<TypeId>;
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>>;
 
@@ -118,18 +65,10 @@ impl ClosureChain for FunctionTypeArguments {
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
-		if let Some(ref closure_id) = self.closure_id {
+		for closure_id in &self.closure_id {
 			let res = cb(*closure_id);
 			if res.is_some() {
 				return res;
-			}
-		}
-		if let Some(ref parent) = self.structure_arguments {
-			for closure_id in &parent.closures {
-				let res = cb(*closure_id);
-				if res.is_some() {
-					return res;
-				}
 			}
 		}
 		None
@@ -137,25 +76,6 @@ impl ClosureChain for FunctionTypeArguments {
 }
 
 impl TypeArgumentStore for FunctionTypeArguments {
-	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
-		self.structure_arguments.as_ref().and_then(|args| args.get_structure_restriction(id))
-	}
-
-	fn get_structure_argument<C: InformationChain>(
-		&self,
-		id: TypeId,
-		info: &C,
-		types: &mut TypeStore,
-	) -> Option<TypeId> {
-		self.structure_arguments
-			.as_ref()
-			.and_then(|args| args.get_structure_argument(id, info, types))
-	}
-
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.local_arguments.get(&id).cloned()
-	}
-
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
 		None
 	}
@@ -164,69 +84,25 @@ impl TypeArgumentStore for FunctionTypeArguments {
 		let type_arguments_with_positions =
 			self.local_arguments.iter().map(|(k, v)| (*k, (*v, self.call_site)));
 
-		match self.structure_arguments {
-			Some(ref parent) => {
-				let mut merged = parent.type_restrictions.clone();
-
-				merged.extend(type_arguments_with_positions);
-
-				StructureGenericArguments {
-					type_restrictions: merged,
-					properties: SmallMap::new(),
-					closures: parent.closures.iter().copied().chain(self.closure_id).collect(),
-				}
-			}
-			None => StructureGenericArguments {
-				properties: SmallMap::new(),
-				type_restrictions: type_arguments_with_positions.collect(),
-				closures: self.closure_id.into_iter().collect(),
-			},
+		StructureGenericArguments {
+			properties: SmallMap::new(),
+			type_restrictions: type_arguments_with_positions.collect(),
+			closures: self.closure_id.clone(),
 		}
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closure_id.is_none()
+		self.closure_id.is_empty()
 			&& self.local_arguments.keys().any(|t| !matches!(*t, TypeId::NEW_TARGET_ARG))
 	}
-}
 
-/// for type alias specialisation and inferred generic function type arguments
-pub struct ExplicitTypeArguments<'a>(pub &'a mut map_vec::Map<TypeId, (TypeId, SpanWithSource)>);
-
-impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
-	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
-		self.0.get(&id).map(|(value, _pos)| *value)
-	}
-
-	fn get_structure_argument<C: InformationChain>(
+	fn get_argument<C: InformationChain>(
 		&self,
-		id: TypeId,
-		_info: &C,
+		under: TypeId,
+		_c: &C,
 		_types: &mut TypeStore,
 	) -> Option<TypeId> {
-		self.get_structure_restriction(id)
-	}
-
-	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
-		None
-	}
-
-	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
-		None
-	}
-
-	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
-		crate::utils::notify!("to_structural_generic_arguments shouldn't be needed");
-		let type_restrictions = self.0.iter().map(|(a, (b, c))| (*a, (*b, *c))).collect();
-		StructureGenericArguments {
-			type_restrictions,
-			properties: SmallMap::new(),
-			closures: Vec::new(),
-		}
-	}
-
-	fn is_empty(&self) -> bool {
-		false
+		self.local_arguments.get(&under).cloned()
 	}
 }
 
@@ -234,20 +110,26 @@ impl<'a> TypeArgumentStore for ExplicitTypeArguments<'a> {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenericArguments {
 	pub type_restrictions: TypeRestrictions,
-	pub properties: SmallMap<TypeId, LookUpGeneric>,
+	pub properties: LookUpGenericMap,
 	pub closures: Vec<ClosureId>,
 }
 
+impl StructureGenericArguments {
+	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
+		self.type_restrictions.get(&under).map(|(l, _)| *l)
+	}
+}
+
 impl TypeArgumentStore for StructureGenericArguments {
-	fn get_structure_argument<C: InformationChain>(
+	fn get_argument<C: InformationChain>(
 		&self,
-		id: TypeId,
+		under: TypeId,
 		info: &C,
 		types: &mut TypeStore,
 	) -> Option<TypeId> {
-		if let Some(restriction) = self.get_structure_restriction(id) {
+		if let Some(restriction) = self.get_structure_restriction(under) {
 			Some(restriction)
-		} else if let Some(lookup) = self.properties.get(&id) {
+		} else if let Some(lookup) = self.properties.get(&under) {
 			let res = lookup.calculate_lookup(info);
 			let mut iter = res.into_iter();
 			let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);
@@ -261,10 +143,6 @@ impl TypeArgumentStore for StructureGenericArguments {
 		}
 	}
 
-	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
-		None
-	}
-
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
 		Some(self.closures.clone())
 	}
@@ -275,9 +153,5 @@ impl TypeArgumentStore for StructureGenericArguments {
 
 	fn is_empty(&self) -> bool {
 		self.closures.is_empty() && self.type_restrictions.len() == 0
-	}
-
-	fn get_structure_restriction(&self, id: TypeId) -> Option<TypeId> {
-		self.type_restrictions.get(&id).map(|(ty, _)| *ty)
 	}
 }

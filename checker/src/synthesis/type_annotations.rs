@@ -34,12 +34,12 @@ use crate::{
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
-	types::{poly_types::generic_type_arguments::ExplicitTypeArguments, Constructor, TypeId},
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		substitute, Constant, PolyNature, StructureGenerics, Type,
+		Constant, PolyNature, StructureGenerics, Type,
 	},
+	types::{Constructor, TypeId},
 	CheckingData, Environment,
 };
 
@@ -214,21 +214,22 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				}
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
+				let mut arguments = StructureGenericArguments {
+					type_restrictions: type_arguments,
+					properties: map_vec::Map::new(),
+					closures: Default::default(),
+				};
 				if let Some(on) = is_type_alias_to {
-					substitute(
+					crate::types::substitute(
 						on,
-						&mut ExplicitTypeArguments(&mut type_arguments),
+						&mut arguments,
 						environment,
 						&mut checking_data.types,
 					)
 				} else {
 					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 						on: inner_type_id,
-						arguments: StructureGenericArguments {
-							type_restrictions: type_arguments,
-							properties: map_vec::Map::new(),
-							closures: Default::default(),
-						},
+						arguments,
 					}));
 
 					checking_data.types.register_type(ty)
@@ -454,7 +455,7 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	possible_declaration: &str,
 	position: &source_map::SpanWithSource,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();

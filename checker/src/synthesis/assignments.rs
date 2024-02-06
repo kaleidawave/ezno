@@ -99,7 +99,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
 	_checking_data: &CheckingData<T, super::EznoParser>,
-	environment: &crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &Environment,
 ) -> Assignable {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(

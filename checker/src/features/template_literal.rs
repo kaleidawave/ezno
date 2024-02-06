@@ -102,6 +102,9 @@ where
 		);
 
 		let call_site = position.with_source(environment.get_source());
+
+		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+
 		match crate::types::calling::call_type(
 			tag,
 			arguments,
@@ -112,12 +115,12 @@ where
 				call_site_type_arguments: None,
 			},
 			environment,
-			&mut CheckThings,
+			&mut check_things,
 			&mut checking_data.types,
 		) {
 			Ok(res) => res.returned_type,
 			Err(_) => {
-				todo!("JSX Calling error")
+				todo!("Template literal tag Calling error")
 			}
 		}
 	} else {

@@ -82,7 +82,7 @@ pub fn check_wasm_with_options(
 
 		res.ok().and_then(|res| res.as_string())
 	};
-	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some(options)))
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, options))
 }
 
 #[wasm_bindgen(js_name = run_cli)]

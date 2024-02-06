@@ -1,6 +1,6 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
-	use ezno_checker::{check_project, synthesis, Diagnostic};
+	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
 	use std::{
 		collections::HashSet,
 		fs,
@@ -33,11 +33,14 @@ fn main() {
 		ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
 	}]);
 
+	let debug_types = false;
+	let options = TypeCheckOptions { debug_types, ..Default::default() };
+
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![path.to_path_buf()],
 		type_definition_files,
 		resolver,
-		None,
+		options,
 		(),
 	);
 

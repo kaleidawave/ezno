@@ -75,8 +75,7 @@ pub fn build<T: crate::ReadFromFS>(
 	let type_check_options =
 		TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
 
-	let result =
-		crate::check(input_paths, fs_resolver, type_definition_module, Some(type_check_options));
+	let result = crate::check(input_paths, fs_resolver, type_definition_module, type_check_options);
 
 	let mut data = CheckingOutputWithoutDiagnostics {
 		module_contents: result.module_contents,

@@ -61,6 +61,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 
 pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
 	use crate::types::{Constructor, PolyNature};
+
 	let can_cast = match types.get_type_by_id(on) {
 		// TODO some of these are more correct than the others
 		crate::Type::RootPolyType(_rpt) => true,
@@ -79,6 +80,9 @@ pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<Typ
 	};
 
 	if can_cast {
+		// TSC compat around `any`
+		let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
+
 		Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
 	} else {
 		Err(())
