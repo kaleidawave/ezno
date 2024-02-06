@@ -86,6 +86,7 @@ impl Quoted {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
@@ -168,6 +169,7 @@ impl Default for ParseOptions {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,

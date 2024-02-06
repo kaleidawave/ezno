@@ -30,9 +30,8 @@ pub enum VariableIdentifier {
 	// TODO does this need Span
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
-		#[cfg_attr(target_family = "wasm", tsify(type = "VariableIdentifier"))]
-		Marker<Self>,
-		Span
+		#[cfg_attr(target_family = "wasm", tsify(type = "VariableIdentifier"))] Marker<Self>,
+		Span,
 	),
 }
 

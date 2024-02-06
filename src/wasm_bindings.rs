@@ -13,7 +13,13 @@ pub struct CheckOptions {
 	pub lsp_mode: bool,
 }
 
-#[wasm_bindgen(js_name = experimental_build)]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_EXPERIMENTAL_BUILD: &str = r###"
+export function experimental_build(
+	entry_path: string, fs_resolve_js: (path: string) => string | undefined, minify: boolean
+): {Ok: BuildOutput} | {Err: FailedBuildOutput}
+"###;
+#[wasm_bindgen(js_name = experimental_build, skip_typescript)]
 pub fn experimental_build_wasm(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
@@ -39,15 +45,11 @@ pub fn experimental_build_wasm(
 }
 
 #[wasm_bindgen(typescript_custom_section)]
-const TYPES: &str = r###"
+const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMCheckOutput {
 	readonly diagnostics: DiagnosticsContainer
 }
-
-export function parse_expression(input: string): {Ok: Expression} | {Err: [string, Span]}
-export function parse_module(input: string): {Ok: Module} | {Err: [string, Span]}
 "###;
-
 #[wasm_bindgen]
 pub struct WASMCheckOutput(checker::CheckOutput<checker::synthesis::EznoParser>);
 
@@ -64,7 +66,11 @@ impl WASMCheckOutput {
 	}
 }
 
-#[wasm_bindgen(js_name = check)]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_CHECK: &str = r#"
+export function check(entry_path: string, fs_resolver_js: (path: string) => string | undefined): WASMCheckOutput
+"#;
+#[wasm_bindgen(js_name = check, skip_typescript)]
 pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASMCheckOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -77,7 +83,11 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASM
 	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
 }
 
-#[wasm_bindgen(js_name = check_with_options)]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_CHECK_WITH_OPTIONS: &str = r#"
+export function check_with_options(entry_path: string, fs_resolver_js: (path: string) => string | undefined, options: TypeCheckOptions): WASMCheckOutput
+"#;
+#[wasm_bindgen(js_name = check_with_options, skip_typescript)]
 pub fn check_wasm_with_options(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
@@ -95,8 +105,16 @@ pub fn check_wasm_with_options(
 	};
 	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some(options)))
 }
-
-#[wasm_bindgen(js_name = run_cli)]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_RUN_CLI: &str = r#"
+export function run_cli(
+	cli_arguments: string[],
+	read_from_file: (path: string) => string | undefined,
+	write_to_file: (path: string, content: string) => void,
+	cli_input_resolver: (prompt: string) => string | undefined
+): void
+"#;
+#[wasm_bindgen(js_name = run_cli, skip_typescript)]
 pub fn run_cli_wasm(
 	cli_arguments: Box<[JsValue]>,
 	read_from_file: &js_sys::Function,
@@ -135,6 +153,10 @@ pub fn run_cli_wasm(
 	crate::run_cli(&arguments, &read_from_file, write_to_file, cli_input_resolver);
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_PARSE_EXPRESSION: &str = r#"
+export function parse_expression(input: string): {Ok: Expression} | {Err: [string, Span]}
+"#;
 #[wasm_bindgen(js_name = parse_expression, skip_typescript)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Expression};
@@ -149,6 +171,10 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 	}
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_PARSE_MODULE: &str = r#"
+export function parse_module(input: string): {Ok: Module} | {Err: [string, Span]}
+"#;
 #[wasm_bindgen(js_name = parse_module, skip_typescript)]
 pub fn parse_module_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Module};
@@ -162,8 +188,15 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 		}
 	}
 }
-
-#[wasm_bindgen(js_name = parse_module_and_into_string)]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_PARSE_MODULE_AND_INTO_STRING: &str = r#"
+export function parse_module_and_into_string(
+	input: string,
+	parse_options: ParseOptions,
+	to_string_options: ToStringOptions
+): {Ok: string} | {Err: [string, Span]}
+"#;
+#[wasm_bindgen(js_name = parse_module_and_into_string, skip_typescript)]
 pub fn parse_module_and_into_string(
 	input: String,
 	parse_options: JsValue,
@@ -186,8 +219,11 @@ pub fn parse_module_and_into_string(
 		}
 	}
 }
-
-#[wasm_bindgen]
+#[wasm_bindgen(typescript_custom_section)]
+const TYPES_JUST_IMPORTS: &str = r#"
+export function just_imports(input: string): {Ok: string} | {Err: [string, Span]}
+"#;
+#[wasm_bindgen(skip_typescript)]
 pub fn just_imports(input: String) -> JsValue {
 	use parser::{ASTNode, Module};
 
