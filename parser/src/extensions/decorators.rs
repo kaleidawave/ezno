@@ -8,14 +8,12 @@ use tokenizer_lib::{
 use visitable_derive::Visitable;
 
 use crate::{
-	tokens::token_as_identifier, ASTNode, Expression, ParseOptions, ParseResult, TSXToken,
-	Visitable,
+	default_derive_bundle, tokens::token_as_identifier, ASTNode, Expression, ParseOptions,
+	ParseResult, TSXToken, Visitable,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct Decorator {
 	pub name: Vec<String>,
 	pub arguments: Option<Vec<Expression>>,

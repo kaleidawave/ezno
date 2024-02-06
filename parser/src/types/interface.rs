@@ -1,7 +1,7 @@
 use crate::{
-	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
-	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
-	to_string_bracketed, tokens::token_as_identifier,
+	default_derive_bundle, errors::parse_lexing_error, extensions::decorators::Decorated,
+	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
+	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
 	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
 	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
@@ -28,9 +28,7 @@ pub struct InterfaceDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum Optionality {
 	Default,
 	Optional,
@@ -40,9 +38,7 @@ pub enum Optionality {
 
 // Used around type aliases for inline rule thingies
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum TypeRule {
 	In,
 	InKeyOf,

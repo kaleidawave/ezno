@@ -1,4 +1,4 @@
-use crate::{functions::HeadingAndPosition, VariableIdentifier};
+use crate::{default_derive_bundle, functions::HeadingAndPosition, VariableIdentifier};
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
@@ -204,9 +204,7 @@ impl ArrowFunction {
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),
 	Block(Block),

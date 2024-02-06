@@ -4,6 +4,7 @@
 use std::fmt::Debug;
 
 use crate::{
+	default_derive_bundle,
 	errors::parse_lexing_error,
 	parse_bracketed,
 	property_key::PropertyKey,
@@ -183,9 +184,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct VariableFieldInSourceCode;
 
 impl VariableFieldKind for VariableFieldInSourceCode {
@@ -224,9 +223,7 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 
 /// For function type references
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct VariableFieldInTypeAnnotation;
 
 impl VariableFieldKind for VariableFieldInTypeAnnotation {
@@ -427,9 +424,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 
 /// TODO unsure about the positions here, is potential duplication if `T::OptionalExpression` is none
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(VariableIdentifier, Span),
 	Name(

@@ -1,6 +1,6 @@
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseOptions, ParseResult, Span,
-	TSXToken, Token, TokenReader,
+	default_derive_bundle, errors::parse_lexing_error, ASTNode, Expression, ParseError,
+	ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -29,9 +29,7 @@ pub struct JSXElement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum JSXElementChildren {
 	Children(Vec<JSXNode>),
 	/// For img elements
@@ -224,9 +222,7 @@ impl JSXRoot {
 
 // TODO Fragment
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum JSXNode {
 	TextNode(String, Span),
 	InterpolatedExpression(Box<Expression>, Span),
@@ -299,9 +295,7 @@ impl ASTNode for JSXNode {
 
 /// TODO spread attributes and boolean attributes
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),

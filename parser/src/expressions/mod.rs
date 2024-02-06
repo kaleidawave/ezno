@@ -1,7 +1,8 @@
 use crate::{
 	declarations::ClassDeclaration,
+	default_derive_bundle,
 	errors::parse_lexing_error,
-	functions::{self},
+	functions,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, FUNCTION_CALL_PRECEDENCE,
@@ -182,9 +183,7 @@ pub enum Expression {
 impl Eq for Expression {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum PropertyReference {
 	Standard {
 		property: String,
@@ -1903,9 +1902,7 @@ pub enum SpecialOperators {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1990,9 +1987,7 @@ impl From<Expression> for SpreadExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct ArrayElement(pub Option<SpreadExpression>);
 
 impl ASTNode for ArrayElement {

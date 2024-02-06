@@ -1,4 +1,4 @@
-use crate::{TSXKeyword, TSXToken};
+use crate::{default_derive_bundle, TSXKeyword, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -27,18 +27,14 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,

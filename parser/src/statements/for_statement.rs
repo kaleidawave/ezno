@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, ParseOptions, TSXKeyword, VariableField,
-	VariableFieldInSourceCode, VariableKeyword, WithComment,
+	declarations::variable::VariableDeclaration, default_derive_bundle, ParseOptions, TSXKeyword,
+	VariableField, VariableFieldInSourceCode, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
@@ -53,9 +53,7 @@ impl ASTNode for ForLoopStatement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ForLoopStatementInitializer {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
@@ -63,9 +61,7 @@ pub enum ForLoopStatementInitializer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,

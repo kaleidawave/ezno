@@ -10,6 +10,8 @@ pub mod type_declarations;
 
 pub use interface::InterfaceDeclaration;
 
+use crate::default_derive_bundle;
+
 // [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
 // #[derive(Debug, Clone, PartialEq, Eq)]
 // pub enum Visibility {
@@ -30,9 +32,7 @@ pub use interface::InterfaceDeclaration;
 
 #[cfg(feature = "extras")]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum AnnotationPerforms {
 	PerformsStatements { body: crate::Block },
 	PerformsConst { identifier: String },

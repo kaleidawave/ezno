@@ -1,7 +1,7 @@
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ListItem, ParseError,
-	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
-	VariableIdentifier,
+	default_derive_bundle, errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression,
+	ListItem, ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken,
+	Token, VariableIdentifier,
 };
 
 use super::{
@@ -32,9 +32,7 @@ pub enum ExportDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum Exportable {
 	Class(ClassDeclaration<StatementPosition>),
 	Function(StatementFunction),

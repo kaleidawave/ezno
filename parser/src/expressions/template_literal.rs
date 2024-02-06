@@ -1,6 +1,6 @@
 use crate::{
-	errors::parse_lexing_error, ASTNode, Expression, ParseOptions, ParseResult, Span, TSXToken,
-	Token, TokenReader,
+	default_derive_bundle, errors::parse_lexing_error, ASTNode, Expression, ParseOptions,
+	ParseResult, Span, TSXToken, Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
@@ -17,9 +17,7 @@ pub struct TemplateLiteral {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum TemplateLiteralPart<T: ASTNode> {
 	Static(String),
 	Dynamic(Box<T>),

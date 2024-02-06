@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use crate::{
-	errors::parse_lexing_error, functions::HeadingAndPosition, property_key::PublicOrPrivate,
-	visiting::Visitable,
+	default_derive_bundle, errors::parse_lexing_error, functions::HeadingAndPosition,
+	property_key::PublicOrPrivate, visiting::Visitable,
 };
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
@@ -17,9 +17,7 @@ use crate::{
 pub type IsStatic = bool;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -50,9 +48,7 @@ const CLASS_FUNCTION_TYPES: &str = r###"
 "###;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,

@@ -1,5 +1,6 @@
 use crate::{
-	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseOptions, TSXKeyword,
+	block::BlockOrSingleStatement, default_derive_bundle, expressions::MultipleExpression,
+	ParseOptions, TSXKeyword,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -24,9 +25,7 @@ pub struct IfStatement {
 
 /// `... else if (...) { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct ConditionalElseStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -35,9 +34,7 @@ pub struct ConditionalElseStatement {
 
 /// `... else { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,

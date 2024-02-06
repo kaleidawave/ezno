@@ -4,7 +4,7 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
+	default_derive_bundle, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
 	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
 	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
@@ -14,9 +14,7 @@ use super::ImportLocation;
 
 /// Side effects is represented under the Parts variant where the vector is empty
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportPart>>),
 	All { under: VariableIdentifier },
@@ -42,9 +40,7 @@ pub struct ImportDeclaration {
 
 /// TODO default
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),

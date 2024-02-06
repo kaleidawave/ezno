@@ -4,8 +4,9 @@ use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, errors::parse_lexing_error, throw_unexpected_token_with_token,
-	ASTNode, Expression, ParseOptions, StatementOrDeclaration, TSXKeyword, TSXToken,
+	ast::MultipleExpression, default_derive_bundle, errors::parse_lexing_error,
+	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, StatementOrDeclaration,
+	TSXKeyword, TSXToken,
 };
 
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -20,9 +21,7 @@ pub struct SwitchStatement {
 }
 
 #[derive(Debug, PartialEq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
 	Case(Expression, Vec<StatementOrDeclaration>),

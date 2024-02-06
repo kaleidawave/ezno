@@ -72,8 +72,8 @@ attribute_alias! {
 	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
 	// keep this macro in mind.
 	// TODO: consult on a better name, determine if derive(serde::Serialize) implies SelfRustTokenize
-	#[apply(default_derive_bundle!)] = 
-        #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+	#[apply(default_derive_bundle!)] =
+		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
 }
@@ -518,9 +518,7 @@ impl KeywordPositions {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum NumberSign {
 	/// Also implies non negative/missing
 	Positive,
@@ -561,9 +559,7 @@ impl std::fmt::Display for NumberSign {
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
@@ -825,9 +821,7 @@ pub trait ExpressionOrStatementPosition:
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
@@ -849,9 +843,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
@@ -1065,9 +1057,7 @@ pub(crate) fn expect_semi_colon(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum VariableKeyword {
 	Const,
 	Let,

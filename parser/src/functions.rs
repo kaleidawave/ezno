@@ -3,9 +3,9 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::property_key::PropertyKeyKind;
 use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
-	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
-	ExpressionPosition, GenericTypeConstraint, ParseOptions, ParseResult, TSXToken, TypeAnnotation,
-	VisitOptions, Visitable, WithComment,
+	default_derive_bundle, parse_bracketed, to_string_bracketed, ASTNode, Block,
+	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, ParseOptions,
+	ParseResult, TSXToken, TypeAnnotation, VisitOptions, Visitable, WithComment,
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -322,18 +322,14 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 
 #[cfg(feature = "extras")]
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum FunctionLocationModifier {
 	Server,
 	Worker,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		is_async: bool,
@@ -503,9 +499,7 @@ impl FunctionHeader {
 
 /// This structure removes possible invalid combinations with async
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum MethodHeader {
 	Get,
 	Set,
@@ -572,9 +566,7 @@ impl MethodHeader {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum GeneratorSpecifier {
 	Star(Span),
 	#[cfg(feature = "extras")]

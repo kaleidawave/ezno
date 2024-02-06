@@ -3,9 +3,10 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, operators::COMMA_PRECEDENCE, throw_unexpected_token_with_token,
-	ASTNode, Expression, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
-	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
+	default_derive_bundle, errors::parse_lexing_error, operators::COMMA_PRECEDENCE,
+	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
+	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
+	VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -208,9 +209,7 @@ pub enum VariableDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[apply(default_derive_bundle)]
 pub enum VariableDeclarationKeyword {
 	Const,
 	Let,
