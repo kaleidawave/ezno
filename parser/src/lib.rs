@@ -254,6 +254,7 @@ impl ToStringOptions {
 
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Comments {
 	#[default]
 	All,
