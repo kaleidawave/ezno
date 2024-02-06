@@ -155,7 +155,7 @@ pub fn run_cli_wasm(
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_PARSE_EXPRESSION: &str = r#"
-export function parse_expression(input: string): {Ok: Expression} | {Err: [string, Span]}
+export function parse_expression(input: string): Expression | [string, Span]
 "#;
 #[wasm_bindgen(js_name = parse_expression, skip_typescript)]
 pub fn parse_expression_to_json(input: String) -> JsValue {
@@ -173,7 +173,7 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_PARSE_MODULE: &str = r#"
-export function parse_module(input: string): {Ok: Module} | {Err: [string, Span]}
+export function parse_module(input: string): Module | [string, Span]
 "#;
 #[wasm_bindgen(js_name = parse_module, skip_typescript)]
 pub fn parse_module_to_json(input: String) -> JsValue {
@@ -194,7 +194,7 @@ export function parse_module_and_into_string(
 	input: string,
 	parse_options: ParseOptions,
 	to_string_options: ToStringOptions
-): {Ok: string} | {Err: [string, Span]}
+): string | [string, Span]
 "#;
 #[wasm_bindgen(js_name = parse_module_and_into_string, skip_typescript)]
 pub fn parse_module_and_into_string(
@@ -221,7 +221,7 @@ pub fn parse_module_and_into_string(
 }
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_JUST_IMPORTS: &str = r#"
-export function just_imports(input: string): {Ok: string} | {Err: [string, Span]}
+export function just_imports(input: string): string | [string, Span]
 "#;
 #[wasm_bindgen(skip_typescript)]
 pub fn just_imports(input: String) -> JsValue {
