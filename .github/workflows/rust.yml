@@ -163,7 +163,7 @@ jobs:
           deno run -A ./dist/cli.mjs info
           # typegen exhibits debug/release divergent quirks
           npm run build-release
-          npx -p typescript tsc --strict ./dist/shared/ezno_lib*.d.ts
+          npx -p typescript tsc --strict ./build/ezno_lib.d.ts
         working-directory: src/js-cli-and-library
         shell: bash
 
