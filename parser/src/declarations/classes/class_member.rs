@@ -30,22 +30,22 @@ pub enum ClassMember {
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const CLASS_CONSTRUCTOR_TYPES: &str = r###"
+const CLASS_CONSTRUCTOR_TYPES: &str = r"
 	export interface ClassConstructor extends Omit<FunctionBase, 'header' | 'name'> {
 		body: Block
 	}
-"###;
+";
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const CLASS_FUNCTION_TYPES: &str = r###"
+const CLASS_FUNCTION_TYPES: &str = r"
 	export interface ClassFunction extends FunctionBase {
 		header: MethodHeader,
 		body: Block,
 		name: WithComment<PropertyKey<PublicOrPrivate>>
 	}
-"###;
+";
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(default_derive_bundle)]

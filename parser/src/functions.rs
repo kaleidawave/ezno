@@ -124,14 +124,14 @@ pub struct FunctionBase<T: FunctionBased> {
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES: &str = r###"
+const TYPES: &str = r"
 	export interface FunctionBase {
 		type_parameters?: GenericTypeConstraint[],
 		parameters: FunctionParameters,
 		return_type?: TypeAnnotation,
 		position: Span
 	}
-"###;
+";
 
 impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
@@ -250,13 +250,13 @@ pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>)
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES_EXPRESSION_FUNCTION: &str = r###"
+const TYPES_EXPRESSION_FUNCTION: &str = r"
 	export interface ExpressionFunction extends FunctionBase {
 		header: FunctionHeader,
 		body: Block,
 		name: ExpressionPosition
 	}
-"###;
+";
 
 #[allow(clippy::similar_names)]
 impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> {

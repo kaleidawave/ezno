@@ -5,9 +5,9 @@ use std::marker::PhantomData;
 pub struct Marker<T>(pub u8, pub PhantomData<T>);
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES: &'static str = r#"
+const TYPES: &str = r"
 	type Marker<T> = number;
-"#;
+";
 
 pub const MARKER: &str = "EZNO_GENERATOR_SLOT";
 

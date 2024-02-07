@@ -19,13 +19,13 @@ pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<Statement
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES_STATEMENT_FUNCTION: &str = r###"
+const TYPES_STATEMENT_FUNCTION: &str = r"
 	export interface StatementFunction extends FunctionBase {
 		header: FunctionHeader,
 		body: Block,
 		name: StatementPosition
 	}
-"###;
+";
 pub mod classes;
 pub mod export;
 pub mod import;

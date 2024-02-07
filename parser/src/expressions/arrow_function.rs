@@ -16,12 +16,12 @@ pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
 pub type IsAsync = bool;
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES: &str = r###"
+const TYPES: &str = r"
 	export interface ArrowFunction extends Omit<FunctionBase, 'name'> {
 		header: IsAsync,
 		body: ExpressionOrBlock
 	}
-"###;
+";
 
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();

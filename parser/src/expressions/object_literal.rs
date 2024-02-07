@@ -73,13 +73,13 @@ pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const TYPES: &str = r###"
+const TYPES: &str = r"
 	export interface ObjectLiteralMethod extends FunctionBase {
 		header: MethodHeader,
 		body: Block,
 		name: WithComment<PropertyKey<AlwaysPublic>>
 	}
-"###;
+";
 
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
