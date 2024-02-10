@@ -158,11 +158,13 @@ jobs:
           rustup target add wasm32-unknown-unknown
           npm ci
           npm run build
-          npm run test
+          npm run run-tests
+
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
+
           # typegen exhibits debug/release divergent quirks
-          npm run build-release
+          # npm run build-release
           npx -p typescript tsc --strict ./build/ezno_lib.d.ts
         working-directory: src/js-cli-and-library
         shell: bash

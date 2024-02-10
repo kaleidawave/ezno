@@ -1,6 +1,6 @@
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, ASTNode, Expression, ParseError,
-	ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader,
+	derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseOptions,
+	ParseResult, Span, TSXToken, Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -29,7 +29,7 @@ pub struct JSXElement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum JSXElementChildren {
 	Children(Vec<JSXNode>),
 	/// For img elements
@@ -222,7 +222,7 @@ impl JSXRoot {
 
 // TODO Fragment
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum JSXNode {
 	TextNode(String, Span),
 	InterpolatedExpression(Box<Expression>, Span),
@@ -295,7 +295,7 @@ impl ASTNode for JSXNode {
 
 /// TODO spread attributes and boolean attributes
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),

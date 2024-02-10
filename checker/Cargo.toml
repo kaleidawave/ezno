@@ -21,7 +21,7 @@ ezno-parser = ["dep:parser"]
 serde-serialize = ["dep:serde"]
 
 [dependencies]
-source-map = { version = "0.14.9", features = [
+source-map = { version = "0.14.10", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }

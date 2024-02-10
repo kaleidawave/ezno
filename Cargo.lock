@@ -323,6 +323,7 @@ dependencies = [
  "ezno-parser-visitable-derive",
  "get-field-by-type",
  "iterator-endiate",
+ "macro_rules_attribute",
  "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
@@ -496,6 +497,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
+name = "macro_rules_attribute"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a82271f7bc033d84bbca59a3ce3e4159938cb08a9c3aebbe54d215131518a13"
+dependencies = [
+ "macro_rules_attribute-proc_macro",
+ "paste",
+]
+
+[[package]]
+name = "macro_rules_attribute-proc_macro"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8dd856d451cc0da70e2ef2ce95a18e39a93b7558bedf10201ad28503f918568"
+
+[[package]]
 name = "map_vec"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -578,6 +595,12 @@ checksum = "a76df7075c7d4d01fdcb46c912dd17fba5b60c78ea480b475f2b6ab6f666584e"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
 name = "path-absolutize"
@@ -734,13 +757,15 @@ dependencies = [
 
 [[package]]
 name = "source-map"
-version = "0.14.9"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1c87aed86fe881b9427c79b2278f2e70b81dac06996dc789de58f2c1d79f7ec"
+checksum = "562cbf03968c48809f6bd48115b894b6b3bb5af0437f6077c19cb1bd0fb51080"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",
  "serde",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]

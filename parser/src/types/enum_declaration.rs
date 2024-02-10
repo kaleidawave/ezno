@@ -1,4 +1,4 @@
-use crate::{default_derive_bundle, TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
@@ -7,7 +7,7 @@ use visitable_derive::Visitable;
 use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression};
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
 	pub name: String,
@@ -85,7 +85,7 @@ impl ASTNode for EnumDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum EnumMember {
 	Variant { name: String, value: Option<Expression>, position: Span },
 }

@@ -71,8 +71,7 @@ attribute_alias! {
 	// any variation (even just a single, straightforward, cfg_attr) will break the other macros.
 	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
 	// keep this macro in mind.
-	// TODO: consult on a better name, determine if derive(serde::Serialize) implies SelfRustTokenize
-	#[apply(default_derive_bundle!)] =
+	#[apply(derive_ASTNode!)] =
 		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
@@ -80,7 +79,7 @@ attribute_alias! {
 
 /// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[apply(default_derive_bundle!)]
+#[apply(derive_ASTNode!)]
 pub enum Quoted {
 	Single,
 	Double,
@@ -266,6 +265,31 @@ impl ToStringOptions {
 		self.pretty && self.max_line_length != u8::MAX
 	}
 }
+
+// These are here because for some reason **under debug builds** these definitions are missing.
+// It has something to do with the files as these definitions only work here :?. Experimentation needed
+#[cfg_attr(
+	all(target_family = "wasm", debug_assertions),
+	wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)
+)]
+const TYPES_THAT_ARE_MISSING: &str = "
+export type WithComment<T> =
+  | { None: T }
+  | { PrefixComment: [string, T, Span] }
+  | { PostfixComment: [T, string, Span] };
+
+// shouldn't be useful to p need
+export type Marker<T> = null;
+
+export interface ClassDeclaration<T> {
+	name: T,
+	type_parameters?: Array<GenericTypeConstraint>,
+	extends?: Expression,
+	implements?: Array<TypeAnnotation>,
+	members: Array<Decorated<ClassMember>>,
+	position: Span,
+}
+";
 
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
@@ -518,7 +542,7 @@ impl KeywordPositions {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum NumberSign {
 	/// Also implies non negative/missing
 	Positive,
@@ -559,7 +583,7 @@ impl std::fmt::Display for NumberSign {
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
@@ -821,7 +845,7 @@ pub trait ExpressionOrStatementPosition:
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
@@ -843,7 +867,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
@@ -1057,7 +1081,7 @@ pub(crate) fn expect_semi_colon(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum VariableKeyword {
 	Const,
 	Let,

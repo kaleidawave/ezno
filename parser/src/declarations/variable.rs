@@ -3,7 +3,7 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, operators::COMMA_PRECEDENCE,
+	derive_ASTNode, errors::parse_lexing_error, operators::COMMA_PRECEDENCE,
 	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
 	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
 	VariableFieldInSourceCode, WithComment,
@@ -209,7 +209,7 @@ pub enum VariableDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,
 	Let,

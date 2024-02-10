@@ -10,7 +10,7 @@ pub mod type_declarations;
 
 pub use interface::InterfaceDeclaration;
 
-use crate::default_derive_bundle;
+use crate::derive_ASTNode;
 
 // [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
 // #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,7 @@ use crate::default_derive_bundle;
 
 #[cfg(feature = "extras")]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum AnnotationPerforms {
 	PerformsStatements { body: crate::Block },
 	PerformsConst { identifier: String },

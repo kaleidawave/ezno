@@ -1,6 +1,6 @@
 use crate::{
-	block::BlockOrSingleStatement, default_derive_bundle, expressions::MultipleExpression,
-	ParseOptions, TSXKeyword,
+	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ParseOptions,
+	TSXKeyword,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -25,7 +25,7 @@ pub struct IfStatement {
 
 /// `... else if (...) { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct ConditionalElseStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -34,7 +34,7 @@ pub struct ConditionalElseStatement {
 
 /// `... else { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,

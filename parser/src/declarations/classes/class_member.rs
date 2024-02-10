@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, functions::HeadingAndPosition,
+	derive_ASTNode, errors::parse_lexing_error, functions::HeadingAndPosition,
 	property_key::PublicOrPrivate, visiting::Visitable,
 };
 use source_map::Span;
@@ -17,7 +17,7 @@ use crate::{
 pub type IsStatic = bool;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -48,7 +48,7 @@ const CLASS_FUNCTION_TYPES: &str = r"
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,

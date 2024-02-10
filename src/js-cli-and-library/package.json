@@ -20,10 +20,11 @@
 	},
 	"scripts": {
 		"clean": "rmdir dist && rmdir build",
-		"build": "npm run bind && npm run build-js",
-		"build-release": "npm run bind-release && npm run build-js",
-		"bind": "wasm-pack build --dev --out-dir src/js-cli-and-library/build --target web --no-pack",
-		"bind-release": "wasm-pack build --release --out-dir src/js-cli-and-library/build --target web --no-pack",
+		"build": "wasm-pack build --dev --out-dir src/js-cli-and-library/build --target web --no-pack && npm run build-js",
+		"build-release": "wasm-pack build --release --out-dir src/js-cli-and-library/build --target web --no-pack && npm run build-js",
+		"--": "'debug' can be replaced with 'release' for those builds",
+		"build-manual-bind": "cargo build --lib --target wasm32-unknown-unknown --profile debug && wasm-bindgen --out-dir build --target web ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm && npm run build-js",
+		"--": "Manually assembles the output",
 		"build-js": "unbuild && cp ./build/ezno_lib_bg.wasm dist/shared && cp src/cli_node.cjs dist/cli.cjs",
 		"test": "npm run build && npm run run-tests",
 		"run-tests": "node test.mjs && deno run -A test.mjs"

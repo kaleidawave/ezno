@@ -1,4 +1,4 @@
-use crate::{default_derive_bundle, functions::HeadingAndPosition, VariableIdentifier};
+use crate::{derive_ASTNode, functions::HeadingAndPosition, VariableIdentifier};
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
@@ -204,7 +204,7 @@ impl ArrowFunction {
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),
 	Block(Block),

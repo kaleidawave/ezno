@@ -4,7 +4,7 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
+	derive_ASTNode, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
 	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
 	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
@@ -14,7 +14,7 @@ use super::ImportLocation;
 
 /// Side effects is represented under the Parts variant where the vector is empty
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportPart>>),
 	All { under: VariableIdentifier },
@@ -40,7 +40,7 @@ pub struct ImportDeclaration {
 
 /// TODO default
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),

@@ -3,7 +3,7 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::property_key::PropertyKeyKind;
 use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
-	default_derive_bundle, parse_bracketed, to_string_bracketed, ASTNode, Block,
+	derive_ASTNode, parse_bracketed, to_string_bracketed, ASTNode, Block,
 	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, ParseOptions,
 	ParseResult, TSXToken, TypeAnnotation, VisitOptions, Visitable, WithComment,
 };
@@ -322,14 +322,14 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 
 #[cfg(feature = "extras")]
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum FunctionLocationModifier {
 	Server,
 	Worker,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		is_async: bool,
@@ -499,7 +499,7 @@ impl FunctionHeader {
 
 /// This structure removes possible invalid combinations with async
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum MethodHeader {
 	Get,
 	Set,
@@ -566,7 +566,7 @@ impl MethodHeader {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum GeneratorSpecifier {
 	Star(Span),
 	#[cfg(feature = "extras")]

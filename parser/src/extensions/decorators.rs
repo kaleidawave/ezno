@@ -8,12 +8,12 @@ use tokenizer_lib::{
 use visitable_derive::Visitable;
 
 use crate::{
-	default_derive_bundle, tokens::token_as_identifier, ASTNode, Expression, ParseOptions,
-	ParseResult, TSXToken, Visitable,
+	derive_ASTNode, tokens::token_as_identifier, ASTNode, Expression, ParseOptions, ParseResult,
+	TSXToken, Visitable,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct Decorator {
 	pub name: Vec<String>,
 	pub arguments: Option<Vec<Expression>>,

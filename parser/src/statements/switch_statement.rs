@@ -4,7 +4,7 @@ use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, default_derive_bundle, errors::parse_lexing_error,
+	ast::MultipleExpression, derive_ASTNode, errors::parse_lexing_error,
 	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, StatementOrDeclaration,
 	TSXKeyword, TSXToken,
 };
@@ -21,7 +21,7 @@ pub struct SwitchStatement {
 }
 
 #[derive(Debug, PartialEq, Clone, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
 	Case(Expression, Vec<StatementOrDeclaration>),

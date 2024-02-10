@@ -1,6 +1,6 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, default_derive_bundle, ParseOptions, TSXKeyword,
+	declarations::variable::VariableDeclaration, derive_ASTNode, ParseOptions, TSXKeyword,
 	VariableField, VariableFieldInSourceCode, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
@@ -53,7 +53,7 @@ impl ASTNode for ForLoopStatement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitializer {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
@@ -61,7 +61,7 @@ pub enum ForLoopStatementInitializer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,

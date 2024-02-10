@@ -1,5 +1,5 @@
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression,
+	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression,
 	ListItem, ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken,
 	Token, VariableIdentifier,
 };
@@ -32,7 +32,7 @@ pub enum ExportDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum Exportable {
 	Class(ClassDeclaration<StatementPosition>),
 	Function(StatementFunction),

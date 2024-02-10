@@ -1,4 +1,4 @@
-use crate::{default_derive_bundle, TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -27,14 +27,14 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,

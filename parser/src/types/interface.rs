@@ -1,5 +1,5 @@
 use crate::{
-	default_derive_bundle, errors::parse_lexing_error, extensions::decorators::Decorated,
+	derive_ASTNode, errors::parse_lexing_error, extensions::decorators::Decorated,
 	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
@@ -28,7 +28,7 @@ pub struct InterfaceDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum Optionality {
 	Default,
 	Optional,
@@ -38,7 +38,7 @@ pub enum Optionality {
 
 // Used around type aliases for inline rule thingies
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum TypeRule {
 	In,
 	InKeyOf,

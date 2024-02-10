@@ -1,6 +1,6 @@
 use crate::{
 	declarations::ClassDeclaration,
-	default_derive_bundle,
+	derive_ASTNode,
 	errors::parse_lexing_error,
 	functions,
 	operators::{
@@ -183,7 +183,7 @@ pub enum Expression {
 impl Eq for Expression {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
 		property: String,
@@ -1902,7 +1902,7 @@ pub enum SpecialOperators {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1987,7 +1987,7 @@ impl From<Expression> for SpreadExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct ArrayElement(pub Option<SpreadExpression>);
 
 impl ASTNode for ArrayElement {

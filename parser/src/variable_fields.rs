@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use crate::{
-	default_derive_bundle,
+	derive_ASTNode,
 	errors::parse_lexing_error,
 	parse_bracketed,
 	property_key::PropertyKey,
@@ -184,7 +184,7 @@ pub trait VariableFieldKind: PartialEq + Eq + Debug + Clone + 'static {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct VariableFieldInSourceCode;
 
 impl VariableFieldKind for VariableFieldInSourceCode {
@@ -223,7 +223,7 @@ impl VariableFieldKind for VariableFieldInSourceCode {
 
 /// For function type references
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub struct VariableFieldInTypeAnnotation;
 
 impl VariableFieldKind for VariableFieldInTypeAnnotation {
@@ -424,7 +424,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 
 /// TODO unsure about the positions here, is potential duplication if `T::OptionalExpression` is none
 #[derive(Debug, Clone)]
-#[apply(default_derive_bundle)]
+#[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField<T: VariableFieldKind> {
 	Spread(VariableIdentifier, Span),
 	Name(

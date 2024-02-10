@@ -6,7 +6,7 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	default_derive_bundle, expect_semi_colon,
+	derive_ASTNode, expect_semi_colon,
 	marker::MARKER,
 	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, TSXKeyword, VisitOptions,
 	Visitable,
@@ -243,7 +243,7 @@ impl Visitable for Block {
 
 /// For ifs and other statements
 #[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
-#[apply(default_derive_bundle!)]
+#[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
