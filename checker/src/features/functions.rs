@@ -369,55 +369,62 @@ where
 	let _is_async = behavior.is_async();
 	let _is_generator = behavior.is_generator();
 
-	let (mut behavior, scope, constructor, location, expected_parameters, _expected_return) =
-		match behavior {
-			FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => (
-				FunctionBehavior::Constructor {
-					non_super_prototype: super_type.is_some().then_some(prototype),
-					this_object_type: TypeId::ERROR_TYPE,
-				},
-				FunctionScope::Constructor {
-					extends: super_type.is_some(),
-					type_of_super: super_type,
-					this_object_type: TypeId::ERROR_TYPE,
-				},
-				Some((prototype, properties)),
-				None,
-				None,
-				None,
-			),
-			FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
-				// crate::utils::notify!(
-				// 	"expecting {}",
-				// 	types::printing::print_type(
-				// 		expecting,
-				// 		&checking_data.types,
-				// 		base_environment,
-				// 		false
-				// 	)
-				// );
-				let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
-					expecting,
-					&mut checking_data.types,
-					base_environment,
-				);
+	let (mut behavior, scope, constructor, location, expected_parameters) = match behavior {
+		FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => (
+			FunctionBehavior::Constructor {
+				non_super_prototype: super_type.is_some().then_some(prototype),
+				this_object_type: TypeId::ERROR_TYPE,
+			},
+			FunctionScope::Constructor {
+				extends: super_type.is_some(),
+				type_of_super: super_type,
+				this_object_type: TypeId::ERROR_TYPE,
+			},
+			Some((prototype, properties)),
+			None,
+			None,
+		),
+		FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
+			// crate::utils::notify!(
+			// 	"expecting {}",
+			// 	types::printing::print_type(
+			// 		expecting,
+			// 		&checking_data.types,
+			// 		base_environment,
+			// 		false
+			// 	)
+			// );
+			let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
+				expecting,
+				&mut checking_data.types,
+				base_environment,
+			);
 
-				(
-					FunctionBehavior::ArrowFunction { is_async },
-					// to set
-					FunctionScope::ArrowFunction { free_this_type: TypeId::ERROR_TYPE, is_async },
-					None,
-					None,
-					expecting_parameters,
+			(
+				FunctionBehavior::ArrowFunction { is_async },
+				// to set
+				FunctionScope::ArrowFunction {
+					free_this_type: TypeId::ERROR_TYPE,
+					is_async,
 					expected_return,
-				)
-			}
-			FunctionRegisterBehavior::ExpressionFunction {
-				expecting: _,
-				is_async,
-				is_generator,
-				location,
-			} => (
+				},
+				None,
+				None,
+				expecting_parameters,
+			)
+		}
+		FunctionRegisterBehavior::ExpressionFunction {
+			expecting,
+			is_async,
+			is_generator,
+			location,
+		} => {
+			let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
+				expecting,
+				&mut checking_data.types,
+				base_environment,
+			);
+			(
 				FunctionBehavior::Function {
 					is_async,
 					is_generator,
@@ -429,65 +436,62 @@ where
 					// to set
 					this_type: TypeId::ERROR_TYPE,
 					type_of_super: TypeId::ANY_TYPE,
+					expected_return,
 				},
 				None,
 				location,
-				None,
-				None,
-			),
-			FunctionRegisterBehavior::StatementFunction {
-				hoisted: _,
-				is_async,
+				expecting_parameters,
+			)
+		}
+		FunctionRegisterBehavior::StatementFunction {
+			hoisted: _,
+			is_async,
+			is_generator,
+			location,
+		} => (
+			FunctionBehavior::Function { is_async, is_generator, free_this_id: TypeId::ERROR_TYPE },
+			FunctionScope::Function {
 				is_generator,
-				location,
-			} => (
-				FunctionBehavior::Function {
+				is_async,
+				this_type: TypeId::ERROR_TYPE,
+				type_of_super: TypeId::ERROR_TYPE,
+				expected_return: None,
+			},
+			None,
+			location,
+			None,
+		),
+		FunctionRegisterBehavior::ClassMethod {
+			is_async,
+			is_generator,
+			super_type: _,
+			expecting,
+		}
+		| FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting } => {
+			let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
+				expecting,
+				&mut checking_data.types,
+				base_environment,
+			);
+			(
+				FunctionBehavior::Method {
 					is_async,
 					is_generator,
 					free_this_id: TypeId::ERROR_TYPE,
 				},
-				FunctionScope::Function {
-					is_generator,
+				// TODO eager super
+				FunctionScope::MethodFunction {
+					free_this_type: TypeId::ERROR_TYPE,
 					is_async,
-					this_type: TypeId::ERROR_TYPE,
-					type_of_super: TypeId::ERROR_TYPE,
+					is_generator,
+					expected_return,
 				},
 				None,
-				location,
 				None,
-				None,
-			),
-			FunctionRegisterBehavior::ClassMethod {
-				is_async,
-				is_generator,
-				super_type: _,
-				expecting,
-			}
-			| FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting } => {
-				let (expecting_parameters, expected_return) = get_expected_parameters_from_type(
-					expecting,
-					&mut checking_data.types,
-					base_environment,
-				);
-				(
-					FunctionBehavior::Method {
-						is_async,
-						is_generator,
-						free_this_id: TypeId::ERROR_TYPE,
-					},
-					// TODO eager super
-					FunctionScope::MethodFunction {
-						free_this_type: TypeId::ERROR_TYPE,
-						is_async,
-						is_generator,
-					},
-					None,
-					None,
-					expecting_parameters,
-					expected_return,
-				)
-			}
-		};
+				expecting_parameters,
+			)
+		}
+	};
 
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 

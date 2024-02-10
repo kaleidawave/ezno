@@ -8,9 +8,11 @@ use crate::{
 		information::{get_property_unbound, InformationChain},
 		Logical,
 	},
-	features::functions::{ClosureId, FunctionBehavior},
-	types::FunctionType,
-	types::{PolyNature, Type},
+	features::{
+		functions::{ClosureId, FunctionBehavior},
+		objects::SpecialObjects,
+	},
+	types::{FunctionType, PolyNature, Type},
 	Environment, FunctionId, LocalInformation, TypeId,
 };
 
@@ -274,7 +276,7 @@ impl TypeStore {
 		}
 
 		match self.get_type_by_id(on) {
-			Type::Function(..) => {
+			Type::SpecialObject(SpecialObjects::Function(..)) => {
 				let on_function = info_chain
 					.get_chain_of_info()
 					.find_map(|info| resolver(info, self, on, data))
@@ -512,7 +514,7 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::Function(id, Default::default()))
+		self.register_type(Type::SpecialObject(SpecialObjects::Function(id, Default::default())))
 	}
 
 	/// TODO WIP

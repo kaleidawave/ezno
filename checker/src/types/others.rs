@@ -2,7 +2,7 @@
 
 use crate::{
 	context::information::{get_properties_on_type, Publicity},
-	features::objects::ObjectBuilder,
+	features::objects::{ObjectBuilder, SpecialObjects},
 	Constant, Environment, Type, TypeId,
 };
 
@@ -95,7 +95,7 @@ pub(crate) fn create_object_for_type(
 				None,
 			);
 		}
-		Type::Function(..) => todo!(),
+		Type::SpecialObject(SpecialObjects::Function(..)) => todo!(),
 		Type::FunctionReference(..) => todo!(),
 		Type::Object(_) => {
 			let value = crate::PropertyValue::Value(

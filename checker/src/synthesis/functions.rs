@@ -588,12 +588,14 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							crate::context::environment::FunctionScope::MethodFunction {
 								free_this_type,
 								is_async: true,
+								expected_return: None,
 								is_generator: true,
 							}
 						} else {
 							crate::context::environment::FunctionScope::ArrowFunction {
 								free_this_type: TypeId::ERROR_TYPE,
 								is_async: true,
+								expected_return: None,
 							}
 						};
 

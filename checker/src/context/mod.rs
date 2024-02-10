@@ -24,6 +24,7 @@ use crate::{
 	features::{
 		functions::ClosureChain,
 		modules::Exported,
+		objects::SpecialObjects,
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
@@ -207,81 +208,6 @@ impl<T: ContextType> Context<T> {
 		crate::utils::notify!("Modifying #{} to have new base #{}", on.0, new_constraint.0);
 
 		self.bases.mutable_bases.insert(on, (boundary, new_constraint));
-		// self.bases.insert(on, new_constraint);
-
-		// let env = self.context_type.get_parent();
-		// let starts_on = env.map(|env| get_on_ctx!(env.get_type_counter())).unwrap_or_default();
-		// if let Some(val) = (on.0 as usize).checked_sub(starts_on) {
-		// 	match ty {
-		// 		Type::AliasTo { to, .. } => {
-		// 			*to = new_constraint;
-		// 		}
-		// 		Type::RootPolyType { aliases, nature } => {
-		// 			match nature {
-		// 				PolyNature::FreeVariable { reference } => {
-		// 					self.context_type
-		// 						.get_closed_over_references_mut()
-		// 						.insert(*reference, new_constraint);
-
-		// 					*aliases = new_constraint;
-		// 				}
-		// 				PolyNature::Generic(_) | PolyNature::Parameter => {
-		// 					crate::utils::notify!("Updated constraint on generic parameter, fine for structure generics");
-		// 					*aliases = new_constraint;
-		// 				}
-		// 				PolyNature::UnsynthesisedFunction(_) => todo!(),
-		// 			}
-		// 		}
-		// 		Type::Constructor(constructor) => match constructor {
-		// 			Constructor::BinaryOperator { operator, lhs, rhs } => todo!(),
-		// 			Constructor::UnaryOperator { operator, operand } => todo!(),
-		// 			Constructor::ConditionalTernary { on, t_res, f_res } => todo!(),
-		// 			Constructor::FunctionResult { on, with } => {
-		// 				let on = *on;
-
-		// 				let on_constraint = self.get_constraint(on).unwrap().get_type();
-
-		// 				debug_assert_ne!(on_constraint, TypeId::ANY_TYPE);
-
-		// 				todo!("Should be function restriction");
-		// 				let function_type = self.get_function(on_constraint).unwrap();
-
-		// 				function_type.return_type = new_constraint;
-		// 			}
-		// 			Constructor::Property { on, under } => {
-		// 				let on = *on;
-		// 				let under = *under;
-
-		// 				let on_constraint = self.get_constraint(on).unwrap().get_type();
-
-		// 				debug_assert_ne!(on_constraint, TypeId::ANY_TYPE);
-
-		// 				let existing = self
-		// 					.proofs
-		// 					.property_constraints
-		// 					.insert((on_constraint, under), new_constraint);
-
-		// 				crate::utils::notify!(
-		// 					"on: {}, under: {}, on_constraint: {}, new_constraint: {}",
-		// 					self.debug_type(on),
-		// 					self.debug_type(under),
-		// 					self.debug_type(on_constraint),
-		// 					self.debug_type(new_constraint)
-		// 				);
-		// 			}
-		// 			Constructor::StructureGenerics { on, with } => unreachable!(),
-		// 			Constructor::Prototype(_) => todo!("need to modify prototype info here"),
-		// 			Constructor::RelationOperator { lhs, operator, rhs } => todo!(),
-		// 			Constructor::LogicalOperator { lhs, operator, rhs } => todo!(),
-		// 		},
-		// 		Type::And(_, _) | Type::Or(_, _) | Type::NamedRooted { .. } => {
-		// 			unreachable!("Modifying {:?}", ty)
-		// 		}
-		// 	}
-		// } else {
-		// 	let existing = self.modified_constraints.insert(on, new_constraint);
-		// 	assert!(existing.is_none());
-		// }
 	}
 
 	/// Declares a new variable in the environment and returns the new variable
@@ -908,7 +834,9 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::Function(..) = types.get_type_by_id(variable_ty) {
+			let ty = if let Type::SpecialObject(SpecialObjects::Function(..)) =
+				types.get_type_by_id(variable_ty)
+			{
 				variable_ty
 			} else {
 				types.register_type(Type::RootPolyType(PolyNature::Open(variable_ty)))
@@ -999,6 +927,40 @@ impl<T: ContextType> Context<T> {
 				}
 			}
 		}
+	}
+
+	pub fn get_expected_return_type(&self) -> Option<TypeId> {
+		self.parents_iter()
+			.find_map(|env| {
+				if let GeneralContext::Syntax(Context {
+					context_type: Syntax { scope: Scope::Function(func_scope), .. },
+					..
+				}) = env
+				{
+					Some(func_scope)
+				} else {
+					None
+				}
+			})
+			.and_then(|func_scope| {
+				if let crate::context::environment::FunctionScope::ArrowFunction {
+					expected_return,
+					..
+				}
+				| crate::context::environment::FunctionScope::Function {
+					expected_return,
+					..
+				}
+				| crate::context::environment::FunctionScope::MethodFunction {
+					expected_return,
+					..
+				} = func_scope
+				{
+					expected_return.clone()
+				} else {
+					None
+				}
+			})
 	}
 }
 

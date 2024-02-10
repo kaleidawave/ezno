@@ -6,7 +6,8 @@ use crate::{
 		invocation::InvocationContext, CallCheckingBehavior, ClosedOverReferencesInScope,
 	},
 	events::{
-		application::ErrorsAndInfo, apply_event, Event, FinalEvent, InitialVariables, RootReference,
+		application::{apply_event_unknown, ErrorsAndInfo},
+		apply_event, Event, FinalEvent, InitialVariables, RootReference,
 	},
 	features::operations::CanonicalEqualityAndInequality,
 	types::{
@@ -468,11 +469,13 @@ pub(crate) fn run_iteration_block(
 				None
 			} else {
 				evaluate_unknown_iteration_for_loop(
+					events,
 					initial,
 					condition,
+					type_arguments,
 					invocation_context,
 					top_environment,
-					events,
+					types,
 				)
 			}
 		}
@@ -521,11 +524,13 @@ pub(crate) fn run_iteration_block(
 				None
 			} else {
 				evaluate_unknown_iteration_for_loop(
+					events,
 					initial,
 					condition,
+					type_arguments,
 					invocation_context,
 					top_environment,
-					events,
+					types,
 				)
 			}
 		}
@@ -534,11 +539,13 @@ pub(crate) fn run_iteration_block(
 }
 
 fn evaluate_unknown_iteration_for_loop(
+	events: Vec<Event>,
 	initial: InitialVariablesInput,
 	kind: IterationKind,
+	type_arguments: &mut FunctionTypeArguments,
 	invocation_context: &mut InvocationContext,
 	top_environment: &mut Environment,
-	events: Vec<Event>,
+	types: &mut TypeStore,
 ) -> Option<FinalEvent> {
 	let initial = match initial {
 		InitialVariablesInput::Calculated(initial) => {
@@ -589,23 +596,24 @@ fn evaluate_unknown_iteration_for_loop(
 		}
 	};
 
+	// TODO can skip if at the end of a function
+	for event in events.clone() {
+		let _ = apply_event_unknown(
+			event,
+			super::functions::ThisValue::UseParent,
+			type_arguments,
+			top_environment,
+			invocation_context,
+			types,
+		);
+	}
+
 	invocation_context.get_latest_info(top_environment).events.push(Event::Iterate {
 		kind,
 		initial,
 		iterate_over: events.into_boxed_slice(),
 	});
 
-	// TODO can skip if at the end of a function
-	// for event in events {
-	// 	let result = apply_event_unknown(
-	// 		event,
-	// 		crate::behavior::functions::ThisValue::UseParent,
-	// 		&mut arguments,
-	// 		top_environment,
-	// 		&mut crate::context::calling::InvocationContext::new_default(),
-	// 		&mut checking_data.types,
-	// 	);
-	// }
 	None
 }
 

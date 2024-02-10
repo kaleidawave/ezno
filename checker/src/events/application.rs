@@ -9,10 +9,11 @@ use crate::{
 	features::{
 		functions::ThisValue,
 		iteration::{self, IterationKind},
+		objects::SpecialObjects,
 	},
 	types::{
 		functions::SynthesisedArgument,
-		is_type_truthy_falsy,
+		get_constraint, is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
 		printing::print_type,
 		properties::{get_property, set_property, PropertyKey, PropertyValue},
@@ -82,11 +83,11 @@ pub(crate) fn apply_event(
 			// crate::utils::notify!("was {:?} now {:?}", was, on);
 
 			let under = match under {
-				crate::types::properties::PropertyKey::Type(under) => {
+				PropertyKey::Type(under) => {
 					let ty = substitute(under, type_arguments, environment, types);
-					crate::types::properties::PropertyKey::from_type(ty, types)
+					PropertyKey::from_type(ty, types)
 				}
-				under @ crate::types::properties::PropertyKey::String(_) => under,
+				under @ PropertyKey::String(_) => under,
 			};
 
 			let Some((_, value)) = get_property(
@@ -161,6 +162,7 @@ pub(crate) fn apply_event(
 					} else {
 						on
 					};
+
 				target
 					.get_latest_info(environment)
 					.register_property(on, publicity, under, new, true, position);
@@ -434,9 +436,9 @@ pub(crate) fn apply_event(
 					is_under_dyn,
 					is_function_this,
 				),
-				PrototypeArgument::Function(id) => {
-					types.register_type(crate::Type::Function(id, this_value))
-				}
+				PrototypeArgument::Function(id) => types.register_type(crate::Type::SpecialObject(
+					SpecialObjects::Function(id, this_value),
+				)),
 			};
 
 			// TODO conditionally if any properties are structurally generic
@@ -493,76 +495,97 @@ pub(crate) fn apply_event(
 	None
 }
 
-// /// For loops and recursion
-// pub(crate) fn apply_event_unknown(
-// 	event: Event,
-// 	this_value: ThisValue,
-// 	type_arguments: &mut FunctionTypeArguments,
-// 	environment: &mut Environment,
-// 	target: &mut Target,
-// 	types: &mut TypeStore,
-// ) {
-// 	match event {
-// 		// TODO maybe mark as read
-// 		Event::ReadsReference { .. } => {}
-// 		Event::Getter { on, under, reflects_dependency, publicity, position } => {
-// 			crate::utils::notify!("Run getters");
-// 		}
-// 		Event::SetsVariable(variable, value, _) => {
-// 			let new_value = get_constraint(value, types)
-// 				.map(|value| {
-// 					types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)))
-// 				})
-// 				.unwrap_or(value);
-// 			environment.info.variable_current_value.insert(variable, new_value);
-// 		}
-// 		Event::Setter { on, under, new, initialization, publicity, position } => {
-// 			let on = substitute(on, type_arguments, environment, types);
-// 			let new_value = match new {
-// 				PropertyValue::Value(new) => {
-// 					let new = get_constraint(new, types)
-// 						.map(|value| {
-// 							types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(
-// 								value,
-// 							)))
-// 						})
-// 						.unwrap_or(new);
-// 					PropertyValue::Value(new)
-// 				}
-// 				PropertyValue::Getter(_) | PropertyValue::Setter(_) | PropertyValue::Deleted => new,
-// 			};
-// 			match under {
-// 				crate::types::properties::PropertyKey::String(_) => {
-// 					environment
-// 						.info
-// 						.register_property(on, publicity, under, new_value, false, position);
-// 				}
-// 				crate::types::properties::PropertyKey::Type(_) => todo!(),
-// 			}
-// 		}
-// 		Event::CallsType { on, with, reflects_dependency, timing, called_with_new, position } => {
-// 			todo!()
-// 		}
-// 		Event::Throw(_, _) => todo!(),
-// 		Event::Conditionally { condition, events_if_truthy, else_events, position } => {
-// 			// TODO think this is correct...?
-// 			for event in events_if_truthy.into_vec() {
-// 				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
-// 			}
-// 			for event in else_events.into_vec() {
-// 				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
-// 			}
-// 		}
-// 		Event::Return { returned, returned_position } => todo!(),
-// 		Event::CreateObject { prototype, referenced_in_scope_as, position, is_function_this } => {
-// 			todo!()
-// 		}
-// 		Event::Break { position, carry } => {
-// 			// TODO conditionally
-// 		}
-// 		Event::Continue { position, carry } => {
-// 			// TODO conditionally
-// 		}
-// 		Event::Iterate { .. } => todo!(),
-// 	}
-// }
+/// For loops and recursion
+pub(crate) fn apply_event_unknown(
+	event: Event,
+	this_value: ThisValue,
+	type_arguments: &mut FunctionTypeArguments,
+	environment: &mut Environment,
+	target: &mut InvocationContext,
+	types: &mut TypeStore,
+) {
+	match event {
+		Event::ReadsReference { reflects_dependency, reference, .. } => {
+			if let (Some(reflects_dependency), RootReference::Variable(variable)) =
+				(reflects_dependency, reference)
+			{
+				// TODO this is okay for loops, not sure about other cases of this function
+				crate::utils::notify!("Setting loop variable here {:?}", reflects_dependency);
+				target
+					.get_latest_info(environment)
+					.variable_current_value
+					.insert(variable, reflects_dependency);
+			}
+		}
+		Event::Getter { .. } => {
+			crate::utils::notify!("Run getters");
+		}
+		Event::SetsVariable(_variable, _value, _) => {
+			crate::utils::notify!("Here");
+			// let new_value = get_constraint(value, types)
+			// 	.map(|value| {
+			// 		types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)))
+			// 	})
+			// 	.unwrap_or(value);
+
+			// environment.info.variable_current_value.insert(variable, new_value);
+		}
+		Event::Setter { on, under, new, initialization: _, publicity, position } => {
+			let on = substitute(on, type_arguments, environment, types);
+			let new_value = match new {
+				PropertyValue::Value(new) => {
+					let new = get_constraint(new, types)
+						.map(|value| {
+							types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(
+								value,
+							)))
+						})
+						.unwrap_or(new);
+					PropertyValue::Value(new)
+				}
+				PropertyValue::Getter(_) | PropertyValue::Setter(_) | PropertyValue::Deleted => new,
+			};
+			let under = match under {
+				under @ PropertyKey::String(_) => under,
+				PropertyKey::Type(under) => {
+					PropertyKey::Type(substitute(under, type_arguments, environment, types))
+				}
+			};
+			environment.info.register_property(on, publicity, under, new_value, false, position);
+		}
+		Event::CallsType { .. } => {
+			crate::utils::notify!("TODO ?");
+		}
+		Event::Conditionally { true_events, else_events, .. } => {
+			// TODO think this is correct...?
+			for event in true_events.into_vec() {
+				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
+			}
+			for event in else_events.into_vec() {
+				apply_event_unknown(event, this_value, type_arguments, environment, target, types)
+			}
+		}
+		Event::CreateObject { .. } => {}
+		Event::FinalEvent(FinalEvent::Return { .. }) => {}
+		Event::FinalEvent(FinalEvent::Throw { .. }) => {}
+		Event::FinalEvent(FinalEvent::Break { .. }) => {
+			// TODO conditionally
+		}
+		Event::FinalEvent(FinalEvent::Continue { .. }) => {
+			// TODO conditionally
+		}
+		Event::Iterate { .. } => {
+			// This should be fine?
+			// for event in iterate_over.to_vec() {
+			// 	apply_event_unknown(
+			// 		event,
+			// 		this_value,
+			// 		type_arguments,
+			// 		environment,
+			// 		target,
+			// 		types,
+			// 	)
+			// }
+		}
+	}
+}

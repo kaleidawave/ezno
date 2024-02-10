@@ -3,6 +3,8 @@ use crate::{
 	Type, TypeId,
 };
 
+use self::objects::SpecialObjects;
+
 /// Contains implementations of specific JavaScript items and how Ezno handles them.
 /// Contains
 /// - Helper / abstracting functions for synthesising
@@ -48,7 +50,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
-		} else if let crate::Type::Function(..) = ty {
+		} else if let crate::Type::SpecialObject(SpecialObjects::Function(..)) = ty {
 			types.new_constant_type(crate::Constant::String("function".to_owned()))
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
 			types.new_constant_type(crate::Constant::String("object".to_owned()))

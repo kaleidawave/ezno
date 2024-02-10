@@ -7,7 +7,7 @@ use crate::{
 	},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
-	features::functions::ThisValue,
+	features::{functions::ThisValue, objects::SpecialObjects},
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
 		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, substitute,
@@ -249,17 +249,19 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						let ty = types.get_type_by_id(value);
 						match ty {
 							// TODO function :: bind_this
-							Type::Function(func, _state) => {
-								let func = types
-									.register_type(Type::Function(*func, ThisValue::Passed(on)));
+							Type::SpecialObject(SpecialObjects::Function(func, _state)) => {
+								let func = types.register_type(Type::SpecialObject(
+									SpecialObjects::Function(*func, ThisValue::Passed(on)),
+								));
 
 								Some((PropertyKind::Direct, func))
 							}
 							Type::FunctionReference(func) => {
 								// used for `"hi".toUpperCase()`;
 								// TODO a little bit weird how it goes from FunctionReference -> Function... but should be okay.
-								let func = types
-									.register_type(Type::Function(*func, ThisValue::Passed(on)));
+								let func = types.register_type(Type::SpecialObject(
+									SpecialObjects::Function(*func, ThisValue::Passed(on)),
+								));
 
 								let ty = if let Some(chain) = generics {
 									assert!(chain.parent.is_none());
@@ -296,10 +298,13 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								StructureGenerics { on: sg_on, arguments },
 							)) => {
 								// TODO not great... need less overhead
-								if let Type::Function(f, _p) = types.get_type_by_id(*sg_on) {
+								if let Type::SpecialObject(SpecialObjects::Function(f, _p)) =
+									types.get_type_by_id(*sg_on)
+								{
 									let arguments = arguments.clone();
-									let f = types
-										.register_type(Type::Function(*f, ThisValue::Passed(on)));
+									let f = types.register_type(Type::SpecialObject(
+										SpecialObjects::Function(*f, ThisValue::Passed(on)),
+									));
 									let ty = types.register_type(Type::Constructor(
 										Constructor::StructureGenerics(StructureGenerics {
 											on: f,
@@ -418,7 +423,8 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 							Some(constructor_result)
 						}
-						Type::Function(..) => unreachable!(),
+						Type::SpecialObject(SpecialObjects::Function(..)) => unreachable!(),
+						// Don't need to set this here
 						Type::FunctionReference(..)
 						| Type::AliasTo { .. }
 						| Type::Object(ObjectNature::AnonymousTypeAnnotation)

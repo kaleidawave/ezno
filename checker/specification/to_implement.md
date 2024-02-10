@@ -16,6 +16,16 @@ getProperty("c") satisfies 2
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
 
+#### Or object missing property
+
+```ts
+function get(obj: {a: 2} | { b: 3 }) {
+	return obj.a
+}
+```
+
+- Cannot read property "a" from { b: 3 }
+
 #### Generic type argument restriction
 
 ```ts
@@ -44,87 +54,6 @@ print_type(callFunc)
 ```
 
 - Expected "a" | "b" | "c" found "d"
-
-#### Symmetric or
-
-```ts
-function or<T, U>(obj: T | U): U | T {
-	return obj
-}
-
-print_type(or)
-```
-
-- Expected "a" | "b" | "c" found "d"
-
-#### Symmetric and
-
-```ts
-function and<T, U>(obj: T & U): U & T {
-	return obj
-}
-
-print_type(and)
-```
-
-- Expected "a" | "b" | "c" found "d"
-
-#### Distributivity
-
-```ts
-function distribute<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) {
-	return obj
-}
-
-print_type(distribute)
-```
-
-- Expected "a" | "b" | "c" found "d"
-
-#### Or missing
-
-```ts
-function get(obj: {a: 2} | { b: 3 }) {
-	return obj.a
-}
-```
-
-- Expected "a" | "b" | "c" found "d"
-
-#### Calling or type
-
-```ts
-function callFunc<T, U>(func: (() => T) | (() => U)): T | U {
-	return func()
-}
-
-print_type(callFunc)
-```
-
-- Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
-
-#### Generic type argument parameter
-
-```ts
-function func<T>(a: T) {}
-func<number>("hello world")
-```
-
-- Argument of type "hello world" is not assignable to parameter of type T
-
-#### Generics pass down
-
-> Too many generics here, doesn't get caught for some reason?
-
-```ts
-let c: Array<number> = []
-
-function add() {
-	c.push("hi")
-}
-```
-
-- Type "hi" is not assignable to argument of type number
 
 #### Interface extends
 

@@ -23,7 +23,6 @@ use crate::{
 	context::information::InformationChain,
 	events::RootReference,
 	features::{
-		functions::ThisValue,
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
@@ -124,8 +123,6 @@ pub enum Type {
 	},
 	/// *Dependent equality types*
 	Constant(crate::Constant),
-	/// Represents known functions
-	Function(FunctionId, ThisValue),
 
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
 	FunctionReference(FunctionId),
@@ -210,11 +207,15 @@ impl Type {
 				false
 			}
 			Type::Constant(_)
-			| Type::Function(..)
+			| Type::SpecialObject(SpecialObjects::Function(..))
 			| Type::FunctionReference(..)
 			| Type::Object(_) => false,
 			Type::SpecialObject(_) => todo!(),
 		}
+	}
+
+	pub(crate) fn is_operator(&self) -> bool {
+		matches!(self, Self::And(..) | Self::Or(..))
 	}
 }
 
@@ -324,7 +325,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
 			}
-			Type::Function(..)
+			Type::SpecialObject(SpecialObjects::Function(..))
 			| Type::FunctionReference(..)
 			| Type::SpecialObject(_)
 			| Type::Object(_) => Decidable::Known(true),
@@ -554,45 +555,6 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			// TODO unsure
 
 			Some(*based_on)
-
-			// // TODO into function
-			// match nature.get_poly_pointer() {
-			// 	PolyPointer::Fixed(to) => Some(PolyBase::Fixed {
-			// 		to,
-			// 		is_open_poly: matches!(nature, PolyNature::Open(..)),
-			// 	}),
-			// 	PolyPointer::Inferred(boundary) => {
-			// 		let to = self
-			// 			.parents_iter()
-			// 			.find_map(|ctx| get_on_ctx!(ctx.bases.get_local_type_base(on)))
-			// 			// TODO temp
-			// 			.unwrap_or_else(|| {
-			// 				crate::utils::notify!("No type base on inferred poly type");
-			// 				TypeId::ANY_TYPE
-			// 			});
-
-			// 		Some(PolyBase::Dynamic { to, boundary })
-			// 	}
-			// }
-
-			// if let Some(to) = .m {
-			// 	Some(PolyBase::Fixed {
-			// 		to,
-			// 		is_open_poly: matches!(nature, PolyNature::Open(_)),
-			// 	})
-			// } else {
-			// 	Some(PolyBase::Dynamic { to: (), boundary: () })
-
-			// 	// let modified_base =
-			// 	// 	self.parents_iter().find_map(|env| get_on_ctx!(env.bases.get(&on)).copied());
-
-			// 	// let aliases = modified_base.unwrap_or(*aliases);
-
-			// 	// Some(if constraint_is_mutable {
-			// 	// 	PolyBase::Dynamic(aliases)
-			// 	// } else {
-			// 	// })
-			// }
 		}
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
@@ -630,85 +592,10 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	Some(*constraint)
 				// }
 			}
-			Constructor::Image { on: _, with: _, result } => {
-				Some(result)
-				// TODO temp
-				// if let PolyPointer::Fixed(result) = result {
-				// 	Some(PolyBase::Fixed { to: result, is_open_poly: true })
-				// } else {
-				// 	let on_base_function = self.get_poly_base(on, types);
-				// 	if let Some(base) = on_base_function {
-				// 		let (boundary, is_open_poly, ty) = base.unravel();
-				// 		if let Type::Function(func, _) = types.get_type_by_id(ty) {
-				// 			Some(func.return_type)
-				// 		} else {
-				// 			todo!()
-				// 		}
-				// 	} else {
-				// 		// TODO record ahead of time, rather than recalculating here
-				// 		let is_open_poly = with
-				// 			.iter()
-				// 			.filter_map(|arg| {
-				// 				self.get_poly_base(arg.into_type().unwrap(), types)
-				// 			})
-				// 			.all(|base| base.is_open_poly());
-
-				// 		let ty = types.get_type_by_id(on);
-				// 		if let Type::Function(func, _) = ty {
-				// 			// TODO
-				// 			Some(func.return_type)
-				// 		} else {
-				// 			let on = crate::types::printing::print_type(
-				// 				on,
-				// 				types,
-				// 				&self.into_general_context(),
-				// 				true,
-				// 			);
-				// 			unreachable!("Getting function on {}", on);
-				// 		}
-				// 	}
-				// }
-			}
+			Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
-
-				// `on` or `under` will be poly, but one of them may be a non-poly
-				// type and so it can be expected to be `None` here.
-				// TODO needs better primitives for controlling this
-				// let on_constraint = self.get_poly_base(on, types).unwrap_or(on);
-				// let property = match under {
-				// 	PropertyKey::Type(ty) => {
-				// 		PropertyKey::Type(self.get_poly_base(ty, types).unwrap_or(ty))
-				// 	}
-				// 	prop => prop,
-				// };
-
-				// Bad
-				// let is_open_poly =
-				// 	on_constraint.as_ref().map(PolyBase::is_open_poly).unwrap_or(true)
-				// 		&& property_constraint
-				// 			.as_ref()
-				// 			.map(PolyBase::is_open_poly)
-				// 			.unwrap_or(true);
-
-				// let on_base = on_constraint.unwrap_or(on);
-				// let property_base = property_constraint.unwrap_or(under);
-
-				// TODO abstract to function
-				// let (on_boundary, _, on_constraint) = on_base.unravel();
-				// let (property_fixed, _, property_constraint) = property_base.unravel();
-
-				// TODO temp
-				// let result = result self
-				// 	.get_property_unbound(on_constraint, PublicityKind::Public, property, types)
-				// 	.map(|property| match property {
-				// 		Logical::Pure(PropertyValue::Value(v)) => v,
-				// 		// TODO unsure?
-				// 		Logical::Pure(PropertyValue::Getter(g)) => g.return_type,
-				// 		result => todo!("{:?}", result),
-				// 	})
-				// 	.expect("Inference failed");
 			}
 			Constructor::ConditionalResult { result_union, .. } => {
 				// TODO dynamic and open poly
@@ -750,8 +637,8 @@ pub enum LookUpGeneric {
 }
 
 impl LookUpGeneric {
+	#[allow(unreachable_patterns)]
 	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain) -> Vec<TypeId> {
-		#[allow(unreachable_code)]
 		match self {
 			LookUpGeneric::NumberPropertyOf(t) => {
 				info.get_chain_of_info()

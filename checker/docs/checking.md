@@ -7,7 +7,7 @@ These happen in a few places
 - Variable initial assignment and re- assignment
 - Operator operands (can be considered functions)
 
-This is implemented in `types/sub-typing`
+This is implemented in `types/subtyping`
 
 #### Specialising/substituting
 This subtype checking also doubles as a way to specialise generic types that were not or could not be specified as a specific arguments. This is implicitly / inferred, so not explicit arguments.
@@ -35,18 +35,12 @@ There are three stages to hoisting.
 
 (2) Now that types *mostly* are resolved
 - Interfaces properties are attached to the previously declared types
-- Variable and function names are declared
-   	- *Variables and functions may be closed over, thus declared at this point*
+- Variable and function names are declared with their types
+   	- *Variables and functions may be used as free variables over, thus declared before(3) at this point*
 
 (3) In the final stage
 - Functions are checked
-   	- Inferred parameters are calculated
+   	- Function bodies are checked
    	- Values that are closed over are found
+   	- Inferred parameters are calculated
    	- Return type synthesised
-
-#### Still working out
-- Types cannot mutate structure
-   	- Where do callable interfaces go? (need to be functions)
-   	- interface extends (needs to be aliases)
-- Cases of cycles etc
-- Values of variables and functions in (2)

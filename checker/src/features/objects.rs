@@ -9,8 +9,10 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		TypeStore,
 	},
-	TypeId,
+	FunctionId, TypeId,
 };
+
+use super::functions::ThisValue;
 
 // TODO slice indexes
 pub struct ObjectBuilder {
@@ -61,4 +63,6 @@ pub enum SpecialObjects {
 	Regexp(String),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
+	/// Yeah here
+	Function(FunctionId, ThisValue),
 }

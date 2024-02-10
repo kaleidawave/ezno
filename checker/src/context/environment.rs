@@ -11,6 +11,7 @@ use crate::{
 		assignments::{Assignable, AssignmentKind, Reference},
 		functions,
 		modules::Exported,
+		objects::SpecialObjects,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
@@ -110,17 +111,20 @@ pub enum FunctionScope {
 		// This always points to a poly free variable type
 		free_this_type: TypeId,
 		is_async: bool,
+		expected_return: Option<TypeId>,
 	},
 	MethodFunction {
 		// This always points to a poly free variable type
 		free_this_type: TypeId,
 		is_async: bool,
+		expected_return: Option<TypeId>,
 		is_generator: bool,
 	},
 	// is new-able
 	Function {
 		is_generator: bool,
 		is_async: bool,
+		expected_return: Option<TypeId>,
 		// This always points to a conditional type based on `new.target === undefined`
 		this_type: TypeId,
 		type_of_super: TypeId,
@@ -746,7 +750,7 @@ impl<'a> Environment<'a> {
 							let ty = checking_data.types.get_type_by_id(current_value);
 
 							// TODO temp
-							if matches!(ty, Type::Function(..)) {
+							if matches!(ty, Type::SpecialObject(SpecialObjects::Function(..))) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
 								crate::utils::notify!(
@@ -904,10 +908,18 @@ impl<'a> Environment<'a> {
 				antecedent: condition,
 				is_switch: None,
 			});
-
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
-			(result, truthy_environment.info)
+			let Context {
+				context_type: Syntax { free_variables, closed_over_references, .. },
+				info,
+				..
+			} = truthy_environment;
+
+			self.context_type.free_variables.extend(free_variables);
+			self.context_type.closed_over_references.extend(closed_over_references);
+
+			(result, info)
 		};
 
 		let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
@@ -916,7 +928,18 @@ impl<'a> Environment<'a> {
 				is_switch: None,
 			});
 
-			(else_evaluate(&mut falsy_environment, checking_data), Some(falsy_environment.info))
+			let result = else_evaluate(&mut falsy_environment, checking_data);
+
+			let Context {
+				context_type: Syntax { free_variables, closed_over_references, .. },
+				info,
+				..
+			} = falsy_environment;
+
+			self.context_type.free_variables.extend(free_variables);
+			self.context_type.closed_over_references.extend(closed_over_references);
+
+			(result, Some(info))
 		} else {
 			(R::default(), None)
 		};

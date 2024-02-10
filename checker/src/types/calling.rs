@@ -10,10 +10,13 @@ use crate::{
 			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
 		},
 		functions::{FunctionBehavior, ThisValue},
+		objects::SpecialObjects,
 	},
 	subtyping::{type_is_subtype, type_is_subtype_with_generics, BasicEquality, SubTypeResult},
-	types::{functions::SynthesisedArgument, substitute, ObjectNature},
-	types::{FunctionType, StructureGenerics, Type},
+	types::{
+		functions::SynthesisedArgument, substitute, FunctionType, ObjectNature, StructureGenerics,
+		Type,
+	},
 	FunctionId, GenericTypeParameters, ReadFromFS, SmallMap, SpecialExpressions, TypeId,
 };
 
@@ -171,7 +174,7 @@ fn get_logical_callable_from_type(
 			get_logical_callable_from_type(*to, on, from, types)
 		}
 		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
-		Type::Function(f, t) => {
+		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
 			Some(Logical::Pure(FunctionLike { from, function: *f, this_value: *t }))
 		}
 		Type::FunctionReference(f) => Some(Logical::Pure(FunctionLike {
@@ -529,7 +532,7 @@ fn find_possible_mutations(
 				// All dependent anyway
 				crate::utils::notify!("TODO if any properties set etc");
 			}
-			Type::Function(_, _) => {
+			Type::SpecialObject(SpecialObjects::Function(_, _)) => {
 				crate::utils::notify!("TODO record that function could be called");
 			}
 			Type::Object(ObjectNature::RealDeal) => {
@@ -1039,6 +1042,7 @@ impl FunctionType {
 						let type_arguments = parent.map(GenericChain::new);
 						let map = SmallMap::new();
 
+						// Extend with call site type arguments
 						let type_arguments =
 							if let Some(ref call_site_type_arguments) = call_site_type_arguments {
 								let value = StructureGenericArgumentsRef {
@@ -1050,6 +1054,8 @@ impl FunctionType {
 							} else {
 								type_arguments
 							};
+
+						crate::utils::notify!("{:?}", type_arguments);
 
 						errors.errors.push(FunctionCallingError::InvalidArgumentType {
 							parameter_type: TypeStringRepresentation::from_type_id_with_generics(

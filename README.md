@@ -12,15 +12,15 @@ What Ezno is
 - Types aimed at soundness and tracing for better static analysis
 - A *imperative* type system that tracks and evaluates the side effects of functions and control flow structures. It is similar to an interpreter, but acts with types instead of *values* and does not run IO side effects etc
 - A collection of experiments of types. Many are being worked out and are in the prototype stage. Some of the new behaviors benefit JavaScript specifically and others could be applied to other languages
-- [Fast](https://github.com/kaleidawave/ezno/actions/workflows/performance-and-size.yml)
-- [Small](https://github.com/kaleidawave/ezno/actions/workflows/lines-of-code.yml)
 - Written in Rust
+- [Fast](https://github.com/kaleidawave/ezno/actions/workflows/performance-and-size.yml) and [Small](https://github.com/kaleidawave/ezno/actions/workflows/lines-of-code.yml)
 - Open source! [You can help build Ezno!](https://github.com/kaleidawave/ezno/issues?q=is%3Aopen+label%3Agood-first-issue%2Cfeedback-needed)
 - A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis
 
 What Ezno is not
 - **eNZo, the Z is in front of the N** (pronounce as 'Fresno' without the 'fr') 😀
-- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC (check out [stc](https://github.com/dudykr/stc) that is written in Rust and is aimed at replicating TSC)
+- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC <!--(check out [stc](https://github.com/dudykr/stc) that is written in Rust and is aimed at replicating TSC) -->
+- Faster as a means serve large codebases. Cut out bloat and complex code first!
 - A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However in the future it could generate a lower level format using its event (side-effect) representation
 
 Read more about Ezno

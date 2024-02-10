@@ -10,6 +10,8 @@ use crate::{
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
 
+use super::objects::SpecialObjects;
+
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum MathematicalAndBitwise {
 	Add,
@@ -481,37 +483,38 @@ fn attempt_constant_equality(
 	rhs: TypeId,
 	types: &mut TypeStore,
 ) -> Result<TypeId, ()> {
-	let are_equal =
-		if lhs == rhs {
-			true
+	let are_equal = if lhs == rhs {
+		true
+	} else {
+		let lhs = types.get_type_by_id(lhs);
+		let rhs = types.get_type_by_id(rhs);
+		if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
+			cst1 == cst2
+		} else if let (Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..)), _)
+		| (_, Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..))) = (lhs, rhs)
+		{
+			// Same objects and functions always have same type id. Poly case doesn't occur here
+			false
+		}
+		// Temp fix for closures
+		else if let (
+			Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
+				on: on_lhs,
+				..
+			})),
+			Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
+				on: on_rhs,
+				..
+			})),
+		) = (lhs, rhs)
+		{
+			// TODO does this work?
+			return attempt_constant_equality(*on_lhs, *on_rhs, types);
 		} else {
-			let lhs = types.get_type_by_id(lhs);
-			let rhs = types.get_type_by_id(rhs);
-			if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
-				cst1 == cst2
-			} else if let (Type::Object(..) | Type::Function(..), _)
-			| (_, Type::Object(..) | Type::Function(..)) = (lhs, rhs)
-			{
-				// Same objects and functions always have same type id. Poly case doesn't occur here
-				false
-			}
-			// Temp fix for closures
-			else if let (
-				Type::Constructor(crate::types::Constructor::StructureGenerics(
-					StructureGenerics { on: on_lhs, .. },
-				)),
-				Type::Constructor(crate::types::Constructor::StructureGenerics(
-					StructureGenerics { on: on_rhs, .. },
-				)),
-			) = (lhs, rhs)
-			{
-				// TODO does this work?
-				return attempt_constant_equality(*on_lhs, *on_rhs, types);
-			} else {
-				crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
-				return Err(());
-			}
-		};
+			crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
+			return Err(());
+		}
+	};
 
 	Ok(types.new_constant_type(Constant::Boolean(are_equal)))
 }

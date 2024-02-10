@@ -21,7 +21,10 @@ pub(crate) struct Contributions<'a> {
 	/// Constraints constraints for the **current function call**
 	pub(crate) call_site_type_arguments: Option<&'a TypeRestrictions>,
 
+	/// From other parameters
+	#[allow(unused)]
 	pub(crate) existing_covariant: &'a mut map_vec::Map<TypeId, TypeId>,
+
 	/// Only for explicit generic parameters
 	pub(crate) staging_covariant: map_vec::Map<TypeId, Vec<(TypeId, u8)>>,
 	pub(crate) staging_contravariant: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>>,
@@ -29,7 +32,7 @@ pub(crate) struct Contributions<'a> {
 
 impl<'a> Contributions<'a> {
 	/// TODO return position?
-	fn get_standard_restrictions(&self, under: TypeId) -> Option<TypeId> {
+	fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {
 		let cstr =
 			self.call_site_type_arguments.and_then(|csta| csta.get(&under).map(|(c, _pos)| *c));
 		if let cstr @ Some(_) = cstr {
@@ -52,7 +55,7 @@ impl<'a> Contributions<'a> {
 		lookup_properties: bool,
 	) -> SubTypeResult {
 		// TODO staging_contravariant
-		if let Some(constraint) = self.get_standard_restrictions(under) {
+		if let Some(constraint) = self.get_standard_restriction(under) {
 			type_is_subtype(constraint, argument, self, environment, types)
 		} else if let Some(lookup_restriction) =
 			lookup_properties.then(|| self.get_lookup(under)).flatten()
@@ -71,7 +74,7 @@ impl<'a> Contributions<'a> {
 			crate::utils::notify!("Here 2");
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
-			crate::subtyping::type_is_subtype(constraint, argument, self, environment, types)
+			type_is_subtype(constraint, argument, self, environment, types)
 		}
 	}
 
@@ -103,26 +106,18 @@ impl<'a> Contributions<'a> {
 		&mut self,
 		on: TypeId,
 		restriction: TypeId,
-		position: SpanWithSource,
+		_position: SpanWithSource,
 		environment: &Environment,
 		types: &TypeStore,
 	) -> SubTypeResult {
-		todo!()
-		// // TODO chain
-		// let current_covariant = self.existing_covariant.get(&on).cloned().into_iter();
+		crate::utils::notify!("TODO assert it meets existing_covariant and staging_covariant");
+		crate::utils::notify!("TODO add to staging_covariant");
 
-		// // Check that the new argument, satisfies the restriction
-		// for argument in current_covariant {
-		// 	if let e @ SubTypeResult::IsNotSubType(..) =
-		// 		type_is_subtype(restriction, argument, self, environment, types)
-		// 	{
-		// 		return e;
-		// 	}
-		// }
-
-		// self.staging_contravariant.entry(on).or_default().push((restriction, position));
-
-		// SubTypeResult::IsSubType
+		if let Some(under) = self.get_standard_restriction(on) {
+			type_is_subtype(under, restriction, self, environment, types)
+		} else {
+			SubTypeResult::IsSubType
+		}
 	}
 }
 

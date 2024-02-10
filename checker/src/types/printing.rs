@@ -275,7 +275,8 @@ fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(&cst.as_type_name());
 			}
 		}
-		Type::FunctionReference(func_id) | Type::Function(func_id, _) => {
+		Type::FunctionReference(func_id)
+		| Type::SpecialObject(SpecialObjects::Function(func_id, _)) => {
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
 				write!(
@@ -349,12 +350,13 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 			} else {
 				if let Some(prototype) = prototype {
-					crate::utils::notify!("Proto during print {:?}", prototype);
+					// crate::utils::notify!("Proto during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info_chain, debug);
 					buf.push_str("] ");
+				} else {
+					// crate::utils::notify!("no Proto on {:?} during print", id);
 				}
-				crate::utils::notify!("no Proto on {:?} during print", id);
 				buf.push_str("{ ");
 				let properties = get_properties_on_type(id, info_chain);
 				for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
@@ -408,6 +410,7 @@ fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(exp);
 				buf.push('/');
 			}
+			SpecialObjects::Function(..) => unreachable!(),
 		},
 	}
 

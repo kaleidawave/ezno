@@ -3,6 +3,7 @@
 use crate::{
 	features::{
 		functions::ThisValue,
+		objects::SpecialObjects,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -35,18 +36,21 @@ pub(crate) fn substitute(
 			// TODO only sometimes
 			curry_arguments(arguments, types, id)
 		}
-		Type::Function(f, t) => {
+		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
 			// Also sub the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::Function(function_id, passed))
+				types.register_type(Type::SpecialObject(SpecialObjects::Function(
+					function_id,
+					passed,
+				)))
 			} else {
 				id
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(_f) => curry_arguments(arguments, types, id),
+		Type::FunctionReference(..) => curry_arguments(arguments, types, id),
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);

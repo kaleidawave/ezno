@@ -7,6 +7,7 @@ use crate::{
 		information::{get_properties_on_type, get_property_unbound},
 		Environment, GeneralContext, Logical,
 	},
+	features::objects::SpecialObjects,
 	types::{printing::print_type, TypeStore},
 	PropertyValue, TypeId,
 };
@@ -139,9 +140,35 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				left_result
 			};
 		}
-		Type::And(_left, _right) => {
-			todo!()
-		}
+		// Type::And(left, right) => {
+		// 	let right = *right;
+		// 	let left_result = type_is_subtype_with_generics(
+		// 		base_type,
+		// 		base_structure_arguments,
+		// 		*left,
+		// 		ty_structure_arguments,
+		// 		behavior,
+		// 		environment,
+		// 		types,
+		// 		mode,
+		// 	);
+
+		// 	return if let SubTypeResult::IsSubType = left_result {
+		// 		left_result
+		// 	} else {
+		// 		type_is_subtype_with_generics(
+		// 			base_type,
+		// 			base_structure_arguments,
+		// 			right,
+		// 			ty_structure_arguments,
+		// 			behavior,
+		// 			environment,
+		// 			types,
+		// 			mode,
+		// 		)
+		// 	};
+		// }
+		Type::Constructor(Constructor::StructureGenerics(..)) => {}
 		Type::RootPolyType(..) | Type::Constructor(..) => {
 			if let Some(args) =
 				ty_structure_arguments.and_then(|args| args.get_arg(ty, environment))
@@ -166,18 +193,28 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 
 				return SubTypeResult::IsSubType;
 			} else {
+				// If lhs is not operator unless argument is operator
 				// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
 				let arg = get_constraint(ty, types).unwrap();
-				return type_is_subtype_with_generics(
-					base_type,
-					base_structure_arguments,
-					arg,
-					ty_structure_arguments,
-					behavior,
-					environment,
-					types,
-					mode,
-				);
+				// This is important that LHS is not operator
+				let edge_case = (left_ty.is_operator() && !types.get_type_by_id(arg).is_operator())
+					|| matches!(
+						left_ty,
+						Type::RootPolyType(PolyNature::Generic { .. }) | Type::Constructor(..)
+					);
+
+				if !edge_case {
+					return type_is_subtype_with_generics(
+						base_type,
+						base_structure_arguments,
+						arg,
+						ty_structure_arguments,
+						behavior,
+						environment,
+						types,
+						mode,
+					);
+				}
 				//  else {
 				// 	return match mode {
 				// 		SubTypingMode::Contravariant { depth } => {
@@ -196,7 +233,8 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 	}
 
 	match left_ty {
-		Type::FunctionReference(left_func) | Type::Function(left_func, _) => subtype_function(
+		Type::FunctionReference(left_func)
+		| Type::SpecialObject(SpecialObjects::Function(left_func, _)) => subtype_function(
 			left_func,
 			base_structure_arguments,
 			(right_ty, ty, ty_structure_arguments),
@@ -331,7 +369,6 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 
 				return SubTypeResult::IsSubType;
 			} else if !T::INFER_GENERICS && base_structure_arguments.is_none() {
-				crate::utils::notify!("Here!");
 				// TODO what does this do
 				// TODO temp fix
 				if let Type::Constructor(c) = right_ty {
@@ -343,13 +380,29 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					}
 				}
 				if let PolyNature::Generic { .. } = nature {
-					// Already eliminated == case above, so always invalid here
+					// Already eliminated equal == case above, so always invalid here
 					return SubTypeResult::IsNotSubType(
 						NonEqualityReason::GenericParameterMismatch,
 					);
 				}
 
-				todo!()
+				crate::utils::notify!(
+					"Subtyping LHS={:?} against RHS, without setting type arguments",
+					nature
+				);
+
+				let constraint = get_constraint(base_type, types).unwrap();
+
+				type_is_subtype_with_generics(
+					constraint,
+					base_structure_arguments,
+					ty,
+					ty_structure_arguments,
+					behavior,
+					environment,
+					types,
+					mode,
+				)
 			} else {
 				match mode {
 					SubTypingMode::Contravariant { depth } => {
@@ -387,9 +440,9 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					};
 
 					// TODO don't create vec
-					for constraint in lookup_restriction.calculate_lookup(environment) {
+					for value in lookup_restriction.calculate_lookup(environment) {
 						if let e @ SubTypeResult::IsNotSubType(_) =
-							type_is_subtype(constraint, ty, behavior, environment, types)
+							type_is_subtype(backing_type, value, behavior, environment, types)
 						{
 							return e;
 						}
@@ -529,7 +582,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					types,
 					mode,
 				),
-				Type::Function(..) => {
+				Type::SpecialObject(SpecialObjects::Function(..)) => {
 					crate::utils::notify!("TODO implement function checking");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -638,22 +691,25 @@ fn subtype_function<T: SubTypeBehavior>(
 ) -> SubTypeResult {
 	crate::utils::notify!("Subtyping a function");
 
-	let right_func =
-		if let Type::FunctionReference(right_func) | Type::Function(right_func, _) = right_ty {
+	let right_func = if let Type::FunctionReference(right_func)
+	| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+	{
+		right_func
+	} else if let Some(constraint) = get_constraint(ty, types) {
+		// TODO explain why get_constraint early breaks a bunch of tests
+		let right_ty = types.get_type_by_id(constraint);
+		if let Type::FunctionReference(right_func)
+		| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+		{
 			right_func
-		} else if let Some(constraint) = get_constraint(ty, types) {
-			// TODO explain why get_constraint early breaks a bunch of tests
-			let right_ty = types.get_type_by_id(constraint);
-			if let Type::FunctionReference(right_func) | Type::Function(right_func, _) = right_ty {
-				right_func
-			} else {
-				crate::utils::notify!("Not function after constraint!! {:?}", right_ty);
-				return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
-			}
 		} else {
-			crate::utils::notify!("Not function!! {:?}", right_ty);
+			crate::utils::notify!("Not function after constraint!! {:?}", right_ty);
 			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
-		};
+		}
+	} else {
+		crate::utils::notify!("Not function!! {:?}", right_ty);
+		return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+	};
 
 	let left_func = types.functions.get(left_func).unwrap();
 	let right_func = types.functions.get(right_func).unwrap();

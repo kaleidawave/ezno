@@ -14,6 +14,22 @@ properties satisfies boolean;
 
 - Expected boolean, found "abc"
 
+#### Order of properties
+
+> TODO different location
+
+```ts
+const obj = { a: 1, b: 2 };
+obj.a = 2; obj.c = 6; obj.b = 4;
+let properties: string = "";
+for (const property in obj) {
+	properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found "abc"
+
 #### For-in non fixed object
 
 > TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
@@ -124,7 +140,11 @@ isNumber("5") satisfies number;
 
 - Expected number, found false
 
-### Function checking
+### Forward inference
+
+> This is where usage a parameter gets a type via a type (on some variable or parameter somewhere). Aka from above or the usage of the function
+
+> Constraint inference is where the parameter gets it from below. Usage of the parameter value
 
 #### Object function inference
 
@@ -155,6 +175,21 @@ callFunction<string>(a => {
 ```
 
 - Expected number, found string
+
+#### Return type
+
+```ts
+const x: () => ((a: string) => string) = function () {
+    return function (b) {
+        b satisfies number;
+        return b
+    }
+}
+```
+
+- Expected number, found string
+
+### Function checking
 
 #### Return type annotation is used in constraint
 
@@ -197,7 +232,7 @@ x.push("hi");
 ```ts
 [6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
 
-[1, 2, 3].filter(x => x % 2 == 0) satisfies [6];
+[1, 2, 3].filter(x => x % 2 === 0) satisfies [2];
 ```
 
 - Expected [7, 8, 11], found [7, 9, 11]
@@ -305,3 +340,62 @@ global satisfies boolean;
 - Cannot cast 5 to boolean
 - Expected boolean, found any
 - Expected number, found string
+
+#### Symmetric or
+
+```ts
+function or1<T, U>(obj: T | U): U | T { return obj }
+
+function or2(obj: string | number): number | string { return obj }
+
+function or3(obj: string | number): number { return obj }
+```
+
+- Cannot return string | number because the function is expected to return number
+
+#### Symmetric and
+
+```ts
+function and<T, U>(obj: T & U): U & T {
+	return obj
+}
+
+print_type(and)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Distributivity
+
+```ts
+function distribute<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) {
+	return obj
+}
+
+print_type(distribute)
+```
+
+- TODO
+
+#### Generic type argument parameter
+
+```ts
+function func<T>(a: T) {}
+func<number>("hello world")
+```
+
+- Argument of type "hello world" is not assignable to parameter of type number
+
+#### Generics pass down
+
+> Too many generics here, doesn't get caught for some reason?
+
+```ts
+let c: Array<number> = []
+
+function add() {
+	c.push("hi")
+}
+```
+
+- Type "hi" is not assignable to argument of type number

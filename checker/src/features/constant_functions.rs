@@ -11,7 +11,7 @@ use crate::{
 	TypeId,
 };
 
-use super::functions::ThisValue;
+use super::{functions::ThisValue, objects::SpecialObjects};
 
 // TODO ...
 pub(crate) enum ConstantOutput {
@@ -178,7 +178,9 @@ pub(crate) fn call_constant_function(
 			};
 
 			let get_type_by_id = types.get_type_by_id(ty);
-			if let Type::Function(func, _) | Type::FunctionReference(func) = get_type_by_id {
+			if let Type::SpecialObject(SpecialObjects::Function(func, _))
+			| Type::FunctionReference(func) = get_type_by_id
+			{
 				let effects =
 					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
 				if id.ends_with("rust") {
@@ -196,12 +198,20 @@ pub(crate) fn call_constant_function(
 		"bind" => {
 			let on = this_argument.get_passed().map(|t| types.get_type_by_id(t));
 			let first_argument = arguments.first();
-			if let (Some(Type::Function(func, _) | Type::FunctionReference(func)), Some(this_ty)) =
-				(on, first_argument)
+			if let (
+				Some(
+					Type::SpecialObject(SpecialObjects::Function(func, _))
+					| Type::FunctionReference(func),
+				),
+				Some(this_ty),
+			) = (on, first_argument)
 			{
 				let type_id =
 					this_ty.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let value = types.register_type(Type::Function(*func, ThisValue::Passed(type_id)));
+				let value = types.register_type(Type::SpecialObject(SpecialObjects::Function(
+					*func,
+					ThisValue::Passed(type_id),
+				)));
 				Ok(ConstantOutput::Value(value))
 			} else {
 				Err(ConstantFunctionError::BadCall)
