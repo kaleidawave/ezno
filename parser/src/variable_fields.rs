@@ -20,12 +20,10 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::TokenReader;
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEqExtras, Eq, Clone, GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableIdentifier {
 	Standard(String, Span),
 	// TODO does this need Span
@@ -325,12 +323,10 @@ impl<U: VariableFieldKind> ASTNode for VariableField<U> {
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ObjectDestructuringField<T: VariableFieldKind> {
 	/// `{ x }`
 	Name(
@@ -376,7 +372,7 @@ impl<U: VariableFieldKind> ASTNode for ObjectDestructuringField<U> {
 						*key.get_position()
 					};
 				Ok(Self::Map { from: key, name: variable_name, default_value, position })
-			} else if let PropertyKey::Ident(name, key_pos, ()) = key {
+			} else if let PropertyKey::Ident(name, key_pos, _) = key {
 				let default_value = U::optional_expression_from_reader(reader, state, options)?;
 				let standard = VariableIdentifier::Standard(name, key_pos);
 				let position =
@@ -633,7 +629,10 @@ mod tests {
 	fn name() {
 		assert_matches_ast!(
 			"x",
-			VariableField::Name(VariableIdentifier::Standard(Deref @ "x", Span { start: 0, end: 1, .. }))
+			VariableField::Name(VariableIdentifier::Standard(
+				Deref @ "x",
+				Span { start: 0, end: 1, .. },
+			))
 		);
 	}
 

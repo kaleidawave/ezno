@@ -120,12 +120,10 @@ impl DeclarationExpression for crate::Expression {
 }
 
 /// Represents a name =
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -191,12 +189,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		declarations: Vec<VariableDeclarationItem<Expression>>,

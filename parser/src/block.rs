@@ -12,11 +12,9 @@ use crate::{
 	Visitable,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 #[visit_self(under statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
@@ -111,11 +109,9 @@ impl ASTNode for StatementOrDeclaration {
 }
 
 /// A "block" of braced statements and declarations
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}

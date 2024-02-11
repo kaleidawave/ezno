@@ -1,19 +1,17 @@
 use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 use crate::{
-	declarations::VariableDeclarationItem, errors::parse_lexing_error, parse_bracketed,
-	to_string_bracketed, tokens::token_as_identifier,
+	declarations::VariableDeclarationItem, derive_ASTNode, errors::parse_lexing_error,
+	parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Decorator,
 	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader,
 	TypeAnnotation, VariableKeyword,
 };
 
 /// A `declare var/let/const` thingy.
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareVariableDeclaration {
 	pub keyword: VariableKeyword,
 	/// TODO expressions advised against, but still parse
@@ -83,11 +81,9 @@ impl DeclareVariableDeclaration {
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareFunctionDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,

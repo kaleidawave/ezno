@@ -50,13 +50,11 @@ use std::convert::{TryFrom, TryInto};
 /// Expression structures
 ///
 /// Comma is implemented as a [`BinaryOperator`]
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
@@ -1668,11 +1666,9 @@ fn function_header_ish(
 }
 
 /// Represents expressions that can be `,`
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum MultipleExpression {
 	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
 	Single(Expression),
@@ -1859,22 +1855,18 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	buf.push(')');
 }
 
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
 }
 
 /// Binary operations whose RHS are types rather than [Expression]s
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
@@ -2105,11 +2097,9 @@ impl Expression {
 }
 
 /// "super" cannot be used alone
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum SuperReference {
 	Call { arguments: Vec<SpreadExpression> },
 	PropertyAccess { property: String },

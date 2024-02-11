@@ -10,11 +10,9 @@ use visitable_derive::Visitable;
 use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct IfStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,

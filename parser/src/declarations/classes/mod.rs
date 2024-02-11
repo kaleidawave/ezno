@@ -2,7 +2,7 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{throw_unexpected_token_with_token, to_string_bracketed, Expression};
+use crate::{derive_ASTNode, throw_unexpected_token_with_token, to_string_bracketed, Expression};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -16,11 +16,9 @@ use tokenizer_lib::{
 	Token, TokenReader,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub name: T,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,

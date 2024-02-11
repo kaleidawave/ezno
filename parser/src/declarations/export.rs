@@ -17,11 +17,9 @@ use visitable_derive::Visitable;
 /// TODO tidy up into struct
 ///
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum ExportDeclaration {
 	// TODO listed object thing
 	// TODO export *
@@ -306,10 +304,8 @@ impl ASTNode for ExportDeclaration {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 ///
 /// Similar to [`ImportPart`] but reversed
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 #[get_field_by_type_target(Span)]
 pub enum ExportPart {
 	Name(VariableIdentifier),

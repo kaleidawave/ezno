@@ -2,14 +2,13 @@ use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement, ASTNode, TSXKeyword, TSXToken,
+	ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode, TSXKeyword,
+	TSXToken,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct WhileStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -50,12 +49,9 @@ impl ASTNode for WhileStatement {
 	}
 }
 
-/// TODO what about a do statement
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DoWhileStatement {
 	pub condition: MultipleExpression,
 	// TODO unsure about true here
