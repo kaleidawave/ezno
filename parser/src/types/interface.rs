@@ -120,17 +120,19 @@ impl ASTNode for InterfaceDeclaration {
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				options.push_gap_optionally(buf);
 			}
-			options.push_gap_optionally(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
 					extends.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
+						options.push_gap_optionally(buf);
 					}
 				}
 			}
+			options.push_gap_optionally(buf);
 			buf.push('{');
 			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();

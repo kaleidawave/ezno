@@ -912,9 +912,7 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 
 				continue;
 			}
-		}
-
-		if let Some(token) = reader.conditional_next(|token| *token == end) {
+		} else if let Some(token) = reader.conditional_next(|token| *token == end) {
 			return Ok((nodes, token.get_end()));
 		}
 

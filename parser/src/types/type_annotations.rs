@@ -441,6 +441,18 @@ impl TypeAnnotation {
 		{
 			reader.next();
 		}
+
+		if let (false, Some(Token(TSXToken::BitwiseOr, _))) =
+			(return_on_union_or_intersection, reader.peek())
+		{
+			reader.next();
+		}
+		if let (false, Some(Token(TSXToken::BitwiseAnd, _))) =
+			(return_on_union_or_intersection, reader.peek())
+		{
+			reader.next();
+		}
+
 		let mut reference = match reader.next().ok_or_else(parse_lexing_error)? {
 			// Literals:
 			t @ Token(TSXToken::Keyword(TSXKeyword::True), _) => {
@@ -1060,6 +1072,16 @@ mod tests {
 			TypeAnnotation::Union(
 				Deref @
 				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
+				_,
+			)
+		);
+
+		// Leading | is valid
+		assert_matches_ast!(
+			"| string | number",
+			TypeAnnotation::Union(
+				Deref @
+				[TypeAnnotation::CommonName(CommonTypes::String, span!(2, 8)), TypeAnnotation::CommonName(CommonTypes::Number, span!(11, 17))],
 				_,
 			)
 		);

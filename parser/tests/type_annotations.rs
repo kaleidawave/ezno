@@ -9,8 +9,8 @@ interface Y extends number, Z2<T> {}
 type Z = 2
 type Z2<T> = T
 "#
-	.trim_start()
-	.replace("    ", "\t");
+	.trim()
+	.to_owned();
 
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());

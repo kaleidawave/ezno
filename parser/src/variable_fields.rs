@@ -620,7 +620,10 @@ mod tests {
 	fn name() {
 		assert_matches_ast!(
 			"x",
-			VariableField::Name(VariableIdentifier::Standard(Deref @ "x", Span { start: 0, end: 1, .. }))
+			VariableField::Name(VariableIdentifier::Standard(
+				Deref @ "x",
+				Span { start: 0, end: 1, .. },
+			))
 		);
 	}
 

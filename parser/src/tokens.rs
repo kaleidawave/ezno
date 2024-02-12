@@ -359,7 +359,7 @@ impl TSXKeyword {
 			TSXKeyword::Const | TSXKeyword::Var | TSXKeyword::If | TSXKeyword::Else | TSXKeyword::For
 				| TSXKeyword::While | TSXKeyword::Do | TSXKeyword::Switch | TSXKeyword::Class | TSXKeyword::Function
 				| TSXKeyword::New | TSXKeyword::Super | TSXKeyword::Case | TSXKeyword::Return | TSXKeyword::Continue
-				| TSXKeyword::Break | TSXKeyword::Import | TSXKeyword::Export | TSXKeyword::Default | TSXKeyword::In 
+				| TSXKeyword::Break | TSXKeyword::Import | TSXKeyword::Export | TSXKeyword::Default | TSXKeyword::In
 				| TSXKeyword::TypeOf | TSXKeyword::InstanceOf | TSXKeyword::Void | TSXKeyword::Delete
 				| TSXKeyword::Debugger | TSXKeyword::Try | TSXKeyword::Catch | TSXKeyword::Finally | TSXKeyword::Throw
 				| TSXKeyword::Extends | TSXKeyword::Enum

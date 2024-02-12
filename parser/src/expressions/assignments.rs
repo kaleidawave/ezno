@@ -216,8 +216,11 @@ impl LHSOfAssignment {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
-					if !at_end || matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
+					if !at_end {
 						buf.push(',');
+						if !matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
+							options.push_gap_optionally(buf);
+						}
 					}
 				}
 				buf.push(']');
