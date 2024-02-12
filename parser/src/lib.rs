@@ -280,16 +280,16 @@ export type WithComment<T> =
   | { PostfixComment: [T, string, Span] };
 
 // shouldn't be useful to p need
-export type Marker<T> = null;
+// export type Marker<T> = null;
 
-export interface ClassDeclaration<T> {
-	name: T,
-	type_parameters?: Array<GenericTypeConstraint>,
-	extends?: Expression,
-	implements?: Array<TypeAnnotation>,
-	members: Array<Decorated<ClassMember>>,
-	position: Span,
-}
+// export interface ClassDeclaration<T> {
+// 	name: T,
+// 	type_parameters?: Array<GenericTypeConstraint>,
+// 	extends?: Expression,
+// 	implements?: Array<TypeAnnotation>,
+// 	members: Array<Decorated<ClassMember>>,
+// 	position: Span,
+// }
 ";
 
 #[derive(Debug, Default, Clone, Copy)]
