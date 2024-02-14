@@ -19,6 +19,7 @@ use std::{
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(rename_all = "lowercase"))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -28,6 +29,7 @@ pub enum DiagnosticKind {
 /// Contains information
 #[derive(Debug)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Diagnostic {
 	/// Does not have positional information
 	Global {
@@ -103,6 +105,7 @@ impl Diagnostic {
 /// TODO this is one variant, others should pipe strait to stdout or put it on a channel etc
 #[derive(Default)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(transparent))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DiagnosticsContainer {
 	diagnostics: Vec<Diagnostic>,
 	// Quick way to check whether a error was added

@@ -3,9 +3,10 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, operators::COMMA_PRECEDENCE, throw_unexpected_token_with_token,
-	ASTNode, Expression, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
-	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
+	derive_ASTNode, errors::parse_lexing_error, operators::COMMA_PRECEDENCE,
+	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
+	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
+	VariableFieldInSourceCode, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -119,11 +120,10 @@ impl DeclarationExpression for crate::Expression {
 }
 
 /// Represents a name =
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -189,11 +189,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		declarations: Vec<VariableDeclarationItem<Expression>>,
@@ -206,8 +205,7 @@ pub enum VariableDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,
 	Let,

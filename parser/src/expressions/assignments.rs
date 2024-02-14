@@ -1,4 +1,4 @@
-use crate::{PropertyReference, TSXToken};
+use crate::{derive_ASTNode, PropertyReference, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -13,11 +13,11 @@ use crate::{
 
 use super::MultipleExpression;
 
+/// TODO marker
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -163,10 +163,8 @@ impl VariableOrPropertyAccess {
 
 /// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
-/// TODO marker
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	ObjectDestructuring(

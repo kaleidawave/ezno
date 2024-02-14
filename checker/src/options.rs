@@ -1,6 +1,7 @@
 /// Options for type checking
 /// TODO figure out compat with tsc
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 #[allow(clippy::struct_excessive_bools)]
 pub struct TypeCheckOptions {
 	/// Parameters cannot be reassigned

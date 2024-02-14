@@ -5,6 +5,7 @@ use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 use crate::{
+	derive_ASTNode,
 	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader},
 	property_key::AlwaysPublic,
@@ -14,19 +15,17 @@ use crate::{
 	TSXToken, Token, TokenReader, WithComment,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
 	pub position: Span,
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras)]
 #[partial_eq_ignore_types(Span, VariableId)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
@@ -69,6 +68,15 @@ impl crate::Visitable for ObjectLiteralMember {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES: &str = r"
+	export interface ObjectLiteralMethod extends FunctionBase {
+		header: MethodHeader,
+		body: Block,
+		name: WithComment<PropertyKey<AlwaysPublic>>
+	}
+";
 
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
@@ -232,7 +240,7 @@ impl ASTNode for ObjectLiteralMember {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Ident(name, position, ()) = key.get_ast() {
+					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						let token = reader.next().ok_or_else(parse_lexing_error)?;

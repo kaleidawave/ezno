@@ -6,16 +6,15 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon,
+	derive_ASTNode, expect_semi_colon,
 	marker::MARKER,
 	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, TSXKeyword, VisitOptions,
 	Visitable,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[visit_self(under statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
@@ -110,10 +109,9 @@ impl ASTNode for StatementOrDeclaration {
 }
 
 /// A "block" of braced statements and declarations
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}
@@ -241,8 +239,7 @@ impl Visitable for Block {
 
 /// For ifs and other statements
 #[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),

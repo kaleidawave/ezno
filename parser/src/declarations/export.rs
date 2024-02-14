@@ -1,7 +1,7 @@
 use crate::{
-	errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression, ListItem, ParseError,
-	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
-	VariableIdentifier,
+	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression,
+	ListItem, ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken,
+	Token, VariableIdentifier,
 };
 
 use super::{
@@ -17,10 +17,9 @@ use visitable_derive::Visitable;
 /// TODO tidy up into struct
 ///
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ExportDeclaration {
 	// TODO listed object thing
 	// TODO export *
@@ -31,8 +30,7 @@ pub enum ExportDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum Exportable {
 	Class(ClassDeclaration<StatementPosition>),
 	Function(StatementFunction),
@@ -306,15 +304,26 @@ impl ASTNode for ExportDeclaration {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 ///
 /// Similar to [`ImportPart`] but reversed
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[get_field_by_type_target(Span)]
 pub enum ExportPart {
 	Name(VariableIdentifier),
-	NameWithAlias { name: String, alias: ImportExportName, position: Span },
-	PrefixComment(String, Option<Box<Self>>, Span),
-	PostfixComment(Box<Self>, String, Span),
+	NameWithAlias {
+		name: String,
+		alias: ImportExportName,
+		position: Span,
+	},
+	PrefixComment(
+		String,
+		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart | null"))] Option<Box<Self>>,
+		Span,
+	),
+	PostfixComment(
+		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart"))] Box<Self>,
+		String,
+		Span,
+	),
 }
 
 impl ListItem for ExportPart {}

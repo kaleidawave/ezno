@@ -1,4 +1,4 @@
-use crate::{TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -14,10 +14,9 @@ use crate::{
 	WithComment,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Parameter {
 	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -26,16 +25,14 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ParameterData {
 	Optional,
 	WithDefaultValue(Box<Expression>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct SpreadParameter {
 	pub name: VariableIdentifier,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -44,9 +41,8 @@ pub struct SpreadParameter {
 
 /// TODO need to something special to not enable `OptionalFunctionParameter::WithValue` in interfaces and other
 /// type structure
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct FunctionParameters {
 	pub this_type: Option<(TypeAnnotation, Span)>,
 	pub super_type: Option<(TypeAnnotation, Span)>,

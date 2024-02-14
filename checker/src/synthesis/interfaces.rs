@@ -70,7 +70,14 @@ impl SynthesiseInterfaceBehavior for OnToType {
 	) {
 		let (publicity, under) = match key {
 			ParserPropertyKeyType::ClassProperty(key) => (
-				if matches!(key, parser::PropertyKey::Ident(_, _, true)) {
+				if matches!(
+					key,
+					parser::PropertyKey::Ident(
+						_,
+						_,
+						parser::property_key::PublicOrPrivate::Private
+					)
+				) {
 					Publicity::Private
 				} else {
 					Publicity::Public

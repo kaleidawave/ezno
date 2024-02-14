@@ -1,10 +1,11 @@
 use crate::{
+	derive_ASTNode, parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
+	ListItem, Quoted,
+};
+use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
 	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField,
 	VariableFieldInTypeAnnotation, WithComment,
-};
-use crate::{
-	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed, ListItem, Quoted,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -21,11 +22,10 @@ use crate::{
 };
 
 /// A reference to a type
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum TypeAnnotation {
 	/// A name e.g. `IPost`
 	Name(String, Span),
@@ -81,7 +81,11 @@ pub enum TypeAnnotation {
 		resolve_false: TypeConditionResult,
 		position: Span,
 	},
-	Decorated(Decorator, Box<Self>, Span),
+	Decorated(
+		Decorator,
+		#[cfg_attr(target_family = "wasm", tsify(type = "TypeAnnotation"))] Box<Self>,
+		Span,
+	),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(Marker<TypeAnnotation>, Span),
 }
@@ -89,8 +93,7 @@ pub enum TypeAnnotation {
 impl ListItem for TypeAnnotation {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum AnnotationWithBinder {
 	Annotated { name: String, ty: TypeAnnotation, position: Span },
 	NoAnnotation(TypeAnnotation),
@@ -138,8 +141,7 @@ impl ASTNode for AnnotationWithBinder {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum SpreadKind {
 	NonSpread,
 	Spread,
@@ -147,8 +149,7 @@ pub enum SpreadKind {
 
 /// Condition in a [`TypeAnnotation::Conditional`]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum TypeCondition {
 	Extends { ty: Box<TypeAnnotation>, extends: Box<TypeAnnotation>, position: Span },
 	Is { ty: Box<TypeAnnotation>, is: Box<TypeAnnotation>, position: Span },
@@ -156,8 +157,7 @@ pub enum TypeCondition {
 
 /// Reduces string allocation and type lookup overhead
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum CommonTypes {
 	String,
 	Number,
@@ -196,8 +196,7 @@ impl TypeCondition {
 
 /// The result of a [`TypeAnnotation::Condition`]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum TypeConditionResult {
 	/// TODO e.g. `infer number`
 	Infer(Box<TypeAnnotation>, Span),
@@ -847,8 +846,7 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 
 /// Mirrors [`crate::FunctionParameters`]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameters {
 	pub parameters: Vec<TypeAnnotationFunctionParameter>,
 	pub rest_parameter: Option<Box<TypeAnnotationSpreadFunctionParameter>>,
@@ -985,8 +983,7 @@ impl TypeAnnotationFunctionParameters {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	/// Ooh nice optional
@@ -997,8 +994,7 @@ pub struct TypeAnnotationFunctionParameter {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	pub name: String,
