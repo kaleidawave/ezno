@@ -163,9 +163,14 @@ jobs:
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
 
-          # typegen exhibits debug/release divergent quirks
-          # npm run build-release
           npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          
+          # TODO temp as the types generated can be a bit unpredicatible
+          echo "::debug::On branch '${{ github.ref_name }}'"
+          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
+            npm run build-release
+            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          fi
         working-directory: src/js-cli-and-library
         shell: bash
 

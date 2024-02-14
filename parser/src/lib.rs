@@ -266,32 +266,6 @@ impl ToStringOptions {
 	}
 }
 
-// TODO temp?
-// These are here because for some reason **under debug builds** these definitions are missing.
-// It has something to do with the files as these definitions only work here :?. Experimentation needed
-#[cfg_attr(
-	all(target_family = "wasm", debug_assertions),
-	wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section)
-)]
-const TYPES_THAT_ARE_MISSING: &str = "
-export type WithComment<T> =
-  | { None: T }
-  | { PrefixComment: [string, T, Span] }
-  | { PostfixComment: [T, string, Span] };
-
-// shouldn't be useful to p need
-export type Marker<T> = null;
-
-export interface ClassDeclaration<T> {
-	name: T,
-	type_parameters?: Array<GenericTypeConstraint>,
-	extends?: Expression,
-	implements?: Array<TypeAnnotation>,
-	members: Array<Decorated<ClassMember>>,
-	position: Span,
-}
-";
-
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
