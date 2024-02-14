@@ -71,9 +71,9 @@ impl<'a> Contributions<'a> {
 
 			SubTypeResult::IsSubType
 		} else {
-			crate::utils::notify!("Here 2");
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
+			crate::utils::notify!("Here, constraint={:?}", constraint);
 			type_is_subtype(constraint, argument, self, environment, types)
 		}
 	}

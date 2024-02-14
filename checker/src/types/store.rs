@@ -155,26 +155,44 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
-	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> Result<TypeId, ()> {
 		if lhs == rhs {
-			return lhs;
+			return Ok(lhs);
 		}
 
-		// (left and right) distributivity. TODO are there any problems here
-		if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(lhs) {
+		let left_ty = self.get_type_by_id(lhs);
+		let right_ty = self.get_type_by_id(rhs);
+
+		// TODO more cases
+		if let (Type::Constant(l), Type::Constant(r)) = (left_ty, right_ty) {
+			if l != r {
+				return Err(());
+			}
+		} else if let (
+			Type::Interface { nominal: true, .. },
+			Type::Interface { nominal: true, .. },
+		) = (left_ty, right_ty)
+		{
+			return Err(());
+		}
+
+		// (left and right) distributivity.
+		let result = if let Type::Or(or_lhs, or_rhs) = left_ty {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(or_lhs, rhs);
-			let new_rhs = self.new_and_type(or_rhs, rhs);
+			let new_lhs = self.new_and_type(or_lhs, rhs)?;
+			let new_rhs = self.new_and_type(or_rhs, rhs)?;
 			self.new_or_type(new_lhs, new_rhs)
-		} else if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(rhs) {
+		} else if let Type::Or(or_lhs, or_rhs) = right_ty {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(lhs, or_lhs);
-			let new_rhs = self.new_and_type(lhs, or_rhs);
+			let new_lhs = self.new_and_type(lhs, or_lhs)?;
+			let new_rhs = self.new_and_type(lhs, or_rhs)?;
 			self.new_or_type(new_lhs, new_rhs)
 		} else {
 			let ty = Type::And(lhs, rhs);
 			self.register_type(ty)
-		}
+		};
+
+		Ok(result)
 	}
 
 	/// TODO temp

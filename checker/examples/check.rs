@@ -2,7 +2,7 @@
 fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
 	use std::{
-		collections::HashSet,
+		collections::{HashSet, VecDeque},
 		fs,
 		path::{Path, PathBuf},
 		time::Instant,
@@ -11,9 +11,9 @@ fn main() {
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
 
-	let mut args: Vec<_> = std::env::args().skip(1).collect();
+	let mut args: VecDeque<_> = std::env::args().skip(1).collect();
 
-	let first = &args.drain(0..1).next();
+	let first = args.pop_front();
 	let path = first.as_ref().map(Path::new).unwrap_or_else(|| default_path.as_path());
 	let use_simple = args.iter().any(|item| item == "--simple-dts");
 

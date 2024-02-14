@@ -149,7 +149,7 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 				if debug {
-					write!(buf, "SG{id:?}(").unwrap();
+					write!(buf, "SG({:?})(", id.0).unwrap();
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 					buf.push(')');
 					buf.write_fmt(format_args!("<{arguments:?}>")).unwrap();
@@ -339,9 +339,14 @@ fn print_type_into_buf<C: InformationChain>(
 							buf.push_str(", ");
 						}
 						let value =
-							get_simple_value(info_chain, id, PropertyKey::from_usize(i), types)
-								.expect("Trying to print complex array type");
-						print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
+							get_simple_value(info_chain, id, PropertyKey::from_usize(i), types);
+
+						if let Some(value) = value {
+							print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
+						} else {
+							// TODO sometimes the above is not always `None` as `None` can occur for complex keys...
+							buf.push_str("*empty*");
+						}
 					}
 					buf.push(']');
 				} else {

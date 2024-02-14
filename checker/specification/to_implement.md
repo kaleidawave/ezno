@@ -16,16 +16,6 @@ getProperty("c") satisfies 2
 - Expected "a" | "b" | "c" found "d"
 - Expected 2 found 3
 
-#### Or object missing property
-
-```ts
-function get(obj: {a: 2} | { b: 3 }) {
-	return obj.a
-}
-```
-
-- Cannot read property "a" from { b: 3 }
-
 #### Generic type argument restriction
 
 ```ts
@@ -132,6 +122,22 @@ function func(array: Array<string>) {
 ```
 
 - Expected number found string
+
+#### Order of properties
+
+> TODO this is because setting properties are simply appended. There are two straightforward fixes, but I am unsure which one is better...
+
+```ts
+const obj = { a: 1, b: 2 };
+obj.a = 2; obj.c = 6; obj.b = 4;
+let properties: string = "";
+for (const property in obj) {
+	properties += property;
+}
+properties satisfies boolean;
+```
+
+- Expected boolean, found "abc"
 
 ### Inference
 
@@ -426,6 +432,20 @@ document.addEventListener("scroll", () => {
 
 ### Classes
 
+#### Class type
+
+```ts
+class X {
+	a: number
+}
+
+function doThingWithX(x: X) {
+	x.a satisfies string;
+}
+```
+
+- Expected string, found number
+
 #### Extends
 
 ```ts
@@ -520,26 +540,6 @@ call(call)
 
 - TODO hopefully doesn't blow up
 
-<!-- TODO currently overflows -->
-<!-- #### Cyclic object check
-
-```ts
-interface X {
-	a: number
-	b: X
-}
-
-const myObject = { a: 2 };
-
-myObject satisfies X;
-
-myObject.b = myObject;
-
-myObject satisfies X;
-```
-
-- Expected X, found { a: 2 } -->
-
 ### Function checking
 
 #### Default parameter type check
@@ -551,3 +551,17 @@ function doThing(b: number = "hello") {
 ```
 
 - Default value "hello" is not assignable to parameter of type number
+
+### Statements
+
+#### Try catch variable
+
+```ts
+try {
+	throw 5
+} catch (exception: string) {
+
+}
+```
+
+- Catch variable cannot be string as 5 thrown in try block

@@ -1,4 +1,4 @@
-//! Type subtyping / order / subtype checking.
+//! Type subtype checking. (making sure the RHS type contains all the properties the LHS type requires)
 
 use source_map::SpanWithSource;
 
@@ -75,8 +75,12 @@ pub fn type_is_subtype<T: SubTypeBehavior>(
 		environment,
 		types,
 		Default::default(),
+		&mut Default::default(),
 	)
 }
+
+/// Vec as it needs to do a sequential removal
+pub type AlreadyChecked = Vec<(TypeId, TypeId)>;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
@@ -88,12 +92,14 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 	environment: &Environment,
 	types: &TypeStore,
 	mode: SubTypingMode,
+	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
 	{
+		let debug = false;
 		crate::utils::notify!(
-			"Checking {} <: {}",
-			print_type(base_type, types, environment, true),
-			print_type(ty, types, environment, true)
+			"Checking {} :>= {}",
+			print_type(base_type, types, environment, debug),
+			print_type(ty, types, environment, debug)
 		);
 	}
 
@@ -107,6 +113,13 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 		return SubTypeResult::IsSubType;
 	}
 
+	// Prevents cycles
+	if already_checked.iter().any(|(a, b)| *a == base_type && *b == ty) {
+		return SubTypeResult::IsSubType;
+	} else {
+		already_checked.push((base_type, ty));
+	}
+
 	let left_ty = types.get_type_by_id(base_type);
 	let right_ty = types.get_type_by_id(ty);
 
@@ -114,6 +127,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 	match right_ty {
 		Type::Or(left, right) => {
 			let right = *right;
+			crate::utils::notify!("OR RHS: left and right");
 			let left_result = type_is_subtype_with_generics(
 				base_type,
 				base_structure_arguments,
@@ -123,6 +137,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			);
 
 			return if let SubTypeResult::IsSubType = left_result {
@@ -135,8 +150,10 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				)
 			} else {
+				// else return the failing result
 				left_result
 			};
 		}
@@ -151,6 +168,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 		// 		environment,
 		// 		types,
 		// 		mode,
+		// 		already_checked
 		// 	);
 
 		// 	return if let SubTypeResult::IsSubType = left_result {
@@ -165,6 +183,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 		// 			environment,
 		// 			types,
 		// 			mode,
+		// 			already_checked
 		// 		)
 		// 	};
 		// }
@@ -184,6 +203,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 						environment,
 						types,
 						mode,
+						already_checked,
 					);
 
 					if let e @ SubTypeResult::IsNotSubType(_) = result {
@@ -213,6 +233,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 						environment,
 						types,
 						mode,
+						already_checked,
 					);
 				}
 				//  else {
@@ -242,6 +263,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 			environment,
 			types,
 			mode,
+			already_checked,
 		),
 		Type::Constant(lhs) => {
 			if let Type::Constant(rhs) = right_ty {
@@ -266,6 +288,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			);
 			let _left = print_type(base_type, types, environment, true);
 
@@ -279,6 +302,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 		}
 		Type::And(left, right) => {
 			let right = *right;
+			crate::utils::notify!("AND: Checking left and right");
 			let left_result = type_is_subtype_with_generics(
 				*left,
 				base_structure_arguments,
@@ -288,10 +312,11 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			);
 
 			if let SubTypeResult::IsSubType = left_result {
-				type_is_subtype_with_generics(
+				let type_is_subtype_with_generics = type_is_subtype_with_generics(
 					right,
 					base_structure_arguments,
 					ty,
@@ -300,13 +325,18 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
-				)
+					already_checked,
+				);
+
+				type_is_subtype_with_generics
 			} else {
+				// Return bad result
 				left_result
 			}
 		}
 		Type::Or(left, right) => {
 			let right = *right;
+			let start = already_checked.len();
 			let left_result = type_is_subtype_with_generics(
 				*left,
 				base_structure_arguments,
@@ -316,6 +346,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			);
 
 			if let SubTypeResult::IsSubType = left_result {
@@ -329,9 +360,13 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				);
 				SubTypeResult::IsSubType
 			} else {
+				// IMPORTANT: Invalidate any already checked types
+				already_checked.drain(start..);
+
 				type_is_subtype_with_generics(
 					right,
 					base_structure_arguments,
@@ -341,6 +376,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				)
 			}
 		}
@@ -360,6 +396,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 						environment,
 						types,
 						mode,
+						already_checked,
 					);
 
 					if let e @ SubTypeResult::IsNotSubType(_) = result {
@@ -380,10 +417,21 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					}
 				}
 				if let PolyNature::Generic { .. } = nature {
-					// Already eliminated equal == case above, so always invalid here
-					return SubTypeResult::IsNotSubType(
-						NonEqualityReason::GenericParameterMismatch,
-					);
+					/// WIP
+					fn check_and_includes(expecting: TypeId, rhs: &Type) -> bool {
+						if let Type::And(left, right) = rhs {
+							*left == expecting || *right == expecting
+						} else {
+							false
+						}
+					}
+
+					return if check_and_includes(base_type, right_ty) {
+						SubTypeResult::IsSubType
+					} else {
+						// Already eliminated equal == case above, so always invalid here
+						SubTypeResult::IsNotSubType(NonEqualityReason::GenericParameterMismatch)
+					};
 				}
 
 				crate::utils::notify!(
@@ -402,6 +450,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				)
 			} else {
 				match mode {
@@ -468,6 +517,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 						environment,
 						types,
 						mode,
+						already_checked,
 					)
 				} else {
 					crate::utils::notify!("Not array-ish");
@@ -485,6 +535,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				)
 			}
 		}
@@ -536,6 +587,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			)
 		}
 		Type::Interface { nominal: base_type_nominal, .. } => {
@@ -543,15 +595,15 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 			// prototypes here
 
 			// These do **NOT** check for properties
-			let skip_check = *base_type_nominal
+			let skip_nominal_branch = *base_type_nominal
 				&& !matches!(
 					right_ty,
 					Type::RootPolyType(..)
 						| Type::Constructor(..) | Type::Constant(..)
-						| Type::Or(..)
+						| Type::Or(..) | Type::And(..)
 				);
 
-			if skip_check {
+			if skip_nominal_branch {
 				crate::utils::notify!(
 					"Short circuited {:?} is nominal and RHS={:?}",
 					left_ty,
@@ -581,12 +633,21 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				),
 				Type::SpecialObject(SpecialObjects::Function(..)) => {
 					crate::utils::notify!("TODO implement function checking");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
-				Type::And(_, _) => todo!(),
+				Type::And(a, b) => {
+					// TODO more
+					crate::utils::notify!("Here LHS interface, RHS and");
+					if *a == base_type || *b == base_type {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				}
 				Type::Or(_left, _right) => {
 					unreachable!()
 					// TODO fails if RHS is also OR type :(
@@ -625,6 +686,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 				),
 				Type::AliasTo { .. } | Type::Interface { .. } => {
 					crate::utils::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
@@ -646,6 +708,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 								environment,
 								types,
 								mode,
+								already_checked,
 							);
 
 							if let e @ SubTypeResult::IsNotSubType(_) = result {
@@ -669,6 +732,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 							environment,
 							types,
 							mode,
+							already_checked,
 						)
 					}
 				}
@@ -688,6 +752,7 @@ fn subtype_function<T: SubTypeBehavior>(
 	environment: &Environment,
 	types: &TypeStore,
 	mode: SubTypingMode,
+	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
 	crate::utils::notify!("Subtyping a function");
 
@@ -728,6 +793,7 @@ fn subtype_function<T: SubTypeBehavior>(
 					types,
 					// !!!
 					SubTypingMode::Covariant { position },
+					already_checked,
 				);
 
 				if let err @ SubTypeResult::IsNotSubType(_) = result {
@@ -767,6 +833,7 @@ fn subtype_function<T: SubTypeBehavior>(
 			environment,
 			types,
 			mode,
+			already_checked,
 		);
 
 		if let SubTypeResult::IsNotSubType(_) = type_is_subtype_with_generics {
@@ -787,6 +854,7 @@ fn check_properties<T: SubTypeBehavior>(
 	environment: &Environment,
 	types: &TypeStore,
 	mode: SubTypingMode,
+	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
 	let mode = mode.one_deeper();
 
@@ -805,6 +873,7 @@ fn check_properties<T: SubTypeBehavior>(
 					environment,
 					types,
 					mode,
+					already_checked,
 					&mut property_errors,
 					key,
 				);
@@ -837,6 +906,7 @@ fn check_logical<T: SubTypeBehavior>(
 	environment: &Environment,
 	types: &TypeStore,
 	mode: SubTypingMode,
+	already_checked: &mut AlreadyChecked,
 	property_errors: &mut Vec<(PropertyKey<'static>, PropertyError)>,
 	key: PropertyKey<'_>,
 ) {
@@ -861,6 +931,7 @@ fn check_logical<T: SubTypeBehavior>(
 				environment,
 				types,
 				mode,
+				already_checked,
 			);
 
 			if let SubTypeResult::IsNotSubType(mismatch) = result {
@@ -880,6 +951,7 @@ fn check_logical<T: SubTypeBehavior>(
 			environment,
 			types,
 			mode,
+			already_checked,
 			property_errors,
 			key,
 		),
@@ -907,6 +979,7 @@ pub fn type_is_subtype_of_property<T: SubTypeBehavior>(
 			environment,
 			types,
 			Default::default(),
+			&mut Default::default(),
 		),
 		Logical::Or { left, right } => {
 			let left_result = type_is_subtype_of_property(

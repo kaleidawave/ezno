@@ -64,22 +64,23 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
 	use crate::types::{Constructor, PolyNature};
 
-	let can_cast = match types.get_type_by_id(on) {
-		// TODO some of these are more correct than the others
-		crate::Type::RootPolyType(_rpt) => true,
-		crate::Type::Constructor(constr) => match constr {
-			Constructor::CanonicalRelationOperator { .. }
-			| Constructor::UnaryOperator { .. }
-			| Constructor::StructureGenerics(_)
-			| Constructor::BinaryOperator { .. } => false,
-			Constructor::TypeOperator(_) => todo!(),
-			Constructor::TypeRelationOperator(_) => todo!(),
-			Constructor::ConditionalResult { .. }
-			| Constructor::Image { .. }
-			| Constructor::Property { .. } => true,
-		},
-		_ => false,
-	};
+	let can_cast = on == TypeId::ERROR_TYPE
+		|| match types.get_type_by_id(on) {
+			// TODO some of these are more correct than the others
+			crate::Type::RootPolyType(_rpt) => true,
+			crate::Type::Constructor(constr) => match constr {
+				Constructor::CanonicalRelationOperator { .. }
+				| Constructor::UnaryOperator { .. }
+				| Constructor::StructureGenerics(_)
+				| Constructor::BinaryOperator { .. } => false,
+				Constructor::TypeOperator(_) => todo!(),
+				Constructor::TypeRelationOperator(_) => todo!(),
+				Constructor::ConditionalResult { .. }
+				| Constructor::Image { .. }
+				| Constructor::Property { .. } => true,
+			},
+			_ => false,
+		};
 
 	if can_cast {
 		// TSC compat around `any`

@@ -47,6 +47,7 @@ pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
 /// Intermediate type for calling a function
 ///
 /// Generic arguments handled with Logical::Implies
+#[derive(Debug)]
 struct FunctionLike {
 	pub(crate) function: FunctionId,
 	pub(crate) from: Option<TypeId>,
@@ -62,7 +63,6 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let call_site = input.call_site;
 
-	let arguments = arguments;
 	let callable = get_logical_callable_from_type(ty, input.this_value, None, &checking_data.types);
 	let (arguments, type_argument_restrictions) = synthesise_arguments_for_parameter(
 		callable.as_ref(),
@@ -74,6 +74,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 	);
 
 	if let Some(callable) = callable {
+		crate::utils::notify!("callable={:?}", callable);
 		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 		let result = call_logical(
 			callable,
@@ -155,7 +156,9 @@ fn get_logical_callable_from_type(
 		return Some(Logical::Error);
 	}
 
-	match types.get_type_by_id(ty) {
+	let ty1 = types.get_type_by_id(ty);
+	crate::utils::notify!("ty1={:?}", ty1);
+	match ty1 {
 		Type::And(_, _) => todo!(),
 		Type::Or(left, right) => {
 			if let (Some(left), Some(right)) = (
@@ -174,31 +177,54 @@ fn get_logical_callable_from_type(
 			get_logical_callable_from_type(*to, on, from, types)
 		}
 		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
-		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
-			Some(Logical::Pure(FunctionLike { from, function: *f, this_value: *t }))
-		}
 		Type::FunctionReference(f) => Some(Logical::Pure(FunctionLike {
 			// TODO
 			function: *f,
 			from,
 			this_value: on.unwrap_or(ThisValue::UseParent),
 		})),
+		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+			Some(Logical::Pure(FunctionLike { from, function: *f, this_value: *t }))
+		}
 		Type::SpecialObject(so) => match so {
 			crate::features::objects::SpecialObjects::Proxy { .. } => todo!(),
 			_ => None,
 		},
 		Type::Constructor(Constructor::StructureGenerics(generic)) => {
+			crate::utils::notify!("Here!");
 			get_logical_callable_from_type(generic.on, on, from, types).map(|res| {
+				crate::utils::notify!("Calling found {:?}", generic.arguments);
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
 			})
 		}
 		Type::Constructor(Constructor::Property { on, under: _, result, bind_this: true }) => {
 			// bind_this from #98
 			// Bind does not happen for theses calls, so done here *conditionally on `bind_this`*
-			get_logical_callable_from_type(*result, Some(ThisValue::Passed(*on)), Some(ty), types)
+
+			let result = get_logical_callable_from_type(
+				*result,
+				Some(ThisValue::Passed(*on)),
+				Some(ty),
+				types,
+			)?;
+
+			if let Some(antecedent) = get_constraint(*on, types).and_then(|c| {
+				if let Type::Constructor(Constructor::StructureGenerics(generic)) =
+					types.get_type_by_id(c)
+				{
+					Some(generic.arguments.clone())
+				} else {
+					None
+				}
+			}) {
+				Some(Logical::Implies { on: Box::new(result), antecedent })
+			} else {
+				Some(result)
+			}
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => {
 			let constraint = get_constraint(ty, types).unwrap();
+			crate::utils::notify!("Here! {:?}", constraint);
 			get_logical_callable_from_type(constraint, on, Some(ty), types)
 		}
 	}
@@ -340,17 +366,14 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 
 			(arguments, type_arguments_restrictions)
 		}
-		Some(Logical::Implies { on, antecedent }) => {
-			crate::utils::notify!("Here!!");
-			synthesise_arguments_for_parameter(
-				Some(&on),
-				arguments,
-				call_site_type_arguments,
-				Some(antecedent),
-				environment,
-				checking_data,
-			)
-		}
+		Some(Logical::Implies { on, antecedent }) => synthesise_arguments_for_parameter(
+			Some(&on),
+			arguments,
+			call_site_type_arguments,
+			Some(antecedent),
+			environment,
+			checking_data,
+		),
 		// TODO could do this
 		Some(Logical::Or { .. }) | Some(Logical::Error) | None => (
 			arguments
@@ -615,10 +638,7 @@ pub enum CalledWithNew {
 }
 
 impl FunctionType {
-	/// Calls the function
-	///
-	/// Returns warnings and errors
-	// Move references in a wrapping struct can be hard due to lifetimes
+	/// Calls the function and returns warnings and errors
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
@@ -663,6 +683,7 @@ impl FunctionType {
 				const_fn_ident,
 				"debug_type"
 					| "debug_type_rust" | "print_type"
+					| "print_and_debug_type"
 					| "debug_effects" | "debug_effects_rust"
 					| "satisfies" | "is_dependent"
 					| "bind" | "create_proxy"
@@ -948,7 +969,11 @@ impl FunctionType {
 					TypeId::UNDEFINED_TYPE
 				};
 
-				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
+				crate::utils::notify!(
+					"free this id {:?} & value of this {:?}",
+					free_this_id,
+					value_of_this
+				);
 
 				type_arguments.insert(free_this_id, value_of_this);
 			}
@@ -1233,6 +1258,7 @@ fn check_parameter_type(
 		environment,
 		types,
 		crate::subtyping::SubTypingMode::Contravariant { depth: 0 },
+		&mut Default::default(),
 	);
 
 	let Contributions { staging_covariant, staging_contravariant, .. } = contributions;

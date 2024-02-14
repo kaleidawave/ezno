@@ -30,7 +30,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::information::Publicity,
-	diagnostics::TypeCheckError,
+	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
@@ -93,7 +93,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								pos.with_source(environment.get_source()),
 							),
 						);
-						TypeId::ANY_TYPE
+						TypeId::ERROR_TYPE
 					} else {
 						ty
 					}
@@ -107,7 +107,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 		},
 		TypeAnnotation::Union(type_annotations, _) => {
-			// TODO remove duplicates here maybe
 			let iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
@@ -120,8 +119,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.reduce(|acc, right| checking_data.types.new_or_type(acc, right))
 				.expect("Empty union")
 		}
-		TypeAnnotation::Intersection(type_annotations, _) => {
-			let iterator = type_annotations
+		TypeAnnotation::Intersection(type_annotations, position) => {
+			let mut iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
 					synthesise_type_annotation(type_annotation, environment, checking_data)
@@ -129,9 +128,35 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.collect::<Vec<_>>()
 				.into_iter();
 
-			iterator
-				.reduce(|acc, right| checking_data.types.new_and_type(acc, right))
-				.expect("Empty intersection")
+			let mut acc = iterator.next().expect("Empty intersection");
+			while let Some(right) = iterator.next() {
+				match checking_data.types.new_and_type(acc, right) {
+					Ok(new_ty) => {
+						acc = new_ty;
+					}
+					Err(()) => {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckWarning::TypesDoNotIntersect {
+								left: TypeStringRepresentation::from_type_id(
+									acc,
+									environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								right: TypeStringRepresentation::from_type_id(
+									right,
+									environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								position: position.with_source(environment.get_source()),
+							}
+						);
+						return TypeId::ERROR_TYPE;
+					}
+				}
+			}
+			acc
 		}
 		// This will take the found type and generate a InstanceOfGeneric based on the type arguments
 		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
@@ -187,14 +212,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					);
 
 					if let SubTypeResult::IsNotSubType(_matches) = result {
-						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
+						let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+							parameter_restriction: TypeStringRepresentation::from_type_id(
 								*parameter_restriction,
 								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							argument: crate::diagnostics::TypeStringRepresentation::from_type_id(
+							argument: TypeStringRepresentation::from_type_id(
 								argument,
 								environment,
 								&checking_data.types,

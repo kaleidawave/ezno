@@ -772,6 +772,11 @@ mod defined_errors_and_warnings {
 		MergingInterfaceInSameContext {
 			position: SpanWithSource,
 		},
+		TypesDoNotIntersect {
+			left: TypeStringRepresentation,
+			right: TypeStringRepresentation,
+			position: SpanWithSource,
+		},
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {
@@ -809,6 +814,13 @@ mod defined_errors_and_warnings {
 				TypeCheckWarning::MergingInterfaceInSameContext { position } => {
 					Diagnostic::Position {
 						reason: "Merging interfaces in the same context".to_owned(),
+						position,
+						kind,
+					}
+				}
+				TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
+					Diagnostic::Position {
+						reason: format!("No intersection between types {left} and {right}"),
 						position,
 						kind,
 					}

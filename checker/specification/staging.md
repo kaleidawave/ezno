@@ -14,22 +14,6 @@ properties satisfies boolean;
 
 - Expected boolean, found "abc"
 
-#### Order of properties
-
-> TODO different location
-
-```ts
-const obj = { a: 1, b: 2 };
-obj.a = 2; obj.c = 6; obj.b = 4;
-let properties: string = "";
-for (const property in obj) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
-
 #### For-in non fixed object
 
 > TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
@@ -52,13 +36,14 @@ properties satisfies boolean;
 > TODO bit of a complex example
 
 ```ts
-function findInRange(start: number, end: number, cb: (a: number) => boolean): number {
+function findInRange(start: number, end: number, cb: (a: number) => boolean): number | null {
     let i = start;
     while (i++ < end) {
         if (cb(i)) {
             return i
         }
     }
+    return null
 }
 
 findInRange(0, 10, i => (i > 2) && (i % 3 == 1)) satisfies 5
@@ -348,6 +333,7 @@ function or1<T, U>(obj: T | U): U | T { return obj }
 
 function or2(obj: string | number): number | string { return obj }
 
+// Lack of symmetry
 function or3(obj: string | number): number { return obj }
 ```
 
@@ -356,26 +342,46 @@ function or3(obj: string | number): number { return obj }
 #### Symmetric and
 
 ```ts
-function and<T, U>(obj: T & U): U & T {
-	return obj
-}
+function and1<T, U>(obj: T & U): U & T { return obj }
 
-print_type(and)
+// Lack of symmetry
+function and2<T, U>(obj: T): U & T { return obj }
 ```
 
-- Expected "a" | "b" | "c" found "d"
+- Cannot return T because the function is expected to return U & T
 
 #### Distributivity
 
 ```ts
-function distribute<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) {
-	return obj
-}
+function distribute1<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) { return obj }
 
-print_type(distribute)
+function distribute2<T, U, V>(obj: V & (T | U)): (T & V) | (U & V) { return obj }
+
+// bad!
+function distribute3<T, U, V>(obj: (T | U) & V): (T & U) | (U & V) { return obj }
 ```
 
-- TODO
+- Cannot return T & V | U & V because the function is expected to return T & U | U & V
+
+#### Or object missing property
+
+```ts
+function get(obj: {a: 2} | { b: 3 }) {
+	return obj.a
+}
+```
+
+- Cannot read property "a" from { b: 3 }
+
+#### Invalid intersection
+
+```ts
+type X = 2 & "hi";
+type Y = string & number;
+```
+
+- No intersection between types 2 and "hi"
+- No intersection between types string and number
 
 #### Generic type argument parameter
 
@@ -398,4 +404,23 @@ function add() {
 }
 ```
 
-- Type "hi" is not assignable to argument of type number
+- Argument of type "hi" is not assignable to parameter of type number
+
+#### Cyclic object check
+
+```ts
+interface X {
+	a: number
+	b: X
+}
+
+const myObject = { a: 2 };
+
+myObject satisfies X;
+
+myObject.b = myObject;
+
+myObject satisfies X;
+```
+
+- Expected X, found { a: 2 }

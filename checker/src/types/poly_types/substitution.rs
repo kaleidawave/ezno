@@ -55,7 +55,7 @@ pub(crate) fn substitute(
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.new_and_type(lhs, rhs)
+			types.new_and_type(lhs, rhs).unwrap_or(TypeId::NEVER_TYPE)
 		}
 		Type::Or(lhs, rhs) => {
 			let rhs = *rhs;

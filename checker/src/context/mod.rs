@@ -919,7 +919,9 @@ impl<T: ContextType> Context<T> {
 		for (on, constraint) in object_constraints {
 			match self.info.object_constraints.entry(on) {
 				Entry::Occupied(mut existing) => {
-					let new = types.new_and_type(*existing.get(), constraint);
+					let new = types
+						.new_and_type(*existing.get(), constraint)
+						.expect("creating impossible restriction");
 					existing.insert(new);
 				}
 				Entry::Vacant(v) => {

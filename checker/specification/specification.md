@@ -1408,6 +1408,8 @@ y.x satisfies 3
 
 #### Array destructuring
 
+> TODO this currently cheats as the LHS looks at numeric properties, not at the iterator of the RHS
+
 ```ts
 const array = [1, 2, 3]
 const [a, b] = array
