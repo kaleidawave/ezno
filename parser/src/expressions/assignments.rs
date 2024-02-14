@@ -8,7 +8,7 @@ use visitable_derive::Visitable;
 
 use crate::{
 	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, VariableFieldInSourceCode, WithComment,
+	ParseResult, WithComment,
 };
 
 use super::MultipleExpression;
@@ -161,20 +161,13 @@ impl VariableOrPropertyAccess {
 	}
 }
 
-/// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
 #[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
-	ObjectDestructuring(
-		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
-	ArrayDestructuring(
-		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
+	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField>>, Span),
+	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField>>, Span),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 }
 

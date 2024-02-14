@@ -10,15 +10,14 @@ use visitable_derive::Visitable;
 
 use crate::{
 	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression, ParseError,
-	ParseResult, TypeAnnotation, VariableField, VariableFieldInSourceCode, VariableIdentifier,
-	WithComment,
+	ParseResult, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
 };
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Parameter {
-	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
+	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
 	pub position: Span,
@@ -171,9 +170,7 @@ impl FunctionParameters {
 				let position = start.union(type_annotation.get_position());
 				super_type = Some((type_annotation, position));
 			} else {
-				let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-					reader, state, options,
-				)?;
+				let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				let (is_optional, type_annotation) = match reader.peek() {
 					Some(Token(TSXToken::Colon, _)) if options.type_annotations => {

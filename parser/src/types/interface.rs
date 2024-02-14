@@ -3,8 +3,8 @@ use crate::{
 	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
+	NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span, TSXKeyword, TSXToken,
+	TypeAnnotation, TypeDeclaration, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -18,7 +18,7 @@ pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
 	pub is_nominal: bool,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
@@ -158,7 +158,7 @@ pub enum InterfaceMember {
 	Method {
 		header: MethodHeader,
 		name: PropertyKey<PublicOrPrivate>,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_optional: bool,
@@ -187,7 +187,7 @@ pub enum InterfaceMember {
 	/// ```
 	Constructor {
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		#[cfg(feature = "extras")]
@@ -196,7 +196,7 @@ pub enum InterfaceMember {
 	},
 	Caller {
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		position: Span,

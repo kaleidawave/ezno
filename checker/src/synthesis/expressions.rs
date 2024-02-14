@@ -759,6 +759,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				);
 				return TypeId::ERROR_TYPE;
 			}
+			SpecialOperators::NonNullAssertion(_) => todo!(),
 		},
 		Expression::DynamicImport { position, .. } => {
 			checking_data.raise_unimplemented_error(

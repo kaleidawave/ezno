@@ -114,7 +114,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 }
 
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
-	type_parameters: Option<&[parser::GenericTypeConstraint]>,
+	type_parameters: Option<&[parser::TypeParameter]>,
 	signatures: &[WithComment<Decorated<InterfaceMember>>],
 	mut behavior: B,
 	environment: &mut Environment,
@@ -261,7 +261,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 			|environment, checking_data| {
 				for (parameter, ty) in parameters.iter().zip(parameter_types.iter().flatten()) {
 					// TODO set constraint by modifying type
-					environment.named_types.insert(parameter.name().to_owned(), *ty);
+					environment.named_types.insert(parameter.name.clone(), *ty);
 				}
 				synthesise_members(signatures, environment, checking_data, &mut behavior);
 			},

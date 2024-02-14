@@ -1068,7 +1068,13 @@ impl Expression {
 					let special_operators = match token.0 {
 						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsExpression {
 							value: top.into(),
-							type_annotation: Box::new(reference),
+							rhs: match reference {
+								// TODO temp :0
+								TypeAnnotation::Name(name, span) if name == "const" => {
+									TypeOrConst::Const(span)
+								}
+								reference => TypeOrConst::Type(Box::new(reference)),
+							},
 						},
 						TSXToken::Keyword(TSXKeyword::Satisfies) => {
 							SpecialOperators::SatisfiesExpression {
@@ -1084,6 +1090,15 @@ impl Expression {
 						_ => unreachable!(),
 					};
 					top = Self::SpecialOperators(special_operators, position);
+				}
+				#[cfg(feature = "full-typescript")]
+				TSXToken::LogicalNot => {
+					let Token(_token, not_pos) = reader.next().unwrap();
+					let position = top.get_position().union(not_pos.get_end_after(1));
+					top = Self::SpecialOperators(
+						SpecialOperators::NonNullAssertion(Box::new(top)),
+						position,
+					);
 				}
 				TSXToken::Keyword(TSXKeyword::In) => {
 					if AssociativityDirection::LeftToRight
@@ -1138,7 +1153,7 @@ impl Expression {
 						if is_generic_arguments(reader) {
 							let _ = reader.next();
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
-								reader, state, options, false,
+								reader, state, options, None,
 							)?;
 							let (arguments, end) = parse_bracketed(
 								reader,
@@ -1367,15 +1382,24 @@ impl Expression {
 				rhs.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::SpecialOperators(special, _) => match special {
-				SpecialOperators::AsExpression { value, type_annotation, .. }
-				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+				SpecialOperators::AsExpression { value, rhs, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_types {
-						buf.push_str(match special {
-							SpecialOperators::AsExpression { .. } => " as ",
-							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
-							_ => unreachable!(),
-						});
+						buf.push_str(" as ");
+						match rhs {
+							TypeOrConst::Type(type_annotation) => {
+								type_annotation.to_string_from_buffer(buf, options, local)
+							}
+							TypeOrConst::Const(_) => {
+								buf.push_str("const");
+							}
+						}
+					}
+				}
+				SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+					value.to_string_from_buffer(buf, options, local);
+					if options.include_types {
+						buf.push_str(" satisfies ");
 						type_annotation.to_string_from_buffer(buf, options, local);
 					}
 				}
@@ -1398,6 +1422,13 @@ impl Expression {
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
 					rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				}
+				#[cfg(feature = "full-typescript")]
+				SpecialOperators::NonNullAssertion(on) => {
+					on.to_string_using_precedence(buf, options, local, self_precedence);
+					if options.include_types {
+						buf.push('!');
+					}
 				}
 				#[cfg(feature = "extras")]
 				SpecialOperators::IsExpression { value, type_annotation, .. } => {
@@ -1883,7 +1914,7 @@ pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
 		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
+		rhs: TypeOrConst,
 	},
 	/// TS Only
 	SatisfiesExpression {
@@ -1903,6 +1934,15 @@ pub enum SpecialOperators {
 		value: Box<Expression>,
 		type_annotation: Box<TypeAnnotation>,
 	},
+	#[cfg(feature = "full-typescript")]
+	NonNullAssertion(Box<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[apply(derive_ASTNode)]
+pub enum TypeOrConst {
+	Type(Box<TypeAnnotation>),
+	Const(Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]

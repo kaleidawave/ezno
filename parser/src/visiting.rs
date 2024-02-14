@@ -258,7 +258,7 @@ mod ast {
 mod structures {
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		Statement, VariableFieldInSourceCode, VariableIdentifier,
+		Statement, VariableIdentifier,
 	};
 
 	use super::{
@@ -339,10 +339,8 @@ mod structures {
 		// TODO maybe WithComment on some of these
 		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a ArrayDestructuringField),
+		ObjectDestructuringMember(&'a WithComment<ObjectDestructuringField>),
 		ClassName(Option<&'a VariableIdentifier>),
 		FunctionName(Option<&'a VariableIdentifier>),
 		ClassPropertyKey(&'a PropertyKey<PublicOrPrivate>),
@@ -353,10 +351,8 @@ mod structures {
 	pub enum MutableVariableOrProperty<'a> {
 		VariableFieldName(&'a mut String),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a mut ArrayDestructuringField),
+		ObjectDestructuringMember(&'a mut WithComment<ObjectDestructuringField>),
 		ClassName(Option<&'a mut VariableIdentifier>),
 		FunctionName(Option<&'a mut VariableIdentifier>),
 		ClassPropertyKey(&'a mut PropertyKey<PublicOrPrivate>),

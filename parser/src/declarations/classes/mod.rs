@@ -8,7 +8,7 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
 	VisitOptions,
 };
 use tokenizer_lib::{
@@ -21,7 +21,7 @@ use tokenizer_lib::{
 #[get_field_by_type_target(Span)]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub name: T,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	pub extends: Option<Box<Expression>>,
 	pub implements: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<Decorated<ClassMember>>,

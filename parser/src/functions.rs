@@ -4,8 +4,8 @@ use crate::property_key::PropertyKeyKind;
 use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
 	derive_ASTNode, parse_bracketed, to_string_bracketed, ASTNode, Block,
-	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, ParseOptions,
-	ParseResult, TSXToken, TypeAnnotation, VisitOptions, Visitable, WithComment,
+	ExpressionOrStatementPosition, ExpressionPosition, ParseOptions, ParseResult, TSXToken,
+	TypeAnnotation, TypeParameter, VisitOptions, Visitable, WithComment,
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -116,7 +116,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
 	pub name: T::Name,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	pub parameters: FunctionParameters,
 	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
@@ -126,7 +126,7 @@ pub struct FunctionBase<T: FunctionBased> {
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
 const TYPES: &str = r"
 	export interface FunctionBase {
-		type_parameters?: GenericTypeConstraint[],
+		type_parameters?: TypeParameter[],
 		parameters: FunctionParameters,
 		return_type?: TypeAnnotation,
 		position: Span

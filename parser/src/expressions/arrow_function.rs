@@ -5,7 +5,7 @@ use visitable_derive::Visitable;
 use crate::{
 	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
 	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Parameter, ParseOptions,
-	ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
+	ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -68,7 +68,7 @@ impl FunctionBased for ArrowFunctionBase {
 			token => {
 				let (name, position) = token_as_identifier(token, "arrow function parameter")?;
 				let parameters = vec![Parameter {
-					name: WithComment::None(VariableIdentifier::Standard(name, position).into()),
+					name: VariableField::Name(VariableIdentifier::Standard(name, position)).into(),
 					type_annotation: None,
 					additionally: None,
 					position,
@@ -142,10 +142,13 @@ impl ArrowFunction {
 		first_parameter: (String, Span),
 		is_async: IsAsync,
 	) -> ParseResult<Self> {
+		let (first_parameter_name, first_parameter_position) = first_parameter;
 		let parameters = vec![crate::Parameter {
-			name: WithComment::None(
-				VariableIdentifier::Standard(first_parameter.0, first_parameter.1).into(),
-			),
+			name: VariableField::Name(VariableIdentifier::Standard(
+				first_parameter_name,
+				first_parameter_position,
+			))
+			.into(),
 			type_annotation: None,
 			additionally: None,
 			position: first_parameter.1,

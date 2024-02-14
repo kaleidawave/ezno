@@ -45,7 +45,7 @@ pub use statements::Statement;
 pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
-	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
+	type_declarations::{self, TypeDeclaration, TypeParameter},
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{

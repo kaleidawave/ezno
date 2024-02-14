@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
 	declarations::variable::VariableDeclaration, derive_ASTNode, ParseOptions, TSXKeyword,
-	VariableField, VariableFieldInSourceCode, VariableKeyword, WithComment,
+	VariableField, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
@@ -63,13 +63,13 @@ pub enum ForLoopStatementInitializer {
 pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,
-		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
+		variable: WithComment<VariableField>,
 		of: Expression,
 		position: Span,
 	},
 	ForIn {
 		keyword: Option<VariableKeyword>,
-		variable: WithComment<VariableField<VariableFieldInSourceCode>>,
+		variable: WithComment<VariableField>,
 		/// Yes `of` is single expression, `in` is multiple
 		r#in: MultipleExpression,
 		position: Span,
@@ -139,8 +139,7 @@ impl ASTNode for ForLoopCondition {
 					.map(|token| (token.1, VariableKeyword::from_reader(token).unwrap()))
 					.unzip();
 
-				let variable =
-					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
+				let variable = WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				let _ = state.expect_keyword(reader, TSXKeyword::Of)?;
 
@@ -156,8 +155,7 @@ impl ASTNode for ForLoopCondition {
 					.map(|token| (token.1, VariableKeyword::from_reader(token).unwrap()))
 					.unzip();
 
-				let variable =
-					WithComment::<VariableField<_>>::from_reader(reader, state, options)?;
+				let variable = WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				let _ = state.expect_keyword(reader, TSXKeyword::In)?;
 

@@ -16,8 +16,8 @@ use crate::{
 };
 
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
-pub(crate) fn register_variable<T: crate::ReadFromFS, U: parser::VariableFieldKind>(
-	name: &parser::VariableField<U>,
+pub(crate) fn register_variable<T: crate::ReadFromFS>(
+	name: &parser::VariableField,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	argument: VariableRegisterArguments,
@@ -200,7 +200,7 @@ pub(super) fn synthesise_variable_declaration_item<
 }
 
 fn assign_to_fields<T: crate::ReadFromFS>(
-	item: &VariableField<parser::VariableFieldInSourceCode>,
+	item: &VariableField,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	value: TypeId,

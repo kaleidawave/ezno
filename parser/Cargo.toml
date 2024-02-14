@@ -22,11 +22,14 @@ default = [
   "extras",
   "codespan-reporting",
   "serde-serialize",
+  "full-typescript",
 ]
 self-rust-tokenize = ["dep:self-rust-tokenize", "source-map/self-rust-tokenize"]
 codespan-reporting = ["source-map/codespan-reporting"]
 serde-serialize = ["dep:serde"]
 extras = []
+# Some additional syntax (that I don't think should exist 😂)
+full-typescript = []
 
 [dependencies]
 visitable-derive = { path = "./visitable-derive", version = "0.0.5", package = "ezno-parser-visitable-derive" }

@@ -4,8 +4,7 @@ use crate::{
 };
 use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
-	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField,
-	VariableFieldInTypeAnnotation, WithComment,
+	extensions::decorators::Decorated, Decorator, Marker, ParseResult, VariableField, WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -13,7 +12,7 @@ use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart
 
 use super::{
 	interface::{parse_interface_members, InterfaceMember},
-	type_declarations::GenericTypeConstraint,
+	type_declarations::TypeParameter,
 };
 
 use crate::{
@@ -49,14 +48,14 @@ pub enum TypeAnnotation {
 	ArrayLiteral(Box<TypeAnnotation>, Span),
 	/// Function literal e.g. `(x: string) => string`
 	FunctionLiteral {
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
 	},
 	/// Construction literal e.g. `new (x: string) => string`
 	ConstructorLiteral {
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
@@ -252,7 +251,7 @@ impl ASTNode for TypeAnnotation {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, options, false, false, None)
+		Self::from_reader_with_config(reader, state, options, None, None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -400,6 +399,16 @@ impl ASTNode for TypeAnnotation {
 	}
 }
 
+/// For parsing
+#[derive(Clone, Copy)]
+pub(crate) enum TypeOperatorKind {
+	Union,
+	Intersection,
+	// not an implication, not an implication, not an implication
+	Function,
+	Query,
+}
+
 impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
@@ -407,8 +416,7 @@ impl TypeAnnotation {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-		return_on_union_or_intersection: bool,
-		return_on_arrow: bool,
+		parent_kind: Option<TypeOperatorKind>,
 		start: Option<TokenStart>,
 	) -> ParseResult<Self> {
 		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
@@ -441,14 +449,10 @@ impl TypeAnnotation {
 			reader.next();
 		}
 
-		if let (false, Some(Token(TSXToken::BitwiseOr, _))) =
-			(return_on_union_or_intersection, reader.peek())
-		{
+		if let (None, Some(Token(TSXToken::BitwiseOr, _))) = (parent_kind, reader.peek()) {
 			reader.next();
 		}
-		if let (false, Some(Token(TSXToken::BitwiseAnd, _))) =
-			(return_on_union_or_intersection, reader.peek())
-		{
+		if let (None, Some(Token(TSXToken::BitwiseAnd, _))) = (parent_kind, reader.peek()) {
 			reader.next();
 		}
 
@@ -470,8 +474,14 @@ impl TypeAnnotation {
 			}
 			Token(TSXToken::At, pos) => {
 				let decorator = Decorator::from_reader_sub_at_symbol(reader, state, options, pos)?;
-				let this_declaration =
-					Self::from_reader_with_config(reader, state, options, true, false, start)?;
+				// TODO ...
+				let this_declaration = Self::from_reader_with_config(
+					reader,
+					state,
+					options,
+					Some(TypeOperatorKind::Query),
+					start,
+				)?;
 				let position = pos.union(this_declaration.get_position());
 				Self::Decorated(decorator, Box::new(this_declaration), position)
 			}
@@ -644,12 +654,8 @@ impl TypeAnnotation {
 				));
 			};
 			reader.next();
-			let (generic_arguments, end) = generic_arguments_from_reader_sub_open_angle(
-				reader,
-				state,
-				options,
-				return_on_union_or_intersection,
-			)?;
+			let (generic_arguments, end) =
+				generic_arguments_from_reader_sub_open_angle(reader, state, options, parent_kind)?;
 			reference =
 				Self::NameWithGenericArguments(name, generic_arguments, start_span.union(end));
 			return Ok(reference);
@@ -676,7 +682,11 @@ impl TypeAnnotation {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
 				let extends_type = TypeAnnotation::from_reader_with_config(
-					reader, state, options, true, false, start,
+					reader,
+					state,
+					options,
+					Some(TypeOperatorKind::Query),
+					start,
 				)?;
 				// TODO local
 				let position = reference.get_position().union(extends_type.get_position());
@@ -705,7 +715,11 @@ impl TypeAnnotation {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) => {
 				reader.next();
 				let is_type = TypeAnnotation::from_reader_with_config(
-					reader, state, options, true, false, start,
+					reader,
+					state,
+					options,
+					Some(TypeOperatorKind::Query),
+					start,
 				)?;
 				// TODO local
 				let position = reference.get_position().union(is_type.get_position());
@@ -723,14 +737,19 @@ impl TypeAnnotation {
 				Ok(TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position })
 			}
 			Some(Token(TSXToken::BitwiseOr, _)) => {
-				if return_on_union_or_intersection {
+				if matches!(parent_kind, Some(TypeOperatorKind::Query | TypeOperatorKind::Function))
+				{
 					return Ok(reference);
 				}
 				let mut union_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseOr, _)) = reader.peek() {
 					reader.next();
 					union_members.push(Self::from_reader_with_config(
-						reader, state, options, true, false, start,
+						reader,
+						state,
+						options,
+						Some(TypeOperatorKind::Union),
+						start,
 					)?);
 				}
 				let position = union_members
@@ -741,14 +760,24 @@ impl TypeAnnotation {
 				Ok(Self::Union(union_members, position))
 			}
 			Some(Token(TSXToken::BitwiseAnd, _)) => {
-				if return_on_union_or_intersection {
+				if matches!(
+					parent_kind,
+					Some(
+						TypeOperatorKind::Union
+							| TypeOperatorKind::Query | TypeOperatorKind::Function
+					)
+				) {
 					return Ok(reference);
 				}
 				let mut intersection_members = vec![reference];
 				while let Some(Token(TSXToken::BitwiseAnd, _)) = reader.peek() {
 					reader.next();
 					intersection_members.push(Self::from_reader_with_config(
-						reader, state, options, true, false, start,
+						reader,
+						state,
+						options,
+						Some(TypeOperatorKind::Intersection),
+						start,
 					)?);
 				}
 				let position = intersection_members
@@ -756,15 +785,22 @@ impl TypeAnnotation {
 					.unwrap()
 					.get_position()
 					.union(intersection_members.last().unwrap().get_position());
+
 				Ok(Self::Intersection(intersection_members, position))
 			}
 			Some(Token(TSXToken::Arrow, _)) => {
-				if return_on_arrow {
+				if matches!(parent_kind, Some(TypeOperatorKind::Query | TypeOperatorKind::Function))
+				{
 					return Ok(reference);
 				}
 				reader.next();
-				let return_type =
-					Self::from_reader_with_config(reader, state, options, true, false, start)?;
+				let return_type = Self::from_reader_with_config(
+					reader,
+					state,
+					options,
+					Some(TypeOperatorKind::Function),
+					start,
+				)?;
 				let parameters_position = *reference.get_position();
 				let position = parameters_position.union(return_type.get_position());
 				Ok(Self::FunctionLiteral {
@@ -796,19 +832,13 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
-	return_on_union_or_intersection: bool,
+	kind: Option<TypeOperatorKind>,
 ) -> ParseResult<(Vec<TypeAnnotation>, TokenEnd)> {
 	let mut generic_arguments = Vec::new();
 
 	loop {
-		let argument = TypeAnnotation::from_reader_with_config(
-			reader,
-			state,
-			options,
-			return_on_union_or_intersection,
-			false,
-			None,
-		)?;
+		let argument = TypeAnnotation::from_reader_with_config(reader, state, options, kind, None)?;
+
 		generic_arguments.push(argument);
 
 		// Handling for the fact that concessive chevrons are grouped into bitwise shifts
@@ -939,7 +969,7 @@ impl TypeAnnotationFunctionParameters {
 				}
 				_ => local == 0,
 			});
-			let name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>> =
+			let name: Option<WithComment<VariableField>> =
 				if let Some(Token(TSXToken::Colon | TSXToken::OptionalMember, _)) =
 					after_variable_field
 				{
@@ -987,7 +1017,7 @@ impl TypeAnnotationFunctionParameters {
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	/// Ooh nice optional
-	pub name: Option<WithComment<VariableField<VariableFieldInTypeAnnotation>>>,
+	pub name: Option<WithComment<VariableField>>,
 	pub type_annotation: TypeAnnotation,
 	pub is_optional: bool,
 	pub position: Span,

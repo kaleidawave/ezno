@@ -46,12 +46,12 @@ impl crate::ASTImplementation for EznoParser {
 	type OwnedModule = parser::Module;
 
 	type TypeAnnotation<'a> = parser::TypeAnnotation;
-	type TypeParameter<'a> = parser::GenericTypeConstraint;
+	type TypeParameter<'a> = parser::TypeParameter;
 	type Expression<'a> = parser::Expression;
 	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
-	type VariableField<'a> = parser::VariableField<parser::VariableFieldInSourceCode>;
+	type VariableField<'a> = parser::VariableField;
 
 	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
 
@@ -99,7 +99,7 @@ impl crate::ASTImplementation for EznoParser {
 	}
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {
-		parameter.name()
+		&parameter.name
 	}
 
 	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
@@ -216,9 +216,9 @@ pub enum Performs<'a> {
 	None,
 }
 
-impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
+impl crate::GenericTypeParameter for parser::TypeParameter {
 	fn get_name(&self) -> &str {
-		self.name()
+		&self.name
 	}
 }
 

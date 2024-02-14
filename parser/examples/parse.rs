@@ -1,11 +1,11 @@
-use std::{fs::read_to_string, time::Instant};
+use std::{collections::VecDeque, fs::read_to_string, time::Instant};
 
 use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let mut args: Vec<_> = std::env::args().skip(1).collect();
-	let path = args.drain(0..1).next().ok_or("expected argument")?;
+	let mut args: VecDeque<_> = std::env::args().skip(1).collect();
+	let path = args.pop_front().ok_or("expected argument")?;
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
@@ -94,8 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 							eprintln!("{output:?}\n{output2:?}");
 							if output != output2 {
-								eprintln!("initial was {:?}", module);
-								eprintln!("re-parsed was {:?}", module2);
+								eprintln!("initial   {:?}", module);
+								eprintln!("re-parsed {:?}", module2);
 								return Err(Box::<dyn std::error::Error>::from("not equal"));
 							} else {
 								eprintln!("re-parse was equal ✅");
