@@ -1,17 +1,17 @@
 use crate::{
-	ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation, VariableField,
-	VariableFieldInSourceCode, WithComment,
+	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation,
+	VariableField, VariableFieldInSourceCode, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TryCatchStatement {
 	pub try_inner: Block,
 	pub catch_inner: Option<Block>,

@@ -45,10 +45,12 @@ enum-variants-strings = "0.2"
 
 get-field-by-type = "0.0.3"
 
+macro_rules_attribute = { version = "0.2.0" }
+
 serde = { version = "1.0", features = ["derive"], optional = true }
 self-rust-tokenize = { version = "0.3.3", optional = true }
 
-source-map = { version = "0.14.9", features = [
+source-map = { version = "0.14.10", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }
@@ -59,6 +61,8 @@ tokenizer-lib = { version = "1.5.1", features = [
   "buffered",
   "sized-tokens",
 ], default_features = false }
+tsify = "0.4.5"
+wasm-bindgen = "=0.2.89"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokenizer-lib = { version = "1.5.1", features = [

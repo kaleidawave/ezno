@@ -1,4 +1,4 @@
-use crate::{functions::HeadingAndPosition, VariableIdentifier};
+use crate::{derive_ASTNode, functions::HeadingAndPosition, VariableIdentifier};
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
@@ -12,7 +12,16 @@ use crate::{
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsAsync = bool;
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES: &str = r"
+	export interface ArrowFunction extends Omit<FunctionBase, 'name'> {
+		header: IsAsync,
+		body: ExpressionOrBlock
+	}
+";
 
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
@@ -195,8 +204,7 @@ impl ArrowFunction {
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),
 	Block(Block),

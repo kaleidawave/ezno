@@ -5,15 +5,14 @@
 
 use std::convert::TryFrom;
 
-use crate::{TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 
 /// Comma operator is on [`crate::MultipleExpression`]
 /// 
 /// `InstanceOf`, In are special operators
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum BinaryOperator {
 	Add, Subtract, Multiply, Divide, Modulo, Exponent,
 
@@ -35,8 +34,7 @@ pub enum BinaryOperator {
 /// Straight assignment is not here because LHS can be destructuring
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum BinaryAssignmentOperator {
     LogicalNullishAssignment,
     
@@ -48,8 +46,7 @@ pub enum BinaryAssignmentOperator {
 
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
@@ -58,24 +55,21 @@ pub enum UnaryOperator {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum IncrementOrDecrement {
 	Increment,
 	Decrement,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum UnaryPrefixAssignmentOperator {
 	Invert,
 	IncrementOrDecrement(IncrementOrDecrement),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub struct UnaryPostfixAssignmentOperator(pub IncrementOrDecrement);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

@@ -4,7 +4,7 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
+	derive_ASTNode, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
 	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
 	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
 };
@@ -14,18 +14,16 @@ use super::ImportLocation;
 
 /// Side effects is represented under the Parts variant where the vector is empty
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportPart>>),
 	All { under: VariableIdentifier },
 }
 
 /// TODO a few more thing needed here
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
@@ -40,13 +38,14 @@ pub struct ImportDeclaration {
 
 /// TODO default
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(Marker<Self>),
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportExportName>"))] Marker<Self>,
+	),
 }
 
 impl ImportExportName {
@@ -281,15 +280,26 @@ pub(crate) fn parse_import_specifier_and_parts(
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[get_field_by_type_target(Span)]
 pub enum ImportPart {
 	Name(VariableIdentifier),
-	NameWithAlias { name: String, alias: ImportExportName, position: Span },
-	PrefixComment(String, Option<Box<Self>>, Span),
-	PostfixComment(Box<Self>, String, Span),
+	NameWithAlias {
+		name: String,
+		alias: ImportExportName,
+		position: Span,
+	},
+	PrefixComment(
+		String,
+		#[cfg_attr(target_family = "wasm", tsify(type = "ImportPart | null"))] Option<Box<Self>>,
+		Span,
+	),
+	PostfixComment(
+		#[cfg_attr(target_family = "wasm", tsify(type = "ImportPart"))] Box<Self>,
+		String,
+		Span,
+	),
 }
 
 impl ListItem for ImportPart {}

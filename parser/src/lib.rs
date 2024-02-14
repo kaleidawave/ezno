@@ -61,10 +61,25 @@ pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
 use std::{borrow::Cow, str::FromStr};
 
+#[macro_use]
+extern crate macro_rules_attribute;
+
+attribute_alias! {
+	// Warning: known to break under the following circumstances:
+	// 1. in combination with partial_eq_ignore_types (from the PartialEqExtras derive macro)
+	// 2. in combination with get_field_by_type_target (from the crate of the same name)
+	// any variation (even just a single, straightforward, cfg_attr) will break the other macros.
+	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
+	// keep this macro in mind.
+	#[apply(derive_ASTNode!)] =
+		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
+}
+
 /// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum Quoted {
 	Single,
 	Double,
@@ -85,6 +100,7 @@ impl Quoted {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
@@ -167,6 +183,7 @@ impl Default for ParseOptions {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
@@ -251,6 +268,7 @@ impl ToStringOptions {
 
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Comments {
 	#[default]
 	All,
@@ -499,8 +517,7 @@ impl KeywordPositions {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum NumberSign {
 	/// Also implies non negative/missing
 	Positive,
@@ -541,8 +558,7 @@ impl std::fmt::Display for NumberSign {
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
@@ -804,8 +820,7 @@ pub trait ExpressionOrStatementPosition:
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
@@ -827,8 +842,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
@@ -1042,8 +1056,7 @@ pub(crate) fn expect_semi_colon(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum VariableKeyword {
 	Const,
 	Let,

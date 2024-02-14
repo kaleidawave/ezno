@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, ParseOptions, TSXKeyword, VariableField,
-	VariableFieldInSourceCode, VariableKeyword, WithComment,
+	declarations::variable::VariableDeclaration, derive_ASTNode, ParseOptions, TSXKeyword,
+	VariableField, VariableFieldInSourceCode, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
@@ -10,10 +10,9 @@ use super::{
 	ASTNode, Expression, ParseResult, Span, TSXToken, Token, TokenReader, VarVariableStatement,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ForLoopStatement {
 	pub condition: ForLoopCondition,
 	pub inner: BlockOrSingleStatement,
@@ -52,8 +51,7 @@ impl ASTNode for ForLoopStatement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitializer {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
@@ -61,8 +59,7 @@ pub enum ForLoopStatementInitializer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,

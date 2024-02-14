@@ -1,5 +1,6 @@
 use crate::{
-	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseOptions, TSXKeyword,
+	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ParseOptions,
+	TSXKeyword,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -9,10 +10,9 @@ use visitable_derive::Visitable;
 use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct IfStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -23,8 +23,7 @@ pub struct IfStatement {
 
 /// `... else if (...) { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct ConditionalElseStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -33,8 +32,7 @@ pub struct ConditionalElseStatement {
 
 /// `... else { ... }`
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,

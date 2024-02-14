@@ -1,14 +1,14 @@
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
-	ASTNode, ListItem, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	derive_ASTNode, errors::parse_lexing_error, parse_bracketed, to_string_bracketed,
+	tokens::token_as_identifier, ASTNode, ListItem, ParseOptions, ParseResult, Span, TSXKeyword,
+	TSXToken, TypeAnnotation,
 };
 use tokenizer_lib::{Token, TokenReader};
 
 /// Similar to type reference but no unions or intersections AND includes generic constraints.
 /// Used for declaring classes, interfaces and functions
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct TypeDeclaration {
 	pub name: String,
 	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
@@ -59,8 +59,7 @@ impl ASTNode for TypeDeclaration {
 ///
 /// TODO is default and extends mut ex
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum GenericTypeConstraint {
 	Parameter { name: String, default: Option<TypeAnnotation> },
 	Extends(String, TypeAnnotation),

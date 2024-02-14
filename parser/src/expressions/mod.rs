@@ -1,7 +1,8 @@
 use crate::{
 	declarations::ClassDeclaration,
+	derive_ASTNode,
 	errors::parse_lexing_error,
-	functions::{self},
+	functions,
 	operators::{
 		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
 		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, FUNCTION_CALL_PRECEDENCE,
@@ -49,12 +50,11 @@ use std::convert::{TryFrom, TryInto};
 /// Expression structures
 ///
 /// Comma is implemented as a [`BinaryOperator`]
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
@@ -181,8 +181,7 @@ pub enum Expression {
 impl Eq for Expression {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
 		property: String,
@@ -1667,10 +1666,9 @@ fn function_header_ish(
 }
 
 /// Represents expressions that can be `,`
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
 pub enum MultipleExpression {
 	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
 	Single(Expression),
@@ -1857,20 +1855,18 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	buf.push(')');
 }
 
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
 }
 
 /// Binary operations whose RHS are types rather than [Expression]s
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SpecialOperators {
 	/// TS Only
 	AsExpression {
@@ -1898,8 +1894,7 @@ pub enum SpecialOperators {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -1984,8 +1979,7 @@ impl From<Expression> for SpreadExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct ArrayElement(pub Option<SpreadExpression>);
 
 impl ASTNode for ArrayElement {
@@ -2103,10 +2097,9 @@ impl Expression {
 }
 
 /// "super" cannot be used alone
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SuperReference {
 	Call { arguments: Vec<SpreadExpression> },
 	PropertyAccess { property: String },

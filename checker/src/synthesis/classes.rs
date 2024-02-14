@@ -64,7 +64,11 @@ pub(super) fn synthesise_class_declaration<
 		match &member.on {
 			ClassMember::Method(false, method) => {
 				let publicity = match method.name.get_ast_ref() {
-					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					ParserPropertyKey::Ident(
+						_,
+						_,
+						parser::property_key::PublicOrPrivate::Private,
+					) => Publicity::Private,
 					_ => Publicity::Public,
 				};
 				let property_key = parser_property_key_to_checker_property_key(
@@ -109,7 +113,11 @@ pub(super) fn synthesise_class_declaration<
 			}
 			ClassMember::Property(false, property) => {
 				let publicity = match property.key.get_ast_ref() {
-					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					ParserPropertyKey::Ident(
+						_,
+						_,
+						parser::property_key::PublicOrPrivate::Private,
+					) => Publicity::Private,
 					_ => Publicity::Public,
 				};
 				let key = parser_property_key_to_checker_property_key(
@@ -160,7 +168,11 @@ pub(super) fn synthesise_class_declaration<
 		match &member.on {
 			ClassMember::Method(true, method) => {
 				let publicity_kind = match method.name.get_ast_ref() {
-					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					ParserPropertyKey::Ident(
+						_,
+						_,
+						parser::property_key::PublicOrPrivate::Private,
+					) => Publicity::Private,
 					_ => Publicity::Public,
 				};
 				let behavior = FunctionRegisterBehavior::ClassMethod {
@@ -193,7 +205,11 @@ pub(super) fn synthesise_class_declaration<
 			}
 			ClassMember::Property(true, property) => {
 				let publicity_kind = match property.key.get_ast_ref() {
-					ParserPropertyKey::Ident(_, _, true) => Publicity::Private,
+					ParserPropertyKey::Ident(
+						_,
+						_,
+						parser::property_key::PublicOrPrivate::Private,
+					) => Publicity::Private,
 					_ => Publicity::Public,
 				};
 				let value = if let Some(ref value) = property.value {

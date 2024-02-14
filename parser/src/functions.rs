@@ -3,9 +3,9 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::property_key::PropertyKeyKind;
 use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
-	parse_bracketed, to_string_bracketed, ASTNode, Block, ExpressionOrStatementPosition,
-	ExpressionPosition, GenericTypeConstraint, ParseOptions, ParseResult, TSXToken, TypeAnnotation,
-	VisitOptions, Visitable, WithComment,
+	derive_ASTNode, parse_bracketed, to_string_bracketed, ASTNode, Block,
+	ExpressionOrStatementPosition, ExpressionPosition, GenericTypeConstraint, ParseOptions,
+	ParseResult, TSXToken, TypeAnnotation, VisitOptions, Visitable, WithComment,
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -123,6 +123,16 @@ pub struct FunctionBase<T: FunctionBased> {
 	pub position: Span,
 }
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES: &str = r"
+	export interface FunctionBase {
+		type_parameters?: GenericTypeConstraint[],
+		parameters: FunctionParameters,
+		return_type?: TypeAnnotation,
+		position: Span
+	}
+";
+
 impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
@@ -239,6 +249,14 @@ where
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_EXPRESSION_FUNCTION: &str = r"
+	export interface ExpressionFunction extends FunctionBase {
+		header: FunctionHeader,
+		body: Block,
+		name: ExpressionPosition
+	}
+";
 
 #[allow(clippy::similar_names)]
 impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> {
@@ -304,16 +322,14 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 
 #[cfg(feature = "extras")]
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum FunctionLocationModifier {
 	Server,
 	Worker,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
 		is_async: bool,
@@ -483,8 +499,7 @@ impl FunctionHeader {
 
 /// This structure removes possible invalid combinations with async
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum MethodHeader {
 	Get,
 	Set,
@@ -551,8 +566,7 @@ impl MethodHeader {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum GeneratorSpecifier {
 	Star(Span),
 	#[cfg(feature = "extras")]

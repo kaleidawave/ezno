@@ -6,6 +6,7 @@ mod while_statement;
 
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
+	derive_ASTNode,
 	tokens::token_as_identifier,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
@@ -26,12 +27,11 @@ use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
 /// A statement
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
@@ -65,16 +65,14 @@ pub enum Statement {
 	Empty(Span),
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
@@ -312,10 +310,9 @@ impl Statement {
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
 	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 	pub position: Span,
