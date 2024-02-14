@@ -455,7 +455,7 @@ impl TSXToken {
 	}
 }
 
-/// Some tokens can be used as names for variables, methods (eg 'get' in <Map>.get()). This function
+/// Some tokens can be used as names for variables, methods (eg 'get' in `Map.get()`). This function
 /// takes a [Token] and returns its name as a [String] and the location as a [Span]. Will throw [`ParseError`] if
 /// cannot convert token to string
 pub(crate) fn token_as_identifier(

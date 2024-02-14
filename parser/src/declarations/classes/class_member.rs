@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use crate::{
-	errors::parse_lexing_error, functions::HeadingAndPosition, property_key::PublicOrPrivate,
-	visiting::Visitable,
+	derive_ASTNode, errors::parse_lexing_error, functions::HeadingAndPosition,
+	property_key::PublicOrPrivate, visiting::Visitable,
 };
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
@@ -13,12 +13,11 @@ use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
 	TSXToken, TypeAnnotation, WithComment,
 };
-
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsStatic = bool;
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -30,14 +29,26 @@ pub enum ClassMember {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
-
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const CLASS_CONSTRUCTOR_TYPES: &str = r"
+	export interface ClassConstructor extends Omit<FunctionBase, 'header' | 'name'> {
+		body: Block
+	}
+";
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const CLASS_FUNCTION_TYPES: &str = r"
+	export interface ClassFunction extends FunctionBase {
+		header: MethodHeader,
+		body: Block,
+		name: WithComment<PropertyKey<PublicOrPrivate>>
+	}
+";
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,

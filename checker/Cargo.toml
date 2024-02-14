@@ -21,7 +21,7 @@ ezno-parser = ["dep:parser"]
 serde-serialize = ["dep:serde"]
 
 [dependencies]
-source-map = { version = "0.14.9", features = [
+source-map = { version = "0.14.10", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }
@@ -46,6 +46,11 @@ ordered-float = "4.2.0"
 map_vec = "0.3.0"
 
 serde = { version = "1.0", features = ["derive"], optional = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tsify = "0.4.5"
+wasm-bindgen = "=0.2.89"
+
 
 [dependencies.parser]
 path = "../parser"

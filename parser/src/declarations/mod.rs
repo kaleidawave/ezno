@@ -5,9 +5,9 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
-	Decorated, Marker, ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition,
-	TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
+	derive_ASTNode, errors::parse_lexing_error, extensions::decorators,
+	throw_unexpected_token_with_token, Decorated, Marker, ParseError, ParseErrors, ParseOptions,
+	Quoted, StatementPosition, TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
 };
 
 pub use self::{
@@ -18,6 +18,14 @@ pub use self::{
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+const TYPES_STATEMENT_FUNCTION: &str = r"
+	export interface StatementFunction extends FunctionBase {
+		header: FunctionHeader,
+		body: Block,
+		name: StatementPosition
+	}
+";
 pub mod classes;
 pub mod export;
 pub mod import;
@@ -32,13 +40,12 @@ pub use super::types::{
 pub use classes::ClassDeclaration;
 pub use import::{ImportDeclaration, ImportExportName, ImportPart};
 
+#[apply(derive_ASTNode)]
 #[derive(
 	Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq, get_field_by_type::GetFieldByType,
 )]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Declaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),
@@ -100,13 +107,14 @@ impl Declaration {
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ImportLocation {
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(Marker<Self>),
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
+	),
 }
 
 impl ImportLocation {

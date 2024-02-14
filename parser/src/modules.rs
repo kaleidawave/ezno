@@ -2,6 +2,7 @@ use tokenizer_lib::sized_tokens::TokenStart;
 
 use crate::{
 	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
+	derive_ASTNode,
 	errors::parse_lexing_error,
 	extensions::decorators::decorators_from_reader,
 	throw_unexpected_token_with_token,
@@ -20,7 +21,7 @@ use crate::{
 use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub struct Module {
 	pub items: Vec<StatementOrDeclaration>,
 	pub span: Span,

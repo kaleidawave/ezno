@@ -9,14 +9,16 @@ use parser::{
 	ToStringOptions,
 };
 
-#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+use crate::check::CheckingOutputWithoutDiagnostics;
+
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct Output {
 	pub output_path: PathBuf,
 	pub content: String,
 	pub mappings: String,
 }
 
-#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct BuildOutput {
 	pub outputs: Vec<Output>,
 	pub diagnostics: DiagnosticsContainer,
@@ -26,7 +28,7 @@ pub struct BuildOutput {
 	pub fs: MapFileStore<WithPathMap>,
 }
 
-#[cfg_attr(target_family = "wasm", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct FailedBuildOutput {
 	pub diagnostics: DiagnosticsContainer,
 	/// For diagnostics

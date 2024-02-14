@@ -508,7 +508,7 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 					}
 					parser::ObjectDestructuringField::Map { from, name, .. } => {
 						match from {
-							parser::PropertyKey::Ident(ident, _, ()) => {
+							parser::PropertyKey::Ident(ident, _, _) => {
 								buf.push_str(ident);
 							}
 							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),

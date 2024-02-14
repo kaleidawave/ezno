@@ -1,7 +1,7 @@
 use crate::{
-	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
-	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
-	to_string_bracketed, tokens::token_as_identifier,
+	derive_ASTNode, errors::parse_lexing_error, extensions::decorators::Decorated,
+	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
+	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
 	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
 	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
@@ -11,10 +11,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
@@ -27,8 +26,7 @@ pub struct InterfaceDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum Optionality {
 	Default,
 	Optional,
@@ -38,8 +36,7 @@ pub enum Optionality {
 
 // Used around type aliases for inline rule thingies
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum TypeRule {
 	In,
 	InKeyOf,
@@ -152,10 +149,9 @@ impl ASTNode for InterfaceDeclaration {
 }
 
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum InterfaceMember {
 	Method {
 		header: MethodHeader,

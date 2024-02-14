@@ -139,7 +139,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.src == 'true'
         with:
-          packages: wasm-bindgen-cli@0.2.89
+          packages: wasm-pack@0.12.1
       - uses: denoland/setup-deno@v1
         if: steps.changes.outputs.src == 'true'
         with:
@@ -158,9 +158,19 @@ jobs:
           rustup target add wasm32-unknown-unknown
           npm ci
           npm run build
-          npm run test
+          npm run run-tests
+
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
+
+          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          
+          # TODO temp as the types generated can be a bit unpredicatible
+          echo "::debug::On branch '${{ github.ref_name }}'"
+          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
+            npm run build-release
+            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          fi
         working-directory: src/js-cli-and-library
         shell: bash
 
