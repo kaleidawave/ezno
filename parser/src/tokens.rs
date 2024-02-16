@@ -301,7 +301,7 @@ pub enum TSXKeyword {
     Case, Yield, Return, Continue, Break,
     Import, Export, Default, From,
     In, Of,
-    TypeOf, InstanceOf, Void, Delete, 
+    TypeOf, InstanceOf, Void, Delete, Assert,
     Debugger,
     Try, Catch, Finally, Throw,
     Async, Await,
@@ -317,7 +317,10 @@ pub enum TSXKeyword {
     // TS publicity attributes
     Private, Public, Protected,
     // TS Keywords
-    As, Declare, Readonly, Infer, Is, Satisfies, Namespace, KeyOf,
+    As, Readonly, Satisfies, Declare, Namespace, 
+	// TS & Ezno
+	Is, 
+	Infer, KeyOf, Unique, Symbol,
 	// TODO unsure
 	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
@@ -475,7 +478,7 @@ impl TSXToken {
 pub(crate) fn token_as_identifier(
 	token: Token<TSXToken, TokenStart>,
 	at_location: &str,
-) -> Result<(String, Span), ParseError> {
+) -> crate::ParseResult<(String, Span)> {
 	let position = token.get_span();
 	let name = match token.0 {
 		TSXToken::Identifier(value) => value,

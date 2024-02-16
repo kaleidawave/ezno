@@ -25,6 +25,9 @@ pub enum ParseErrors<'a> {
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
 	ReservedIdentifier,
+	AwaitRequiresForOf,
+	CannotUseLeadingParameterHere,
+	ExpectedIdentifier,
 }
 
 #[allow(missing_docs)]
@@ -169,7 +172,16 @@ impl<'a> Display for ParseErrors<'a> {
 				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ReservedIdentifier => {
-				write!(f, "Reserved identifier")
+				write!(f, "Found reserved identifier")
+			}
+			ParseErrors::AwaitRequiresForOf => {
+				write!(f, "Can only use await on for (.. of ..)")
+			}
+			ParseErrors::CannotUseLeadingParameterHere => {
+				write!(f, "Cannot write this constraint in this kind of function")
+			}
+			ParseErrors::ExpectedIdentifier => {
+				write!(f, "Expected variable identifier")
 			}
 		}
 	}

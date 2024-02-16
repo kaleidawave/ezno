@@ -1942,10 +1942,10 @@ import { a } from "./export";
 console.log(a.prop);
 
 // in export.ts
-export default const x = 2;
+export default const;
 ```
 
-- Expected SemiColon found Identifier(\"x\")
+- Found reserved identifier
 
 #### Only synthesis module once
 

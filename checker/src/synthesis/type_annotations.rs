@@ -423,6 +423,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
+		TypeAnnotation::Symbol { .. } => todo!(),
 	};
 
 	checking_data

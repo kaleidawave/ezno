@@ -2,8 +2,10 @@
 
 use iterator_endiate::EndiateIteratorExt;
 use parser::{
-	expressions::ExpressionOrBlock, parameters::ParameterData, ASTNode, Block, FunctionBased,
-	TypeAnnotation, TypeParameter, VariableField, VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock,
+	functions::{LeadingParameter, ParameterData},
+	ASTNode, Block, FunctionBased, TypeAnnotation, TypeParameter, VariableField,
+	VariableIdentifier, WithComment,
 };
 use source_map::{SourceId, SpanWithSource};
 
@@ -62,9 +64,11 @@ where
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
-		if let Some((ref annotation, _)) = self.parameters.this_type {
+		if let Some(parser::functions::ThisParameter { constraint, .. }) =
+			self.parameters.leading.get_this_parameter()
+		{
 			crate::utils::notify!("Synthesising this restriction");
-			Some(synthesise_type_annotation(annotation, environment, checking_data))
+			Some(synthesise_type_annotation(constraint, environment, checking_data))
 		} else {
 			None
 		}
@@ -75,8 +79,10 @@ where
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
-		if let Some((ref annotation, _)) = self.parameters.super_type {
-			Some(synthesise_type_annotation(annotation, environment, checking_data))
+		if let Some(parser::functions::SuperParameter { constraint, .. }) =
+			self.parameters.leading.get_super_parameter()
+		{
+			Some(synthesise_type_annotation(constraint, environment, checking_data))
 		} else {
 			None
 		}
@@ -135,6 +141,19 @@ impl SynthesisableFunctionBody for Block {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) {
 		synthesise_block(&self.0, environment, checking_data);
+	}
+}
+
+impl SynthesisableFunctionBody for parser::functions::FunctionBody {
+	fn synthesise_function_body<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) {
+		self.0
+			.as_ref()
+			.expect("TODO overloading")
+			.synthesise_function_body(environment, checking_data)
 	}
 }
 
@@ -297,8 +316,12 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn synthesise_function_parameters<T: crate::ReadFromFS>(
-	ast_parameters: &parser::FunctionParameters,
+fn synthesise_function_parameters<
+	T: crate::ReadFromFS,
+	L: parser::functions::LeadingParameter,
+	V: parser::functions::ParameterVisibility,
+>(
+	ast_parameters: &parser::functions::FunctionParameters<L, V>,
 	expected_parameters: Option<&SynthesisedParameters>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -418,33 +441,28 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			TypeId::ERROR_TYPE
 		};
 
-		let ty = checking_data.types.new_function_parameter(parameter_constraint);
+		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+		environment.object_constraints.insert(variable_ty, vec![parameter_constraint]);
 
-		match rest_parameter.name {
-			VariableIdentifier::Standard(ref name, pos) => environment
-				.register_variable_handle_error(
-					name,
-					VariableRegisterArguments {
-						// TODO constant parameter option
-						constant: false,
-						space: Some(parameter_constraint),
-						initial_value: Some(ty),
-					},
-					pos.with_source(environment.get_source()),
-					&mut checking_data.diagnostics_container,
-				),
-			VariableIdentifier::Marker(_, _) => todo!(),
-		};
+		register_variable(
+			&rest_parameter.name,
+			environment,
+			checking_data,
+			VariableRegisterArguments {
+				// TODO constant parameter option
+				constant: false,
+				space: Some(parameter_constraint),
+				initial_value: Some(variable_ty),
+			},
+		);
+
+		let name = param_name_to_string(&rest_parameter.name);
 
 		SynthesisedRestParameter {
 			item_type,
-			ty,
-			name: match rest_parameter.name {
-				VariableIdentifier::Standard(ref name, _) => name.to_owned(),
-				VariableIdentifier::Marker(_, _) => String::new(),
-			},
+			ty: variable_ty,
+			name,
 			position: rest_parameter.position.with_source(environment.get_source()),
 		}
 	});

@@ -10,25 +10,33 @@ pub mod type_declarations;
 
 pub use interface::InterfaceDeclaration;
 
-use crate::derive_ASTNode;
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 
-// [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub enum Visibility {
-// 	Private,
-// 	Public,
-// 	Protected,
-// }
+/// [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Visibility {
+	Private,
+	Public,
+	Protected,
+}
 
-// impl Visibility {
-// 	pub fn as_str(&self) -> &'static str {
-// 		match self {
-// 			Visibility::Private => "private ",
-// 			Visibility::Public => "public ",
-// 			Visibility::Protected => "protected ",
-// 		}
-// 	}
-// }
+impl Visibility {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Visibility::Private => "private ",
+			Visibility::Public => "public ",
+			Visibility::Protected => "protected ",
+		}
+	}
+
+	pub fn token_is_visibility_specifier(t: &TSXToken) -> bool {
+		matches!(
+			t,
+			TSXToken::Keyword(TSXKeyword::Private | TSXKeyword::Public | TSXKeyword::Protected)
+		)
+	}
+}
 
 #[cfg(feature = "extras")]
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,28 +1,24 @@
 use crate::{
-	declarations::ClassDeclaration,
-	derive_ASTNode,
-	errors::parse_lexing_error,
-	functions,
-	operators::{
-		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
-		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, FUNCTION_CALL_PRECEDENCE,
-		RELATION_PRECEDENCE,
-	},
+	declarations::ClassDeclaration, derive_ASTNode, errors::parse_lexing_error, functions,
 	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	type_annotations::generic_arguments_from_reader_sub_open_angle,
-	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
-	ParseResult, Quoted, TSXKeyword,
+	type_annotations::generic_arguments_from_reader_sub_open_angle, ExpressionPosition,
+	FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors, ParseResult, Quoted,
+	TSXKeyword,
 };
 
 use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
 	object_literal::ObjectLiteral,
+	operators::{
+		IncrementOrDecrement, Operator, COMMA_PRECEDENCE, CONDITIONAL_TERNARY_PRECEDENCE,
+		CONSTRUCTOR_PRECEDENCE, CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE,
+		MEMBER_ACCESS_PRECEDENCE, PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+	},
 };
 
-#[allow(clippy::wildcard_imports)]
 use super::{
-	operators::*, tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError,
-	ParseOptions, Span, TSXToken, Token, TokenReader, TypeAnnotation,
+	tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions,
+	Span, TSXToken, Token, TokenReader, TypeAnnotation,
 };
 
 #[cfg(feature = "extras")]
@@ -37,10 +33,17 @@ use visitable_derive::Visitable;
 pub mod arrow_function;
 pub mod assignments;
 pub mod object_literal;
+pub mod operators;
 pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
 pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
+
+use operators::{
+	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, UnaryOperator,
+	UnaryPostfixAssignmentOperator, UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE,
+	FUNCTION_CALL_PRECEDENCE, RELATION_PRECEDENCE,
+};
 
 pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
@@ -799,7 +802,7 @@ impl Expression {
 				)?;
 				let position = start.union(rhs.get_position());
 				Self::SpecialOperators(
-					SpecialOperators::InExpression {
+					SpecialOperators::In {
 						lhs: InExpressionLHS::PrivateProperty(property_name),
 						rhs: Box::new(rhs),
 					},
@@ -1055,8 +1058,10 @@ impl Expression {
 						return Ok(top);
 					}
 
-					if cfg!(not(feature = "extras"))
-						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is))
+					if (cfg!(not(feature = "extras"))
+						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is)))
+						|| (cfg!(not(feature = "full-typescript"))
+							&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::As)))
 					{
 						return Ok(top);
 					}
@@ -1066,7 +1071,8 @@ impl Expression {
 					let position = top.get_position().union(reference.get_position());
 
 					let special_operators = match token.0 {
-						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsExpression {
+						#[cfg(feature = "full-typescript")]
+						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsCast {
 							value: top.into(),
 							rhs: match reference {
 								// TODO temp :0
@@ -1076,14 +1082,12 @@ impl Expression {
 								reference => TypeOrConst::Type(Box::new(reference)),
 							},
 						},
-						TSXToken::Keyword(TSXKeyword::Satisfies) => {
-							SpecialOperators::SatisfiesExpression {
-								value: top.into(),
-								type_annotation: Box::new(reference),
-							}
-						}
+						TSXToken::Keyword(TSXKeyword::Satisfies) => SpecialOperators::Satisfies {
+							value: top.into(),
+							type_annotation: Box::new(reference),
+						},
 						#[cfg(feature = "extras")]
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
+						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::Is {
 							value: top.into(),
 							type_annotation: Box::new(reference),
 						},
@@ -1117,7 +1121,7 @@ impl Expression {
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
-						SpecialOperators::InExpression {
+						SpecialOperators::In {
 							lhs: InExpressionLHS::Expression(Box::new(top)),
 							rhs: Box::new(rhs),
 						},
@@ -1141,10 +1145,7 @@ impl Expression {
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
-						SpecialOperators::InstanceOfExpression {
-							lhs: Box::new(top),
-							rhs: Box::new(rhs),
-						},
+						SpecialOperators::InstanceOf { lhs: Box::new(top), rhs: Box::new(rhs) },
 						position,
 					);
 				}
@@ -1382,13 +1383,14 @@ impl Expression {
 				rhs.to_string_using_precedence(buf, options, local, self_precedence);
 			}
 			Self::SpecialOperators(special, _) => match special {
-				SpecialOperators::AsExpression { value, rhs, .. } => {
+				#[cfg(feature = "full-typescript")]
+				SpecialOperators::AsCast { value, rhs, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_types {
 						buf.push_str(" as ");
 						match rhs {
 							TypeOrConst::Type(type_annotation) => {
-								type_annotation.to_string_from_buffer(buf, options, local)
+								type_annotation.to_string_from_buffer(buf, options, local);
 							}
 							TypeOrConst::Const(_) => {
 								buf.push_str("const");
@@ -1396,14 +1398,14 @@ impl Expression {
 						}
 					}
 				}
-				SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+				SpecialOperators::Satisfies { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_types {
 						buf.push_str(" satisfies ");
 						type_annotation.to_string_from_buffer(buf, options, local);
 					}
 				}
-				SpecialOperators::InExpression { lhs, rhs } => {
+				SpecialOperators::In { lhs, rhs } => {
 					match lhs {
 						InExpressionLHS::PrivateProperty(property) => {
 							buf.push('#');
@@ -1417,7 +1419,7 @@ impl Expression {
 					buf.push_str(" in ");
 					rhs.to_string_using_precedence(buf, options, local, self_precedence);
 				}
-				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
+				SpecialOperators::InstanceOf { lhs, rhs } => {
 					lhs.to_string_using_precedence(buf, options, local, self_precedence);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
@@ -1431,7 +1433,7 @@ impl Expression {
 					}
 				}
 				#[cfg(feature = "extras")]
-				SpecialOperators::IsExpression { value, type_annotation, .. } => {
+				SpecialOperators::Is { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
@@ -1731,8 +1733,18 @@ impl MultipleExpression {
 	pub(crate) fn left_is_statement_like(&self) -> bool {
 		match self {
 			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
+			MultipleExpression::Single(e) => {
+				matches!(e.get_non_parenthesized().get_left(), Expression::ObjectLiteral(_))
+			}
+		}
+	}
+
+	/// These are valid in expression position but are parsed different in statement mode
+	pub(crate) fn left_is_statement_or_declaration_like(&self) -> bool {
+		match self {
+			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
 			MultipleExpression::Single(e) => matches!(
-				e.get_non_parenthesized().get_left(),
+				e.get_left(),
 				Expression::ObjectLiteral(_)
 					| Expression::ExpressionFunction(_)
 					| Expression::ClassExpression(_)
@@ -1898,6 +1910,46 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	buf.push(')');
 }
 
+/// Binary operations whose RHS are types rather than [Expression]s
+#[apply(derive_ASTNode)]
+#[derive(PartialEqExtras, Debug, Clone, Visitable)]
+#[partial_eq_ignore_types(Span)]
+pub enum SpecialOperators {
+	/// TS Only
+	Satisfies {
+		value: Box<Expression>,
+		type_annotation: Box<TypeAnnotation>,
+	},
+	In {
+		lhs: InExpressionLHS,
+		rhs: Box<Expression>,
+	},
+	InstanceOf {
+		lhs: Box<Expression>,
+		rhs: Box<Expression>,
+	},
+	#[cfg(feature = "extras")]
+	Is {
+		value: Box<Expression>,
+		type_annotation: Box<TypeAnnotation>,
+	},
+	#[cfg(feature = "full-typescript")]
+	NonNullAssertion(Box<Expression>),
+	#[cfg(feature = "full-typescript")]
+	AsCast {
+		value: Box<Expression>,
+		rhs: TypeOrConst,
+	},
+}
+
+#[cfg(feature = "full-typescript")]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+pub enum TypeOrConst {
+	Type(Box<TypeAnnotation>),
+	Const(Span),
+}
+
 #[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
@@ -1906,47 +1958,8 @@ pub enum InExpressionLHS {
 	Expression(Box<Expression>),
 }
 
-/// Binary operations whose RHS are types rather than [Expression]s
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
-pub enum SpecialOperators {
-	/// TS Only
-	AsExpression {
-		value: Box<Expression>,
-		rhs: TypeOrConst,
-	},
-	/// TS Only
-	SatisfiesExpression {
-		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
-	},
-	InExpression {
-		lhs: InExpressionLHS,
-		rhs: Box<Expression>,
-	},
-	InstanceOfExpression {
-		lhs: Box<Expression>,
-		rhs: Box<Expression>,
-	},
-	#[cfg(feature = "extras")]
-	IsExpression {
-		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
-	},
-	#[cfg(feature = "full-typescript")]
-	NonNullAssertion(Box<Expression>),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(derive_ASTNode)]
-pub enum TypeOrConst {
-	Type(Box<TypeAnnotation>),
-	Const(Span),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[apply(derive_ASTNode)]
 pub enum SpreadExpression {
 	Spread(Expression, Span),
 	NonSpread(Expression),
@@ -2076,12 +2089,11 @@ impl Expression {
 						// TODO maybe async
 						header: false,
 						name: (),
-						parameters: crate::FunctionParameters {
+						parameters: crate::functions::FunctionParameters {
 							parameters: Default::default(),
 							rest_parameter: Default::default(),
 							position,
-							this_type: None,
-							super_type: None,
+							leading: (),
 						},
 						return_type: None,
 						type_parameters: None,
@@ -2133,7 +2145,7 @@ impl Expression {
 		}
 	}
 
-	/// Recurses to find first non parenthesized expression
+	/// Recurses to find first **non-parenthesized** expression
 	#[must_use]
 	pub fn get_left(&self) -> &Self {
 		match self {
@@ -2152,12 +2164,16 @@ impl Expression {
 			}
 			Expression::TemplateLiteral(TemplateLiteral { tag: Some(left), .. })
 			| Expression::BinaryOperation { lhs: left, .. }
-			| Expression::SpecialOperators(SpecialOperators::AsExpression { value: left, .. }, _)
 			| Expression::PropertyAccess { parent: left, .. }
 			| Expression::Index { indexee: left, .. }
 			| Expression::FunctionCall { function: left, .. }
 			| Expression::Comment { on: Some(left), prefix: false, .. }
+			| Expression::SpecialOperators(SpecialOperators::Satisfies { value: left, .. }, _)
 			| Expression::ConditionalTernary { condition: left, .. } => left.get_left(),
+			#[cfg(feature = "full-typescript")]
+			Expression::SpecialOperators(SpecialOperators::AsCast { value: left, .. }, _) => left.get_left(),
+			#[cfg(feature = "extras")]
+			Expression::SpecialOperators(SpecialOperators::Is { value: left, .. }, _) => left.get_left(),
 			root => root,
 		}
 	}
@@ -2175,11 +2191,8 @@ pub enum SuperReference {
 
 #[cfg(test)]
 mod tests {
-	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
-	use crate::{
-		assert_matches_ast, ast::SpreadExpression, operators::BinaryOperator, span,
-		NumberRepresentation, Quoted,
-	};
+	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
+	use crate::{assert_matches_ast, ast::SpreadExpression, span, NumberRepresentation, Quoted};
 
 	#[test]
 	fn literal() {

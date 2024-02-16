@@ -1,4 +1,10 @@
-use crate::{derive_ASTNode, TSXKeyword, TSXToken};
+use std::fmt::Debug;
+
+use crate::{
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TSXKeyword,
+	TSXToken, TypeAnnotation, VariableField, WithComment,
+};
+
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -8,19 +14,57 @@ use tokenizer_lib::{
 };
 use visitable_derive::Visitable;
 
-use crate::{
-	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression, ParseError,
-	ParseResult, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
-};
-
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-pub struct Parameter {
+pub struct Parameter<V> {
+	#[visit_skip_field]
+	pub visibility: V,
 	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
 	pub position: Span,
+}
+
+pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &crate::ParseOptions,
+	) -> Self;
+}
+
+impl ParameterVisibility for () {
+	fn from_reader(
+		_: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		_: &mut crate::ParsingState,
+		_: &crate::ParseOptions,
+	) -> Self {
+		()
+	}
+}
+
+impl ParameterVisibility for Option<crate::types::Visibility> {
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		_: &mut crate::ParsingState,
+		options: &crate::ParseOptions,
+	) -> Option<crate::types::Visibility> {
+		if !options.type_annotations {
+			None
+		} else if let Some(Token(TSXToken::Keyword(t), _)) =
+			reader.conditional_next(crate::types::Visibility::token_is_visibility_specifier)
+		{
+			Some(match t {
+				TSXKeyword::Private => crate::types::Visibility::Private,
+				TSXKeyword::Public => crate::types::Visibility::Public,
+				TSXKeyword::Protected => crate::types::Visibility::Protected,
+				_ => unreachable!(),
+			})
+		} else {
+			None
+		}
+	}
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
@@ -30,30 +74,124 @@ pub enum ParameterData {
 	WithDefaultValue(Box<Expression>),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[cfg(feature = "extras")]
+#[cfg_attr(target_family = "wasm", tsify::declare)]
+pub type SpreadParameterName = VariableField;
+
+#[cfg(not(feature = "extras"))]
+#[cfg_attr(target_family = "wasm", tsify::declare)]
+pub type SpreadParameterName = VariableIdentifier;
+
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
 pub struct SpreadParameter {
-	pub name: VariableIdentifier,
+	pub name: SpreadParameterName,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub position: Span,
 }
 
-/// TODO need to something special to not enable `OptionalFunctionParameter::WithValue` in interfaces and other
-/// type structure
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-pub struct FunctionParameters {
-	pub this_type: Option<(TypeAnnotation, Span)>,
-	pub super_type: Option<(TypeAnnotation, Span)>,
-	pub parameters: Vec<Parameter>,
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[partial_eq_ignore_types(Span)]
+pub struct FunctionParameters<L, V> {
+	#[visit_skip_field]
+	pub leading: L,
+	pub parameters: Vec<Parameter<V>>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,
-	#[partial_eq_ignore]
 	pub position: Span,
 }
 
-impl Eq for FunctionParameters {}
+pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+	fn try_make(
+		this_annotation: Option<ThisParameter>,
+		super_annotation: Option<SuperParameter>,
+	) -> ParseResult<Self>;
 
-impl ASTNode for FunctionParameters {
+	fn get_this_parameter(&self) -> Option<&ThisParameter>;
+	fn get_super_parameter(&self) -> Option<&SuperParameter>;
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[partial_eq_ignore_types(Span)]
+pub struct ThisParameter {
+	pub constraint: TypeAnnotation,
+	pub position: Span,
+}
+
+/// TODO not sure
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[partial_eq_ignore_types(Span)]
+pub struct SuperParameter {
+	pub constraint: TypeAnnotation,
+	pub position: Span,
+}
+
+impl LeadingParameter for () {
+	fn try_make(
+		this_annotation: Option<ThisParameter>,
+		super_annotation: Option<SuperParameter>,
+	) -> ParseResult<Self> {
+		if this_annotation.is_some() || super_annotation.is_some() {
+			let position =
+				this_annotation.map_or(super_annotation.unwrap().position, |a| a.position);
+
+			Err(ParseError::new(ParseErrors::CannotUseLeadingParameterHere, position))
+		} else {
+			Ok(())
+		}
+	}
+
+	fn get_this_parameter(&self) -> Option<&ThisParameter> {
+		None
+	}
+	fn get_super_parameter(&self) -> Option<&SuperParameter> {
+		None
+	}
+}
+
+impl LeadingParameter for Option<ThisParameter> {
+	fn try_make(
+		this_annotation: Option<ThisParameter>,
+		super_annotation: Option<SuperParameter>,
+	) -> ParseResult<Self> {
+		if let Some(s) = super_annotation {
+			Err(ParseError::new(ParseErrors::CannotUseLeadingParameterHere, s.position))
+		} else {
+			Ok(this_annotation)
+		}
+	}
+
+	fn get_this_parameter(&self) -> Option<&ThisParameter> {
+		self.as_ref()
+	}
+	fn get_super_parameter(&self) -> Option<&SuperParameter> {
+		None
+	}
+}
+
+impl LeadingParameter for (Option<ThisParameter>, Option<SuperParameter>) {
+	fn try_make(
+		this_annotation: Option<ThisParameter>,
+		super_annotation: Option<SuperParameter>,
+	) -> ParseResult<Self> {
+		Ok((this_annotation, super_annotation))
+	}
+
+	fn get_this_parameter(&self) -> Option<&ThisParameter> {
+		self.0.as_ref()
+	}
+	fn get_super_parameter(&self) -> Option<&SuperParameter> {
+		self.1.as_ref()
+	}
+}
+
+impl<L, V> ASTNode for FunctionParameters<L, V>
+where
+	L: LeadingParameter,
+	V: ParameterVisibility,
+{
 	fn get_position(&self) -> &Span {
 		&self.position
 	}
@@ -108,16 +246,21 @@ impl ASTNode for FunctionParameters {
 	}
 }
 
-impl FunctionParameters {
+impl<L, V> FunctionParameters<L, V>
+where
+	L: LeadingParameter,
+	V: ParameterVisibility,
+{
 	pub(crate) fn from_reader_sub_open_parenthesis(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &crate::ParseOptions,
 		start: TokenStart,
-	) -> Result<FunctionParameters, ParseError> {
-		let mut this_type = None;
-		let mut super_type = None;
+	) -> ParseResult<Self> {
 		let mut parameters = Vec::new();
+
+		let mut this_type = None::<ThisParameter>;
+		let mut super_type = None::<SuperParameter>;
 		let mut rest_parameter = None;
 
 		loop {
@@ -130,10 +273,17 @@ impl FunctionParameters {
 			if let Some(Token(_, spread_pos)) =
 				reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
 			{
-				let (name, name_pos) = token_as_identifier(
-					reader.next().ok_or_else(parse_lexing_error)?,
-					"spread function parameter",
-				)?;
+				let name = VariableField::from_reader(reader, state, options)?;
+				let name_position = *name.get_position();
+				if cfg!(not(feature = "extras")) {
+					if !matches!(name, VariableField::Name(..)) {
+						return Err(ParseError::new(
+							ParseErrors::ExpectedIdentifier,
+							name_position,
+						));
+					}
+				}
+
 				let type_annotation = if options.type_annotations
 					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
 				{
@@ -143,13 +293,10 @@ impl FunctionParameters {
 				};
 
 				let position = spread_pos
-					.union(type_annotation.as_ref().map_or(&name_pos, ASTNode::get_position));
+					.union(type_annotation.as_ref().map_or(&name_position, ASTNode::get_position));
 
-				rest_parameter = Some(Box::new(SpreadParameter {
-					name: VariableIdentifier::Standard(name, name_pos),
-					type_annotation,
-					position,
-				}));
+				rest_parameter =
+					Some(Box::new(SpreadParameter { name, type_annotation, position }));
 				break;
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
 				options.type_annotations
@@ -157,19 +304,21 @@ impl FunctionParameters {
 					&& matches!(tok, TSXToken::Keyword(TSXKeyword::This))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
-				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-				let position = start.union(type_annotation.get_position());
-				this_type = Some((type_annotation, position));
+				let constraint = TypeAnnotation::from_reader(reader, state, options)?;
+				let position = start.union(constraint.get_position());
+				this_type = Some(ThisParameter { constraint, position });
 			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
 				options.type_annotations
 					&& parameters.is_empty()
 					&& matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
 			}) {
 				reader.expect_next(TSXToken::Colon)?;
-				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-				let position = start.union(type_annotation.get_position());
-				super_type = Some((type_annotation, position));
+				let constraint = TypeAnnotation::from_reader(reader, state, options)?;
+				let position = start.union(constraint.get_position());
+				super_type = Some(SuperParameter { constraint, position });
 			} else {
+				let visibility = V::from_reader(reader, state, options);
+
 				let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				let (is_optional, type_annotation) = match reader.peek() {
@@ -222,6 +371,7 @@ impl FunctionParameters {
 				};
 
 				parameters.push(Parameter {
+					visibility,
 					position: name.get_position().union(end_position),
 					name,
 					type_annotation,
@@ -234,13 +384,11 @@ impl FunctionParameters {
 				break;
 			}
 		}
+
 		let close = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-		Ok(FunctionParameters {
-			position: start.union(close),
-			parameters,
-			rest_parameter,
-			this_type,
-			super_type,
-		})
+
+		let leading = L::try_make(this_type, super_type)?;
+
+		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter, leading })
 	}
 }

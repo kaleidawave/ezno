@@ -12,8 +12,6 @@ pub mod generator_helpers;
 mod lexer;
 pub mod marker;
 mod modules;
-pub mod operators;
-pub mod parameters;
 pub mod property_key;
 pub mod statements;
 mod tokens;
@@ -24,6 +22,7 @@ pub mod visiting;
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
 pub use declarations::Declaration;
+use functions::FunctionBody;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -38,7 +37,6 @@ pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_script, LexerOptions};
 pub use modules::{Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
-pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
@@ -65,12 +63,8 @@ use std::{borrow::Cow, str::FromStr};
 extern crate macro_rules_attribute;
 
 attribute_alias! {
-	// Warning: known to break under the following circumstances:
-	// 1. in combination with partial_eq_ignore_types (from the PartialEqExtras derive macro)
-	// 2. in combination with get_field_by_type_target (from the crate of the same name)
-	// any variation (even just a single, straightforward, cfg_attr) will break the other macros.
-	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
-	// keep this macro in mind.
+	// Warning: can produce errors when used with other macro attributes. Always put this attribute first
+	// TODO #[derive(Debug, Clone)] and maybe some others
 	#[apply(derive_ASTNode!)] =
 		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -348,7 +342,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
@@ -393,7 +387,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 	let lex_result = lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset);
 
@@ -418,14 +412,14 @@ pub fn lex_and_parse_script<T: ASTNode>(
 pub(crate) fn throw_unexpected_token<T>(
 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
 }
 
 pub(crate) fn throw_unexpected_token_with_token<T>(
 	token: Token<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	let position = token.get_span();
 	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
 }
@@ -800,6 +794,8 @@ impl NumberRepresentation {
 pub trait ExpressionOrStatementPosition:
 	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
 {
+	type FunctionBody: ASTNode;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -824,6 +820,8 @@ pub trait ExpressionOrStatementPosition:
 pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
+	type FunctionBody = FunctionBody;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -846,6 +844,8 @@ impl ExpressionOrStatementPosition for StatementPosition {
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
+	type FunctionBody = Block;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,

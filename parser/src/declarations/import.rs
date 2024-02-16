@@ -4,9 +4,10 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
-	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	ast::object_literal::ObjectLiteral, derive_ASTNode, errors::parse_lexing_error,
+	parse_bracketed, throw_unexpected_token, tokens::token_as_identifier, ASTNode, ListItem,
+	Marker, ParseOptions, ParseResult, ParsingState, Quoted, TSXKeyword, TSXToken,
+	VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -27,10 +28,13 @@ pub enum ImportedItems {
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
+	#[cfg(feature = "full-typescript")]
 	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
+	/// https://v8.dev/features/import-assertions
+	pub asserts: Option<ObjectLiteral>,
 	pub position: Span,
 	#[cfg(feature = "extras")]
 	pub reversed: bool,
@@ -42,6 +46,7 @@ pub struct ImportDeclaration {
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
+	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
 		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportExportName>"))] Marker<Self>,
@@ -93,13 +98,21 @@ impl ASTNode for ImportDeclaration {
 
 		let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
+		let asserts = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Assert)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
+			#[cfg(feature = "full-typescript")]
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,
+			asserts,
 			position: out.start.union(end),
 			#[cfg(feature = "extras")]
 			reversed: false,
@@ -113,6 +126,8 @@ impl ASTNode for ImportDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("import");
+
+		#[cfg(feature = "full-typescript")]
 		if self.is_type_annotation_import_only && options.include_types {
 			buf.push_str(" type");
 		}
@@ -183,10 +198,17 @@ impl ImportDeclaration {
 
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
+		let asserts = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Assert)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
+			asserts,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,

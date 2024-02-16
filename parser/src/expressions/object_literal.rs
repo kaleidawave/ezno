@@ -1,19 +1,19 @@
-use derive_partial_eq_extras::PartialEqExtras;
-use iterator_endiate::EndiateIteratorExt;
-use std::fmt::Debug;
-use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
-use visitable_derive::Visitable;
-
 use crate::{
 	derive_ASTNode,
 	errors::parse_lexing_error,
-	functions::{FunctionBased, HeadingAndPosition, MethodHeader},
+	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	throw_unexpected_token_with_token,
 	visiting::Visitable,
 	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
 	TSXToken, Token, TokenReader, WithComment,
 };
+
+use derive_partial_eq_extras::PartialEqExtras;
+use iterator_endiate::EndiateIteratorExt;
+use std::fmt::Debug;
+use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
+use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
@@ -70,6 +70,7 @@ pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const TYPES: &str = r"
 	export interface ObjectLiteralMethod extends FunctionBase {
 		header: MethodHeader,
@@ -82,6 +83,8 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
 	type Header = MethodHeader;
 	type Body = Block;
+	type LeadingParameter = Option<ThisParameter>;
+	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,

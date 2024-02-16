@@ -80,6 +80,13 @@ pub enum TypeAnnotation {
 		resolve_false: TypeConditionResult,
 		position: Span,
 	},
+	Symbol {
+		/// TODO unsure
+		unique: bool,
+		#[cfg(feature = "extras")]
+		name: Option<String>,
+		position: Span,
+	},
 	Decorated(
 		Decorator,
 		#[cfg_attr(target_family = "wasm", tsify(type = "TypeAnnotation"))] Box<Self>,
@@ -391,6 +398,7 @@ impl ASTNode for TypeAnnotation {
 				}
 				buf.push('`');
 			}
+			Self::Symbol { .. } => buf.push_str("symbol"),
 		}
 	}
 
@@ -463,6 +471,47 @@ impl TypeAnnotation {
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::False), _) => {
 				Self::BooleanLiteral(false, t.get_span())
+			}
+			t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
+				let position = t.get_span();
+				#[cfg(feature = "extras")]
+				let name =
+					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
+						|t| {
+							if let Token(TSXToken::StringLiteral(content, _), _) = t {
+								content
+							} else {
+								unreachable!()
+							}
+						},
+					);
+				Self::Symbol {
+					unique: false,
+					position,
+					#[cfg(feature = "extras")]
+					name,
+				}
+			}
+			t @ Token(TSXToken::Keyword(TSXKeyword::Unique), _) => {
+				let sym_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
+				let position = t.get_span().union(sym_pos.with_length("symbol".len()));
+				#[cfg(feature = "extras")]
+				let name =
+					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
+						|t| {
+							if let Token(TSXToken::StringLiteral(content, _), _) = t {
+								content
+							} else {
+								unreachable!()
+							}
+						},
+					);
+				Self::Symbol {
+					unique: false,
+					position,
+					#[cfg(feature = "extras")]
+					name,
+				}
 			}
 			Token(TSXToken::NumberLiteral(num), start) => {
 				let pos = start.with_length(num.len());

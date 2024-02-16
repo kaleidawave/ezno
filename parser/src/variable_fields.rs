@@ -11,8 +11,8 @@ use crate::{
 	throw_unexpected_token_with_token,
 	tokens::token_as_identifier,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Expression, ListItem, Marker, ParseOptions, ParseResult, Span, TSXToken, Token,
-	VisitOptions, Visitable, WithComment,
+	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult,
+	Span, TSXToken, Token, VisitOptions, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -41,6 +41,9 @@ impl ASTNode for VariableIdentifier {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let (ident, span) = token_as_identifier(reader.next().unwrap(), "variable identifier")?;
+		if ident == "let" {
+			return Err(ParseError::new(ParseErrors::ReservedIdentifier, span));
+		}
 		Ok(if options.interpolation_points && ident == crate::marker::MARKER {
 			Self::Marker(state.new_partial_point_marker(span.get_start()), span)
 		} else {

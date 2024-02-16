@@ -51,9 +51,12 @@ fn expression_level_expressions() {
 	// 👎👎👎
 	let input = r#"
 (a satisfies number);
-(b as number)"#
-		.trim_start()
-		.replace("    ", "\t");
+(b as number);
+({ 1: 2 } as const);
+(a! + 2)
+"#
+	.trim()
+	.replace("    ", "\t");
 
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());

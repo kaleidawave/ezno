@@ -9,11 +9,12 @@ use crate::{
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
-use source_map::{Span, ToString};
+use source_map::{Nullable, Span, ToString};
 use tokenizer_lib::sized_tokens::TokenStart;
 use tokenizer_lib::{Token, TokenReader};
 
-pub use crate::parameters::*;
+mod parameters;
+pub use parameters::*;
 
 pub mod bases {
 	pub use crate::{
@@ -34,8 +35,26 @@ pub type HeadingAndPosition<T> = (Option<TokenStart>, <T as FunctionBased>::Head
 pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	/// Includes a keyword and/or modifiers
 	type Header: Debug + Clone + PartialEq + Eq + Send + Sync;
+
 	/// A name of the function
 	type Name: Debug + Clone + PartialEq + Eq + Send + Sync;
+
+	/// For `this` constraint
+	#[cfg(not(feature = "serde-serialize"))]
+	type LeadingParameter: LeadingParameter;
+
+	/// Cfg to make up for the fact `serde_derive` does not use `syn_helpers`
+	#[cfg(feature = "serde-serialize")]
+	type LeadingParameter: LeadingParameter + serde::Serialize;
+
+	/// For constructors
+	#[cfg(not(feature = "serde-serialize"))]
+	type ParameterVisibility: ParameterVisibility;
+
+	/// Cfg to make up for the fact `serde_derive` does not use `syn_helpers`
+	#[cfg(feature = "serde-serialize")]
+	type ParameterVisibility: ParameterVisibility + serde::Serialize;
+
 	/// The body of the function
 	type Body: ASTNode;
 
@@ -67,14 +86,14 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<FunctionParameters> {
+	) -> ParseResult<FunctionParameters<Self::LeadingParameter, Self::ParameterVisibility>> {
 		FunctionParameters::from_reader(reader, state, options)
 	}
 
 	/// For [`crate::ArrowFunction`]
 	fn parameters_to_string_from_buffer<T: ToString>(
 		buf: &mut T,
-		parameters: &FunctionParameters,
+		parameters: &FunctionParameters<Self::LeadingParameter, Self::ParameterVisibility>,
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
@@ -117,13 +136,14 @@ pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
 	pub name: T::Name,
 	pub type_parameters: Option<Vec<TypeParameter>>,
-	pub parameters: FunctionParameters,
+	pub parameters: FunctionParameters<T::LeadingParameter, T::ParameterVisibility>,
 	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
 	pub position: Span,
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const TYPES: &str = r"
 	export interface FunctionBase {
 		type_parameters?: TypeParameter[],
@@ -209,7 +229,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 impl<T: FunctionBased> Visitable for FunctionBase<T>
 where
 	T::Body: Visitable,
-	// T::Header: Visitable,
+	// T::Parameters: Visitable,
 {
 	fn visit<TData>(
 		&self,
@@ -250,6 +270,7 @@ pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>)
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const TYPES_EXPRESSION_FUNCTION: &str = r"
 	export interface ExpressionFunction extends FunctionBase {
 		header: FunctionHeader,
@@ -260,9 +281,11 @@ const TYPES_EXPRESSION_FUNCTION: &str = r"
 
 #[allow(clippy::similar_names)]
 impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> {
-	type Body = Block;
-	type Header = FunctionHeader;
 	type Name = T;
+	type Header = FunctionHeader;
+	type LeadingParameter = Option<ThisParameter>;
+	type ParameterVisibility = ();
+	type Body = T::FunctionBody;
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -629,3 +652,45 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 	};
 	Ok((function_header, key))
 }
+
+/// None if overloaded (declaration only)
+#[cfg(feature = "full-typescript")]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
+pub struct FunctionBody(pub Option<Block>);
+
+impl ASTNode for FunctionBody {
+	fn get_position(&self) -> &Span {
+		self.0.as_ref().map_or(&Span::NULL, |Block(_, pos)| pos)
+	}
+
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<Self> {
+		let inner = if !options.type_annotations
+			|| matches!(reader.peek(), Some(Token(TSXToken::OpenBrace, _)))
+		{
+			Some(Block::from_reader(reader, state, options)?)
+		} else {
+			None
+		};
+
+		Ok(Self(inner))
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if let Some(ref b) = self.0 {
+			b.to_string_from_buffer(buf, options, local);
+		}
+	}
+}
+
+#[cfg(not(feature = "full-typescript"))]
+pub type FunctionBody = Block;

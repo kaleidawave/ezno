@@ -165,7 +165,7 @@ fn parse_jsx_children(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
-) -> Result<Vec<JSXNode>, ParseError> {
+) -> ParseResult<Vec<JSXNode>> {
 	let mut children = Vec::new();
 	loop {
 		if matches!(

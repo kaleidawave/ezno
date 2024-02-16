@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, derive_ASTNode, ParseOptions, TSXKeyword,
-	VariableField, VariableKeyword, WithComment,
+	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
+	ParseOptions, TSXKeyword, VariableField, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
@@ -30,7 +30,20 @@ impl ASTNode for ForLoopStatement {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		let start = state.expect_keyword(reader, TSXKeyword::For)?;
-		let condition = ForLoopCondition::from_reader(reader, state, options)?;
+		let is_await = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Await)))
+			.is_some();
+		let mut condition = ForLoopCondition::from_reader(reader, state, options)?;
+		if is_await {
+			if let ForLoopCondition::ForOf { is_await: ref mut a, .. } = condition {
+				*a = is_await;
+			} else {
+				return Err(ParseError::new(
+					ParseErrors::AwaitRequiresForOf,
+					*condition.get_position(),
+				));
+			}
+		}
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let position = start.union(inner.get_position());
 		Ok(ForLoopStatement { condition, inner, position })
@@ -43,6 +56,9 @@ impl ASTNode for ForLoopStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("for");
+		if let ForLoopCondition::ForOf { is_await: true, .. } = self.condition {
+			buf.push_str(" await");
+		}
 		options.push_gap_optionally(buf);
 		self.condition.to_string_from_buffer(buf, options, local);
 		options.push_gap_optionally(buf);
@@ -65,6 +81,7 @@ pub enum ForLoopCondition {
 		keyword: Option<VariableKeyword>,
 		variable: WithComment<VariableField>,
 		of: Expression,
+		is_await: bool,
 		position: Span,
 	},
 	ForIn {
@@ -83,32 +100,6 @@ pub enum ForLoopCondition {
 }
 
 impl ASTNode for ForLoopCondition {
-	// fn get_position(&self) -> &Span {
-	// 	match self {
-	// 		ForLoopCondition::ForOf { keyword, variable, of: rhs }
-	// 		| ForLoopCondition::ForIn { keyword, variable, r#in: rhs } => Cow::Owned(
-	// 			keyword
-	// 				.as_ref()
-	// 				.map(ForLoopVariableKeyword::get_position)
-	// 				.unwrap_or_else(|| variable.get_position())
-	// 				.union(&rhs.get_position()),
-	// 		),
-	// 		ForLoopCondition::Statements { initializer, condition: _, afterthought } => {
-	// 			let initializer_position = match initializer.as_ref().expect("TODO what about None")
-	// 			{
-	// 				ForLoopStatementInitializer::VariableDeclaration(stmt) => stmt.get_position(),
-	// 				ForLoopStatementInitializer::VarStatement(stmt) => stmt.get_position(),
-	// 				ForLoopStatementInitializer::Expression(expr) => expr.get_position(),
-	// 			};
-	// 			Cow::Owned(
-	// 				initializer_position.union(
-	// 					&afterthought.as_ref().expect("TODO what about None").get_position(),
-	// 				),
-	// 			)
-	// 		}
-	// 	}
-	// }
-
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -147,7 +138,9 @@ impl ASTNode for ForLoopCondition {
 				let position = start
 					.unwrap_or_else(|| variable.get_position().get_start())
 					.union(of.get_position());
-				Self::ForOf { variable, keyword, of, position }
+
+				// Not great, set from above
+				Self::ForOf { variable, keyword, of, position, is_await: false }
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::In), _)) => {
 				let (start, keyword) = reader
@@ -227,7 +220,7 @@ impl ASTNode for ForLoopCondition {
 	) {
 		buf.push('(');
 		match self {
-			Self::ForOf { keyword, variable, of, position: _ } => {
+			Self::ForOf { keyword, variable, of, position: _, is_await: _ } => {
 				if let Some(keyword) = keyword {
 					buf.push_str(keyword.as_str());
 				}
@@ -286,10 +279,28 @@ impl ASTNode for ForLoopCondition {
 #[cfg(test)]
 mod tests {
 	use super::ForLoopCondition;
-	use crate::assert_matches_ast;
+	use crate::{assert_matches_ast, statements::ForLoopStatement, ASTNode};
 
 	#[test]
 	fn condition_without_variable_keyword() {
 		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. });
+	}
+
+	#[test]
+	fn for_await() {
+		assert_matches_ast!(
+			"for await (let k of x) {}",
+			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: true, .. }, .. }
+		);
+		assert_matches_ast!(
+			"for (let k of x) {}",
+			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: false, .. }, .. }
+		);
+
+		assert!(ForLoopStatement::from_string(
+			"for await (let x = 0; x < 5; x++) {}".into(),
+			Default::default()
+		)
+		.is_err());
 	}
 }

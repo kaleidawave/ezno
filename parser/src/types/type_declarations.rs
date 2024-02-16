@@ -104,7 +104,14 @@ impl ASTNode for TypeParameter {
 				.map_or(pos.get_end(), |ta| ta.get_position().get_end()),
 		);
 
-		Ok(Self { name, default, extends, position, is_constant })
+		Ok(Self {
+			name,
+			default,
+			extends,
+			position,
+			#[cfg(feature = "full-typescript")]
+			is_constant,
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

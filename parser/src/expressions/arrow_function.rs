@@ -3,9 +3,11 @@ use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, functions::FunctionBased, parameters::FunctionParameters,
-	tokens::token_as_identifier, ASTNode, Block, Expression, FunctionBase, Parameter, ParseOptions,
-	ParseResult, Span, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
+	errors::parse_lexing_error,
+	functions::{FunctionBased, FunctionParameters, Parameter},
+	tokens::token_as_identifier,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, Span, TSXToken, Token,
+	TokenReader, TypeAnnotation, VariableField,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,6 +18,7 @@ pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
 pub type IsAsync = bool;
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const TYPES: &str = r"
 	export interface ArrowFunction extends Omit<FunctionBase, 'name'> {
 		header: IsAsync,
@@ -27,6 +30,8 @@ impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
 	type Header = IsAsync;
 	type Body = ExpressionOrBlock;
+	type LeadingParameter = ();
+	type ParameterVisibility = ();
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderArrowFunction(this.body.get_block_id())
@@ -57,7 +62,7 @@ impl FunctionBased for ArrowFunctionBase {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> ParseResult<FunctionParameters> {
+	) -> ParseResult<FunctionParameters<(), ()>> {
 		match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::OpenParentheses, open_paren) => {
 				FunctionParameters::from_reader_sub_open_parenthesis(
@@ -68,25 +73,20 @@ impl FunctionBased for ArrowFunctionBase {
 			token => {
 				let (name, position) = token_as_identifier(token, "arrow function parameter")?;
 				let parameters = vec![Parameter {
+					visibility: (),
 					name: VariableField::Name(VariableIdentifier::Standard(name, position)).into(),
 					type_annotation: None,
 					additionally: None,
 					position,
 				}];
-				Ok(FunctionParameters {
-					parameters,
-					rest_parameter: None,
-					position,
-					this_type: None,
-					super_type: None,
-				})
+				Ok(FunctionParameters { leading: (), parameters, rest_parameter: None, position })
 			}
 		}
 	}
 
 	fn parameters_to_string_from_buffer<T: source_map::ToString>(
 		buf: &mut T,
-		parameters: &FunctionParameters,
+		parameters: &FunctionParameters<(), ()>,
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
@@ -143,12 +143,13 @@ impl ArrowFunction {
 		is_async: IsAsync,
 	) -> ParseResult<Self> {
 		let (first_parameter_name, first_parameter_position) = first_parameter;
-		let parameters = vec![crate::Parameter {
-			name: VariableField::Name(VariableIdentifier::Standard(
-				first_parameter_name,
-				first_parameter_position,
-			))
-			.into(),
+		let name = VariableField::Name(VariableIdentifier::Standard(
+			first_parameter_name,
+			first_parameter_position,
+		));
+		let parameters = vec![Parameter {
+			visibility: (),
+			name: name.into(),
 			type_annotation: None,
 			additionally: None,
 			position: first_parameter.1,
@@ -159,12 +160,11 @@ impl ArrowFunction {
 			header: is_async,
 			position: first_parameter.1.union(body.get_position()),
 			name: (),
-			parameters: crate::FunctionParameters {
+			parameters: FunctionParameters {
 				parameters,
 				rest_parameter: None,
 				position: first_parameter.1,
-				this_type: None,
-				super_type: None,
+				leading: (),
 			},
 			return_type: None,
 			type_parameters: None,

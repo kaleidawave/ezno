@@ -3,11 +3,12 @@ use std::{borrow::Cow, convert::TryInto};
 use parser::{
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
+		operators::IncrementOrDecrement,
+		operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 		ArrayElement, MultipleExpression, SpecialOperators, SpreadExpression, SuperReference,
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 	ASTNode, Expression,
 };
 
@@ -444,10 +445,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						lhs,
 						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							match direction {
-								parser::operators::IncrementOrDecrement::Increment => {
+								IncrementOrDecrement::Increment => {
 									crate::features::assignments::IncrementOrDecrement::Increment
 								}
-								parser::operators::IncrementOrDecrement::Decrement => {
+								IncrementOrDecrement::Decrement => {
 									crate::features::assignments::IncrementOrDecrement::Decrement
 								}
 							},
@@ -467,12 +468,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 			));
 			match operator {
-				parser::operators::UnaryPostfixAssignmentOperator(direction) => {
+				parser::expressions::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
-						parser::operators::IncrementOrDecrement::Increment => {
+						IncrementOrDecrement::Increment => {
 							crate::features::assignments::IncrementOrDecrement::Increment
 						}
-						parser::operators::IncrementOrDecrement::Decrement => {
+						IncrementOrDecrement::Decrement => {
 							crate::features::assignments::IncrementOrDecrement::Decrement
 						}
 					};
@@ -707,7 +708,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return TypeId::ERROR_TYPE;
 		}
 		Expression::SpecialOperators(operator, position) => match operator {
-			SpecialOperators::AsExpression { value, .. } => {
+			SpecialOperators::AsCast { value, .. } => {
 				checking_data.diagnostics_container.add_warning(
 					TypeCheckWarning::IgnoringAsExpression(
 						position.with_source(environment.get_source()),
@@ -716,10 +717,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return synthesise_expression(value, environment, checking_data, expecting);
 			}
-			SpecialOperators::IsExpression { value: _, type_annotation: _ } => {
+			SpecialOperators::Is { value: _, type_annotation: _ } => {
 				todo!()
 			}
-			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+			SpecialOperators::Satisfies { value, type_annotation, .. } => {
 				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
@@ -733,7 +734,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return value;
 			}
-			SpecialOperators::InExpression { lhs, rhs } => {
+			SpecialOperators::In { lhs, rhs } => {
 				let lhs = match lhs {
 					parser::expressions::InExpressionLHS::PrivateProperty(_) => {
 						checking_data.raise_unimplemented_error(
@@ -752,7 +753,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
 			}
-			SpecialOperators::InstanceOfExpression { .. } => {
+			SpecialOperators::InstanceOf { .. } => {
 				checking_data.raise_unimplemented_error(
 					"instanceof expression",
 					position.with_source(environment.get_source()),
@@ -783,10 +784,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 }
 
 fn operator_to_assignment_kind(
-	operator: parser::operators::BinaryAssignmentOperator,
+	operator: parser::expressions::operators::BinaryAssignmentOperator,
 ) -> crate::features::assignments::AssignmentKind {
 	use crate::features::assignments::AssignmentKind;
-	use parser::operators::BinaryAssignmentOperator;
+	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {

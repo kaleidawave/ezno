@@ -18,7 +18,7 @@ use crate::{
 	ParseResult, StatementOrDeclaration, TSXKeyword, VisitOptions,
 };
 
-use super::{ASTNode, ParseError, Span, TSXToken, Token, TokenReader};
+use super::{ASTNode, Span, TSXToken, Token, TokenReader};
 
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
@@ -297,7 +297,7 @@ pub(crate) fn parse_declare_item(
 	options: &ParseOptions,
 	decorators: Vec<Decorator>,
 	start: TokenStart,
-) -> Result<TypeDefinitionModuleDeclaration, ParseError> {
+) -> ParseResult<TypeDefinitionModuleDeclaration> {
 	match reader.peek() {
 		Some(Token(
 			TSXToken::Keyword(TSXKeyword::Var | TSXKeyword::Const | TSXKeyword::Let),

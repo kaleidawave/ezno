@@ -1,23 +1,26 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, functions::HeadingAndPosition,
-	property_key::PublicOrPrivate, visiting::Visitable,
+	derive_ASTNode,
+	errors::parse_lexing_error,
+	functions::{
+		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
+		ThisParameter,
+	},
+	property_key::PublicOrPrivate,
+	visiting::Visitable,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
+	TSXToken, TypeAnnotation, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
-use crate::{
-	functions::{FunctionBased, MethodHeader},
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
-	TSXToken, TypeAnnotation, WithComment,
-};
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsStatic = bool;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -30,6 +33,7 @@ pub enum ClassMember {
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const CLASS_CONSTRUCTOR_TYPES: &str = r"
 	export interface ClassConstructor extends Omit<FunctionBase, 'header' | 'name'> {
 		body: Block
@@ -39,6 +43,7 @@ const CLASS_CONSTRUCTOR_TYPES: &str = r"
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const CLASS_FUNCTION_TYPES: &str = r"
 	export interface ClassFunction extends FunctionBase {
 		header: MethodHeader,
@@ -221,9 +226,11 @@ impl ClassFunction {
 }
 
 impl FunctionBased for ClassFunctionBase {
-	type Body = Block;
 	type Header = MethodHeader;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = ();
+	type Body = FunctionBody;
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
@@ -282,6 +289,8 @@ impl FunctionBased for ClassConstructorBase {
 	type Header = ();
 	type Name = ();
 	type Body = Block;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = ();
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
