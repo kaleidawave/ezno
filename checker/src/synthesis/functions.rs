@@ -153,7 +153,7 @@ impl SynthesisableFunctionBody for parser::functions::FunctionBody {
 		self.0
 			.as_ref()
 			.expect("TODO overloading")
-			.synthesise_function_body(environment, checking_data)
+			.synthesise_function_body(environment, checking_data);
 	}
 }
 

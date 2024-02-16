@@ -22,6 +22,7 @@ pub enum Visibility {
 }
 
 impl Visibility {
+	#[must_use]
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			Visibility::Private => "private ",
@@ -30,6 +31,7 @@ impl Visibility {
 		}
 	}
 
+	#[must_use]
 	pub fn token_is_visibility_specifier(t: &TSXToken) -> bool {
 		matches!(
 			t,

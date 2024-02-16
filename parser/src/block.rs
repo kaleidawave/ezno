@@ -95,15 +95,6 @@ impl ASTNode for StatementOrDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			StatementOrDeclaration::Statement(Statement::Expression(e)) => {
-				if e.left_is_statement_or_declaration_like() {
-					buf.push('(');
-					e.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					e.to_string_from_buffer(buf, options, local);
-				}
-			}
 			StatementOrDeclaration::Statement(item) => {
 				item.to_string_from_buffer(buf, options, local);
 			}

@@ -147,7 +147,6 @@ pub struct FunctionBase<T: FunctionBased> {
 const TYPES: &str = r"
 	export interface FunctionBase {
 		type_parameters?: TypeParameter[],
-		parameters: FunctionParameters,
 		return_type?: TypeAnnotation,
 		position: Span
 	}
@@ -275,7 +274,8 @@ const TYPES_EXPRESSION_FUNCTION: &str = r"
 	export interface ExpressionFunction extends FunctionBase {
 		header: FunctionHeader,
 		body: Block,
-		name: ExpressionPosition
+		name: ExpressionPosition,
+		parameters: FunctionParameters<null, null>
 	}
 ";
 

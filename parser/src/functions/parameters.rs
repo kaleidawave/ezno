@@ -40,7 +40,6 @@ impl ParameterVisibility for () {
 		_: &mut crate::ParsingState,
 		_: &crate::ParseOptions,
 	) -> Self {
-		()
 	}
 }
 
@@ -275,13 +274,8 @@ where
 			{
 				let name = VariableField::from_reader(reader, state, options)?;
 				let name_position = *name.get_position();
-				if cfg!(not(feature = "extras")) {
-					if !matches!(name, VariableField::Name(..)) {
-						return Err(ParseError::new(
-							ParseErrors::ExpectedIdentifier,
-							name_position,
-						));
-					}
+				if cfg!(not(feature = "extras")) && !matches!(name, VariableField::Name(..)) {
+					return Err(ParseError::new(ParseErrors::ExpectedIdentifier, name_position));
 				}
 
 				let type_annotation = if options.type_annotations

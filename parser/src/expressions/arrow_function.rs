@@ -20,7 +20,7 @@ pub type IsAsync = bool;
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
 #[allow(dead_code)]
 const TYPES: &str = r"
-	export interface ArrowFunction extends Omit<FunctionBase, 'name'> {
+	export interface ArrowFunction extends FunctionBase {
 		header: IsAsync,
 		body: ExpressionOrBlock
 	}

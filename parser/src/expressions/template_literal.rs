@@ -14,8 +14,8 @@ pub struct TemplateLiteral {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplateLiteralPart<T: ASTNode> {
 	Static(String),
 	Dynamic(Box<T>),
@@ -68,15 +68,7 @@ impl ASTNode for TemplateLiteral {
 		local: crate::LocalToStringInformation,
 	) {
 		if let Some(tag) = &self.tag {
-			if let Expression::ObjectLiteral(..) | Expression::ArrowFunction(..) =
-				tag.get_non_parenthesized()
-			{
-				buf.push('(');
-				tag.to_string_from_buffer(buf, options, local);
-				buf.push(')');
-			} else {
-				tag.to_string_from_buffer(buf, options, local);
-			}
+			tag.to_string_from_buffer(buf, options, local);
 		}
 		buf.push('`');
 		for part in &self.parts {

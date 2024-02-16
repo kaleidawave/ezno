@@ -262,13 +262,7 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				if val.left_is_statement_like() {
-					buf.push('(');
-					val.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					val.to_string_from_buffer(buf, options, local);
-				}
+				val.to_string_on_left(buf, options, local);
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);

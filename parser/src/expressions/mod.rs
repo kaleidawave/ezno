@@ -209,7 +209,12 @@ impl ASTNode for Expression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_using_precedence(buf, options, local, u8::MAX);
+		self.to_string_using_precedence(
+			buf,
+			options,
+			local,
+			ExpressionToStringArgument { on_left: false, parent_precedence: u8::MAX },
+		);
 	}
 
 	fn get_position(&self) -> &Span {
@@ -1300,10 +1305,10 @@ impl Expression {
 		buf: &mut T,
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
-		_parent_precedence: u8,
+		local2: ExpressionToStringArgument,
 	) {
 		let self_precedence = self.get_precedence();
-		// let inverted = parent_precedence < self_precedence;
+		// let inverted = local2.parent_precedence < self_precedence;
 		// if inverted {
 		// 	buf.push('(');
 		// }
@@ -1329,7 +1334,13 @@ impl Expression {
 				}
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
-				lhs.to_string_using_precedence(buf, options, local, self_precedence);
+				lhs.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(self_precedence),
+				);
+				// TODO not great
 				if options.pretty
 					|| matches!(
 						(operator, &**lhs),
@@ -1354,6 +1365,7 @@ impl Expression {
 					buf.push(' ');
 				}
 				buf.push_str(operator.to_str());
+				// TODO not great
 				if options.pretty
 					|| matches!(
 						(operator, &**rhs),
@@ -1380,7 +1392,12 @@ impl Expression {
 					) {
 					buf.push(' ');
 				}
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				rhs.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(self_precedence),
+				);
 			}
 			Self::SpecialOperators(special, _) => match special {
 				#[cfg(feature = "full-typescript")]
@@ -1412,22 +1429,47 @@ impl Expression {
 							buf.push_str(property);
 						}
 						InExpressionLHS::Expression(lhs) => {
-							lhs.to_string_using_precedence(buf, options, local, self_precedence);
+							lhs.to_string_using_precedence(
+								buf,
+								options,
+								local,
+								local2.with_precedence(self_precedence),
+							);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, local, self_precedence);
+					rhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 				}
 				SpecialOperators::InstanceOf { lhs, rhs } => {
-					lhs.to_string_using_precedence(buf, options, local, self_precedence);
+					lhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, local, self_precedence);
+					rhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 				}
 				#[cfg(feature = "full-typescript")]
 				SpecialOperators::NonNullAssertion(on) => {
-					on.to_string_using_precedence(buf, options, local, self_precedence);
+					on.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 					if options.include_types {
 						buf.push('!');
 					}
@@ -1440,6 +1482,7 @@ impl Expression {
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
+				// TODO not great
 				if let (
 					UnaryOperator::Negation,
 					Expression::UnaryPrefixAssignmentOperation {
@@ -1465,19 +1508,22 @@ impl Expression {
 				{
 					buf.push(' ');
 				}
-				operand.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				operand.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::Assignment { lhs, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				rhs.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
 				options.push_gap_optionally(buf);
 				buf.push_str(operator.to_str());
 				options.push_gap_optionally(buf);
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				rhs.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
@@ -1505,6 +1551,7 @@ impl Expression {
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				buf.add_mapping(&position.with_source(local.under));
 
+				// TODO number okay, others don't quite get?
 				if let Self::NumberLiteral(..) | Self::ObjectLiteral(..) | Self::ArrowFunction(..) =
 					parent.get_non_parenthesized()
 				{
@@ -1535,18 +1582,17 @@ impl Expression {
 			}
 			Self::ParenthesizedExpression(expr, _) => {
 				// TODO more expressions could be considered for parenthesis elision
-				if let MultipleExpression::Single(inner) = &**expr {
-					if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE {
-						inner.to_string_from_buffer(buf, options, local);
-						return;
-					}
+				if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
+				{
+					expr.to_string_on_left(buf, options, local);
+				} else {
+					buf.push('(');
+					expr.to_string_from_buffer(buf, options, local);
+					buf.push(')');
 				}
-				buf.push('(');
-				expr.to_string_from_buffer(buf, options, local);
-				buf.push(')');
 			}
 			Self::Index { indexee: expression, indexer, is_optional, .. } => {
-				expression.to_string_from_buffer(buf, options, local);
+				expression.to_string_using_precedence(buf, options, local, local2);
 				if *is_optional {
 					buf.push_str("?.");
 				}
@@ -1561,15 +1607,7 @@ impl Expression {
 					return;
 				}
 
-				if let Self::ArrowFunction(..) | Self::ObjectLiteral(..) =
-					function.get_non_parenthesized()
-				{
-					buf.push('(');
-					function.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					function.to_string_from_buffer(buf, options, local);
-				}
+				function.to_string_using_precedence(buf, options, local, local2);
 
 				if *is_optional {
 					buf.push_str("?.");
@@ -1596,16 +1634,36 @@ impl Expression {
 				to_string_bracketed(values, ('[', ']'), buf, options, local);
 			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
-			Self::ObjectLiteral(object_literal) => {
-				object_literal.to_string_from_buffer(buf, options, local);
-			}
 			Self::ArrowFunction(arrow_function) => {
 				arrow_function.to_string_from_buffer(buf, options, local);
 			}
 			Self::ExpressionFunction(function) => {
+				if local2.on_left {
+					buf.push('(');
+				}
 				function.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
 			}
-			Self::ClassExpression(class) => class.to_string_from_buffer(buf, options, local),
+			Self::ObjectLiteral(object_literal) => {
+				if local2.on_left {
+					buf.push('(');
+				}
+				object_literal.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
+			}
+			Self::ClassExpression(class) => {
+				if local2.on_left {
+					buf.push('(');
+				}
+				class.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
+			}
 			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
 				if *prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
@@ -1619,7 +1677,7 @@ impl Expression {
 					}
 				}
 				if let Some(on) = on {
-					on.to_string_from_buffer(buf, options, local);
+					on.to_string_using_precedence(buf, options, local, local2);
 				}
 				if !prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
@@ -1634,41 +1692,44 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
-				template_literal.to_string_from_buffer(buf, options, local);
+				if let Some(tag) = &template_literal.tag {
+					tag.to_string_using_precedence(buf, options, local, local2);
+				}
+				buf.push('`');
+				for part in &template_literal.parts {
+					match part {
+						TemplateLiteralPart::Static(content) => {
+							buf.push_str_contains_new_line(content.as_str());
+						}
+						TemplateLiteralPart::Dynamic(expression) => {
+							buf.push_str("${");
+							expression.to_string_from_buffer(buf, options, local);
+							buf.push('}');
+						}
+					}
+				}
+				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
-				if let Self::ArrowFunction(..) | Self::ExpressionFunction(..) =
-					condition.get_non_parenthesized()
-				{
-					buf.push('(');
-					condition.to_string_using_precedence(
-						buf,
-						options,
-						local,
-						CONDITIONAL_TERNARY_PRECEDENCE,
-					);
-					buf.push(')');
-				} else {
-					condition.to_string_using_precedence(
-						buf,
-						options,
-						local,
-						CONDITIONAL_TERNARY_PRECEDENCE,
-					);
-				}
+				condition.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE),
+				);
 				buf.push_str(if options.pretty { " ? " } else { "?" });
 				truthy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
-					CONDITIONAL_TERNARY_PRECEDENCE,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
 				buf.push_str(if options.pretty { " : " } else { ":" });
 				falsy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
-					CONDITIONAL_TERNARY_PRECEDENCE,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
 			}
 			Self::Null(..) => buf.push_str("null"),
@@ -1710,7 +1771,23 @@ fn function_header_ish(
 			))
 }
 
-/// Represents expressions that can be `,`
+#[derive(Clone, Copy)]
+pub(crate) struct ExpressionToStringArgument {
+	pub on_left: bool,
+	pub parent_precedence: u8,
+}
+
+impl ExpressionToStringArgument {
+	pub fn on_right(self) -> Self {
+		Self { on_left: false, parent_precedence: self.parent_precedence }
+	}
+
+	pub fn with_precedence(self, precedence: u8) -> Self {
+		Self { on_left: self.on_left, parent_precedence: precedence }
+	}
+}
+
+/// Represents expressions under the comma operator
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -1729,26 +1806,23 @@ impl MultipleExpression {
 		}
 	}
 
-	/// These are valid in expression position but are parsed different in statement mode
-	pub(crate) fn left_is_statement_like(&self) -> bool {
+	pub(crate) fn to_string_on_left<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
 		match self {
-			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
-			MultipleExpression::Single(e) => {
-				matches!(e.get_non_parenthesized().get_left(), Expression::ObjectLiteral(_))
+			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
+				lhs.to_string_on_left(buf, options, local);
+				buf.push(',');
+				rhs.to_string_from_buffer(buf, options, local);
 			}
-		}
-	}
-
-	/// These are valid in expression position but are parsed different in statement mode
-	pub(crate) fn left_is_statement_or_declaration_like(&self) -> bool {
-		match self {
-			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
-			MultipleExpression::Single(e) => matches!(
-				e.get_left(),
-				Expression::ObjectLiteral(_)
-					| Expression::ExpressionFunction(_)
-					| Expression::ClassExpression(_)
-			),
+			MultipleExpression::Single(single) => {
+				let local2 =
+					ExpressionToStringArgument { on_left: true, parent_precedence: u8::MAX };
+				single.to_string_using_precedence(buf, options, local, local2);
+			}
 		}
 	}
 }

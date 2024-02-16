@@ -23,6 +23,7 @@ pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
 const TYPES_STATEMENT_FUNCTION: &str = r"
 	export interface StatementFunction extends FunctionBase {
 		header: FunctionHeader,
+		parameters: FunctionParameters<ThisValue | null, null>,
 		body: Block,
 		name: StatementPosition
 	}

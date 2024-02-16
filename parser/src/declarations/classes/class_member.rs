@@ -32,25 +32,10 @@ pub enum ClassMember {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-#[allow(dead_code)]
-const CLASS_CONSTRUCTOR_TYPES: &str = r"
-	export interface ClassConstructor extends Omit<FunctionBase, 'header' | 'name'> {
-		body: Block
-	}
-";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-#[allow(dead_code)]
-const CLASS_FUNCTION_TYPES: &str = r"
-	export interface ClassFunction extends FunctionBase {
-		header: MethodHeader,
-		body: Block,
-		name: WithComment<PropertyKey<PublicOrPrivate>>
-	}
-";
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
@@ -288,9 +273,9 @@ impl FunctionBased for ClassFunctionBase {
 impl FunctionBased for ClassConstructorBase {
 	type Header = ();
 	type Name = ();
-	type Body = Block;
+	type Body = FunctionBody;
 	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
-	type ParameterVisibility = ();
+	type ParameterVisibility = Option<crate::types::Visibility>;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
@@ -337,3 +322,19 @@ impl FunctionBased for ClassConstructorBase {
 		None
 	}
 }
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const CLASS_CONSTRUCTOR_AND_FUNCTION_TYPES: &str = r"
+	export interface ClassConstructor extends FunctionBase {
+		body: FunctionBody,
+		parameters: FunctionParameters<[ThisValue | null, SuperValue | null], Visibility>,
+	}
+
+	export interface ClassFunction extends FunctionBase {
+		header: MethodHeader,
+		name: WithComment<PropertyKey<PublicOrPrivate>>
+		parameters: FunctionParameters<ThisValue | null, null>,
+		body: FunctionBody,
+	}
+";
