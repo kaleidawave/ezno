@@ -79,7 +79,7 @@ pub type SpreadParameterName = VariableField;
 
 #[cfg(not(feature = "extras"))]
 #[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type SpreadParameterName = VariableIdentifier;
+pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Eq, PartialEq, Visitable)]
@@ -217,7 +217,9 @@ where
 		{
 			// decorators_to_string_from_buffer(decorators, buf, options, local);
 			name.to_string_from_buffer(buf, options, local);
-			if let (true, Some(ref type_annotation)) = (options.include_types, type_annotation) {
+			if let (true, Some(ref type_annotation)) =
+				(options.include_type_annotations, type_annotation)
+			{
 				if let Some(ParameterData::Optional) = additionally {
 					buf.push('?');
 				}

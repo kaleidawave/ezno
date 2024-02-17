@@ -128,7 +128,7 @@ impl ASTNode for ImportDeclaration {
 		buf.push_str("import");
 
 		#[cfg(feature = "full-typescript")]
-		if self.is_type_annotation_import_only && options.include_types {
+		if self.is_type_annotation_import_only && options.include_type_annotations {
 			buf.push_str(" type");
 		}
 

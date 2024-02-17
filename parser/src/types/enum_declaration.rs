@@ -60,27 +60,29 @@ impl ASTNode for EnumDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if self.is_constant {
-			buf.push_str("const ");
-		}
-		buf.push_str("enum ");
-		buf.push_str(&self.name);
-		options.push_gap_optionally(buf);
-		buf.push_str("{");
-		for (at_end, member) in self.members.iter().endiate() {
-			if options.pretty {
+		if options.include_type_annotations {
+			if self.is_constant {
+				buf.push_str("const ");
+			}
+			buf.push_str("enum ");
+			buf.push_str(&self.name);
+			options.push_gap_optionally(buf);
+			buf.push_str("{");
+			for (at_end, member) in self.members.iter().endiate() {
+				if options.pretty {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				}
+				member.to_string_from_buffer(buf, options, local);
+				if !options.pretty && !at_end {
+					buf.push(',');
+				}
+			}
+			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, options, local);
-			if !options.pretty && !at_end {
-				buf.push(',');
-			}
+			buf.push('}');
 		}
-		if options.pretty && !self.members.is_empty() {
-			buf.push_new_line();
-		}
-		buf.push('}');
 	}
 }
 

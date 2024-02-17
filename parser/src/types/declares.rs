@@ -40,7 +40,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("declare ");
 			buf.push_str(self.keyword.as_str());
 			crate::declarations::variable::declarations_to_string(
@@ -115,7 +115,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("declare function ");
 			buf.push_str(self.name.as_str());
 			if let Some(type_parameters) = &self.type_parameters {

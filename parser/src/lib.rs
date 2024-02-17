@@ -185,8 +185,8 @@ pub struct ToStringOptions {
 	pub trailing_semicolon: bool,
 	/// Single statements get put on the same line as their parent statement
 	pub single_statement_on_new_line: bool,
-	/// Include type annotation syntax
-	pub include_types: bool,
+	/// Include type annotations (and additional TypeScript) syntax
+	pub include_type_annotations: bool,
 	/// TODO unsure about this
 	pub include_decorators: bool,
 	pub comments: Comments,
@@ -206,7 +206,7 @@ impl Default for ToStringOptions {
 	fn default() -> Self {
 		ToStringOptions {
 			pretty: true,
-			include_types: false,
+			include_type_annotations: false,
 			single_statement_on_new_line: true,
 			include_decorators: false,
 			comments: Comments::All,
@@ -233,7 +233,7 @@ impl ToStringOptions {
 	/// With typescript type syntax
 	#[must_use]
 	pub fn typescript() -> Self {
-		ToStringOptions { include_types: true, ..Default::default() }
+		ToStringOptions { include_type_annotations: true, ..Default::default() }
 	}
 
 	/// Whether to include comment in source
@@ -813,6 +813,9 @@ pub trait ExpressionOrStatementPosition:
 			None
 		}
 	}
+
+	#[cfg(feature = "full-typescript")]
+	fn has_function_body(body: &Self::FunctionBody) -> bool;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -836,6 +839,11 @@ impl ExpressionOrStatementPosition for StatementPosition {
 
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
 		Some(&mut self.0)
+	}
+
+	#[cfg(feature = "full-typescript")]
+	fn has_function_body(body: &Self::FunctionBody) -> bool {
+		body.0.is_some()
 	}
 }
 
@@ -871,6 +879,10 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
 		self.0.as_mut()
+	}
+
+	fn has_function_body(_: &Self::FunctionBody) -> bool {
+		true
 	}
 }
 

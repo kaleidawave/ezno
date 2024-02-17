@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let to_string_options = ToStringOptions {
 					trailing_semicolon: true,
 					expect_markers: true,
-					include_types: true,
+					include_type_annotations: true,
 					pretty,
 					comments: if pretty { Comments::All } else { Comments::None },
 					// 60 is temp
@@ -108,8 +108,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						}
 					};
 				}
-			} else if !timings {
-				eprintln!("parsed in: {:?}", now.elapsed());
 			}
 
 			if display_keywords {

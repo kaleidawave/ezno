@@ -46,7 +46,9 @@ function y(a: string): string {
 	.is_err());
 }
 
+// `satisfies` is actually not under `feature="full-typescript"`
 #[test]
+#[cfg(feature = "full-typescript")]
 fn expression_level_expressions() {
 	// 👎👎👎
 	let input = r#"
@@ -60,6 +62,40 @@ fn expression_level_expressions() {
 
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
+
+	assert_eq!(output, input.clone());
+
+	assert!(Module::from_string(
+		input,
+		ParseOptions { type_annotations: false, ..Default::default() }
+	)
+	.is_err());
+}
+
+#[test]
+#[cfg(feature = "full-typescript")]
+fn function_and_method_overloading() {
+	// use generics and redesign your bad APIs sheeple
+	let input = r#"
+function makeDate(timestamp: number): Date
+function makeDate(m: number, d: number, y: number): Date
+function makeDate(mOrTimestamp: number, d?: number, y?: number): Date {}
+class X {
+	constructor(a: string)
+	constructor(a: number) {}
+	makeDate(timestamp: number): Date
+	makeDate(m: number, d: number, y: number): Date
+	makeDate(mOrTimestamp: number, d?: number, y?: number): Date {}
+}
+"#
+	.trim()
+	.replace("    ", "\t");
+
+	let module = Module::from_string(input.clone(), Default::default()).unwrap();
+	let output = module.to_string(&ToStringOptions::typescript());
+
+	eprintln!("{output}");
+	eprintln!("{output:?}");
 
 	assert_eq!(output, input.clone());
 

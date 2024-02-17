@@ -32,7 +32,7 @@ impl ASTNode for TypeAlias {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("type ");
 			self.type_name.to_string_from_buffer(buf, options, local);
 			buf.push_str(" = ");

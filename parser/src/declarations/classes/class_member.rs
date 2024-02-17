@@ -153,7 +153,9 @@ impl ASTNode for ClassMember {
 					buf.push_str("readonly ");
 				}
 				key.to_string_from_buffer(buf, options, local);
-				if let (true, Some(type_annotation)) = (options.include_types, type_annotation) {
+				if let (true, Some(type_annotation)) =
+					(options.include_type_annotations, type_annotation)
+				{
 					buf.push_str(": ");
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
@@ -216,6 +218,11 @@ impl FunctionBased for ClassFunctionBase {
 	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
 	type ParameterVisibility = ();
 	type Body = FunctionBody;
+
+	#[cfg(feature = "full-typescript")]
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
@@ -280,6 +287,11 @@ impl FunctionBased for ClassConstructorBase {
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
+
+	#[cfg(feature = "full-typescript")]
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,

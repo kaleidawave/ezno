@@ -164,7 +164,9 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		local: crate::LocalToStringInformation,
 	) {
 		self.name.to_string_from_buffer(buf, options, local);
-		if let (true, Some(type_annotation)) = (options.include_types, &self.type_annotation) {
+		if let (true, Some(type_annotation)) =
+			(options.include_type_annotations, &self.type_annotation)
+		{
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}

@@ -160,18 +160,22 @@ impl ASTNode for Block {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		buf.push('{');
-		if local.depth > 0 && options.pretty {
-			buf.push_new_line();
+		if options.pretty && self.0.is_empty() {
+			buf.push_str("{}");
+		} else {
+			buf.push('{');
+			if local.depth > 0 && options.pretty {
+				buf.push_new_line();
+			}
+			statements_and_declarations_to_string(&self.0, buf, options, local);
+			if options.pretty && !self.0.is_empty() {
+				buf.push_new_line();
+			}
+			if local.depth > 1 {
+				options.add_indent(local.depth - 1, buf);
+			}
+			buf.push('}');
 		}
-		statements_and_declarations_to_string(&self.0, buf, options, local);
-		if options.pretty && !self.0.is_empty() {
-			buf.push_new_line();
-		}
-		if local.depth > 1 {
-			options.add_indent(local.depth - 1, buf);
-		}
-		buf.push('}');
 	}
 
 	fn get_position(&self) -> &Span {

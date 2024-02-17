@@ -112,7 +112,7 @@ impl ASTNode for InterfaceDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("interface ");
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {

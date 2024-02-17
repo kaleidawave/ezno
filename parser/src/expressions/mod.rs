@@ -1403,7 +1403,7 @@ impl Expression {
 				#[cfg(feature = "full-typescript")]
 				SpecialOperators::AsCast { value, rhs, .. } => {
 					value.to_string_from_buffer(buf, options, local);
-					if options.include_types {
+					if options.include_type_annotations {
 						buf.push_str(" as ");
 						match rhs {
 							TypeOrConst::Type(type_annotation) => {
@@ -1417,7 +1417,7 @@ impl Expression {
 				}
 				SpecialOperators::Satisfies { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
-					if options.include_types {
+					if options.include_type_annotations {
 						buf.push_str(" satisfies ");
 						type_annotation.to_string_from_buffer(buf, options, local);
 					}
@@ -1470,7 +1470,7 @@ impl Expression {
 						local,
 						local2.with_precedence(self_precedence),
 					);
-					if options.include_types {
+					if options.include_type_annotations {
 						buf.push('!');
 					}
 				}
@@ -1612,7 +1612,9 @@ impl Expression {
 				if *is_optional {
 					buf.push_str("?.");
 				}
-				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) =
+					(options.include_type_annotations, type_arguments)
+				{
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				arguments_to_string(arguments, buf, options, local);
@@ -1620,7 +1622,9 @@ impl Expression {
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
 				constructor.to_string_from_buffer(buf, options, local);
-				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) =
+					(options.include_type_annotations, type_arguments)
+				{
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				if let Some(arguments) = arguments {

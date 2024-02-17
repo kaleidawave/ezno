@@ -81,6 +81,11 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 		None
 	}
 
+	/// For overloading
+	fn has_body(_: &Self::Body) -> bool {
+		true
+	}
+
 	/// For [`crate::ArrowFunction`]
 	fn parameters_from_reader<T: ToString>(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -171,16 +176,26 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		// Don't print overloads
+		#[cfg(feature = "full-typescript")]
+		if !options.include_type_annotations && !T::has_body(&self.body) {
+			return;
+		}
+
 		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, local);
-		if let (true, Some(type_parameters)) = (options.include_types, &self.type_parameters) {
+		if let (true, Some(type_parameters)) =
+			(options.include_type_annotations, &self.type_parameters)
+		{
 			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 		}
 		T::parameters_to_string_from_buffer(buf, &self.parameters, options, local);
-		if let (true, Some(return_type)) = (options.include_types, &self.return_type) {
+		if let (true, Some(return_type)) = (options.include_type_annotations, &self.return_type) {
 			buf.push_str(": ");
 			return_type.to_string_from_buffer(buf, options, local);
 		}
-		T::parameter_body_boundary_token_to_string_from_buffer(buf, options);
+		if T::has_body(&self.body) {
+			T::parameter_body_boundary_token_to_string_from_buffer(buf, options);
+		}
 		self.body.to_string_from_buffer(buf, options, local.next_level());
 	}
 
@@ -286,6 +301,11 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type LeadingParameter = Option<ThisParameter>;
 	type ParameterVisibility = ();
 	type Body = T::FunctionBody;
+
+	#[cfg(feature = "full-typescript")]
+	fn has_body(body: &Self::Body) -> bool {
+		T::has_function_body(body)
+	}
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -659,6 +679,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 #[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
+#[cfg(feature = "full-typescript")]
 impl ASTNode for FunctionBody {
 	fn get_position(&self) -> &Span {
 		self.0.as_ref().map_or(&Span::NULL, |Block(_, pos)| pos)

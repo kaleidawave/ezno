@@ -302,20 +302,22 @@ impl crate::ASTNode for Declaration {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
 			Declaration::Variable(var) => var.to_string_from_buffer(buf, options, local),
 			Declaration::Class(cls) => cls.to_string_from_buffer(buf, options, local),
 			Declaration::Import(is) => is.to_string_from_buffer(buf, options, local),
 			Declaration::Export(es) => es.to_string_from_buffer(buf, options, local),
+			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
+			// TODO should skip these under no types
 			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
 			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
-			// TODO should skip these under no types
 			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareInterface(did) => {
-				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, options, local);
+				if options.include_type_annotations {
+					buf.push_str("declare ");
+					did.to_string_from_buffer(buf, options, local);
+				}
 			}
 		}
 	}
