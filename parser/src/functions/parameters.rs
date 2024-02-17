@@ -274,11 +274,8 @@ where
 			if let Some(Token(_, spread_pos)) =
 				reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
 			{
-				let name = VariableField::from_reader(reader, state, options)?;
+				let name = SpreadParameterName::from_reader(reader, state, options)?;
 				let name_position = *name.get_position();
-				if cfg!(not(feature = "extras")) && !matches!(name, VariableField::Name(..)) {
-					return Err(ParseError::new(ParseErrors::ExpectedIdentifier, name_position));
-				}
 
 				let type_annotation = if options.type_annotations
 					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()

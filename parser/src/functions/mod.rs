@@ -9,7 +9,7 @@ use crate::{
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
-use source_map::{Nullable, Span, ToString};
+use source_map::{Span, ToString};
 use tokenizer_lib::sized_tokens::TokenStart;
 use tokenizer_lib::{Token, TokenReader};
 
@@ -82,6 +82,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
 	}
 
 	/// For overloading
+	#[must_use]
 	fn has_body(_: &Self::Body) -> bool {
 		true
 	}
@@ -682,7 +683,7 @@ pub struct FunctionBody(pub Option<Block>);
 #[cfg(feature = "full-typescript")]
 impl ASTNode for FunctionBody {
 	fn get_position(&self) -> &Span {
-		self.0.as_ref().map_or(&Span::NULL, |Block(_, pos)| pos)
+		self.0.as_ref().map_or(&source_map::Nullable::NULL, |Block(_, pos)| pos)
 	}
 
 	fn from_reader(

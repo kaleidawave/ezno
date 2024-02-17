@@ -1101,7 +1101,7 @@ impl Expression {
 					top = Self::SpecialOperators(special_operators, position);
 				}
 				#[cfg(feature = "full-typescript")]
-				TSXToken::LogicalNot => {
+				TSXToken::LogicalNot if options.type_annotations => {
 					let Token(_token, not_pos) = reader.next().unwrap();
 					let position = top.get_position().union(not_pos.get_end_after(1));
 					top = Self::SpecialOperators(
@@ -1273,6 +1273,7 @@ impl Expression {
             | Self::ClassExpression(..)
             // TODO unsure about this one...?
             | Self::DynamicImport { .. }
+			| Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _)
             | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
@@ -2220,39 +2221,6 @@ impl Expression {
 			on.get_non_parenthesized()
 		} else {
 			self
-		}
-	}
-
-	/// Recurses to find first **non-parenthesized** expression
-	#[must_use]
-	pub fn get_left(&self) -> &Self {
-		match self {
-			Expression::Assignment {
-				lhs: LHSOfAssignment::VariableOrPropertyAccess(lhs), ..
-			}
-			| Expression::BinaryAssignmentOperation { lhs, .. }
-			| Expression::UnaryPostfixAssignmentOperation { operand: lhs, .. } => {
-				if let VariableOrPropertyAccess::PropertyAccess { parent, .. }
-				| VariableOrPropertyAccess::Index { indexee: parent, .. } = lhs
-				{
-					parent.get_left()
-				} else {
-					self
-				}
-			}
-			Expression::TemplateLiteral(TemplateLiteral { tag: Some(left), .. })
-			| Expression::BinaryOperation { lhs: left, .. }
-			| Expression::PropertyAccess { parent: left, .. }
-			| Expression::Index { indexee: left, .. }
-			| Expression::FunctionCall { function: left, .. }
-			| Expression::Comment { on: Some(left), prefix: false, .. }
-			| Expression::SpecialOperators(SpecialOperators::Satisfies { value: left, .. }, _)
-			| Expression::ConditionalTernary { condition: left, .. } => left.get_left(),
-			#[cfg(feature = "full-typescript")]
-			Expression::SpecialOperators(SpecialOperators::AsCast { value: left, .. }, _) => left.get_left(),
-			#[cfg(feature = "extras")]
-			Expression::SpecialOperators(SpecialOperators::Is { value: left, .. }, _) => left.get_left(),
-			root => root,
 		}
 	}
 }

@@ -881,6 +881,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 		self.0.as_mut()
 	}
 
+	#[cfg(feature = "full-typescript")]
 	fn has_function_body(_: &Self::FunctionBody) -> bool {
 		true
 	}

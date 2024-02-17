@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
-	let no_type_annotations = args.iter().any(|item| item == "--no-type-annotations");
+	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 
 	let now = Instant::now();
 
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		comments,
 		record_keyword_positions: display_keywords,
 		partial_syntax,
-		type_annotations: !no_type_annotations,
+		type_annotations,
 		..ParseOptions::all_features()
 	};
 
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let to_string_options = ToStringOptions {
 					trailing_semicolon: true,
 					expect_markers: true,
-					include_type_annotations: true,
+					include_type_annotations: type_annotations,
 					pretty,
 					comments: if pretty { Comments::All } else { Comments::None },
 					// 60 is temp

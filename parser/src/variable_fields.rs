@@ -158,6 +158,84 @@ impl ASTNode for VariableField {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[apply(derive_ASTNode)]
+pub enum ArrayDestructuringField {
+	Spread(VariableIdentifier, Span),
+	Name(VariableField, Option<Box<Expression>>),
+	None,
+}
+
+impl ListItem for WithComment<ArrayDestructuringField> {
+	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
+
+	fn allow_comma_after(&self) -> bool {
+		!matches!(self.get_ast_ref(), ArrayDestructuringField::Spread(..))
+	}
+}
+
+impl ASTNode for ArrayDestructuringField {
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<Self> {
+		if let TSXToken::Spread = reader.peek().ok_or_else(parse_lexing_error)?.0 {
+			let token = reader.next().unwrap();
+			Ok(Self::Spread(
+				VariableIdentifier::from_reader(reader, state, options)?,
+				token.get_span(),
+			))
+		} else {
+			let name = VariableField::from_reader(reader, state, options)?;
+			let default_value = reader
+				.conditional_next(|t| matches!(t, TSXToken::Assign))
+				.is_some()
+				.then(|| ASTNode::from_reader(reader, state, options).map(Box::new))
+				.transpose()?;
+
+			// let position =
+			// 	if let Some(ref pos) = default_value {
+			// 		key.get_position().union(pos)
+			// 	} else {
+			// 		*key.get_position()
+			// 	};
+			Ok(Self::Name(name, default_value))
+		}
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		match self {
+			Self::Spread(name, _) => {
+				buf.push_str("...");
+				name.to_string_from_buffer(buf, options, local);
+			}
+			Self::Name(name, default_value) => {
+				name.to_string_from_buffer(buf, options, local);
+				if let Some(default_value) = default_value {
+					buf.push('=');
+					default_value.to_string_from_buffer(buf, options, local);
+				}
+			}
+			Self::None => {}
+		}
+	}
+
+	fn get_position(&self) -> &Span {
+		match self {
+			ArrayDestructuringField::Spread(_, pos) => pos,
+			// TODO misses out optional expression
+			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
+			ArrayDestructuringField::None => &source_map::Nullable::NULL,
+		}
+	}
+}
+
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType, Eq)]
 #[get_field_by_type_target(Span)]
@@ -242,6 +320,7 @@ impl ASTNode for ObjectDestructuringField {
 			Self::Name(name, default_value, _) => {
 				name.to_string_from_buffer(buf, options, local);
 				if let Some(default_value) = default_value {
+					buf.push('=');
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -250,6 +329,7 @@ impl ASTNode for ObjectDestructuringField {
 				buf.push(':');
 				variable_name.to_string_from_buffer(buf, options, local);
 				if let Some(default_value) = default_value {
+					buf.push('=');
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -258,83 +338,6 @@ impl ASTNode for ObjectDestructuringField {
 
 	fn get_position(&self) -> &Span {
 		self.get()
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(derive_ASTNode)]
-pub enum ArrayDestructuringField {
-	Spread(VariableIdentifier, Span),
-	Name(VariableField, Option<Box<Expression>>),
-	None,
-}
-
-impl ListItem for WithComment<ArrayDestructuringField> {
-	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
-
-	fn allow_comma_after(&self) -> bool {
-		!matches!(self.get_ast_ref(), ArrayDestructuringField::Spread(..))
-	}
-}
-
-impl ASTNode for ArrayDestructuringField {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if let TSXToken::Spread = reader.peek().ok_or_else(parse_lexing_error)?.0 {
-			let token = reader.next().unwrap();
-			Ok(Self::Spread(
-				VariableIdentifier::from_reader(reader, state, options)?,
-				token.get_span(),
-			))
-		} else {
-			let name = VariableField::from_reader(reader, state, options)?;
-			let default_value = reader
-				.conditional_next(|t| matches!(t, TSXToken::Assign))
-				.is_some()
-				.then(|| ASTNode::from_reader(reader, state, options).map(Box::new))
-				.transpose()?;
-
-			// let position =
-			// 	if let Some(ref pos) = default_value {
-			// 		key.get_position().union(pos)
-			// 	} else {
-			// 		*key.get_position()
-			// 	};
-			Ok(Self::Name(name, default_value))
-		}
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		match self {
-			Self::Spread(name, _) => {
-				buf.push_str("...");
-				name.to_string_from_buffer(buf, options, local);
-			}
-			Self::Name(name, default_value) => {
-				name.to_string_from_buffer(buf, options, local);
-				if let Some(default_value) = default_value {
-					default_value.to_string_from_buffer(buf, options, local);
-				}
-			}
-			Self::None => {}
-		}
-	}
-
-	fn get_position(&self) -> &Span {
-		match self {
-			ArrayDestructuringField::Spread(_, pos) => pos,
-			// TODO misses out optional expression
-			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
-			ArrayDestructuringField::None => &source_map::Nullable::NULL,
-		}
 	}
 }
 
