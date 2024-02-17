@@ -1170,8 +1170,8 @@ pub mod ast {
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
-			FunctionBase, FunctionHeader, FunctionParameters, MethodHeader, Parameter,
-			ParameterData, SpreadParameter,
+			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,
+			Parameter, ParameterData, SpreadParameter,
 		},
 		statements::*,
 		Block, Decorated, ExpressionPosition, NumberRepresentation, PropertyKey,

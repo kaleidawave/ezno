@@ -620,81 +620,126 @@ impl Expression {
 						(name, position),
 						is_async,
 					)?;
-					return Ok(Expression::ArrowFunction(function));
-				}
+					Expression::ArrowFunction(function)
+				} else {
+					#[cfg(feature = "extras")]
+					{
+						use crate::functions::FunctionLocationModifier;
+						let (generator_keyword, token) =
+							if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
+								(Some(token.get_span()), reader.next().unwrap())
+							} else {
+								(None, token)
+							};
 
-				#[cfg(feature = "extras")]
-				{
-					use crate::functions::FunctionLocationModifier;
-					let (generator_keyword, token) =
-						if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
-							(Some(token.get_span()), reader.next().unwrap())
+						let (location, token) = match token {
+							Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
+								(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+							}
+							Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
+								(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
+							}
+							token => (None, token),
+						};
+
+						// Here because `token` (can't use `.expect_next()`)
+						let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
+						else {
+							return throw_unexpected_token_with_token(
+								token,
+								&[TSXToken::Keyword(TSXKeyword::Function)],
+							);
+						};
+
+						let function_end =
+							function_start.get_end_after(TSXKeyword::Function.length() as usize);
+
+						if generator_keyword.is_some() {
+							let position = start.union(function_end);
+
+							let header = FunctionHeader::ChadFunctionHeader {
+								is_async,
+								is_generator: true,
+								location,
+								position,
+							};
+
+							let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+								reader.peek()
+							{
+								None
+							} else {
+								let (token, span) =
+									token_as_identifier(reader.next().unwrap(), "function name")?;
+								Some(crate::VariableIdentifier::Standard(token, span))
+							};
+
+							FunctionBase::from_reader_with_header_and_name(
+								reader,
+								state,
+								options,
+								(Some(header.get_position().get_start()), header),
+								ExpressionPosition(name),
+							)
+							.map(Expression::ExpressionFunction)?
 						} else {
-							(None, token)
-						};
+							let generator_star_token_position = reader
+								.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+								.map(|token| token.get_span());
 
-					let (location, token) = match token {
-						Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
-							(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+							let end = generator_star_token_position
+								.as_ref()
+								.map_or(function_end, Span::get_end);
+
+							let header = FunctionHeader::VirginFunctionHeader {
+								position: start.union(end),
+								is_async,
+								location,
+								generator_star_token_position,
+							};
+
+							let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+								reader.peek()
+							{
+								None
+							} else {
+								let (token, span) =
+									token_as_identifier(reader.next().unwrap(), "function name")?;
+								Some(crate::VariableIdentifier::Standard(token, span))
+							};
+
+							FunctionBase::from_reader_with_header_and_name(
+								reader,
+								state,
+								options,
+								(Some(header.get_position().get_start()), header),
+								ExpressionPosition(name),
+							)
+							.map(Expression::ExpressionFunction)?
 						}
-						Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
-							(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
-						}
-						token => (None, token),
-					};
+					}
 
-					// Here because `token` (can't use `.expect_next()`)
-					let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
-					else {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Keyword(TSXKeyword::Function)],
-						);
-					};
-
-					let function_end =
-						function_start.get_end_after(TSXKeyword::Function.length() as usize);
-
-					if generator_keyword.is_some() {
-						let position = start.union(function_end);
-
-						let header = FunctionHeader::ChadFunctionHeader {
-							is_async,
-							is_generator: true,
-							location,
-							position,
+					#[cfg(not(feature = "extras"))]
+					{
+						let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
+							return throw_unexpected_token_with_token(
+								token,
+								&[TSXToken::Keyword(TSXKeyword::Function)],
+							);
 						};
 
-						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
-						{
-							None
-						} else {
-							let (token, span) =
-								token_as_identifier(reader.next().unwrap(), "function name")?;
-							Some(crate::VariableIdentifier::Standard(token, span))
-						};
-
-						FunctionBase::from_reader_with_header_and_name(
-							reader,
-							state,
-							options,
-							(Some(header.get_position().get_start()), header),
-							ExpressionPosition(name),
-						)
-						.map(Expression::ExpressionFunction)?
-					} else {
 						let generator_star_token_position = reader
 							.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 							.map(|token| token.get_span());
 
-						let end = generator_star_token_position
-							.as_ref()
-							.map_or(function_end, Span::get_end);
+						let position =
+							start.union(generator_star_token_position.as_ref().unwrap_or(
+								&start.with_length(TSXKeyword::Function.length() as usize),
+							));
 
 						let header = FunctionHeader::VirginFunctionHeader {
-							position: start.union(end),
+							position,
 							is_async,
-							location,
 							generator_star_token_position,
 						};
 
@@ -704,61 +749,18 @@ impl Expression {
 						} else {
 							let (token, span) =
 								token_as_identifier(reader.next().unwrap(), "function name")?;
+
 							Some(crate::VariableIdentifier::Standard(token, span))
 						};
-
 						FunctionBase::from_reader_with_header_and_name(
 							reader,
 							state,
 							options,
-							(Some(header.get_position().get_start()), header),
+							(Some(start), header),
 							ExpressionPosition(name),
 						)
 						.map(Expression::ExpressionFunction)?
 					}
-				}
-
-				#[cfg(not(feature = "extras"))]
-				{
-					let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Keyword(TSXKeyword::Function)],
-						);
-					};
-
-					let generator_star_token_position = reader
-						.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-						.map(|token| token.get_span());
-
-					let position = start.union(
-						generator_star_token_position
-							.as_ref()
-							.unwrap_or(&start.with_length(TSXKeyword::Function.length() as usize)),
-					);
-
-					let header = FunctionHeader::VirginFunctionHeader {
-						position,
-						is_async,
-						generator_star_token_position,
-					};
-
-					let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-						None
-					} else {
-						let (token, span) =
-							token_as_identifier(reader.next().unwrap(), "function name")?;
-
-						Some(crate::VariableIdentifier::Standard(token, span))
-					};
-					FunctionBase::from_reader_with_header_and_name(
-						reader,
-						state,
-						options,
-						(Some(start), header),
-						ExpressionPosition(name),
-					)
-					.map(Expression::ExpressionFunction)?
 				}
 			}
 			#[cfg(feature = "extras")]
@@ -870,7 +872,7 @@ impl Expression {
 							(name, position),
 							false,
 						)?;
-						return Ok(Expression::ArrowFunction(function));
+						Expression::ArrowFunction(function)
 					} else {
 						Expression::VariableReference(name, position)
 					}
@@ -1253,53 +1255,53 @@ impl Expression {
 
 	#[must_use]
 	pub fn get_precedence(&self) -> u8 {
+		// TODO unsure about some of these
 		match self {
-            Self::NumberLiteral(..)
-            | Self::BooleanLiteral(..)
-            | Self::StringLiteral(..)
-            | Self::RegexLiteral { .. }
-            | Self::ArrayLiteral(..)
-            | Self::TemplateLiteral(..)
-            | Self::ParenthesizedExpression(..)
-            | Self::JSXRoot(..)
-            | Self::ArrowFunction(..)
-            | Self::ExpressionFunction(..)
-            | Self::Null(..)
-            | Self::ObjectLiteral(..)
-            | Self::VariableReference(..)
-            | Self::ThisReference(..)
-            | Self::SuperExpression(..)
-            | Self::NewTarget(..)
-            | Self::ClassExpression(..)
-            // TODO unsure about this one...?
-            | Self::DynamicImport { .. }
-            | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, 
-            Self::BinaryOperation { operator, .. } => operator.precedence(),
-            Self::UnaryOperation{ operator, .. } => operator.precedence(),
-            Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
-            Self::BinaryAssignmentOperation { operator, .. } => operator.precedence(),
-            Self::UnaryPrefixAssignmentOperation{ operator, .. } => operator.precedence(),
-            Self::UnaryPostfixAssignmentOperation{ operator, .. } => operator.precedence(),
-            Self::PropertyAccess { .. } => MEMBER_ACCESS_PRECEDENCE,
-            Self::FunctionCall { .. } => FUNCTION_CALL_PRECEDENCE,
-            Self::ConstructorCall { arguments: Some(_), .. } => CONSTRUCTOR_PRECEDENCE,
-            Self::ConstructorCall { arguments: None, .. } => {
-                CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE
-            }
-            Self::Index { .. } => INDEX_PRECEDENCE,
-            Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
-            Self::Comment { on: Some(ref on), .. } => {
-                on.get_precedence()
-            }
-            Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+			Self::NumberLiteral(..)
+			| Self::BooleanLiteral(..)
+			| Self::StringLiteral(..)
+			| Self::RegexLiteral { .. }
+			| Self::ArrayLiteral(..)
+			| Self::TemplateLiteral(..)
+			| Self::ParenthesizedExpression(..)
+			| Self::JSXRoot(..)
+			| Self::ArrowFunction(..)
+			| Self::ExpressionFunction(..)
+			| Self::Null(..)
+			| Self::ObjectLiteral(..)
+			| Self::VariableReference(..)
+			| Self::ThisReference(..)
+			| Self::SuperExpression(..)
+			| Self::NewTarget(..)
+			| Self::ClassExpression(..)
+			| Self::DynamicImport { .. }
+			| Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+			Self::BinaryOperation { operator, .. } => operator.precedence(),
+			Self::UnaryOperation { operator, .. } => operator.precedence(),
+			Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
+			Self::BinaryAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::UnaryPrefixAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::UnaryPostfixAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::PropertyAccess { .. } => MEMBER_ACCESS_PRECEDENCE,
+			Self::FunctionCall { .. } => FUNCTION_CALL_PRECEDENCE,
+			Self::ConstructorCall { arguments: Some(_), .. } => CONSTRUCTOR_PRECEDENCE,
+			Self::ConstructorCall { arguments: None, .. } => {
+				CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE
+			}
+			Self::Index { .. } => INDEX_PRECEDENCE,
+			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
+			Self::Comment { on: Some(ref on), .. } => on.get_precedence(),
+			Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
 			#[cfg(feature = "full-typescript")]
-			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => {
+				PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE
+			}
 			// All these are relational and have the same precedence
-            Self::SpecialOperators(..) => RELATION_PRECEDENCE,
+			Self::SpecialOperators(..) => RELATION_PRECEDENCE,
 			// TODO unsure about this one...?
 			#[cfg(feature = "extras")]
-            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-        }
+			Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+		}
 	}
 
 	pub(crate) fn to_string_using_precedence<T: source_map::ToString>(
