@@ -231,7 +231,7 @@ jobs:
       - name: Run fuzzing
         if: steps.changes.outputs.parser == 'true'
         run: |
-          # Add '-fork=1 -ignore_crashes=1' to not short-circuit
+          # Append '-fork=1 -ignore_crashes=1' to not short-circuit
           cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=120 -use_value_profile=1 
         working-directory: parser/fuzz
 

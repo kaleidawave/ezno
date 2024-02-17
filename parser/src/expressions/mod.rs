@@ -1273,8 +1273,7 @@ impl Expression {
             | Self::ClassExpression(..)
             // TODO unsure about this one...?
             | Self::DynamicImport { .. }
-			| Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _)
-            | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
+            | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, 
             Self::BinaryOperation { operator, .. } => operator.precedence(),
             Self::UnaryOperation{ operator, .. } => operator.precedence(),
             Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
@@ -1293,6 +1292,8 @@ impl Expression {
                 on.get_precedence()
             }
             Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+			#[cfg(feature = "full-typescript")]
+			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 			// All these are relational and have the same precedence
             Self::SpecialOperators(..) => RELATION_PRECEDENCE,
 			// TODO unsure about this one...?
@@ -1640,7 +1641,14 @@ impl Expression {
 			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
 			Self::ArrowFunction(arrow_function) => {
+				// `async () => {}` looks like async statement declaration when in declaration
+				if local2.on_left && arrow_function.header {
+					buf.push('(');
+				}
 				arrow_function.to_string_from_buffer(buf, options, local);
+				if local2.on_left && arrow_function.header {
+					buf.push(')');
+				}
 			}
 			Self::ExpressionFunction(function) => {
 				if local2.on_left {

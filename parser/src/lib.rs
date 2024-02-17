@@ -775,7 +775,7 @@ impl NumberRepresentation {
 				format!("{sign}0x{value:x}")
 			}
 			NumberRepresentation::Bin { sign, value, .. } => {
-				format!("{sign}0b{value}")
+				format!("{sign}0b{value:b}")
 			}
 			NumberRepresentation::Octal { sign, value } => {
 				format!("{sign}0o{value:o}")
