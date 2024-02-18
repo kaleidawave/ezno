@@ -13,9 +13,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Comments::All
 	};
 
-	// TODO temp
-	const STACK_SIZE_MB: usize = 32;
-
 	let display_keywords = args.iter().any(|item| item == "--keywords");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
 	let source_maps = args.iter().any(|item| item == "--source-map");
@@ -25,6 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let now = Instant::now();
 
+	// TODO temp
+	const STACK_SIZE_MB: usize = 32;
 	let options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,

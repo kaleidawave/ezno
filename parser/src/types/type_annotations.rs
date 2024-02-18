@@ -63,7 +63,7 @@ pub enum TypeAnnotation {
 	/// Object literal e.g. `{ y: string }`
 	ObjectLiteral(Vec<WithComment<Decorated<InterfaceMember>>>, Span),
 	/// Tuple literal e.g. `[number, x: string]`
-	TupleLiteral(Vec<(SpreadKind, AnnotationWithBinder)>, Span),
+	TupleLiteral(Vec<(TupleElementKind, AnnotationWithBinder)>, Span),
 	/// ?
 	TemplateLiteral(Vec<TemplateLiteralPart<AnnotationWithBinder>>, Span),
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
@@ -148,9 +148,10 @@ impl ASTNode for AnnotationWithBinder {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
-pub enum SpreadKind {
-	NonSpread,
+pub enum TupleElementKind {
+	Standard,
 	Spread,
+	Optional,
 }
 
 /// Condition in a [`TypeAnnotation::Conditional`]
@@ -335,7 +336,7 @@ impl ASTNode for TypeAnnotation {
 			Self::TupleLiteral(members, _) => {
 				buf.push('[');
 				for (at_end, (spread, member)) in members.iter().endiate() {
-					if matches!(spread, SpreadKind::Spread) {
+					if matches!(spread, TupleElementKind::Spread) {
 						buf.push_str("...");
 					}
 					member.to_string_from_buffer(buf, options, local);
@@ -598,16 +599,26 @@ impl TypeAnnotation {
 					if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
 						break;
 					}
-					let spread = if reader
+					let is_spread = reader
 						.conditional_next(|token| matches!(token, TSXToken::Spread))
+						.is_some();
+
+					let annotation_with_binder =
+						AnnotationWithBinder::from_reader(reader, state, options)?;
+
+					let kind = if is_spread {
+						TupleElementKind::Spread
+					} else if reader
+						.conditional_next(|token| matches!(token, TSXToken::QuestionMark))
 						.is_some()
 					{
-						SpreadKind::Spread
+						TupleElementKind::Optional
 					} else {
-						SpreadKind::NonSpread
+						TupleElementKind::Standard
 					};
-					members
-						.push((spread, AnnotationWithBinder::from_reader(reader, state, options)?));
+
+					members.push((kind, annotation_with_binder));
+
 					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 						reader.next();
 					} else {
@@ -707,8 +718,8 @@ impl TypeAnnotation {
 				generic_arguments_from_reader_sub_open_angle(reader, state, options, parent_kind)?;
 			reference =
 				Self::NameWithGenericArguments(name, generic_arguments, start_span.union(end));
-			return Ok(reference);
 		};
+
 		// Array shorthand & indexing type references. Loops as number[][]
 		// unsure if index type can be looped
 		while reader.conditional_next(|tok| *tok == TSXToken::OpenBracket).is_some() {
@@ -1180,13 +1191,13 @@ mod tests {
 			"[number, x: string]",
 			TypeAnnotation::TupleLiteral(
 				Deref @ [(
-					SpreadKind::NonSpread,
+					TupleElementKind::Standard,
 					AnnotationWithBinder::NoAnnotation(TypeAnnotation::CommonName(
 						CommonTypes::Number,
 						span!(1, 7),
 					)),
 				), (
-					SpreadKind::NonSpread,
+					TupleElementKind::Standard,
 					AnnotationWithBinder::Annotated {
 						name: Deref @ "x",
 						ty: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),

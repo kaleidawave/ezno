@@ -10,9 +10,10 @@ use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
 	object_literal::ObjectLiteral,
 	operators::{
-		IncrementOrDecrement, Operator, COMMA_PRECEDENCE, CONDITIONAL_TERNARY_PRECEDENCE,
-		CONSTRUCTOR_PRECEDENCE, CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE,
-		MEMBER_ACCESS_PRECEDENCE, PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+		IncrementOrDecrement, Operator, ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE,
+		CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
+		CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE, MEMBER_ACCESS_PRECEDENCE,
+		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 	},
 };
 
@@ -880,6 +881,11 @@ impl Expression {
 			}
 		};
 
+		// Operator precedence == 2, nothing can beat so
+		if let Expression::ArrowFunction(..) = first_expression {
+			return Ok(first_expression);
+		}
+
 		Self::from_reader_sub_first_expression(
 			reader,
 			state,
@@ -897,7 +903,7 @@ impl Expression {
 		first_expression: Expression,
 	) -> ParseResult<Self> {
 		let mut top = first_expression;
-		loop {
+		while top.get_precedence() != 2 {
 			let Token(peeked_token, _peeked_pos) = &reader.peek().unwrap();
 
 			match peeked_token {
@@ -1251,6 +1257,8 @@ impl Expression {
 				}
 			}
 		}
+
+		Ok(top)
 	}
 
 	#[must_use]
@@ -1265,7 +1273,6 @@ impl Expression {
 			| Self::TemplateLiteral(..)
 			| Self::ParenthesizedExpression(..)
 			| Self::JSXRoot(..)
-			| Self::ArrowFunction(..)
 			| Self::ExpressionFunction(..)
 			| Self::Null(..)
 			| Self::ObjectLiteral(..)
@@ -1288,6 +1295,7 @@ impl Expression {
 			Self::ConstructorCall { arguments: None, .. } => {
 				CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE
 			}
+			Self::ArrowFunction(..) => ARROW_FUNCTION_PRECEDENCE,
 			Self::Index { .. } => INDEX_PRECEDENCE,
 			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
 			Self::Comment { on: Some(ref on), .. } => on.get_precedence(),

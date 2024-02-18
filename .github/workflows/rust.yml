@@ -112,32 +112,6 @@ jobs:
       - name: Run base tests
         run: cargo test
 
-      - name: Build and test WASM
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        # TODO want `continue-on-error: true` but doesn't report error
-        run: |
-          # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
-
-          rustup target add wasm32-unknown-unknown
-          npm ci
-          npm run build
-          npm run run-tests
-
-          node ./dist/cli.cjs info
-          deno run -A ./dist/cli.mjs info
-
-          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          echo "debug checked with TSC"
-          cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts
-          
-          # TODO temp as the types generated can be a bit unpredicatible
-          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
-            npm run build-release
-            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          fi
-        working-directory: src/js-cli-and-library
-        shell: bash
-
   extras:
     runs-on: ubuntu-latest
     needs: validity
@@ -192,6 +166,32 @@ jobs:
         # TODO want `continue-on-error: true` but doesn't report error
         run: 
           cargo check -p ezno-checker --no-default-features
+
+      - name: Build and test WASM
+        # if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        # TODO want `continue-on-error: true` but doesn't report error
+        run: |
+          # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
+
+          rustup target add wasm32-unknown-unknown
+          npm ci
+          npm run build
+          npm run run-tests
+
+          node ./dist/cli.cjs info
+          deno run -A ./dist/cli.mjs info
+
+          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          echo "debug checked with TSC"
+          cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts
+          
+          # TODO temp as the types generated can be a bit unpredicatible
+          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
+            npm run build-release
+            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          fi
+        working-directory: src/js-cli-and-library
+        shell: bash
 
   fuzzing:
     needs: validity

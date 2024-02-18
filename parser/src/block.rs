@@ -26,6 +26,7 @@ pub enum StatementOrDeclaration {
 
 impl StatementOrDeclaration {
 	pub(crate) fn requires_semi_colon(&self) -> bool {
+		// TODO maybe more?
 		match self {
 			StatementOrDeclaration::Statement(stmt) => stmt.requires_semi_colon(),
 			StatementOrDeclaration::Declaration(dec) => matches!(
@@ -40,6 +41,7 @@ impl StatementOrDeclaration {
 							},
 						..
 					}) | Declaration::Import(..)
+					| Declaration::TypeAlias(..)
 			),
 			Self::Marker(..) => false,
 		}
