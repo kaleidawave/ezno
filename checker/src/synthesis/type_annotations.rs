@@ -332,7 +332,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			for (idx, (spread, member)) in members.iter().enumerate() {
 				// TODO binder name under data...?
 				match spread {
-					TupleElementKind::NonSpread => {
+					TupleElementKind::Standard => {
 						let type_annotation = match member {
 							AnnotationWithBinder::Annotated { ty, .. }
 							| AnnotationWithBinder::NoAnnotation(ty) => ty,
@@ -351,6 +351,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							PropertyValue::Value(item_ty),
 							Some(ty_position),
 						);
+					}
+					TupleElementKind::Optional => {
+						todo!()
 					}
 					TupleElementKind::Spread => {
 						todo!();
