@@ -232,8 +232,8 @@ jobs:
         if: steps.changes.outputs.parser == 'true'
         run: |
           # Append '-fork=1 -ignore_crashes=1' to not short-circuit
-          # TODO '-max_total_time=500' temp, replace with '-max_total_time=120'
-          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=500 -use_value_profile=1 -fork=1 -ignore_crashes=1
+          # TODO '-max_total_time=600' temp, replace with '-max_total_time=120'
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=600 -use_value_profile=1 -fork=1 -ignore_crashes=1
         working-directory: parser/fuzz
 
   clippy:

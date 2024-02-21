@@ -69,7 +69,10 @@ impl ASTNode for SwitchStatement {
 					);
 				}
 			};
-			let mut statements = Vec::new();
+
+			// This is a modified form of Block::from_reader where `TSXKeyword::Case` and
+			// `TSXKeyword::Default` are delimiters
+			let mut items = Vec::new();
 			loop {
 				if let Some(Token(
 					TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default)
@@ -79,15 +82,17 @@ impl ASTNode for SwitchStatement {
 				{
 					break;
 				}
-				statements.push(StatementOrDeclaration::from_reader(reader, state, options)?);
-				if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
-					reader.next();
+				let value = StatementOrDeclaration::from_reader(reader, state, options)?;
+				if value.requires_semi_colon() {
+					crate::expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
 				}
+				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
+				items.push(value);
 			}
 			if let Some(case) = case {
-				branches.push(SwitchBranch::Case(case, statements));
+				branches.push(SwitchBranch::Case(case, items));
 			} else {
-				branches.push(SwitchBranch::Default(statements));
+				branches.push(SwitchBranch::Default(items));
 			}
 		}
 		Ok(Self { case, branches, position: start.union(close_brace_pos) })

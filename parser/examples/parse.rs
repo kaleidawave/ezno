@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::read_to_string, time::Instant};
+use std::{collections::VecDeque, time::Instant};
 
 use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// TODO temp
 	const STACK_SIZE_MB: usize = 32;
-	let options = ParseOptions {
+	let parse_options = ParseOptions {
 		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,
 		record_keyword_positions: display_keywords,
@@ -33,12 +33,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		..ParseOptions::all_features()
 	};
 
+	// let parse_options = ParseOptions {
+	// 	stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
+	// 	jsx: false,
+	// 	type_annotations: false,
+	// 	..Default::default()
+	// };
+
 	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
-	let source = read_to_string(path.clone())?;
+	let source = std::fs::read_to_string(path.clone())?;
+	// {
+	// 	let source = "/$&\n/;".to_string();
+	// 	let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
+	// }
+
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} bytes", source.len());
-	let result = Module::from_string_with_options(source, options, None);
+	let result = Module::from_string_with_options(source, parse_options, None);
 
 	match result {
 		Ok((module, state)) => {
@@ -70,6 +82,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					..Default::default()
 				};
 
+				// let to_string_options = ToStringOptions::default();
+
 				let (output, source_map) =
 					module.to_string_with_source_map(&to_string_options, source_id, &fs);
 
@@ -83,8 +97,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				if render_output {
 					println!("{output}");
 				}
+
 				if double {
-					let result2 = Module::from_string_with_options(output.clone(), options, None);
+					let result2 =
+						Module::from_string_with_options(output.clone(), parse_options, None);
 					return match result2 {
 						Ok((module2, _state)) => {
 							let output2 = module2
@@ -96,10 +112,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								eprintln!("initial   {:?}", module);
 								eprintln!("re-parsed {:?}", module2);
 								return Err(Box::<dyn std::error::Error>::from("not equal"));
-							} else {
-								eprintln!("re-parse was equal ✅");
-								Ok(())
 							}
+
+							eprintln!("re-parse was equal ✅");
+							Ok(())
 						}
 						Err(parse_err) => {
 							eprintln!("error parsing output: {output:?} from {module:?}");

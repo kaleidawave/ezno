@@ -1096,9 +1096,9 @@ pub fn lex_script(
 			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
+		// This is okay as the state is not cleared until it finds flags.
 		LexingState::RegexLiteral { .. } => {
 			sender.push(Token(TSXToken::EOS, current_position!()));
-			return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 		}
 		LexingState::JSXLiteral { .. } => {
 			sender.push(Token(TSXToken::EOS, current_position!()));

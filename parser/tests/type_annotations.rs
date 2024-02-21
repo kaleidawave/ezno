@@ -6,7 +6,7 @@ fn statements() {
 	let input = r#"
 interface X {}
 interface Y extends number, Z2<T> {}
-type Z = 2
+type Z = 2;
 type Z2<T> = T
 "#
 	.trim()
