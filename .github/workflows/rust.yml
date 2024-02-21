@@ -168,7 +168,7 @@ jobs:
           cargo check -p ezno-checker --no-default-features
 
       - name: Build and test WASM
-        # if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         # TODO want `continue-on-error: true` but doesn't report error
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
@@ -232,7 +232,8 @@ jobs:
         if: steps.changes.outputs.parser == 'true'
         run: |
           # Append '-fork=1 -ignore_crashes=1' to not short-circuit
-          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=120 -use_value_profile=1 
+          # TODO '-max_total_time=500' temp, replace with '-max_total_time=120'
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=500 -use_value_profile=1 -fork=1 -ignore_crashes=1
         working-directory: parser/fuzz
 
   clippy:
