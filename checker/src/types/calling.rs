@@ -156,9 +156,9 @@ fn get_logical_callable_from_type(
 		return Some(Logical::Error);
 	}
 
-	let ty1 = types.get_type_by_id(ty);
-	crate::utils::notify!("ty1={:?}", ty1);
-	match ty1 {
+	let le_ty = types.get_type_by_id(ty);
+	crate::utils::notify!("ty1={:?} ({:?})", le_ty, ty);
+	match le_ty {
 		Type::And(_, _) => todo!(),
 		Type::Or(left, right) => {
 			if let (Some(left), Some(right)) = (
@@ -475,11 +475,11 @@ fn call_logical<E: CallCheckingBehavior>(
 
 				// is poly
 				if let Some(on) = function.from {
-					// TODO think all constant calls return constants
-					let has_known_behavior =
-						!function_type.effects.is_empty() || result.result_was_const_computation;
+					// TODO this is a hack
+					let has_events = !function_type.effects.is_empty();
+					let has_known_side_effects = has_events || result.result_was_const_computation;
 
-					if !has_known_behavior {
+					if !has_known_side_effects {
 						find_possible_mutations(&arguments, types, top_environment);
 
 						let with = arguments.clone().into_boxed_slice();
@@ -689,9 +689,12 @@ impl FunctionType {
 					| "bind" | "create_proxy"
 			);
 
+			// TODO just for debugging. These have their constant things called everytime AND queue an event
+			let is_independent = const_fn_ident.ends_with("independent");
+
 			// Most of the time don't call using constant function if an argument is dependent.
 			// But sometimes do for the cases above
-			if call_anyway || !has_dependent_argument {
+			if call_anyway || is_independent || !has_dependent_argument {
 				// TODO event
 				let result = call_constant_function(
 					const_fn_ident,
@@ -715,7 +718,7 @@ impl FunctionType {
 							returned_type: value,
 							warnings: Default::default(),
 							called: None,
-							result_was_const_computation: true,
+							result_was_const_computation: !is_independent,
 							special,
 						});
 					}
@@ -725,7 +728,7 @@ impl FunctionType {
 							returned_type: TypeId::UNDEFINED_TYPE,
 							warnings: vec![InfoDiagnostic(diagnostic)],
 							called: None,
-							result_was_const_computation: true,
+							result_was_const_computation: !is_independent,
 							// TODO!!
 							special: Some(SpecialExpressions::Marker),
 						});

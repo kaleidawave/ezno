@@ -158,9 +158,8 @@ fn print_type_into_buf<C: InformationChain>(
 					{
 						print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 						buf.push('<');
-						for (not_at_end, (arg, _)) in
-							arguments.type_restrictions.values().nendiate()
-						{
+						let nendiate = arguments.type_restrictions.values().nendiate();
+						for (not_at_end, (arg, _)) in nendiate {
 							print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
 							if not_at_end {
 								buf.push_str(", ");

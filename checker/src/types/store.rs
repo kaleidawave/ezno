@@ -602,4 +602,9 @@ impl TypeStore {
 		}));
 		self.register_type(ty)
 	}
+
+	/// TODO WIP
+	pub fn new_open_type(&mut self, base: TypeId) -> TypeId {
+		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
+	}
 }

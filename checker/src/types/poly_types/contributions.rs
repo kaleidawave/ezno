@@ -1,7 +1,7 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	subtyping::{type_is_subtype, SubTypeBehavior, SubTypeResult},
+	subtyping::{type_is_subtype_with_generics, AlreadyChecked, SubTypeBehavior, SubTypeResult},
 	types::{LookUpGeneric, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
@@ -53,18 +53,37 @@ impl<'a> Contributions<'a> {
 		environment: &Environment,
 		types: &TypeStore,
 		lookup_properties: bool,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
 		// TODO staging_contravariant
 		if let Some(constraint) = self.get_standard_restriction(under) {
-			type_is_subtype(constraint, argument, self, environment, types)
+			type_is_subtype_with_generics(
+				constraint,
+				None,
+				argument,
+				None,
+				self,
+				environment,
+				types,
+				Default::default(),
+				already_checked,
+			)
 		} else if let Some(lookup_restriction) =
 			lookup_properties.then(|| self.get_lookup(under)).flatten()
 		{
 			// TODO don't create vec
 			for constraint in lookup_restriction.calculate_lookup(environment) {
-				if let e @ SubTypeResult::IsNotSubType(_) =
-					type_is_subtype(constraint, argument, self, environment, types)
-				{
+				if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype_with_generics(
+					constraint,
+					None,
+					argument,
+					None,
+					self,
+					environment,
+					types,
+					Default::default(),
+					already_checked,
+				) {
 					return e;
 				}
 			}
@@ -74,7 +93,17 @@ impl<'a> Contributions<'a> {
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
 			crate::utils::notify!("Here, constraint={:?}", constraint);
-			type_is_subtype(constraint, argument, self, environment, types)
+			type_is_subtype_with_generics(
+				constraint,
+				None,
+				argument,
+				None,
+				self,
+				environment,
+				types,
+				Default::default(),
+				already_checked,
+			)
 		}
 	}
 
@@ -85,14 +114,22 @@ impl<'a> Contributions<'a> {
 		depth: u8,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		let lhs = crate::types::printing::print_type(on, types, environment, true);
-		let rhs = crate::types::printing::print_type(argument, types, environment, true);
-		crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
-
-		if let e @ SubTypeResult::IsNotSubType(_) =
-			self.passes_under_current_contravariant(on, argument, environment, types, false)
 		{
+			let lhs = crate::types::printing::print_type(on, types, environment, true);
+			let rhs = crate::types::printing::print_type(argument, types, environment, true);
+			crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
+		}
+
+		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_contravariant(
+			on,
+			argument,
+			environment,
+			types,
+			false,
+			already_checked,
+		) {
 			// TODO more detailed error
 			return e;
 		}
@@ -109,12 +146,23 @@ impl<'a> Contributions<'a> {
 		_position: SpanWithSource,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
 		crate::utils::notify!("TODO assert it meets existing_covariant and staging_covariant");
 		crate::utils::notify!("TODO add to staging_covariant");
 
 		if let Some(under) = self.get_standard_restriction(on) {
-			type_is_subtype(under, restriction, self, environment, types)
+			type_is_subtype_with_generics(
+				under,
+				None,
+				restriction,
+				None,
+				self,
+				environment,
+				types,
+				Default::default(),
+				already_checked,
+			)
 		} else {
 			SubTypeResult::IsSubType
 		}
@@ -144,8 +192,9 @@ impl<'a> SubTypeBehavior for Contributions<'a> {
 		depth: u8,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		self.try_set_covariant(on, argument, depth, environment, types)
+		self.try_set_covariant(on, argument, depth, environment, types, already_checked)
 	}
 
 	fn try_set_contravariant(
@@ -155,7 +204,8 @@ impl<'a> SubTypeBehavior for Contributions<'a> {
 		position: SpanWithSource,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		self.try_set_contravariant(on, restriction, position, environment, types)
+		self.try_set_contravariant(on, restriction, position, environment, types, already_checked)
 	}
 }

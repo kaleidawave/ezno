@@ -33,7 +33,9 @@ use crate::{
 pub use self::functions::*;
 
 use self::{
-	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
+	poly_types::generic_type_arguments::StructureGenericArguments,
+	properties::PropertyKey,
+	subtyping::{AlreadyChecked, SubTypingMode},
 };
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
@@ -345,11 +347,13 @@ pub struct BasicEquality {
 }
 
 /// For subtyping
+
 pub trait SubTypeBehavior {
 	/// If false will error out if T >: U
 	const INFER_GENERICS: bool;
 
-	// TODO better return type
+	/// TODO better return type
+	/// TODO not sure about `AlreadyChecked`
 	fn set_type_argument(
 		&mut self,
 		on: TypeId,
@@ -357,8 +361,10 @@ pub trait SubTypeBehavior {
 		depth: u8,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult;
 
+	/// TODO not sure about `AlreadyChecked`
 	fn try_set_contravariant(
 		&mut self,
 		on: TypeId,
@@ -366,6 +372,7 @@ pub trait SubTypeBehavior {
 		position: SpanWithSource,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult;
 
 	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId);
@@ -396,11 +403,24 @@ impl SubTypeBehavior for BasicEquality {
 		_depth: u8,
 		environment: &Environment,
 		types: &TypeStore,
+		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		// TODO shouldn't be here
+		crate::utils::notify!(
+			"Shouldn't be doing 'contributing like' subtyping here for BasicEquality"
+		);
+
 		let constraint = get_constraint(on, types).unwrap();
-		subtyping::type_is_subtype(constraint, argument, self, environment, types)
-		// type_is_subtype(on, argument, self, environment, types)
+		subtyping::type_is_subtype_with_generics(
+			constraint,
+			None,
+			argument,
+			None,
+			self,
+			environment,
+			types,
+			SubTypingMode::default(),
+			already_checked,
+		)
 	}
 
 	fn try_set_contravariant(
@@ -410,6 +430,7 @@ impl SubTypeBehavior for BasicEquality {
 		_position: SpanWithSource,
 		_environment: &Environment,
 		_types: &TypeStore,
+		_already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
 		crate::utils::notify!("Here!");
 		SubTypeResult::IsSubType

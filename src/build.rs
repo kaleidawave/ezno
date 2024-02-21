@@ -9,8 +9,6 @@ use parser::{
 	ToStringOptions,
 };
 
-use crate::check::CheckingOutputWithoutDiagnostics;
-
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct Output {
 	pub output_path: PathBuf,

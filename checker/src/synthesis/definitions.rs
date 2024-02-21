@@ -90,6 +90,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					base.constant_function,
 				);
 
+				// TODO not sure
+				let open = checking_data.types.new_open_type(base);
+
 				let _context = decorators_to_context(&func.decorators);
 
 				env.register_variable_handle_error(
@@ -97,7 +100,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					VariableRegisterArguments {
 						constant: true,
 						space: None,
-						initial_value: Some(base),
+						initial_value: Some(open),
 					},
 					func.get_position().with_source(source),
 					&mut checking_data.diagnostics_container,

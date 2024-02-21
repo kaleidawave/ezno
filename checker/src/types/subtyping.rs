@@ -95,7 +95,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
 	{
-		let debug = false;
+		let debug = true;
 		crate::utils::notify!(
 			"Checking {} :>= {}",
 			print_type(base_type, types, environment, debug),
@@ -116,9 +116,8 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 	// Prevents cycles
 	if already_checked.iter().any(|(a, b)| *a == base_type && *b == ty) {
 		return SubTypeResult::IsSubType;
-	} else {
-		already_checked.push((base_type, ty));
 	}
+	already_checked.push((base_type, ty));
 
 	let left_ty = types.get_type_by_id(base_type);
 	let right_ty = types.get_type_by_id(ty);
@@ -212,30 +211,31 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				}
 
 				return SubTypeResult::IsSubType;
-			} else {
-				// If lhs is not operator unless argument is operator
-				// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
-				let arg = get_constraint(ty, types).unwrap();
-				// This is important that LHS is not operator
-				let edge_case = (left_ty.is_operator() && !types.get_type_by_id(arg).is_operator())
-					|| matches!(
-						left_ty,
-						Type::RootPolyType(PolyNature::Generic { .. }) | Type::Constructor(..)
-					);
+			}
 
-				if !edge_case {
-					return type_is_subtype_with_generics(
-						base_type,
-						base_structure_arguments,
-						arg,
-						ty_structure_arguments,
-						behavior,
-						environment,
-						types,
-						mode,
-						already_checked,
-					);
-				}
+			// If lhs is not operator unless argument is operator
+			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
+			let arg = get_constraint(ty, types).unwrap();
+			// This is important that LHS is not operator
+			let edge_case = (left_ty.is_operator() && !types.get_type_by_id(arg).is_operator())
+				|| matches!(
+					left_ty,
+					Type::RootPolyType(PolyNature::Generic { .. } | PolyNature::Parameter { .. })
+						| Type::Constructor(..)
+				);
+
+			if !edge_case {
+				return type_is_subtype_with_generics(
+					base_type,
+					base_structure_arguments,
+					arg,
+					ty_structure_arguments,
+					behavior,
+					environment,
+					types,
+					mode,
+					already_checked,
+				);
 				//  else {
 				// 	return match mode {
 				// 		SubTypingMode::Contravariant { depth } => {
@@ -404,7 +404,7 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 					}
 				}
 
-				return SubTypeResult::IsSubType;
+				SubTypeResult::IsSubType
 			} else if !T::INFER_GENERICS && base_structure_arguments.is_none() {
 				// TODO what does this do
 				// TODO temp fix
@@ -456,11 +456,25 @@ pub(crate) fn type_is_subtype_with_generics<T: SubTypeBehavior>(
 				match mode {
 					SubTypingMode::Contravariant { depth } => {
 						// TODO map error to say it came from a specialisation
-						behavior.set_type_argument(base_type, ty, depth, environment, types)
+						behavior.set_type_argument(
+							base_type,
+							ty,
+							depth,
+							environment,
+							types,
+							already_checked,
+						)
 					}
 					SubTypingMode::Covariant { position } => {
 						// TODO are the arguments in the correct position
-						behavior.try_set_contravariant(base_type, ty, position, environment, types)
+						behavior.try_set_contravariant(
+							base_type,
+							ty,
+							position,
+							environment,
+							types,
+							already_checked,
+						)
 					}
 				}
 			}

@@ -150,7 +150,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 									checking_data.options.debug_types,
 								),
 								position: position.with_source(environment.get_source()),
-							}
+							},
 						);
 						return TypeId::ERROR_TYPE;
 					}
@@ -225,7 +225,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							position: argument_type_annotation.get_position().with_source(environment.get_source()),
+							position: argument_type_annotation
+								.get_position()
+								.with_source(environment.get_source()),
 						};
 
 						checking_data.diagnostics_container.add_error(error);

@@ -230,7 +230,11 @@ pub fn evaluate_equality_inequality_operation(
 			match attempt_constant_equality(lhs, rhs, types) {
 				Ok(ty) => Ok(ty),
 				Err(()) => {
-					unreachable!("should have been caught by above")
+					unreachable!(
+						"should have been caught `is_dependent` above, {:?} === {:?}",
+						types.get_type_by_id(lhs),
+						types.get_type_by_id(rhs)
+					)
 				}
 			}
 		}
