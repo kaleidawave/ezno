@@ -1978,10 +1978,14 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		options.add_indent(local.depth + 1, buf);
 	}
 	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
-		// Hack for arrays, this is just easier for generators
+		// Hack for arrays, this is just easier for generators and ends up in a smaller output
 		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			for (at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter()) {
-				item.to_string_from_buffer(buf, options, local);
+				if item.0.is_none() {
+					buf.push_str("undefined");
+				} else {
+					item.to_string_from_buffer(buf, options, local);
+				}
 				if !at_end {
 					buf.push(',');
 					options.push_gap_optionally(buf);

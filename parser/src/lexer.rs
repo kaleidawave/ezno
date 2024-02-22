@@ -1096,10 +1096,16 @@ pub fn lex_script(
 			sender.push(Token(TSXToken::EOS, current_position!()));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
-		// This is okay as the state is not cleared until it finds flags. 
+		// This is okay as the state is not cleared until it finds flags.
 		LexingState::RegexLiteral { after_last_slash, .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
-			if !after_last_slash {
+			if after_last_slash {
+				sender.push(Token(
+					TSXToken::RegexFlagLiteral(script[start..].to_owned()),
+					TokenStart::new(start as u32 + offset),
+				));
+				sender.push(Token(TSXToken::EOS, current_position!()));
+			} else {
+				sender.push(Token(TSXToken::EOS, current_position!()));
 				return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 			}
 		}
