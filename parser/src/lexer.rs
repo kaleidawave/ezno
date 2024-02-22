@@ -48,6 +48,7 @@ fn is_number_delimiter(chr: char) -> bool {
 			| '%' | '=' | ':'
 			| '<' | '>' | '?'
 			| '"' | '\'' | '`'
+			| '#'
 	)
 }
 
@@ -534,6 +535,7 @@ pub fn lex_script(
 
 					start = idx + 1;
 					state = LexingState::None;
+					expect_expression = true;
 					continue;
 				}
 				'`' if !*escaped => {
@@ -544,6 +546,7 @@ pub fn lex_script(
 					push_token!(TSXToken::TemplateLiteralEnd);
 					start = idx + 1;
 					state = LexingState::None;
+					expect_expression = false;
 					continue;
 				}
 				'\\' => {

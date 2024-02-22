@@ -229,10 +229,19 @@ jobs:
           packages: cargo-fuzz
 
       - name: Run fuzzing
+        env:
+          SHORT_CIRCUIT: false
         if: steps.changes.outputs.parser == 'true'
         run: |
-          # Append '-fork=1 -ignore_crashes=1' to not short-circuit and '-max_total_time=600' to run for 10 minutes
-          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+          if ${{ env.SHORT_CIRCUIT }}; then
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+          else
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+            
+            if test -d fuzz/artifacts; then 
+              find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
+            fi
+          fi
         working-directory: parser/fuzz
 
   clippy:
