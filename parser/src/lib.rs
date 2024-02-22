@@ -98,8 +98,10 @@ impl Quoted {
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
-	/// only type annotations
+	/// allow type annotations
 	pub type_annotations: bool,
+	/// just definition file
+	pub type_definition_module: bool,
 	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
@@ -138,6 +140,7 @@ impl ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: true,
 			comments: Comments::All,
 			decorators: true,
@@ -159,6 +162,7 @@ impl Default for ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: false,
 			comments: Comments::All,
 			decorators: true,

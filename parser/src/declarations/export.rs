@@ -1,7 +1,8 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token, ASTNode, Expression,
-	ListItem, ParseError, ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken,
-	Token, VariableIdentifier,
+	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token,
+	type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression, ListItem, ParseError,
+	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
+	TypeAnnotation, VariableIdentifier,
 };
 
 use super::{
@@ -23,14 +24,30 @@ use visitable_derive::Visitable;
 pub enum ExportDeclaration {
 	// TODO listed object thing
 	// TODO export *
-	Variable { exported: Exportable, position: Span },
+	Variable {
+		exported: Exportable,
+		position: Span,
+	},
 
 	// `export default ...`
-	Default { expression: Box<Expression>, position: Span },
+	Default {
+		expression: Box<Expression>,
+		position: Span,
+	},
+
+	DefaultFunction {
+		/// Technically not allowed in TypeScript
+		is_async: bool,
+		identifier: Option<VariableIdentifier>,
+		#[visit_skip_field]
+		parameters: TypeAnnotationFunctionParameters,
+		return_type: Option<TypeAnnotation>,
+		position: Span,
+	},
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
 pub enum Exportable {
 	Class(ClassDeclaration<StatementPosition>),
 	Function(StatementFunction),
@@ -44,10 +61,7 @@ pub enum Exportable {
 
 impl ASTNode for ExportDeclaration {
 	fn get_position(&self) -> &Span {
-		match self {
-			ExportDeclaration::Variable { position, .. }
-			| ExportDeclaration::Default { position, .. } => position,
-		}
+		self.get()
 	}
 
 	fn from_reader(
@@ -60,9 +74,47 @@ impl ASTNode for ExportDeclaration {
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
 				reader.next();
-				let expression = Expression::from_reader(reader, state, options)?;
-				let position = start.union(expression.get_position());
-				Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+				if options.type_definition_module
+					&& reader.peek().map_or(
+						false,
+						|t| matches!(t.0, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+					) {
+					let is_async = reader
+						.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Async)))
+						.is_some();
+
+					let identifier =
+						if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+							None
+						} else {
+							Some(VariableIdentifier::from_reader(reader, state, options)?)
+						};
+
+					let parameters =
+						TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
+
+					let return_type = reader
+						.conditional_next(|tok| matches!(tok, TSXToken::Colon))
+						.is_some()
+						.then(|| TypeAnnotation::from_reader(reader, state, options))
+						.transpose()?;
+
+					let position = start.union(
+						return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
+					);
+
+					Ok(ExportDeclaration::DefaultFunction {
+						position,
+						is_async,
+						identifier,
+						parameters,
+						return_type,
+					})
+				} else {
+					let expression = Expression::from_reader(reader, state, options)?;
+					let position = start.union(expression.get_position());
+					Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+				}
 			}
 			Token(TSXToken::Multiply, _) => {
 				reader.next();
@@ -296,6 +348,29 @@ impl ASTNode for ExportDeclaration {
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");
 				expression.to_string_from_buffer(buf, options, local);
+			}
+			ExportDeclaration::DefaultFunction {
+				is_async,
+				identifier,
+				parameters,
+				return_type,
+				position: _,
+			} => {
+				if options.include_type_annotations {
+					buf.push_str("export default");
+					if *is_async {
+						buf.push_str("async ");
+					}
+					buf.push(' ');
+					if let Some(ref identifier) = identifier {
+						identifier.to_string_from_buffer(buf, options, local);
+					}
+					parameters.to_string_from_buffer(buf, options, local);
+					if let Some(ref return_type) = return_type {
+						buf.push_str(": ");
+						return_type.to_string_from_buffer(buf, options, local);
+					}
+				}
 			}
 		}
 	}

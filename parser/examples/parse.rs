@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
+	let type_definition_module = !args.iter().any(|item| item == "--type-definition-module");
 
 	let now = Instant::now();
 
@@ -30,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		record_keyword_positions: display_keywords,
 		partial_syntax,
 		type_annotations,
+		type_definition_module,
 		..ParseOptions::all_features()
 	};
 

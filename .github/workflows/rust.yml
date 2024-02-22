@@ -183,7 +183,7 @@ jobs:
 
           npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
           echo "debug checked with TSC"
-          cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts
+          cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts --type-definition-module
           
           # TODO temp as the types generated can be a bit unpredicatible
           if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
@@ -231,9 +231,8 @@ jobs:
       - name: Run fuzzing
         if: steps.changes.outputs.parser == 'true'
         run: |
-          # Append '-fork=1 -ignore_crashes=1' to not short-circuit
-          # TODO '-max_total_time=600' temp, replace with '-max_total_time=120'
-          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=600 -use_value_profile=1 -fork=1 -ignore_crashes=1
+          # Append '-fork=1 -ignore_crashes=1' to not short-circuit and '-max_total_time=600' to run for 10 minutes
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
         working-directory: parser/fuzz
 
   clippy:

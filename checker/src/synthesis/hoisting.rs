@@ -346,6 +346,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
+					parser::declarations::ExportDeclaration::DefaultFunction { .. } => {
+						todo!()
+					}
 				},
 				parser::Declaration::Class(_)
 				| parser::Declaration::TypeAlias(_)

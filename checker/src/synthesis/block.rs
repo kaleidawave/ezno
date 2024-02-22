@@ -159,6 +159,9 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
+			parser::declarations::ExportDeclaration::DefaultFunction { .. } => {
+				todo!()
+			}
 		},
 	}
 }

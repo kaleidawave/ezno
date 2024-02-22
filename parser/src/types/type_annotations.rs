@@ -963,6 +963,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		buf.push('(');
 		for parameter in &self.parameters {
 			if let Some(ref name) = parameter.name {
 				name.to_string_from_buffer(buf, options, local);
@@ -979,6 +980,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			buf.push_str(&rest_parameter.name);
 			rest_parameter.type_annotation.to_string_from_buffer(buf, options, local);
 		}
+		buf.push(')');
 	}
 }
 
@@ -1048,15 +1050,17 @@ impl TypeAnnotationFunctionParameters {
 				}
 			};
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+			let position = name
+				.as_ref()
+				.map_or(type_annotation.get_position(), |name| name.get_position())
+				.union(type_annotation.get_position());
+
 			parameters.push(TypeAnnotationFunctionParameter {
-				position: name
-					.as_ref()
-					.map_or(type_annotation.get_position(), |name| name.get_position())
-					.union(type_annotation.get_position()),
 				decorators,
 				name,
 				type_annotation,
 				is_optional,
+				position,
 			});
 
 			if reader.conditional_next(|tok| matches!(tok, TSXToken::Comma)).is_none() {
