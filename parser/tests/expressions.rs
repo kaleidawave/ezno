@@ -65,3 +65,50 @@ const c = { async e() {
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
+
+#[test]
+fn regular_expressions() {
+	let input = r"
+const a = /something/;
+const b = /with global flag/g;
+const c = /escaped \//;
+const d = /in a set[=/]/
+    "
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[cfg(feature = "extras")]
+#[test]
+fn jsx() {
+	// note also `<img>`
+	let input = r#"
+function Component(item) {
+	return <div>
+		<h1 class="heading">{item.heading}</h1>
+		<img src={item.image}>
+		<p>
+			Something {item.content}
+		</p>
+	</div>
+}
+    "#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+
+	eprintln!("{input:?}");
+	eprintln!("{output:?}");
+
+	assert_eq!(output, input);
+}

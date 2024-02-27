@@ -94,9 +94,6 @@ class X {
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 
-	eprintln!("{output}");
-	eprintln!("{output:?}");
-
 	assert_eq!(output, input.clone());
 
 	assert!(Module::from_string(
@@ -104,4 +101,20 @@ class X {
 		ParseOptions { type_annotations: false, ..Default::default() }
 	)
 	.is_err());
+}
+
+#[test]
+fn type_definition_module() {
+	let input = r#"
+export default function(a: string): string
+"#
+	.trim()
+	.replace("    ", "\t");
+
+	let parse_options = ParseOptions { type_definition_module: true, ..Default::default() };
+
+	let module = Module::from_string(input.clone(), parse_options).unwrap();
+	let output = module.to_string(&ToStringOptions::typescript());
+
+	assert_eq!(output, input.clone());
 }

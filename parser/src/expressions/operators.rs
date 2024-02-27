@@ -454,10 +454,12 @@ impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
 
 impl BinaryOperator {
 	/// Operators which return true may or may not evaluate RHS based on their own value
-	/// TODO might be more
 	#[must_use]
 	pub fn is_rhs_conditional_evaluation(&self) -> bool {
-		matches!(self, BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr)
+		matches!(
+			self,
+			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
+		)
 	}
 }
 

@@ -13,7 +13,6 @@ use crate::{
 
 use super::MultipleExpression;
 
-/// TODO marker
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -166,9 +165,9 @@ impl VariableOrPropertyAccess {
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
-	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField>>, Span),
-	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField>>, Span),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
+	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField>>, Span),
+	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField>>, Span),
 }
 
 impl LHSOfAssignment {

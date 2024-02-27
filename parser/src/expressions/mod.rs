@@ -168,7 +168,6 @@ pub enum Expression {
 		is_multiline: bool,
 		prefix: bool,
 	},
-	/// TODO under cfg
 	/// A start of a JSXNode
 	JSXRoot(JSXRoot),
 	/// Not to be confused with binary operator `is`
@@ -594,7 +593,7 @@ impl Expression {
 				Expression::TemplateLiteral(template_literal)
 			}
 			Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
-				// TODO fix
+				// TODO not great to recreate token, but that is how Rust works :)
 				let token = Token(TSXToken::Keyword(kw), start);
 				let (is_async, start, token) =
 					if let Token(TSXToken::Keyword(TSXKeyword::Async), start) = token {
@@ -1012,7 +1011,6 @@ impl Expression {
 
 					let (property, position) = if options.partial_syntax && is_next_not_identifier {
 						let marker = state.new_partial_point_marker(accessor_position);
-						// TODO maybe just ""
 						(PropertyReference::Marker(marker), accessor_position.with_length(1))
 					} else {
 						let is_private =
@@ -1163,7 +1161,9 @@ impl Expression {
 					);
 				}
 				token => {
-					let token = if *token == TSXToken::OpenChevron {
+					// Splitting here side-steps some complaints the borrow checker has with passing
+					// a mutable reader here
+					let token = if let TSXToken::OpenChevron = token {
 						if is_generic_arguments(reader) {
 							let _ = reader.next();
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
@@ -1185,8 +1185,7 @@ impl Expression {
 							};
 							continue;
 						}
-						// TODO
-						&reader.peek().unwrap().0
+						&TSXToken::OpenChevron
 					} else {
 						token
 					};

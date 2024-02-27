@@ -114,9 +114,7 @@ pub struct ParseOptions {
 	pub custom_function_headers: bool,
 	/// TODO temp for seeing how channel performs
 	pub buffer_size: usize,
-	/// TODO temp for seeing how channel performs
-	///
-	/// Has no effect on WASM
+	/// Has no effect on WASM. Increase for deeply nested AST structures
 	pub stack_size: Option<usize>,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
@@ -731,6 +729,7 @@ impl std::fmt::Display for NumberRepresentation {
 	}
 }
 
+// TODO not great
 impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
@@ -1033,9 +1032,7 @@ fn receiver_to_tokens(
 	})
 }
 
-/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc
-///
-/// TODO delimiter
+/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc. Defaults to `,` as delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),

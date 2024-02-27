@@ -36,12 +36,17 @@ impl ASTNode for SwitchStatement {
 		options: &ParseOptions,
 	) -> Result<Self, crate::ParseError> {
 		let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
+
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
 		let case = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(crate::TSXToken::CloseParentheses)?;
 		reader.expect_next(crate::TSXToken::OpenBrace)?;
+
 		let mut branches = Vec::new();
+
+		// TODO not great has this works
 		let close_brace_pos: TokenEnd;
+
 		loop {
 			let case: Option<Expression> = match reader.next().ok_or_else(parse_lexing_error)? {
 				Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
@@ -54,7 +59,6 @@ impl ASTNode for SwitchStatement {
 					Some(case)
 				}
 				Token(TSXToken::CloseBrace, pos) => {
-					// TODO bad
 					close_brace_pos = TokenEnd::new(pos.0 + 1);
 					break;
 				}

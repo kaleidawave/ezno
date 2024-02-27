@@ -10,22 +10,6 @@ members = [
 ]
 
 
-[workspace.lints.clippy]
-all = "deny"
-pedantic = "deny"
-cast_precision_loss = "warn"
-cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
-default_trait_access = "allow"
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-implicit_hasher = "allow"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-new_without_default = "allow"
-result_unit_err = "allow"
-
-
 [package]
 name = "ezno"
 description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
@@ -86,4 +70,20 @@ tsify = "0.4.5"
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 multiline-term-input = "0.1.0"
 notify = "6.1.0"
+
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+cast_precision_loss = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+default_trait_access = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+implicit_hasher = "allow"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+new_without_default = "allow"
+result_unit_err = "allow"
 

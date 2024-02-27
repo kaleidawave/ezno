@@ -70,7 +70,7 @@ impl ASTNode for JSXElement {
 				buf.push('>');
 			}
 			JSXElementChildren::SelfClosing => {
-				buf.push_str("/>");
+				buf.push_str(">");
 			}
 		}
 	}
@@ -184,16 +184,23 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	let indent =
+	let element_of_line_break_in_children =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
+
+	let mut previous_was_break = true;
+
 	for node in children {
-		if indent {
+		if element_of_line_break_in_children
+			&& !matches!(node, JSXNode::LineBreak)
+			&& previous_was_break
+		{
 			options.add_indent(local.depth + 1, buf);
 		}
 		node.to_string_from_buffer(buf, options, local);
+		previous_was_break = matches!(node, JSXNode::Element(..) | JSXNode::LineBreak);
 	}
 
-	if options.pretty && local.depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
+	if options.pretty && local.depth > 0 && previous_was_break {
 		options.add_indent(local.depth, buf);
 	}
 }
@@ -214,7 +221,7 @@ impl JSXRoot {
 	}
 }
 
-// TODO Fragment
+// TODO can `JSXFragment` appear here?
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
@@ -242,7 +249,8 @@ impl ASTNode for JSXNode {
 		match token {
 			Token(TSXToken::JSXContent(content), start) => {
 				let position = start.with_length(content.len());
-				Ok(JSXNode::TextNode(content, position))
+				// TODO `trim` debatable
+				Ok(JSXNode::TextNode(content.trim_start().into(), position))
 			}
 			Token(TSXToken::JSXExpressionStart, pos) => {
 				let expression = Expression::from_reader(reader, state, options)?;
@@ -294,7 +302,6 @@ pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),
 	BooleanAttribute(String, Span),
-	// TODO could combine these two
 	Spread(Expression, Span),
 	/// Preferably want a identifier here not an expr
 	Shorthand(Expression),
@@ -316,7 +323,7 @@ impl ASTNode for JSXAttribute {
 		_state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<Self> {
-		todo!("this is currently done in JSXElement::from_reader")
+		todo!("this is currently done in `JSXElement::from_reader`")
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

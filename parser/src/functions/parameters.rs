@@ -118,7 +118,7 @@ pub struct ThisParameter {
 	pub position: Span,
 }
 
-/// TODO not sure
+/// TODO WIP!
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
 #[partial_eq_ignore_types(Span)]

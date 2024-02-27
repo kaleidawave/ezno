@@ -299,7 +299,7 @@ pub enum TSXKeyword {
     Class, Function, Constructor,
     New, This, Super,
     Case, Yield, Return, Continue, Break,
-    Import, Export, Default, From,
+    Import, Export, Default, From, With,
     In, Of,
     TypeOf, InstanceOf, Void, Delete, Assert,
     Debugger,

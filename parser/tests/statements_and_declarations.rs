@@ -190,9 +190,21 @@ export type { name1, /* …, */ nameN } from "module-name";"#
 
 	let _module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
-	// TODO
+	// TODO doesn't work because of comments
 	// let output = module.to_string(&ToStringOptions::typescript());
 	// assert_eq!(output, input);
+}
+
+#[test]
+fn import_attributes() {
+	let input = r#"
+import { export1 } from "module-name" with { something: x };
+    "#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
 }
 
 #[cfg(feature = "extras")]

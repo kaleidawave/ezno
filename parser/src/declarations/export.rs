@@ -15,15 +15,11 @@ use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
-/// TODO tidy up into struct
-///
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
-	// TODO listed object thing
-	// TODO export *
 	Variable {
 		exported: Exportable,
 		position: Span,
