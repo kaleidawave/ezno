@@ -134,8 +134,10 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			&mut environment.facts,
 		);
 
-		let children_iterator =
-			children.iter().filter(|p| !matches!(p, JSXNode::LineBreak)).enumerate();
+		let children_iterator = children
+			.iter()
+			.filter(|p| !matches!(p, JSXNode::LineBreak | JSXNode::Comment(..)))
+			.enumerate();
 
 		for (idx, child) in children_iterator {
 			// TODO idx bad! and should override item
@@ -413,7 +415,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 		JSXNode::TextNode(text, _) => {
 			checking_data.types.new_constant_type(Constant::String(text.clone()))
 		}
-		JSXNode::LineBreak => {
+		JSXNode::LineBreak | JSXNode::Comment(..) => {
 			unreachable!("Should have been skipped higher up");
 		}
 	}
