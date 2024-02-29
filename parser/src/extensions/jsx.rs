@@ -225,16 +225,19 @@ impl JSXRoot {
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
+	Element(JSXElement),
 	TextNode(String, Span),
 	InterpolatedExpression(Box<Expression>, Span),
-	Element(JSXElement),
+	Comment(String, Span),
 	LineBreak,
 }
 
 impl ASTNode for JSXNode {
 	fn get_position(&self) -> &Span {
 		match self {
-			JSXNode::TextNode(_, pos) | JSXNode::InterpolatedExpression(_, pos) => pos,
+			JSXNode::TextNode(_, pos)
+			| JSXNode::InterpolatedExpression(_, pos)
+			| JSXNode::Comment(_, pos) => pos,
 			JSXNode::Element(element) => element.get_position(),
 			JSXNode::LineBreak => &source_map::Nullable::NULL,
 		}
@@ -261,6 +264,10 @@ impl ASTNode for JSXNode {
 				JSXElement::from_reader_sub_start(reader, state, options, pos).map(JSXNode::Element)
 			}
 			Token(TSXToken::JSXContentLineBreak, _) => Ok(JSXNode::LineBreak),
+			Token(TSXToken::JSXComment(comment), start) => {
+				let pos = start.with_length(comment.len() + 7);
+				Ok(JSXNode::Comment(comment, pos))
+			}
 			_token => Err(parse_lexing_error()),
 		}
 	}
@@ -289,6 +296,13 @@ impl ASTNode for JSXNode {
 			JSXNode::LineBreak => {
 				if options.pretty {
 					buf.push_new_line();
+				}
+			}
+			JSXNode::Comment(comment, _) => {
+				if options.pretty {
+					buf.push_str("<!--");
+					buf.push_str(comment);
+					buf.push_str("-->");
 				}
 			}
 		}

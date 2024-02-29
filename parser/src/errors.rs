@@ -54,6 +54,7 @@ pub enum LexingErrors {
 	InvalidExponentUsage,
 	InvalidUnderscore,
 	CannotLoadLargeFile(usize),
+	ExpectedDashInComment,
 }
 
 impl Display for LexingErrors {
@@ -99,6 +100,9 @@ impl Display for LexingErrors {
 			}
 			LexingErrors::CannotLoadLargeFile(size) => {
 				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
+			}
+			LexingErrors::ExpectedDashInComment => {
+				f.write_str("JSX comments must have two dashes after `<!` start")
 			}
 		}
 	}

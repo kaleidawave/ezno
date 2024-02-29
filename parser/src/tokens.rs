@@ -141,7 +141,7 @@ pub enum TSXToken {
     // JSX Tokens. Some like JSXComment are non standard
     JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd, 
     JSXClosingTagStart, 
-    /// This also covers the end of a token, thus no TSXToken::JSXClosingTagEnd
+    /// This also covers the end of a token, thus no 'TSXToken::JSXClosingTagEnd'
     JSXClosingTagName(String), 
     /// />
     JSXSelfClosingTag, 
@@ -184,12 +184,12 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXAttributeKey(lit)
 			| TSXToken::JSXAttributeValue(lit)
 			| TSXToken::JSXContent(lit)
-			| TSXToken::JSXComment(lit)
 			| TSXToken::JSXTagName(lit)
 			| TSXToken::Identifier(lit)
 			| TSXToken::NumberLiteral(lit)
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
+			TSXToken::JSXComment(comment) => comment.len() as u32 + 7,
 			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
 			TSXToken::StringLiteral(comment, _) | TSXToken::Comment(comment) => {
 				comment.len() as u32 + 2
@@ -228,7 +228,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXOpeningTagEnd
 			| TSXToken::JSXExpressionStart
 			| TSXToken::JSXExpressionEnd
-			| TSXToken::JSXAttributeAssign => 1,
+			| TSXToken::JSXAttributeAssign
+			| TSXToken::JSXClosingTagStart
+			| TSXToken::JSXContentLineBreak => 1,
 
 			TSXToken::AddAssign
 			| TSXToken::SubtractAssign
@@ -256,7 +258,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::BitwiseShiftLeft
 			| TSXToken::BitwiseShiftRight
 			| TSXToken::TemplateLiteralExpressionStart
-			| TSXToken::JSXFragmentStart => 2,
+			| TSXToken::JSXFragmentStart
+			| TSXToken::JSXSelfClosingTag => 2,
 
 			TSXToken::Spread
 			| TSXToken::StrictEqual
@@ -275,10 +278,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
 			// Marker nodes with no length
-			TSXToken::JSXClosingTagStart
-			| TSXToken::JSXSelfClosingTag
-			| TSXToken::JSXContentLineBreak
-			| TSXToken::EOS => 0,
+			TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
 			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,

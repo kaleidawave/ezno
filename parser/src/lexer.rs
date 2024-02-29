@@ -89,19 +89,12 @@ pub fn lex_script(
 		AttributeKey,
 		AttributeEqual,
 		AttributeValue(JSXAttributeValueDelimiter),
-		Comment(JSXCommentState),
+		Comment,
 		Content,
 		/// For script and style tags
 		LiteralContent {
 			last_char_was_open_chevron: bool,
 		},
-	}
-
-	#[derive(PartialEq, Debug)]
-	enum JSXCommentState {
-		None,
-		FirstDash,
-		SecondDash,
 	}
 
 	#[derive(PartialEq, Debug)]
@@ -207,6 +200,8 @@ pub fn lex_script(
 	}
 
 	for (idx, chr) in script.char_indices() {
+		// dbg!(chr, &state);
+
 		// Sets current parser state and updates start track
 		macro_rules! set_state {
 			($s:expr) => {{
@@ -627,11 +622,11 @@ pub fn lex_script(
 						'/' if start + 1 == idx => {
 							*direction = JSXTagNameDirection::Closing;
 						}
-						// Comment
+						// HTML comments!!!
 						'!' if start + 1 == idx => {
-							*jsx_state = JSXLexingState::Comment(JSXCommentState::None);
+							*jsx_state = JSXLexingState::Comment;
 						}
-						// Non tag name character
+						// Non-tag name character
 						chr => {
 							if *direction == JSXTagNameDirection::Closing {
 								return_err!(LexingErrors::ExpectedJSXEndTag);
@@ -639,6 +634,7 @@ pub fn lex_script(
 							let tag_name = script[start..idx].trim();
 							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
 							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
+							start = idx;
 							*tag_depth += 1;
 							match chr {
 								'/' if *is_self_closing_tag => {
@@ -883,6 +879,7 @@ pub fn lex_script(
 								if !source.is_empty() {
 									push_token!(TSXToken::JSXContent(source.to_owned()));
 								}
+								dbg!("here");
 								start = end;
 								push_token!(TSXToken::JSXClosingTagStart);
 								start = idx + '/'.len_utf8();
@@ -898,26 +895,24 @@ pub fn lex_script(
 						}
 					}
 					// TODO this will allow for <!--> as a valid comment
-					JSXLexingState::Comment(ref mut comment_state) => match (&comment_state, chr) {
-						(JSXCommentState::None, '-') => {
-							*comment_state = JSXCommentState::FirstDash;
-						}
-						(JSXCommentState::FirstDash, '-') => {
-							*comment_state = JSXCommentState::SecondDash;
-						}
-						(JSXCommentState::SecondDash, '>') => {
+					JSXLexingState::Comment => {
+						if idx - start < 4 {
+							if chr != '-' {
+								return_err!(LexingErrors::ExpectedDashInComment);
+							}
+						} else if chr == '>' && script[..idx].ends_with("--") {
 							push_token!(TSXToken::JSXComment(
 								script[(start + 4)..(idx - 2)].to_owned()
 							));
+							start = idx + 1;
 							if *tag_depth == 0 {
 								set_state!(LexingState::None);
-								continue;
+							} else {
+								*jsx_state = JSXLexingState::Content;
 							}
+							continue;
 						}
-						_ => {
-							*comment_state = JSXCommentState::None;
-						}
-					},
+					}
 				}
 			}
 			LexingState::None => {}

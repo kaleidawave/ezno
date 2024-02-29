@@ -87,12 +87,13 @@ const d = /in a set[=/]/
 #[cfg(feature = "extras")]
 #[test]
 fn jsx() {
-	// note also `<img>`
+	// note the parser supports self closing tags with `<img>` and HTML comments
 	let input = r#"
 function Component(item) {
 	return <div>
 		<h1 class="heading">{item.heading}</h1>
 		<img src={item.image}>
+		<!-- Some comment -->
 		<p>
 			Something {item.content}
 		</p>

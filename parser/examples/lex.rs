@@ -26,13 +26,9 @@ fn lex_and_print_tokens(script: String, print_tokens: bool) {
 		if print_tokens {
 			// count += 1;
 			let length = token.length();
-			println!(
-				"{:?} {} {} {:?}",
-				token,
-				start.0 + 1u32,
-				length,
-				other.get((start.0 as usize)..(start.0 as usize + length as usize))
-			);
+			let represents =
+				other.get((start.0 as usize)..(start.0 as usize + length as usize)).unwrap();
+			println!("{:?} {} {} {:?}", token, start.0 + 1u32, length, represents);
 		}
 	}
 	// println!("{count} tokens");
