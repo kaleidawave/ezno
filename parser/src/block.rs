@@ -15,7 +15,7 @@ use crate::{
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
-#[visit_self(under statement)]
+#[visit_self(under = statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),

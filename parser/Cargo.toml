@@ -34,26 +34,26 @@ full-typescript = []
 [dependencies]
 visitable-derive = { path = "./visitable-derive", version = "0.0.5", package = "ezno-parser-visitable-derive" }
 
-derive-finite-automaton = "0.1.3"
-derive-debug-extras = { version = "0.2.2", features = [
+derive-finite-automaton = "0.2"
+derive-debug-extras = { version = "0.3", features = [
   "auto-debug-single-tuple-inline",
 ] }
-derive-partial-eq-extras = "0.1.2"
-derive-enum-from-into = "0.1.1"
+derive-partial-eq-extras = "0.2"
+derive-enum-from-into = "0.2"
 
 temporary-annex = "0.1.0"
-iterator-endiate = "0.2.1"
+iterator-endiate = "0.2"
 
-enum-variants-strings = "0.2"
+enum-variants-strings = "0.3"
 
-get-field-by-type = "0.0.3"
+get-field-by-type = "0"
 
 macro_rules_attribute = { version = "0.2.0" }
 
 serde = { version = "1.0", features = ["derive"], optional = true }
-self-rust-tokenize = { version = "0.3.3", optional = true }
+self-rust-tokenize = { version = "0.3", optional = true }
 
-source-map = { version = "0.14.10", features = [
+source-map = { version = "0.14", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }

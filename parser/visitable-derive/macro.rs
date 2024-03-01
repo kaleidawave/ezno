@@ -3,9 +3,12 @@ use std::error::Error;
 use string_cases::StringCasesExt;
 use syn_helpers::{
 	derive_trait,
-	proc_macro2::{Ident, Span, TokenTree},
+	proc_macro2::{Ident, Span},
 	quote,
-	syn::{parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident},
+	syn::{
+		self, parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident,
+		parse::Parse,
+	},
 	Constructable, FieldMut, HasAttributes, NamedOrUnnamedFieldMut, Trait, TraitItem,
 };
 
@@ -72,13 +75,33 @@ fn generated_visit_item(
 ) -> Result<Vec<Stmt>, Box<dyn Error>> {
 	let attributes = item.structure.get_attributes();
 
-	let visit_self = attributes
-		.iter()
-		.find_map(|attr| attr.path.is_ident(VISIT_SELF_NAME).then_some(&attr.tokens));
+	let visit_self = attributes.iter().find_map(|attr| {
+		attr.path().is_ident(VISIT_SELF_NAME).then_some({
+			let mut ident = None::<Ident>;
+			let res = attr.parse_nested_meta(|meta| {
+				if meta.path.is_ident("under") {
+					let value = meta.value()?;
+					ident = value.parse()?;
+					Ok(())
+				} else {
+					Err(meta.error("expected `under=...`"))
+				}
+			});
+			if res.is_ok() {
+				Some(ident.unwrap())
+			} else {
+				// TODO
+				None
+			}
+		})
+	});
 
-	let visit_with_chain = attributes
+	let visit_with_chain: Option<syn::Expr> = attributes
 		.iter()
-		.find_map(|attr| attr.path.is_ident(VISIT_WITH_CHAIN_NAME).then_some(&attr.tokens));
+		.find_map(|attr| {
+			attr.path().is_ident(VISIT_WITH_CHAIN_NAME).then_some(attr.parse_args().ok())
+		})
+		.flatten();
 
 	let mut lines = Vec::new();
 
@@ -86,22 +109,10 @@ fn generated_visit_item(
 		lines.push(parse_quote!( let mut chain = &mut chain.push_annex(#expr_tokens); ))
 	}
 
-	if let Some(tokens) = visit_self.cloned() {
-		let mut under = None;
-		if let Some(TokenTree::Group(g)) = tokens.into_iter().next() {
-			let mut tokens = g.stream().into_iter();
-			if let Some(TokenTree::Ident(ident)) = tokens.next() {
-				if ident == "under" {
-					if let Some(TokenTree::Ident(literal)) = tokens.next() {
-						under = Some(literal.to_string());
-					}
-				}
-			}
-			// TODO error
-		}
-
+	if let Some(under) = visit_self {
 		let mut_postfix =
 			matches!(visit_type, VisitType::Mutable).then_some("_mut").unwrap_or_default();
+
 		if let Some(under) = under {
 			let func_name = format_ident!("visit_{}{}", under, mut_postfix);
 			lines.push(parse_quote!(visitors.#func_name(self.into(), data,  chain); ))
@@ -120,7 +131,7 @@ fn generated_visit_item(
 				let attributes = field.get_attributes();
 
 				let skip_field_attr =
-					attributes.iter().find(|attr| attr.path.is_ident(VISIT_SKIP_NAME));
+					attributes.iter().find(|attr| attr.path().is_ident(VISIT_SKIP_NAME));
 
 				// TODO maybe?
 				// // None == unconditional
@@ -128,7 +139,11 @@ fn generated_visit_item(
 				// 	skip_field_attr.as_ref().map(|attr| attr.bracket_token);
 
 				let visit_with_chain = attributes.iter().find_map(|attr| {
-					attr.path.is_ident(VISIT_WITH_CHAIN_NAME).then_some(&attr.tokens)
+					// TODO error rather than flatten
+					attr.path()
+						.is_ident(VISIT_WITH_CHAIN_NAME)
+						.then_some(attr.parse_args_with(syn::Expr::parse).ok())
+						.flatten()
 				});
 
 				let chain = if let Some(expr_tokens) = visit_with_chain {

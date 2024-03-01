@@ -79,6 +79,13 @@ impl ASTNode for ExportDeclaration {
 						.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Async)))
 						.is_some();
 
+					#[allow(unused)]
+					let token = reader.next();
+					debug_assert!(matches!(
+						token.unwrap().0,
+						TSXToken::Keyword(TSXKeyword::Function)
+					));
+
 					let identifier =
 						if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
 							None
