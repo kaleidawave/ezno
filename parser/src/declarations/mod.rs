@@ -6,8 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, extensions::decorators,
-	throw_unexpected_token_with_token, types::namespace::Namespace, Decorated, Marker, ParseError,
-	ParseErrors, ParseOptions, Quoted, StatementPosition, TSXKeyword, TSXToken,
+	throw_unexpected_token_with_token, Decorated, Marker, ParseError, ParseErrors, ParseOptions,
+	Quoted, StatementPosition, TSXKeyword, TSXToken,
 };
 
 pub use self::{
@@ -60,7 +60,7 @@ pub enum Declaration {
 	DeclareVariable(DeclareVariableDeclaration),
 	DeclareFunction(DeclareFunctionDeclaration),
 	#[cfg(feature = "full-typescript")]
-	Namespace(Namespace),
+	Namespace(crate::types::namespace::Namespace),
 	#[from_ignore]
 	DeclareInterface(InterfaceDeclaration),
 	// Top level only
@@ -242,7 +242,8 @@ impl crate::ASTNode for Declaration {
 			}
 			#[cfg(feature = "full-typescript")]
 			TSXToken::Keyword(TSXKeyword::Namespace) => {
-				Namespace::from_reader(reader, state, options).map(Into::into)
+				crate::types::namespace::Namespace::from_reader(reader, state, options)
+					.map(Into::into)
 			}
 			TSXToken::Keyword(TSXKeyword::Interface) if options.type_annotations => {
 				InterfaceDeclaration::from_reader(reader, state, options)
@@ -319,6 +320,7 @@ impl crate::ASTNode for Declaration {
 			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
+			#[cfg(feature = "full-typescript")]
 			Declaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareInterface(did) => {
 				if options.include_type_annotations {
