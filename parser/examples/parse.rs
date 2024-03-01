@@ -18,8 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
-	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
+	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 
 	let now = Instant::now();
 
@@ -43,11 +43,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// };
 
 	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
+
 	let source = std::fs::read_to_string(path.clone())?;
-	// {
-	// 	let source = "/$&\n/;".to_string();
-	// 	let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	// }
+
+	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
+	// let source = "const [,,/* hi */] = []".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
@@ -74,7 +74,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let now = Instant::now();
 
 				let to_string_options = ToStringOptions {
-					trailing_semicolon: true,
 					expect_markers: true,
 					include_type_annotations: type_annotations,
 					pretty,
@@ -109,19 +108,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								.to_string_with_source_map(&to_string_options, source_id, &fs)
 								.0;
 
-							eprintln!("{output:?}\n{output2:?}");
-							if output != output2 {
+							if output == output2 {
+								eprintln!("{output:?} == {output2:?}");
+								eprintln!("re-parse was equal ✅");
+								Ok(())
+							} else {
+								eprintln!("{output:?} != {output2:?}");
 								eprintln!("initial   {:?}", module);
 								eprintln!("re-parsed {:?}", module2);
-								return Err(Box::<dyn std::error::Error>::from("not equal"));
+								Err(Box::<dyn std::error::Error>::from("not equal"))
 							}
-
-							eprintln!("re-parse was equal ✅");
-							Ok(())
 						}
 						Err(parse_err) => {
 							eprintln!("error parsing output: {output:?} from {module:?}");
-							return Err(Box::<dyn std::error::Error>::from(parse_err));
+							Err(Box::<dyn std::error::Error>::from(parse_err))
 						}
 					};
 				}

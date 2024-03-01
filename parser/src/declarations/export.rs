@@ -360,13 +360,14 @@ impl ASTNode for ExportDeclaration {
 				position: _,
 			} => {
 				if options.include_type_annotations {
-					buf.push_str("export default");
+					buf.push_str("export default ");
 					if *is_async {
 						buf.push_str("async ");
 					}
-					buf.push(' ');
+					buf.push_str("function ");
 					if let Some(ref identifier) = identifier {
 						identifier.to_string_from_buffer(buf, options, local);
+						buf.push(' ');
 					}
 					parameters.to_string_from_buffer(buf, options, local);
 					if let Some(ref return_type) = return_type {

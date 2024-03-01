@@ -5,7 +5,7 @@ use parser::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::IncrementOrDecrement,
 		operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
-		ArrayElement, MultipleExpression, SpecialOperators, SpreadExpression, SuperReference,
+		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
@@ -101,7 +101,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
 				element.0.as_ref().map(|element| match element {
-					SpreadExpression::NonSpread(element) => {
+					FunctionArgument::Standard(element) => {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
@@ -114,7 +114,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							expression_type,
 						)
 					}
-					SpreadExpression::Spread(_expr, position) => {
+					FunctionArgument::Spread(_expr, position) => {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -130,6 +130,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							TypeId::ERROR_TYPE,
 						)
 					}
+					FunctionArgument::Comment { .. } => todo!(),
 				})
 			}
 
@@ -693,10 +694,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::JSXRoot(jsx_root) => {
 			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
 		}
-		Expression::Comment { on: Some(on), .. } => {
+		Expression::Comment { on, .. } => {
 			return synthesise_expression(on, environment, checking_data, expecting);
 		}
-		Expression::Comment { on: None, .. } => return TypeId::ERROR_TYPE,
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
@@ -843,7 +843,7 @@ fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
-	arguments: Option<&Vec<SpreadExpression>>,
+	arguments: Option<&Vec<FunctionArgument>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
@@ -865,12 +865,13 @@ fn call_function<T: crate::ReadFromFS>(
 			arguments
 				.iter()
 				.map(|a| match a {
-					SpreadExpression::Spread(e, _) => {
+					FunctionArgument::Spread(e, _) => {
 						UnsynthesisedArgument { spread: true, expression: e }
 					}
-					SpreadExpression::NonSpread(e) => {
+					FunctionArgument::Standard(e) => {
 						UnsynthesisedArgument { spread: false, expression: e }
 					}
+					FunctionArgument::Comment { .. } => todo!(),
 				})
 				.collect()
 		})

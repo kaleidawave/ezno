@@ -6,8 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, extensions::decorators,
-	throw_unexpected_token_with_token, Decorated, Marker, ParseError, ParseErrors, ParseOptions,
-	Quoted, StatementPosition, TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
+	throw_unexpected_token_with_token, types::namespace::Namespace, Decorated, Marker, ParseError,
+	ParseErrors, ParseOptions, Quoted, StatementPosition, TSXKeyword, TSXToken,
 };
 
 pub use self::{
@@ -59,6 +59,8 @@ pub enum Declaration {
 	// Special TS only
 	DeclareVariable(DeclareVariableDeclaration),
 	DeclareFunction(DeclareFunctionDeclaration),
+	#[cfg(feature = "full-typescript")]
+	Namespace(Namespace),
 	#[from_ignore]
 	DeclareInterface(InterfaceDeclaration),
 	// Top level only
@@ -87,6 +89,7 @@ impl Declaration {
 		#[cfg(feature = "extras")]
 		return result
 			|| matches!(token, TSXToken::Keyword(kw) if options.custom_function_headers && kw.is_special_function_header())
+			|| (matches!(token, TSXToken::Keyword(TSXKeyword::Namespace) if cfg!(feature = "full-typescript")))
 			|| {
 				let TSXToken::Keyword(token) = *token else { return false };
 				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
@@ -237,6 +240,10 @@ impl crate::ASTNode for Declaration {
 			TSXToken::Keyword(TSXKeyword::From) => {
 				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
 			}
+			#[cfg(feature = "full-typescript")]
+			TSXToken::Keyword(TSXKeyword::Namespace) => {
+				Namespace::from_reader(reader, state, options).map(Into::into)
+			}
 			TSXToken::Keyword(TSXKeyword::Interface) if options.type_annotations => {
 				InterfaceDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
@@ -246,34 +253,33 @@ impl crate::ASTNode for Declaration {
 			}
 			TSXToken::Keyword(TSXKeyword::Declare) if options.type_annotations => {
 				let Token(_, start) = reader.next().unwrap();
-				crate::modules::parse_declare_item(reader, state, options, decorators, start)
-					.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
-						TypeDefinitionModuleDeclaration::Variable(declare_var) => {
-							Ok(Declaration::DeclareVariable(declare_var))
-						}
-						TypeDefinitionModuleDeclaration::Function(declare_func) => {
-							Ok(Declaration::DeclareFunction(declare_func))
-						}
-						TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("class"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("interface"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("type alias"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("namespace"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
-						| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)
-						| TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
-					})
+				match reader.peek().ok_or_else(parse_lexing_error)?.0 {
+					TSXToken::Keyword(TSXKeyword::Let | TSXKeyword::Const | TSXKeyword::Var) => {
+						DeclareVariableDeclaration::from_reader_sub_declare(
+							reader,
+							state,
+							options,
+							Some(start),
+							decorators,
+						)
+						.map(Into::into)
+					}
+					TSXToken::Keyword(t) if t.is_in_function_header() => {
+						DeclareFunctionDeclaration::from_reader_sub_declare_with_decorators(
+							reader, state, options, decorators,
+						)
+						.map(Into::into)
+					}
+					_ => throw_unexpected_token_with_token(
+						reader.next().ok_or_else(parse_lexing_error)?,
+						&[
+							TSXToken::Keyword(TSXKeyword::Let),
+							TSXToken::Keyword(TSXKeyword::Const),
+							TSXToken::Keyword(TSXKeyword::Var),
+							TSXToken::Keyword(TSXKeyword::Function),
+						],
+					),
+				}
 			}
 			_ => throw_unexpected_token_with_token(
 				reader.next().ok_or_else(parse_lexing_error)?,
@@ -313,6 +319,7 @@ impl crate::ASTNode for Declaration {
 			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
+			Declaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareInterface(did) => {
 				if options.include_type_annotations {
 					buf.push_str("declare ");

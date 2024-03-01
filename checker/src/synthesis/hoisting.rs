@@ -43,6 +43,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					"enum",
 					r#enum.on.position.with_source(environment.get_source()),
 				),
+				parser::Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+					"namespace",
+					ns.position.with_source(environment.get_source()),
+				),
 				parser::Declaration::DeclareInterface(interface) => {
 					// TODO any difference bc declare?
 					let ty = environment.new_interface(
@@ -190,6 +194,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 			}
 			StatementOrDeclaration::Declaration(dec) => match dec {
+				parser::Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+					"namespace",
+					ns.position.with_source(environment.get_source()),
+				),
 				parser::Declaration::Variable(declaration) => {
 					hoist_variable_declaration(declaration, environment, checking_data);
 				}

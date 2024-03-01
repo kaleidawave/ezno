@@ -137,14 +137,14 @@ pub enum Expression {
 	FunctionCall {
 		function: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
-		arguments: Vec<SpreadExpression>,
+		arguments: Vec<FunctionArgument>,
 		is_optional: bool,
 		position: Span,
 	},
 	ConstructorCall {
 		constructor: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
-		arguments: Option<Vec<SpreadExpression>>,
+		arguments: Option<Vec<FunctionArgument>>,
 		position: Span,
 	},
 	/// e.g `... ? ... ? ...`
@@ -162,8 +162,7 @@ pub enum Expression {
 	Null(Span),
 	Comment {
 		content: String,
-		/// Allowed to be `None` in trailing functions arguments and JSX for some reason
-		on: Option<Box<Expression>>,
+		on: Box<Expression>,
 		position: Span,
 		is_multiline: bool,
 		prefix: bool,
@@ -407,8 +406,13 @@ impl Expression {
 							rhs: Box::new(rhs),
 						}
 					} else {
-						let (items, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
+						let (items, end) = parse_bracketed::<ArrayElement>(
+							reader,
+							state,
+							options,
+							None,
+							TSXToken::CloseBracket,
+						)?;
 
 						Expression::ArrayLiteral(items, start.union(end))
 					}
@@ -554,17 +558,6 @@ impl Expression {
 				// TODO discern between multi-line here
 				let (content, is_multiline, position) = TSXToken::try_into_comment(t).unwrap();
 
-				if let Some(Token(TSXToken::CloseParentheses | TSXToken::JSXExpressionEnd, _)) =
-					reader.peek()
-				{
-					return Ok(Expression::Comment {
-						is_multiline,
-						content,
-						position,
-						on: None,
-						prefix: false,
-					});
-				}
 				let expression = Self::from_reader_with_precedence(
 					reader,
 					state,
@@ -577,7 +570,7 @@ impl Expression {
 					is_multiline,
 					content,
 					position,
-					on: Some(Box::new(expression)),
+					on: Box::new(expression),
 					prefix: true,
 				}
 			}
@@ -1054,7 +1047,7 @@ impl Expression {
 						TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 					top = Expression::Comment {
 						content,
-						on: Some(Box::new(top)),
+						on: Box::new(top),
 						position,
 						is_multiline,
 						prefix: false,
@@ -1297,8 +1290,7 @@ impl Expression {
 			Self::ArrowFunction(..) => ARROW_FUNCTION_PRECEDENCE,
 			Self::Index { .. } => INDEX_PRECEDENCE,
 			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
-			Self::Comment { on: Some(ref on), .. } => on.get_precedence(),
-			Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+			Self::Comment { ref on, .. } => on.get_precedence(),
 			#[cfg(feature = "full-typescript")]
 			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => {
 				PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE
@@ -1698,9 +1690,7 @@ impl Expression {
 						buf.push_new_line();
 					}
 				}
-				if let Some(on) = on {
-					on.to_string_using_precedence(buf, options, local, local2);
-				}
+				on.to_string_using_precedence(buf, options, local, local2);
 				if !prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
 						buf.push_str("/*");
@@ -1953,7 +1943,7 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStar
 }
 
 pub(crate) fn arguments_to_string<T: source_map::ToString>(
-	nodes: &[SpreadExpression],
+	nodes: &[FunctionArgument],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
@@ -1978,7 +1968,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	}
 	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
 		// Hack for arrays, this is just easier for generators and ends up in a smaller output
-		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
+		if let FunctionArgument::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			if items.is_empty() {
 				continue;
 			}
@@ -2064,14 +2054,15 @@ pub enum InExpressionLHS {
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-pub enum SpreadExpression {
+pub enum FunctionArgument {
 	Spread(Expression, Span),
-	NonSpread(Expression),
+	Standard(Expression),
+	Comment { content: String, is_multiline: bool, position: Span },
 }
 
-impl ListItem for SpreadExpression {}
+impl ListItem for FunctionArgument {}
 
-impl ASTNode for SpreadExpression {
+impl ASTNode for FunctionArgument {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -2088,31 +2079,47 @@ impl ASTNode for SpreadExpression {
 			t if t.is_comment() => {
 				let (content, is_multiline, position) =
 					TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+
+				// Function arguments, JSX interpolated expressions and array elements don't have to have a value
+				if let Some(Token(
+					TSXToken::CloseParentheses
+					| TSXToken::JSXExpressionEnd
+					| TSXToken::CloseBracket
+					| TSXToken::Comma,
+					_,
+				)) = reader.peek()
+				{
+					return Ok(Self::Comment { content, is_multiline, position });
+				}
+
 				let expr = Self::from_reader(reader, state, options)?;
 				let position = position.union(expr.get_position());
+
 				Ok(match expr {
-					SpreadExpression::Spread(expr, _end) => SpreadExpression::Spread(
+					FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
 						Expression::Comment {
 							content,
-							on: Some(Box::new(expr)),
+							on: Box::new(expr),
 							position,
 							is_multiline,
 							prefix: true,
 						},
 						position,
 					),
-					SpreadExpression::NonSpread(expr) => {
-						SpreadExpression::NonSpread(Expression::Comment {
+					FunctionArgument::Standard(expr) => {
+						FunctionArgument::Standard(Expression::Comment {
 							content,
-							on: Some(Box::new(expr)),
+							on: Box::new(expr),
 							position,
 							is_multiline,
 							prefix: true,
 						})
 					}
+					// TODO
+					c @ FunctionArgument::Comment { .. } => c,
 				})
 			}
-			_ => Ok(Self::NonSpread(Expression::from_reader(reader, state, options)?)),
+			_ => Ok(Self::Standard(Expression::from_reader(reader, state, options)?)),
 		}
 	}
 
@@ -2123,33 +2130,42 @@ impl ASTNode for SpreadExpression {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			SpreadExpression::Spread(expression, _) => {
+			FunctionArgument::Spread(expression, _) => {
 				buf.push_str("...");
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			SpreadExpression::NonSpread(expression) => {
+			FunctionArgument::Standard(expression) => {
 				expression.to_string_from_buffer(buf, options, local);
+			}
+			FunctionArgument::Comment { content, is_multiline, position: _ } => {
+				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+					buf.push_str("/*");
+					buf.push_str(content);
+					buf.push_str("*/");
+				}
 			}
 		}
 	}
 
 	fn get_position(&self) -> &Span {
 		match self {
-			SpreadExpression::Spread(_, pos) => pos,
-			SpreadExpression::NonSpread(expr) => expr.get_position(),
+			FunctionArgument::Comment { position, .. } | FunctionArgument::Spread(_, position) => {
+				position
+			}
+			FunctionArgument::Standard(expr) => expr.get_position(),
 		}
 	}
 }
 
-impl From<Expression> for SpreadExpression {
+impl From<Expression> for FunctionArgument {
 	fn from(value: Expression) -> Self {
-		SpreadExpression::NonSpread(value)
+		FunctionArgument::Standard(value)
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
-pub struct ArrayElement(pub Option<SpreadExpression>);
+pub struct ArrayElement(pub Option<FunctionArgument>);
 
 impl ASTNode for ArrayElement {
 	fn get_position(&self) -> &Span {
@@ -2161,7 +2177,7 @@ impl ASTNode for ArrayElement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		Ok(Self(Some(ASTNode::from_reader(reader, state, options)?)))
+		Ok(Self(Some(FunctionArgument::from_reader(reader, state, options)?)))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -2242,7 +2258,7 @@ impl Expression {
 				// TODO could return a variant here...
 				self
 			}
-		} else if let Expression::Comment { on: Some(on), .. } = self {
+		} else if let Expression::Comment { on, .. } = self {
 			on.get_non_parenthesized()
 		} else {
 			self
@@ -2255,7 +2271,7 @@ impl Expression {
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub enum SuperReference {
-	Call { arguments: Vec<SpreadExpression> },
+	Call { arguments: Vec<FunctionArgument> },
 	PropertyAccess { property: String },
 	Index { indexer: Box<Expression> },
 }
@@ -2263,7 +2279,7 @@ pub enum SuperReference {
 #[cfg(test)]
 mod tests {
 	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
-	use crate::{assert_matches_ast, ast::SpreadExpression, span, NumberRepresentation, Quoted};
+	use crate::{assert_matches_ast, ast::FunctionArgument, span, NumberRepresentation, Quoted};
 
 	#[test]
 	fn literal() {
@@ -2325,7 +2341,7 @@ mod tests {
 	fn spread_function_argument() {
 		assert_matches_ast!(
 			"console.table(...a)",
-			FunctionCall { arguments: Deref @ [SpreadExpression::Spread(VariableReference(..), span!(14, 18))], .. }
+			FunctionCall { arguments: Deref @ [FunctionArgument::Spread(VariableReference(..), span!(14, 18))], .. }
 		);
 	}
 

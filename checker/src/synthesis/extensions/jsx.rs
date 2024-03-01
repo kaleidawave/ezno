@@ -364,6 +364,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 	}
 }
 
+/// TODO function argument
 fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	child: &JSXNode,
 	environment: &mut Environment,
@@ -372,14 +373,16 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, _expression_position) => {
-			if matches!(&**expression, Expression::Comment { .. }) {
-				return TypeId::UNDEFINED_TYPE;
+			match &**expression {
+				parser::ast::FunctionArgument::Spread(_, _) => todo!(),
+				parser::ast::FunctionArgument::Standard(expression) => {
+					crate::utils::notify!("Cast JSX interpolated value?");
+					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
+				}
+				parser::ast::FunctionArgument::Comment { .. } => {
+					todo!()
+				}
 			}
-
-			crate::utils::notify!("Cast to node!");
-			// TODO expecting
-			synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
-
 			// function intoNode(data) {
 			// 	if typeof data === "string" || typeof data === "number" {
 			// 		new Text(data)

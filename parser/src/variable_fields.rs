@@ -163,6 +163,7 @@ impl ASTNode for VariableField {
 pub enum ArrayDestructuringField {
 	Spread(VariableIdentifier, Span),
 	Name(VariableField, Option<Box<Expression>>),
+	Comment { content: String, is_multiline: bool, position: Span },
 	None,
 }
 
@@ -180,12 +181,15 @@ impl ASTNode for ArrayDestructuringField {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if let TSXToken::Spread = reader.peek().ok_or_else(parse_lexing_error)?.0 {
+		let Token(token, _start) = reader.peek().ok_or_else(parse_lexing_error)?;
+		if let TSXToken::Spread = token {
 			let token = reader.next().unwrap();
 			Ok(Self::Spread(
 				VariableIdentifier::from_reader(reader, state, options)?,
 				token.get_span(),
 			))
+		} else if matches!(token, TSXToken::Comma | TSXToken::CloseBracket) {
+			Ok(Self::None)
 		} else {
 			let name = VariableField::from_reader(reader, state, options)?;
 			let default_value = reader
@@ -222,13 +226,21 @@ impl ASTNode for ArrayDestructuringField {
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
+			Self::Comment { content, is_multiline, position: _ } => {
+				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+					buf.push_str("/*");
+					buf.push_str(content);
+					buf.push_str("*/");
+				}
+			}
 			Self::None => {}
 		}
 	}
 
 	fn get_position(&self) -> &Span {
 		match self {
-			ArrayDestructuringField::Spread(_, pos) => pos,
+			ArrayDestructuringField::Comment { position, .. }
+			| ArrayDestructuringField::Spread(_, position) => position,
 			// TODO misses out optional expression
 			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
 			ArrayDestructuringField::None => &source_map::Nullable::NULL,
@@ -407,7 +419,9 @@ impl Visitable for WithComment<ArrayDestructuringField> {
 		visitors.visit_variable(&array_destructuring_member, data, chain);
 		match field {
 			// TODO should be okay, no nesting here
-			ArrayDestructuringField::Spread(..) | ArrayDestructuringField::None => {}
+			ArrayDestructuringField::Comment { .. }
+			| ArrayDestructuringField::Spread(..)
+			| ArrayDestructuringField::None => {}
 			ArrayDestructuringField::Name(variable_field, expression) => {
 				variable_field.visit(visitors, data, options, chain);
 				expression.visit(visitors, data, options, chain);
@@ -429,7 +443,7 @@ impl Visitable for WithComment<ArrayDestructuringField> {
 			ArrayDestructuringField::Spread(_, _id) => {
 				// TODO should be okay, no nesting here
 			}
-			ArrayDestructuringField::None => {}
+			ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
 			ArrayDestructuringField::Name(variable_field, default_value) => {
 				variable_field.visit_mut(visitors, data, options, chain);
 				default_value.visit_mut(visitors, data, options, chain);

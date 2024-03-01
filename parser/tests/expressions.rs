@@ -35,7 +35,8 @@ y.t<4, 2>(3);
 y.t<4, Array<5>>(3);
 a(y<2>(4));
 a.a?.(y<2>(4));
-a.a(...expr, y)
+a.a(...expr, y);
+a.a(...expr, y, /* something */)
     "
 	.trim();
 
@@ -55,6 +56,23 @@ const b = { ...b, a: 5, ...c, d: 4 };
 const c = { async e() {
 	return 2
 } }
+    "
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[test]
+fn arrays() {
+	let input = r"
+const a = [{ a: 5 }];
+const b = [...x, 7];
+const c = [/* hi */, 6]
     "
 	.trim();
 
@@ -97,6 +115,8 @@ function Component(item) {
 		<p>
 			Something {item.content}
 		</p>
+		{/* hi */}
+		<button disabled>One line</button>
 	</div>
 }
     "#

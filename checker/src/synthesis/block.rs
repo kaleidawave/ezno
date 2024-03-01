@@ -95,6 +95,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 		| Declaration::Enum(_)
 		| Declaration::Interface(_)
 		| Declaration::TypeAlias(_)
+		| Declaration::Namespace(_)
 		| Declaration::Import(_) => {}
 		Declaration::Export(exported) => match &exported.on {
 			parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {

@@ -106,7 +106,7 @@ class X {
 #[test]
 fn type_definition_module() {
 	let input = r#"
-export default function(a: string): string
+export default function (a: string): string
 "#
 	.trim()
 	.replace("    ", "\t");

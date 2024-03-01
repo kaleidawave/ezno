@@ -82,7 +82,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						);
 						register_variable(name, environment, checking_data, argument);
 					}
-					ArrayDestructuringField::None => {}
+					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
 				}
 			}
 		}
@@ -257,7 +257,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 
 						// TODO
 					}
-					ArrayDestructuringField::None => {}
+					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
 				}
 			}
 		}

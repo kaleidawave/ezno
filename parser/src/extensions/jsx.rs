@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseOptions,
-	ParseResult, Span, TSXToken, Token, TokenReader,
+	ast::FunctionArgument, derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression,
+	ParseError, ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -227,7 +227,7 @@ impl JSXRoot {
 pub enum JSXNode {
 	Element(JSXElement),
 	TextNode(String, Span),
-	InterpolatedExpression(Box<Expression>, Span),
+	InterpolatedExpression(Box<FunctionArgument>, Span),
 	Comment(String, Span),
 	LineBreak,
 }
@@ -256,7 +256,7 @@ impl ASTNode for JSXNode {
 				Ok(JSXNode::TextNode(content.trim_start().into(), position))
 			}
 			Token(TSXToken::JSXExpressionStart, pos) => {
-				let expression = Expression::from_reader(reader, state, options)?;
+				let expression = FunctionArgument::from_reader(reader, state, options)?;
 				let end_pos = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), pos.union(end_pos)))
 			}
@@ -284,11 +284,6 @@ impl ASTNode for JSXNode {
 			}
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
-				if !options.should_add_comment(false)
-					&& matches!(&**expression, Expression::Comment { .. })
-				{
-					return;
-				}
 				buf.push('{');
 				expression.to_string_from_buffer(buf, options, local.next_level());
 				buf.push('}');

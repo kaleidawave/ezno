@@ -758,13 +758,14 @@ mod defined_errors_and_warnings {
 		MergingInterfaceInSameContext {
 			position: SpanWithSource,
 		},
+		InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {
-		fn from(val: TypeCheckWarning) -> Self {
+		fn from(warning: TypeCheckWarning) -> Self {
 			let kind = super::DiagnosticKind::Warning;
 
-			match val {
+			match warning {
 				TypeCheckWarning::AwaitUsedOnNonPromise(position) => Diagnostic::Position {
 					reason: "Unnecessary await expression / type is not promise".to_owned(),
 					position,
@@ -795,6 +796,14 @@ mod defined_errors_and_warnings {
 				TypeCheckWarning::MergingInterfaceInSameContext { position } => {
 					Diagnostic::Position {
 						reason: "Merging interfaces in the same context".to_owned(),
+						position,
+						kind,
+					}
+				}
+				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(position) => {
+					Diagnostic::Position {
+						reason: "Invalid (or unimplemented) item in definition file skipped"
+							.to_owned(),
 						position,
 						kind,
 					}

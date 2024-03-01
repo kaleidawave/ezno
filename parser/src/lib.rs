@@ -36,7 +36,7 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_script, LexerOptions};
-pub use modules::{Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
+pub use modules::Module;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
@@ -52,12 +52,14 @@ pub(crate) use visiting::{
 
 use tokenizer_lib::{
 	sized_tokens::{SizedToken, TokenEnd},
-	Token, TokenReader, TokenTrait,
+	Token, TokenReader,
 };
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
 use std::{borrow::Cow, str::FromStr};
+
+use crate::errors::parse_lexing_error;
 
 #[macro_use]
 extern crate macro_rules_attribute;
@@ -232,7 +234,7 @@ impl ToStringOptions {
 		}
 	}
 
-	/// With typescript type syntax
+	/// With TypeScript type syntax
 	#[must_use]
 	pub fn typescript() -> Self {
 		ToStringOptions { include_type_annotations: true, ..Default::default() }
@@ -914,32 +916,15 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
 		if let Some(empty) = T::EMPTY {
-			let (mut is_comma, mut is_end) = (false, false);
-			let _ = reader.scan(|t, _| {
-				if t.is_skippable() {
-					false
-				} else if *t == TSXToken::Comma {
-					is_comma = true;
-					true
-				} else if *t == end {
-					is_end = true;
-					true
-				} else {
-					true
-				}
-			});
-			if is_comma || is_end {
-				if is_comma || (is_end && !nodes.is_empty()) {
+			let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
+			if matches!(next, TSXToken::Comma) || *next == end {
+				if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
 					nodes.push(empty);
 				}
-				while let Some(Token(t, s)) = reader.next() {
-					if t == TSXToken::Comma {
-						break;
-					} else if t == end {
-						return Ok((nodes, s.get_end_after(t.length() as usize)));
-					}
+				let Token(token, s) = reader.next().unwrap();
+				if token == end {
+					return Ok((nodes, s.get_end_after(token.length() as usize)));
 				}
-
 				continue;
 			}
 		} else if let Some(token) = reader.conditional_next(|token| *token == end) {

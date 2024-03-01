@@ -251,7 +251,8 @@ mod ast {
 		crate::declarations::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::VariableKeyword
+		crate::VariableKeyword,
+		crate::types::namespace::Namespace
 	];
 }
 
