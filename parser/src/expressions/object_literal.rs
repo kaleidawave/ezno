@@ -76,7 +76,7 @@ const OBJECT_LITERAL_METHOD_TYPE: &str = r"
 		header: MethodHeader,
 		body: Block,
 		name: WithComment<PropertyKey<AlwaysPublic>>,
-		FunctionParameters<ThisValue | null, null>
+		parameters: FunctionParameters<ThisValue | null, null>
 	}
 ";
 
