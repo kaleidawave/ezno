@@ -56,7 +56,16 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, options, local);
+				if let Expression::NumberLiteral(..)
+				| Expression::ObjectLiteral(..)
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesized()
+				{
+					buf.push('(');
+					parent.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					parent.to_string_from_buffer(buf, options, local);
+				}
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
