@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
@@ -47,7 +47,7 @@ jobs:
   formating:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Check Rust formatting with rustfmt
@@ -65,14 +65,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
@@ -82,16 +82,16 @@ jobs:
               - 'checker/**'
 
       - name: Run parser tests
-        if: steps.changes.outputs.parser == 'true'
+        if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
         run: |
           cargo test
           
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-          cargo run -p ezno-parser --example parse react.js --timings --render-timings
+          cargo run -p ezno-parser --example parse react.js
         working-directory: parser
 
       - name: Run checker specification
-        if: steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request'
+        if: (steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request') || github.ref_name == 'main'
         run: cargo test
         working-directory: checker/specification
       
@@ -103,7 +103,7 @@ jobs:
           EZNO_DEBUG: 1
 
       - name: Run checker tests
-        if: steps.changes.outputs.checker == 'true'
+        if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
         run: |
           # Test checker with the parser features
           cargo test -F ezno-parser 
@@ -117,15 +117,15 @@ jobs:
     needs: validity
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
@@ -137,43 +137,18 @@ jobs:
               - 'checker/**'
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: steps.changes.outputs.src == 'true'
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           packages: wasm-pack@0.12.1
       - uses: denoland/setup-deno@v1
-        if: steps.changes.outputs.src == 'true'
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           deno-version: v1.x
       - uses: actions/setup-node@v3
-        if: steps.changes.outputs.src == 'true'
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           node-version: 18
-
-      - name: Build and test WASM
-        if: steps.changes.outputs.src == 'true'
-        # TODO want `continue-on-error: true` but doesn't report error
-        run: |
-          # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
-
-          rustup target add wasm32-unknown-unknown
-          npm ci
-          npm run build
-          npm run run-tests
-
-          node ./dist/cli.cjs info
-          deno run -A ./dist/cli.mjs info
-
-          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          
-          # TODO temp as the types generated can be a bit unpredicatible
-          echo "::debug::On branch '${{ github.ref_name }}'"
-          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
-            npm run build-release
-            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          fi
-        working-directory: src/js-cli-and-library
-        shell: bash
-
+      
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
@@ -192,6 +167,32 @@ jobs:
         run: 
           cargo check -p ezno-checker --no-default-features
 
+      - name: Build and test WASM
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        # TODO want `continue-on-error: true` but doesn't report error
+        run: |
+          # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
+
+          rustup target add wasm32-unknown-unknown
+          npm ci
+          npm run build
+          npm run run-tests
+
+          node ./dist/cli.cjs info
+          deno run -A ./dist/cli.mjs info
+
+          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          echo "debug checked with TSC"
+          cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts --type-definition-module
+          
+          # TODO temp as the types generated can be a bit unpredicatible
+          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
+            npm run build-release
+            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          fi
+        working-directory: src/js-cli-and-library
+        shell: bash
+
   fuzzing:
     needs: validity
     runs-on: ubuntu-latest
@@ -202,14 +203,14 @@ jobs:
         fuzz-target: [module_roundtrip_naive, module_roundtrip_structured]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
@@ -228,9 +229,19 @@ jobs:
           packages: cargo-fuzz
 
       - name: Run fuzzing
+        env:
+          SHORT_CIRCUIT: true
         if: steps.changes.outputs.parser == 'true'
         run: |
-          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -max_total_time=120 -use_value_profile=1
+          if ${{ env.SHORT_CIRCUIT }}; then
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+          else
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+            
+            if test -d fuzz/artifacts; then 
+              find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
+            fi
+          fi
         working-directory: parser/fuzz
 
   clippy:
@@ -238,9 +249,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
@@ -253,10 +264,10 @@ jobs:
     # `publish --dry-run` reports too many false positives and doesn't catch actual errors. So disabling for now
     if: false
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |

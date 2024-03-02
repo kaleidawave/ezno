@@ -1,23 +1,26 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, functions::HeadingAndPosition,
-	property_key::PublicOrPrivate, visiting::Visitable,
+	derive_ASTNode,
+	errors::parse_lexing_error,
+	functions::{
+		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
+		ThisParameter,
+	},
+	property_key::PublicOrPrivate,
+	visiting::Visitable,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
+	TSXToken, TypeAnnotation, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
-use crate::{
-	functions::{FunctionBased, MethodHeader},
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
-	TSXToken, TypeAnnotation, WithComment,
-};
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsStatic = bool;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -29,23 +32,10 @@ pub enum ClassMember {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const CLASS_CONSTRUCTOR_TYPES: &str = r"
-	export interface ClassConstructor extends Omit<FunctionBase, 'header' | 'name'> {
-		body: Block
-	}
-";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
-#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-const CLASS_FUNCTION_TYPES: &str = r"
-	export interface ClassFunction extends FunctionBase {
-		header: MethodHeader,
-		body: Block,
-		name: WithComment<PropertyKey<PublicOrPrivate>>
-	}
-";
 
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
@@ -163,7 +153,9 @@ impl ASTNode for ClassMember {
 					buf.push_str("readonly ");
 				}
 				key.to_string_from_buffer(buf, options, local);
-				if let (true, Some(type_annotation)) = (options.include_types, type_annotation) {
+				if let (true, Some(type_annotation)) =
+					(options.include_type_annotations, type_annotation)
+				{
 					buf.push_str(": ");
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
@@ -221,9 +213,16 @@ impl ClassFunction {
 }
 
 impl FunctionBased for ClassFunctionBase {
-	type Body = Block;
 	type Header = MethodHeader;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = ();
+	type Body = FunctionBody;
+
+	#[cfg(feature = "full-typescript")]
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
@@ -281,11 +280,18 @@ impl FunctionBased for ClassFunctionBase {
 impl FunctionBased for ClassConstructorBase {
 	type Header = ();
 	type Name = ();
-	type Body = Block;
+	type Body = FunctionBody;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = Option<crate::types::Visibility>;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
+
+	#[cfg(feature = "full-typescript")]
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -328,3 +334,19 @@ impl FunctionBased for ClassConstructorBase {
 		None
 	}
 }
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const CLASS_CONSTRUCTOR_AND_FUNCTION_TYPES: &str = r"
+	export interface ClassConstructor extends FunctionBase {
+		body: FunctionBody,
+		parameters: FunctionParameters<[ThisParameter | null, SuperParameter | null], Visibility>,
+	}
+
+	export interface ClassFunction extends FunctionBase {
+		header: MethodHeader,
+		name: WithComment<PropertyKey<PublicOrPrivate>>
+		parameters: FunctionParameters<ThisParameter | null, null>,
+		body: FunctionBody,
+	}
+";

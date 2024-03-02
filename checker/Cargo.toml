@@ -29,11 +29,11 @@ source-map = { version = "0.14.10", features = [
 binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
 
 temporary-annex = "0.1.0"
-derive-enum-from-into = "0.1.0"
-derive-debug-extras = { version = "0.2.0", features = [
+derive-enum-from-into = "0.2"
+derive-debug-extras = { version = "0.3", features = [
   "auto-debug-single-tuple-inline",
 ] }
-enum-variants-strings = "0.2"
+enum-variants-strings = "0.3"
 iterator-endiate = "0.2"
 bimap = "0.6.2"
 

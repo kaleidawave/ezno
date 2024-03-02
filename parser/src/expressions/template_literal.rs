@@ -14,8 +14,8 @@ pub struct TemplateLiteral {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TemplateLiteralPart<T: ASTNode> {
 	Static(String),
 	Dynamic(Box<T>),

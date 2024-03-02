@@ -22,7 +22,7 @@ use std::convert::TryInto;
 
 use parser::{
 	type_annotations::{
-		AnnotationWithBinder, CommonTypes, SpreadKind, TypeCondition, TypeConditionResult,
+		AnnotationWithBinder, CommonTypes, TupleElementKind, TypeCondition, TypeConditionResult,
 	},
 	ASTNode, TypeAnnotation,
 };
@@ -358,7 +358,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			for (idx, (spread, member)) in members.iter().enumerate() {
 				// TODO binder name under data...?
 				match spread {
-					SpreadKind::NonSpread => {
+					TupleElementKind::Standard => {
 						let type_annotation = match member {
 							AnnotationWithBinder::Annotated { ty, .. }
 							| AnnotationWithBinder::NoAnnotation(ty) => ty,
@@ -378,7 +378,10 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							Some(ty_position),
 						);
 					}
-					SpreadKind::Spread => {
+					TupleElementKind::Optional => {
+						todo!()
+					}
+					TupleElementKind::Spread => {
 						todo!();
 					}
 				}
@@ -449,6 +452,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
+		TypeAnnotation::Symbol { .. } => todo!(),
 	};
 
 	checking_data

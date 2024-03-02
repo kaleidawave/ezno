@@ -11,6 +11,7 @@ cargo-fuzz = true
 reqwest = { version = "0.11.14", features = ["blocking"] }
 
 [dependencies]
+ahash = "0.8.8"
 arbitrary = "1"
 boa_ast = { git = "https://github.com/boa-dev/boa.git", features = [
   "arbitrary",

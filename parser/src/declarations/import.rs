@@ -4,9 +4,10 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
-	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	ast::object_literal::ObjectLiteral, derive_ASTNode, errors::parse_lexing_error,
+	parse_bracketed, throw_unexpected_token, tokens::token_as_identifier, ASTNode, ListItem,
+	Marker, ParseOptions, ParseResult, ParsingState, Quoted, TSXKeyword, TSXToken,
+	VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
@@ -20,28 +21,30 @@ pub enum ImportedItems {
 	All { under: VariableIdentifier },
 }
 
-/// TODO a few more thing needed here
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
+	#[cfg(feature = "full-typescript")]
 	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
+	pub with: Option<ObjectLiteral>,
 	pub position: Span,
 	#[cfg(feature = "extras")]
 	pub reversed: bool,
 }
 
-/// TODO default
+/// TODO `default` should have its own variant?
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
+	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
 		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportExportName>"))] Marker<Self>,
@@ -93,13 +96,21 @@ impl ASTNode for ImportDeclaration {
 
 		let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
+		let with = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::With)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
+			#[cfg(feature = "full-typescript")]
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,
+			with,
 			position: out.start.union(end),
 			#[cfg(feature = "extras")]
 			reversed: false,
@@ -113,7 +124,9 @@ impl ASTNode for ImportDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("import");
-		if self.is_type_annotation_import_only && options.include_types {
+
+		#[cfg(feature = "full-typescript")]
+		if self.is_type_annotation_import_only && options.include_type_annotations {
 			buf.push_str(" type");
 		}
 
@@ -183,10 +196,17 @@ impl ImportDeclaration {
 
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
+		let with = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Assert)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
+			with,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,
@@ -249,7 +269,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 	let peek = reader.peek();
 	let (items, end) = if let Some(Token(TSXToken::Multiply, _)) = peek {
 		reader.next();
-		let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+		state.expect_keyword(reader, TSXKeyword::As)?;
 		let under = VariableIdentifier::from_reader(reader, state, options)?;
 		let end = under.get_position().get_end();
 		(ImportedItems::All { under }, end)
@@ -334,6 +354,7 @@ impl ASTNode for ImportPart {
 					let (ident, pos) = token_as_identifier(token, "import alias")?;
 					(ImportExportName::Reference(ident), pos)
 				};
+
 			let mut value = match alias {
 				ImportExportName::Quoted(..) => {
 					let _ = state.expect_keyword(reader, TSXKeyword::As)?;
@@ -345,8 +366,7 @@ impl ASTNode for ImportPart {
 					Self::NameWithAlias { name, alias, position }
 				}
 				ImportExportName::Reference(reference) => {
-					if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek() {
-						reader.next();
+					if state.optionally_expect_keyword(reader, TSXKeyword::As).is_some() {
 						let (name, pos) = token_as_identifier(
 							reader.next().ok_or_else(parse_lexing_error)?,
 							"import name",
@@ -361,10 +381,10 @@ impl ASTNode for ImportPart {
 						Self::Name(VariableIdentifier::Standard(reference, alias_pos))
 					}
 				}
-				ImportExportName::Marker(_id) => {
-					todo!("marker id change")
-					// Self::Name(VariableIdentifier::Marker(id, pos))
-				}
+				ImportExportName::Marker(id) => Self::Name(VariableIdentifier::Marker(
+					Marker(id.0, Default::default()),
+					alias_pos,
+				)),
 			};
 			while let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
 				let Some(Token(TSXToken::MultiLineComment(c), start)) = reader.next() else {

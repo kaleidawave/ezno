@@ -1,13 +1,13 @@
 use crate::{
 	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation,
-	VariableField, VariableFieldInSourceCode, WithComment,
+	VariableField, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
+pub type ExceptionVarField = WithComment<VariableField>;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -44,9 +44,7 @@ impl ASTNode for TryCatchStatement {
 			if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
 				reader.expect_next(TSXToken::OpenParentheses)?;
 				let variable_field =
-					WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-						reader, state, options,
-					)?;
+					WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				// Optional type reference `catch (e: type)`
 				let mut exception_var_type: Option<TypeAnnotation> = None;

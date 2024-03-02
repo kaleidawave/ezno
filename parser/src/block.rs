@@ -15,7 +15,7 @@ use crate::{
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
-#[visit_self(under statement)]
+#[visit_self(under = statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
@@ -26,6 +26,7 @@ pub enum StatementOrDeclaration {
 
 impl StatementOrDeclaration {
 	pub(crate) fn requires_semi_colon(&self) -> bool {
+		// TODO maybe more?
 		match self {
 			StatementOrDeclaration::Statement(stmt) => stmt.requires_semi_colon(),
 			StatementOrDeclaration::Declaration(dec) => matches!(
@@ -40,6 +41,7 @@ impl StatementOrDeclaration {
 							},
 						..
 					}) | Declaration::Import(..)
+					| Declaration::TypeAlias(..)
 			),
 			Self::Marker(..) => false,
 		}
@@ -160,18 +162,22 @@ impl ASTNode for Block {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		buf.push('{');
-		if local.depth > 0 && options.pretty {
-			buf.push_new_line();
+		if options.pretty && self.0.is_empty() {
+			buf.push_str("{}");
+		} else {
+			buf.push('{');
+			if local.depth > 0 && options.pretty {
+				buf.push_new_line();
+			}
+			statements_and_declarations_to_string(&self.0, buf, options, local);
+			if options.pretty && !self.0.is_empty() {
+				buf.push_new_line();
+			}
+			if local.depth > 1 {
+				options.add_indent(local.depth - 1, buf);
+			}
+			buf.push('}');
 		}
-		statements_and_declarations_to_string(&self.0, buf, options, local);
-		if options.pretty && !self.0.is_empty() {
-			buf.push_new_line();
-		}
-		if local.depth > 1 {
-			options.add_indent(local.depth - 1, buf);
-		}
-		buf.push('}');
 	}
 
 	fn get_position(&self) -> &Span {
@@ -366,10 +372,8 @@ pub(crate) fn parse_statements_and_declarations(
 		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
 		if value.requires_semi_colon() {
 			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
-		} else {
-			// Skip over semi colons regardless
-			// reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
 		}
+		// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
 		items.push(value);
 	}
 	Ok(items)

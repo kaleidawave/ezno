@@ -14,5 +14,5 @@ path = "macro.rs"
 proc-macro = true
 
 [dependencies]
-syn-helpers = "0.4.2"
+syn-helpers = "0.5"
 string-cases = "0.2"

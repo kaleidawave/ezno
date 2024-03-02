@@ -3,10 +3,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, operators::COMMA_PRECEDENCE,
+	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE,
 	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
-	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
-	VariableFieldInSourceCode, WithComment,
+	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -125,7 +124,7 @@ impl DeclarationExpression for crate::Expression {
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
-	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
+	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub expression: TExpr,
 	pub position: Span,
@@ -137,9 +136,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-			reader, state, options,
-		)?;
+		let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
 		let type_annotation = if reader
 			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
@@ -167,7 +164,9 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		local: crate::LocalToStringInformation,
 	) {
 		self.name.to_string_from_buffer(buf, options, local);
-		if let (true, Some(type_annotation)) = (options.include_types, &self.type_annotation) {
+		if let (true, Some(type_annotation)) =
+			(options.include_type_annotations, &self.type_annotation)
+		{
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}

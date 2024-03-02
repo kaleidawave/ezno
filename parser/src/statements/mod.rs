@@ -26,7 +26,7 @@ pub use try_catch_statement::TryCatchStatement;
 use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
-/// A statement
+/// A statement. See [Declaration]s and [StatementAndDeclaration] for more
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -36,7 +36,6 @@ pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
 	Block(Block),
-	// TODO as keyword
 	Debugger(Span),
 	// Loops and "condition-aries"
 	If(IfStatement),
@@ -47,8 +46,9 @@ pub enum Statement {
 	TryCatch(TryCatchStatement),
 	// Control flow
 	Return(ReturnStatement),
-	// TODO maybe an actual label struct:
+	// TODO maybe an actual label struct instead of `Option<String>`
 	Continue(Option<String>, Span),
+	// TODO maybe an actual label struct instead of `Option<String>`
 	Break(Option<String>, Span),
 	/// e.g `throw ...`
 	Throw(ThrowStatement),
@@ -262,13 +262,7 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				if val.left_is_statement_like() {
-					buf.push('(');
-					val.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					val.to_string_from_buffer(buf, options, local);
-				}
+				val.to_string_on_left(buf, options, local);
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);

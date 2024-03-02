@@ -1,8 +1,9 @@
-use parser::ASTNode;
+use parser::{ASTNode, Declaration, Statement, StatementOrDeclaration};
 use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
+	diagnostics::TypeCheckWarning,
 	synthesis::{
 		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	},
@@ -12,7 +13,7 @@ use crate::{
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
-	definition: parser::TypeDefinitionModule,
+	definition: parser::Module,
 	source: SourceId,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
@@ -21,18 +22,19 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 	use parser::{
 		declarations::{DeclareVariableDeclaration, TypeAlias},
-		TypeDeclaration, TypeDefinitionModuleDeclaration,
+		TypeDeclaration,
 	};
 
 	let mut idx_to_types = HashMap::new();
-	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
+
+	let mut environment = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
-	// At some point with binaries could remove this pass
-	for statement in &definition.declarations {
+	for statement in &definition.items {
+		// TODO classes and exports
 		match statement {
-			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = env.new_interface(
+			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
+				let ty = environment.new_interface(
 					&interface.on.name,
 					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
@@ -42,16 +44,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 				idx_to_types.insert(interface.on.position.start, ty);
 			}
-			TypeDefinitionModuleDeclaration::Class(_class) => {
-				todo!();
-				// (
-				// 	class.type_id,
-				// 	// env.register_type(&class.name, class.type_parameters.is_some(), None),
-				// 	env.register_type(Type::NamedRooted { name class.name.clone())),
-				// ),
-			}
-			TypeDefinitionModuleDeclaration::TypeAlias(alias) => {
-				env.new_alias(
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(alias)) => {
+				environment.new_alias(
 					&alias.type_name.name,
 					alias.type_name.type_parameters.as_deref(),
 					&alias.type_expression,
@@ -63,16 +57,17 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		}
 	}
 
-	for declaration in definition.declarations {
+	for declaration in definition.items {
+		// TODO more
 		match declaration {
-			TypeDefinitionModuleDeclaration::Function(func) => {
+			StatementOrDeclaration::Declaration(Declaration::DeclareFunction(func)) => {
 				// TODO abstract
 				let declared_at = func.get_position().with_source(source);
 				let base = synthesise_function_annotation(
 					&func.type_parameters,
 					&func.parameters,
 					func.return_type.as_ref(),
-					&mut env,
+					&mut environment,
 					checking_data,
 					func.performs.as_ref().into(),
 					&declared_at,
@@ -95,7 +90,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 				let _context = decorators_to_context(&func.decorators);
 
-				env.register_variable_handle_error(
+				environment.register_variable_handle_error(
 					func.name.as_str(),
 					VariableRegisterArguments {
 						constant: true,
@@ -106,18 +101,15 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					&mut checking_data.diagnostics_container,
 				);
 			}
-			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
-				keyword: _,
-				declarations,
-				position: _,
-				decorators: _,
-			}) => {
+			StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
+				DeclareVariableDeclaration { keyword: _, declarations, position: _, decorators: _ },
+			)) => {
 				for declaration in &declarations {
 					// TODO is it ever `None`...?
 					let constraint = declaration.type_annotation.as_ref().map_or(
 						TypeId::ANY_TYPE,
 						|annotation| {
-							synthesise_type_annotation(annotation, &mut env, checking_data)
+							synthesise_type_annotation(annotation, &mut environment, checking_data)
 						},
 					);
 
@@ -126,33 +118,27 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					));
 					crate::synthesis::variables::register_variable(
 						declaration.name.get_ast_ref(),
-						&mut env,
+						&mut environment,
 						checking_data,
 						VariableRegisterArguments { constant: true, space: None, initial_value },
 					);
 				}
 			}
-			TypeDefinitionModuleDeclaration::Interface(interface) => {
+			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
 				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 				super::interfaces::synthesise_signatures(
 					interface.on.type_parameters.as_deref(),
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
-					&mut env,
+					&mut environment,
 					checking_data,
 				);
 			}
-			// TODO handle locals differently, (maybe squash ast as well)
-			TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias {
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
 				type_name,
 				type_expression: _,
 				..
-			})
-			| TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias {
-				type_name,
-				type_expression: _,
-				..
-			}) => {
+			})) => {
 				let TypeDeclaration { type_parameters, .. } = &type_name;
 
 				// To remove when implementing
@@ -182,41 +168,16 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					// env.register_type(ty);
 				}
 			}
-			TypeDefinitionModuleDeclaration::Namespace(_) => unimplemented!(),
-			TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => {
-				unimplemented!()
-			}
-			TypeDefinitionModuleDeclaration::Comment(_comment) => {}
-			TypeDefinitionModuleDeclaration::Class(_class) => {
-				todo!();
-				// let existing_type =
-				//     checking_data.type_mappings.get_type_declaration(&class.type_id).unwrap();
-				// if let Some(extends_type) = &class.extends {
-				//     let extending_type = root
-				//         .get_type(
-				//             extends_type,
-				//             checking_data,
-				//             &crate::root::GetTypeFromReferenceOptions::Default,
-				//         )
-				//         .expect("Class should have been initialised");
-				//     todo!();
-				//     // match existing_type {
-				//     //     TypeDeclaration::NonGenericType(ngt) => {
-				//     //         // *ngt.extends.borrow_mut() = ExtendsType::Single(extending_type);
-				//     //     }
-				//     //     TypeDeclaration::GenericType(gt) => {
-				//     //         // *gt.extends.borrow_mut() = ExtendsType::Single(extending_type);
-				//     //     }
-				//     //     TypeDeclaration::PrimitiveType(_) => unreachable!(),
-				//     // }
-				// }
-				// TODO parse members
-				// for member in class.
-			}
+			StatementOrDeclaration::Statement(Statement::Comment(..) | Statement::Empty(..)) => {}
+			item => checking_data.diagnostics_container.add_warning(
+				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
+					item.get_position().with_source(environment.get_source()),
+				),
+			),
 		}
 	}
 
-	let Environment { named_types, info, variable_names, variables, .. } = env;
+	let Environment { named_types, info, variable_names, variables, .. } = environment;
 	(Names { variables, named_types, variable_names }, info)
 }
 

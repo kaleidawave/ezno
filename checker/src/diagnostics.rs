@@ -781,13 +781,14 @@ mod defined_errors_and_warnings {
 			right: TypeStringRepresentation,
 			position: SpanWithSource,
 		},
+		InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {
-		fn from(val: TypeCheckWarning) -> Self {
+		fn from(warning: TypeCheckWarning) -> Self {
 			let kind = super::DiagnosticKind::Warning;
 
-			match val {
+			match warning {
 				TypeCheckWarning::AwaitUsedOnNonPromise(position) => Diagnostic::Position {
 					reason: "Unnecessary await expression / type is not promise".to_owned(),
 					position,
@@ -825,6 +826,14 @@ mod defined_errors_and_warnings {
 				TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
 					Diagnostic::Position {
 						reason: format!("No intersection between types {left} and {right}"),
+            position,
+						kind,
+					}
+        }
+				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(position) => {
+					Diagnostic::Position {
+						reason: "Invalid (or unimplemented) item in definition file skipped"
+							.to_owned(),
 						position,
 						kind,
 					}

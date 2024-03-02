@@ -8,7 +8,7 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
+	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
 	VisitOptions,
 };
 use tokenizer_lib::{
@@ -21,7 +21,7 @@ use tokenizer_lib::{
 #[get_field_by_type_target(Span)]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub name: T,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	pub extends: Option<Box<Expression>>,
 	pub implements: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<Decorated<ClassMember>>,
@@ -71,34 +71,43 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			})
 			.transpose()?;
 
-		let extends = match reader.peek() {
-			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
-				reader.next();
-				Some(Expression::from_reader(reader, state, options)?.into())
-			}
-			_ => None,
+		let extends = if reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
+			.is_some()
+		{
+			Some(Expression::from_reader(reader, state, options)?.into())
+		} else {
+			None
 		};
-		let implements = match reader.peek() {
-			Some(Token(TSXToken::Keyword(TSXKeyword::Implements), _)) => {
-				reader.next();
-				let mut implements = Vec::new();
+
+		let implements = if reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Implements)))
+			.is_some()
+		{
+			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+			let mut implements = vec![type_annotation];
+			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
 				loop {
 					implements.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.next().ok_or_else(crate::errors::parse_lexing_error)? {
-						Token(TSXToken::Comma, _) => {}
-						Token(TSXToken::OpenBrace, _pos) => break,
-						token => {
+					match reader.peek() {
+						Some(Token(TSXToken::Comma, _)) => {
+							reader.next();
+						}
+						Some(Token(TSXToken::OpenBrace, _)) | None => break,
+						_ => {
 							return throw_unexpected_token_with_token(
-								token,
-								&[TSXToken::OpenBrace, TSXToken::Comma],
-							);
+								reader.next().unwrap(),
+								&[TSXToken::Comma, TSXToken::OpenBrace],
+							)
 						}
 					}
 				}
-				Some(implements)
 			}
-			_ => None,
+			Some(implements)
+		} else {
+			None
 		};
+
 		reader.expect_next(TSXToken::OpenBrace)?;
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {

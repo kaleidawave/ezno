@@ -3,11 +3,12 @@ use std::{borrow::Cow, convert::TryInto};
 use parser::{
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		ArrayElement, MultipleExpression, SpecialOperators, SpreadExpression, SuperReference,
+		operators::IncrementOrDecrement,
+		operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
+		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
 	ASTNode, Expression,
 };
 
@@ -105,7 +106,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
 				element.0.as_ref().map(|element| match element {
-					SpreadExpression::NonSpread(element) => {
+					FunctionArgument::Standard(element) => {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
@@ -118,7 +119,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							expression_type,
 						)
 					}
-					SpreadExpression::Spread(_expr, position) => {
+					FunctionArgument::Spread(_expr, position) => {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -134,6 +135,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							TypeId::ERROR_TYPE,
 						)
 					}
+					FunctionArgument::Comment { .. } => todo!(),
 				})
 			}
 
@@ -454,10 +456,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						lhs,
 						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
 							match direction {
-								parser::operators::IncrementOrDecrement::Increment => {
+								IncrementOrDecrement::Increment => {
 									crate::features::assignments::IncrementOrDecrement::Increment
 								}
-								parser::operators::IncrementOrDecrement::Decrement => {
+								IncrementOrDecrement::Decrement => {
 									crate::features::assignments::IncrementOrDecrement::Decrement
 								}
 							},
@@ -477,12 +479,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 			));
 			match operator {
-				parser::operators::UnaryPostfixAssignmentOperator(direction) => {
+				parser::expressions::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
-						parser::operators::IncrementOrDecrement::Increment => {
+						IncrementOrDecrement::Increment => {
 							crate::features::assignments::IncrementOrDecrement::Increment
 						}
-						parser::operators::IncrementOrDecrement::Decrement => {
+						IncrementOrDecrement::Decrement => {
 							crate::features::assignments::IncrementOrDecrement::Decrement
 						}
 					};
@@ -703,10 +705,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::JSXRoot(jsx_root) => {
 			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
 		}
-		Expression::Comment { on: Some(on), .. } => {
+		Expression::Comment { on, .. } => {
 			return synthesise_expression(on, environment, checking_data, expecting);
 		}
-		Expression::Comment { on: None, .. } => return TypeId::ERROR_TYPE,
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
@@ -755,10 +756,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					Instance::RValue(to_cast)
 				}
 			}
-			SpecialOperators::IsExpression { value: _, type_annotation: _ } => {
+			SpecialOperators::Is { value: _, type_annotation: _ } => {
 				todo!()
 			}
-			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+			SpecialOperators::Satisfies { value, type_annotation, .. } => {
+				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
 				let value = synthesise_expression(value, environment, checking_data, satisfying);
@@ -772,7 +774,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				return value;
 			}
-			SpecialOperators::InExpression { lhs, rhs } => {
+			SpecialOperators::In { lhs, rhs } => {
 				let lhs = match lhs {
 					parser::expressions::InExpressionLHS::PrivateProperty(_) => {
 						checking_data.raise_unimplemented_error(
@@ -791,13 +793,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
 			}
-			SpecialOperators::InstanceOfExpression { .. } => {
+			SpecialOperators::InstanceOf { .. } => {
 				checking_data.raise_unimplemented_error(
 					"instanceof expression",
 					position.with_source(environment.get_source()),
 				);
 				return TypeId::ERROR_TYPE;
 			}
+			SpecialOperators::NonNullAssertion(_) => todo!(),
 		},
 		Expression::DynamicImport { position, .. } => {
 			checking_data.raise_unimplemented_error(
@@ -821,10 +824,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 }
 
 fn operator_to_assignment_kind(
-	operator: parser::operators::BinaryAssignmentOperator,
+	operator: parser::expressions::operators::BinaryAssignmentOperator,
 ) -> crate::features::assignments::AssignmentKind {
 	use crate::features::assignments::AssignmentKind;
-	use parser::operators::BinaryAssignmentOperator;
+	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {
@@ -880,7 +883,7 @@ fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
-	arguments: Option<&Vec<SpreadExpression>>,
+	arguments: Option<&Vec<FunctionArgument>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
@@ -902,12 +905,13 @@ fn call_function<T: crate::ReadFromFS>(
 			arguments
 				.iter()
 				.map(|a| match a {
-					SpreadExpression::Spread(e, _) => {
+					FunctionArgument::Spread(e, _) => {
 						UnsynthesisedArgument { spread: true, expression: e }
 					}
-					SpreadExpression::NonSpread(e) => {
+					FunctionArgument::Standard(e) => {
 						UnsynthesisedArgument { spread: false, expression: e }
 					}
+					FunctionArgument::Comment { .. } => todo!(),
 				})
 				.collect()
 		})

@@ -10,22 +10,6 @@ members = [
 ]
 
 
-[workspace.lints.clippy]
-all = "deny"
-pedantic = "deny"
-cast_precision_loss = "warn"
-cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
-default_trait_access = "allow"
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-implicit_hasher = "allow"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-new_without_default = "allow"
-result_unit_err = "allow"
-
-
 [package]
 name = "ezno"
 description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
@@ -54,13 +38,13 @@ path = "src/main.rs"
 [dependencies]
 # ezno-web-framework = { path = "./plugins/web" }
 
-console = "0.15.7"
-codespan-reporting = "0.11.1"
-argh = "0.1.6"
-base64 = "0.21.5"
-enum-variants-strings = "0.2.2"
+console = "0.15"
+codespan-reporting = "0.11"
+argh = "0.1"
+base64 = "0.21"
+enum-variants-strings = "0.3"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.107"
+serde_json = "1.0"
 
 [dependencies.checker]
 path = "./checker"
@@ -87,3 +71,18 @@ tsify = "0.4.5"
 multiline-term-input = "0.1.0"
 notify = "6.1.0"
 
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+cast_precision_loss = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+default_trait_access = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+implicit_hasher = "allow"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+new_without_default = "allow"
+result_unit_err = "allow"

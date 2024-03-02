@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression, ParseError, ParseOptions,
-	ParseResult, Span, TSXToken, Token, TokenReader,
+	ast::FunctionArgument, derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression,
+	ParseError, ParseOptions, ParseResult, Span, TSXToken, Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -70,7 +70,7 @@ impl ASTNode for JSXElement {
 				buf.push('>');
 			}
 			JSXElementChildren::SelfClosing => {
-				buf.push_str("/>");
+				buf.push_str(">");
 			}
 		}
 	}
@@ -165,7 +165,7 @@ fn parse_jsx_children(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
-) -> Result<Vec<JSXNode>, ParseError> {
+) -> ParseResult<Vec<JSXNode>> {
 	let mut children = Vec::new();
 	loop {
 		if matches!(
@@ -184,16 +184,23 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	let indent =
+	let element_of_line_break_in_children =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
+
+	let mut previous_was_break = true;
+
 	for node in children {
-		if indent {
+		if element_of_line_break_in_children
+			&& !matches!(node, JSXNode::LineBreak)
+			&& previous_was_break
+		{
 			options.add_indent(local.depth + 1, buf);
 		}
 		node.to_string_from_buffer(buf, options, local);
+		previous_was_break = matches!(node, JSXNode::Element(..) | JSXNode::LineBreak);
 	}
 
-	if options.pretty && local.depth > 0 && matches!(children.last(), Some(JSXNode::LineBreak)) {
+	if options.pretty && local.depth > 0 && previous_was_break {
 		options.add_indent(local.depth, buf);
 	}
 }
@@ -214,20 +221,23 @@ impl JSXRoot {
 	}
 }
 
-// TODO Fragment
+// TODO can `JSXFragment` appear here?
 #[derive(Debug, Clone, PartialEq, Eq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
-	TextNode(String, Span),
-	InterpolatedExpression(Box<Expression>, Span),
 	Element(JSXElement),
+	TextNode(String, Span),
+	InterpolatedExpression(Box<FunctionArgument>, Span),
+	Comment(String, Span),
 	LineBreak,
 }
 
 impl ASTNode for JSXNode {
 	fn get_position(&self) -> &Span {
 		match self {
-			JSXNode::TextNode(_, pos) | JSXNode::InterpolatedExpression(_, pos) => pos,
+			JSXNode::TextNode(_, pos)
+			| JSXNode::InterpolatedExpression(_, pos)
+			| JSXNode::Comment(_, pos) => pos,
 			JSXNode::Element(element) => element.get_position(),
 			JSXNode::LineBreak => &source_map::Nullable::NULL,
 		}
@@ -242,10 +252,11 @@ impl ASTNode for JSXNode {
 		match token {
 			Token(TSXToken::JSXContent(content), start) => {
 				let position = start.with_length(content.len());
-				Ok(JSXNode::TextNode(content, position))
+				// TODO `trim` debatable
+				Ok(JSXNode::TextNode(content.trim_start().into(), position))
 			}
 			Token(TSXToken::JSXExpressionStart, pos) => {
-				let expression = Expression::from_reader(reader, state, options)?;
+				let expression = FunctionArgument::from_reader(reader, state, options)?;
 				let end_pos = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), pos.union(end_pos)))
 			}
@@ -253,6 +264,10 @@ impl ASTNode for JSXNode {
 				JSXElement::from_reader_sub_start(reader, state, options, pos).map(JSXNode::Element)
 			}
 			Token(TSXToken::JSXContentLineBreak, _) => Ok(JSXNode::LineBreak),
+			Token(TSXToken::JSXComment(comment), start) => {
+				let pos = start.with_length(comment.len() + 7);
+				Ok(JSXNode::Comment(comment, pos))
+			}
 			_token => Err(parse_lexing_error()),
 		}
 	}
@@ -269,11 +284,6 @@ impl ASTNode for JSXNode {
 			}
 			JSXNode::TextNode(text, _) => buf.push_str(text),
 			JSXNode::InterpolatedExpression(expression, _) => {
-				if !options.should_add_comment(false)
-					&& matches!(&**expression, Expression::Comment { .. })
-				{
-					return;
-				}
 				buf.push('{');
 				expression.to_string_from_buffer(buf, options, local.next_level());
 				buf.push('}');
@@ -281,6 +291,13 @@ impl ASTNode for JSXNode {
 			JSXNode::LineBreak => {
 				if options.pretty {
 					buf.push_new_line();
+				}
+			}
+			JSXNode::Comment(comment, _) => {
+				if options.pretty {
+					buf.push_str("<!--");
+					buf.push_str(comment);
+					buf.push_str("-->");
 				}
 			}
 		}
@@ -294,7 +311,6 @@ pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),
 	BooleanAttribute(String, Span),
-	// TODO could combine these two
 	Spread(Expression, Span),
 	/// Preferably want a identifier here not an expr
 	Shorthand(Expression),
@@ -316,7 +332,7 @@ impl ASTNode for JSXAttribute {
 		_state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<Self> {
-		todo!("this is currently done in JSXElement::from_reader")
+		todo!("this is currently done in `JSXElement::from_reader`")
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

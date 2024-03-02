@@ -12,8 +12,6 @@ pub mod generator_helpers;
 mod lexer;
 pub mod marker;
 mod modules;
-pub mod operators;
-pub mod parameters;
 pub mod property_key;
 pub mod statements;
 mod tokens;
@@ -24,6 +22,7 @@ pub mod visiting;
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
 pub use declarations::Declaration;
+use functions::FunctionBody;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -37,15 +36,14 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_script, LexerOptions};
-pub use modules::{Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
-pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
+pub use modules::Module;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
 pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
-	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
+	type_declarations::{self, TypeDeclaration, TypeParameter},
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{
@@ -54,23 +52,21 @@ pub(crate) use visiting::{
 
 use tokenizer_lib::{
 	sized_tokens::{SizedToken, TokenEnd},
-	Token, TokenReader, TokenTrait,
+	Token, TokenReader,
 };
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
 use std::{borrow::Cow, str::FromStr};
 
+use crate::errors::parse_lexing_error;
+
 #[macro_use]
 extern crate macro_rules_attribute;
 
 attribute_alias! {
-	// Warning: known to break under the following circumstances:
-	// 1. in combination with partial_eq_ignore_types (from the PartialEqExtras derive macro)
-	// 2. in combination with get_field_by_type_target (from the crate of the same name)
-	// any variation (even just a single, straightforward, cfg_attr) will break the other macros.
-	// If adding a seemingly innocuous macro triggers a bunch of 'cannot find attribute within this scope' errors,
-	// keep this macro in mind.
+	// Warning: can produce errors when used with other macro attributes. Always put this attribute first
+	// TODO #[derive(Debug, Clone)] and maybe some others
 	#[apply(derive_ASTNode!)] =
 		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -104,8 +100,10 @@ impl Quoted {
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
-	/// only type annotations
+	/// allow type annotations
 	pub type_annotations: bool,
+	/// just definition file
+	pub type_definition_module: bool,
 	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
@@ -118,9 +116,7 @@ pub struct ParseOptions {
 	pub custom_function_headers: bool,
 	/// TODO temp for seeing how channel performs
 	pub buffer_size: usize,
-	/// TODO temp for seeing how channel performs
-	///
-	/// Has no effect on WASM
+	/// Has no effect on WASM. Increase for deeply nested AST structures
 	pub stack_size: Option<usize>,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
@@ -144,6 +140,7 @@ impl ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: true,
 			comments: Comments::All,
 			decorators: true,
@@ -165,6 +162,7 @@ impl Default for ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: false,
 			comments: Comments::All,
 			decorators: true,
@@ -191,8 +189,8 @@ pub struct ToStringOptions {
 	pub trailing_semicolon: bool,
 	/// Single statements get put on the same line as their parent statement
 	pub single_statement_on_new_line: bool,
-	/// Include type annotation syntax
-	pub include_types: bool,
+	/// Include type annotations (and additional TypeScript) syntax
+	pub include_type_annotations: bool,
 	/// TODO unsure about this
 	pub include_decorators: bool,
 	pub comments: Comments,
@@ -212,7 +210,7 @@ impl Default for ToStringOptions {
 	fn default() -> Self {
 		ToStringOptions {
 			pretty: true,
-			include_types: false,
+			include_type_annotations: false,
 			single_statement_on_new_line: true,
 			include_decorators: false,
 			comments: Comments::All,
@@ -236,10 +234,10 @@ impl ToStringOptions {
 		}
 	}
 
-	/// With typescript type syntax
+	/// With TypeScript type syntax
 	#[must_use]
 	pub fn typescript() -> Self {
-		ToStringOptions { include_types: true, ..Default::default() }
+		ToStringOptions { include_type_annotations: true, ..Default::default() }
 	}
 
 	/// Whether to include comment in source
@@ -348,7 +346,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
@@ -393,7 +391,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 	let lex_result = lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset);
 
@@ -418,14 +416,14 @@ pub fn lex_and_parse_script<T: ASTNode>(
 pub(crate) fn throw_unexpected_token<T>(
 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
 }
 
 pub(crate) fn throw_unexpected_token_with_token<T>(
 	token: Token<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	let position = token.get_span();
 	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
 }
@@ -733,6 +731,7 @@ impl std::fmt::Display for NumberRepresentation {
 	}
 }
 
+// TODO not great
 impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
@@ -781,7 +780,7 @@ impl NumberRepresentation {
 				format!("{sign}0x{value:x}")
 			}
 			NumberRepresentation::Bin { sign, value, .. } => {
-				format!("{sign}0b{value}")
+				format!("{sign}0b{value:b}")
 			}
 			NumberRepresentation::Octal { sign, value } => {
 				format!("{sign}0o{value:o}")
@@ -800,6 +799,8 @@ impl NumberRepresentation {
 pub trait ExpressionOrStatementPosition:
 	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
 {
+	type FunctionBody: ASTNode;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -817,6 +818,9 @@ pub trait ExpressionOrStatementPosition:
 			None
 		}
 	}
+
+	#[cfg(feature = "full-typescript")]
+	fn has_function_body(body: &Self::FunctionBody) -> bool;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -824,6 +828,8 @@ pub trait ExpressionOrStatementPosition:
 pub struct StatementPosition(pub VariableIdentifier);
 
 impl ExpressionOrStatementPosition for StatementPosition {
+	type FunctionBody = FunctionBody;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -839,6 +845,11 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
 		Some(&mut self.0)
 	}
+
+	#[cfg(feature = "full-typescript")]
+	fn has_function_body(body: &Self::FunctionBody) -> bool {
+		body.0.is_some()
+	}
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -846,6 +857,8 @@ impl ExpressionOrStatementPosition for StatementPosition {
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
+	type FunctionBody = Block;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -872,6 +885,11 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
 		self.0.as_mut()
 	}
+
+	#[cfg(feature = "full-typescript")]
+	fn has_function_body(_: &Self::FunctionBody) -> bool {
+		true
+	}
 }
 
 pub trait ListItem: Sized {
@@ -897,32 +915,20 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if let Some(token) = reader.conditional_next(|token| *token == end) {
-			return Ok((nodes, token.get_end()));
-		}
-
 		if let Some(empty) = T::EMPTY {
-			// TODO bad. Because [/* hi */, x] is valid. Need to adjust the scan tokenizer reader API
-			let mut is_comma = false;
-			let _ = reader.scan(|t, _| {
-				if t.is_skippable() {
-					false
-				} else if let TSXToken::Comma = t {
-					is_comma = true;
-					true
-				} else {
-					true
+			let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
+			if matches!(next, TSXToken::Comma) || *next == end {
+				if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
+					nodes.push(empty);
 				}
-			});
-			if is_comma {
-				while let Some(token) = reader.next() {
-					if let TSXToken::Comma = token.0 {
-						break;
-					}
+				let Token(token, s) = reader.next().unwrap();
+				if token == end {
+					return Ok((nodes, s.get_end_after(token.length() as usize)));
 				}
-				nodes.push(empty);
 				continue;
 			}
+		} else if let Some(token) = reader.conditional_next(|token| *token == end) {
+			return Ok((nodes, token.get_end()));
 		}
 
 		let node = T::from_reader(reader, state, options)?;
@@ -1011,9 +1017,7 @@ fn receiver_to_tokens(
 	})
 }
 
-/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc
-///
-/// TODO delimiter
+/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc. Defaults to `,` as delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	brackets: (char, char),
@@ -1152,8 +1156,8 @@ pub mod ast {
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
-			FunctionBase, FunctionHeader, FunctionParameters, MethodHeader, Parameter,
-			ParameterData, SpreadParameter,
+			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,
+			Parameter, ParameterData, SpreadParameter,
 		},
 		statements::*,
 		Block, Decorated, ExpressionPosition, NumberRepresentation, PropertyKey,

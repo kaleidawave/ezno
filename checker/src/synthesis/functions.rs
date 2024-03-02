@@ -2,8 +2,10 @@
 
 use iterator_endiate::EndiateIteratorExt;
 use parser::{
-	expressions::ExpressionOrBlock, parameters::ParameterData, ASTNode, Block, FunctionBased,
-	GenericTypeConstraint, TypeAnnotation, VariableField, VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock,
+	functions::{LeadingParameter, ParameterData},
+	ASTNode, Block, FunctionBased, TypeAnnotation, TypeParameter, VariableField,
+	VariableIdentifier, WithComment,
 };
 use source_map::{SourceId, SpanWithSource};
 
@@ -61,9 +63,11 @@ where
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
-		if let Some((ref annotation, _)) = self.parameters.this_type {
+		if let Some(parser::functions::ThisParameter { constraint, .. }) =
+			self.parameters.leading.get_this_parameter()
+		{
 			crate::utils::notify!("Synthesising this restriction");
-			Some(synthesise_type_annotation(annotation, environment, checking_data))
+			Some(synthesise_type_annotation(constraint, environment, checking_data))
 		} else {
 			None
 		}
@@ -74,8 +78,10 @@ where
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Option<TypeId> {
-		if let Some((ref annotation, _)) = self.parameters.super_type {
-			Some(synthesise_type_annotation(annotation, environment, checking_data))
+		if let Some(parser::functions::SuperParameter { constraint, .. }) =
+			self.parameters.leading.get_super_parameter()
+		{
+			Some(synthesise_type_annotation(constraint, environment, checking_data))
 		} else {
 			None
 		}
@@ -137,6 +143,19 @@ impl SynthesisableFunctionBody for Block {
 	}
 }
 
+impl SynthesisableFunctionBody for parser::functions::FunctionBody {
+	fn synthesise_function_body<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) {
+		self.0
+			.as_ref()
+			.expect("TODO overloading")
+			.synthesise_function_body(environment, checking_data);
+	}
+}
+
 impl SynthesisableFunctionBody for ExpressionOrBlock {
 	fn synthesise_function_body<T: crate::ReadFromFS>(
 		&self,
@@ -159,35 +178,29 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 }
 
 pub(crate) fn synthesise_type_parameters<T: crate::ReadFromFS>(
-	type_parameters: &[GenericTypeConstraint],
+	type_parameters: &[TypeParameter],
 	environment: &mut crate::Environment,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 ) -> GenericTypeParameters {
 	type_parameters
 		.iter()
-		.map(|constraint| match constraint {
-			GenericTypeConstraint::Parameter { name, default } => {
-				let default_type = default
-					.as_ref()
-					.map(|ta| synthesise_type_annotation(ta, environment, checking_data));
-				environment.new_explicit_type_parameter(
-					name.as_str(),
-					None,
-					default_type,
-					&mut checking_data.types,
-				)
-			}
-			GenericTypeConstraint::Extends(name, extends) => {
-				let extends = synthesise_type_annotation(extends, environment, checking_data);
-				environment.new_explicit_type_parameter(
-					name.as_str(),
-					Some(extends),
-					None,
-					&mut checking_data.types,
-				)
-			}
-			GenericTypeConstraint::ExtendsKeyOf(_, _) => todo!(),
-			GenericTypeConstraint::Spread { name: _, default: _ } => todo!(),
+		.map(|constraint| {
+			let extends = constraint
+				.extends
+				.as_ref()
+				.map(|extends| synthesise_type_annotation(extends, environment, checking_data));
+
+			let default_type = constraint
+				.default
+				.as_ref()
+				.map(|ta| synthesise_type_annotation(ta, environment, checking_data));
+
+			environment.new_explicit_type_parameter(
+				&constraint.name,
+				extends,
+				default_type,
+				&mut checking_data.types,
+			)
 		})
 		.collect()
 }
@@ -302,8 +315,12 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn synthesise_function_parameters<T: crate::ReadFromFS>(
-	ast_parameters: &parser::FunctionParameters,
+fn synthesise_function_parameters<
+	T: crate::ReadFromFS,
+	L: parser::functions::LeadingParameter,
+	V: parser::functions::ParameterVisibility,
+>(
+	ast_parameters: &parser::functions::FunctionParameters<L, V>,
 	expected_parameters: Option<&SynthesisedParameters>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -425,33 +442,28 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 			TypeId::ERROR_TYPE
 		};
 
-		let ty = checking_data.types.new_function_parameter(parameter_constraint);
+		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.info.object_constraints.insert(ty, parameter_constraint);
+		environment.info.object_constraints.insert(variable_ty, parameter_constraint);
 
-		match rest_parameter.name {
-			VariableIdentifier::Standard(ref name, pos) => environment
-				.register_variable_handle_error(
-					name,
-					VariableRegisterArguments {
-						// TODO constant parameter option
-						constant: false,
-						space: Some(parameter_constraint),
-						initial_value: Some(ty),
-					},
-					pos.with_source(environment.get_source()),
-					&mut checking_data.diagnostics_container,
-				),
-			VariableIdentifier::Marker(_, _) => todo!(),
-		};
+		register_variable(
+			&rest_parameter.name,
+			environment,
+			checking_data,
+			VariableRegisterArguments {
+				// TODO constant parameter option
+				constant: false,
+				space: Some(parameter_constraint),
+				initial_value: Some(variable_ty),
+			},
+		);
+
+		let name = param_name_to_string(&rest_parameter.name);
 
 		SynthesisedRestParameter {
 			item_type,
-			ty,
-			name: match rest_parameter.name {
-				VariableIdentifier::Standard(ref name, _) => name.to_owned(),
-				VariableIdentifier::Marker(_, _) => String::new(),
-			},
+			ty: variable_ty,
+			name,
 			position: rest_parameter.position.with_source(environment.get_source()),
 		}
 	});
@@ -459,7 +471,7 @@ fn synthesise_function_parameters<T: crate::ReadFromFS>(
 	SynthesisedParameters { parameters, rest_parameter }
 }
 
-fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>) -> String {
+fn param_name_to_string(param: &VariableField) -> String {
 	match param {
 		VariableField::Name(name) => {
 			if let VariableIdentifier::Standard(name, ..) = name {
@@ -481,7 +493,8 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 					parser::ArrayDestructuringField::Name(name, _) => {
 						buf.push_str(&param_name_to_string(name));
 					}
-					parser::ArrayDestructuringField::None => {}
+					parser::ArrayDestructuringField::Comment { .. }
+					| parser::ArrayDestructuringField::None => {}
 				}
 				if not_at_end {
 					buf.push_str(", ");
@@ -531,9 +544,7 @@ fn param_name_to_string(param: &VariableField<parser::VariableFieldInSourceCode>
 }
 
 // TODO don't print values
-fn get_parameter_name<T: parser::VariableFieldKind>(
-	parameter: &parser::VariableField<T>,
-) -> String {
+fn get_parameter_name(parameter: &parser::VariableField) -> String {
 	match parameter {
 		VariableField::Name(name) => match name {
 			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
@@ -551,7 +562,7 @@ fn get_parameter_name<T: parser::VariableFieldKind>(
 /// TODO abstract
 #[allow(clippy::too_many_arguments)]
 pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextType>(
-	type_parameters: &Option<Vec<GenericTypeConstraint>>,
+	type_parameters: &Option<Vec<TypeParameter>>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some
 	return_type: Option<&TypeAnnotation>,

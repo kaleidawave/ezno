@@ -1,7 +1,7 @@
 //! Contains wrappers for AST with comments
 
-use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
-use crate::ParseOptions;
+use super::{ASTNode, Span, TSXToken, TokenReader};
+use crate::{ParseOptions, ParseResult};
 
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
@@ -95,7 +95,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> Result<WithComment<T>, ParseError> {
+	) -> ParseResult<Self> {
 		if let Some(token) =
 			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
 		{

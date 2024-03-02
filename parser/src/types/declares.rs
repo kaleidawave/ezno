@@ -3,9 +3,9 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token};
 use crate::{
 	declarations::VariableDeclarationItem, derive_ASTNode, errors::parse_lexing_error,
 	parse_bracketed, to_string_bracketed, tokens::token_as_identifier,
-	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Decorator,
-	GenericTypeConstraint, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader,
-	TypeAnnotation, VariableKeyword,
+	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Decorator, ParseOptions,
+	ParseResult, Span, TSXKeyword, TSXToken, TokenReader, TypeAnnotation, TypeParameter,
+	VariableKeyword,
 };
 
 /// A `declare var/let/const` thingy.
@@ -40,7 +40,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("declare ");
 			buf.push_str(self.keyword.as_str());
 			crate::declarations::variable::declarations_to_string(
@@ -86,7 +86,7 @@ impl DeclareVariableDeclaration {
 #[get_field_by_type_target(Span)]
 pub struct DeclareFunctionDeclaration {
 	pub name: String,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	pub parameters: TypeAnnotationFunctionParameters,
 	pub return_type: Option<TypeAnnotation>,
 	#[cfg(feature = "extras")]
@@ -115,7 +115,7 @@ impl ASTNode for DeclareFunctionDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("declare function ");
 			buf.push_str(self.name.as_str());
 			if let Some(type_parameters) = &self.type_parameters {
@@ -181,7 +181,7 @@ impl DeclareFunctionDeclaration {
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DeclareClassDeclaration {
 	pub name: String,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	pub extends: Option<TypeAnnotation>,
 	// members: Vec<DeclareClassMember>
 }
