@@ -31,26 +31,6 @@ properties satisfies boolean;
 
 - Expected boolean, found string
 
-#### Early return
-
-> TODO bit of a complex example
-
-```ts
-function findInRange(start: number, end: number, cb: (a: number) => boolean): number | null {
-    let i = start;
-    while (i++ < end) {
-        if (cb(i)) {
-            return i
-        }
-    }
-    return null
-}
-
-findInRange(0, 10, i => (i > 2) && (i % 3 == 1)) satisfies 5
-```
-
-- Expected 5, found 4
-
 ### Control flow
 
 #### Unknown condition assignment
@@ -274,7 +254,7 @@ obj1.a = "hello";
 - Type "hi" does not meet property constraint number
 - Type "hello" does not meet property constraint number
 
-#### After assignment
+#### Through another variable
 
 ```ts
 const obj1 = { a: 5 };
@@ -285,6 +265,25 @@ obj1.a = "hello";
 ```
 
 - Type "hello" does not meet property constraint number
+
+> As would violate any usage of `obj2`
+
+#### Cyclic object check
+
+```ts
+interface X {
+	a: number
+	b: X
+}
+
+const myObject = { a: 2 };
+
+myObject satisfies X;
+myObject.b = myObject;
+myObject satisfies X;
+```
+
+- Expected X, found { a: 2 }
 
 ### Types
 
@@ -371,7 +370,22 @@ function get(obj: {a: 2} | { b: 3 }) {
 }
 ```
 
-- Cannot read property "a" from { b: 3 }
+> `Cannot read property "a" from { b: 3 }`
+
+- No property 'a' on { a: 2 } | { b: 3 }
+
+#### Optional interface member
+
+```ts
+interface Optional {
+    a?: "hi"
+}
+
+const op1: Optional = {}
+const op2: Optional = { a: "hello" }
+```
+
+- Type { a: "hello" } is not assignable to type Optional
 
 #### Invalid intersection
 
@@ -405,22 +419,3 @@ function add() {
 ```
 
 - Argument of type "hi" is not assignable to parameter of type number
-
-#### Cyclic object check
-
-```ts
-interface X {
-	a: number
-	b: X
-}
-
-const myObject = { a: 2 };
-
-myObject satisfies X;
-
-myObject.b = myObject;
-
-myObject satisfies X;
-```
-
-- Expected X, found { a: 2 }

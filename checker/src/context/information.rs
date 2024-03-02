@@ -3,13 +3,12 @@ use std::{collections::HashMap, mem};
 use source_map::SpanWithSource;
 
 use crate::{
+	context::PossibleLogical,
 	events::{Event, RootReference},
 	features::functions::{ClosureId, ThisValue},
 	types::{get_constraint, properties::PropertyKey, TypeStore},
 	PropertyValue, Type, TypeId, VariableId,
 };
-
-use super::Logical;
 
 /// TODO explain usage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
@@ -230,55 +229,16 @@ pub(crate) fn get_property_unbound(
 	under: PropertyKey,
 	types: &TypeStore,
 	info: &impl InformationChain,
-) -> Option<Logical<PropertyValue>> {
+) -> PossibleLogical<PropertyValue> {
 	fn get_property(
 		info: &LocalInformation,
 		_types: &TypeStore,
 		on: TypeId,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
-		let get = info.current_properties.get(&on);
-
-		get.and_then(|properties| {
-			// TODO rev is important
-			properties.iter().rev().find_map(move |(publicity, key, value)| {
-				let (want_publicity, want_key) = under;
-				if *publicity != want_publicity {
-					return None;
-				}
-
-				match key {
-					PropertyKey::String(string) => {
-						if let PropertyKey::String(want) = want_key {
-							(string == want).then_some(value.clone())
-						} else {
-							// TODO
-							None
-						}
-					}
-					PropertyKey::Type(key) => {
-						match want_key {
-							PropertyKey::Type(want) => {
-								// TODO backing type...
-								if key == want {
-									Some(value.clone())
-								} else {
-									None
-								}
-							}
-							PropertyKey::String(s) => {
-								// TODO ...
-								if s.parse::<usize>().is_ok() {
-									Some(value.clone())
-								} else {
-									None
-								}
-							}
-						}
-					}
-				}
-			})
-		})
+		info.current_properties
+			.get(&on)
+			.and_then(|properties| get_property_under(properties, under))
 	}
 
 	let under = match under {
@@ -287,6 +247,50 @@ pub(crate) fn get_property_unbound(
 	};
 
 	types.get_fact_about_type(info, on, &get_property, (publicity, &under))
+}
+
+fn get_property_under(
+	properties: &Vec<(Publicity, PropertyKey<'_>, PropertyValue)>,
+	under: (Publicity, &PropertyKey<'_>),
+) -> Option<PropertyValue> {
+	// 'rev' is important
+	properties.iter().rev().find_map(move |(publicity, key, value)| {
+		let (want_publicity, want_key) = under;
+		if *publicity != want_publicity {
+			return None;
+		}
+
+		match key {
+			PropertyKey::String(string) => {
+				if let PropertyKey::String(want) = want_key {
+					(string == want).then_some(value.clone())
+				} else {
+					// TODO
+					None
+				}
+			}
+			PropertyKey::Type(key) => {
+				match want_key {
+					PropertyKey::Type(want) => {
+						// TODO backing type...
+						if key == want {
+							Some(value.clone())
+						} else {
+							None
+						}
+					}
+					PropertyKey::String(s) => {
+						// TODO ...
+						if s.parse::<usize>().is_ok() {
+							Some(value.clone())
+						} else {
+							None
+						}
+					}
+				}
+			}
+		}
+	})
 }
 
 pub fn merge_info(

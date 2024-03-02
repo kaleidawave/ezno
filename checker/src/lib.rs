@@ -37,7 +37,7 @@ use std::{
 
 use types::{printing::print_type, TypeStore};
 
-pub use context::{GeneralContext, RootContext};
+pub use context::{GeneralContext, Logical, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
 pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};

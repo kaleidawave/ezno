@@ -212,10 +212,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			| BinaryOperator::NullCoalescing = operator
 			{
 				let operator = match operator {
-					BinaryOperator::LogicalAnd => crate::features::operations::Logical::And,
-					BinaryOperator::LogicalOr => crate::features::operations::Logical::Or,
+					BinaryOperator::LogicalAnd => crate::features::operations::LogicalOperator::And,
+					BinaryOperator::LogicalOr => crate::features::operations::LogicalOperator::Or,
 					BinaryOperator::NullCoalescing => {
-						crate::features::operations::Logical::NullCoalescing
+						crate::features::operations::LogicalOperator::NullCoalescing
 					}
 					_ => unreachable!(),
 				};
@@ -759,9 +759,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				todo!()
 			}
 			SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
-				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
+				let value = synthesise_expression(value, environment, checking_data, satisfying);
 
 				checking_data.check_satisfies(
 					value,
@@ -828,14 +828,14 @@ fn operator_to_assignment_kind(
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::And)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::And)
 		}
 		BinaryAssignmentOperator::LogicalOrAssign => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::Or)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::Or)
 		}
-		BinaryAssignmentOperator::LogicalNullishAssignment => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::NullCoalescing)
-		}
+		BinaryAssignmentOperator::LogicalNullishAssignment => AssignmentKind::ConditionalUpdate(
+			crate::features::operations::LogicalOperator::NullCoalescing,
+		),
 		BinaryAssignmentOperator::AddAssign
 		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
 			AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
@@ -998,6 +998,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					&checking_data.types,
 					environment,
 				)
+				.ok()
 				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
 				.unwrap_or(TypeId::ANY_TYPE);
 
@@ -1050,6 +1051,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					&checking_data.types,
 					environment,
 				)
+				.ok()
 				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
 				.unwrap_or(TypeId::ANY_TYPE);
 

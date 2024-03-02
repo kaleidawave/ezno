@@ -4,7 +4,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{
-		information::{get_properties_on_type, get_property_unbound},
+		information::{get_property_unbound, InformationChain, Publicity},
 		Environment, GeneralContext, Logical,
 	},
 	features::objects::SpecialObjects,
@@ -873,29 +873,28 @@ fn check_properties<T: SubTypeBehavior>(
 	let mode = mode.one_deeper();
 
 	let mut property_errors = Vec::new();
-	for (publicity, key, property) in get_properties_on_type(base_type, environment) {
-		let rhs_property = get_property_unbound(ty, publicity, key.clone(), types, environment);
+	let reversed_flattened_properties = environment
+		.get_chain_of_info()
+		.filter_map(|info| info.current_properties.get(&base_type).map(|v| v.iter().rev()))
+		.flatten();
 
-		match rhs_property {
-			Some(rhs_property) => {
-				check_logical(
-					rhs_property,
-					base_type_arguments,
-					property,
-					right_type_arguments,
-					behavior,
-					environment,
-					types,
-					mode,
-					already_checked,
-					&mut property_errors,
-					key,
-				);
-			}
-			// TODO
-			None => {
-				property_errors.push((key, PropertyError::Missing));
-			}
+	for (publicity, key, lhs_property) in reversed_flattened_properties {
+		let result = check_rhs_meets_lhs_property(
+			lhs_property,
+			ty,
+			publicity,
+			key,
+			types,
+			environment,
+			base_type_arguments,
+			right_type_arguments,
+			behavior,
+			mode,
+			already_checked,
+		);
+
+		if let Err(err) = result {
+			property_errors.push((key.into_owned(), err));
 		}
 	}
 
@@ -911,21 +910,114 @@ fn check_properties<T: SubTypeBehavior>(
 	}
 }
 
-fn check_logical<T: SubTypeBehavior>(
-	rhs_property: Logical<PropertyValue>,
+#[allow(clippy::too_many_arguments)]
+fn check_rhs_meets_lhs_property<T: SubTypeBehavior>(
+	lhs_property: &PropertyValue,
+	ty: TypeId,
+	publicity: &Publicity,
+	key: &PropertyKey<'_>,
+	types: &TypeStore,
+	environment: &Environment,
+	base_type_arguments: Option<GenericChain<'_>>,
+	right_type_arguments: Option<GenericChain<'_>>,
+	behavior: &mut T,
+	mode: SubTypingMode,
+	already_checked: &mut AlreadyChecked,
+) -> Result<(), PropertyError> {
+	match lhs_property {
+		PropertyValue::Value(lhs_value) => {
+			let rhs_property =
+				get_property_unbound(ty, *publicity, key.clone(), types, environment);
+
+			match rhs_property {
+				Ok(rhs_property) => {
+					let res = check_logical_property(
+						*lhs_value,
+						base_type_arguments,
+						rhs_property,
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						mode,
+						already_checked,
+						key.clone(),
+					);
+					match res {
+						SubTypeResult::IsSubType => Ok(()),
+						SubTypeResult::IsNotSubType(err) => Err(PropertyError::Invalid {
+							expected: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							mismatch: err,
+						}),
+					}
+				}
+				// TODO
+				Err(..) => Err(PropertyError::Missing),
+			}
+		}
+		PropertyValue::Getter(_) => todo!(),
+		PropertyValue::Setter(_) => todo!(),
+		PropertyValue::Deleted => {
+			// TODO WIP
+			let res = get_property_unbound(ty, *publicity, key.clone(), types, environment);
+			if res.is_ok() {
+				// TODO the opposite of missing
+				Err(PropertyError::Missing)
+			} else {
+				// Fine !
+				Ok(())
+			}
+		}
+		PropertyValue::Dependent { on: _, truthy, otherwise } => {
+			let lhs = check_rhs_meets_lhs_property(
+				truthy,
+				ty,
+				publicity,
+				key,
+				types,
+				environment,
+				base_type_arguments,
+				right_type_arguments,
+				behavior,
+				mode,
+				already_checked,
+			);
+			if let Err(..) = lhs {
+				check_rhs_meets_lhs_property(
+					&otherwise,
+					ty,
+					publicity,
+					key,
+					types,
+					environment,
+					base_type_arguments,
+					right_type_arguments,
+					behavior,
+					mode,
+					already_checked,
+				)
+			} else {
+				lhs
+			}
+		}
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_logical_property<T: SubTypeBehavior>(
+	base: TypeId,
 	base_type_arguments: Option<GenericChain>,
-	property: TypeId,
+	rhs_property: Logical<PropertyValue>,
 	right_type_arguments: Option<GenericChain>,
 	behavior: &mut T,
 	environment: &Environment,
 	types: &TypeStore,
 	mode: SubTypingMode,
 	already_checked: &mut AlreadyChecked,
-	property_errors: &mut Vec<(PropertyKey<'static>, PropertyError)>,
 	key: PropertyKey<'_>,
-) {
+) -> SubTypeResult {
 	match rhs_property {
-		Logical::Error => {}
 		Logical::Pure(rhs_property) => {
 			let rhs_type = rhs_property.as_set_type();
 			// crate::utils::notify!(
@@ -936,8 +1028,8 @@ fn check_logical<T: SubTypeBehavior>(
 			// 	base_type_arguments
 			// );
 
-			let result = type_is_subtype_with_generics(
-				property,
+			type_is_subtype_with_generics(
+				base,
 				base_type_arguments,
 				rhs_type,
 				right_type_arguments,
@@ -946,27 +1038,19 @@ fn check_logical<T: SubTypeBehavior>(
 				types,
 				mode,
 				already_checked,
-			);
-
-			if let SubTypeResult::IsNotSubType(mismatch) = result {
-				property_errors.push((
-					key.into_owned(),
-					PropertyError::Invalid { expected: property, found: rhs_type, mismatch },
-				));
-			}
+			)
 		}
 		Logical::Or { .. } => todo!(),
-		Logical::Implies { on, antecedent } => check_logical(
-			*on,
+		Logical::Implies { on, antecedent } => check_logical_property(
+			base,
 			Some(GenericChain::append(base_type_arguments.as_ref(), &antecedent)),
-			property,
+			*on,
 			right_type_arguments,
 			behavior,
 			environment,
 			types,
 			mode,
 			already_checked,
-			property_errors,
 			key,
 		),
 	}
@@ -983,7 +1067,6 @@ pub fn type_is_subtype_of_property<T: SubTypeBehavior>(
 	types: &TypeStore,
 ) -> SubTypeResult {
 	match property {
-		Logical::Error => SubTypeResult::IsSubType,
 		Logical::Pure(prop) => type_is_subtype_with_generics(
 			prop.as_set_type(),
 			property_generics,
@@ -995,27 +1078,28 @@ pub fn type_is_subtype_of_property<T: SubTypeBehavior>(
 			Default::default(),
 			&mut Default::default(),
 		),
-		Logical::Or { left, right } => {
-			let left_result = type_is_subtype_of_property(
-				left,
-				property_generics,
-				ty,
-				behavior,
-				environment,
-				types,
-			);
-			if let SubTypeResult::IsSubType = left_result {
-				left_result
-			} else {
-				type_is_subtype_of_property(
-					right,
-					property_generics,
-					ty,
-					behavior,
-					environment,
-					types,
-				)
-			}
+		Logical::Or { .. } => {
+			todo!()
+			// let left_result = type_is_subtype_of_property(
+			// 	left,
+			// 	property_generics,
+			// 	ty,
+			// 	behavior,
+			// 	environment,
+			// 	types,
+			// );
+			// if let SubTypeResult::IsSubType = left_result {
+			// 	left_result
+			// } else {
+			// 	type_is_subtype_of_property(
+			// 		right,
+			// 		property_generics,
+			// 		ty,
+			// 		behavior,
+			// 		environment,
+			// 		types,
+			// 	)
+			// }
 		}
 		Logical::Implies { on, antecedent } => type_is_subtype_of_property(
 			on,

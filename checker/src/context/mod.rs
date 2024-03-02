@@ -987,28 +987,33 @@ pub enum AssignmentError {
 	},
 }
 
-/// Completely magic!
-#[derive(Debug)]
+/// Wraps logic
+#[derive(Debug, Clone)]
 pub enum Logical<T> {
-	Error,
 	Pure(T),
-	Or { left: Box<Self>, right: Box<Self> },
-	Implies { on: Box<Self>, antecedent: StructureGenericArguments },
+	Or {
+		/// This can be [`TypeId::BOOLEAN_TYPE`] for unknown left-right-ness
+		based_on: TypeId,
+		left: Box<PossibleLogical<T>>,
+		right: Box<PossibleLogical<T>>,
+	},
+	Implies {
+		on: Box<Self>,
+		antecedent: StructureGenericArguments,
+	},
 }
 
-impl<'a, T: Clone> Logical<&'a T> {
-	#[must_use]
-	pub fn cloned(self) -> Logical<T> {
-		match self {
-			Logical::Error => Logical::Error,
-			Logical::Pure(t) => Logical::Pure(t.clone()),
-			Logical::Or { .. } => todo!(),
-			Logical::Implies { on, antecedent } => {
-				Logical::Implies { on: Box::new(on.cloned()), antecedent }
-			}
-		}
-	}
+#[derive(Debug, Clone)]
+pub enum Missing {
+	/// Doesn't contain request
+	None,
+	/// From [`TypeId::ERROR_TYPE`]
+	Error,
+	/// From [`TypeId::ANY_TYPE`]
+	Infer { on: TypeId },
 }
+
+pub type PossibleLogical<T> = Result<Logical<T>, Missing>;
 
 pub enum SetPropertyError {
 	NotWriteable,

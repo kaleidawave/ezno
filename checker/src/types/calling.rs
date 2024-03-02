@@ -2,7 +2,10 @@ use source_map::{SourceId, SpanWithSource};
 use std::vec;
 
 use crate::{
-	context::{invocation::CheckThings, CallCheckingBehavior, Environment, Logical},
+	context::{
+		invocation::CheckThings, CallCheckingBehavior, Environment, Logical, Missing,
+		PossibleLogical,
+	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
 	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
 	features::{
@@ -64,72 +67,79 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 	let call_site = input.call_site;
 
 	let callable = get_logical_callable_from_type(ty, input.this_value, None, &checking_data.types);
-	let (arguments, type_argument_restrictions) = synthesise_arguments_for_parameter(
-		callable.as_ref(),
-		&arguments,
-		input.call_site_type_arguments,
-		None,
-		environment,
-		checking_data,
-	);
 
-	if let Some(callable) = callable {
-		crate::utils::notify!("callable={:?}", callable);
-		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
-		let result = call_logical(
-			callable,
-			input.called_with_new,
-			input.call_site,
-			type_argument_restrictions,
-			None,
-			arguments,
-			environment,
-			&mut checking_data.types,
-			&mut check_things,
-		);
+	match callable {
+		Ok(callable) => {
+			let (arguments, type_argument_restrictions) = synthesise_arguments_for_parameter(
+				&callable,
+				&arguments,
+				input.call_site_type_arguments,
+				None,
+				environment,
+				checking_data,
+			);
 
-		match result {
-			Ok(FunctionCallResult {
-				returned_type,
-				warnings,
-				called: _,
-				special,
-				result_was_const_computation: _,
-			}) => {
-				for warning in warnings {
-					checking_data.diagnostics_container.add_info(
-						crate::diagnostics::Diagnostic::Position {
-							reason: warning.0,
-							position: call_site,
-							kind: crate::diagnostics::DiagnosticKind::Info,
-						},
-					);
+			let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+			let result = call_logical(
+				callable,
+				input.called_with_new,
+				input.call_site,
+				type_argument_restrictions,
+				None,
+				arguments,
+				environment,
+				&mut checking_data.types,
+				&mut check_things,
+			);
+
+			match result {
+				Ok(FunctionCallResult {
+					returned_type,
+					warnings,
+					called: _,
+					special,
+					result_was_const_computation: _,
+				}) => {
+					for warning in warnings {
+						checking_data.diagnostics_container.add_info(
+							crate::diagnostics::Diagnostic::Position {
+								reason: warning.0,
+								position: call_site,
+								kind: crate::diagnostics::DiagnosticKind::Info,
+							},
+						);
+					}
+
+					(returned_type, special)
 				}
-
-				(returned_type, special)
-			}
-			Err(errors) => {
-				for error in errors {
-					checking_data
-						.diagnostics_container
-						.add_error(TypeCheckError::FunctionCallingError(error));
+				Err(errors) => {
+					for error in errors {
+						checking_data
+							.diagnostics_container
+							.add_error(TypeCheckError::FunctionCallingError(error));
+					}
+					(TypeId::ERROR_TYPE, None)
 				}
-				(TypeId::ERROR_TYPE, None)
 			}
 		}
-	} else {
-		checking_data.diagnostics_container.add_error(TypeCheckError::FunctionCallingError(
-			FunctionCallingError::NotCallable {
-				calling: TypeStringRepresentation::from_type_id(
-					ty,
-					environment,
-					&checking_data.types,
-					checking_data.options.debug_types,
-				),
-				call_site,
-			},
-		));
-		(TypeId::ERROR_TYPE, None)
+		Err(Missing::Error) => (TypeId::ERROR_TYPE, None),
+		Err(Missing::Infer { on: _ }) => {
+			todo!("function calling inference")
+		}
+		Err(Missing::None) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::FunctionCallingError(
+				FunctionCallingError::NotCallable {
+					calling: TypeStringRepresentation::from_type_id(
+						ty,
+						environment,
+						&checking_data.types,
+						checking_data.options.debug_types,
+					),
+					call_site,
+				},
+			));
+			(TypeId::ERROR_TYPE, None)
+		}
 	}
 }
 
@@ -141,7 +151,9 @@ pub fn call_type<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	let callable = get_logical_callable_from_type(on, input.this_value, None, types);
+	// TODO ok
+	let callable = get_logical_callable_from_type(on, input.this_value, None, types).ok();
+
 	try_call_logical(callable, input, arguments, None, top_environment, types, behavior, on)
 }
 
@@ -151,24 +163,28 @@ fn get_logical_callable_from_type(
 	on: Option<ThisValue>,
 	from: Option<TypeId>,
 	types: &TypeStore,
-) -> Option<Logical<FunctionLike>> {
+) -> PossibleLogical<FunctionLike> {
 	if ty == TypeId::ERROR_TYPE {
-		return Some(Logical::Error);
+		return Err(Missing::Error);
+	}
+	if ty == TypeId::ANY_TYPE {
+		return Err(Missing::Infer { on: from.unwrap() });
 	}
 
 	let le_ty = types.get_type_by_id(ty);
+
 	crate::utils::notify!("ty1={:?} ({:?})", le_ty, ty);
+
 	match le_ty {
 		Type::And(_, _) => todo!(),
 		Type::Or(left, right) => {
-			if let (Some(left), Some(right)) = (
-				get_logical_callable_from_type(*left, on, from, types),
-				get_logical_callable_from_type(*right, on, from, types),
-			) {
-				Some(Logical::Or { left: Box::new(left), right: Box::new(right) })
-			} else {
-				None
-			}
+			let left = get_logical_callable_from_type(*left, on, from, types);
+			let right = get_logical_callable_from_type(*right, on, from, types);
+			Ok(Logical::Or {
+				based_on: TypeId::BOOLEAN_TYPE,
+				left: Box::new(left),
+				right: Box::new(right),
+			})
 		}
 		Type::AliasTo { to, name: _, parameters } => {
 			if parameters.is_some() {
@@ -176,19 +192,22 @@ fn get_logical_callable_from_type(
 			}
 			get_logical_callable_from_type(*to, on, from, types)
 		}
-		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
-		Type::FunctionReference(f) => Some(Logical::Pure(FunctionLike {
-			// TODO
-			function: *f,
-			from,
-			this_value: on.unwrap_or(ThisValue::UseParent),
-		})),
+		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => Err(Missing::None),
+		Type::FunctionReference(f) => {
+			let function = FunctionLike {
+				// TODO
+				function: *f,
+				from,
+				this_value: on.unwrap_or(ThisValue::UseParent),
+			};
+			Ok(Logical::Pure(function))
+		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
-			Some(Logical::Pure(FunctionLike { from, function: *f, this_value: *t }))
+			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value: *t }))
 		}
 		Type::SpecialObject(so) => match so {
 			crate::features::objects::SpecialObjects::Proxy { .. } => todo!(),
-			_ => None,
+			_ => Err(Missing::None),
 		},
 		Type::Constructor(Constructor::StructureGenerics(generic)) => {
 			crate::utils::notify!("Here!");
@@ -217,21 +236,21 @@ fn get_logical_callable_from_type(
 					None
 				}
 			}) {
-				Some(Logical::Implies { on: Box::new(result), antecedent })
+				Ok(Logical::Implies { on: Box::new(result), antecedent })
 			} else {
-				Some(result)
+				Ok(result)
 			}
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => {
 			let constraint = get_constraint(ty, types).unwrap();
-			crate::utils::notify!("Here! {:?}", constraint);
+			crate::utils::notify!("Calling constructor / root poly type! {:?}", constraint);
 			get_logical_callable_from_type(constraint, on, Some(ty), types)
 		}
 	}
 }
 
 fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation>(
-	callable: Option<&Logical<FunctionLike>>,
+	callable: &Logical<FunctionLike>,
 	arguments: &Vec<UnsynthesisedArgument<A>>,
 	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
 	parent_arguments: Option<&StructureGenericArguments>,
@@ -281,7 +300,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 	}
 
 	match callable {
-		Some(Logical::Pure(function)) => {
+		Logical::Pure(function) => {
 			let function = checking_data.types.get_function_from_id(function.function);
 
 			let type_arguments_restrictions =
@@ -366,16 +385,15 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 
 			(arguments, type_arguments_restrictions)
 		}
-		Some(Logical::Implies { on, antecedent }) => synthesise_arguments_for_parameter(
-			Some(&on),
+		Logical::Implies { on, antecedent } => synthesise_arguments_for_parameter(
+			&on,
 			arguments,
 			call_site_type_arguments,
 			Some(antecedent),
 			environment,
 			checking_data,
 		),
-		// TODO could do this
-		Some(Logical::Or { .. }) | Some(Logical::Error) | None => (
+		Logical::Or { .. } => (
 			arguments
 				.into_iter()
 				.map(|argument| SynthesisedArgument {
@@ -384,6 +402,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 						.with_source(environment.get_source()),
 					value: A::synthesise_expression(
 						argument.expression,
+						// TODO union
 						TypeId::ANY_TYPE,
 						environment,
 						checking_data,
@@ -442,13 +461,6 @@ fn call_logical<E: CallCheckingBehavior>(
 	behavior: &mut E,
 ) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 	match logical {
-		Logical::Error => Ok(FunctionCallResult {
-			called: None,
-			returned_type: TypeId::ERROR_TYPE,
-			warnings: Default::default(),
-			special: Default::default(),
-			result_was_const_computation: false,
-		}),
 		Logical::Pure(function) => {
 			if let Some(function_type) = types.functions.get(&function.function) {
 				let function_type = function_type.clone();
@@ -515,7 +527,9 @@ fn call_logical<E: CallCheckingBehavior>(
 				panic!()
 			}
 		}
-		Logical::Or { left: _, right: _ } => todo!(),
+		Logical::Or { .. } => {
+			todo!("environment conditional?");
+		}
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
 			called_with_new,

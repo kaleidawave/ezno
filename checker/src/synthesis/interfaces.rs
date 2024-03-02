@@ -50,6 +50,7 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 pub(crate) enum InterfaceValue {
 	Function(FunctionType, GetterSetter),
 	Value(TypeId),
+	Optional(TypeId),
 }
 
 pub(crate) enum ParserPropertyKeyType<'a> {
@@ -102,6 +103,12 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				}
 			},
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
+			// optional properties (`?:`) is implemented here:
+			InterfaceValue::Optional(value) => PropertyValue::Dependent {
+				on: TypeId::BOOLEAN_TYPE,
+				truthy: PropertyValue::Value(value).into(),
+				otherwise: PropertyValue::Deleted.into(),
+			},
 		};
 
 		// TODO: `None` position passed
@@ -183,15 +190,29 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				InterfaceMember::Property {
 					name,
 					type_annotation,
-					is_readonly: _,
-					is_optional: _,
-					position: _,
+					is_readonly,
+					is_optional,
+					position,
 				} => {
+					if *is_readonly {
+						checking_data.raise_unimplemented_error(
+							"readonly items",
+							position.with_source(environment.get_source()),
+						);
+					}
+
 					let value =
 						synthesise_type_annotation(type_annotation, environment, checking_data);
+
+					let value = if *is_optional {
+						InterfaceValue::Optional(value)
+					} else {
+						InterfaceValue::Value(value)
+					};
+
 					interface_register_behavior.register(
 						ParserPropertyKeyType::ClassProperty(name),
-						InterfaceValue::Value(value),
+						value,
 						checking_data,
 						environment,
 					);

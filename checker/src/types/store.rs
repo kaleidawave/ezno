@@ -6,7 +6,7 @@ use source_map::SpanWithSource;
 use crate::{
 	context::{
 		information::{get_property_unbound, InformationChain},
-		Logical,
+		Logical, PossibleLogical,
 	},
 	features::{
 		functions::{ClosureId, FunctionBehavior},
@@ -288,9 +288,13 @@ impl TypeStore {
 		on: TypeId,
 		resolver: &impl Fn(&LocalInformation, &TypeStore, TypeId, TData) -> Option<TResult>,
 		data: TData,
-	) -> Option<Logical<TResult>> {
+	) -> PossibleLogical<TResult> {
 		if on == TypeId::ERROR_TYPE {
-			return Some(Logical::Error);
+			return Err(crate::context::Missing::Error);
+		}
+		if on == TypeId::ANY_TYPE {
+			// TODO any
+			return Err(crate::context::Missing::Infer { on });
 		}
 
 		match self.get_type_by_id(on) {
@@ -301,9 +305,12 @@ impl TypeStore {
 					.map(Logical::Pure);
 
 				// TODO undecided on this
-				on_function.or_else(|| {
-					self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
-				})
+				on_function
+					.or_else(|| {
+						self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
+							.ok()
+					})
+					.ok_or(crate::context::Missing::None)
 			}
 			Type::FunctionReference(_) => {
 				let on_function = info_chain
@@ -312,9 +319,12 @@ impl TypeStore {
 					.map(Logical::Pure);
 
 				// TODO undecided on this
-				on_function.or_else(|| {
-					self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
-				})
+				on_function
+					.or_else(|| {
+						self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
+							.ok()
+					})
+					.ok_or(crate::context::Missing::None)
 			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = info_chain
@@ -323,25 +333,27 @@ impl TypeStore {
 					.map(Logical::Pure);
 
 				property_on_self
-					.or_else(|| self.get_fact_about_type(info_chain, *to, resolver, data))
+					.or_else(|| self.get_fact_about_type(info_chain, *to, resolver, data).ok())
+					.ok_or(crate::context::Missing::None)
 			}
 
 			Type::And(left, right) => self
 				.get_fact_about_type(info_chain, *left, resolver, data)
-				.or_else(|| self.get_fact_about_type(info_chain, *right, resolver, data)),
+				.ok()
+				.or_else(|| self.get_fact_about_type(info_chain, *right, resolver, data).ok())
+				.ok_or(crate::context::Missing::None),
 
 			Type::Or(left, right) => {
-				// TODO temp
 				let left = self.get_fact_about_type(info_chain, *left, resolver, data);
 				let right = self.get_fact_about_type(info_chain, *right, resolver, data);
 
-				match (left, right) {
-					(None, None) => None,
-					(Some(value), None) | (None, Some(value)) => Some(value),
-					(Some(left), Some(right)) => {
-						Some(Logical::Or { left: Box::new(left), right: Box::new(right) })
-					}
-				}
+				// TODO throwaway if both Missing::None
+
+				Ok(Logical::Or {
+					based_on: TypeId::BOOLEAN_TYPE,
+					left: Box::new(left),
+					right: Box::new(right),
+				})
 			}
 			Type::RootPolyType(_nature) => {
 				// Can assign to properties on parameters etc
@@ -350,10 +362,13 @@ impl TypeStore {
 					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
-				on_root_type.or_else(|| {
-					let aliases = get_constraint(on, self).expect("poly type with no constraint");
-					self.get_fact_about_type(info_chain, aliases, resolver, data)
-				})
+				on_root_type
+					.or_else(|| {
+						let aliases =
+							get_constraint(on, self).expect("poly type with no constraint");
+						self.get_fact_about_type(info_chain, aliases, resolver, data).ok()
+					})
+					.ok_or(crate::context::Missing::None)
 			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on: base,
@@ -364,13 +379,33 @@ impl TypeStore {
 					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
-				on_sg_type.or_else(|| {
-					let fact_opt = self.get_fact_about_type(info_chain, *base, resolver, data);
+				on_sg_type
+					.or_else(|| {
+						let fact_opt =
+							self.get_fact_about_type(info_chain, *base, resolver, data).ok();
 
-					fact_opt.map(|fact| Logical::Implies {
-						on: Box::new(fact),
-						antecedent: arguments.clone(),
+						fact_opt.map(|fact| Logical::Implies {
+							on: Box::new(fact),
+							antecedent: arguments.clone(),
+						})
 					})
+					.ok_or(crate::context::Missing::None)
+			}
+			Type::Constructor(Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				else_result,
+				result_union: _,
+			}) => {
+				let left = self.get_fact_about_type(info_chain, *truthy_result, resolver, data);
+				let right = self.get_fact_about_type(info_chain, *else_result, resolver, data);
+
+				// TODO throwaway if both Missing::None
+
+				Ok(Logical::Or {
+					based_on: *condition,
+					left: Box::new(left),
+					right: Box::new(right),
 				})
 			}
 			Type::Constructor(_constructor) => {
@@ -379,13 +414,15 @@ impl TypeStore {
 					.find_map(|info| resolver(info, self, on, data))
 					.map(Logical::Pure);
 
-				on_constructor_type.or_else(|| {
-					// TODO implies ???
-					let constraint =
-						get_constraint(on, self).expect("no constraint for constructor");
-					// TODO might need to send more information here, rather than forgetting via .get_type
-					self.get_fact_about_type(info_chain, constraint, resolver, data)
-				})
+				on_constructor_type
+					.or_else(|| {
+						// TODO implies ???
+						let constraint =
+							get_constraint(on, self).expect("no constraint for constructor");
+						// TODO might need to send more information here, rather than forgetting via .get_type
+						self.get_fact_about_type(info_chain, constraint, resolver, data).ok()
+					})
+					.ok_or(crate::context::Missing::None)
 			}
 			Type::Object(..) => {
 				let object_constraint_structure_generics =
@@ -438,8 +475,8 @@ impl TypeStore {
 					})
 					.or_else(|| {
 						if let Some(prototype) = prototype {
-							self.get_fact_about_type(info_chain, prototype, resolver, data).map(
-								|result| {
+							self.get_fact_about_type(info_chain, prototype, resolver, data)
+								.map(|result| {
 									if let Some(generics) = generics {
 										Logical::Implies {
 											on: Box::new(result),
@@ -449,12 +486,13 @@ impl TypeStore {
 									} else {
 										result
 									}
-								},
-							)
+								})
+								.ok()
 						} else {
 							None
 						}
 					})
+					.ok_or(crate::context::Missing::None)
 			}
 			// TODO extends
 			Type::Interface { .. } => info_chain
@@ -466,18 +504,21 @@ impl TypeStore {
 						.get_chain_of_info()
 						.find_map(|info| info.prototypes.get(&on).copied())
 					{
-						self.get_fact_about_type(info_chain, prototype, resolver, data)
+						self.get_fact_about_type(info_chain, prototype, resolver, data).ok()
 					} else {
 						None
 					}
-				}),
+				})
+				.ok_or(crate::context::Missing::None),
 			Type::Constant(cst) => info_chain
 				.get_chain_of_info()
 				.find_map(|info| resolver(info, self, on, data))
 				.map(Logical::Pure)
 				.or_else(|| {
-					self.get_fact_about_type(info_chain, cst.get_backing_type_id(), resolver, data)
-				}),
+					let backing_type = cst.get_backing_type_id();
+					self.get_fact_about_type(info_chain, backing_type, resolver, data).ok()
+				})
+				.ok_or(crate::context::Missing::None),
 			Type::SpecialObject(_) => todo!(),
 		}
 	}
@@ -552,7 +593,7 @@ impl TypeStore {
 				bind_this: true,
 			});
 			self.register_type(ty)
-		} else if let Some(prop) = get_property_unbound(
+		} else if let Ok(prop) = get_property_unbound(
 			indexee,
 			crate::context::information::Publicity::Public,
 			PropertyKey::from_type(indexer, self),
@@ -560,7 +601,6 @@ impl TypeStore {
 			environment,
 		) {
 			match prop {
-				Logical::Error => TypeId::ERROR_TYPE,
 				Logical::Pure(ty) => ty.as_get_type(),
 				Logical::Or { .. } => todo!(),
 				Logical::Implies { .. } => todo!(),

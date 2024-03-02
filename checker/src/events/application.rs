@@ -135,6 +135,9 @@ pub(crate) fn apply_event(
 					environment.delete_property(on, &under);
 					return None;
 				}
+				PropertyValue::Dependent { .. } => {
+					todo!()
+				}
 			};
 
 			let _gc = environment.as_general_context();
@@ -543,7 +546,11 @@ pub(crate) fn apply_event_unknown(
 						.unwrap_or(new);
 					PropertyValue::Value(new)
 				}
-				PropertyValue::Getter(_) | PropertyValue::Setter(_) | PropertyValue::Deleted => new,
+				// TODO
+				PropertyValue::Dependent { .. }
+				| PropertyValue::Getter(_)
+				| PropertyValue::Setter(_)
+				| PropertyValue::Deleted => new,
 			};
 			let under = match under {
 				under @ PropertyKey::String(_) => under,

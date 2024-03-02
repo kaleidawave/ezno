@@ -437,6 +437,7 @@ fn get_simple_value(
 	}
 
 	information::get_property_unbound(on, Publicity::Public, property, types, ctx)
+		.ok()
 		.and_then(|v| get_logical(v))
 }
 

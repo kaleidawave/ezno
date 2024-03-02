@@ -375,7 +375,7 @@ pub fn evaluate_equality_inequality_operation(
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Logical {
+pub enum LogicalOperator {
 	And,
 	Or,
 	NullCoalescing,
@@ -388,13 +388,13 @@ pub fn evaluate_logical_operation_with_expression<
 	A: crate::ASTImplementation,
 >(
 	lhs: (TypeId, Span),
-	operator: Logical,
+	operator: LogicalOperator,
 	rhs: &'a A::Expression<'a>,
 	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
 	match operator {
-		Logical::And => Ok(environment.new_conditional_context(
+		LogicalOperator::And => Ok(environment.new_conditional_context(
 			lhs,
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
@@ -402,7 +402,7 @@ pub fn evaluate_logical_operation_with_expression<
 			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 			checking_data,
 		)),
-		Logical::Or => Ok(environment.new_conditional_context(
+		LogicalOperator::Or => Ok(environment.new_conditional_context(
 			lhs,
 			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
@@ -410,7 +410,7 @@ pub fn evaluate_logical_operation_with_expression<
 			}),
 			checking_data,
 		)),
-		Logical::NullCoalescing => {
+		LogicalOperator::NullCoalescing => {
 			let is_lhs_null = evaluate_equality_inequality_operation(
 				lhs.0,
 				&EqualityAndInequality::StrictEqual,

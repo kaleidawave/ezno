@@ -211,7 +211,7 @@ impl TypeStringRepresentation {
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
-			crate::context::Logical::Pure(p) => match p {
+			crate::context::Logical::Pure(constraint) => match constraint {
 				crate::PropertyValue::Value(v) => {
 					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
 					Self::Type(value)
@@ -219,20 +219,22 @@ impl TypeStringRepresentation {
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
 				crate::PropertyValue::Deleted => todo!(),
+				crate::PropertyValue::Dependent { .. } => todo!(),
 			},
-			crate::context::Logical::Or { left, right } => {
-				let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
-				let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+			crate::context::Logical::Or { .. } => {
+				todo!()
+				// let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
+				// let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
 
-				#[allow(irrefutable_let_patterns)]
-				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
-					(left, right)
-				{
-					l.push_str(&r);
-					TypeStringRepresentation::Type(l)
-				} else {
-					unreachable!()
-				}
+				// #[allow(irrefutable_let_patterns)]
+				// if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
+				// 	(left, right)
+				// {
+				// 	l.push_str(&r);
+				// 	TypeStringRepresentation::Type(l)
+				// } else {
+				// 	unreachable!()
+				// }
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
@@ -246,7 +248,6 @@ impl TypeStringRepresentation {
 					debug_mode,
 				)
 			}
-			crate::context::Logical::Error => TypeStringRepresentation::Type("Error".to_owned()),
 		}
 	}
 }
