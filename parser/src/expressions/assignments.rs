@@ -8,12 +8,11 @@ use visitable_derive::Visitable;
 
 use crate::{
 	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, VariableFieldInSourceCode, WithComment,
+	ParseResult, WithComment,
 };
 
 use super::MultipleExpression;
 
-/// TODO marker
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -57,7 +56,16 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, options, local);
+				if let Expression::NumberLiteral(..)
+				| Expression::ObjectLiteral(..)
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesized()
+				{
+					buf.push('(');
+					parent.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					parent.to_string_from_buffer(buf, options, local);
+				}
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
@@ -161,21 +169,14 @@ impl VariableOrPropertyAccess {
 	}
 }
 
-/// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
 #[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
-	ObjectDestructuring(
-		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
-	ArrayDestructuring(
-		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
+	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField>>, Span),
+	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField>>, Span),
 }
 
 impl LHSOfAssignment {
@@ -214,8 +215,11 @@ impl LHSOfAssignment {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
-					if !at_end || matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
+					if !at_end {
 						buf.push(',');
+						if !matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
+							options.push_gap_optionally(buf);
+						}
 					}
 				}
 				buf.push(']');

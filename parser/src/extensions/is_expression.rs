@@ -65,8 +65,14 @@ pub(crate) fn is_expression_from_reader_sub_is_keyword(
 	reader.expect_next(TSXToken::OpenBrace)?;
 	let mut branches = Vec::new();
 	loop {
-		let type_annotation =
-			TypeAnnotation::from_reader_with_config(reader, state, options, false, true, None)?;
+		// Function important here for
+		let type_annotation = TypeAnnotation::from_reader_with_config(
+			reader,
+			state,
+			options,
+			Some(crate::type_annotations::TypeOperatorKind::Function),
+			None,
+		)?;
 		reader.expect_next(TSXToken::Arrow)?;
 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
 		if let Some(token) = reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace)) {

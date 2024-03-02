@@ -129,6 +129,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		),
 		Statement::ForLoop(stmt) => match &stmt.condition {
 			parser::statements::ForLoopCondition::ForOf {
+				is_await: _,
 				keyword: _,
 				variable,
 				of,

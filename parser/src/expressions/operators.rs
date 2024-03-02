@@ -454,10 +454,12 @@ impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
 
 impl BinaryOperator {
 	/// Operators which return true may or may not evaluate RHS based on their own value
-	/// TODO might be more
 	#[must_use]
 	pub fn is_rhs_conditional_evaluation(&self) -> bool {
-		matches!(self, BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr)
+		matches!(
+			self,
+			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
+		)
 	}
 }
 
@@ -471,4 +473,5 @@ pub(crate) const CONSTRUCTOR_PRECEDENCE: u8 = 18;
 pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
 pub(crate) const RELATION_PRECEDENCE: u8 = 10;
 pub(crate) const PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE: u8 = 19;
+pub(crate) const ARROW_FUNCTION_PRECEDENCE: u8 = 2;
 pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;

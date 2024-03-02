@@ -78,7 +78,7 @@ pub fn derive_binary_serializable(input: TokenStream) -> TokenStream {
 							}
 							Structure::Struct(r#struct) => r#struct
 								.build_constructor(|_| Ok(deserialize_call.clone()))
-								.map(|expr| vec![Stmt::Expr(expr)]),
+								.map(|expr| vec![Stmt::Expr(expr, None)]),
 						}
 					},
 				),

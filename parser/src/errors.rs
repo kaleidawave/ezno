@@ -23,6 +23,11 @@ pub enum ParseErrors<'a> {
 	DestructuringRequiresValue,
 	CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
+	InvalidNumberLiteral,
+	ReservedIdentifier,
+	AwaitRequiresForOf,
+	CannotUseLeadingParameterHere,
+	ExpectedIdentifier,
 }
 
 #[allow(missing_docs)]
@@ -49,6 +54,7 @@ pub enum LexingErrors {
 	InvalidExponentUsage,
 	InvalidUnderscore,
 	CannotLoadLargeFile(usize),
+	ExpectedDashInComment,
 }
 
 impl Display for LexingErrors {
@@ -94,6 +100,9 @@ impl Display for LexingErrors {
 			}
 			LexingErrors::CannotLoadLargeFile(size) => {
 				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
+			}
+			LexingErrors::ExpectedDashInComment => {
+				f.write_str("JSX comments must have two dashes after `<!` start")
 			}
 		}
 	}
@@ -162,6 +171,21 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
+			}
+			ParseErrors::InvalidNumberLiteral => {
+				write!(f, "Invalid number literal")
+			}
+			ParseErrors::ReservedIdentifier => {
+				write!(f, "Found reserved identifier")
+			}
+			ParseErrors::AwaitRequiresForOf => {
+				write!(f, "Can only use await on for (.. of ..)")
+			}
+			ParseErrors::CannotUseLeadingParameterHere => {
+				write!(f, "Cannot write this constraint in this kind of function")
+			}
+			ParseErrors::ExpectedIdentifier => {
+				write!(f, "Expected variable identifier")
 			}
 		}
 	}

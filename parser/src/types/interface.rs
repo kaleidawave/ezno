@@ -3,8 +3,8 @@ use crate::{
 	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
+	NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span, TSXKeyword, TSXToken,
+	TypeAnnotation, TypeDeclaration, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -18,7 +18,7 @@ pub struct InterfaceDeclaration {
 	pub name: String,
 	#[cfg(feature = "extras")]
 	pub is_nominal: bool,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
@@ -64,23 +64,23 @@ impl ASTNode for InterfaceDeclaration {
 		let TypeDeclaration { name, type_parameters, .. } =
 			TypeDeclaration::from_reader(reader, state, options)?;
 
-		let extends = if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek()
+		let extends = if reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
+			.is_some()
 		{
-			reader.next();
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			let mut extends = vec![type_annotation];
-			if matches!(reader.peek(), Some(Token(TSXToken::Comma, _))) {
-				reader.next();
+			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
 				loop {
 					extends.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::Comma, _) => {
+					match reader.peek() {
+						Some(Token(TSXToken::Comma, _)) => {
 							reader.next();
 						}
-						Token(TSXToken::OpenBrace, _) => break,
-						token => {
+						Some(Token(TSXToken::OpenBrace, _)) | None => break,
+						_ => {
 							return throw_unexpected_token_with_token(
-								token,
+								reader.next().unwrap(),
 								&[TSXToken::Comma, TSXToken::OpenBrace],
 							)
 						}
@@ -112,22 +112,24 @@ impl ASTNode for InterfaceDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
 			buf.push_str("interface ");
 			buf.push_str(&self.name);
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				options.push_gap_optionally(buf);
 			}
-			options.push_gap_optionally(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
 					extends.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
+						options.push_gap_optionally(buf);
 					}
 				}
 			}
+			options.push_gap_optionally(buf);
 			buf.push('{');
 			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();
@@ -156,7 +158,7 @@ pub enum InterfaceMember {
 	Method {
 		header: MethodHeader,
 		name: PropertyKey<PublicOrPrivate>,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_optional: bool,
@@ -185,7 +187,7 @@ pub enum InterfaceMember {
 	/// ```
 	Constructor {
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		#[cfg(feature = "extras")]
@@ -194,7 +196,7 @@ pub enum InterfaceMember {
 	},
 	Caller {
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		position: Span,

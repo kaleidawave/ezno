@@ -86,7 +86,8 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 						parser::VariableField::Array(_, _) => todo!(),
 						parser::VariableField::Object(_, _) => todo!(),
 					},
-					parser::ArrayDestructuringField::None => None,
+					parser::ArrayDestructuringField::Comment { .. }
+					| parser::ArrayDestructuringField::None => None,
 				})
 				.collect(),
 		),

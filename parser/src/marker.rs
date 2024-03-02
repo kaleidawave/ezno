@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 pub struct Marker<T>(pub u8, pub PhantomData<T>);
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
 const TYPES: &str = r"
 	type Marker<T> = number;
 ";

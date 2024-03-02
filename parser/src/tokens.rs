@@ -141,7 +141,7 @@ pub enum TSXToken {
     // JSX Tokens. Some like JSXComment are non standard
     JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd, 
     JSXClosingTagStart, 
-    /// This also covers the end of a token, thus no TSXToken::JSXClosingTagEnd
+    /// This also covers the end of a token, thus no 'TSXToken::JSXClosingTagEnd'
     JSXClosingTagName(String), 
     /// />
     JSXSelfClosingTag, 
@@ -184,12 +184,12 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXAttributeKey(lit)
 			| TSXToken::JSXAttributeValue(lit)
 			| TSXToken::JSXContent(lit)
-			| TSXToken::JSXComment(lit)
 			| TSXToken::JSXTagName(lit)
 			| TSXToken::Identifier(lit)
 			| TSXToken::NumberLiteral(lit)
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
+			TSXToken::JSXComment(comment) => comment.len() as u32 + 7,
 			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
 			TSXToken::StringLiteral(comment, _) | TSXToken::Comment(comment) => {
 				comment.len() as u32 + 2
@@ -228,7 +228,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXOpeningTagEnd
 			| TSXToken::JSXExpressionStart
 			| TSXToken::JSXExpressionEnd
-			| TSXToken::JSXAttributeAssign => 1,
+			| TSXToken::JSXAttributeAssign
+			| TSXToken::JSXClosingTagStart
+			| TSXToken::JSXContentLineBreak => 1,
 
 			TSXToken::AddAssign
 			| TSXToken::SubtractAssign
@@ -256,7 +258,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::BitwiseShiftLeft
 			| TSXToken::BitwiseShiftRight
 			| TSXToken::TemplateLiteralExpressionStart
-			| TSXToken::JSXFragmentStart => 2,
+			| TSXToken::JSXFragmentStart
+			| TSXToken::JSXSelfClosingTag => 2,
 
 			TSXToken::Spread
 			| TSXToken::StrictEqual
@@ -275,10 +278,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
 			// Marker nodes with no length
-			TSXToken::JSXClosingTagStart
-			| TSXToken::JSXSelfClosingTag
-			| TSXToken::JSXContentLineBreak
-			| TSXToken::EOS => 0,
+			TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
 			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
@@ -299,9 +299,9 @@ pub enum TSXKeyword {
     Class, Function, Constructor,
     New, This, Super,
     Case, Yield, Return, Continue, Break,
-    Import, Export, Default, From,
+    Import, Export, Default, From, With,
     In, Of,
-    TypeOf, InstanceOf, Void, Delete, 
+    TypeOf, InstanceOf, Void, Delete, Assert,
     Debugger,
     Try, Catch, Finally, Throw,
     Async, Await,
@@ -317,7 +317,10 @@ pub enum TSXKeyword {
     // TS publicity attributes
     Private, Public, Protected,
     // TS Keywords
-    As, Declare, Readonly, Infer, Is, Satisfies, Namespace, KeyOf,
+    As, Readonly, Satisfies, Declare, Namespace, 
+	// TS & Ezno
+	Is, 
+	Infer, KeyOf, Unique, Symbol,
 	// TODO unsure
 	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
@@ -350,6 +353,20 @@ impl TSXKeyword {
 
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
+	}
+
+	#[rustfmt::skip]
+	pub(crate) fn is_invalid_identifier(self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Const | TSXKeyword::Var | TSXKeyword::If | TSXKeyword::Else | TSXKeyword::For
+				| TSXKeyword::While | TSXKeyword::Do | TSXKeyword::Switch | TSXKeyword::Class | TSXKeyword::Function
+				| TSXKeyword::New | TSXKeyword::Super | TSXKeyword::Case | TSXKeyword::Return | TSXKeyword::Continue
+				| TSXKeyword::Break | TSXKeyword::Import | TSXKeyword::Export | TSXKeyword::Default | TSXKeyword::In
+				| TSXKeyword::TypeOf | TSXKeyword::InstanceOf | TSXKeyword::Void | TSXKeyword::Delete
+				| TSXKeyword::Debugger | TSXKeyword::Try | TSXKeyword::Catch | TSXKeyword::Finally | TSXKeyword::Throw
+				| TSXKeyword::Extends | TSXKeyword::Enum
+		)
 	}
 }
 
@@ -461,7 +478,7 @@ impl TSXToken {
 pub(crate) fn token_as_identifier(
 	token: Token<TSXToken, TokenStart>,
 	at_location: &str,
-) -> Result<(String, Span), ParseError> {
+) -> crate::ParseResult<(String, Span)> {
 	let position = token.get_span();
 	let name = match token.0 {
 		TSXToken::Identifier(value) => value,

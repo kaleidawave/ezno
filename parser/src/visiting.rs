@@ -233,12 +233,13 @@ mod ast {
 		std::path::PathBuf,
 		source_map::Span,
 		crate::TypeAnnotation,
+		crate::types::Visibility,
 		crate::NumberRepresentation,
-		crate::operators::BinaryOperator,
-		crate::operators::BinaryAssignmentOperator,
-		crate::operators::UnaryOperator,
-		crate::operators::UnaryPrefixAssignmentOperator,
-		crate::operators::UnaryPostfixAssignmentOperator,
+		crate::expressions::operators::BinaryOperator,
+		crate::expressions::operators::BinaryAssignmentOperator,
+		crate::expressions::operators::UnaryOperator,
+		crate::expressions::operators::UnaryPrefixAssignmentOperator,
+		crate::expressions::operators::UnaryPostfixAssignmentOperator,
 		crate::types::InterfaceDeclaration,
 		crate::types::type_alias::TypeAlias,
 		crate::types::declares::DeclareFunctionDeclaration,
@@ -250,7 +251,8 @@ mod ast {
 		crate::declarations::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::VariableKeyword
+		crate::VariableKeyword,
+		crate::types::namespace::Namespace
 	];
 }
 
@@ -258,7 +260,7 @@ mod ast {
 mod structures {
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		Statement, VariableFieldInSourceCode, VariableIdentifier,
+		Statement, VariableIdentifier,
 	};
 
 	use super::{
@@ -339,10 +341,8 @@ mod structures {
 		// TODO maybe WithComment on some of these
 		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a ArrayDestructuringField),
+		ObjectDestructuringMember(&'a WithComment<ObjectDestructuringField>),
 		ClassName(Option<&'a VariableIdentifier>),
 		FunctionName(Option<&'a VariableIdentifier>),
 		ClassPropertyKey(&'a PropertyKey<PublicOrPrivate>),
@@ -353,10 +353,8 @@ mod structures {
 	pub enum MutableVariableOrProperty<'a> {
 		VariableFieldName(&'a mut String),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a mut ArrayDestructuringField),
+		ObjectDestructuringMember(&'a mut WithComment<ObjectDestructuringField>),
 		ClassName(Option<&'a mut VariableIdentifier>),
 		FunctionName(Option<&'a mut VariableIdentifier>),
 		ClassPropertyKey(&'a mut PropertyKey<PublicOrPrivate>),

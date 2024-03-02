@@ -71,7 +71,7 @@ impl ASTNode for DoWhileStatement {
 	) -> Result<Self, crate::ParseError> {
 		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		let _ = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
+		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;

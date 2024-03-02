@@ -112,6 +112,7 @@ impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for Statemen
 				| parser::Declaration::DeclareVariable(_)
 				| parser::Declaration::DeclareFunction(_)
 				| parser::Declaration::DeclareInterface(_)
+				| parser::Declaration::Namespace(_)
 				| parser::Declaration::Export(_) => {}
 			}
 		}
