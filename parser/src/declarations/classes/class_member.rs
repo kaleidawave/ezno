@@ -340,13 +340,13 @@ impl FunctionBased for ClassConstructorBase {
 const CLASS_CONSTRUCTOR_AND_FUNCTION_TYPES: &str = r"
 	export interface ClassConstructor extends FunctionBase {
 		body: FunctionBody,
-		parameters: FunctionParameters<[ThisValue | null, SuperValue | null], Visibility>,
+		parameters: FunctionParameters<[ThisParameter | null, SuperParameter | null], Visibility>,
 	}
 
 	export interface ClassFunction extends FunctionBase {
 		header: MethodHeader,
 		name: WithComment<PropertyKey<PublicOrPrivate>>
-		parameters: FunctionParameters<ThisValue | null, null>,
+		parameters: FunctionParameters<ThisParameter | null, null>,
 		body: FunctionBody,
 	}
 ";
