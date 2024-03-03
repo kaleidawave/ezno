@@ -131,6 +131,10 @@ pub(crate) fn call_constant_function(
 
 			Ok(ConstantOutput::Diagnostic(result))
 		}
+		"print_environment_state" => Ok(ConstantOutput::Diagnostic(format!(
+			"EnvState is: {:?}",
+			environment.context_type.state
+		))),
 		"print_constraint" => {
 			let ty = arguments
 				.first()
@@ -140,7 +144,7 @@ pub(crate) fn call_constant_function(
 
 			let constraint = environment
 				.get_chain_of_info()
-				.find_map(|i| i.object_constraints.get(&ty).cloned());
+				.find_map(|i| i.object_constraints.get(&ty).copied());
 
 			if let Some(constraint) = constraint {
 				let constraint_as_string = print_type(constraint, types, environment, false);
@@ -183,12 +187,16 @@ pub(crate) fn call_constant_function(
 			{
 				let effects =
 					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
-				if id.ends_with("rust") {
-					Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+				if let Some(effects) = effects {
+					if id.ends_with("rust") {
+						Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+					} else {
+						let mut buf = String::new();
+						debug_effects(&mut buf, effects, types, environment, true);
+						Ok(ConstantOutput::Diagnostic(buf))
+					}
 				} else {
-					let mut buf = String::new();
-					debug_effects(&mut buf, effects, types, environment, true);
-					Ok(ConstantOutput::Diagnostic(buf))
+					Ok(ConstantOutput::Diagnostic("functions does not have know effects".into()))
 				}
 			} else {
 				Ok(ConstantOutput::Diagnostic(format!("{get_type_by_id:?} is not a function")))

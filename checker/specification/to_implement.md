@@ -45,6 +45,30 @@ print_type(callFunc)
 
 - Expected "a" | "b" | "c" found "d"
 
+#### Simple array map
+
+```ts
+function mapper(a: Array<string>) {
+	return a.map((item: string) => item + "hi")
+}
+
+print_type(mapper)
+```
+
+- TODO
+
+#### Generic array map
+
+```ts
+function mapper<T, U>(a: Array<T>, func: T => U) {
+	return a.map(func)
+}
+
+print_type(mapper)
+```
+
+- TODO
+
 #### Interface extends
 
 ```ts
@@ -60,22 +84,11 @@ interface Z extends X, Y {
     c: string
 }
 
+({ a: "", b: "", c: "hello" }) satisfies Z;
 ({ c: "hi" }) satisfies Z;
 ```
 
 - Type { c: "hi" } is not assignable to Z
-
-#### Across alias
-
-```ts
-type WithLabel<T> = { label: string, item: T };
-
-declare function getItem<T>(a: WithLabel<T>): T;
-
-getItem({ label: "item 1", item: 5 }) satisfies string;
-```
-
-- Expected string, found 5
 
 ### Narrowing
 
@@ -281,45 +294,6 @@ declare let aNumber: number;
 ```
 
 - Expected string, found boolean
-
-#### Simple array map
-
-```ts
-function mapper(a: Array<string>) {
-	return a.map((item: string) => item + "hi")
-}
-
-print_type(mapper)
-```
-
-- TODO
-
-#### Generic array map
-
-```ts
-function mapper<T, U>(a: Array<T>, func: T => U) {
-	return a.map(func)
-}
-
-print_type(mapper)
-```
-
-- TODO
-
-#### Tuple push and pop
-
-> Should flag up length constraint
-
-```ts
-const x: [1, 2, 3] = [1, 2, 3];
-x.push(4);
-
-const y: [1, 2, 3] = [1, 2, 3];
-y.pop();
-```
-
-- TODO cannot push
-- TODO cannot pop
 
 ### Expressions
 
@@ -552,6 +526,25 @@ function doThing(b: number = "hello") {
 
 - Default value "hello" is not assignable to parameter of type number
 
+### Control flow
+
+#### Conditional return
+
+```ts
+declare let string: string;
+
+function stringIsHi(s: string) {
+    if (s === "hi") {
+        return true
+    }
+    return false
+}
+
+stringIsHi(string) satisfies number;
+```
+
+- Expected number, found boolean
+
 ### Statements
 
 #### Try catch variable
@@ -565,3 +558,41 @@ try {
 ```
 
 - Catch variable cannot be string as 5 thrown in try block
+
+#### Array destructuring
+
+> TODO this currently cheats as the LHS looks at numeric properties, not at the iterator of the RHS
+
+```ts
+const array = [1, 2, 3]
+const [a, b] = array
+a satisfies 1; b satisfies string;
+```
+
+- Expected string, found 2
+
+#### Destructuring assignment
+
+```ts
+let a = 2, b = 3;
+[a, b] = [b, a];
+a satisfies 3; b satisfies string;
+```
+
+- Expected string, found 2
+
+#### Tuple push and pop
+
+> Should flag up length constraint
+> This is caught, but the errors aren't great
+
+```ts
+const x: [1, 2, 3] = [1, 2, 3];
+x.push(4);
+
+const y: [1, 2, 3] = [1, 2, 3];
+y.pop();
+```
+
+- TODO cannot push
+- TODO cannot pop

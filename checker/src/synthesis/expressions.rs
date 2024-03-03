@@ -1,10 +1,12 @@
 use std::{borrow::Cow, convert::TryInto};
 
 use parser::{
+	ast::TypeOrConst,
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		operators::IncrementOrDecrement,
-		operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
+		operators::{
+			BinaryOperator, IncrementOrDecrement, UnaryOperator, UnaryPrefixAssignmentOperator,
+		},
 		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
 	},
@@ -534,7 +536,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let result = environment.get_property_handle_errors(
 				on,
 				publicity,
-				property,
+				&property,
 				checking_data,
 				*position,
 			);
@@ -558,7 +560,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let result = environment.get_property_handle_errors(
 				being_indexed,
 				Publicity::Public,
-				PropertyKey::from_type(indexer, &checking_data.types),
+				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
 				*position,
 			);
@@ -719,36 +721,50 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return TypeId::ERROR_TYPE;
 		}
 		Expression::SpecialOperators(operator, position) => match operator {
-			SpecialOperators::AsExpression { value, type_annotation } => {
+			SpecialOperators::AsCast { value, rhs } => {
 				let to_cast = synthesise_expression(value, environment, checking_data, expecting);
 
 				if checking_data.options.allow_cast {
-					let cast_to =
-						synthesise_type_annotation(type_annotation, environment, checking_data);
-
-					// TODO
-					let as_cast = features::as_cast(to_cast, cast_to, &mut checking_data.types);
-					match as_cast {
-						Ok(result) => return result,
-						Err(_) => {
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::InvalidCast {
-									position: position.with_source(environment.get_source()),
-									from: TypeStringRepresentation::from_type_id(
-										to_cast,
-										environment,
-										&checking_data.types,
-										checking_data.options.debug_types,
-									),
-									to: TypeStringRepresentation::from_type_id(
-										cast_to,
-										environment,
-										&checking_data.types,
-										checking_data.options.debug_types,
-									),
-								},
+					match rhs {
+						TypeOrConst::Type(type_annotation) => {
+							let cast_to = synthesise_type_annotation(
+								type_annotation,
+								environment,
+								checking_data,
 							);
-							return TypeId::ERROR_TYPE;
+
+							// TODO
+							let as_cast =
+								features::as_cast(to_cast, cast_to, &mut checking_data.types);
+
+							match as_cast {
+								Ok(result) => return result,
+								Err(_err) => {
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::InvalidCast {
+											position: position
+												.with_source(environment.get_source()),
+											from: TypeStringRepresentation::from_type_id(
+												to_cast,
+												environment,
+												&checking_data.types,
+												checking_data.options.debug_types,
+											),
+											to: TypeStringRepresentation::from_type_id(
+												cast_to,
+												environment,
+												&checking_data.types,
+												checking_data.options.debug_types,
+											),
+										},
+									);
+									return TypeId::ERROR_TYPE;
+								}
+							}
+						}
+						TypeOrConst::Const(_) => {
+							// TODO
+							Instance::RValue(to_cast)
 						}
 					}
 				} else {
@@ -763,7 +779,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
-				let value = synthesise_expression(value, environment, checking_data, satisfying);
 
 				checking_data.check_satisfies(
 					value,
@@ -913,13 +928,13 @@ fn call_function<T: crate::ReadFromFS>(
 					}
 					FunctionArgument::Comment { .. } => todo!(),
 				})
-				.collect()
+				.collect::<Vec<_>>()
 		})
 		.unwrap_or_default();
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
-		arguments,
+		&arguments,
 		CallingInput {
 			called_with_new,
 			this_value: Default::default(),
@@ -998,7 +1013,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let property_expecting = get_property_unbound(
 					expected,
 					Publicity::Public,
-					key.clone(),
+					&key,
 					&checking_data.types,
 					environment,
 				)
@@ -1051,7 +1066,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let property_expecting = get_property_unbound(
 					expected,
 					Publicity::Public,
-					key.clone(),
+					&key,
 					&checking_data.types,
 					environment,
 				)

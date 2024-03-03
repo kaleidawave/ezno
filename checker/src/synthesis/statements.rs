@@ -38,17 +38,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::Return(return_statement) => {
-			let expected = environment.get_expected_return_type().unwrap_or(TypeId::ANY_TYPE);
-			let returned = if let Some(ref expression) = return_statement.0 {
-				// TODO expecting based of expected return type
-				synthesise_multiple_expression(expression, environment, checking_data, expected)
-			} else {
-				TypeId::UNDEFINED_TYPE
-			};
-
-			let position = return_statement.1.with_source(environment.get_source());
-
-			environment.return_value(returned, position);
+			environment.return_value(
+				&crate::context::environment::Returnable::Statement(
+					return_statement.0.as_ref(),
+					return_statement.1,
+				),
+				checking_data,
+			);
 		}
 		Statement::If(if_statement) => {
 			fn run_condition<T: crate::ReadFromFS>(

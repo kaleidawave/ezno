@@ -1,7 +1,7 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
 use super::information::LocalInformation;
-use crate::{events::FinalEvent, Environment, FunctionId};
+use crate::{events::ApplicationResult, Environment, FunctionId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -113,8 +113,8 @@ impl InvocationContext {
 
 	pub(crate) fn new_conditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<FinalEvent>,
-	) -> (LocalInformation, Option<FinalEvent>) {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> ApplicationResult,
+	) -> (LocalInformation, ApplicationResult) {
 		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
 		let result = cb(self);
 		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {

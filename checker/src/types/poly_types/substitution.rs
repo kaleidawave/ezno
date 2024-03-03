@@ -110,7 +110,7 @@ pub(crate) fn substitute(
 			Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
+				otherwise_result,
 				result_union: _,
 			} => {
 				let condition = substitute(condition, arguments, environment, types);
@@ -130,7 +130,7 @@ pub(crate) fn substitute(
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
-				// 		else_result,
+				// 		otherwise_result,
 				// 		types,
 				// 		environment,
 				// 		true
@@ -141,18 +141,19 @@ pub(crate) fn substitute(
 					if result {
 						substitute(truthy_result, arguments, environment, types)
 					} else {
-						substitute(else_result, arguments, environment, types)
+						substitute(otherwise_result, arguments, environment, types)
 					}
 				} else {
 					crate::utils::notify!("{:?} is undecidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
-					let else_result = substitute(else_result, arguments, environment, types);
+					let otherwise_result =
+						substitute(otherwise_result, arguments, environment, types);
 					// TODO result_union
 					let ty = Constructor::ConditionalResult {
 						condition,
 						truthy_result,
-						else_result,
-						result_union: types.new_or_type(truthy_result, else_result),
+						otherwise_result,
+						result_union: types.new_or_type(truthy_result, otherwise_result),
 					};
 
 					types.register_type(Type::Constructor(ty))
@@ -167,7 +168,7 @@ pub(crate) fn substitute(
 				})) = types.get_type_by_id(id)
 				{
 					// Try get the constant
-					if under.as_number(&types).is_some() {
+					if under.as_number(types).is_some() {
 						crate::utils::notify!("Temp array index property get");
 						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)

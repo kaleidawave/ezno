@@ -1,14 +1,14 @@
 use std::{
 	borrow::Cow,
 	collections::{hash_map::Entry, HashMap},
-	mem,
 };
 
+use parser::Span;
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	context::{
-		environment::FunctionScope,
+		environment::{ExpectedReturnType, FunctionScope},
 		get_on_ctx, get_value_of_variable,
 		information::{merge_info, LocalInformation},
 		CanReferenceThis, ContextType, Syntax,
@@ -107,6 +107,14 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
+	if !function.has_body() {
+		checking_data.raise_unimplemented_error(
+			"Overloading function",
+			function.get_position().with_source(environment.get_source()),
+		);
+		return;
+	}
+
 	// TODO get existing by variable_id
 	let behavior = crate::features::functions::FunctionRegisterBehavior::StatementFunction {
 		hoisted: variable_id,
@@ -164,7 +172,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		checking_data.types.register_type(Type::Constructor(Constructor::ConditionalResult {
 			condition: is_undefined_condition,
 			truthy_result: value,
-			else_result: parameter_ty,
+			otherwise_result: parameter_ty,
 			result_union: parameter_constraint,
 		}));
 
@@ -221,10 +229,15 @@ impl FunctionBehavior {
 
 /// Covers both actual functions and
 pub trait SynthesisableFunction<A: crate::ASTImplementation> {
-	fn id(&self, source_id: SourceId) -> FunctionId;
+	fn id(&self, source_id: SourceId) -> FunctionId {
+		FunctionId(source_id, self.get_position().start)
+	}
 
 	/// For debugging only
 	fn get_name(&self) -> Option<&str>;
+
+	/// For debugging only
+	fn get_position(&self) -> Span;
 
 	// TODO temp
 	fn has_body(&self) -> bool;
@@ -355,7 +368,7 @@ pub trait ClosureChain {
 		T: Fn(ClosureId) -> Option<R>;
 }
 
-pub(crate) fn register_function<T, A, F>(
+pub(crate) fn synthesise_function<T, A, F>(
 	base_environment: &mut Environment,
 	behavior: FunctionRegisterBehavior<A>,
 	function: &F,
@@ -369,6 +382,7 @@ where
 	let _is_async = behavior.is_async();
 	let _is_generator = behavior.is_generator();
 
+	// TODO don't have to calculate lookup if function has an explicit return type
 	let (mut behavior, scope, constructor, location, expected_parameters) = match behavior {
 		FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => (
 			FunctionBehavior::Constructor {
@@ -406,7 +420,7 @@ where
 				FunctionScope::ArrowFunction {
 					free_this_type: TypeId::ERROR_TYPE,
 					is_async,
-					expected_return,
+					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 				},
 				None,
 				None,
@@ -436,7 +450,7 @@ where
 					// to set
 					this_type: TypeId::ERROR_TYPE,
 					type_of_super: TypeId::ANY_TYPE,
-					expected_return,
+					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 				},
 				None,
 				location,
@@ -473,6 +487,7 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+
 			(
 				FunctionBehavior::Method {
 					is_async,
@@ -484,7 +499,7 @@ where
 					free_this_type: TypeId::ERROR_TYPE,
 					is_async,
 					is_generator,
-					expected_return,
+					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 				},
 				None,
 				None,
@@ -621,35 +636,30 @@ where
 	let return_type_annotation =
 		function.return_type_annotation(&mut function_environment, checking_data);
 
+	{
+		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
+			if !matches!(scope, FunctionScope::Constructor { .. }) {
+				if let (expect @ None, Some((return_type_annotation, pos))) =
+					(scope.get_expected_return_type_mut(), return_type_annotation)
+				{
+					*expect = Some(ExpectedReturnType::FromReturnAnnotation(
+						return_type_annotation,
+						// TODO lol
+						pos.without_source(),
+					));
+				}
+			}
+		}
+	}
+
 	// let _expected_return_type: Option<TypeId> = expected_return;
 	function_environment.context_type.location = location;
 
-	let returned = if function.has_body() {
+	if function.has_body() {
 		function.body(&mut function_environment, checking_data);
-		// Temporary move events to satisfy borrow checker
-		let events = mem::take(&mut function_environment.info.events);
-
-		let returned = crate::events::helpers::get_return_from_events(
-			&mut events.iter(),
-			checking_data,
-			// TODO environment should be good enough, but needs environment not context
-			&mut function_environment,
-			return_type_annotation,
-		);
-		function_environment.info.events = events;
-
-		match returned {
-			crate::events::helpers::ReturnedTypeFromBlock::ContinuedExecution => {
-				TypeId::UNDEFINED_TYPE
-			}
-			crate::events::helpers::ReturnedTypeFromBlock::ReturnedIf { when, returns } => {
-				checking_data.types.new_conditional_type(when, returns, TypeId::UNDEFINED_TYPE)
-			}
-			crate::events::helpers::ReturnedTypeFromBlock::Returned(ty) => ty,
-		}
 	} else {
-		return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |(left, _)| left)
-	};
+		crate::utils::notify!("No body?");
+	}
 
 	let closes_over = function_environment
 		.context_type
@@ -678,8 +688,14 @@ where
 		})
 		.collect();
 
-	let Syntax { free_variables, closed_over_references: function_closes_over, .. } =
+	let Syntax { free_variables, closed_over_references: function_closes_over, state, .. } =
 		function_environment.context_type;
+
+	let returned = if function.has_body() {
+		state.returned_type(&mut checking_data.types)
+	} else {
+		return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |(left, _)| left)
+	};
 
 	// crate::utils::notify!(
 	// 	"closes_over {:?}, free_variable {:?}, in {:?}",
@@ -760,7 +776,7 @@ where
 		type_parameters,
 		parameters: synthesised_parameters,
 		return_type,
-		effects: info.events,
+		effects: Some(info.events),
 		free_variables,
 		closed_over_variables: closes_over,
 	}

@@ -111,7 +111,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			},
 		};
 
-		// TODO: `None` position passed
+		// None position should be fine here
 		environment.info.register_property(self.0, publicity, under, ty, false, None);
 	}
 
@@ -122,6 +122,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
 	type_parameters: Option<&[parser::TypeParameter]>,
+	extends: Option<&[parser::TypeAnnotation]>,
 	signatures: &[WithComment<Decorated<InterfaceMember>>],
 	mut behavior: B,
 	environment: &mut Environment,
@@ -256,36 +257,91 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Rule {
-					parameter: _,
-					rule: _,
-					matching_type: _,
+					parameter,
+					rule,
+					matching_type,
 					optionality: _,
 					is_readonly: _,
-					output_type: _,
-					position,
-				} => checking_data.raise_unimplemented_error(
-					"interface rule",
-					position.with_source(environment.get_source()),
-				),
+					output_type,
+					position: _,
+				} => {
+					// TODO WIP
+					let to = match rule {
+						parser::types::interface::TypeRule::In => {
+							crate::utils::notify!("TODO");
+							TypeId::ANY_TYPE
+						}
+						parser::types::interface::TypeRule::InKeyOf => todo!(),
+					};
+
+					// TODO
+					let _parameter = checking_data.types.register_type(Type::RootPolyType(
+						crate::types::PolyNature::Generic {
+							name: parameter.clone(),
+							eager_fixed: to,
+						},
+					));
+
+					let key = synthesise_type_annotation(matching_type, environment, checking_data);
+					let value = synthesise_type_annotation(output_type, environment, checking_data);
+
+					interface_register_behavior.register(
+						ParserPropertyKeyType::Type(key),
+						InterfaceValue::Value(value),
+						checking_data,
+						environment,
+					);
+				}
 				InterfaceMember::Comment { .. } => {}
 			}
 		}
 	}
 
-	if let Some(parameters) = type_parameters {
-		let parameter_types = behavior
-			.interface_type()
-			.map(|id| checking_data.types.get_type_by_id(id).get_parameters())
-			.unwrap();
+	if type_parameters.is_some() || extends.is_some() {
+		let interface_type = behavior.interface_type().unwrap();
 
 		environment.new_lexical_environment_fold_into_parent(
 			crate::Scope::InterfaceEnvironment { this_constraint: TypeId::ERROR_TYPE },
 			checking_data,
 			|environment, checking_data| {
-				for (parameter, ty) in parameters.iter().zip(parameter_types.iter().flatten()) {
-					// TODO set constraint by modifying type
-					environment.named_types.insert(parameter.name.clone(), *ty);
+				let parameter_types =
+					checking_data.types.get_type_by_id(interface_type).get_parameters();
+
+				if let Some(parameters) = type_parameters {
+					for (parameter, ty) in parameters.iter().zip(parameter_types.iter().flatten()) {
+						if let Some(ref extends) = parameter.extends {
+							let extends =
+								synthesise_type_annotation(extends, environment, checking_data);
+
+							checking_data
+								.types
+								.modify_interface_type_parameter_constraint(*ty, extends);
+						}
+
+						// TODO set constraint by modifying type
+						environment.named_types.insert(parameter.name.clone(), *ty);
+					}
 				}
+
+				// Afterwards so have access to generics
+				if let Some(extends) = extends {
+					let mut iter = extends.iter();
+
+					// TODO generics
+					let mut extends = synthesise_type_annotation(
+						iter.next().unwrap(),
+						environment,
+						checking_data,
+					);
+
+					for ta in iter {
+						let ty = synthesise_type_annotation(ta, environment, checking_data);
+						extends = checking_data.types.new_and_type(extends, ty).unwrap();
+					}
+
+					checking_data.types.set_extends_on_interface(interface_type, extends);
+				}
+
 				synthesise_members(signatures, environment, checking_data, &mut behavior);
 			},
 		);

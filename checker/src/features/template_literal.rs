@@ -105,15 +105,16 @@ where
 
 		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 
+		let input = CallingInput {
+			called_with_new: crate::types::calling::CalledWithNew::None,
+			this_value: None,
+			call_site,
+			call_site_type_arguments: None,
+		};
 		match crate::types::calling::call_type(
 			tag,
 			arguments,
-			CallingInput {
-				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: None,
-				call_site,
-				call_site_type_arguments: None,
-			},
+			&input,
 			environment,
 			&mut check_things,
 			&mut checking_data.types,

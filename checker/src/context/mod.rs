@@ -17,10 +17,11 @@ pub(crate) use bases::Boundary;
 use source_map::{Span, SpanWithSource};
 
 use crate::{
+	context::environment::ExpectedReturnType,
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 	},
-	events::RootReference,
+	events::{ApplicationResult, RootReference},
 	features::{
 		functions::ClosureChain,
 		modules::Exported,
@@ -118,6 +119,7 @@ pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
 pub type MutableRewrites = Vec<(VariableId, VariableId)>;
 
+/// TODO some of this can be as `Option<&/&mut Syntax>`
 pub trait ContextType: Sized {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_>;
 
@@ -132,6 +134,10 @@ pub trait ContextType: Sized {
 	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 
 	fn get_exports(&mut self) -> Option<&mut Exported>;
+
+	fn get_state(&self) -> Option<&ApplicationResult>;
+
+	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult>;
 }
 
 // TODO enum_from
@@ -418,7 +424,7 @@ impl<T: ContextType> Context<T> {
 		match self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))) {
 			Some(s) => s.as_str(),
 			// TODO temp
-			None => format!("could not find name for variable @ {:?}", id).leak(),
+			None => format!("could not find name for variable @ {id:?}").leak(),
 		}
 	}
 
@@ -462,6 +468,8 @@ impl<T: ContextType> Context<T> {
 				free_variables: Default::default(),
 				closed_over_references: Default::default(),
 				location: None,
+				// TODO inherit from above
+				state: ApplicationResult::Completed,
 			},
 			can_reference_this: self.can_reference_this.clone(),
 			// TODO maybe based on something in the AST
@@ -486,12 +494,10 @@ impl<T: ContextType> Context<T> {
 			checking_data,
 			|env, cd| {
 				func(env, cd);
-				let mut thrown = TypeId::NEVER_TYPE;
-				let events = mem::take(&mut env.info.events);
 
-				env.info.events = crate::events::helpers::extract_throw_events(events, &mut thrown);
+				crate::utils::notify!("TODO also get possible impure functions");
 
-				thrown
+				env.context_type.state.throw_type(&mut cd.types)
 			},
 		);
 
@@ -530,6 +536,7 @@ impl<T: ContextType> Context<T> {
 					free_variables: used_parent_references,
 					closed_over_references,
 					location: _,
+					state,
 				},
 			can_reference_this,
 			bases,
@@ -538,6 +545,10 @@ impl<T: ContextType> Context<T> {
 			mut info,
 			possibly_mutated_objects,
 		} = new_environment;
+
+		if let Some(self_state) = self.context_type.get_state_mut() {
+			self_state.append_termination(state);
+		}
 
 		self.bases.merge(bases, self.context_id);
 
@@ -700,40 +711,43 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO extends
-	pub fn new_interface<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn register_interface<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		nominal: bool,
 		parameters: Option<&'a [A::TypeParameter<'a>]>,
-		extends: Option<&'a [A::TypeAnnotation<'a>]>,
+		_extends: Option<&'a [A::TypeAnnotation<'a>]>,
 		position: SpanWithSource,
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
-		let existing = if let Some(id) = self.named_types.get(name) {
-			if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
-				checking_data
-					.diagnostics_container
-					.add_warning(TypeCheckWarning::MergingInterfaceInSameContext { position });
+		// Interface merging
+		{
+			let existing = if let Some(id) = self.named_types.get(name) {
+				if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
+					checking_data
+						.diagnostics_container
+						.add_warning(TypeCheckWarning::MergingInterfaceInSameContext { position });
 
-				Some(*id)
+					Some(*id)
+				} else {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::TypeAlreadyDeclared { name: name.to_owned(), position },
+					);
+					return TypeId::ERROR_TYPE;
+				}
 			} else {
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::TypeAlreadyDeclared { name: name.to_owned(), position },
-				);
-				return TypeId::ERROR_TYPE;
-			}
-		} else {
-			self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
-				|id| {
-					matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
-						.then_some(*id)
-				},
-			)
-		};
+				self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
+					|id| {
+						matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
+							.then_some(*id)
+					},
+				)
+			};
 
-		if let Some(existing) = existing {
-			return existing;
-		};
+			if let Some(existing) = existing {
+				return existing;
+			};
+		}
 
 		// TODO declare here
 		let parameters = parameters.map(|parameters| {
@@ -742,6 +756,7 @@ impl<T: ContextType> Context<T> {
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::Generic {
 						name: A::type_parameter_name(parameter).to_owned(),
+						// This is assigned later
 						eager_fixed: TypeId::ANY_TYPE,
 					});
 					checking_data.types.register_type(ty)
@@ -749,11 +764,13 @@ impl<T: ContextType> Context<T> {
 				.collect()
 		});
 
-		if let Some(_extends) = extends {
-			todo!("synthesise, fold into Type::And and create alias type")
-		}
-
-		let ty = Type::Interface { nominal, name: name.to_owned(), parameters };
+		let ty = Type::Interface {
+			name: name.to_owned(),
+			nominal,
+			// This is assigned later
+			extends: None,
+			parameters,
+		};
 		let interface_ty = checking_data.types.register_type(ty);
 		self.named_types.insert(name.to_owned(), interface_ty);
 		interface_ty
@@ -767,7 +784,9 @@ impl<T: ContextType> Context<T> {
 		position: Span,
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
+		// Doing this as may be a bit faster maybe?
 		let mut env = self.new_lexical_environment(Scope::TypeAlias);
+
 		let (parameters, to) = if let Some(parameters) = parameters {
 			let parameters = parameters
 				.iter()
@@ -791,6 +810,11 @@ impl<T: ContextType> Context<T> {
 			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
 			(None, to)
 		};
+
+		// TODO temp as object types use the same environment.properties representation
+		env.info.current_properties.into_iter().for_each(|(t, mut props)| {
+			self.info.current_properties.entry(t).or_default().append(&mut props);
+		});
 
 		// Works as an alias
 		let ty = Type::AliasTo { to, name: name.to_owned(), parameters };
@@ -931,7 +955,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_expected_return_type(&self) -> Option<TypeId> {
+	pub fn get_expected_return_type(&self) -> Option<ExpectedReturnType> {
 		self.parents_iter()
 			.find_map(|env| {
 				if let GeneralContext::Syntax(Context {
@@ -958,7 +982,7 @@ impl<T: ContextType> Context<T> {
 					..
 				} = func_scope
 				{
-					expected_return.clone()
+					*expected_return
 				} else {
 					None
 				}

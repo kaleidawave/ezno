@@ -12,7 +12,7 @@ use crate::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
 	},
-	types::{FunctionType, PolyNature, Type},
+	types::{FunctionType, GenericChain, PolyNature, Type},
 	Environment, FunctionId, LocalInformation, TypeId,
 };
 
@@ -45,27 +45,83 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let types = vec![
-			Type::Interface { name: "error".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "boolean".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "number".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "string".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "undefined".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "null".to_owned(), parameters: None, nominal: true },
+			Type::Interface {
+				name: "error".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "never".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "any".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "boolean".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "number".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "string".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "undefined".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
+			Type::Interface {
+				name: "null".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
 			Type::Interface {
 				name: "Array".to_owned(),
 				parameters: Some(vec![TypeId::T_TYPE]),
 				nominal: true,
+				extends: None,
 			},
 			// Array T
 			Type::RootPolyType(PolyNature::Generic {
 				name: "T".to_owned(),
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			Type::Interface { name: "object".to_owned(), parameters: None, nominal: false },
-			Type::Interface { name: "Function".to_owned(), parameters: None, nominal: false },
-			Type::Interface { name: "RegExp".to_owned(), parameters: None, nominal: true },
+			Type::Interface {
+				name: "object".to_owned(),
+				parameters: None,
+				nominal: false,
+				extends: None,
+			},
+			Type::Interface {
+				name: "Function".to_owned(),
+				parameters: None,
+				nominal: false,
+				extends: None,
+			},
+			Type::Interface {
+				name: "RegExp".to_owned(),
+				parameters: None,
+				nominal: true,
+				extends: None,
+			},
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -151,6 +207,10 @@ impl TypeStore {
 			return lhs;
 		}
 
+		if let (TypeId::TRUE, TypeId::FALSE) | (TypeId::FALSE, TypeId::TRUE) = (lhs, rhs) {
+			return TypeId::BOOLEAN_TYPE;
+		}
+
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)
 	}
@@ -208,7 +268,7 @@ impl TypeStore {
 		parameters: crate::types::functions::SynthesisedParameters,
 		return_type: TypeId,
 		declared_at: &source_map::SpanWithSource,
-		effects: Vec<crate::events::Event>,
+		effects: Option<Vec<crate::events::Event>>,
 		constant_function: Option<String>,
 	) -> TypeId {
 		let id = crate::FunctionId(declared_at.source, declared_at.start);
@@ -247,18 +307,18 @@ impl TypeStore {
 		&mut self,
 		condition: TypeId,
 		truthy_result: TypeId,
-		else_result: TypeId,
+		otherwise_result: TypeId,
 	) -> TypeId {
 		// TODO raise warning
-		if truthy_result == else_result {
+		if truthy_result == otherwise_result {
 			return truthy_result;
 		}
 		// TODO on is negation then swap operands
 		let ty = Type::Constructor(super::Constructor::ConditionalResult {
 			condition,
 			truthy_result,
-			else_result,
-			result_union: self.new_or_type(truthy_result, else_result),
+			otherwise_result,
+			result_union: self.new_or_type(truthy_result, otherwise_result),
 		});
 		self.register_type(ty)
 	}
@@ -286,7 +346,14 @@ impl TypeStore {
 		&self,
 		info_chain: &C,
 		on: TypeId,
-		resolver: &impl Fn(&LocalInformation, &TypeStore, TypeId, TData) -> Option<TResult>,
+		on_type_arguments: Option<&GenericChain>,
+		resolver: &impl Fn(
+			&LocalInformation,
+			&TypeStore,
+			TypeId,
+			Option<&GenericChain>,
+			TData,
+		) -> Option<TResult>,
 		data: TData,
 	) -> PossibleLogical<TResult> {
 		if on == TypeId::ERROR_TYPE {
@@ -301,51 +368,71 @@ impl TypeStore {
 			Type::SpecialObject(SpecialObjects::Function(..)) => {
 				let on_function = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				// TODO undecided on this
 				on_function
 					.or_else(|| {
-						self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
-							.ok()
+						self.get_fact_about_type(
+							info_chain,
+							TypeId::FUNCTION_TYPE,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
 					})
 					.ok_or(crate::context::Missing::None)
 			}
 			Type::FunctionReference(_) => {
 				let on_function = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				// TODO undecided on this
 				on_function
 					.or_else(|| {
-						self.get_fact_about_type(info_chain, TypeId::FUNCTION_TYPE, resolver, data)
-							.ok()
+						self.get_fact_about_type(
+							info_chain,
+							TypeId::FUNCTION_TYPE,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
 					})
 					.ok_or(crate::context::Missing::None)
 			}
 			Type::AliasTo { to, .. } => {
 				let property_on_self = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				property_on_self
-					.or_else(|| self.get_fact_about_type(info_chain, *to, resolver, data).ok())
+					.or_else(|| {
+						self.get_fact_about_type(info_chain, *to, on_type_arguments, resolver, data)
+							.ok()
+					})
 					.ok_or(crate::context::Missing::None)
 			}
 
 			Type::And(left, right) => self
-				.get_fact_about_type(info_chain, *left, resolver, data)
+				.get_fact_about_type(info_chain, *left, on_type_arguments, resolver, data)
 				.ok()
-				.or_else(|| self.get_fact_about_type(info_chain, *right, resolver, data).ok())
+				.or_else(|| {
+					self.get_fact_about_type(info_chain, *right, on_type_arguments, resolver, data)
+						.ok()
+				})
 				.ok_or(crate::context::Missing::None),
 
 			Type::Or(left, right) => {
-				let left = self.get_fact_about_type(info_chain, *left, resolver, data);
-				let right = self.get_fact_about_type(info_chain, *right, resolver, data);
+				let left =
+					self.get_fact_about_type(info_chain, *left, on_type_arguments, resolver, data);
+				let right =
+					self.get_fact_about_type(info_chain, *right, on_type_arguments, resolver, data);
 
 				// TODO throwaway if both Missing::None
 
@@ -359,14 +446,21 @@ impl TypeStore {
 				// Can assign to properties on parameters etc
 				let on_root_type = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				on_root_type
 					.or_else(|| {
 						let aliases =
 							get_constraint(on, self).expect("poly type with no constraint");
-						self.get_fact_about_type(info_chain, aliases, resolver, data).ok()
+						self.get_fact_about_type(
+							info_chain,
+							aliases,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
 					})
 					.ok_or(crate::context::Missing::None)
 			}
@@ -376,13 +470,21 @@ impl TypeStore {
 			})) => {
 				let on_sg_type = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				on_sg_type
 					.or_else(|| {
-						let fact_opt =
-							self.get_fact_about_type(info_chain, *base, resolver, data).ok();
+						let on_type_arguments = GenericChain::append(on_type_arguments, arguments);
+						let fact_opt = self
+							.get_fact_about_type(
+								info_chain,
+								*base,
+								Some(&on_type_arguments),
+								resolver,
+								data,
+							)
+							.ok();
 
 						fact_opt.map(|fact| Logical::Implies {
 							on: Box::new(fact),
@@ -394,11 +496,23 @@ impl TypeStore {
 			Type::Constructor(Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
+				otherwise_result,
 				result_union: _,
 			}) => {
-				let left = self.get_fact_about_type(info_chain, *truthy_result, resolver, data);
-				let right = self.get_fact_about_type(info_chain, *else_result, resolver, data);
+				let left = self.get_fact_about_type(
+					info_chain,
+					*truthy_result,
+					on_type_arguments,
+					resolver,
+					data,
+				);
+				let right = self.get_fact_about_type(
+					info_chain,
+					*otherwise_result,
+					on_type_arguments,
+					resolver,
+					data,
+				);
 
 				// TODO throwaway if both Missing::None
 
@@ -411,7 +525,7 @@ impl TypeStore {
 			Type::Constructor(_constructor) => {
 				let on_constructor_type = info_chain
 					.get_chain_of_info()
-					.find_map(|info| resolver(info, self, on, data))
+					.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 					.map(Logical::Pure);
 
 				on_constructor_type
@@ -420,7 +534,14 @@ impl TypeStore {
 						let constraint =
 							get_constraint(on, self).expect("no constraint for constructor");
 						// TODO might need to send more information here, rather than forgetting via .get_type
-						self.get_fact_about_type(info_chain, constraint, resolver, data).ok()
+						self.get_fact_about_type(
+							info_chain,
+							constraint,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
 					})
 					.ok_or(crate::context::Missing::None)
 			}
@@ -428,7 +549,7 @@ impl TypeStore {
 				let object_constraint_structure_generics =
 					if let Some(object_constraint) = info_chain
 						.get_chain_of_info()
-						.find_map(|c| c.object_constraints.get(&on).cloned())
+						.find_map(|c| c.object_constraints.get(&on).copied())
 					{
 						if let Type::Constructor(Constructor::StructureGenerics(
 							StructureGenerics { arguments, .. },
@@ -463,7 +584,7 @@ impl TypeStore {
 
 				info_chain
 					.get_chain_of_info()
-					.find_map(|env| resolver(&env, self, on, data))
+					.find_map(|env| resolver(env, self, on, on_type_arguments, data))
 					.map(|result| {
 						let pure = Logical::Pure(result);
 						if let Some(ref generics) = generics {
@@ -475,36 +596,45 @@ impl TypeStore {
 					})
 					.or_else(|| {
 						if let Some(prototype) = prototype {
-							self.get_fact_about_type(info_chain, prototype, resolver, data)
-								.map(|result| {
-									if let Some(generics) = generics {
-										Logical::Implies {
-											on: Box::new(result),
-											// TODO clone
-											antecedent: generics.clone(),
-										}
-									} else {
-										result
+							self.get_fact_about_type(
+								info_chain,
+								prototype,
+								on_type_arguments,
+								resolver,
+								data,
+							)
+							.map(|result| {
+								if let Some(generics) = generics {
+									Logical::Implies {
+										on: Box::new(result),
+										// TODO clone
+										antecedent: generics.clone(),
 									}
-								})
-								.ok()
+								} else {
+									result
+								}
+							})
+							.ok()
 						} else {
 							None
 						}
 					})
 					.ok_or(crate::context::Missing::None)
 			}
-			// TODO extends
-			Type::Interface { .. } => info_chain
+			Type::Interface { extends, .. } => info_chain
 				.get_chain_of_info()
-				.find_map(|env| resolver(&env, self, on, data))
+				.find_map(|env| resolver(env, self, on, on_type_arguments, data))
 				.map(Logical::Pure)
 				.or_else(|| {
-					if let Some(prototype) = info_chain
-						.get_chain_of_info()
-						.find_map(|info| info.prototypes.get(&on).copied())
-					{
-						self.get_fact_about_type(info_chain, prototype, resolver, data).ok()
+					if let Some(extends) = extends {
+						self.get_fact_about_type(
+							info_chain,
+							*extends,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
 					} else {
 						None
 					}
@@ -512,11 +642,18 @@ impl TypeStore {
 				.ok_or(crate::context::Missing::None),
 			Type::Constant(cst) => info_chain
 				.get_chain_of_info()
-				.find_map(|info| resolver(info, self, on, data))
+				.find_map(|info| resolver(info, self, on, on_type_arguments, data))
 				.map(Logical::Pure)
 				.or_else(|| {
 					let backing_type = cst.get_backing_type_id();
-					self.get_fact_about_type(info_chain, backing_type, resolver, data).ok()
+					self.get_fact_about_type(
+						info_chain,
+						backing_type,
+						on_type_arguments,
+						resolver,
+						data,
+					)
+					.ok()
 				})
 				.ok_or(crate::context::Missing::None),
 			Type::SpecialObject(_) => todo!(),
@@ -596,7 +733,7 @@ impl TypeStore {
 		} else if let Ok(prop) = get_property_unbound(
 			indexee,
 			crate::context::information::Publicity::Public,
-			PropertyKey::from_type(indexer, self),
+			&PropertyKey::from_type(indexer, self),
 			self,
 			environment,
 		) {
@@ -646,5 +783,29 @@ impl TypeStore {
 	/// TODO WIP
 	pub fn new_open_type(&mut self, base: TypeId) -> TypeId {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
+	}
+
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn modify_interface_type_parameter_constraint(
+		&mut self,
+		ty: TypeId,
+		new_constraint: TypeId,
+	) {
+		if let Type::RootPolyType(PolyNature::Generic { ref mut eager_fixed, .. }) =
+			self.types[ty.0 as usize]
+		{
+			*eager_fixed = new_constraint;
+		} else {
+			unreachable!()
+		}
+	}
+
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn set_extends_on_interface(&mut self, interface_type: TypeId, new_extends: TypeId) {
+		if let Type::Interface { ref mut extends, .. } = self.types[interface_type.0 as usize] {
+			*extends = Some(new_extends);
+		} else {
+			unreachable!()
+		}
 	}
 }

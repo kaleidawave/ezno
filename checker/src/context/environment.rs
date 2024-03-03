@@ -6,7 +6,7 @@ use crate::{
 		NotInLoopOrCouldNotFindLabel, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 		TDZ,
 	},
-	events::{Event, FinalEvent, RootReference},
+	events::{ApplicationResult, Event, FinalEvent, RootReference},
 	features::{
 		assignments::{Assignable, AssignmentKind, Reference},
 		functions,
@@ -18,11 +18,10 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	subtyping::BasicEquality,
+	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	types::{
 		is_type_truthy_falsy,
 		properties::{PropertyKey, PropertyKind, PropertyValue},
-		subtyping::{type_is_subtype, SubTypeResult},
 		PolyNature, Type, TypeCombinable, TypeStore,
 	},
 	CheckingData, Decidable, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -53,6 +52,12 @@ pub struct Syntax<'a> {
 
 	/// TODO WIP! server, client, worker etc
 	pub location: ContextLocation,
+
+	/// Represents whether [`crate::events::FinalEvent`]s have occurred. Can be used to tell
+	/// whether the statements will fire. Shortcut for inferred return types
+	///
+	/// In the future narrowing
+	pub state: ApplicationResult,
 }
 
 /// Code under a dynamic boundary can run more than once
@@ -101,6 +106,30 @@ impl<'a> ContextType for Syntax<'a> {
 			None
 		}
 	}
+
+	fn get_state(&self) -> Option<&ApplicationResult> {
+		Some(&self.state)
+	}
+
+	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
+		Some(&mut self.state)
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ExpectedReturnType {
+	/// This may have a position in the future
+	Inferred(TypeId),
+	FromReturnAnnotation(TypeId, Span),
+}
+
+impl ExpectedReturnType {
+	pub(crate) fn get_type_and_position(self) -> (TypeId, Option<Span>) {
+		match self {
+			ExpectedReturnType::Inferred(ty) => (ty, None),
+			ExpectedReturnType::FromReturnAnnotation(ty, pos) => (ty, Some(pos)),
+		}
+	}
 }
 
 /// TODO better names
@@ -111,20 +140,20 @@ pub enum FunctionScope {
 		// This always points to a poly free variable type
 		free_this_type: TypeId,
 		is_async: bool,
-		expected_return: Option<TypeId>,
+		expected_return: Option<ExpectedReturnType>,
 	},
 	MethodFunction {
 		// This always points to a poly free variable type
 		free_this_type: TypeId,
 		is_async: bool,
-		expected_return: Option<TypeId>,
+		expected_return: Option<ExpectedReturnType>,
 		is_generator: bool,
 	},
 	// is new-able
 	Function {
 		is_generator: bool,
 		is_async: bool,
-		expected_return: Option<TypeId>,
+		expected_return: Option<ExpectedReturnType>,
 		// This always points to a conditional type based on `new.target === undefined`
 		this_type: TypeId,
 		type_of_super: TypeId,
@@ -138,7 +167,26 @@ pub enum FunctionScope {
 	},
 }
 
+impl FunctionScope {
+	// TODO temp
+	pub(crate) fn get_expected_return_type_mut(&mut self) -> &mut Option<ExpectedReturnType> {
+		match self {
+			FunctionScope::ArrowFunction { expected_return, .. }
+			| FunctionScope::MethodFunction { expected_return, .. }
+			| FunctionScope::Function { expected_return, .. } => expected_return,
+			FunctionScope::Constructor { .. } => unreachable!(),
+		}
+	}
+}
+
+/// For labeled statements
 pub type Label = Option<String>;
+
+#[derive(Clone, Copy)]
+pub enum Returnable<'a, A: crate::ASTImplementation> {
+	Statement(Option<&'a A::MultipleExpression<'a>>, Span),
+	ArrowFunctionBody(&'a A::Expression<'a>),
+}
 
 /// TODO name of structure
 /// TODO conditionals should have conditional proofs (separate from the ones on context)
@@ -215,7 +263,7 @@ impl<'a> Environment<'a> {
 							let get_property_handle_errors = env.get_property_handle_errors(
 								on,
 								publicity,
-								with,
+								&with,
 								checking_data,
 								span.without_source(),
 							);
@@ -434,7 +482,7 @@ impl<'a> Environment<'a> {
 		A: crate::ASTImplementation,
 		F: functions::SynthesisableFunction<A>,
 	{
-		functions::register_function(self, behavior, function, checking_data)
+		functions::synthesise_function(self, behavior, function, checking_data)
 	}
 
 	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -611,11 +659,12 @@ impl<'a> Environment<'a> {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn get_property(
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
-		property: PropertyKey,
+		property: &PropertyKey,
 		types: &mut TypeStore,
 		with: Option<TypeId>,
 		position: Span,
@@ -637,19 +686,20 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
-		key: PropertyKey,
+		key: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
 		site: Span,
 	) -> Result<Instance, ()> {
 		let get_property = self.get_property(
 			on,
 			publicity,
-			key.clone(),
+			key,
 			&mut checking_data.types,
 			None,
 			site,
 			&checking_data.options,
 		);
+
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
@@ -664,7 +714,7 @@ impl<'a> Environment<'a> {
 						crate::diagnostics::PropertyRepresentation::StringKey(s.to_string())
 					}
 					PropertyKey::Type(t) => crate::diagnostics::PropertyRepresentation::Type(
-						crate::types::printing::print_type(t, &checking_data.types, self, false),
+						crate::types::printing::print_type(*t, &checking_data.types, self, false),
 					),
 				},
 				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
@@ -903,7 +953,7 @@ impl<'a> Environment<'a> {
 			};
 		}
 
-		let (truthy_result, truthy_info) = {
+		let (truthy_result, truthy_info, truthy_state) = {
 			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: condition,
 				is_switch: None,
@@ -911,7 +961,7 @@ impl<'a> Environment<'a> {
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
 			let Context {
-				context_type: Syntax { free_variables, closed_over_references, .. },
+				context_type: Syntax { free_variables, closed_over_references, state, .. },
 				info,
 				..
 			} = truthy_environment;
@@ -919,10 +969,10 @@ impl<'a> Environment<'a> {
 			self.context_type.free_variables.extend(free_variables);
 			self.context_type.closed_over_references.extend(closed_over_references);
 
-			(result, info)
+			(result, info, state)
 		};
 
-		let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
+		let (falsy_result, falsy_info, falsy_state) = if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 				is_switch: None,
@@ -931,7 +981,7 @@ impl<'a> Environment<'a> {
 			let result = else_evaluate(&mut falsy_environment, checking_data);
 
 			let Context {
-				context_type: Syntax { free_variables, closed_over_references, .. },
+				context_type: Syntax { free_variables, closed_over_references, state, .. },
 				info,
 				..
 			} = falsy_environment;
@@ -939,10 +989,13 @@ impl<'a> Environment<'a> {
 			self.context_type.free_variables.extend(free_variables);
 			self.context_type.closed_over_references.extend(closed_over_references);
 
-			(result, Some(info))
+			(result, Some(info), state)
 		} else {
-			(R::default(), None)
+			(R::default(), None, ApplicationResult::Completed)
 		};
+
+		self.context_type.state =
+			ApplicationResult::new_from_unknown_condition(condition, truthy_state, falsy_state);
 
 		let combined_result =
 			R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
@@ -974,11 +1027,79 @@ impl<'a> Environment<'a> {
 	}
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
-		self.info.events.push(FinalEvent::Throw { thrown, position }.into());
+		let final_event = FinalEvent::Throw { thrown, position };
+		self.context_type.state.append_termination(final_event);
+		self.info.events.push(final_event.into());
 	}
 
-	pub fn return_value(&mut self, returned: TypeId, returned_position: SpanWithSource) {
-		self.info.events.push(FinalEvent::Return { returned, returned_position }.into());
+	/// Also appends invalid return type checks
+	pub fn return_value<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		&mut self,
+		expression: &Returnable<A>,
+		checking_data: &mut CheckingData<T, A>,
+	) {
+		let expected = self.get_expected_return_type();
+		let expected_split = expected.map(ExpectedReturnType::get_type_and_position);
+		let expected_type = expected_split.map_or(TypeId::ANY_TYPE, |(l, _)| l);
+
+		let (returned, returned_position) = match expression {
+			Returnable::Statement(Some(expression), returned_position) => (
+				A::synthesise_multiple_expression(expression, expected_type, self, checking_data),
+				returned_position.with_source(self.get_source()),
+			),
+			Returnable::Statement(None, returned_position) => {
+				(TypeId::UNDEFINED_TYPE, returned_position.with_source(self.get_source()))
+			}
+			Returnable::ArrowFunctionBody(expression) => (
+				A::synthesise_expression(expression, expected_type, self, checking_data),
+				A::expression_position(expression).with_source(self.get_source()),
+			),
+		};
+
+		{
+			// Don't check inferred, only annotations
+			if let Some(ExpectedReturnType::FromReturnAnnotation(expected, position)) = expected {
+				// TODO what about conditional things
+				let mut basic_equality = BasicEquality {
+					add_property_restrictions: false,
+					position: source_map::Nullable::NULL,
+					object_constraints: Default::default(),
+				};
+
+				let result = type_is_subtype(
+					expected,
+					returned,
+					&mut basic_equality,
+					self,
+					&checking_data.types,
+				);
+
+				if let SubTypeResult::IsNotSubType(_) = result {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type: TypeStringRepresentation::from_type_id(
+								expected,
+								self,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							returned_type: TypeStringRepresentation::from_type_id(
+								returned,
+								self,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							annotation_position: Some(position.with_source(self.get_source())),
+							returned_position,
+						},
+					);
+				}
+			}
+		}
+
+		let final_event = FinalEvent::Return { returned, returned_position };
+		self.context_type.state.append_termination(final_event);
+		self.info.events.push(final_event.into());
 	}
 
 	pub fn add_continue(
@@ -1009,7 +1130,6 @@ impl<'a> Environment<'a> {
 		position: Span,
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
-			crate::utils::notify!("Carry is {}", carry);
 			self.info.events.push(
 				FinalEvent::Break {
 					position: Some(position.with_source(self.get_source())),
@@ -1029,6 +1149,7 @@ impl<'a> Environment<'a> {
 	/// Updates **a existing property**
 	///
 	/// Returns the result of the setter... TODO could return new else
+	#[allow(clippy::too_many_arguments)]
 	pub fn set_property(
 		&mut self,
 		on: TypeId,

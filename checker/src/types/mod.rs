@@ -26,6 +26,7 @@ use crate::{
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
+	types::poly_types::contributions::Contributions,
 	Decidable, Environment, FunctionId, SmallMap,
 };
 
@@ -33,9 +34,7 @@ use crate::{
 pub use self::functions::*;
 
 use self::{
-	poly_types::generic_type_arguments::StructureGenericArguments,
-	properties::PropertyKey,
-	subtyping::{AlreadyChecked, SubTypingMode},
+	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
 };
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
@@ -122,6 +121,7 @@ pub enum Type {
 		// Whether only values under this type can be matched
 		nominal: bool,
 		parameters: Option<Vec<TypeId>>,
+		extends: Option<TypeId>,
 	},
 	/// *Dependent equality types*
 	Constant(crate::Constant),
@@ -246,7 +246,7 @@ pub enum Constructor {
 		/// TODO this can only be poly types
 		condition: TypeId,
 		truthy_result: TypeId,
-		else_result: TypeId,
+		otherwise_result: TypeId,
 		result_union: TypeId,
 	},
 	/// output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
@@ -327,10 +327,9 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
 			}
-			Type::SpecialObject(SpecialObjects::Function(..))
-			| Type::FunctionReference(..)
-			| Type::SpecialObject(_)
-			| Type::Object(_) => Decidable::Known(true),
+			Type::FunctionReference(..) | Type::SpecialObject(_) | Type::Object(_) => {
+				Decidable::Known(true)
+			}
 			Type::Constant(cst) => {
 				// TODO strict casts
 				Decidable::Known(cast_as_boolean(cst, false).unwrap())
@@ -348,32 +347,9 @@ pub struct BasicEquality {
 
 /// For subtyping
 
-pub trait SubTypeBehavior {
-	/// If false will error out if T >: U
-	const INFER_GENERICS: bool;
-
-	/// TODO better return type
-	/// TODO not sure about `AlreadyChecked`
-	fn set_type_argument(
-		&mut self,
-		on: TypeId,
-		argument: TypeId,
-		depth: u8,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult;
-
-	/// TODO not sure about `AlreadyChecked`
-	fn try_set_contravariant(
-		&mut self,
-		on: TypeId,
-		restriction: TypeId,
-		position: SpanWithSource,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult;
+pub trait SubTypeBehavior<'a> {
+	/// For specialisation during calling
+	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>>;
 
 	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId);
 
@@ -393,47 +369,9 @@ pub enum ArgumentOrLookup {
 	LookUpGeneric(LookUpGeneric),
 }
 
-impl SubTypeBehavior for BasicEquality {
-	const INFER_GENERICS: bool = false;
-
-	fn set_type_argument(
-		&mut self,
-		on: TypeId,
-		argument: TypeId,
-		_depth: u8,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		crate::utils::notify!(
-			"Shouldn't be doing 'contributing like' subtyping here for BasicEquality"
-		);
-
-		let constraint = get_constraint(on, types).unwrap();
-		subtyping::type_is_subtype_with_generics(
-			constraint,
-			None,
-			argument,
-			None,
-			self,
-			environment,
-			types,
-			SubTypingMode::default(),
-			already_checked,
-		)
-	}
-
-	fn try_set_contravariant(
-		&mut self,
-		_on: TypeId,
-		_restriction: TypeId,
-		_position: SpanWithSource,
-		_environment: &Environment,
-		_types: &TypeStore,
-		_already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		crate::utils::notify!("Here!");
-		SubTypeResult::IsSubType
+impl<'a> SubTypeBehavior<'a> for BasicEquality {
+	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
+		None
 	}
 
 	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId) {
@@ -454,7 +392,7 @@ impl SubTypeBehavior for BasicEquality {
 	}
 }
 
-/// TODO implement `Try` / `?` on SupertypeResult
+/// TODO implement `Try` / `?` on `SubTypeResult`
 #[derive(Debug)]
 pub enum SubTypeResult {
 	IsSubType,
@@ -521,6 +459,14 @@ impl<'a> GenericChain<'a> {
 		value: StructureGenericArgumentsRef<'a>,
 	) -> GenericChain<'a> {
 		GenericChain { parent, value }
+	}
+
+	pub(crate) fn get_single_arg(&self, key: TypeId) -> Option<TypeId> {
+		if let Some((t, _pos)) = self.value.type_restrictions.get(&key) {
+			Some(*t)
+		} else {
+			self.parent.and_then(|parent| parent.get_single_arg(key))
+		}
 	}
 }
 
@@ -684,7 +630,7 @@ pub trait TypeCombinable {
 	fn combine(
 		condition: TypeId,
 		truthy_result: Self,
-		else_result: Self,
+		otherwise_result: Self,
 		types: &mut TypeStore,
 	) -> Self;
 
@@ -696,7 +642,7 @@ impl TypeCombinable for () {
 	fn combine(
 		_condition: TypeId,
 		_truthy_result: Self,
-		_else_result: Self,
+		_otherwise_result: Self,
 		_types: &mut TypeStore,
 	) -> Self {
 	}
@@ -709,10 +655,10 @@ impl TypeCombinable for TypeId {
 	fn combine(
 		condition: TypeId,
 		truthy_result: Self,
-		else_result: Self,
+		otherwise_result: Self,
 		types: &mut TypeStore,
 	) -> Self {
-		types.new_conditional_type(condition, truthy_result, else_result)
+		types.new_conditional_type(condition, truthy_result, otherwise_result)
 	}
 
 	fn default() -> Self {

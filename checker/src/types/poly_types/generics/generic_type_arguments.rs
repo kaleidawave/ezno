@@ -102,7 +102,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 		_c: &C,
 		_types: &mut TypeStore,
 	) -> Option<TypeId> {
-		self.local_arguments.get(&under).cloned()
+		self.local_arguments.get(&under).copied()
 	}
 }
 
@@ -115,6 +115,7 @@ pub struct StructureGenericArguments {
 }
 
 impl StructureGenericArguments {
+	#[must_use]
 	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
 		self.type_restrictions.get(&under).map(|(l, _)| *l)
 	}

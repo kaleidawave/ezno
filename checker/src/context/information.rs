@@ -6,8 +6,8 @@ use crate::{
 	context::PossibleLogical,
 	events::{Event, RootReference},
 	features::functions::{ClosureId, ThisValue},
-	types::{get_constraint, properties::PropertyKey, TypeStore},
-	PropertyValue, Type, TypeId, VariableId,
+	types::{get_constraint, properties::PropertyKey, GenericChain, TypeStore},
+	Constant, PropertyValue, Type, TypeId, VariableId,
 };
 
 /// TODO explain usage
@@ -73,10 +73,10 @@ impl LocalInformation {
 		}
 	}
 
-	/// This is how invocation contexts register throws...
-	pub(crate) fn throw_value_in_info(&mut self, value: TypeId, position: SpanWithSource) {
-		self.events.push(crate::events::FinalEvent::Throw { thrown: value, position }.into());
-	}
+	// /// This is how invocation contexts register throws...
+	// pub(crate) fn throw_value_in_info(&mut self, value: TypeId, position: SpanWithSource) {
+	// 	self.events.push(crate::events::FinalEvent::Throw { thrown: value, position }.into());
+	// }
 
 	#[must_use]
 	pub fn get_events(&self) -> &[Event] {
@@ -161,19 +161,6 @@ impl LocalInformation {
 
 pub trait InformationChain {
 	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation>;
-
-	/// For debugging
-	fn get_reference_name(&self, reference: &RootReference) -> &str {
-		match reference {
-			RootReference::Variable(variable_id) => self.get_variable_name(*variable_id),
-			RootReference::This => "this",
-		}
-	}
-
-	/// For debugging
-	fn get_variable_name(&self, _variable_id: VariableId) -> &str {
-		"trying to get variable name in information chain"
-	}
 }
 
 impl InformationChain for LocalInformation {
@@ -226,32 +213,35 @@ pub(crate) fn get_value_of_constant_import_variable(
 pub(crate) fn get_property_unbound(
 	on: TypeId,
 	publicity: Publicity,
-	under: PropertyKey,
+	under: &PropertyKey,
 	types: &TypeStore,
 	info: &impl InformationChain,
 ) -> PossibleLogical<PropertyValue> {
 	fn get_property(
 		info: &LocalInformation,
-		_types: &TypeStore,
+		types: &TypeStore,
 		on: TypeId,
+		on_type_arguments: Option<&GenericChain>,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
 		info.current_properties
 			.get(&on)
-			.and_then(|properties| get_property_under(properties, under))
+			.and_then(|properties| get_property_under(properties, under, on_type_arguments, types))
 	}
 
-	let under = match under {
-		PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-		under @ PropertyKey::String(_) => under,
-	};
+	// let under = match under {
+	// 	PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
+	// 	under @ PropertyKey::String(_) => under,
+	// };
 
-	types.get_fact_about_type(info, on, &get_property, (publicity, &under))
+	types.get_fact_about_type(info, on, None, &get_property, (publicity, &under))
 }
 
 fn get_property_under(
-	properties: &Vec<(Publicity, PropertyKey<'_>, PropertyValue)>,
+	properties: &[(Publicity, PropertyKey<'_>, PropertyValue)],
 	under: (Publicity, &PropertyKey<'_>),
+	on_type_arguments: Option<&GenericChain>,
+	types: &TypeStore,
 ) -> Option<PropertyValue> {
 	// 'rev' is important
 	properties.iter().rev().find_map(move |(publicity, key, value)| {
@@ -270,9 +260,17 @@ fn get_property_under(
 				}
 			}
 			PropertyKey::Type(key) => {
+				// TODO wip, need recursive function
+				let key = if let Some(on_type_arguments) = on_type_arguments {
+					on_type_arguments.get_single_arg(*key).unwrap_or(*key)
+				} else {
+					*key
+				};
 				match want_key {
 					PropertyKey::Type(want) => {
-						// TODO backing type...
+						crate::utils::notify!("want {:?} key {:?}", want, key);
+						let want = get_constraint(*want, types).unwrap_or(*want);
+						crate::utils::notify!("want {:?} key {:?}", want, key);
 						if key == want {
 							Some(value.clone())
 						} else {
@@ -280,9 +278,17 @@ fn get_property_under(
 						}
 					}
 					PropertyKey::String(s) => {
-						// TODO ...
-						if s.parse::<usize>().is_ok() {
+						// TODO temp
+						if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
 							Some(value.clone())
+						} else if let Type::Constant(Constant::String(ks)) =
+							types.get_type_by_id(key)
+						{
+							if ks == s {
+								Some(value.clone())
+							} else {
+								None
+							}
 						} else {
 							None
 						}

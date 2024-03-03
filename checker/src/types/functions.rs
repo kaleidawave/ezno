@@ -29,7 +29,8 @@ pub struct FunctionType {
 	pub return_type: TypeId,
 
 	/// Side effects of the function
-	pub effects: Vec<Event>,
+	/// `None` for internal functions
+	pub effects: Option<Vec<Event>>,
 
 	/// Things that this function pulls in. Converse of closed over which is where results below use
 	/// variables in this scope.
@@ -93,7 +94,7 @@ impl FunctionType {
 			parameters: SynthesisedParameters::default(),
 			// Only needed for printing
 			return_type: on,
-			effects: info.events,
+			effects: Some(info.events),
 			behavior,
 			// TODO ???
 			free_variables: Default::default(),

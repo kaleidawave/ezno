@@ -202,7 +202,7 @@ where
 	pub(crate) fn get_file(&mut self, path: &Path) -> Option<File> {
 		// TODO only internal code should be able to do this
 		if let Some("bin") = path.extension().and_then(|s| s.to_str()) {
-			return self.file_reader.read_file(path).map(|s| File::Binary(s.to_vec()));
+			return self.file_reader.read_file(path).map(|s| File::Binary(s.clone()));
 		}
 
 		if let Some(source) = self.files.get_source_at_path(path) {
@@ -211,15 +211,12 @@ where
 			// Load into system
 			let content = self.file_reader.read_file(path)?;
 			let content = String::from_utf8(content);
-			match content {
-				Ok(content) => {
-					let source_id = self.files.new_source_id(path.to_path_buf(), content);
-					Some(File::Source(source_id, self.files.get_file_content(source_id)))
-				}
-				Err(_) => {
-					eprintln!("{} is not valid Utf-8", path.display());
-					None
-				}
+			if let Ok(content) = content {
+				let source_id = self.files.new_source_id(path.to_path_buf(), content);
+				Some(File::Source(source_id, self.files.get_file_content(source_id)))
+			} else {
+				eprintln!("{} is not valid Utf-8", path.display());
+				None
 			}
 		}
 	}
@@ -688,23 +685,26 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 const U32_BYTES: u32 = u32::BITS / u8::BITS;
 
 pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	on: PathBuf,
-	read: T,
+	on: &Path,
+	read: &T,
 	parser_requirements: A::ParserRequirements,
 ) -> Vec<u8> {
 	let mut checking_data =
-		CheckingData::<T, A>::new(Default::default(), &read, None, parser_requirements);
+		CheckingData::<T, A>::new(Default::default(), read, None, parser_requirements);
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
-	add_definition_files_to_root(HashSet::from_iter([on.clone()]), &mut root, &mut checking_data);
+	add_definition_files_to_root(
+		HashSet::from_iter([on.to_path_buf()]),
+		&mut root,
+		&mut checking_data,
+	);
 
-	if checking_data.diagnostics_container.has_error() {
-		panic!(
-			"found error in definition file {:#?}",
-			checking_data.diagnostics_container.get_diagnostics()
-		);
-	}
+	assert!(
+		!checking_data.diagnostics_container.has_error(),
+		"found error in definition file {:#?}",
+		checking_data.diagnostics_container.get_diagnostics()
+	);
 
 	let mut buf = CACHE_MARKER.to_vec();
 
@@ -724,7 +724,7 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		.copy_from_slice(&(cache_len as u32).to_le_bytes());
 
 	// TODO not great
-	let Some(File::Source(source, content)) = checking_data.modules.get_file(&on) else { panic!() };
+	let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else { panic!() };
 
 	let path = on.to_str().unwrap().to_owned();
 	(source, path).serialize(&mut buf);

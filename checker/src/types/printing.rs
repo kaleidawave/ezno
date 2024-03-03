@@ -100,11 +100,10 @@ fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(name);
 				}
 			}
-			PolyNature::FreeVariable { based_on: to, reference, .. } => {
+			PolyNature::FreeVariable { based_on: to, .. } => {
 				if debug {
-					let name = info_chain.get_reference_name(reference);
 					// FV = free variable
-					write!(buf, "[FV '{}' {}] fixed to ", name, id.0).unwrap();
+					write!(buf, "[FV {}] fixed to ", id.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info_chain, debug);
 			}
@@ -135,7 +134,7 @@ fn print_type_into_buf<C: InformationChain>(
 			Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
+				otherwise_result,
 				result_union: _,
 			} => {
 				if debug {
@@ -145,7 +144,7 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 				print_type_into_buf(*truthy_result, buf, cycles, args, types, info_chain, debug);
 				buf.push_str(if debug { " : " } else { " | " });
-				print_type_into_buf(*else_result, buf, cycles, args, types, info_chain, debug);
+				print_type_into_buf(*otherwise_result, buf, cycles, args, types, info_chain, debug);
 			}
 			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 				if debug {
@@ -153,30 +152,29 @@ fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 					buf.push(')');
 					buf.write_fmt(format_args!("<{arguments:?}>")).unwrap();
-				} else {
-					if let Type::Interface { .. } | Type::AliasTo { .. } = types.get_type_by_id(*on)
-					{
-						print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
-						buf.push('<');
-						let nendiate = arguments.type_restrictions.values().nendiate();
-						for (not_at_end, (arg, _)) in nendiate {
-							print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
-							if not_at_end {
-								buf.push_str(", ");
-							}
+				} else if let Type::Interface { .. } | Type::AliasTo { .. } =
+					types.get_type_by_id(*on)
+				{
+					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
+					buf.push('<');
+					let nendiate = arguments.type_restrictions.values().nendiate();
+					for (not_at_end, (arg, _)) in nendiate {
+						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
+						if not_at_end {
+							buf.push_str(", ");
 						}
-						buf.push('>');
-					} else {
-						print_type_into_buf(
-							*on,
-							buf,
-							cycles,
-							Some(GenericChain::append(args.as_ref(), arguments)),
-							types,
-							info_chain,
-							debug,
-						);
 					}
+					buf.push('>');
+				} else {
+					print_type_into_buf(
+						*on,
+						buf,
+						cycles,
+						Some(GenericChain::append(args.as_ref(), arguments)),
+						types,
+						info_chain,
+						debug,
+					);
 				}
 			}
 			constructor if debug => match constructor {
@@ -252,7 +250,7 @@ fn print_type_into_buf<C: InformationChain>(
 				print_type_into_buf(base, buf, cycles, args, types, info_chain, debug);
 			}
 		},
-		Type::Interface { name, parameters, nominal } => {
+		Type::Interface { name, parameters, nominal, extends: _ } => {
 			if debug && id.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
 				write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
 			} else {
@@ -329,7 +327,7 @@ fn print_type_into_buf<C: InformationChain>(
 				write!(buf, "[obj {}]", id.0).unwrap();
 			}
 			let prototype =
-				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&id).cloned());
+				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&id).copied());
 			if let Some(TypeId::ARRAY_TYPE) = prototype {
 				if let Some(n) = get_array_length(info_chain, id, types) {
 					buf.push('[');
@@ -338,7 +336,7 @@ fn print_type_into_buf<C: InformationChain>(
 							buf.push_str(", ");
 						}
 						let value =
-							get_simple_value(info_chain, id, PropertyKey::from_usize(i), types);
+							get_simple_value(info_chain, id, &PropertyKey::from_usize(i), types);
 
 						if let Some(value) = value {
 							print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
@@ -425,7 +423,7 @@ fn print_type_into_buf<C: InformationChain>(
 fn get_simple_value(
 	ctx: &impl InformationChain,
 	on: TypeId,
-	property: PropertyKey,
+	property: &PropertyKey,
 	types: &TypeStore,
 ) -> Option<TypeId> {
 	fn get_logical(v: Logical<PropertyValue>) -> Option<TypeId> {
@@ -438,7 +436,7 @@ fn get_simple_value(
 
 	information::get_property_unbound(on, Publicity::Public, property, types, ctx)
 		.ok()
-		.and_then(|v| get_logical(v))
+		.and_then(get_logical)
 }
 
 fn get_array_length(
@@ -447,7 +445,7 @@ fn get_array_length(
 	types: &TypeStore,
 ) -> Option<ordered_float::NotNan<f64>> {
 	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
-	let id = get_simple_value(ctx, on, length_property, types)?;
+	let id = get_simple_value(ctx, on, &length_property, types)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
 		Some(*n)
 	} else {
@@ -500,13 +498,11 @@ pub fn debug_effects<C: InformationChain>(
 	for event in events {
 		match event {
 			Event::ReadsReference { reference, reflects_dependency, position: _ } => {
-				let name = info.get_reference_name(reference);
-				buf.write_fmt(format_args!("read '{name}' into {reflects_dependency:?}")).unwrap();
+				buf.write_fmt(format_args!("read '{reference:?}' into {reflects_dependency:?}"))
+					.unwrap();
 			}
 			Event::SetsVariable(variable, value, _) => {
-				let on = info.get_variable_name(*variable);
-				buf.push_str(on);
-				buf.push_str(" = ");
+				buf.write_fmt(format_args!("'{variable:?}' =")).unwrap();
 				print_type_into_buf(*value, buf, &mut HashSet::new(), args, types, info, debug);
 			}
 			Event::Getter { on, under, reflects_dependency, publicity: _, position: _ } => {

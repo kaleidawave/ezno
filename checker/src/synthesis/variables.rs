@@ -75,7 +75,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						let key = PropertyKey::from_usize(idx);
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*name.get_position(),
@@ -97,7 +97,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						let key = PropertyKey::String(Cow::Borrowed(name));
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*variable.get_position(),
@@ -135,7 +135,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						);
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*position,
@@ -254,8 +254,8 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 			// 					exported,
 			// 				);
 			// 			}
-      // 		ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
-      //   }
+			// 		ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
+			//   }
 		}
 		VariableField::Object(items, _) => {
 			for item in items {
@@ -277,7 +277,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						let property = environment.get_property(
 							value,
 							Publicity::Public,
-							key_ty,
+							&key_ty,
 							&mut checking_data.types,
 							None,
 							*name.get_position(),
@@ -316,7 +316,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							value,
 							Publicity::Public,
 							// TODO different above
-							key_ty,
+							&key_ty,
 							&mut checking_data.types,
 							None,
 							*position,

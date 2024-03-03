@@ -4,10 +4,10 @@ use iterator_endiate::EndiateIteratorExt;
 use parser::{
 	expressions::ExpressionOrBlock,
 	functions::{LeadingParameter, ParameterData},
-	ASTNode, Block, FunctionBased, TypeAnnotation, TypeParameter, VariableField,
+	ASTNode, Block, FunctionBased, Span, TypeAnnotation, TypeParameter, VariableField,
 	VariableIdentifier, WithComment,
 };
-use source_map::{SourceId, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	context::{CanReferenceThis, Context, ContextType, Scope, VariableRegisterArguments},
@@ -24,7 +24,6 @@ use crate::{
 };
 
 use super::{
-	expressions::synthesise_expression,
 	synthesise_block,
 	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
 	variables::register_variable,
@@ -36,8 +35,8 @@ impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
 where
 	U::Body: SynthesisableFunctionBody,
 {
-	fn id(&self, source_id: SourceId) -> FunctionId {
-		FunctionId(source_id, self.get_position().start)
+	fn get_position(&self) -> Span {
+		*ASTNode::get_position(self)
 	}
 
 	fn get_name(&self) -> Option<&str> {
@@ -164,11 +163,10 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				// TODO expecting
-				let returned =
-					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-				let position = expression.get_position().with_source(environment.get_source());
-				environment.return_value(returned, position);
+				environment.return_value(
+					&crate::context::environment::Returnable::ArrowFunctionBody(&**expression),
+					checking_data,
+				);
 			}
 			ExpressionOrBlock::Block(block) => {
 				block.synthesise_function_body(environment, checking_data);
@@ -640,7 +638,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							parameters,
 							return_type,
 							type_parameters,
-							effects: env.info.events,
+							effects: Some(env.info.events),
 							free_variables: Default::default(),
 							closed_over_variables: Default::default(),
 							behavior,
@@ -674,7 +672,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							parameters,
 							return_type,
 							type_parameters,
-							effects: Vec::new(),
+							effects: None,
 							free_variables: Default::default(),
 							closed_over_variables: Default::default(),
 							behavior,

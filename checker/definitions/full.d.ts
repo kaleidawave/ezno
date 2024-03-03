@@ -1,6 +1,6 @@
 interface nominal Array<T> {
     [index: number]: T | undefined;
-    
+
     length: number;
 
     push(item: T) performs {
@@ -19,7 +19,7 @@ interface nominal Array<T> {
     }
 
     // TODO this argument
-    map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
+    map<U>(cb: (t: T, i?: number) => U): Array <U> performs {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
@@ -30,7 +30,7 @@ interface nominal Array<T> {
     }
 
     // TODO any is debatable
-    filter(cb: (t: T, i?: number) => any): Array<T> performs {
+    filter(cb: (t: T, i?: number) => any): Array <T> performs {
         const { length } = this, filtered: Array<T> = [];
         let i: number = 0;
         while (i < length) {
@@ -137,10 +137,10 @@ interface nominal string {
     get length(): number performs const string_length;
 
     // TODO
-    slice(start: number, end?: number): string performs const slice;
+    slice(start: number, end ?: number): string performs const slice;
 
     // TODO
-    split(splitter: string): Array<string> performs const split;
+    split(splitter: string): Array < string > performs const split;
 }
 
 interface Console {
@@ -214,22 +214,26 @@ declare const document: Document;
 // declare function createItem(a: any);
 
 // ↓↓ Ezno testing functions ↓↓
-declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
 declare function debug_type(t: any): void performs const debug_type;
 declare function print_and_debug_type(t: any): void performs const print_and_debug_type;
 declare function debug_type_independent(t: any): void performs const debug_type_independent;
 declare function debug_type_rust(t: any): void performs const debug_type_rust;
 declare function debug_type_rust_independent(t: any): void performs const debug_type_rust_independent;
+
 declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
 declare function debug_effects(t: () => {}): void performs const debug_effects;
-declare function is_dependent(t: any): void performs const is_dependent;
 
+declare function is_dependent(t: any): void performs const is_dependent;
+declare function print_environment_state<T>(): any performs const print_environment_state;
+
+declare function debug_context(): void performs const debug_context;
 declare function context_id(): void performs const context_id;
 declare function context_id_chain(): void performs const context_id_chain;
 
 // A function, as it should be!
 declare function satisfies<T>(t: T): T performs const satisfies;
+
 
 declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
 // ↑↑ Ezno Functions ↑↑

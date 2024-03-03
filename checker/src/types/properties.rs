@@ -92,6 +92,8 @@ impl<'a> PropertyKey<'a> {
 			PropertyKey::String(s) => s.parse::<usize>().ok(),
 			PropertyKey::Type(t) => {
 				if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(*t) {
+					// TODO is there a better way
+					#[allow(clippy::float_cmp)]
 					if n.trunc() == **n {
 						Some(**n as usize)
 					} else {
@@ -180,7 +182,7 @@ impl PropertyValue {
 pub(crate) fn get_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
-	under: PropertyKey,
+	under: &PropertyKey,
 	with: Option<TypeId>,
 	top_environment: &mut Environment,
 	behavior: &mut E,
@@ -188,7 +190,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	position: SpanWithSource,
 ) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE
-		|| matches!(under, PropertyKey::Type(under) if under == TypeId::ERROR_TYPE)
+		|| matches!(under, PropertyKey::Type(under) if *under == TypeId::ERROR_TYPE)
 	{
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
@@ -215,11 +217,10 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			position,
 		)
 	} else if top_environment.possibly_mutated_objects.contains(&on) {
-		let constraint = if let Some(item) = top_environment.get_object_constraint(on) {
-			item
-		} else {
+		let Some(constraint) = top_environment.get_object_constraint(on) else {
 			todo!("inference")
 		};
+
 		// TODO ...
 		evaluate_get_on_poly(
 			constraint,
@@ -243,7 +244,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 fn get_from_an_object<E: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
-	under: PropertyKey,
+	under: &PropertyKey,
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -379,7 +380,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 
 	// TODO explain what happens around non constant strings
 	if let Type::Constant(Constant::String(s)) = types.get_type_by_id(on) {
-		if let Some(n) = under.as_number(&types) {
+		if let Some(n) = under.as_number(types) {
 			return s.chars().nth(n).map(|s| {
 				(PropertyKind::Direct, types.new_constant_type(Constant::String(s.to_string())))
 			});
@@ -523,7 +524,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
-	let fact = get_property_unbound(on, publicity, under.clone(), types, top_environment).ok()?;
+	let fact = get_property_unbound(on, publicity, &under, types, top_environment).ok()?;
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
@@ -562,7 +563,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// if E::CHECK_PARAMETERS {
 	if let Some(constraint) = environment.get_object_constraint(on) {
 		let property_constraint =
-			get_property_unbound(constraint, publicity, under.clone(), types, environment);
+			get_property_unbound(constraint, publicity, under, types, environment);
 
 		// crate::utils::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
@@ -628,20 +629,20 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// 	crate::types::printing::print_type(types, new.as_get_type(), environment, true),
 	// );
 
-	let current_property = get_property_unbound(on, publicity, under.clone(), types, environment);
+	let current_property = get_property_unbound(on, publicity, under, types, environment);
 
 	// crate::utils::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
 	// Cascade if it is a union (unsure tho)
 	if let Type::Constructor(Constructor::ConditionalResult {
 		truthy_result,
-		else_result,
+		otherwise_result,
 		condition: _,
 		result_union: _,
 	}) = types.get_type_by_id(on)
 	{
 		let truthy = *truthy_result;
-		let else_result = *else_result;
+		let otherwise_result = *otherwise_result;
 		set_property(
 			truthy,
 			publicity,
@@ -653,7 +654,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			setter_position,
 		)?;
 		return set_property(
-			else_result,
+			otherwise_result,
 			publicity,
 			under,
 			new,
@@ -711,6 +712,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	Ok(None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_setter_on_object<E: CallCheckingBehavior>(
 	og: PropertyValue,
 	behavior: &mut E,

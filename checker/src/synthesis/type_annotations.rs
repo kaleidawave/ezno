@@ -129,31 +129,28 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.into_iter();
 
 			let mut acc = iterator.next().expect("Empty intersection");
-			while let Some(right) = iterator.next() {
-				match checking_data.types.new_and_type(acc, right) {
-					Ok(new_ty) => {
-						acc = new_ty;
-					}
-					Err(()) => {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckWarning::TypesDoNotIntersect {
-								left: TypeStringRepresentation::from_type_id(
-									acc,
-									environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								right: TypeStringRepresentation::from_type_id(
-									right,
-									environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								position: position.with_source(environment.get_source()),
-							},
-						);
-						return TypeId::ERROR_TYPE;
-					}
+			for right in iterator {
+				if let Ok(new_ty) = checking_data.types.new_and_type(acc, right) {
+					acc = new_ty;
+				} else {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckWarning::TypesDoNotIntersect {
+							left: TypeStringRepresentation::from_type_id(
+								acc,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							right: TypeStringRepresentation::from_type_id(
+								right,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							position: position.with_source(environment.get_source()),
+						},
+					);
+					return TypeId::ERROR_TYPE;
 				}
 			}
 			acc
@@ -166,7 +163,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				_ => {}
 			}
 
-			let inner_type_id = environment.get_type_from_name(name).unwrap();
+			let Some(inner_type_id) = environment.get_type_from_name(name) else {
+				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
+					name,
+					position.with_source(environment.get_source()),
+				));
+				return TypeId::ERROR_TYPE;
+			};
+
 			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
 			if let Some(parameters) = inner_type.get_parameters() {
@@ -340,6 +344,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			super::interfaces::synthesise_signatures(
 				None,
+				None,
 				members,
 				super::interfaces::OnToType(onto),
 				environment,
@@ -427,7 +432,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 			);
-			let else_result = synthesise_type_annotation(
+			let otherwise_result = synthesise_type_annotation(
 				synthesise_condition(resolve_false),
 				environment,
 				checking_data,
@@ -436,8 +441,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
-				result_union: checking_data.types.new_or_type(truthy_result, else_result),
+				otherwise_result,
+				result_union: checking_data.types.new_or_type(truthy_result, otherwise_result),
 			});
 
 			checking_data.types.register_type(ty)

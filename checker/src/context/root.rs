@@ -2,6 +2,7 @@ use super::{
 	environment::DynamicBoundaryKind, ClosedOverReferencesInScope, Context, ContextId, ContextType,
 };
 use crate::{
+	events::ApplicationResult,
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
@@ -39,6 +40,14 @@ impl ContextType for Root {
 	}
 
 	fn get_exports(&mut self) -> Option<&mut Exported> {
+		None
+	}
+
+	fn get_state(&self) -> Option<&ApplicationResult> {
+		None
+	}
+
+	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
 		None
 	}
 }

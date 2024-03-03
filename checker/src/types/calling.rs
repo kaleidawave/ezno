@@ -3,11 +3,11 @@ use std::vec;
 
 use crate::{
 	context::{
-		invocation::CheckThings, CallCheckingBehavior, Environment, Logical, Missing,
-		PossibleLogical,
+		invocation::{CheckThings, InvocationContext},
+		CallCheckingBehavior, Environment, Logical, Missing, PossibleLogical,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
+	events::{application::ErrorsAndInfo, apply_event, ApplicationResult, Event, RootReference},
 	features::{
 		constant_functions::{
 			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
@@ -49,7 +49,7 @@ pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
 
 /// Intermediate type for calling a function
 ///
-/// Generic arguments handled with Logical::Implies
+/// Generic arguments handled with `Logical::Implies`
 #[derive(Debug)]
 struct FunctionLike {
 	pub(crate) function: FunctionId,
@@ -59,7 +59,7 @@ struct FunctionLike {
 
 pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	ty: TypeId,
-	arguments: Vec<UnsynthesisedArgument<A>>,
+	arguments: &[UnsynthesisedArgument<A>],
 	input: CallingInput,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T, A>,
@@ -72,7 +72,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 		Ok(callable) => {
 			let (arguments, type_argument_restrictions) = synthesise_arguments_for_parameter(
 				&callable,
-				&arguments,
+				arguments,
 				input.call_site_type_arguments,
 				None,
 				environment,
@@ -146,7 +146,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 pub fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
 	arguments: Vec<SynthesisedArgument>,
-	input: CallingInput,
+	input: &CallingInput,
 	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -173,7 +173,7 @@ fn get_logical_callable_from_type(
 
 	let le_ty = types.get_type_by_id(ty);
 
-	crate::utils::notify!("ty1={:?} ({:?})", le_ty, ty);
+	// crate::utils::notify!("ty1={:?} ({:?})", le_ty, ty);
 
 	match le_ty {
 		Type::And(_, _) => todo!(),
@@ -251,7 +251,7 @@ fn get_logical_callable_from_type(
 
 fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation>(
 	callable: &Logical<FunctionLike>,
-	arguments: &Vec<UnsynthesisedArgument<A>>,
+	arguments: &[UnsynthesisedArgument<A>],
 	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
 	parent_arguments: Option<&StructureGenericArguments>,
 	environment: &mut Environment,
@@ -320,7 +320,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 			let parameters = function.parameters.clone();
 
 			let arguments = arguments
-				.into_iter()
+				.iter()
 				.enumerate()
 				.map(|(idx, argument)| {
 					let expected_type = parameters.get_type_constraint_at_index(idx).map_or(
@@ -386,7 +386,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 			(arguments, type_arguments_restrictions)
 		}
 		Logical::Implies { on, antecedent } => synthesise_arguments_for_parameter(
-			&on,
+			on,
 			arguments,
 			call_site_type_arguments,
 			Some(antecedent),
@@ -395,7 +395,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 		),
 		Logical::Or { .. } => (
 			arguments
-				.into_iter()
+				.iter()
 				.map(|argument| SynthesisedArgument {
 					spread: argument.spread,
 					position: A::expression_position(argument.expression)
@@ -414,9 +414,10 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn try_call_logical<E: CallCheckingBehavior>(
 	callable: Option<Logical<FunctionLike>>,
-	input: CallingInput,
+	input: &CallingInput,
 	arguments: Vec<SynthesisedArgument>,
 	type_argument_restrictions: Option<TypeRestrictions>,
 	top_environment: &mut Environment,
@@ -449,6 +450,7 @@ fn try_call_logical<E: CallCheckingBehavior>(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn call_logical<E: CallCheckingBehavior>(
 	logical: Logical<FunctionLike>,
 	called_with_new: CalledWithNew,
@@ -487,8 +489,7 @@ fn call_logical<E: CallCheckingBehavior>(
 
 				// is poly
 				if let Some(on) = function.from {
-					// TODO this is a hack
-					let has_events = !function_type.effects.is_empty();
+					let has_events = function_type.effects.is_some();
 					let has_known_side_effects = has_events || result.result_was_const_computation;
 
 					if !has_known_side_effects {
@@ -831,66 +832,21 @@ impl FunctionType {
 		}
 
 		// Evaluate effects directly into environment
-		let early_return = behavior.new_function_context(self.id, |target| {
-			let this_closure_id = if !self.closed_over_variables.is_empty() {
-				let closure_id = types.new_closure_id();
-				type_arguments.closure_id.push(closure_id);
-				Some(closure_id)
-			} else {
-				None
-			};
-
-			let mut return_result = None;
-
-			// Apply events here
-			for event in self.effects.clone() {
-				let current_errors = errors.errors.len();
-				let result = apply_event(
-					event,
-					this_value,
+		let early_return = if self.effects.is_some() {
+			Some(behavior.new_function_context(self.id, |target| {
+				self.evaluate_function_side_effects(
+					types,
 					&mut type_arguments,
+					&mut errors,
+					this_value,
 					environment,
 					target,
-					types,
-					&mut errors,
-				);
-
-				// Adjust call sites. (because they aren't currently passed down)
-				for d in &mut errors.errors[current_errors..] {
-					if let FunctionCallingError::TDZ { call_site: ref mut c, .. } = d {
-						*c = Some(call_site);
-					} else if let FunctionCallingError::SetPropertyConstraint {
-						call_site: ref mut c,
-						..
-					} = d
-					{
-						*c = Some(call_site);
-					}
-				}
-
-				if let value @ Some(_) = result {
-					return_result = value;
-					break;
-				}
-			}
-
-			if let Some(closure_id) = this_closure_id {
-				crate::utils::notify!("Setting closure variables");
-
-				// Set closed over values
-				self.closed_over_variables.iter().for_each(|(reference, value)| {
-					let value = substitute(*value, &mut type_arguments, environment, types);
-					environment
-						.info
-						.closure_current_values
-						.insert((closure_id, reference.clone()), value);
-
-					crate::utils::notify!("in {:?} set {:?} to {:?}", closure_id, reference, value);
-				});
-			}
-
-			return_result
-		});
+					call_site,
+				)
+			}))
+		} else {
+			None
+		};
 
 		if !errors.errors.is_empty() {
 			crate::utils::notify!("Got {} application errors", errors.errors.len());
@@ -935,24 +891,10 @@ impl FunctionType {
 		}
 
 		let returned_type = if let Some(early_return) = early_return {
-			match early_return {
-				FinalEvent::Break { .. } | FinalEvent::Continue { .. } => {
-					unreachable!("function ended on continue / break")
-				}
-				FinalEvent::Throw { thrown: value, position } => {
-					behavior.get_latest_info(environment).throw_value_in_info(value, position);
-					TypeId::NEVER_TYPE
-				}
-				FinalEvent::Return { returned, returned_position: _ } => {
-					// set events should cover property specialisation here:
-					returned
-				}
-			}
+			early_return.returned_type(types)
 		} else {
 			crate::utils::notify!("Substituting return type (no return)");
-
 			type_arguments.local_arguments.remove(&TypeId::NEW_TARGET_ARG);
-
 			substitute(self.return_type, &mut type_arguments, environment, types)
 		};
 
@@ -965,6 +907,88 @@ impl FunctionType {
 		})
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	fn evaluate_function_side_effects(
+		&self,
+		types: &mut TypeStore,
+		type_arguments: &mut FunctionTypeArguments,
+		errors: &mut ErrorsAndInfo,
+		this_value: ThisValue,
+		environment: &mut Environment,
+		target: &mut InvocationContext,
+		call_site: SpanWithSource,
+	) -> ApplicationResult {
+		let this_closure_id = if self.closed_over_variables.is_empty() {
+			None
+		} else {
+			let closure_id = types.new_closure_id();
+			type_arguments.closure_id.push(closure_id);
+			Some(closure_id)
+		};
+
+		// TODO
+		let mut return_result = ApplicationResult::Completed;
+
+		// Apply events here
+		let effects = self.effects.clone().unwrap();
+		let mut events_iterator = effects.into_iter();
+		while let Some(event) = events_iterator.next() {
+			let current_errors = errors.errors.len();
+			let result = apply_event(
+				event,
+				&mut events_iterator,
+				this_value,
+				type_arguments,
+				environment,
+				target,
+				types,
+				errors,
+			);
+
+			// Adjust call sites. (because they aren't currently passed down)
+			for d in &mut errors.errors[current_errors..] {
+				if let FunctionCallingError::TDZ { call_site: ref mut c, .. } = d {
+					*c = Some(call_site);
+				} else if let FunctionCallingError::SetPropertyConstraint {
+					call_site: ref mut c,
+					..
+				} = d
+				{
+					*c = Some(call_site);
+				}
+			}
+
+			if let value @ ApplicationResult::Interrupt(_) = result {
+				return_result = value;
+				break;
+			}
+		}
+
+		if let ApplicationResult::Interrupt(crate::events::FinalEvent::Throw { thrown, position }) =
+			&return_result
+		{
+			environment.throw_value(*thrown, *position);
+		}
+
+		if let Some(closure_id) = this_closure_id {
+			crate::utils::notify!("Setting closure variables");
+
+			// Set closed over values
+			self.closed_over_variables.iter().for_each(|(reference, value)| {
+				let value = substitute(*value, type_arguments, environment, types);
+				environment
+					.info
+					.closure_current_values
+					.insert((closure_id, reference.clone()), value);
+
+				crate::utils::notify!("in {:?} set {:?} to {:?}", closure_id, reference, value);
+			});
+		}
+
+		return_result
+	}
+
+	#[allow(clippy::too_many_arguments)]
 	fn set_this_for_behavior(
 		&self,
 		called_with_new: CalledWithNew,
@@ -1046,6 +1070,7 @@ impl FunctionType {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn assign_arguments_to_parameters<E: CallCheckingBehavior>(
 		&self,
 		arguments: &[SynthesisedArgument],
@@ -1290,7 +1315,7 @@ fn check_parameter_type(
 		let mut most_accurate = into_iter.next().unwrap();
 		for next in into_iter {
 			if next.1 > most_accurate.1 {
-				most_accurate = next
+				most_accurate = next;
 			}
 		}
 

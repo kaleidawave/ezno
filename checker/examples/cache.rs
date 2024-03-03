@@ -3,6 +3,7 @@
 use std::{
 	env,
 	fs::{read_to_string, write},
+	path::PathBuf,
 };
 
 use ezno_checker::{generate_cache, synthesis::EznoParser};
@@ -14,7 +15,7 @@ fn main() {
 	// This reader, doesn't lookup in the cache
 	let reader = |path: &std::path::Path| read_to_string(path).ok();
 
-	let cache = generate_cache::<_, EznoParser>(input.into(), reader, ());
+	let cache = generate_cache::<_, EznoParser>(PathBuf::from(input).as_path(), &reader, ());
 	write(output, cache).unwrap();
 	eprintln!("Cache generated 🏧💵✅")
 }

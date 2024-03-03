@@ -130,7 +130,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 
 pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	on: &VariableRegisterArguments,
-	under: PropertyKey,
+	under: &PropertyKey,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 	at: Span,
@@ -139,7 +139,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 		let property_constraint = get_property_unbound(
 			space,
 			Publicity::Public,
-			under.clone(),
+			under,
 			&checking_data.types,
 			environment,
 		);

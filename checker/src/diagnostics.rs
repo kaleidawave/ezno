@@ -309,7 +309,8 @@ mod defined_errors_and_warnings {
 		ReturnedTypeDoesNotMatch {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,
-			annotation_position: SpanWithSource,
+			/// Can be `None` if it is inferred parameters
+			annotation_position: Option<SpanWithSource>,
 			returned_position: SpanWithSource,
 		},
 		// TODO are these the same errors?
@@ -596,10 +597,10 @@ mod defined_errors_and_warnings {
 					reason: format!(
 						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
 					),
-					labels: vec![(
+					labels: annotation_position.into_iter().map(|annotation_position| (
 						format!("Function annotated to return {expected_return_type} here"),
 						Some(annotation_position),
-					)],
+					)).collect(),
 					position: returned_position,
 					kind,
 				},
@@ -782,6 +783,7 @@ mod defined_errors_and_warnings {
 			position: SpanWithSource,
 		},
 		InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+		Unreachable(source_map::BaseSpan<parser::SourceId>),
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {
@@ -826,10 +828,10 @@ mod defined_errors_and_warnings {
 				TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
 					Diagnostic::Position {
 						reason: format!("No intersection between types {left} and {right}"),
-            position,
+						position,
 						kind,
 					}
-        }
+				}
 				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(position) => {
 					Diagnostic::Position {
 						reason: "Invalid (or unimplemented) item in definition file skipped"
@@ -838,6 +840,11 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+				TypeCheckWarning::Unreachable(position) => Diagnostic::Position {
+					reason: "Unreachable statement".to_owned(),
+					position,
+					kind,
+				},
 			}
 		}
 	}

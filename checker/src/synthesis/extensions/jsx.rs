@@ -189,15 +189,16 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 
+	let calling_input = CallingInput {
+		called_with_new: crate::types::calling::CalledWithNew::None,
+		this_value: None,
+		call_site: position,
+		call_site_type_arguments: None,
+	};
 	match call_type(
 		jsx_function,
 		args,
-		CallingInput {
-			called_with_new: crate::types::calling::CalledWithNew::None,
-			this_value: None,
-			call_site: position,
-			call_site_type_arguments: None,
-		},
+		&calling_input,
 		environment,
 		&mut check_things,
 		&mut checking_data.types,

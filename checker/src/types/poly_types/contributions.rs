@@ -14,7 +14,7 @@ use super::generic_type_arguments::StructureGenericArguments;
 /// `covariant :> contravariant`!!
 ///
 /// This picks contributions. IT DOES NOT CREATE ARGUMENTS EAGERLY
-pub(crate) struct Contributions<'a> {
+pub struct Contributions<'a> {
 	/// Contains **parent** constraints or some ways to lookup **parent** constraints (*more like arguments*)
 	pub(crate) parent: Option<&'a StructureGenericArguments>,
 
@@ -46,7 +46,7 @@ impl<'a> Contributions<'a> {
 		self.parent.and_then(|parent| parent.properties.get(&under).cloned())
 	}
 
-	fn passes_under_current_contravariant(
+	fn passes_under_current_covariant(
 		&mut self,
 		under: TypeId,
 		argument: TypeId,
@@ -107,7 +107,7 @@ impl<'a> Contributions<'a> {
 		}
 	}
 
-	fn try_set_covariant(
+	pub fn try_set_contravariant(
 		&mut self,
 		on: TypeId,
 		argument: TypeId,
@@ -122,7 +122,7 @@ impl<'a> Contributions<'a> {
 			crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
 		}
 
-		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_contravariant(
+		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_covariant(
 			on,
 			argument,
 			environment,
@@ -139,7 +139,7 @@ impl<'a> Contributions<'a> {
 		SubTypeResult::IsSubType
 	}
 
-	fn try_set_contravariant(
+	pub fn try_set_covariant(
 		&mut self,
 		on: TypeId,
 		restriction: TypeId,
@@ -169,9 +169,7 @@ impl<'a> Contributions<'a> {
 	}
 }
 
-impl<'a> SubTypeBehavior for Contributions<'a> {
-	const INFER_GENERICS: bool = true;
-
+impl<'a> SubTypeBehavior<'a> for Contributions<'a> {
 	fn add_object_mutation_constraint(&mut self, _on: TypeId, _constraint: TypeId) {
 		crate::utils::notify!("TODO");
 	}
@@ -185,27 +183,7 @@ impl<'a> SubTypeBehavior for Contributions<'a> {
 		todo!()
 	}
 
-	fn set_type_argument(
-		&mut self,
-		on: TypeId,
-		argument: TypeId,
-		depth: u8,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		self.try_set_covariant(on, argument, depth, environment, types, already_checked)
-	}
-
-	fn try_set_contravariant(
-		&mut self,
-		on: TypeId,
-		restriction: TypeId,
-		position: SpanWithSource,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		self.try_set_contravariant(on, restriction, position, environment, types, already_checked)
+	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
+		Some(self)
 	}
 }

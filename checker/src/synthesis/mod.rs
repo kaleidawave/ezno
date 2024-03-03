@@ -88,6 +88,15 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
+	fn synthesise_definition_file<T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'_>,
+		source: SourceId,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, LocalInformation) {
+		definitions::type_definition_file(file, source, checking_data, root)
+	}
+
 	fn synthesise_expression<U: crate::ReadFromFS>(
 		expression: &Self::Expression<'_>,
 		expecting: TypeId,
@@ -111,17 +120,6 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_type_annotation(annotation, environment, checking_data)
-	}
-
-	type DefinitionFile<'a> = parser::TypeDefinitionModule;
-
-	fn synthesise_definition_file<T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'_>,
-    source: SourceId,
-		root: &RootContext,
-		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, LocalInformation) {
-		definitions::type_definition_file(file, source, checking_data, root)
 	}
 
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
