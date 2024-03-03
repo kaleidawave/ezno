@@ -1,8 +1,8 @@
 use source_map::SpanWithSource;
 
-use crate::{context::facts::Publicity, types::properties::PropertyKey, TypeId};
+use crate::{context::information::Publicity, types::properties::PropertyKey, TypeId};
 
-use super::operations::{Logical, MathematicalAndBitwise};
+use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
 pub enum Assignable {
 	Reference(Reference),
@@ -22,7 +22,7 @@ pub enum Reference {
 pub enum AssignmentKind {
 	Assign,
 	PureUpdate(MathematicalAndBitwise),
-	ConditionalUpdate(Logical),
+	ConditionalUpdate(LogicalOperator),
 	IncrementOrDecrement(IncrementOrDecrement, AssignmentReturnStatus),
 }
 

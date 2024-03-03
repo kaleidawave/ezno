@@ -2,6 +2,7 @@
 //!
 //! Here dependent means the type depends on another type or condition (sometimes called type constructors)
 
+pub mod contributions;
 pub mod generics;
 pub mod substitution;
 

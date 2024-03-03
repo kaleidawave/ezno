@@ -22,8 +22,9 @@ use parser::{ASTNode, ParseOptions, PropertyKey as ParserPropertyKey};
 use source_map::SourceId;
 
 use crate::{
-	context::Names, types::properties::PropertyKey, CheckingData, Diagnostic, Environment, Facts,
-	RootContext, TypeId,
+	context::{Names, VariableRegisterArguments},
+	types::properties::PropertyKey,
+	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId,
 };
 
 use self::{
@@ -31,6 +32,7 @@ use self::{
 	expressions::{synthesise_expression, synthesise_multiple_expression},
 	hoisting::hoist_variable_declaration,
 	type_annotations::synthesise_type_annotation,
+	variables::register_variable,
 };
 
 pub struct EznoParser;
@@ -86,6 +88,15 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
+	fn synthesise_definition_file<T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'_>,
+		source: SourceId,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, LocalInformation) {
+		definitions::type_definition_file(file, source, checking_data, root)
+	}
+
 	fn synthesise_expression<U: crate::ReadFromFS>(
 		expression: &Self::Expression<'_>,
 		expecting: TypeId,
@@ -109,14 +120,6 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_type_annotation(annotation, environment, checking_data)
-	}
-
-	fn synthesise_definition_file<T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'_>,
-		root: &RootContext,
-		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts) {
-		definitions::type_definition_file(file, checking_data, root)
 	}
 
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
@@ -159,6 +162,25 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
 			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
 		}
+	}
+
+	fn declare_and_assign_to_fields<'a, T: crate::ReadFromFS>(
+		field: &'a Self::VariableField<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+		value: TypeId,
+	) {
+		register_variable(
+			field,
+			environment,
+			checking_data,
+			VariableRegisterArguments {
+				// TODO
+				constant: true,
+				space: None,
+				initial_value: Some(value),
+			},
+		);
 	}
 }
 
@@ -297,12 +319,7 @@ pub mod interactive {
 							checking_data,
 							TypeId::ANY_TYPE,
 						);
-						Some(print_type(
-							result,
-							&checking_data.types,
-							&environment.as_general_context(),
-							false,
-						))
+						Some(print_type(result, &checking_data.types, environment, false))
 					} else {
 						synthesise_block(&item.items, environment, checking_data);
 						None

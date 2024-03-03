@@ -1,9 +1,6 @@
 use std::{fmt::Debug, iter::FromIterator};
 
-use crate::types::poly_types::generics::generic_type_arguments::FunctionTypeArguments;
 use crate::TypeId;
-
-use super::generic_type_arguments::TypeArgumentStore;
 
 // Encompasses both generic types
 #[derive(Default, Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -100,20 +97,3 @@ impl PartialEq for GenericTypeParameter {
 //         buf.push_str(&format!("T{:?}", self.id))
 //     }
 // }
-
-/// TODO remove intermediate function
-fn _get_type_from_arguments_using_generic_type_parameter_id(
-	type_id: TypeId,
-	type_arguments: &FunctionTypeArguments,
-) -> TypeId {
-	// TODO not 100% about this...?
-	if let Some(gta) = type_arguments.get_structure_argument(type_id) {
-		gta
-	} else {
-		crate::utils::notify!(
-            "Skipping resolving generics as no matching type argument '{:?}', this happens for generic structures",
-            type_arguments
-        );
-		TypeId::ERROR_TYPE
-	}
-}

@@ -3,17 +3,17 @@
 //! Events is the general name for the IR. Effect = Events of a function
 
 use crate::{
-	context::{facts::Publicity, get_on_ctx},
+	context::{get_on_ctx, information::Publicity},
 	features::iteration::IterationKind,
 	types::{
 		calling::CalledWithNew,
 		properties::{PropertyKey, PropertyValue},
+		store::TypeStore,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
 pub(crate) mod application;
-pub(crate) mod helpers;
 pub(crate) use application::apply_event;
 
 use crate::{types::functions::SynthesisedArgument, types::TypeId};
@@ -95,11 +95,11 @@ pub enum Event {
 	/// Run events multiple times
 	Iterate {
 		kind: IterationKind,
+		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
+		initial: InitialVariables,
 		/// TODO for of and in variants here:
 		// condition: TypeId,
 		iterate_over: Box<[Event]>,
-		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
-		initial: InitialVariables,
 	},
 
 	/// *lil bit magic*, handles:
@@ -137,7 +137,7 @@ impl From<FinalEvent> for Event {
 }
 
 /// Nothing runs after this event
-#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+#[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum FinalEvent {
 	Return {
 		returned: TypeId,
@@ -157,6 +157,125 @@ pub enum FinalEvent {
 		carry: u8,
 		position: Option<SpanWithSource>,
 	},
+}
+
+impl FinalEvent {
+	#[must_use]
+	pub fn returns(self) -> Option<TypeId> {
+		match self {
+			FinalEvent::Return { returned, .. } => Some(returned),
+			FinalEvent::Throw { .. } => Some(TypeId::NEVER_TYPE),
+			FinalEvent::Break { .. } | FinalEvent::Continue { .. } => None,
+		}
+	}
+
+	#[must_use]
+	pub fn throws(self) -> Option<TypeId> {
+		match self {
+			FinalEvent::Throw { thrown, .. } => Some(thrown),
+			FinalEvent::Return { .. } | FinalEvent::Break { .. } | FinalEvent::Continue { .. } => {
+				None
+			}
+		}
+	}
+}
+
+/// TODO WIP
+#[derive(Debug)]
+pub enum ApplicationResult {
+	Completed,
+	Interrupt(FinalEvent),
+	/// This is a blend
+	Conditionally {
+		on: TypeId,
+		truthy: Box<ApplicationResult>,
+		otherwise: Box<ApplicationResult>,
+	},
+}
+
+impl From<FinalEvent> for ApplicationResult {
+	fn from(value: FinalEvent) -> Self {
+		ApplicationResult::Interrupt(value)
+	}
+}
+
+impl ApplicationResult {
+	pub(crate) fn is_it_so_over(&self) -> bool {
+		match self {
+			ApplicationResult::Completed => false,
+			ApplicationResult::Interrupt(_) => true,
+			ApplicationResult::Conditionally { on: _, truthy, otherwise } => {
+				truthy.is_it_so_over() && otherwise.is_it_so_over()
+			}
+		}
+	}
+
+	pub(crate) fn append_termination(&mut self, result: impl Into<ApplicationResult>) {
+		match self {
+			ApplicationResult::Completed => *self = result.into(),
+			ApplicationResult::Interrupt(_) => {
+				crate::utils::notify!("Should be unreachable, result already failed");
+			}
+			ApplicationResult::Conditionally { on: _, truthy, otherwise } => {
+				if truthy.is_it_so_over() {
+					otherwise.append_termination(result);
+				} else {
+					truthy.append_termination(result);
+				}
+			}
+		}
+	}
+
+	pub(crate) fn new_from_unknown_condition(
+		on: TypeId,
+		truthy: ApplicationResult,
+		otherwise: ApplicationResult,
+		// types: &mut TypeStore,
+	) -> Self {
+		match (truthy, otherwise) {
+			(ApplicationResult::Completed, ApplicationResult::Completed) => {
+				ApplicationResult::Completed
+			}
+			// (ApplicationResult::Interrupt(FinalEvent::Return { returned, returned_position }), ApplicationResult::Interrupt(FinalEvent::Return { returned, returned_position }))
+			// => ApplicationResult::Completed,
+			(truthy, otherwise) => ApplicationResult::Conditionally {
+				on,
+				truthy: Box::new(truthy),
+				otherwise: Box::new(otherwise),
+			},
+		}
+	}
+
+	pub(crate) fn returned_type(self, types: &mut TypeStore) -> TypeId {
+		match self {
+			ApplicationResult::Completed => TypeId::UNDEFINED_TYPE,
+			ApplicationResult::Interrupt(int) => int.returns().expect("returning continue ??"),
+			ApplicationResult::Conditionally { on, truthy, otherwise } => {
+				let truthy_result = truthy.returned_type(types);
+				let otherwise_result = otherwise.returned_type(types);
+				types.new_conditional_type(on, truthy_result, otherwise_result)
+			}
+		}
+	}
+
+	// TODO Option?
+	pub(crate) fn throw_type(&self, types: &mut TypeStore) -> TypeId {
+		match self {
+			ApplicationResult::Completed => TypeId::NEVER_TYPE,
+			ApplicationResult::Interrupt(int) => int.throws().expect("no throw?"),
+			ApplicationResult::Conditionally { on, truthy, otherwise } => {
+				let truthy_result = truthy.throw_type(types);
+				let otherwise_result = otherwise.throw_type(types);
+				types.new_conditional_type(*on, truthy_result, otherwise_result)
+			}
+		}
+	}
+}
+
+impl From<Option<FinalEvent>> for ApplicationResult {
+	fn from(value: Option<FinalEvent>) -> Self {
+		value.map_or(Self::Completed, Self::Interrupt)
+	}
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]

@@ -33,6 +33,8 @@ macro_rules! notify {
 		}
     };
 }
+
+#[doc(hidden)]
 pub(crate) use notify;
 
 pub trait ExtendedZipTrait: Iterator + Sized {

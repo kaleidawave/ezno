@@ -3,6 +3,7 @@
 use crate::{
 	features::{
 		functions::ThisValue,
+		objects::SpecialObjects,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -24,7 +25,7 @@ pub(crate) fn substitute(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	if let Some(value) = arguments.get_argument(id) {
+	if let Some(value) = arguments.get_argument(id, environment, types) {
 		return value;
 	}
 
@@ -35,29 +36,32 @@ pub(crate) fn substitute(
 			// TODO only sometimes
 			curry_arguments(arguments, types, id)
 		}
-		Type::Function(f, t) => {
+		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
 			// Also sub the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::Function(function_id, passed))
+				types.register_type(Type::SpecialObject(SpecialObjects::Function(
+					function_id,
+					passed,
+				)))
 			} else {
 				id
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(_f) => curry_arguments(arguments, types, id),
+		Type::FunctionReference(..) => curry_arguments(arguments, types, id),
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.register_type(Type::And(lhs, rhs))
+			types.new_and_type(lhs, rhs).unwrap_or(TypeId::NEVER_TYPE)
 		}
 		Type::Or(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.register_type(Type::Or(lhs, rhs))
+			types.new_or_type(lhs, rhs)
 		}
 		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } => id,
 		Type::RootPolyType(nature) => {
@@ -68,12 +72,7 @@ pub(crate) fn substitute(
 				id
 			} else {
 				// Other root poly types cases handled by the early return
-				let on = crate::types::printing::print_type(
-					id,
-					types,
-					&environment.as_general_context(),
-					true,
-				);
+				let on = crate::types::printing::print_type(id, types, environment, true);
 				crate::utils::notify!("Could not find argument for {}", on);
 				TypeId::ERROR_TYPE
 			}
@@ -111,7 +110,7 @@ pub(crate) fn substitute(
 			Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
+				otherwise_result,
 				result_union: _,
 			} => {
 				let condition = substitute(condition, arguments, environment, types);
@@ -121,19 +120,19 @@ pub(crate) fn substitute(
 				// 	crate::types::printing::print_type(
 				// 		condition,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
 				// 		truthy_result,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	),
 				// 	crate::types::printing::print_type(
-				// 		else_result,
+				// 		otherwise_result,
 				// 		types,
-				// 		&environment.as_general_context(),
+				// 		environment,
 				// 		true
 				// 	)
 				// );
@@ -142,18 +141,19 @@ pub(crate) fn substitute(
 					if result {
 						substitute(truthy_result, arguments, environment, types)
 					} else {
-						substitute(else_result, arguments, environment, types)
+						substitute(otherwise_result, arguments, environment, types)
 					}
 				} else {
 					crate::utils::notify!("{:?} is undecidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
-					let else_result = substitute(else_result, arguments, environment, types);
+					let otherwise_result =
+						substitute(otherwise_result, arguments, environment, types);
 					// TODO result_union
 					let ty = Constructor::ConditionalResult {
 						condition,
 						truthy_result,
-						else_result,
-						result_union: types.new_or_type(truthy_result, else_result),
+						otherwise_result,
+						result_union: types.new_or_type(truthy_result, otherwise_result),
 					};
 
 					types.register_type(Type::Constructor(ty))
@@ -168,9 +168,9 @@ pub(crate) fn substitute(
 				})) = types.get_type_by_id(id)
 				{
 					// Try get the constant
-					if under.as_number().is_some() {
+					if under.as_number(types).is_some() {
 						crate::utils::notify!("Temp array index property get");
-						let value = arguments.get_argument(TypeId::T_TYPE).unwrap();
+						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
 					} else {
 						let mut structure_generic_arguments = arguments.clone();
@@ -203,7 +203,8 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Image { .. } => {
-				todo!("Constructor::Image {id:?} should be covered by events");
+				let on = crate::types::printing::print_type(id, types, environment, true);
+				todo!("Constructor::Image {on} should be covered by events");
 				// id
 
 				// let on = substitute(on, arguments, environment);
@@ -238,10 +239,10 @@ pub(crate) fn substitute(
 				arguments: structure_arguments,
 			}) => {
 				let type_arguments = structure_arguments
-					.type_arguments
+					.type_restrictions
 					.into_iter()
-					.map(|(lhs, (with, pos))| {
-						(lhs, (substitute(with, arguments, environment, types), pos))
+					.map(|(lhs, (argument, pos))| {
+						(lhs, (substitute(argument, arguments, environment, types), pos))
 					})
 					.collect();
 
@@ -249,8 +250,9 @@ pub(crate) fn substitute(
 					StructureGenerics {
 						on,
 						arguments: StructureGenericArguments {
-							type_arguments,
+							type_restrictions: type_arguments,
 							closures: structure_arguments.closures,
+							properties: structure_arguments.properties,
 						},
 					},
 				)))

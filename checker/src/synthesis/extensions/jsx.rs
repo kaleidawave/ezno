@@ -42,14 +42,14 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		checking_data.types.new_constant_type(Constant::String(element.tag_name.clone()));
 
 	let mut attributes_object =
-		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
+		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.info);
 
 	for attribute in &element.attributes {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
 		let attribute_position = attribute.get_position().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
-			crate::context::facts::Publicity::Public,
+			crate::context::information::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
 			Some(attribute_position),
@@ -95,13 +95,13 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 							},
 		// 							attribute_type: TypeStringRepresentation::from_type_id(
 		// 								attr_restriction,
-		// 								&environment.as_general_context(),
+		// 								environment,
 		// 								&checking_data.types,
 		// 								checking_data.options.debug_types,
 		// 							),
 		// 							value_type: TypeStringRepresentation::from_type_id(
 		// 								attr_value,
-		// 								&environment.as_general_context(),
+		// 								environment,
 		// 								&checking_data.types,
 		// 								checking_data.options.debug_types,
 		// 							),
@@ -131,7 +131,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
-			&mut environment.facts,
+			&mut environment.info,
 		);
 
 		let children_iterator = children
@@ -147,7 +147,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
-				crate::context::facts::Publicity::Public,
+				crate::context::information::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
 				Some(child_position),
@@ -187,17 +187,20 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		args.push(SynthesisedArgument { value: child_nodes, position, spread: false });
 	}
 
+	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+
+	let calling_input = CallingInput {
+		called_with_new: crate::types::calling::CalledWithNew::None,
+		this_value: None,
+		call_site: position,
+		call_site_type_arguments: None,
+	};
 	match call_type(
 		jsx_function,
 		args,
-		CallingInput {
-			called_with_new: crate::types::calling::CalledWithNew::None,
-			this_value: environment.facts.value_of_this,
-			call_site: position,
-			call_site_type_arguments: None,
-		},
+		&calling_input,
 		environment,
-		&mut CheckThings,
+		&mut check_things,
 		&mut checking_data.types,
 	) {
 		Ok(res) => res.returned_type,

@@ -4,10 +4,10 @@ use iterator_endiate::EndiateIteratorExt;
 use parser::{
 	expressions::ExpressionOrBlock,
 	functions::{LeadingParameter, ParameterData},
-	ASTNode, Block, FunctionBased, TypeAnnotation, TypeParameter, VariableField,
+	ASTNode, Block, FunctionBased, Span, TypeAnnotation, TypeParameter, VariableField,
 	VariableIdentifier, WithComment,
 };
-use source_map::{SourceId, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	context::{CanReferenceThis, Context, ContextType, Scope, VariableRegisterArguments},
@@ -15,17 +15,15 @@ use crate::{
 		synthesise_function_default_value, FunctionBehavior, SynthesisableFunction,
 	},
 	types::poly_types::GenericTypeParameters,
+	types::{functions::FunctionType, Constructor, Type, TypeId},
 	types::{
 		functions::{SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter},
-		poly_types::generic_type_arguments::TypeArgumentStore,
-		FunctionType, StructureGenerics,
+		StructureGenerics,
 	},
-	types::{Constructor, Type, TypeId},
 	CheckingData, Environment, FunctionId,
 };
 
 use super::{
-	expressions::synthesise_expression,
 	synthesise_block,
 	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
 	variables::register_variable,
@@ -37,8 +35,8 @@ impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
 where
 	U::Body: SynthesisableFunctionBody,
 {
-	fn id(&self, source_id: SourceId) -> FunctionId {
-		FunctionId(source_id, self.get_position().start)
+	fn get_position(&self) -> Span {
+		*ASTNode::get_position(self)
 	}
 
 	fn get_name(&self) -> Option<&str> {
@@ -165,11 +163,10 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				// TODO expecting
-				let returned =
-					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-				let position = expression.get_position().with_source(environment.get_source());
-				environment.return_value(returned, position);
+				environment.return_value(
+					&crate::context::environment::Returnable::ArrowFunctionBody(&**expression),
+					checking_data,
+				);
 			}
 			ExpressionOrBlock::Block(block) => {
 				block.synthesise_function_body(environment, checking_data);
@@ -276,7 +273,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			arguments,
 		})) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
-			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
 			} else {
 				unreachable!()
@@ -291,7 +288,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.object_constraints.insert(ty, vec![parameter_constraint]);
+		environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
@@ -353,7 +350,9 @@ fn synthesise_function_parameters<
 				})
 				.or_else(|| {
 					// Try use expected type
-					expected_parameters.as_ref().and_then(|p| p.get_type_constraint_at_index(idx))
+					expected_parameters
+						.as_ref()
+						.and_then(|p| p.get_type_constraint_at_index(idx).map(|(t, _pos)| t))
 				})
 				.unwrap_or(TypeId::ANY_TYPE);
 
@@ -372,7 +371,7 @@ fn synthesise_function_parameters<
 				parameter_constraint,
 				TypeId::NUMBER_TYPE | TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE
 			) {
-				environment.object_constraints.insert(ty, vec![parameter_constraint]);
+				environment.info.object_constraints.insert(ty, parameter_constraint);
 			}
 
 			let (optional, variable_ty) = match &parameter.additionally {
@@ -428,7 +427,7 @@ fn synthesise_function_parameters<
 			arguments,
 		})) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
-			if let Some(item) = arguments.get_argument(TypeId::T_TYPE) {
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
 			} else {
 				unreachable!()
@@ -443,7 +442,7 @@ fn synthesise_function_parameters<
 
 		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.object_constraints.insert(variable_ty, vec![parameter_constraint]);
+		environment.info.object_constraints.insert(variable_ty, parameter_constraint);
 
 		register_variable(
 			&rest_parameter.name,
@@ -587,23 +586,28 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 									based_on: on_interface,
 								}),
 							);
+							// Modify this id to be a free this id ...
 							if let FunctionBehavior::Method { ref mut free_this_id, .. } = behavior
 							{
 								*free_this_id = free_this_type;
 							} else {
 								unreachable!()
 							}
+							crate::utils::notify!("FTT {:?}", free_this_type);
 							crate::context::environment::FunctionScope::MethodFunction {
 								free_this_type,
 								is_async: true,
+								expected_return: None,
 								is_generator: true,
 							}
 						} else {
 							crate::context::environment::FunctionScope::ArrowFunction {
 								free_this_type: TypeId::ERROR_TYPE,
 								is_async: true,
+								expected_return: None,
 							}
 						};
+
 						let mut env =
 							environment.new_lexical_environment(Scope::Function(new_scope));
 
@@ -634,7 +638,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							parameters,
 							return_type,
 							type_parameters,
-							effects: env.facts.events,
+							effects: Some(env.info.events),
 							free_variables: Default::default(),
 							closed_over_variables: Default::default(),
 							behavior,
@@ -668,7 +672,7 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 							parameters,
 							return_type,
 							type_parameters,
-							effects: Vec::new(),
+							effects: None,
 							free_variables: Default::default(),
 							closed_over_variables: Default::default(),
 							behavior,

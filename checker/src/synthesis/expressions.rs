@@ -1,10 +1,12 @@
 use std::{borrow::Cow, convert::TryInto};
 
 use parser::{
+	ast::TypeOrConst,
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		operators::IncrementOrDecrement,
-		operators::{BinaryOperator, UnaryOperator, UnaryPrefixAssignmentOperator},
+		operators::{
+			BinaryOperator, IncrementOrDecrement, UnaryOperator, UnaryPrefixAssignmentOperator,
+		},
 		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
 	},
@@ -13,7 +15,13 @@ use parser::{
 };
 
 use crate::{
+	context::{
+		information::{get_properties_on_type, get_property_unbound},
+		Logical,
+	},
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::{
+		self,
 		functions::{register_arrow_function, register_expression_function},
 		variables::VariableWithValue,
 	},
@@ -26,8 +34,7 @@ use crate::{
 };
 
 use crate::{
-	context::facts::Publicity,
-	diagnostics::TypeCheckWarning,
+	context::information::Publicity,
 	features::{
 		assignments::Assignable,
 		objects::ObjectBuilder,
@@ -137,7 +144,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let mut basis = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
-				&mut environment.facts,
+				&mut environment.info,
 			);
 
 			// TODO remove enumerate, add add function and more
@@ -209,15 +216,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			| BinaryOperator::NullCoalescing = operator
 			{
 				let operator = match operator {
-					BinaryOperator::LogicalAnd => crate::features::operations::Logical::And,
-					BinaryOperator::LogicalOr => crate::features::operations::Logical::Or,
+					BinaryOperator::LogicalAnd => crate::features::operations::LogicalOperator::And,
+					BinaryOperator::LogicalOr => crate::features::operations::LogicalOperator::Or,
 					BinaryOperator::NullCoalescing => {
-						crate::features::operations::Logical::NullCoalescing
+						crate::features::operations::LogicalOperator::NullCoalescing
 					}
 					_ => unreachable!(),
 				};
 				return evaluate_logical_operation_with_expression(
-					lhs_ty,
+					(lhs_ty, *lhs.get_position()),
 					operator,
 					&**rhs,
 					checking_data,
@@ -318,11 +325,16 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					return TypeId::ERROR_TYPE;
 				}
 				UnaryOperator::TypeOf => {
-					checking_data.raise_unimplemented_error(
-						"TypeOf",
-						position.with_source(environment.get_source()),
+					let operand_type = synthesise_expression(
+						operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
 					);
-					return TypeId::ERROR_TYPE;
+					Instance::RValue(features::type_of_operator(
+						operand_type,
+						&mut checking_data.types,
+					))
 				}
 				UnaryOperator::Void => {
 					let _operand_type = synthesise_expression(
@@ -524,7 +536,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let result = environment.get_property_handle_errors(
 				on,
 				publicity,
-				property,
+				&property,
 				checking_data,
 				*position,
 			);
@@ -548,7 +560,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let result = environment.get_property_handle_errors(
 				being_indexed,
 				Publicity::Public,
-				PropertyKey::from_type(indexer, &checking_data.types),
+				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
 				*position,
 			);
@@ -651,11 +663,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(result)
 		}
 		Expression::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
+			let condition_pos = *condition.get_position();
 			let condition =
 				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
 			Instance::RValue(environment.new_conditional_context(
-				condition,
+				(condition, condition_pos),
 				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 					synthesise_expression(truthy_result, env, data, expecting)
 				},
@@ -708,14 +721,56 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return TypeId::ERROR_TYPE;
 		}
 		Expression::SpecialOperators(operator, position) => match operator {
-			SpecialOperators::AsCast { value, .. } => {
-				checking_data.diagnostics_container.add_warning(
-					TypeCheckWarning::IgnoringAsExpression(
-						position.with_source(environment.get_source()),
-					),
-				);
+			SpecialOperators::AsCast { value, rhs } => {
+				let to_cast = synthesise_expression(value, environment, checking_data, expecting);
 
-				return synthesise_expression(value, environment, checking_data, expecting);
+				if checking_data.options.allow_cast {
+					match rhs {
+						TypeOrConst::Type(type_annotation) => {
+							let cast_to = synthesise_type_annotation(
+								type_annotation,
+								environment,
+								checking_data,
+							);
+
+							// TODO
+							let as_cast =
+								features::as_cast(to_cast, cast_to, &mut checking_data.types);
+
+							match as_cast {
+								Ok(result) => return result,
+								Err(_err) => {
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::InvalidCast {
+											position: position
+												.with_source(environment.get_source()),
+											from: TypeStringRepresentation::from_type_id(
+												to_cast,
+												environment,
+												&checking_data.types,
+												checking_data.options.debug_types,
+											),
+											to: TypeStringRepresentation::from_type_id(
+												cast_to,
+												environment,
+												&checking_data.types,
+												checking_data.options.debug_types,
+											),
+										},
+									);
+									return TypeId::ERROR_TYPE;
+								}
+							}
+						}
+						TypeOrConst::Const(_) => {
+							// TODO
+							Instance::RValue(to_cast)
+						}
+					}
+				} else {
+					// TODO emit warning
+					Instance::RValue(to_cast)
+				}
 			}
 			SpecialOperators::Is { value: _, type_annotation: _ } => {
 				todo!()
@@ -791,14 +846,14 @@ fn operator_to_assignment_kind(
 
 	match operator {
 		BinaryAssignmentOperator::LogicalAndAssign => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::And)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::And)
 		}
 		BinaryAssignmentOperator::LogicalOrAssign => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::Or)
+			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::Or)
 		}
-		BinaryAssignmentOperator::LogicalNullishAssignment => {
-			AssignmentKind::ConditionalUpdate(crate::features::operations::Logical::NullCoalescing)
-		}
+		BinaryAssignmentOperator::LogicalNullishAssignment => AssignmentKind::ConditionalUpdate(
+			crate::features::operations::LogicalOperator::NullCoalescing,
+		),
 		BinaryAssignmentOperator::AddAssign
 		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
 			AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
@@ -873,13 +928,13 @@ fn call_function<T: crate::ReadFromFS>(
 					}
 					FunctionArgument::Comment { .. } => todo!(),
 				})
-				.collect()
+				.collect::<Vec<_>>()
 		})
 		.unwrap_or_default();
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
-		arguments,
+		&arguments,
 		CallingInput {
 			called_with_new,
 			this_value: Default::default(),
@@ -898,7 +953,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	expected: TypeId,
 ) -> TypeId {
 	let mut object_builder =
-		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.facts);
+		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.info);
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
@@ -907,7 +962,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
 				// TODO use what about string, what about enumerable ...
-				for (_, key, value) in environment.get_properties_on_type(spread) {
+				for (_, key, value) in get_properties_on_type(spread, environment) {
 					object_builder.append(
 						environment,
 						Publicity::Public,
@@ -954,10 +1009,24 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
-				// TODO base of above
-				let expecting = TypeId::ANY_TYPE;
-				let value =
-					synthesise_expression(expression, environment, checking_data, expecting);
+				// TODO needs improvement
+				let property_expecting = get_property_unbound(
+					expected,
+					Publicity::Public,
+					&key,
+					&checking_data.types,
+					environment,
+				)
+				.ok()
+				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.unwrap_or(TypeId::ANY_TYPE);
+
+				let value = synthesise_expression(
+					expression,
+					environment,
+					checking_data,
+					property_expecting,
+				);
 
 				let value = crate::types::properties::PropertyValue::Value(value);
 				object_builder.append(
@@ -993,9 +1062,22 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					checking_data,
 				);
 
+				// TODO needs improvement
+				let property_expecting = get_property_unbound(
+					expected,
+					Publicity::Public,
+					&key,
+					&checking_data.types,
+					environment,
+				)
+				.ok()
+				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.unwrap_or(TypeId::ANY_TYPE);
+
 				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {
 					is_async: method.header.is_async(),
 					is_generator: method.header.is_generator(),
+					expecting: property_expecting,
 				};
 
 				let function = environment.new_function(checking_data, method, behavior);

@@ -2,13 +2,14 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	context::facts::Facts,
+	context::information::{InformationChain, LocalInformation},
 	features::functions::{ClosureChain, ClosureId},
+	types::{LookUpGenericMap, TypeArguments, TypeRestrictions, TypeStore},
 	TypeId,
 };
 
 use map_vec::Map as SmallMap;
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use std::{fmt::Debug, iter::FromIterator};
 
@@ -20,74 +21,37 @@ impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArgument
 	}
 }
 
-// impl CurriedGenericsValue {
-// 	pub(crate) fn as_type(&self) -> TypeId {
-// 		let (CurriedGenericsValue::Type(value) | CurriedGenericsValue::StructureGeneric(value)) =
-// 			self;
-// 		value
-// 	}
-// }
-
-// #[derive(Debug, Clone)]
-// pub enum CurriedGenericsValue {
-// 	Type(TypeId),
-// 	/// TODO this is different in that it can differ maybe... or is that closure values
-// 	StructureGeneric(TypeId),
-// }
-
-// impl From<GenericStructureTypeArguments> for CurriedFunctionTypeArguments {
-// 	fn from(args: GenericStructureTypeArguments) -> Self {
-// 		Self(
-// 			args.0
-// 				.clone()
-// 				.into_iter()
-// 				.map(|GenericStructureTypeArgument { ref matching_id, ref ty, .. }| {
-// 					(
-// 						matching_id.clone().into(),
-// 						todo!(),
-// 						// CurriedGenericsValue::StructureGeneric(match ty.clone() {
-// 						// 	super::GenericStructureArgumentValue::Type(ty) => ty,
-// 						// 	super::GenericStructureArgumentValue::Unknown => todo!(),
-// 						// }),
-// 					)
-// 				})
-// 				.collect(),
-// 		)
-// 	}
-// }
-
-/// TODO working out environment thingy
+/// For when a function is called
 #[derive(Debug)]
 pub(crate) struct FunctionTypeArguments {
-	pub structure_arguments: Option<StructureGenericArguments>,
 	/// Might not be full
-	pub local_arguments: SmallMap<TypeId, (TypeId, SpanWithSource)>,
-	pub closure_id: Option<ClosureId>,
+	pub local_arguments: TypeArguments,
+	pub closure_id: Vec<ClosureId>,
+	pub call_site: SpanWithSource,
 }
 
 impl FunctionTypeArguments {
-	pub(crate) fn set_id_from_reference(&mut self, id: TypeId, value: TypeId) {
-		self.local_arguments.insert(id, (value, source_map::Nullable::NULL));
+	/// TODO!! explain
+	pub(crate) fn set_id_from_event_application(&mut self, id: TypeId, value: TypeId) {
+		self.local_arguments.insert(id, value);
 	}
 
-	pub(crate) fn new() -> Self {
+	pub(crate) fn new_arguments_for_use_in_loop() -> Self {
 		Self {
-			structure_arguments: Default::default(),
 			local_arguments: SmallMap::new(),
 			closure_id: Default::default(),
+			call_site: SpanWithSource::NULL,
 		}
 	}
 }
 
 pub(crate) trait TypeArgumentStore {
-	/// Gets the value, not the constraint
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId>;
-
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId>;
-
-	fn get_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.get_local_argument(id).or_else(|| self.get_structure_argument(id))
-	}
+	fn get_argument<C: InformationChain>(
+		&self,
+		under: TypeId,
+		c: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId>;
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>>;
 
@@ -97,22 +61,14 @@ pub(crate) trait TypeArgumentStore {
 }
 
 impl ClosureChain for FunctionTypeArguments {
-	fn get_fact_from_closure<T, R>(&self, _fact: &Facts, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
-		if let Some(ref closure_id) = self.closure_id {
+		for closure_id in &self.closure_id {
 			let res = cb(*closure_id);
 			if res.is_some() {
 				return res;
-			}
-		}
-		if let Some(ref parent) = self.structure_arguments {
-			for closure_id in &parent.closures {
-				let res = cb(*closure_id);
-				if res.is_some() {
-					return res;
-				}
 			}
 		}
 		None
@@ -120,82 +76,72 @@ impl ClosureChain for FunctionTypeArguments {
 }
 
 impl TypeArgumentStore for FunctionTypeArguments {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.structure_arguments.as_ref().and_then(|args| args.get_structure_argument(id))
-	}
-
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.local_arguments.get(&id).map(|(ty, _)| *ty)
-	}
-
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
 		None
 	}
 
 	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
-		// self.structure_arguments.clone()
-		match self.structure_arguments {
-			Some(ref parent) => {
-				let mut merged = parent.type_arguments.clone();
-				let iter = self.local_arguments.clone();
-				merged.extend(iter);
+		let type_arguments_with_positions =
+			self.local_arguments.iter().map(|(k, v)| (*k, (*v, self.call_site)));
 
-				StructureGenericArguments {
-					type_arguments: merged,
-					closures: parent.closures.iter().copied().chain(self.closure_id).collect(),
-				}
-			}
-			None => StructureGenericArguments {
-				type_arguments: self.local_arguments.clone(),
-				closures: self.closure_id.into_iter().collect(),
-			},
+		StructureGenericArguments {
+			properties: SmallMap::new(),
+			type_restrictions: type_arguments_with_positions.collect(),
+			closures: self.closure_id.clone(),
 		}
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closure_id.is_none() && self.local_arguments.len() == 0
-	}
-}
-
-// TODO temp: for type alias specialisation
-impl TypeArgumentStore for SmallMap<TypeId, (TypeId, SpanWithSource)> {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.get(&id).map(|(value, _pos)| *value)
+		self.closure_id.is_empty()
+			&& self.local_arguments.keys().any(|t| !matches!(*t, TypeId::NEW_TARGET_ARG))
 	}
 
-	fn get_local_argument(&self, id: TypeId) -> Option<TypeId> {
-		// ???
-		self.get_structure_argument(id)
-	}
-
-	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
-		None
-	}
-
-	fn to_structural_generic_arguments(&self) -> StructureGenericArguments {
-		crate::utils::notify!("to_structural_generic_arguments shouldn't be needed");
-		StructureGenericArguments { type_arguments: self.clone(), closures: Vec::new() }
-	}
-
-	fn is_empty(&self) -> bool {
-		false
+	fn get_argument<C: InformationChain>(
+		&self,
+		under: TypeId,
+		_c: &C,
+		_types: &mut TypeStore,
+	) -> Option<TypeId> {
+		self.local_arguments.get(&under).copied()
 	}
 }
 
 /// These are curried between structures
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct StructureGenericArguments {
-	pub type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)>,
+	pub type_restrictions: TypeRestrictions,
+	pub properties: LookUpGenericMap,
 	pub closures: Vec<ClosureId>,
 }
 
-impl TypeArgumentStore for StructureGenericArguments {
-	fn get_structure_argument(&self, id: TypeId) -> Option<TypeId> {
-		self.type_arguments.get(&id).map(|(ty, _)| *ty)
+impl StructureGenericArguments {
+	#[must_use]
+	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
+		self.type_restrictions.get(&under).map(|(l, _)| *l)
 	}
+}
 
-	fn get_local_argument(&self, _id: TypeId) -> Option<TypeId> {
-		None
+impl TypeArgumentStore for StructureGenericArguments {
+	fn get_argument<C: InformationChain>(
+		&self,
+		under: TypeId,
+		info: &C,
+		types: &mut TypeStore,
+	) -> Option<TypeId> {
+		if let Some(restriction) = self.get_structure_restriction(under) {
+			Some(restriction)
+		} else if let Some(lookup) = self.properties.get(&under) {
+			let res = lookup.calculate_lookup(info);
+			let mut iter = res.into_iter();
+			let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);
+			let mut acc = first;
+			for ty in iter {
+				acc = types.new_or_type(acc, ty);
+			}
+			Some(acc)
+		} else {
+			None
+		}
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {
@@ -207,6 +153,6 @@ impl TypeArgumentStore for StructureGenericArguments {
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closures.is_empty() && self.type_arguments.len() == 0
+		self.closures.is_empty() && self.type_restrictions.len() == 0
 	}
 }

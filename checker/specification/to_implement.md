@@ -45,93 +45,50 @@ print_type(callFunc)
 
 - Expected "a" | "b" | "c" found "d"
 
-#### Symmetric or
+#### Simple array map
 
 ```ts
-function or<T, U>(obj: T | U): U | T {
-	return obj
+function mapper(a: Array<string>) {
+	return a.map((item: string) => item + "hi")
 }
 
-print_type(or)
+print_type(mapper)
 ```
 
-- Expected "a" | "b" | "c" found "d"
+- TODO
 
-#### Symmetric and
+#### Generic array map
 
 ```ts
-function and<T, U>(obj: T & U): U & T {
-	return obj
+function mapper<T, U>(a: Array<T>, func: T => U) {
+	return a.map(func)
 }
 
-print_type(and)
+print_type(mapper)
 ```
 
-- Expected "a" | "b" | "c" found "d"
+- TODO
 
-#### Distributivity
+#### Interface extends
 
 ```ts
-function distribute<T, U, V>(obj: (T | U) & V): (T & V) | (U & V) {
-	return obj
+interface X {
+    a: string
 }
 
-print_type(distribute)
+interface Y {
+    b: string
+}
+
+interface Z extends X, Y {
+    c: string
+}
+
+({ a: "", b: "", c: "hello" }) satisfies Z;
+({ c: "hi" }) satisfies Z;
 ```
 
-- Expected "a" | "b" | "c" found "d"
-
-#### Or missing
-
-```ts
-function get(obj: {a: 2} | { b: 3 }) {
-	return obj.a
-}
-```
-
-- Expected "a" | "b" | "c" found "d"
-
-#### Calling or type
-
-```ts
-function callFunc<T, U>(func: (() => T) | (() => U)): T | U {
-	return func()
-}
-
-print_type(callFunc)
-```
-
-- Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
-
-#### Generics pass down
-
-> Too many generics here, doesn't get caught for some reason?
-
-```ts
-let c: Array<number> = []
-
-function add() {
-	c.push("hi")
-}
-```
-
-- Type "hi" is not assignable to argument of type number
-
-#### Object function inference
-
-```ts
-interface MyObject {
-    a(b: string): any;
-}
-
-const obj: MyObject = {
-    a(b) {
-        print_type(b)
-    }
-}
-```
-
-- TODO?
+- Type { c: "hi" } is not assignable to Z
 
 ### Narrowing
 
@@ -165,38 +122,9 @@ x() satisfies 3
 
 ### Iteration
 
-#### For-in fixed object
-
-```ts
-let properties: string = "";
-for (const property in { a: 1, b: 2, c: 3 }) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
-
-#### For-in non fixed object
-
-> TypeScript anonymous object annotations do not guarantee ordering and the subtyping rules allow for the RHS to have more
-> properties than defined
-
-```ts
-declare const myObject: { a: 1, b: 2, c: 3 };
-
-let properties: string = "";
-for (const property in myObject) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found string
-
 > TODO for in and generators
 
-#### For loops
+#### For of loops
 
 ```ts
 function func(array: Array<string>) {
@@ -208,21 +136,21 @@ function func(array: Array<string>) {
 
 - Expected number found string
 
-#### Constant for loop
+#### Order of properties
+
+> TODO this is because setting properties are simply appended. There are two straightforward fixes, but I am unsure which one is better...
 
 ```ts
-function join(array: Array<string>) {
-	let buf = ""
-	for (let item of array) {
-		buf += item
-	}
-	return buf
+const obj = { a: 1, b: 2 };
+obj.a = 2; obj.c = 6; obj.b = 4;
+let properties: string = "";
+for (const property in obj) {
+	properties += property;
 }
-
-join(["a", "b", "c"]) satisfies "cba"
+properties satisfies boolean;
 ```
 
-- Expected "cba" found "abc"
+- Expected boolean, found "abc"
 
 ### Inference
 
@@ -354,31 +282,18 @@ a.prop3 satisfies "prop2"
 
 ### Collections
 
-> TODO filter, every and all, find, etc
-
-#### Simple array map
+#### `some` and `every`
 
 ```ts
-function mapper(a: Array<string>) {
-	return a.map(item => item + "hi")
-}
+declare let aNumber: number;
 
-print_type(mapper)
+[1, 2, 3].some(x => x > 0) satisfies true;
+[-5].some(x => x > 0) satisfies false;
+
+[1, aNumber, 3].every(x => x > 0) satisfies string;
 ```
 
-- TODO
-
-#### Generic array map
-
-```ts
-function mapper<T, U>(a: Array<T>, func: T => U) {
-	return a.map(func)
-}
-
-print_type(mapper)
-```
-
-- TODO
+- Expected string, found boolean
 
 ### Expressions
 
@@ -460,18 +375,6 @@ try {
 
 - Thrown type 2, not assignable to catch variable of string
 
-#### `typeof` expression
-
-> TODO better test
-
-```ts
-(typeof "hello") satisfies "string";
-(typeof 5) satisfies "number";
-(typeof {}) satisfies "Number";
-```
-
-- Expected "Number", found "object"
-
 #### `instanceof` expression
 
 ```ts
@@ -502,6 +405,20 @@ document.addEventListener("scroll", () => {
 - Expected 0, found number
 
 ### Classes
+
+#### Class type
+
+```ts
+class X {
+	a: number
+}
+
+function doThingWithX(x: X) {
+	x.a satisfies string;
+}
+```
+
+- Expected string, found number
 
 #### Extends
 
@@ -534,6 +451,39 @@ class MyClass {
 - Cannot get private property "#a"
 - Expected 3, found 2
 
+#### Implements
+
+```ts
+interface Draw {
+	draw(c: CanvasRenderingContext2D): void;
+}
+
+class MyNumber implements Draw { }
+
+class Rectangle implements Draw {
+	draw(c) {
+		c satisfies string;
+	}
+}
+```
+
+- Class "MyNumber", does not implement draw
+- Expected string, found CanvasRenderingContext2D
+
+#### Nominal-ness
+
+```ts
+class X { a: number }
+class Y { a: number }
+
+function doThingWithX(x: X) {}
+
+doThingWithX(new X())
+doThingWithX(new Y())
+```
+
+- Cannot Y with X
+
 ### Recursion
 
 #### Application
@@ -543,7 +493,7 @@ function x(a: number) {
 	if (a > 10 || a < 0) {
 		return a
 	}
-	return a--
+	return x(a--)
 }
 
 print_type(x(4))
@@ -566,21 +516,6 @@ call(call)
 
 ### Function checking
 
-#### Default parameter side effect on parameter
-
-> I don't think this works because of fact combining
-
-```ts
-function doThing(a, b = (a += 2)) {
-	return a
-}
-
-doThing(3) satisfies 2;
-doThing(6, 1) satisfies 6;
-```
-
-- Expected 2, found 5
-
 #### Default parameter type check
 
 ```ts
@@ -590,3 +525,74 @@ function doThing(b: number = "hello") {
 ```
 
 - Default value "hello" is not assignable to parameter of type number
+
+### Control flow
+
+#### Conditional return
+
+```ts
+declare let string: string;
+
+function stringIsHi(s: string) {
+    if (s === "hi") {
+        return true
+    }
+    return false
+}
+
+stringIsHi(string) satisfies number;
+```
+
+- Expected number, found boolean
+
+### Statements
+
+#### Try catch variable
+
+```ts
+try {
+	throw 5
+} catch (exception: string) {
+
+}
+```
+
+- Catch variable cannot be string as 5 thrown in try block
+
+#### Array destructuring
+
+> TODO this currently cheats as the LHS looks at numeric properties, not at the iterator of the RHS
+
+```ts
+const array = [1, 2, 3]
+const [a, b] = array
+a satisfies 1; b satisfies string;
+```
+
+- Expected string, found 2
+
+#### Destructuring assignment
+
+```ts
+let a = 2, b = 3;
+[a, b] = [b, a];
+a satisfies 3; b satisfies string;
+```
+
+- Expected string, found 2
+
+#### Tuple push and pop
+
+> Should flag up length constraint
+> This is caught, but the errors aren't great
+
+```ts
+const x: [1, 2, 3] = [1, 2, 3];
+x.push(4);
+
+const y: [1, 2, 3] = [1, 2, 3];
+y.pop();
+```
+
+- TODO cannot push
+- TODO cannot pop

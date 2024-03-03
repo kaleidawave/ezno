@@ -23,6 +23,9 @@ pub struct TypeCheckOptions {
 	/// Any types displayed will be in debug view
 	pub debug_types: bool,
 
+	/// Enables `as` casts
+	pub allow_cast: bool,
+
 	/// For post type check optimisations and
 	pub store_expression_type_mappings: bool,
 
@@ -45,6 +48,8 @@ impl Default for TypeCheckOptions {
 			strict_casts: false,
 			store_expression_type_mappings: false,
 			lsp_mode: false,
+			// TODO false at some point hopefully!
+			allow_cast: true,
 		}
 	}
 }

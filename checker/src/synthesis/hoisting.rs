@@ -13,11 +13,11 @@ use crate::{
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
+	synthesis::definitions::synthesise_declare_function,
 	CheckingData, ReadFromFS, TypeId,
 };
 
 use super::{
-	functions::synthesise_function_annotation,
 	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
 	variables::register_variable,
 	EznoParser,
@@ -30,7 +30,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 ) {
 	let mut idx_to_types = HashMap::new();
 
-	// First stage
+	// First stage: imports and types
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
@@ -48,8 +48,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					ns.position.with_source(environment.get_source()),
 				),
 				parser::Declaration::DeclareInterface(interface) => {
-					// TODO any difference bc declare?
-					let ty = environment.new_interface(
+					// TODO any difference bc `declare`?
+					let ty = environment.register_interface(
 						&interface.name,
 						interface.is_nominal,
 						interface.type_parameters.as_deref(),
@@ -60,7 +60,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					idx_to_types.insert(interface.position.start, ty);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = environment.new_interface(
+					let ty = environment.register_interface(
 						&interface.on.name,
 						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
@@ -186,11 +186,25 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
-				if let Statement::VarVariable(_) = stmt {
-					checking_data.raise_unimplemented_error(
-						"var statement hoisting",
-						stmt.get_position().with_source(environment.get_source()),
-					);
+				if let Statement::VarVariable(stmt) = stmt {
+					for declaration in &stmt.declarations {
+						let constraint = get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
+						register_variable(
+							declaration.name.get_ast_ref(),
+							environment,
+							checking_data,
+							VariableRegisterArguments {
+								constant: false,
+								space: constraint,
+								// Important!
+								initial_value: Some(TypeId::UNDEFINED_TYPE),
+							},
+						);
+					}
 				}
 			}
 			StatementOrDeclaration::Declaration(dec) => match dec {
@@ -218,44 +232,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 					}
 				}
-				parser::Declaration::DeclareFunction(func) => {
-					// TODO abstract
-					let declared_at = func.position.with_source(environment.get_source());
-					let base = synthesise_function_annotation(
-						&func.type_parameters,
-						&func.parameters,
-						func.return_type.as_ref(),
-						environment,
-						checking_data,
-						func.performs.as_ref().into(),
-						&declared_at,
-						crate::features::functions::FunctionBehavior::ArrowFunction {
-							is_async: false,
-						},
-						None,
-					);
-
-					let base = checking_data.types.new_function_type_annotation(
-						base.type_parameters,
-						base.parameters,
-						base.return_type,
-						&declared_at,
-						base.effects,
-						base.constant_function,
-					);
-
-					environment.register_variable_handle_error(
-						func.name.as_str(),
-						VariableRegisterArguments {
-							// TODO functions are constant references
-							constant: true,
-							space: None,
-							initial_value: Some(base),
-						},
-						func.get_position().with_source(environment.get_source()),
-						&mut checking_data.diagnostics_container,
-					);
-				}
+				parser::Declaration::DeclareFunction(function) => synthesise_declare_function(
+					function,
+					environment.get_source(),
+					environment,
+					checking_data,
+				),
 				parser::Declaration::Enum(r#enum) => {
 					checking_data.raise_unimplemented_error(
 						"enum",
@@ -266,6 +248,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 					super::interfaces::synthesise_signatures(
 						interface.on.type_parameters.as_deref(),
+						interface.on.extends.as_deref(),
 						&interface.on.members,
 						super::interfaces::OnToType(ty),
 						environment,
@@ -340,6 +323,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								let ty = idx_to_types.remove(&interface.position.start).unwrap();
 								super::interfaces::synthesise_signatures(
 									interface.type_parameters.as_deref(),
+									interface.extends.as_deref(),
 									&interface.members,
 									super::interfaces::OnToType(ty),
 									environment,
@@ -550,7 +534,7 @@ fn get_annotation_from_declaration<
 	U: parser::declarations::variable::DeclarationExpression + 'static,
 >(
 	declaration: &parser::declarations::VariableDeclarationItem<U>,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {
 	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {

@@ -1,4 +1,5 @@
 use parser::{ASTNode, Declaration, Statement, StatementOrDeclaration};
+use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
@@ -6,16 +7,17 @@ use crate::{
 	synthesis::{
 		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 	},
-	Environment, Facts, TypeId,
+	Environment, LocalInformation, TypeId,
 };
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	definition: parser::Module,
+	source: SourceId,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
-) -> (Names, Facts) {
+) -> (Names, LocalInformation) {
 	use std::collections::HashMap;
 
 	use parser::{
@@ -24,8 +26,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	};
 
 	let mut idx_to_types = HashMap::new();
-	// TODO NULL
-	let source = source_map::Nullable::NULL;
+
 	let mut environment = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
@@ -33,7 +34,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		// TODO classes and exports
 		match statement {
 			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
-				let ty = environment.new_interface(
+				let ty = environment.register_interface(
 					&interface.on.name,
 					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
@@ -61,41 +62,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		match declaration {
 			StatementOrDeclaration::Declaration(Declaration::DeclareFunction(func)) => {
 				// TODO abstract
-				let declared_at = func.get_position().with_source(source);
-				let base = synthesise_function_annotation(
-					&func.type_parameters,
-					&func.parameters,
-					func.return_type.as_ref(),
-					&mut environment,
-					checking_data,
-					func.performs.as_ref().into(),
-					&declared_at,
-					crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
-					None,
-				);
-
-				let base = checking_data.types.new_function_type_annotation(
-					base.type_parameters,
-					base.parameters,
-					base.return_type,
-					// TODO
-					&declared_at,
-					base.effects,
-					base.constant_function,
-				);
-
-				let _context = decorators_to_context(&func.decorators);
-
-				environment.register_variable_handle_error(
-					func.name.as_str(),
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(base),
-					},
-					func.get_position().with_source(source),
-					&mut checking_data.diagnostics_container,
-				);
+				synthesise_declare_function(&func, source, &mut environment, checking_data);
 			}
 			StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
 				DeclareVariableDeclaration { keyword: _, declarations, position: _, decorators: _ },
@@ -124,6 +91,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
 				super::interfaces::synthesise_signatures(
 					interface.on.type_parameters.as_deref(),
+					interface.on.extends.as_deref(),
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
 					&mut environment,
@@ -173,8 +141,50 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		}
 	}
 
-	let Environment { named_types, facts, variable_names, variables, .. } = environment;
-	(Names { variables, named_types, variable_names }, facts)
+	let Environment { named_types, info, variable_names, variables, .. } = environment;
+	(Names { variables, named_types, variable_names }, info)
+}
+
+pub(super) fn synthesise_declare_function<T: crate::ReadFromFS>(
+	function: &parser::ast::DeclareFunctionDeclaration,
+	source: SourceId,
+	environment: &mut Environment,
+	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
+) {
+	let declared_at = function.get_position().with_source(source);
+	let base = synthesise_function_annotation(
+		&function.type_parameters,
+		&function.parameters,
+		function.return_type.as_ref(),
+		environment,
+		checking_data,
+		function.performs.as_ref().into(),
+		&declared_at,
+		crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
+		None,
+	);
+
+	let base = checking_data.types.new_function_type_annotation(
+		base.type_parameters,
+		base.parameters,
+		base.return_type,
+		// TODO
+		&declared_at,
+		base.effects,
+		base.constant_function,
+	);
+
+	// TODO not sure
+	let open = checking_data.types.new_open_type(base);
+
+	let _context = decorators_to_context(&function.decorators);
+
+	environment.register_variable_handle_error(
+		function.name.as_str(),
+		VariableRegisterArguments { constant: true, space: None, initial_value: Some(open) },
+		function.get_position().with_source(source),
+		&mut checking_data.diagnostics_container,
+	);
 }
 
 pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {

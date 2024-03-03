@@ -1,19 +1,21 @@
 // Types to runtime behavior
 
 use crate::{
-	context::facts::Publicity, features::objects::ObjectBuilder, Constant, Environment, Type,
-	TypeId,
+	context::information::{get_properties_on_type, Publicity},
+	features::objects::{ObjectBuilder, SpecialObjects},
+	Constant, Environment, Type, TypeId,
 };
 
 use super::{properties::PropertyKey, TypeStore};
 
+#[allow(unused)]
 pub(crate) fn create_object_for_type(
 	ty: TypeId,
 	environment: &mut Environment,
 	// &mut to create new objects
 	types: &mut TypeStore,
 ) -> TypeId {
-	let mut obj = ObjectBuilder::new(None, types, &mut environment.facts); // env.facts.new_object(None, types, false);
+	let mut obj = ObjectBuilder::new(None, types, &mut environment.info);
 	match types.get_type_by_id(ty) {
 		Type::AliasTo { to: _, name: _, parameters: _ } => todo!(),
 		ty @ (Type::And(left, right) | Type::Or(left, right)) => {
@@ -47,7 +49,7 @@ pub(crate) fn create_object_for_type(
 		}
 		Type::RootPolyType(_) => todo!(),
 		Type::Constructor(_) => todo!(),
-		Type::Interface { name, parameters: _, nominal: _ } => {
+		Type::Interface { name, parameters: _, nominal: _, extends: _ } => {
 			let name = name.clone();
 
 			// TODO: Do we need positions for the following appends?
@@ -61,10 +63,10 @@ pub(crate) fn create_object_for_type(
 
 			if !matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::STRING_TYPE | TypeId::NUMBER_TYPE) {
 				// TODO array
-				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
+				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 				// let properties = env.create_array();
-				for (_, key, property) in environment.get_properties_on_type(ty) {
+				for (_, key, property) in get_properties_on_type(ty, environment) {
 					let value = create_object_for_type(property, environment, types);
 					inner_object.append(
 						environment,
@@ -93,7 +95,7 @@ pub(crate) fn create_object_for_type(
 				None,
 			);
 		}
-		Type::Function(..) => todo!(),
+		Type::SpecialObject(SpecialObjects::Function(..)) => todo!(),
 		Type::FunctionReference(..) => todo!(),
 		Type::Object(_) => {
 			let value = crate::PropertyValue::Value(
@@ -108,10 +110,10 @@ pub(crate) fn create_object_for_type(
 			);
 
 			// TODO array
-			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.facts);
+			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 			// let properties = env.create_array();
-			for (_, key, property) in environment.get_properties_on_type(ty) {
+			for (_, key, property) in get_properties_on_type(ty, environment) {
 				let value = create_object_for_type(property, environment, types);
 				inner_object.append(
 					environment,

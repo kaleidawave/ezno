@@ -7,7 +7,7 @@ use parser::{
 
 use super::expressions::synthesise_expression;
 use crate::{
-	context::{facts::Publicity, Context, ContextType, VariableRegisterArguments},
+	context::{information::Publicity, Context, ContextType, VariableRegisterArguments},
 	diagnostics::TypeCheckError,
 	features::variables::{get_new_register_argument_under, VariableMutability},
 	synthesis::parser_property_key_to_checker_property_key,
@@ -75,7 +75,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						let key = PropertyKey::from_usize(idx);
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*name.get_position(),
@@ -97,7 +97,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						let key = PropertyKey::String(Cow::Borrowed(name));
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*variable.get_position(),
@@ -135,7 +135,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						);
 						let argument = get_new_register_argument_under(
 							&argument,
-							key,
+							&key,
 							environment,
 							checking_data,
 							*position,
@@ -159,7 +159,6 @@ pub(super) fn synthesise_variable_declaration_item<
 >(
 	variable_declaration: &VariableDeclarationItem<U>,
 	environment: &mut Environment,
-	_is_constant: bool,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
 ) {
@@ -172,11 +171,7 @@ pub(super) fn synthesise_variable_declaration_item<
 		.map(|(ty, pos)| (*ty, *pos));
 
 	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
-		let expecting = if let Some((var_ty, _)) = var_ty_and_pos.as_ref() {
-			*var_ty
-		} else {
-			TypeId::ANY_TYPE
-		};
+		let expecting = var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 
 		let value_ty =
 			super::expressions::synthesise_expression(value, environment, checking_data, expecting);
@@ -229,37 +224,38 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array(items, _) => {
-			for (idx, item) in items.iter().enumerate() {
-				match item.get_ast_ref() {
-					ArrayDestructuringField::Spread(_, _) => todo!(),
-					ArrayDestructuringField::Name(variable_field, _) => {
-						let idx = PropertyKey::from_usize(idx);
+		VariableField::Array(_items, pos) => {
+			checking_data.raise_unimplemented_error(
+				"destructuring array (needs iterator)",
+				pos.with_source(environment.get_source()),
+			);
+			// for (idx, item) in items.iter().enumerate() {
+			// 	match item.get_ast_ref() {
+			// 		ArrayDestructuringField::Spread(_, _) => todo!(),
+			// 		ArrayDestructuringField::Name(variable_field, _) => {
+			// 			let idx = PropertyKey::from_usize(idx);
 
-						let value = environment.get_property(
-							value,
-							Publicity::Public,
-							idx,
-							&mut checking_data.types,
-							None,
-							*variable_field.get_position(),
-						);
+			// 			let value = environment.get_property(
+			// 				value,
+			// 				Publicity::Public,
+			// 				idx,
+			// 				&mut checking_data.types,
+			// 				None,
+			// 				*variable_field.get_position(),
+			// 				&checking_data.options,
+			// 			);
 
-						if let Some((_, value)) = value {
-							assign_to_fields(
-								variable_field,
-								environment,
-								checking_data,
-								value,
-								exported,
-							);
-						}
-
-						// TODO
-					}
-					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
-				}
-			}
+			// 			if let Some((_, value)) = value {
+			// 				assign_to_fields(
+			// 					variable_field,
+			// 					environment,
+			// 					checking_data,
+			// 					value,
+			// 					exported,
+			// 				);
+			// 			}
+			// 		ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
+			//   }
 		}
 		VariableField::Object(items, _) => {
 			for item in items {
@@ -281,10 +277,11 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 						let property = environment.get_property(
 							value,
 							Publicity::Public,
-							key_ty,
+							&key_ty,
 							&mut checking_data.types,
 							None,
 							*name.get_position(),
+							&checking_data.options,
 						);
 						let value = match property {
 							Some((_, value)) => value,
@@ -319,10 +316,11 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							value,
 							Publicity::Public,
 							// TODO different above
-							key_ty,
+							&key_ty,
 							&mut checking_data.types,
 							None,
 							*position,
+							&checking_data.options,
 						);
 
 						let value = match property_value {

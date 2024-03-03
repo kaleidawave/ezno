@@ -5,7 +5,7 @@ use parser::{
 };
 
 use crate::{
-	context::{facts::Publicity, Environment},
+	context::{information::Publicity, Environment},
 	features::assignments::{Assignable, Reference},
 	synthesis::expressions::synthesise_expression,
 	types::properties::PropertyKey,
@@ -100,7 +100,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
 	_checking_data: &CheckingData<T, super::EznoParser>,
-	environment: &crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &Environment,
 ) -> Assignable {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
@@ -154,7 +154,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					&checking_data.types,
 				),
 				span: position.with_source(environment.get_source()),
-				publicity: crate::context::facts::Publicity::Public,
+				publicity: crate::context::information::Publicity::Public,
 			}
 		}
 	}

@@ -20,23 +20,29 @@ pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
+	context::information::InformationChain,
 	events::RootReference,
 	features::{
-		functions::ThisValue,
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	Decidable, Environment,
+	types::poly_types::contributions::Contributions,
+	Decidable, Environment, FunctionId, SmallMap,
 };
 
+// Export
 pub use self::functions::*;
-use self::{
-	poly_types::{generic_type_arguments::StructureGenericArguments, SeedingContext},
-	properties::PropertyKey,
-};
-use crate::FunctionId;
 
-pub type TypeArguments = map_vec::Map<TypeId, (TypeId, SpanWithSource)>;
+use self::{
+	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
+};
+
+pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
+
+/// Final
+pub type TypeArguments = SmallMap<TypeId, TypeId>;
+pub type TypeRestrictions = SmallMap<TypeId, ExplicitTypeArgument>;
+pub type LookUpGenericMap = SmallMap<TypeId, LookUpGeneric>;
 
 /// References [Type]
 ///
@@ -115,11 +121,10 @@ pub enum Type {
 		// Whether only values under this type can be matched
 		nominal: bool,
 		parameters: Option<Vec<TypeId>>,
+		extends: Option<TypeId>,
 	},
 	/// *Dependent equality types*
 	Constant(crate::Constant),
-	/// Represents known functions
-	Function(FunctionId, ThisValue),
 
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
 	FunctionReference(FunctionId),
@@ -204,11 +209,15 @@ impl Type {
 				false
 			}
 			Type::Constant(_)
-			| Type::Function(..)
+			| Type::SpecialObject(SpecialObjects::Function(..))
 			| Type::FunctionReference(..)
 			| Type::Object(_) => false,
 			Type::SpecialObject(_) => todo!(),
 		}
+	}
+
+	pub(crate) fn is_operator(&self) -> bool {
+		matches!(self, Self::And(..) | Self::Or(..))
 	}
 }
 
@@ -237,7 +246,7 @@ pub enum Constructor {
 		/// TODO this can only be poly types
 		condition: TypeId,
 		truthy_result: TypeId,
-		else_result: TypeId,
+		otherwise_result: TypeId,
 		result_union: TypeId,
 	},
 	/// output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
@@ -283,8 +292,10 @@ pub struct StructureGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
+	/// Gets the prototype
 	PrototypeOf(TypeId),
-	PrimitiveTypeName(TypeId),
+	/// The `typeof` unary operator
+	TypeOf(TypeId),
 }
 
 /// TODO instance of?
@@ -316,10 +327,9 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
 			}
-			Type::Function(..)
-			| Type::FunctionReference(..)
-			| Type::SpecialObject(_)
-			| Type::Object(_) => Decidable::Known(true),
+			Type::FunctionReference(..) | Type::SpecialObject(_) | Type::Object(_) => {
+				Decidable::Known(true)
+			}
 			Type::Constant(cst) => {
 				// TODO strict casts
 				Decidable::Known(cast_as_boolean(cst, false).unwrap())
@@ -330,23 +340,18 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 
 /// TODO `add_property_restrictions` via const generics
 pub struct BasicEquality {
-	pub add_property_restrictions: bool,
 	pub position: SpanWithSource,
+	pub add_property_restrictions: bool,
+	pub object_constraints: Vec<(TypeId, TypeId)>,
 }
 
 /// For subtyping
-pub trait SubtypeBehavior {
-	/// If false will error out if T >: U
-	const INFER_GENERICS: bool;
 
-	fn set_type_argument(
-		&mut self,
-		parameter: TypeId,
-		value: TypeId,
-		restriction_mode: bool,
-	) -> Result<(), NonEqualityReason>;
+pub trait SubTypeBehavior<'a> {
+	/// For specialisation during calling
+	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>>;
 
-	fn add_property_restrictions(&self) -> bool;
+	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId);
 
 	fn add_function_restriction(
 		&mut self,
@@ -355,56 +360,22 @@ pub trait SubtypeBehavior {
 		function_type: FunctionType,
 	);
 
-	// TODO
-	// object reference type needs to meet constraint
-	// LHS is dependent + RHS argument
+	// /// TODO can go faster than Vec, by passing all options,
+	// fn get_constraint<C: InformationChain>(&self, under: TypeId, info: &C) -> Option<ArgumentOrLookup>;
 }
 
-impl SubtypeBehavior for SeedingContext {
-	// Want to match/infer, so false here
-	const INFER_GENERICS: bool = true;
-
-	/// Does not check thingy
-	fn set_type_argument(
-		&mut self,
-		parameter: TypeId,
-		value: TypeId,
-		restriction_mode: bool,
-	) -> Result<(), NonEqualityReason> {
-		// TODO
-		let (parameter_pos, parameter_idx) = self.argument_position_and_parameter_idx;
-		self.set_id(parameter, (value, parameter_pos, parameter_idx), restriction_mode);
-		Ok(())
-	}
-
-	fn add_property_restrictions(&self) -> bool {
-		false
-	}
-
-	fn add_function_restriction(
-		&mut self,
-		_environment: &mut Environment,
-		function_id: FunctionId,
-		function_type: FunctionType,
-	) {
-		self.locally_held_functions.insert(function_id, function_type);
-	}
+pub enum ArgumentOrLookup {
+	Argument(TypeId),
+	LookUpGeneric(LookUpGeneric),
 }
 
-impl SubtypeBehavior for BasicEquality {
-	const INFER_GENERICS: bool = false;
-
-	fn set_type_argument(
-		&mut self,
-		_parameter: TypeId,
-		_value: TypeId,
-		_restriction_mode: bool,
-	) -> Result<(), NonEqualityReason> {
-		Ok(())
+impl<'a> SubTypeBehavior<'a> for BasicEquality {
+	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
+		None
 	}
 
-	fn add_property_restrictions(&self) -> bool {
-		self.add_property_restrictions
+	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId) {
+		self.object_constraints.push((on, constraint));
 	}
 
 	fn add_function_restriction(
@@ -421,17 +392,83 @@ impl SubtypeBehavior for BasicEquality {
 	}
 }
 
+/// TODO implement `Try` / `?` on `SubTypeResult`
 #[derive(Debug)]
 pub enum SubTypeResult {
 	IsSubType,
 	IsNotSubType(NonEqualityReason),
 }
 
-// impl SubTypeResult {
-// 	type Error = NonEqualityReason;
-// }
+/// Used for printing and subtyping. Handles nested restrictions
+#[derive(Clone, Copy, Debug)]
+pub struct GenericChain<'a> {
+	parent: Option<&'a GenericChain<'a>>,
+	value: StructureGenericArgumentsRef<'a>,
+}
 
-// TODO implement `?` on SupertypeResult
+#[derive(Clone, Copy, Debug)]
+pub struct StructureGenericArgumentsRef<'a> {
+	type_restrictions: &'a TypeRestrictions,
+	properties: &'a SmallMap<TypeId, LookUpGeneric>,
+}
+
+impl<'a> StructureGenericArgumentsRef<'a> {
+	pub(crate) fn from_owned(owned: &'a StructureGenericArguments) -> Self {
+		Self { type_restrictions: &owned.type_restrictions, properties: &owned.properties }
+	}
+
+	pub(crate) fn into_owned(self) -> StructureGenericArguments {
+		StructureGenericArguments {
+			type_restrictions: self.type_restrictions.clone(),
+			properties: self.properties.clone(),
+			// TODO
+			closures: Vec::new(),
+		}
+	}
+}
+
+impl<'a> GenericChain<'a> {
+	pub(crate) fn new(value: &'a StructureGenericArguments) -> Self {
+		Self::new_from_ref(StructureGenericArgumentsRef::from_owned(value))
+	}
+
+	pub(crate) fn new_from_ref(value: StructureGenericArgumentsRef<'a>) -> Self {
+		Self { value, parent: None }
+	}
+
+	/// TODO wip
+	pub(crate) fn get_arg(&self, on: TypeId, info: &impl InformationChain) -> Option<Vec<TypeId>> {
+		if let Some((t, _pos)) = self.value.type_restrictions.get(&on) {
+			Some(vec![*t])
+		} else if let Some(lookup) = self.value.properties.get(&on) {
+			Some(lookup.calculate_lookup(info))
+		} else {
+			self.parent.and_then(|parent| parent.get_arg(on, info))
+		}
+	}
+
+	pub(crate) fn append(
+		parent: Option<&'a GenericChain>,
+		value: &'a StructureGenericArguments,
+	) -> GenericChain<'a> {
+		Self::append_ref(parent, StructureGenericArgumentsRef::from_owned(value))
+	}
+
+	pub(crate) fn append_ref(
+		parent: Option<&'a GenericChain>,
+		value: StructureGenericArgumentsRef<'a>,
+	) -> GenericChain<'a> {
+		GenericChain { parent, value }
+	}
+
+	pub(crate) fn get_single_arg(&self, key: TypeId) -> Option<TypeId> {
+		if let Some((t, _pos)) = self.value.type_restrictions.get(&key) {
+			Some(*t)
+		} else {
+			self.parent.and_then(|parent| parent.get_single_arg(key))
+		}
+	}
+}
 
 // TODO maybe positions and extra information here
 // SomeLiteralMismatch
@@ -485,45 +522,6 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			// TODO unsure
 
 			Some(*based_on)
-
-			// // TODO into function
-			// match nature.get_poly_pointer() {
-			// 	PolyPointer::Fixed(to) => Some(PolyBase::Fixed {
-			// 		to,
-			// 		is_open_poly: matches!(nature, PolyNature::Open(..)),
-			// 	}),
-			// 	PolyPointer::Inferred(boundary) => {
-			// 		let to = self
-			// 			.parents_iter()
-			// 			.find_map(|ctx| get_on_ctx!(ctx.bases.get_local_type_base(on)))
-			// 			// TODO temp
-			// 			.unwrap_or_else(|| {
-			// 				crate::utils::notify!("No type base on inferred poly type");
-			// 				TypeId::ANY_TYPE
-			// 			});
-
-			// 		Some(PolyBase::Dynamic { to, boundary })
-			// 	}
-			// }
-
-			// if let Some(to) = .m {
-			// 	Some(PolyBase::Fixed {
-			// 		to,
-			// 		is_open_poly: matches!(nature, PolyNature::Open(_)),
-			// 	})
-			// } else {
-			// 	Some(PolyBase::Dynamic { to: (), boundary: () })
-
-			// 	// let modified_base =
-			// 	// 	self.parents_iter().find_map(|env| get_on_ctx!(env.bases.get(&on)).copied());
-
-			// 	// let aliases = modified_base.unwrap_or(*aliases);
-
-			// 	// Some(if constraint_is_mutable {
-			// 	// 	PolyBase::Dynamic(aliases)
-			// 	// } else {
-			// 	// })
-			// }
 		}
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
@@ -561,85 +559,10 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	Some(*constraint)
 				// }
 			}
-			Constructor::Image { on: _, with: _, result } => {
-				Some(result)
-				// TODO temp
-				// if let PolyPointer::Fixed(result) = result {
-				// 	Some(PolyBase::Fixed { to: result, is_open_poly: true })
-				// } else {
-				// 	let on_base_function = self.get_poly_base(on, types);
-				// 	if let Some(base) = on_base_function {
-				// 		let (boundary, is_open_poly, ty) = base.unravel();
-				// 		if let Type::Function(func, _) = types.get_type_by_id(ty) {
-				// 			Some(func.return_type)
-				// 		} else {
-				// 			todo!()
-				// 		}
-				// 	} else {
-				// 		// TODO record ahead of time, rather than recalculating here
-				// 		let is_open_poly = with
-				// 			.iter()
-				// 			.filter_map(|arg| {
-				// 				self.get_poly_base(arg.into_type().unwrap(), types)
-				// 			})
-				// 			.all(|base| base.is_open_poly());
-
-				// 		let ty = types.get_type_by_id(on);
-				// 		if let Type::Function(func, _) = ty {
-				// 			// TODO
-				// 			Some(func.return_type)
-				// 		} else {
-				// 			let on = crate::types::printing::print_type(
-				// 				on,
-				// 				types,
-				// 				&self.into_general_context(),
-				// 				true,
-				// 			);
-				// 			unreachable!("Getting function on {}", on);
-				// 		}
-				// 	}
-				// }
-			}
+			Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
-
-				// `on` or `under` will be poly, but one of them may be a non-poly
-				// type and so it can be expected to be `None` here.
-				// TODO needs better primitives for controlling this
-				// let on_constraint = self.get_poly_base(on, types).unwrap_or(on);
-				// let property = match under {
-				// 	PropertyKey::Type(ty) => {
-				// 		PropertyKey::Type(self.get_poly_base(ty, types).unwrap_or(ty))
-				// 	}
-				// 	prop => prop,
-				// };
-
-				// Bad
-				// let is_open_poly =
-				// 	on_constraint.as_ref().map(PolyBase::is_open_poly).unwrap_or(true)
-				// 		&& property_constraint
-				// 			.as_ref()
-				// 			.map(PolyBase::is_open_poly)
-				// 			.unwrap_or(true);
-
-				// let on_base = on_constraint.unwrap_or(on);
-				// let property_base = property_constraint.unwrap_or(under);
-
-				// TODO abstract to function
-				// let (on_boundary, _, on_constraint) = on_base.unravel();
-				// let (property_fixed, _, property_constraint) = property_base.unravel();
-
-				// TODO temp
-				// let result = result self
-				// 	.get_property_unbound(on_constraint, PublicityKind::Public, property, types)
-				// 	.map(|property| match property {
-				// 		Logical::Pure(PropertyValue::Value(v)) => v,
-				// 		// TODO unsure?
-				// 		Logical::Pure(PropertyValue::Getter(g)) => g.return_type,
-				// 		result => todo!("{:?}", result),
-				// 	})
-				// 	.expect("Inference failed");
 			}
 			Constructor::ConditionalResult { result_union, .. } => {
 				// TODO dynamic and open poly
@@ -656,7 +579,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::StructureGenerics { .. } => None,
 		},
 		Type::Object(ObjectNature::RealDeal) => {
-			crate::utils::notify!("Might be missing some obj here");
+			// crate::utils::notify!("Might be missing some mutations that are possible here");
 			None
 		}
 		_ => None,
@@ -671,4 +594,80 @@ fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	} else {
 		on
 	}
+}
+
+/// TODO T on `Array`, U, V on `Map` etc. Works around not having `&mut TypeStore` and mutations in-between
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum LookUpGeneric {
+	NumberPropertyOf(TypeId),
+	// Property(Box<Self>, PropertyKey<'static>),
+}
+
+impl LookUpGeneric {
+	#[allow(unreachable_patterns)]
+	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain) -> Vec<TypeId> {
+		match self {
+			LookUpGeneric::NumberPropertyOf(t) => {
+				info.get_chain_of_info()
+					.filter_map(|info| info.current_properties.get(t).map(|v| v.iter()))
+					.flatten()
+					.filter_map(|(_publicity, key, value)| {
+						// TODO filter more
+						if matches!(key, PropertyKey::String(s) if s == "length") {
+							None
+						} else {
+							Some(value.as_get_type())
+						}
+					})
+					.collect()
+			}
+			_ => unreachable!(), // LookUpGeneric::Property(_, _) => todo!(),
+		}
+	}
+}
+
+pub trait TypeCombinable {
+	fn combine(
+		condition: TypeId,
+		truthy_result: Self,
+		otherwise_result: Self,
+		types: &mut TypeStore,
+	) -> Self;
+
+	fn default() -> Self;
+}
+
+// For if-else branches
+impl TypeCombinable for () {
+	fn combine(
+		_condition: TypeId,
+		_truthy_result: Self,
+		_otherwise_result: Self,
+		_types: &mut TypeStore,
+	) -> Self {
+	}
+
+	fn default() -> Self {}
+}
+
+// For ternary conditional operators
+impl TypeCombinable for TypeId {
+	fn combine(
+		condition: TypeId,
+		truthy_result: Self,
+		otherwise_result: Self,
+		types: &mut TypeStore,
+	) -> Self {
+		types.new_conditional_type(condition, truthy_result, otherwise_result)
+	}
+
+	fn default() -> Self {
+		TypeId::UNDEFINED_TYPE
+	}
+}
+
+/// Used for **both** inference and narrowing
+pub enum Confirmation {
+	HasProperty { on: (), property: () },
+	IsType { on: (), ty: () },
 }

@@ -16,10 +16,6 @@ pub struct Bases {
 }
 
 impl Bases {
-	pub(crate) fn _does_type_have_mutable_base(&self, _on: TypeId) -> bool {
-		todo!()
-	}
-
 	pub(crate) fn merge(&mut self, bases: Bases, context_id: ContextId) {
 		self.immutable_bases.extend(bases.immutable_bases);
 		for (ty, (ctx_ceil, base)) in bases.mutable_bases {

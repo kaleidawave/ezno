@@ -5,7 +5,7 @@ use parser::{
 };
 
 use crate::{
-	context::{facts::Publicity, Environment},
+	context::{information::Publicity, Environment},
 	features::functions::{
 		function_to_property, ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter,
 	},
@@ -94,6 +94,8 @@ pub(super) fn synthesise_class_declaration<
 						is_generator,
 						// TODO
 						super_type: None,
+						// TODO
+						expecting: TypeId::ANY_TYPE,
 					},
 				);
 
@@ -101,7 +103,7 @@ pub(super) fn synthesise_class_declaration<
 					function_to_property(&getter_setter, method_ty, &mut checking_data.types);
 
 				let position = Some(method.position.with_source(environment.get_source()));
-				environment.facts.register_property(
+				environment.info.register_property(
 					class_prototype,
 					publicity,
 					property_key,
@@ -180,6 +182,8 @@ pub(super) fn synthesise_class_declaration<
 					is_generator: method.header.is_generator(),
 					// TODO
 					super_type: None,
+					// TODO
+					expecting: TypeId::ANY_TYPE,
 				};
 				let function = environment.new_function(checking_data, method, behavior);
 
@@ -192,7 +196,7 @@ pub(super) fn synthesise_class_declaration<
 				};
 
 				// (publicity_kind, property_key, PropertyOnClass::Function { method, property })
-				environment.facts.register_property(
+				environment.info.register_property(
 					class_type,
 					publicity_kind,
 					static_property_keys.pop().unwrap(),
@@ -218,7 +222,7 @@ pub(super) fn synthesise_class_declaration<
 				} else {
 					TypeId::UNDEFINED_TYPE
 				};
-				environment.facts.register_property(
+				environment.info.register_property(
 					class_type,
 					publicity_kind,
 					static_property_keys.pop().unwrap(),

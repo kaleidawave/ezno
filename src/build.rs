@@ -9,8 +9,6 @@ use parser::{
 	ToStringOptions,
 };
 
-use crate::check::CheckingOutputWithoutDiagnostics;
-
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct Output {
 	pub output_path: PathBuf,
@@ -46,6 +44,25 @@ pub struct BuildConfig {
 pub type EznoParsePostCheckVisitors =
 	parser::visiting::VisitorsMut<CheckingOutputWithoutDiagnostics>;
 
+pub struct CheckingOutputWithoutDiagnostics {
+	pub type_mappings: checker::TypeMappings,
+	pub types: checker::types::TypeStore,
+	pub module_contents: parser::source_map::MapFileStore<parser::source_map::WithPathMap>,
+	pub modules: std::collections::HashMap<
+		parser::SourceId,
+		checker::features::modules::SynthesisedModule<
+			<checker::synthesis::EznoParser as checker::ASTImplementation>::OwnedModule,
+		>,
+	>,
+}
+
+impl CheckingOutputWithoutDiagnostics {
+	#[must_use]
+	pub fn is_function_called(&self, function_id: checker::FunctionId) -> bool {
+		self.types.called_functions.contains(&function_id)
+	}
+}
+
 pub fn build<T: crate::ReadFromFS>(
 	input_paths: Vec<PathBuf>,
 	fs_resolver: &T,
@@ -58,10 +75,9 @@ pub fn build<T: crate::ReadFromFS>(
 	let type_check_options =
 		TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
 
-	let result =
-		crate::check(input_paths, fs_resolver, type_definition_module, Some(type_check_options));
+	let result = crate::check(input_paths, fs_resolver, type_definition_module, type_check_options);
 
-	let mut data = crate::check::CheckingOutputWithoutDiagnostics {
+	let mut data = CheckingOutputWithoutDiagnostics {
 		module_contents: result.module_contents,
 		modules: result.modules,
 		type_mappings: result.type_mappings,

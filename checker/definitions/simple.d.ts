@@ -1,6 +1,8 @@
-// ↓↓ Ezno Functions ↓↓
+// ↓↓ Ezno testing functions ↓↓
 declare function debug_context(): void performs const debug_context;
 declare function print_type(t: any): void performs const print_type;
+declare function print_and_debug_type(t: any): void performs const print_and_debug_type;
+declare function print_constraint(t: any): void performs const print_constraint;
 declare function debug_type(t: any): void performs const debug_type;
 declare function debug_type_independent(t: any): void performs const debug_type_independent;
 declare function debug_type_rust(t: any): void performs const debug_type_rust;
@@ -38,6 +40,35 @@ interface nominal Array<T> {
             delete this[this.length];
             return value
         }
+    }
+
+    // TODO this argument
+    map<U>(cb: (t: T, i?: number) => U): Array<U> performs {
+        const { length } = this, u: Array<U> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            u.push(cb(value, i++))
+        }
+        return u;
+    }
+
+    map2<U>(cb: (t: T, i?: number) => U): any performs {
+        return cb;
+    }
+
+    filter(cb: (t: T, i?: number) => any): Array<T> performs {
+        const { length } = this, filtered: Array<T> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            const res = cb(value, i++)
+            // debug_type_independent(res)
+            if (res) {
+                filtered.push(value)
+            }
+        }
+        return filtered;
     }
 
     // last() performs {

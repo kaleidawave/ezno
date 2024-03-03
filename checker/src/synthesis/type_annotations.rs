@@ -18,7 +18,7 @@
 //! - To allow for compat it treats it as inferred generic **so it can get properties off of it**. Would be better
 //! to allow this as a condition in the future
 
-use std::{convert::TryInto, iter::FromIterator};
+use std::convert::TryInto;
 
 use parser::{
 	type_annotations::{
@@ -29,15 +29,15 @@ use parser::{
 use source_map::SpanWithSource;
 
 use crate::{
-	context::facts::Publicity,
-	diagnostics::TypeCheckError,
+	context::information::Publicity,
+	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		substitute, Constant, PolyNature, StructureGenerics, Type,
+		Constant, PolyNature, StructureGenerics, Type,
 	},
 	types::{Constructor, TypeId},
 	CheckingData, Environment,
@@ -93,7 +93,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								pos.with_source(environment.get_source()),
 							),
 						);
-						TypeId::ANY_TYPE
+						TypeId::ERROR_TYPE
 					} else {
 						ty
 					}
@@ -107,7 +107,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 		},
 		TypeAnnotation::Union(type_annotations, _) => {
-			// TODO remove duplicates here maybe
 			let iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
@@ -120,8 +119,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.reduce(|acc, right| checking_data.types.new_or_type(acc, right))
 				.expect("Empty union")
 		}
-		TypeAnnotation::Intersection(type_annotations, _) => {
-			let iterator = type_annotations
+		TypeAnnotation::Intersection(type_annotations, position) => {
+			let mut iterator = type_annotations
 				.iter()
 				.map(|type_annotation| {
 					synthesise_type_annotation(type_annotation, environment, checking_data)
@@ -129,9 +128,32 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.collect::<Vec<_>>()
 				.into_iter();
 
-			iterator
-				.reduce(|acc, right| checking_data.types.new_and_type(acc, right))
-				.expect("Empty intersection")
+			let mut acc = iterator.next().expect("Empty intersection");
+			for right in iterator {
+				if let Ok(new_ty) = checking_data.types.new_and_type(acc, right) {
+					acc = new_ty;
+				} else {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckWarning::TypesDoNotIntersect {
+							left: TypeStringRepresentation::from_type_id(
+								acc,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							right: TypeStringRepresentation::from_type_id(
+								right,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							position: position.with_source(environment.get_source()),
+						},
+					);
+					return TypeId::ERROR_TYPE;
+				}
+			}
+			acc
 		}
 		// This will take the found type and generate a InstanceOfGeneric based on the type arguments
 		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
@@ -141,7 +163,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				_ => {}
 			}
 
-			let inner_type_id = environment.get_type_from_name(name).unwrap();
+			let Some(inner_type_id) = environment.get_type_from_name(name) else {
+				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
+					name,
+					position.with_source(environment.get_source()),
+				));
+				return TypeId::ERROR_TYPE;
+			};
+
 			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
 			if let Some(parameters) = inner_type.get_parameters() {
@@ -164,6 +193,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						position: argument_type_annotation
 							.get_position()
 							.with_source(environment.get_source()),
+						// TODO not needed
+						object_constraints: Default::default(),
 					};
 
 					let Type::RootPolyType(PolyNature::Generic {
@@ -185,20 +216,22 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					);
 
 					if let SubTypeResult::IsNotSubType(_matches) = result {
-						let error = crate::diagnostics::TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-							parameter_restriction: crate::diagnostics::TypeStringRepresentation::from_type_id(
+						let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+							parameter_restriction: TypeStringRepresentation::from_type_id(
 								*parameter_restriction,
-								&environment.as_general_context(),
+								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							argument: crate::diagnostics::TypeStringRepresentation::from_type_id(
+							argument: TypeStringRepresentation::from_type_id(
 								argument,
-								&environment.as_general_context(),
+								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							position: argument_type_annotation.get_position().with_source(environment.get_source()),
+							position: argument_type_annotation
+								.get_position()
+								.with_source(environment.get_source()),
 						};
 
 						checking_data.diagnostics_container.add_error(error);
@@ -212,15 +245,22 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				}
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
+				let mut arguments = StructureGenericArguments {
+					type_restrictions: type_arguments,
+					properties: map_vec::Map::new(),
+					closures: Default::default(),
+				};
 				if let Some(on) = is_type_alias_to {
-					substitute(on, &mut type_arguments, environment, &mut checking_data.types)
+					crate::types::substitute(
+						on,
+						&mut arguments,
+						environment,
+						&mut checking_data.types,
+					)
 				} else {
 					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 						on: inner_type_id,
-						arguments: StructureGenericArguments {
-							type_arguments,
-							closures: Default::default(),
-						},
+						arguments,
 					}));
 
 					checking_data.types.register_type(ty)
@@ -285,18 +325,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
 			let item_type = synthesise_type_annotation(item_annotation, environment, checking_data);
-			let with_source = item_annotation.get_position().with_source(environment.get_source());
-			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on: TypeId::ARRAY_TYPE,
-				arguments: StructureGenericArguments {
-					type_arguments: FromIterator::from_iter([(
-						TypeId::T_TYPE,
-						(item_type, with_source),
-					)]),
-					closures: Default::default(),
-				},
-			}));
-			checking_data.types.register_type(ty)
+			let position = item_annotation.get_position().with_source(environment.get_source());
+			checking_data.types.new_array_type(item_type, position)
 		}
 		TypeAnnotation::ConstructorLiteral {
 			type_parameters: _,
@@ -314,6 +344,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			super::interfaces::synthesise_signatures(
 				None,
+				None,
 				members,
 				super::interfaces::OnToType(onto),
 				environment,
@@ -326,7 +357,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let mut obj = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
-				&mut environment.facts,
+				&mut environment.info,
 			);
 
 			for (idx, (spread, member)) in members.iter().enumerate() {
@@ -401,7 +432,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 			);
-			let else_result = synthesise_type_annotation(
+			let otherwise_result = synthesise_type_annotation(
 				synthesise_condition(resolve_false),
 				environment,
 				checking_data,
@@ -410,8 +441,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
 				truthy_result,
-				else_result,
-				result_union: checking_data.types.new_or_type(truthy_result, else_result),
+				otherwise_result,
+				result_union: checking_data.types.new_or_type(truthy_result, otherwise_result),
 			});
 
 			checking_data.types.register_type(ty)
@@ -444,15 +475,12 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match condition {
 		TypeCondition::Extends { ty, extends, position: _ } => {
-			let _item = synthesise_type_annotation(ty, environment, checking_data);
-			let _extends = synthesise_type_annotation(extends, environment, checking_data);
-			todo!();
-			// let ty = Type::Constructor(Constructor::BinaryOperator {
-			// 	operator: crate::structures::operators::CanonicalBinaryOperator::InstanceOf,
-			// 	lhs: item,
-			// 	rhs: extends,
-			// });
-			// checking_data.types.register_type(ty)
+			let item = synthesise_type_annotation(ty, environment, checking_data);
+			let extends = synthesise_type_annotation(extends, environment, checking_data);
+			let ty = Type::Constructor(Constructor::TypeRelationOperator(
+				crate::types::TypeRelationOperator::Extends { ty: item, extends },
+			));
+			checking_data.types.register_type(ty)
 		}
 		// TODO requires a kind of strict instance of ???
 		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),
@@ -463,7 +491,7 @@ fn synthesise_type_condition<T: crate::ReadFromFS>(
 pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	possible_declaration: &str,
 	position: &source_map::SpanWithSource,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
+	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();

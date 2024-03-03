@@ -2,15 +2,17 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{
-		facts::{Facts, Publicity},
+		information::{LocalInformation, Publicity},
 		Environment,
 	},
 	types::{
 		properties::{PropertyKey, PropertyValue},
 		TypeStore,
 	},
-	TypeId,
+	FunctionId, TypeId,
 };
+
+use super::functions::ThisValue;
 
 // TODO slice indexes
 pub struct ObjectBuilder {
@@ -18,10 +20,14 @@ pub struct ObjectBuilder {
 }
 
 impl ObjectBuilder {
-	pub fn new(prototype: Option<TypeId>, types: &mut TypeStore, facts: &mut Facts) -> Self {
+	pub fn new(
+		prototype: Option<TypeId>,
+		types: &mut TypeStore,
+		info: &mut LocalInformation,
+	) -> Self {
 		// TODO is_under_dyn bad
 		let is_under_dyn = true;
-		Self { object: facts.new_object(prototype, types, is_under_dyn, false) }
+		Self { object: info.new_object(prototype, types, is_under_dyn, false) }
 	}
 
 	pub fn append(
@@ -32,7 +38,7 @@ impl ObjectBuilder {
 		value: PropertyValue,
 		position: Option<SpanWithSource>,
 	) {
-		environment.facts.register_property(self.object, publicity, under, value, true, position);
+		environment.info.register_property(self.object, publicity, under, value, true, position);
 	}
 
 	#[must_use]
@@ -57,4 +63,6 @@ pub enum SpecialObjects {
 	Regexp(String),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
+	/// Yeah here
+	Function(FunctionId, ThisValue),
 }

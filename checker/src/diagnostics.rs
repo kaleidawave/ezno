@@ -3,12 +3,9 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::{
-	context::environment::Label,
+	context::{environment::Label, information::InformationChain},
 	diagnostics,
-	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_generics,
-	},
+	types::{printing::print_type_with_type_arguments, GenericChain},
 };
 use source_map::{SourceId, SpanWithSource};
 use std::{
@@ -169,10 +166,7 @@ impl IntoIterator for DiagnosticsContainer {
 
 pub(super) use defined_errors_and_warnings::*;
 
-use crate::{
-	context::GeneralContext,
-	types::{printing::print_type, TypeId, TypeStore},
-};
+use crate::types::{printing::print_type, TypeId, TypeStore};
 
 /// TODO could be more things, for instance a property missing etc
 pub enum TypeStringRepresentation {
@@ -188,7 +182,7 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id(
 		id: TypeId,
-		ctx: &GeneralContext,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
@@ -196,51 +190,63 @@ impl TypeStringRepresentation {
 		Self::Type(value)
 	}
 
+	#[must_use]
+	pub fn from_type_id_with_generics(
+		id: TypeId,
+		type_arguments: Option<GenericChain>,
+		ctx: &impl InformationChain,
+		types: &TypeStore,
+		debug_mode: bool,
+	) -> Self {
+		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
+		Self::Type(value)
+	}
+
 	/// TODO working it out
 	pub(crate) fn from_property_constraint(
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
-		// TODO chain
-		generics: Option<&StructureGenericArguments>,
-		ctx: &GeneralContext,
+		generics: Option<GenericChain>,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
-			crate::context::Logical::Pure(p) => match p {
+			crate::context::Logical::Pure(constraint) => match constraint {
 				crate::PropertyValue::Value(v) => {
-					// TODO pass down generics!!!
-					let value = print_type_with_generics(
-						v,
-						generics.map(|g| &g.type_arguments),
-						types,
-						ctx,
-						debug_mode,
-					);
+					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
 					Self::Type(value)
 				}
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
 				crate::PropertyValue::Deleted => todo!(),
+				crate::PropertyValue::Dependent { .. } => todo!(),
 			},
-			crate::context::Logical::Or { left, right } => {
-				let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
-				let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+			crate::context::Logical::Or { .. } => {
+				todo!()
+				// let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
+				// let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
 
-				#[allow(irrefutable_let_patterns)]
-				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
-					(left, right)
-				{
-					l.push_str(&r);
-					TypeStringRepresentation::Type(l)
-				} else {
-					unreachable!()
-				}
+				// #[allow(irrefutable_let_patterns)]
+				// if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
+				// 	(left, right)
+				// {
+				// 	l.push_str(&r);
+				// 	TypeStringRepresentation::Type(l)
+				// } else {
+				// 	unreachable!()
+				// }
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
 					todo!("chaining")
 				}
-				Self::from_property_constraint(*on, Some(&antecedent), ctx, types, debug_mode)
+				Self::from_property_constraint(
+					*on,
+					Some(GenericChain::new(&antecedent)),
+					ctx,
+					types,
+					debug_mode,
+				)
 			}
 		}
 	}
@@ -303,7 +309,8 @@ mod defined_errors_and_warnings {
 		ReturnedTypeDoesNotMatch {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,
-			annotation_position: SpanWithSource,
+			/// Can be `None` if it is inferred parameters
+			annotation_position: Option<SpanWithSource>,
 			returned_position: SpanWithSource,
 		},
 		// TODO are these the same errors?
@@ -389,6 +396,11 @@ mod defined_errors_and_warnings {
 			rhs: TypeStringRepresentation,
 			position: SpanWithSource,
 		},
+		InvalidCast {
+			position: SpanWithSource,
+			from: TypeStringRepresentation,
+			to: TypeStringRepresentation,
+		},
 	}
 
 	impl From<TypeCheckError<'_>> for Diagnostic {
@@ -398,7 +410,7 @@ mod defined_errors_and_warnings {
 				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable {variable} in scope",
+							"Could not find variable '{variable}' in scope",
 							// possibles Consider '{:?}'
 						),
 						position,
@@ -502,7 +514,7 @@ mod defined_errors_and_warnings {
 					FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position { reason: format!("no logic for constant function {name}"), kind, position },
 					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
 					FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => Diagnostic::PositionWithAdditionalLabels {
-						reason: format!("Variable {variable_name} used before declaration"),
+						reason: format!("Variable '{variable_name}' used before declaration"),
 						position: call_site.unwrap(),
 						kind,
 						labels: vec![(
@@ -557,7 +569,7 @@ mod defined_errors_and_warnings {
 					},
 					AssignmentError::VariableNotFound { variable, assignment_position } => {
 						Diagnostic::Position {
-							reason: format!("Cannot assign to unknown variable {variable}"),
+							reason: format!("Cannot assign to unknown variable '{variable}'"),
 							position: assignment_position,
 							kind,
 						}
@@ -585,10 +597,10 @@ mod defined_errors_and_warnings {
 					reason: format!(
 						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
 					),
-					labels: vec![(
+					labels: annotation_position.into_iter().map(|annotation_position| (
 						format!("Function annotated to return {expected_return_type} here"),
 						Some(annotation_position),
-					)],
+					)).collect(),
 					position: returned_position,
 					kind,
 				},
@@ -657,7 +669,7 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::CannotRedeclareVariable { name, position } => {
 					Diagnostic::Position {
-						reason: format!("Cannot redeclare variable {name}"),
+						reason: format!("Cannot redeclare variable '{name}'"),
 						position,
 						kind,
 					}
@@ -668,7 +680,7 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
-					reason: "property not writeable".into(),
+					reason: "Property not writeable".into(),
 					position,
 					kind,
 				},
@@ -704,7 +716,7 @@ mod defined_errors_and_warnings {
 					current_context,
 					position,
 				} => Diagnostic::Position {
-					reason: format!("{variable} is only available on the {expected_context}, currently in {current_context}"),
+					reason: format!("'{variable}' is only available on the {expected_context}, currently in {current_context}"),
 					position,
 					kind,
 				},
@@ -719,12 +731,12 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
-					reason: format!("Type {name} already declared"),
+					reason: format!("Type named '{name}' already declared"),
 					position,
 					kind,
 				},
 				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
-					reason: format!("Variable {variable_name} used before declaration"),
+					reason: format!("Variable '{variable_name}' used before declaration"),
 					position,
 					kind,
 				},
@@ -735,6 +747,13 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
+				TypeCheckError::InvalidCast { position, from, to } => {
+					Diagnostic::Position {
+						reason: format!("Cannot cast {from} to {to}"),
+						position,
+						kind,
+					}
+				}
 			}
 		}
 	}
@@ -758,7 +777,13 @@ mod defined_errors_and_warnings {
 		MergingInterfaceInSameContext {
 			position: SpanWithSource,
 		},
+		TypesDoNotIntersect {
+			left: TypeStringRepresentation,
+			right: TypeStringRepresentation,
+			position: SpanWithSource,
+		},
 		InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+		Unreachable(SpanWithSource),
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {
@@ -800,6 +825,13 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+				TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
+					Diagnostic::Position {
+						reason: format!("No intersection between types {left} and {right}"),
+						position,
+						kind,
+					}
+				}
 				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(position) => {
 					Diagnostic::Position {
 						reason: "Invalid (or unimplemented) item in definition file skipped"
@@ -808,6 +840,11 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+				TypeCheckWarning::Unreachable(position) => Diagnostic::Position {
+					reason: "Unreachable statement".to_owned(),
+					position,
+					kind,
+				},
 			}
 		}
 	}

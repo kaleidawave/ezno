@@ -61,8 +61,7 @@ impl WASMCheckOutput {
 	}
 
 	pub fn get_type_at_position(&self, path: &str, pos: u32) -> String {
-		todo!("requires facts_chain change")
-		// self.0.get_type_at_position(path, pos)
+		self.0.get_type_at_position(path, pos, false).unwrap_or_default()
 	}
 }
 
@@ -80,7 +79,12 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASM
 
 		res.ok().and_then(|res| res.as_string())
 	};
-	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, None))
+	WASMCheckOutput(crate::check::check(
+		vec![entry_path.into()],
+		&fs_resolver,
+		None,
+		checker::TypeCheckOptions::default(),
+	))
 }
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -103,7 +107,7 @@ pub fn check_wasm_with_options(
 
 		res.ok().and_then(|res| res.as_string())
 	};
-	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, Some(options)))
+	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, options))
 }
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_RUN_CLI: &str = r#"

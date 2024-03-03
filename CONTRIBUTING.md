@@ -38,6 +38,12 @@ cargo test -p ezno-checker-specification -F staging
 cargo test -p ezno-checker-specification -F all
 ```
 
+If you want to regenerate the binary definition file
+
+```shell
+cargo run -p ezno-checker -F ezno-parser --example cache ./checker/definitions/full.d.ts ./checker/definitions/internal.ts.d.bin
+```
+
 If you want to test the lexing and parsing in Ezno's parser
 
 ```shell
@@ -63,6 +69,6 @@ The checker crate has the `crate::utils::notify!` macro, which can be used to tr
 - Code **must** be formatted with `cargo format` inline with the current format configuration
 - It **must** pass `cargo clippy -- --allow warnings`. In many cases adding `allow` to items is fine
 
-## Oxc
+<!-- ## Oxc
 
-If working on [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis) **and Ezno simultaneously**. You can (git) clone [oxc](https://github.com/web-infra-dev/oxc) alongside Ezno and then use path dependencies to work on them simultaneously.
+If working on [oxc_type_synthesis](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis) **and Ezno simultaneously**. You can (git) clone [oxc](https://github.com/web-infra-dev/oxc) alongside Ezno and then use path dependencies to work on them simultaneously. -->

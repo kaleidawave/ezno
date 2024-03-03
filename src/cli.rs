@@ -174,8 +174,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			#[cfg(not(target_family = "wasm"))]
 			let start = timings.then(std::time::Instant::now);
 
+			let type_check_options = Default::default();
+
 			let CheckOutput { diagnostics, module_contents, .. } =
-				check(entry_points, read_file, definition_file.as_deref(), None);
+				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
 
 			#[cfg(not(target_family = "wasm"))]
 			if let Some(start) = start {

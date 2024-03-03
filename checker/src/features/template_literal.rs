@@ -60,7 +60,7 @@ where
 		let mut static_parts = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
-			&mut environment.facts,
+			&mut environment.info,
 		);
 
 		// TODO position
@@ -72,7 +72,7 @@ where
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
-						crate::context::facts::Publicity::Public,
+						crate::context::information::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
@@ -102,22 +102,26 @@ where
 		);
 
 		let call_site = position.with_source(environment.get_source());
+
+		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+
+		let input = CallingInput {
+			called_with_new: crate::types::calling::CalledWithNew::None,
+			this_value: None,
+			call_site,
+			call_site_type_arguments: None,
+		};
 		match crate::types::calling::call_type(
 			tag,
 			arguments,
-			CallingInput {
-				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: crate::features::functions::ThisValue::UseParent,
-				call_site,
-				call_site_type_arguments: None,
-			},
+			&input,
 			environment,
-			&mut CheckThings,
+			&mut check_things,
 			&mut checking_data.types,
 		) {
 			Ok(res) => res.returned_type,
 			Err(_) => {
-				todo!("JSX Calling error")
+				todo!("Template literal tag Calling error")
 			}
 		}
 	} else {

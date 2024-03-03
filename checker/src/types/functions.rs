@@ -6,7 +6,7 @@ use crate::{
 	context::{environment::FunctionScope, ContextType},
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, FunctionBehavior},
-	CheckingData, Facts, FunctionId, GenericTypeParameters, Scope, Type, TypeId,
+	CheckingData, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type, TypeId,
 };
 
 use super::{classes::register_properties_into_environment, TypeStore};
@@ -29,7 +29,8 @@ pub struct FunctionType {
 	pub return_type: TypeId,
 
 	/// Side effects of the function
-	pub effects: Vec<Event>,
+	/// `None` for internal functions
+	pub effects: Option<Vec<Event>>,
 
 	/// Things that this function pulls in. Converse of closed over which is where results below use
 	/// variables in this scope.
@@ -65,7 +66,7 @@ impl FunctionType {
 			|environment, checking_data| {
 				let on = create_this_before_function_synthesis(
 					&mut checking_data.types,
-					&mut environment.facts,
+					&mut environment.info,
 					class_prototype,
 				);
 				if let Scope::Function(FunctionScope::Constructor {
@@ -85,7 +86,7 @@ impl FunctionType {
 		let behavior =
 			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
 
-		let (facts, _free_variables) = env_data.unwrap();
+		let (info, _free_variables) = env_data.unwrap();
 		Self {
 			id: crate::FunctionId::AUTO_CONSTRUCTOR,
 			constant_function: None,
@@ -93,7 +94,7 @@ impl FunctionType {
 			parameters: SynthesisedParameters::default(),
 			// Only needed for printing
 			return_type: on,
-			effects: facts.events,
+			effects: Some(info.events),
 			behavior,
 			// TODO ???
 			free_variables: Default::default(),
@@ -105,7 +106,7 @@ impl FunctionType {
 /// For inside the function
 pub(crate) fn create_this_before_function_synthesis(
 	types: &mut TypeStore,
-	facts: &mut Facts,
+	info: &mut LocalInformation,
 	prototype: TypeId,
 ) -> TypeId {
 	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
@@ -118,7 +119,7 @@ pub(crate) fn create_this_before_function_synthesis(
 		// TODO right?
 		is_function_this: true,
 	};
-	facts.events.push(value);
+	info.events.push(value);
 
 	ty
 }
@@ -164,11 +165,14 @@ pub struct SynthesisedParameters {
 
 impl SynthesisedParameters {
 	// TODO should be aware of undefined in optionals possibly
-	pub(crate) fn get_type_constraint_at_index(&self, idx: usize) -> Option<TypeId> {
+	pub(crate) fn get_type_constraint_at_index(
+		&self,
+		idx: usize,
+	) -> Option<(TypeId, SpanWithSource)> {
 		if let Some(param) = self.parameters.get(idx) {
-			Some(param.ty)
+			Some((param.ty, param.position))
 		} else {
-			self.rest_parameter.as_ref().map(|rest| rest.item_type)
+			self.rest_parameter.as_ref().map(|rest| (rest.item_type, rest.position))
 		}
 	}
 }
