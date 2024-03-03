@@ -83,7 +83,7 @@ pub fn check_wasm(entry_path: String, fs_resolver_js: &js_sys::Function) -> WASM
 		vec![entry_path.into()],
 		&fs_resolver,
 		None,
-		TypeCheckOptions::default(),
+		checker::TypeCheckOptions::default(),
 	))
 }
 
