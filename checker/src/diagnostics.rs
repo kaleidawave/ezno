@@ -783,7 +783,7 @@ mod defined_errors_and_warnings {
 			position: SpanWithSource,
 		},
 		InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
-		Unreachable(source_map::BaseSpan<parser::SourceId>),
+		Unreachable(SpanWithSource),
 	}
 
 	impl From<TypeCheckWarning> for Diagnostic {

@@ -721,7 +721,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 	publicity: Publicity,
 	under: &PropertyKey<'_>,
 	new: PropertyValue,
-	setter_position: Option<source_map::BaseSpan<parser::SourceId>>,
+	setter_position: Option<SpanWithSource>,
 ) {
 	match og {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {

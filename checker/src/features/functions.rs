@@ -3,7 +3,6 @@ use std::{
 	collections::{hash_map::Entry, HashMap},
 };
 
-use parser::Span;
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
@@ -237,7 +236,7 @@ pub trait SynthesisableFunction<A: crate::ASTImplementation> {
 	fn get_name(&self) -> Option<&str>;
 
 	/// For debugging only
-	fn get_position(&self) -> Span;
+	fn get_position(&self) -> source_map::Span;
 
 	// TODO temp
 	fn has_body(&self) -> bool;
