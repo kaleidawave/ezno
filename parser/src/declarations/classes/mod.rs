@@ -2,7 +2,10 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{derive_ASTNode, throw_unexpected_token_with_token, to_string_bracketed, Expression};
+use crate::{
+	derive_ASTNode, throw_unexpected_token_with_token, to_string_bracketed, Expression,
+	ParseErrors, VariableIdentifier,
+};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -62,6 +65,14 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		start: TokenStart,
 	) -> ParseResult<Self> {
 		let name = U::from_reader(reader, state, options)?;
+
+		if let Some(VariableIdentifier::Standard(name, pos)) = name.as_option_variable_identifier()
+		{
+			if let "extends" = name.as_str() {
+				return Err(crate::ParseError::new(ParseErrors::ExpectedIdentifier, *pos));
+			}
+		}
+
 		let type_parameters = reader
 			.conditional_next(|token| *token == TSXToken::OpenChevron)
 			.is_some()

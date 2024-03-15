@@ -712,8 +712,8 @@ impl TypeAnnotation {
 		};
 		// Namespaced name
 		if let Some(Token(TSXToken::Dot, _)) = reader.peek() {
+			let Self::Name(name, start) = reference else { return Ok(reference) };
 			reader.next();
-			let Self::Name(name, start) = reference else { panic!() };
 			let (namespace_member, end) =
 				token_as_identifier(reader.next().unwrap(), "namespace name")?;
 			let position = start.union(end);
