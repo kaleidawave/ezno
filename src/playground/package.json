@@ -1,0 +1,26 @@
+{
+  "name": "ezno-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.8"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.3.3",
+    "@codemirror/lang-javascript": "^6.2.1",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/lint": "^6.4.2",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.23.0",
+    "@lezer/highlight": "^1.2.0",
+    "@lezer/javascript": "^1.4.13",
+    "ezno": "^0.0.19",
+    "lz-string": "^1.5.0"
+  }
+}

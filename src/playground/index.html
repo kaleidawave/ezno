@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ezno Playground</title>
+    <link rel="stylesheet" href="assets/index.css">
+    <meta property="twitter:image" content="./assets/banner.svg">
+    <meta property="og:image" content="./assets/banner.svg">
+</head>
+
+<body>
+    <header>
+        <img src="./assets/ezno.svg" alt="EZNO" height="40px">
+        <p>
+            Playground for the Ezno type checker. See what Ezno supports <a href="https://github.com/kaleidawave/ezno/blob/main/checker/specification/specification.md">in its specification</a>.
+            This is built using the <a href="https://www.npmjs.com/package/ezno">WASM JS build</a>, the native CLI tool can be <a href="https://github.com/kaleidawave/ezno/releases">downloaded from the latest release</a>.
+        </p>
+    </header>
+    <main>
+        <div id="editor"></div>
+        <div>
+            <h3>Diagnostics out</h3>
+            <ol class="diagnostics">
+            </ol>
+        </div>
+        <button id="share">Share</button>
+    </main>
+    <footer>
+        <hr>
+        <p>
+            If you encounter any issues please document them <a href="https://github.com/kaleidawave/ezno/">on the GH issue tracker</a>. If diagnostics don't update then a crash has occurred. Editor built with <a href="https://codemirror.net/">codemirror</a>
+        </p>
+    </footer>
+    <script type="module" src="./main.js"></script>
+</body>
+
+</html>
