@@ -234,10 +234,10 @@ impl<T: FunctionBased> FunctionBase<T> {
 		}
 		let body = T::Body::from_reader(reader, state, options)?;
 		let body_pos = body.get_position();
-		let end_pos = if body_pos != Span::NULL {
-			body_pos
+		let end_pos = if body_pos == Span::NULL {
+			return_type.as_ref().map_or(parameters.position, ASTNode::get_position)
 		} else {
-			return_type.as_ref().map_or(parameters.position, |rt| rt.get_position())
+			body_pos
 		};
 
 		let position =
@@ -310,7 +310,6 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type ParameterVisibility = ();
 	type Body = T::FunctionBody;
 
-	#[cfg(feature = "full-typescript")]
 	fn has_body(body: &Self::Body) -> bool {
 		T::has_function_body(body)
 	}
@@ -690,7 +689,6 @@ pub struct FunctionBody(pub Option<Block>);
 // #[cfg(not(feature = "full-typescript"))]
 // pub type FunctionBody = Block;
 
-#[cfg(feature = "full-typescript")]
 impl ASTNode for FunctionBody {
 	fn get_position(&self) -> Span {
 		self.0.as_ref().map_or(source_map::Nullable::NULL, |Block(_, pos)| *pos)

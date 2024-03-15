@@ -47,7 +47,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				),
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.register_interface(
-						&interface.on.name.identifier.as_option_str().unwrap_or_default(),
+						interface.on.name.identifier.as_option_str().unwrap_or_default(),
 						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),

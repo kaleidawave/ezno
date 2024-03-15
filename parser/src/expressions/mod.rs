@@ -2116,7 +2116,7 @@ pub struct ArrayElement(pub Option<FunctionArgument>);
 
 impl ASTNode for ArrayElement {
 	fn get_position(&self) -> Span {
-		self.0.as_ref().map_or(Span::NULL, |s| s.get_position())
+		self.0.as_ref().map_or(Span::NULL, ASTNode::get_position)
 	}
 
 	fn from_reader(

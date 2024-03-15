@@ -450,8 +450,7 @@ impl ASTNode for InterfaceMember {
 					(property_key, type_parameters.map(|(tp, _)| tp))
 				};
 
-				let start =
-					readonly_position.as_ref().cloned().unwrap_or_else(|| name.get_position());
+				let start = readonly_position.unwrap_or_else(|| name.get_position());
 
 				// TODO a little weird as only functions can have type parameters:
 				match reader.next().ok_or_else(parse_lexing_error)? {

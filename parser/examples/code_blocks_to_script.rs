@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
-	eprintln!("{:?} blocks", final_blocks.len());
+	// eprintln!("Generated {:?} blocks", final_blocks.len());
 
 	if let Some(out) = out {
 		let mut out = std::fs::File::create(out).expect("Cannot open file");

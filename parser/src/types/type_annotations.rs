@@ -1068,7 +1068,7 @@ impl TypeAnnotationFunctionParameters {
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			let position = name
 				.as_ref()
-				.map_or(type_annotation.get_position(), |name| name.get_position())
+				.map_or(type_annotation.get_position(), ASTNode::get_position)
 				.union(type_annotation.get_position());
 
 			parameters.push(TypeAnnotationFunctionParameter {

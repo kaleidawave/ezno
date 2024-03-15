@@ -71,6 +71,7 @@ impl ASTNode for VariableIdentifier {
 }
 
 impl VariableIdentifier {
+	#[must_use]
 	pub fn as_option_str(&self) -> Option<&str> {
 		match self {
 			VariableIdentifier::Standard(s, _) => Some(s.as_str()),

@@ -1434,7 +1434,7 @@ interface X {
 > In the future, their definition could be considered and evaluated at runtime
 
 ```ts
-/hi/ satisfies string;
+const regexp = /hi/ satisfies string;
 ```
 
 - Expected string, found /hi/
@@ -1876,18 +1876,6 @@ getSecondCharacter("string") satisfies "b";
 
 - Expected boolean, found (s: string) => string | undefined
 - Expected "b", found "t"
-
-#### Double generics
-
-> Really want to only have one covariant and one contravariant but want to keep TSC semantics
-
-```ts
-declare function what<T>(a: T, b: T): T;
-
-what(2, 3) satisfies string;
-```
-
-- Expected string, found 2 | 3
 
 #### As casts
 

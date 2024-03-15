@@ -262,7 +262,6 @@ impl FunctionBased for ClassFunctionBase {
 	type ParameterVisibility = ();
 	type Body = FunctionBody;
 
-	#[cfg(feature = "full-typescript")]
 	fn has_body(body: &Self::Body) -> bool {
 		body.0.is_some()
 	}
@@ -331,7 +330,6 @@ impl FunctionBased for ClassConstructorBase {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
 
-	#[cfg(feature = "full-typescript")]
 	fn has_body(body: &Self::Body) -> bool {
 		body.0.is_some()
 	}

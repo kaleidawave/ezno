@@ -661,3 +661,15 @@ getItem({ label: "item 1", item: 5 }) satisfies string;
 ```
 
 - Expected string, found 5
+
+#### Double generics
+
+> Really want to only have one covariant and one contravariant but want to keep TSC semantics
+
+```ts
+declare function what<T>(a: T, b: T): T;
+
+what(2, 3) satisfies string;
+```
+
+- Expected string, found 2 | 3

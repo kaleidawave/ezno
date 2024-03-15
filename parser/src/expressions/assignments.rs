@@ -375,10 +375,7 @@ fn lhs_to_variable_field(lhs: LHSOfAssignment) -> Result<crate::VariableField, P
 			Ok(crate::VariableField::Object(fields, pos))
 		}
 		LHSOfAssignment::VariableOrPropertyAccess(a) => {
-			return Err(ParseError::new(
-				crate::ParseErrors::InvalidLHSAssignment,
-				a.get_position(),
-			));
+			Err(ParseError::new(crate::ParseErrors::InvalidLHSAssignment, a.get_position()))
 		}
 	}
 }
