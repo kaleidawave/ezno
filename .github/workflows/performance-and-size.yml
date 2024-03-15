@@ -45,7 +45,6 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-
       - name: Download files
         run: |
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
@@ -62,7 +61,7 @@ jobs:
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
           lines=$(scc -c --no-cocomo -f json .\private\tocheck\all.ts | jq ".[0].Code")
-          echo "// $lines of TypeScript"
+          echo "// $lines of TypeScript" >> $GITHUB_STEP_SUMMARY
           cat demo.ts >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`
           </details>

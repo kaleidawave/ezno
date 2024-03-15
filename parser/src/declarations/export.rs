@@ -56,8 +56,8 @@ pub enum Exportable {
 }
 
 impl ASTNode for ExportDeclaration {
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 
 	fn from_reader(
@@ -103,7 +103,7 @@ impl ASTNode for ExportDeclaration {
 						.transpose()?;
 
 					let position = start.union(
-						return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
+						return_type.as_ref().map_or(parameters.position, ASTNode::get_position),
 					);
 
 					Ok(ExportDeclaration::DefaultFunction {
@@ -408,8 +408,8 @@ pub enum ExportPart {
 impl ListItem for ExportPart {}
 
 impl ASTNode for ExportPart {
-	fn get_position(&self) -> &Span {
-		GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 
 	// TODO also single line comments here

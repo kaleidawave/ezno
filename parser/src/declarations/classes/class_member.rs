@@ -8,6 +8,7 @@ use crate::{
 		ThisParameter,
 	},
 	property_key::PublicOrPrivate,
+	tokens::token_as_identifier,
 	visiting::Visitable,
 	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
 	TSXToken, TypeAnnotation, WithComment,
@@ -26,6 +27,14 @@ pub enum ClassMember {
 	Method(IsStatic, ClassFunction),
 	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
+	/// Really for interfaces but here
+	Indexer {
+		name: String,
+		indexer_type: TypeAnnotation,
+		return_type: TypeAnnotation,
+		is_readonly: bool,
+		position: Span,
+	},
 	Comment(String, bool, Span),
 }
 
@@ -48,13 +57,13 @@ pub struct ClassProperty {
 }
 
 impl ASTNode for ClassMember {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			Self::Constructor(cst) => cst.get_position(),
 			Self::Method(_, mtd) => mtd.get_position(),
-			Self::Property(_, prop) => &prop.position,
+			Self::Property(_, prop) => prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
-			Self::Comment(.., pos) => pos,
+			Self::Indexer { position: pos, .. } | Self::Comment(.., pos) => *pos,
 		}
 	}
 
@@ -85,13 +94,37 @@ impl ASTNode for ClassMember {
 
 		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
+		if let Some(Token(TSXToken::OpenBracket, _)) = reader.peek() {
+			if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(2) {
+				let Token(_, start) = reader.next().unwrap();
+				let (name, _) = token_as_identifier(
+					reader.next().ok_or_else(parse_lexing_error)?,
+					"class indexer",
+				)?;
+				reader.expect_next(TSXToken::Colon)?;
+				let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
+				reader.expect_next(TSXToken::CloseBracket)?;
+				reader.expect_next(TSXToken::Colon)?;
+				let return_type = TypeAnnotation::from_reader(reader, state, options)?;
+				return Ok(ClassMember::Indexer {
+					name,
+					is_readonly: readonly_position.is_some(),
+					indexer_type,
+					position: start.union(return_type.get_position()),
+					return_type,
+				});
+			}
+		}
+
 		// TODO not great
 		let start = reader.peek().unwrap().1;
 
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
 		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses, _)) if readonly_position.is_none() => {
+			Some(Token(TSXToken::OpenParentheses | TSXToken::OpenChevron, _))
+				if readonly_position.is_none() =>
+			{
 				let function = ClassFunction::from_reader_with_config(
 					reader,
 					state,
@@ -124,7 +157,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						is_readonly: readonly_position.is_some(),
-						position: *key.get_position(),
+						position: key.get_position(),
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
@@ -190,6 +223,16 @@ impl ASTNode for ClassMember {
 					}
 				}
 			}
+			Self::Indexer { name, indexer_type, return_type, is_readonly: _, position: _ } => {
+				if options.include_type_annotations {
+					buf.push('[');
+					buf.push_str(name);
+					buf.push_str(": ");
+					indexer_type.to_string_from_buffer(buf, options, local);
+					buf.push_str("]: ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
 		}
 	}
 }
@@ -219,7 +262,6 @@ impl FunctionBased for ClassFunctionBase {
 	type ParameterVisibility = ();
 	type Body = FunctionBody;
 
-	#[cfg(feature = "full-typescript")]
 	fn has_body(body: &Self::Body) -> bool {
 		body.0.is_some()
 	}
@@ -288,7 +330,6 @@ impl FunctionBased for ClassConstructorBase {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
 
-	#[cfg(feature = "full-typescript")]
 	fn has_body(body: &Self::Body) -> bool {
 		body.0.is_some()
 	}

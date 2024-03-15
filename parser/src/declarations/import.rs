@@ -178,8 +178,8 @@ impl ASTNode for ImportDeclaration {
 		self.from.to_string_from_buffer(buf);
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
@@ -325,8 +325,8 @@ pub enum ImportPart {
 impl ListItem for ImportPart {}
 
 impl ASTNode for ImportPart {
-	fn get_position(&self) -> &Span {
-		GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 
 	// TODO also single line comments here

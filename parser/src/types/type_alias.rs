@@ -1,14 +1,18 @@
 use source_map::Span;
 
-use crate::{derive_ASTNode, ASTNode, TSXToken, TypeAnnotation, TypeDeclaration};
+use crate::{
+	derive_ASTNode, to_string_bracketed, ASTNode, ExpressionOrStatementPosition, StatementPosition,
+	TSXToken, TypeAnnotation, TypeParameter,
+};
 
 /// e.g. `type NumberArray = Array<number>`
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct TypeAlias {
-	pub type_name: TypeDeclaration,
-	pub type_expression: TypeAnnotation,
+	pub name: StatementPosition,
+	pub parameters: Option<Vec<TypeParameter>>,
+	pub references: TypeAnnotation,
 	pub position: Span,
 }
 
@@ -19,11 +23,21 @@ impl ASTNode for TypeAlias {
 		options: &crate::ParseOptions,
 	) -> crate::ParseResult<Self> {
 		let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
-		let type_name = TypeDeclaration::from_reader(reader, state, options)?;
+		let name = StatementPosition::from_reader(reader, state, options)?;
+		let parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
+
 		reader.expect_next(TSXToken::Assign)?;
-		let type_expression = TypeAnnotation::from_reader(reader, state, options)?;
-		let position = start.union(type_expression.get_position());
-		Ok(Self { type_name, type_expression, position })
+		let references = TypeAnnotation::from_reader(reader, state, options)?;
+		let position = start.union(references.get_position());
+
+		Ok(Self { name, parameters, references, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -33,14 +47,20 @@ impl ASTNode for TypeAlias {
 		local: crate::LocalToStringInformation,
 	) {
 		if options.include_type_annotations {
+			if self.name.is_declare() {
+				buf.push_str("declare ");
+			}
 			buf.push_str("type ");
-			self.type_name.to_string_from_buffer(buf, options, local);
+			self.name.identifier.to_string_from_buffer(buf, options, local);
+			if let Some(type_parameters) = &self.parameters {
+				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+			}
 			buf.push_str(" = ");
-			self.type_expression.to_string_from_buffer(buf, options, local);
+			self.references.to_string_from_buffer(buf, options, local);
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }

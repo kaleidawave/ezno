@@ -35,7 +35,7 @@ pub mod import;
 pub mod variable;
 
 pub use super::types::{
-	declares::*,
+	declare_variable::*,
 	enum_declaration::{EnumDeclaration, EnumMember},
 	interface::InterfaceDeclaration,
 	type_alias::TypeAlias,
@@ -58,11 +58,8 @@ pub enum Declaration {
 	TypeAlias(TypeAlias),
 	// Special TS only
 	DeclareVariable(DeclareVariableDeclaration),
-	DeclareFunction(DeclareFunctionDeclaration),
 	#[cfg(feature = "full-typescript")]
 	Namespace(crate::types::namespace::Namespace),
-	#[from_ignore]
-	DeclareInterface(InterfaceDeclaration),
 	// Top level only
 	Import(ImportDeclaration),
 	Export(Decorated<ExportDeclaration>),
@@ -236,15 +233,6 @@ impl crate::ASTNode for Declaration {
 			TSXToken::Keyword(TSXKeyword::Import) => {
 				ImportDeclaration::from_reader(reader, state, options).map(Into::into)
 			}
-			#[cfg(feature = "extras")]
-			TSXToken::Keyword(TSXKeyword::From) => {
-				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
-			}
-			#[cfg(feature = "full-typescript")]
-			TSXToken::Keyword(TSXKeyword::Namespace) => {
-				crate::types::namespace::Namespace::from_reader(reader, state, options)
-					.map(Into::into)
-			}
 			TSXToken::Keyword(TSXKeyword::Interface) if options.type_annotations => {
 				InterfaceDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
@@ -265,11 +253,25 @@ impl crate::ASTNode for Declaration {
 						)
 						.map(Into::into)
 					}
-					TSXToken::Keyword(t) if t.is_in_function_header() => {
-						DeclareFunctionDeclaration::from_reader_sub_declare_with_decorators(
-							reader, state, options, decorators,
-						)
-						.map(Into::into)
+					TSXToken::Keyword(TSXKeyword::Class) => {
+						let mut class = ClassDeclaration::<StatementPosition>::from_reader(
+							reader, state, options,
+						)?;
+						class.name.declare = true;
+						class.position.start = start.0;
+						Ok(Declaration::Class(Decorated::new(decorators, class)))
+					}
+					TSXToken::Keyword(TSXKeyword::Function) => {
+						let mut function = StatementFunction::from_reader(reader, state, options)?;
+						function.name.declare = true;
+						function.position.start = start.0;
+						Ok(Declaration::Function(Decorated::new(decorators, function)))
+					}
+					TSXToken::Keyword(TSXKeyword::Type) => {
+						let mut alias = TypeAlias::from_reader(reader, state, options)?;
+						alias.name.declare = true;
+						alias.position.start = start.0;
+						Ok(Declaration::TypeAlias(alias))
 					}
 					_ => throw_unexpected_token_with_token(
 						reader.next().ok_or_else(parse_lexing_error)?,
@@ -278,9 +280,20 @@ impl crate::ASTNode for Declaration {
 							TSXToken::Keyword(TSXKeyword::Const),
 							TSXToken::Keyword(TSXKeyword::Var),
 							TSXToken::Keyword(TSXKeyword::Function),
+							TSXToken::Keyword(TSXKeyword::Class),
+							TSXToken::Keyword(TSXKeyword::Type),
 						],
 					),
 				}
+			}
+			#[cfg(feature = "extras")]
+			TSXToken::Keyword(TSXKeyword::From) => {
+				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
+			}
+			#[cfg(feature = "full-typescript")]
+			TSXToken::Keyword(TSXKeyword::Namespace) => {
+				crate::types::namespace::Namespace::from_reader(reader, state, options)
+					.map(Into::into)
 			}
 			_ => throw_unexpected_token_with_token(
 				reader.next().ok_or_else(parse_lexing_error)?,
@@ -314,24 +327,16 @@ impl crate::ASTNode for Declaration {
 			Declaration::Import(is) => is.to_string_from_buffer(buf, options, local),
 			Declaration::Export(es) => es.to_string_from_buffer(buf, options, local),
 			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
-			// TODO should skip these under no types
 			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
 			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
-			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
 			#[cfg(feature = "full-typescript")]
 			Declaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
-			Declaration::DeclareInterface(did) => {
-				if options.include_type_annotations {
-					buf.push_str("declare ");
-					did.to_string_from_buffer(buf, options, local);
-				}
-			}
 		}
 	}
 
-	fn get_position(&self) -> &source_map::Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }

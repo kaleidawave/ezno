@@ -29,7 +29,13 @@ pub struct ObjectLiteral {
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
-	Property(WithComment<PropertyKey<AlwaysPublic>>, Expression, Span),
+	Property {
+		key: WithComment<PropertyKey<AlwaysPublic>>,
+		/// Makes object destructuring syntax a subset of object literal syntax
+		assignment: bool,
+		value: Expression,
+		position: Span,
+	},
 	Method(ObjectLiteralMethod),
 }
 
@@ -43,7 +49,7 @@ impl crate::Visitable for ObjectLiteralMember {
 	) {
 		match self {
 			ObjectLiteralMember::Shorthand(_, _)
-			| ObjectLiteralMember::Property(_, _, _)
+			| ObjectLiteralMember::Property { .. }
 			| ObjectLiteralMember::Spread(_, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit(visitors, data, options, chain),
 		}
@@ -57,7 +63,7 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::Property(_, _, _)
+			ObjectLiteralMember::Property { .. }
 			| ObjectLiteralMember::Spread(_, _)
 			| ObjectLiteralMember::Shorthand(_, _) => {}
 			ObjectLiteralMember::Method(method) => method.visit_mut(visitors, data, options, chain),
@@ -143,8 +149,8 @@ impl FunctionBased for ObjectLiteralMethodBase {
 impl Eq for ObjectLiteralMember {}
 
 impl ASTNode for ObjectLiteral {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -251,10 +257,16 @@ impl ASTNode for ObjectLiteralMember {
 						throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 					}
 				} else {
-					reader.expect_next(TSXToken::Colon)?;
-					let expression = Expression::from_reader(reader, state, options)?;
-					let position = key.get_position().union(expression.get_position());
-					Ok(Self::Property(key, expression, position))
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					let assignment = match token.0 {
+						TSXToken::Colon => false,
+						TSXToken::Assign => true,
+						_ => return throw_unexpected_token_with_token(token, &[TSXToken::Colon]),
+					};
+					// let assignment = if let
+					let value = Expression::from_reader(reader, state, options)?;
+					let position = key.get_position().union(value.get_position());
+					Ok(Self::Property { assignment, key, value, position })
 				}
 			}
 		}
@@ -267,11 +279,11 @@ impl ASTNode for ObjectLiteralMember {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Property(name, expression, _) => {
-				name.to_string_from_buffer(buf, options, local);
+			Self::Property { assignment: _, key, value, position: _ } => {
+				key.to_string_from_buffer(buf, options, local);
 				buf.push(':');
 				options.push_gap_optionally(buf);
-				expression.to_string_from_buffer(buf, options, local);
+				value.to_string_from_buffer(buf, options, local);
 			}
 			Self::Shorthand(name, ..) => {
 				buf.push_str(name.as_str());
@@ -286,10 +298,12 @@ impl ASTNode for ObjectLiteralMember {
 		};
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			Self::Method(method) => method.get_position(),
-			Self::Shorthand(_, pos) | Self::Property(_, _, pos) | Self::Spread(_, pos) => pos,
+			Self::Shorthand(_, pos)
+			| Self::Property { position: pos, .. }
+			| Self::Spread(_, pos) => *pos,
 		}
 	}
 }

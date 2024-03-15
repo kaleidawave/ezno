@@ -216,8 +216,8 @@ impl ASTNode for Expression {
 		);
 	}
 
-	fn get_position(&self) -> &Span {
-		get_field_by_type::GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 }
 
@@ -373,131 +373,70 @@ impl Expression {
 				let position = s.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			}
-			t @ Token(TSXToken::OpenBracket, start) => {
-				let mut bracket_depth = 1;
-				// TODO this can be bad for large object literals, needs to exit if expression without =
-				let after_bracket = reader.scan(|token, _| match token {
-					TSXToken::OpenBracket => {
-						bracket_depth += 1;
-						false
-					}
-					TSXToken::CloseBracket => {
-						bracket_depth -= 1;
-						bracket_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = after_bracket {
-					if let TSXToken::Assign = token_type {
-						let (members, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-						let Token(_assignment, assignment_pos) = reader.next().unwrap();
-						let rhs = Expression::from_reader_with_precedence(
-							reader,
-							state,
-							options,
-							ASSIGNMENT_PRECEDENCE,
-							Some(assignment_pos),
-						)?;
-						let array_position = start.union(end);
-						Expression::Assignment {
-							position: array_position.union(rhs.get_position()),
-							lhs: LHSOfAssignment::ArrayDestructuring(members, array_position),
-							rhs: Box::new(rhs),
-						}
-					} else {
-						let (items, end) = parse_bracketed::<ArrayElement>(
-							reader,
-							state,
-							options,
-							None,
-							TSXToken::CloseBracket,
-						)?;
+			Token(TSXToken::OpenBracket, start) => {
+				let (items, end) = parse_bracketed::<ArrayElement>(
+					reader,
+					state,
+					options,
+					None,
+					TSXToken::CloseBracket,
+				)?;
 
-						Expression::ArrayLiteral(items, start.union(end))
-					}
-				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
-				}
+				Expression::ArrayLiteral(items, start.union(end))
 			}
-			t @ Token(TSXToken::OpenBrace, start) => {
-				let mut brace_depth = 1;
-				let after_brace = reader.scan(|token, _| match token {
-					TSXToken::OpenBrace => {
-						brace_depth += 1;
-						false
-					}
-					TSXToken::CloseBrace => {
-						brace_depth -= 1;
-						brace_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = after_brace {
-					if let TSXToken::Assign = token_type {
-						let (members, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBrace)?;
-						let Token(_assignment, assignment_pos) = reader.next().unwrap();
-						let rhs = Box::new(Expression::from_reader_with_precedence(
-							reader,
-							state,
-							options,
-							ASSIGNMENT_PRECEDENCE,
-							Some(assignment_pos),
-						)?);
-						let object_position = start.union(end);
-						Expression::Assignment {
-							position: object_position.union(rhs.get_position()),
-							lhs: LHSOfAssignment::ObjectDestructuring(members, object_position),
-							rhs,
-						}
-					} else {
-						ObjectLiteral::from_reader_sub_open_curly(reader, state, options, start)
-							.map(Expression::ObjectLiteral)?
-					}
-				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
-				}
+			Token(TSXToken::OpenBrace, start) => {
+				ObjectLiteral::from_reader_sub_open_curly(reader, state, options, start)
+					.map(Expression::ObjectLiteral)?
 			}
 			t @ Token(TSXToken::OpenParentheses, start) => {
 				let mut parentheses_depth = 1;
-				let next = reader.scan(|token, _| match token {
-					TSXToken::OpenParentheses => {
-						parentheses_depth += 1;
-						false
-					}
-					TSXToken::CloseParentheses => {
-						parentheses_depth -= 1;
-						parentheses_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = next {
-					if let TSXToken::Arrow = token_type {
-						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
-							reader, state, options, false, start,
-						)?;
-						Expression::ArrowFunction(arrow_function)
+				let is_arrow_function = if let Some(Token(
+					TSXToken::Keyword(..)
+					| TSXToken::Identifier(..)
+					| TSXToken::OpenBrace
+					| TSXToken::OpenBracket
+					| TSXToken::CloseParentheses
+					| TSXToken::Spread,
+					_,
+				)) = reader.peek()
+				{
+					let next = reader.scan(|token, _| match token {
+						TSXToken::OpenParentheses => {
+							parentheses_depth += 1;
+							false
+						}
+						TSXToken::CloseParentheses => {
+							parentheses_depth -= 1;
+							parentheses_depth == 0
+						}
+						_ => false,
+					});
+
+					if let Some(Token(token_type, _)) = next {
+						matches!(token_type, TSXToken::Arrow)
 					} else {
-						let parenthesize_expression =
-							MultipleExpression::from_reader(reader, state, options)?;
-						let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-						Expression::ParenthesizedExpression(
-							Box::new(parenthesize_expression),
-							start.union(end),
-						)
+						return Err(ParseError::new(
+							crate::ParseErrors::UnmatchedBrackets,
+							t.get_span(),
+						));
 					}
 				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
+					false
+				};
+
+				if is_arrow_function {
+					let arrow_function = ArrowFunction::from_reader_sub_open_paren(
+						reader, state, options, false, start,
+					)?;
+					Expression::ArrowFunction(arrow_function)
+				} else {
+					let parenthesize_expression =
+						MultipleExpression::from_reader(reader, state, options)?;
+					let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+					Expression::ParenthesizedExpression(
+						Box::new(parenthesize_expression),
+						start.union(end),
+					)
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::New), start) => {
@@ -909,7 +848,7 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.next();
-					let condition_position = *top.get_position();
+					let condition_position = top.get_position();
 					let condition = Box::new(top);
 					let lhs = Box::new(Self::from_reader(reader, state, options)?);
 					reader.expect_next(TSXToken::Colon)?;
@@ -1036,11 +975,9 @@ impl Expression {
 						parent_precedence,
 						Some(assignment_pos),
 					)?;
-					top = Expression::Assignment {
-						position: top.get_position().union(new_rhs.get_position()),
-						lhs: LHSOfAssignment::VariableOrPropertyAccess(top.try_into()?),
-						rhs: Box::new(new_rhs),
-					};
+					let position = top.get_position().union(new_rhs.get_position());
+					let lhs = top.try_into()?;
+					top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 				}
 				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
 					let (content, is_multiline, position) =
@@ -1515,10 +1452,19 @@ impl Expression {
 				operand.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::Assignment { lhs, rhs, .. } => {
+				let require_parenthesis =
+					matches!(lhs, LHSOfAssignment::ObjectDestructuring(..)) && local2.on_left;
+
+				if require_parenthesis {
+					buf.push('(');
+				}
 				lhs.to_string_from_buffer(buf, options, local);
 				buf.push_str(if options.pretty { " = " } else { "=" });
 				let right_argument = local2.with_precedence(self_precedence).on_right();
 				rhs.to_string_using_precedence(buf, options, local, right_argument);
+				if require_parenthesis {
+					buf.push(')');
+				}
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
@@ -1785,6 +1731,7 @@ fn function_header_ish(
 
 #[derive(Clone, Copy)]
 pub(crate) struct ExpressionToStringArgument {
+	/// On left of statement
 	pub on_left: bool,
 	pub parent_precedence: u8,
 }
@@ -1878,9 +1825,9 @@ impl ASTNode for MultipleExpression {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			MultipleExpression::Multiple { position, .. } => position,
+			MultipleExpression::Multiple { position, .. } => *position,
 			MultipleExpression::Single(expr) => expr.get_position(),
 		}
 	}
@@ -2147,10 +2094,10 @@ impl ASTNode for FunctionArgument {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			FunctionArgument::Comment { position, .. } | FunctionArgument::Spread(_, position) => {
-				position
+				*position
 			}
 			FunctionArgument::Standard(expr) => expr.get_position(),
 		}
@@ -2168,8 +2115,8 @@ impl From<Expression> for FunctionArgument {
 pub struct ArrayElement(pub Option<FunctionArgument>);
 
 impl ASTNode for ArrayElement {
-	fn get_position(&self) -> &Span {
-		self.0.as_ref().map_or(&Span::NULL, |s| s.get_position())
+	fn get_position(&self) -> Span {
+		self.0.as_ref().map_or(Span::NULL, ASTNode::get_position)
 	}
 
 	fn from_reader(
@@ -2201,7 +2148,7 @@ impl Expression {
 	/// IIFE = immediate invoked function execution
 	#[must_use]
 	pub fn build_iife(block: Block) -> Self {
-		let position = *block.get_position();
+		let position = block.get_position();
 		Expression::FunctionCall {
 			function: Expression::ParenthesizedExpression(
 				Box::new(

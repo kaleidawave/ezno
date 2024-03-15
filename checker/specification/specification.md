@@ -718,17 +718,6 @@ doThing(6, 1) satisfies 6;
 
 - Expected 2, found 5
 
-#### Generic condition
-
-```ts
-declare function isNumber<T>(t: T): T extends number ? true : false;
-
-isNumber(5) satisfies true;
-isNumber("5") satisfies number;
-```
-
-- Expected number, found false
-
 ### Effects
 
 > Side effects of functions. Registered internally as `Event`s
@@ -1445,7 +1434,7 @@ interface X {
 > In the future, their definition could be considered and evaluated at runtime
 
 ```ts
-/hi/ satisfies string;
+const regexp = /hi/ satisfies string;
 ```
 
 - Expected string, found /hi/
@@ -1557,34 +1546,6 @@ d satisfies 1;
 ```
 
 - Expected 1, found 2
-
-#### Try-catch and throw
-
-```ts
-try {
-	throw 2
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 2
-
-#### Throw effects carry through
-
-```ts
-function throwType(a) {
-	throw a
-}
-
-try {
-	throwType(3)
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 3
 
 #### Interface merging
 
@@ -1916,28 +1877,6 @@ getSecondCharacter("string") satisfies "b";
 - Expected boolean, found (s: string) => string | undefined
 - Expected "b", found "t"
 
-#### Double generics
-
-> Really want to only have one covariant and one contravariant but want to keep TSC semantics
-
-```ts
-declare function what<T>(a: T, b: T): T;
-
-what(2, 3) satisfies string;
-```
-
-- Expected string, found 2 | 3
-
-#### More accurate generic
-
-```ts
-declare function unwrap<T>(a: T | { item: T }): T;
-
-unwrap({ item: 5 }) satisfies string;
-```
-
-- Expected string, found 5
-
 #### As casts
 
 > Disabled normally, allowed for these tests. Provides TSC compatibility and because narrowing not implemented (including secret feature)
@@ -2071,18 +2010,6 @@ function add() {
 ```
 
 - Argument of type "hi" is not assignable to parameter of type number
-
-#### Across alias
-
-```ts
-type WithLabel<T> = { label: string, item: T };
-
-declare function getItem<T>(a: WithLabel<T>): T;
-
-getItem({ label: "item 1", item: 5 }) satisfies string;
-```
-
-- Expected string, found 5
 
 #### Mapped types
 

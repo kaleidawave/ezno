@@ -54,7 +54,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) {
-				let condition_pos = *current.0.get_position();
+				let condition_pos = current.0.get_position();
 				let condition = synthesise_multiple_expression(
 					current.0,
 					environment,

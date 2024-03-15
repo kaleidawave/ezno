@@ -191,8 +191,8 @@ where
 	L: LeadingParameter,
 	V: ParameterVisibility,
 {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -275,7 +275,7 @@ where
 				reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
 			{
 				let name = SpreadParameterName::from_reader(reader, state, options)?;
-				let name_position = *name.get_position();
+				let name_position = name.get_position();
 
 				let type_annotation = if options.type_annotations
 					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
@@ -286,7 +286,7 @@ where
 				};
 
 				let position = spread_pos
-					.union(type_annotation.as_ref().map_or(&name_position, ASTNode::get_position));
+					.union(type_annotation.as_ref().map_or(name_position, ASTNode::get_position));
 
 				rest_parameter =
 					Some(Box::new(SpreadParameter { name, type_annotation, position }));

@@ -28,6 +28,7 @@ pub enum ParseErrors<'a> {
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
 	ExpectedIdentifier,
+	ExpectedNumberLiteral,
 }
 
 #[allow(missing_docs)]
@@ -186,6 +187,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::ExpectedIdentifier => {
 				write!(f, "Expected variable identifier")
+			}
+			ParseErrors::ExpectedNumberLiteral => {
+				write!(f, "Expected number literal")
 			}
 		}
 	}

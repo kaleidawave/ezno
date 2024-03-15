@@ -48,8 +48,8 @@ impl ASTNode for IsExpression {
 		buf.push('}');
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 

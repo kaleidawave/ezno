@@ -36,7 +36,7 @@ where
 	U::Body: SynthesisableFunctionBody,
 {
 	fn get_position(&self) -> Span {
-		*ASTNode::get_position(self)
+		ASTNode::get_position(self)
 	}
 
 	fn get_name(&self) -> Option<&str> {
@@ -484,9 +484,7 @@ fn param_name_to_string(param: &VariableField) -> String {
 				match item.get_ast_ref() {
 					parser::ArrayDestructuringField::Spread(name, _) => {
 						buf.push_str("...");
-						if let VariableIdentifier::Standard(name, ..) = name {
-							buf.push_str(name);
-						}
+						buf.push_str(&param_name_to_string(name));
 					}
 					parser::ArrayDestructuringField::Name(name, _) => {
 						buf.push_str(&param_name_to_string(name));

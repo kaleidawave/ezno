@@ -65,8 +65,18 @@ impl ASTNode for VariableIdentifier {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+}
+
+impl VariableIdentifier {
+	#[must_use]
+	pub fn as_option_str(&self) -> Option<&str> {
+		match self {
+			VariableIdentifier::Standard(s, _) => Some(s.as_str()),
+			VariableIdentifier::Marker(_, _) => None,
+		}
 	}
 }
 
@@ -127,9 +137,7 @@ impl ASTNode for VariableField {
 					member.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
-						if !matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
-							options.push_gap_optionally(buf);
-						}
+						options.push_gap_optionally(buf);
 					}
 				}
 				buf.push(']');
@@ -150,9 +158,9 @@ impl ASTNode for VariableField {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			VariableField::Array(_, position) | VariableField::Object(_, position) => position,
+			VariableField::Array(_, position) | VariableField::Object(_, position) => *position,
 			VariableField::Name(id) => id.get_position(),
 		}
 	}
@@ -161,7 +169,7 @@ impl ASTNode for VariableField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField {
-	Spread(VariableIdentifier, Span),
+	Spread(VariableField, Span),
 	Name(VariableField, Option<Box<Expression>>),
 	Comment { content: String, is_multiline: bool, position: Span },
 	None,
@@ -184,10 +192,9 @@ impl ASTNode for ArrayDestructuringField {
 		let Token(token, _start) = reader.peek().ok_or_else(parse_lexing_error)?;
 		if let TSXToken::Spread = token {
 			let token = reader.next().unwrap();
-			Ok(Self::Spread(
-				VariableIdentifier::from_reader(reader, state, options)?,
-				token.get_span(),
-			))
+			let variable_field = VariableField::from_reader(reader, state, options)?;
+			let position = token.get_span().union(variable_field.get_position());
+			Ok(Self::Spread(variable_field, position))
 		} else if matches!(token, TSXToken::Comma | TSXToken::CloseBracket) {
 			Ok(Self::None)
 		} else {
@@ -222,7 +229,9 @@ impl ASTNode for ArrayDestructuringField {
 			Self::Name(name, default_value) => {
 				name.to_string_from_buffer(buf, options, local);
 				if let Some(default_value) = default_value {
+					options.push_gap_optionally(buf);
 					buf.push('=');
+					options.push_gap_optionally(buf);
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -237,13 +246,13 @@ impl ASTNode for ArrayDestructuringField {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			ArrayDestructuringField::Comment { position, .. }
-			| ArrayDestructuringField::Spread(_, position) => position,
+			| ArrayDestructuringField::Spread(_, position) => *position,
 			// TODO misses out optional expression
 			ArrayDestructuringField::Name(vf, _) => vf.get_position(),
-			ArrayDestructuringField::None => &source_map::Nullable::NULL,
+			ArrayDestructuringField::None => source_map::Nullable::NULL,
 		}
 	}
 }
@@ -253,7 +262,7 @@ impl ASTNode for ArrayDestructuringField {
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 pub enum ObjectDestructuringField {
-	/// `{ x }`
+	/// `{ x }` and (annoyingly) `{ x = 2 }`
 	Name(VariableIdentifier, Option<Box<Expression>>, Span),
 	/// `{ ...x }`
 	Spread(VariableIdentifier, Span),
@@ -293,7 +302,7 @@ impl ASTNode for ObjectDestructuringField {
 				let position = if let Some(ref dv) = default_value {
 					key.get_position().union(dv.get_position())
 				} else {
-					*key.get_position()
+					key.get_position()
 				};
 
 				Ok(Self::Map { from: key, name: variable_name, default_value, position })
@@ -310,6 +319,7 @@ impl ASTNode for ObjectDestructuringField {
 				} else {
 					key_pos
 				};
+
 				Ok(Self::Name(standard, default_value, position))
 			} else {
 				let token = reader.next().ok_or_else(parse_lexing_error)?;
@@ -329,27 +339,32 @@ impl ASTNode for ObjectDestructuringField {
 				buf.push_str("...");
 				name.to_string_from_buffer(buf, options, local);
 			}
-			Self::Name(name, default_value, _) => {
+			Self::Name(name, default_value, ..) => {
 				name.to_string_from_buffer(buf, options, local);
 				if let Some(default_value) = default_value {
+					options.push_gap_optionally(buf);
 					buf.push('=');
+					options.push_gap_optionally(buf);
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
 			Self::Map { from, name: variable_name, default_value, .. } => {
 				from.to_string_from_buffer(buf, options, local);
 				buf.push(':');
+				options.push_gap_optionally(buf);
 				variable_name.to_string_from_buffer(buf, options, local);
 				if let Some(default_value) = default_value {
+					options.push_gap_optionally(buf);
 					buf.push('=');
+					options.push_gap_optionally(buf);
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }
 
@@ -604,8 +619,8 @@ mod tests {
 					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
 					None,
 				)), WithComment::None(ArrayDestructuringField::Spread(
-					VariableIdentifier::Standard(Deref @ "y", span!(7, 8)),
-					span!(4, 7),
+					VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(7, 8))),
+					span!(4, 8),
 				))],
 				span!(0, 9),
 			)

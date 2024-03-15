@@ -145,7 +145,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameters,
 					return_type,
 					is_optional: _,
-					performs,
 					position,
 				} => {
 					// Fix for performing const annotations. TODO want to do better
@@ -175,7 +174,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						return_type.as_ref(),
 						environment,
 						checking_data,
-						performs.as_ref().into(),
+						crate::synthesis::Performs::None,
 						&position.with_source(environment.get_source()),
 						behavior,
 						interface_register_behavior.interface_type(),
@@ -241,7 +240,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					return_type: _,
 					is_readonly: _,
 					position,
-					performs: _,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
 					position.with_source(environment.get_source()),

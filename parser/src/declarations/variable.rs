@@ -26,9 +26,9 @@ pub trait DeclarationExpression:
 		local: crate::LocalToStringInformation,
 	);
 
-	fn get_decl_position(&self) -> Option<&Span>;
+	fn get_declaration_position(&self) -> Option<Span>;
 
-	fn as_option_expr_ref(&self) -> Option<&Expression>;
+	fn as_option_expression_ref(&self) -> Option<&Expression>;
 
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression>;
 }
@@ -66,11 +66,11 @@ impl DeclarationExpression for Option<Expression> {
 		}
 	}
 
-	fn get_decl_position(&self) -> Option<&Span> {
+	fn get_declaration_position(&self) -> Option<Span> {
 		self.as_ref().map(ASTNode::get_position)
 	}
 
-	fn as_option_expr_ref(&self) -> Option<&Expression> {
+	fn as_option_expression_ref(&self) -> Option<&Expression> {
 		self.as_ref()
 	}
 
@@ -105,11 +105,11 @@ impl DeclarationExpression for crate::Expression {
 		ASTNode::to_string_from_buffer(self, buf, options, local);
 	}
 
-	fn get_decl_position(&self) -> Option<&Span> {
+	fn get_declaration_position(&self) -> Option<Span> {
 		Some(ASTNode::get_position(self))
 	}
 
-	fn as_option_expr_ref(&self) -> Option<&Expression> {
+	fn as_option_expression_ref(&self) -> Option<&Expression> {
 		Some(self)
 	}
 
@@ -149,7 +149,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		let expression = TExpr::expression_from_reader(reader, state, options)?;
 		let position = name.get_position().union(
 			expression
-				.get_decl_position()
+				.get_declaration_position()
 				.or(type_annotation.as_ref().map(ASTNode::get_position))
 				.unwrap_or(name.get_position()),
 		);
@@ -173,7 +173,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		let available_space =
 			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
 
-		if let Some(e) = TExpr::as_option_expr_ref(&self.expression) {
+		if let Some(e) = TExpr::as_option_expression_ref(&self.expression) {
 			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
 			if extends_limit {
 				buf.push_new_line();
@@ -183,8 +183,8 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }
 
@@ -259,7 +259,7 @@ impl ASTNode for VariableDeclaration {
 					{
 						return Err(crate::ParseError::new(
 							crate::ParseErrors::DestructuringRequiresValue,
-							*value.name.get_ast_ref().get_position(),
+							value.name.get_ast_ref().get_position(),
 						));
 					}
 
@@ -320,8 +320,8 @@ impl ASTNode for VariableDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }
 

@@ -29,8 +29,8 @@ impl ASTNode for Module {
 		statements_and_declarations_to_string(&self.items, buf, options, local);
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.span
+	fn get_position(&self) -> Span {
+		self.span
 	}
 
 	fn from_reader(
