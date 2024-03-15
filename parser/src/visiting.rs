@@ -242,8 +242,7 @@ mod ast {
 		crate::expressions::operators::UnaryPostfixAssignmentOperator,
 		crate::types::InterfaceDeclaration,
 		crate::types::type_alias::TypeAlias,
-		crate::types::declares::DeclareFunctionDeclaration,
-		crate::types::declares::DeclareVariableDeclaration,
+		crate::types::declare_variable::DeclareVariableDeclaration,
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
@@ -366,12 +365,7 @@ mod structures {
 		pub fn get_variable_name(&self) -> Option<&'a str> {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
-				ImmutableVariableOrProperty::ArrayDestructuringMember(a) => match a {
-					ArrayDestructuringField::Spread(VariableIdentifier::Standard(a, _), _) => {
-						Some(a.as_str())
-					}
-					_ => None,
-				},
+				ImmutableVariableOrProperty::ArrayDestructuringMember(_) => None,
 				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
 					match o.get_ast_ref() {
 						ObjectDestructuringField::Spread(VariableIdentifier::Standard(a, _), _)
@@ -413,15 +407,15 @@ mod structures {
 		}
 
 		#[must_use]
-		pub fn get_position(&self) -> &Span {
+		pub fn get_position(&self) -> Span {
 			use crate::ASTNode;
 			match self {
 				ImmutableVariableOrProperty::FunctionName(pos)
 				| ImmutableVariableOrProperty::ClassName(pos) => match pos {
 					Some(p) => p.get_position(),
-					None => &source_map::Nullable::NULL,
+					None => source_map::Nullable::NULL,
 				},
-				ImmutableVariableOrProperty::VariableFieldName(_, pos) => pos,
+				ImmutableVariableOrProperty::VariableFieldName(_, pos) => **pos,
 				ImmutableVariableOrProperty::ArrayDestructuringMember(m) => m.get_position(),
 				ImmutableVariableOrProperty::ObjectDestructuringMember(m) => m.get_position(),
 				ImmutableVariableOrProperty::ClassPropertyKey(k) => k.get_position(),

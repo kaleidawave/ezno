@@ -214,7 +214,7 @@ pub enum ExpressionOrBlock {
 }
 
 impl ASTNode for ExpressionOrBlock {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			ExpressionOrBlock::Expression(expression) => expression.get_position(),
 			ExpressionOrBlock::Block(block) => block.get_position(),

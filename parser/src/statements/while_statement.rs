@@ -16,8 +16,8 @@ pub struct WhileStatement {
 }
 
 impl ASTNode for WhileStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -60,8 +60,8 @@ pub struct DoWhileStatement {
 }
 
 impl ASTNode for DoWhileStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(

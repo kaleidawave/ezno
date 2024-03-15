@@ -81,9 +81,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		Declaration::DeclareFunction(_)
-		| Declaration::DeclareVariable(_)
-		| Declaration::DeclareInterface(_)
+		Declaration::DeclareVariable(_)
 		| Declaration::Function(_)
 		| Declaration::Enum(_)
 		| Declaration::Interface(_)

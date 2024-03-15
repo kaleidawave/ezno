@@ -20,8 +20,8 @@ pub struct ForLoopStatement {
 }
 
 impl ASTNode for ForLoopStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -40,7 +40,7 @@ impl ASTNode for ForLoopStatement {
 			} else {
 				return Err(ParseError::new(
 					ParseErrors::AwaitRequiresForOf,
-					*condition.get_position(),
+					condition.get_position(),
 				));
 			}
 		}
@@ -267,11 +267,11 @@ impl ASTNode for ForLoopCondition {
 		buf.push(')');
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			ForLoopCondition::ForOf { position, .. }
 			| ForLoopCondition::ForIn { position, .. }
-			| ForLoopCondition::Statements { position, .. } => position,
+			| ForLoopCondition::Statements { position, .. } => *position,
 		}
 	}
 }

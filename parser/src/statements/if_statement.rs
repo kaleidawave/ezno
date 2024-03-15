@@ -77,8 +77,8 @@ impl ASTNode for IfStatement {
 		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -128,8 +128,8 @@ impl ASTNode for ConditionalElseStatement {
 		Self::from_reader_sub_without_else(reader, state, options, else_start)
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -178,8 +178,8 @@ impl ASTNode for UnconditionalElseStatement {
 		Self::from_reader_sub_without_else(reader, state, options, else_position)
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

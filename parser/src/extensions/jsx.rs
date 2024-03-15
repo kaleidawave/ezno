@@ -75,8 +75,8 @@ impl ASTNode for JSXElement {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
@@ -89,8 +89,8 @@ pub struct JSXFragment {
 }
 
 impl ASTNode for JSXFragment {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -153,7 +153,7 @@ impl ASTNode for JSXRoot {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			JSXRoot::Element(element) => element.get_position(),
 			JSXRoot::Fragment(fragment) => fragment.get_position(),
@@ -233,13 +233,13 @@ pub enum JSXNode {
 }
 
 impl ASTNode for JSXNode {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			JSXNode::TextNode(_, pos)
 			| JSXNode::InterpolatedExpression(_, pos)
-			| JSXNode::Comment(_, pos) => pos,
+			| JSXNode::Comment(_, pos) => *pos,
 			JSXNode::Element(element) => element.get_position(),
-			JSXNode::LineBreak => &source_map::Nullable::NULL,
+			JSXNode::LineBreak => source_map::Nullable::NULL,
 		}
 	}
 
@@ -317,12 +317,12 @@ pub enum JSXAttribute {
 }
 
 impl ASTNode for JSXAttribute {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			JSXAttribute::Static(_, _, span)
-			| JSXAttribute::Dynamic(_, _, span)
-			| JSXAttribute::BooleanAttribute(_, span) => span,
-			JSXAttribute::Spread(_, spread_pos) => spread_pos,
+			JSXAttribute::Static(_, _, pos)
+			| JSXAttribute::Dynamic(_, _, pos)
+			| JSXAttribute::BooleanAttribute(_, pos) => *pos,
+			JSXAttribute::Spread(_, spread_pos) => *spread_pos,
 			JSXAttribute::Shorthand(expr) => expr.get_position(),
 		}
 	}

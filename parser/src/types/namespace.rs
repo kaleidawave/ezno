@@ -43,7 +43,7 @@ impl crate::ASTNode for Namespace {
 		}
 	}
 
-	fn get_position(&self) -> &source_map::Span {
-		self.get()
+	fn get_position(&self) -> source_map::Span {
+		*self.get()
 	}
 }

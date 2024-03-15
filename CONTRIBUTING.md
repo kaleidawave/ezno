@@ -25,14 +25,14 @@ Now in the `ezno` directory, `cargo run` should show the CLI.
 If you don't want to run the whole Ezno CLI. You can run just the checker with
 
 ```shell
-cargo run -p ezno-checker -F ezno-parser --example check path/to/file.ts
+cargo run -p ezno-checker --example run path/to/file.ts
 ```
 
 If you want to check all the checker tests
 
 ```shell
 cargo test -p ezno-checker-specification
-# To including staging.md (which is really useful for keeping new fixes/additions separate)
+# To include the Staging file (which is really useful for keeping new fixes/additions separate)
 cargo test -p ezno-checker-specification -F staging
 # and for all the tests (which includes all of to_implement.md)
 cargo test -p ezno-checker-specification -F all

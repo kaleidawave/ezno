@@ -43,7 +43,7 @@ pub use statements::Statement;
 pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
-	type_declarations::{self, TypeDeclaration, TypeParameter},
+	type_declarations::{self, TypeParameter},
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{
@@ -312,7 +312,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
-	fn get_position(&self) -> &Span;
+	fn get_position(&self) -> Span;
 
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -812,20 +812,24 @@ pub trait ExpressionOrStatementPosition:
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier>;
 
 	fn as_option_str(&self) -> Option<&str> {
-		if let Some(VariableIdentifier::Standard(name, _)) = self.as_option_variable_identifier() {
-			Some(name)
+		if let Some(identifier) = self.as_option_variable_identifier() {
+			identifier.as_option_str()
 		} else {
 			None
 		}
 	}
 
-	#[cfg(feature = "full-typescript")]
 	fn has_function_body(body: &Self::FunctionBody) -> bool;
+
+	fn is_declare(&self) -> bool;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[apply(derive_ASTNode)]
-pub struct StatementPosition(pub VariableIdentifier);
+pub struct StatementPosition {
+	pub identifier: VariableIdentifier,
+	pub declare: bool,
+}
 
 impl ExpressionOrStatementPosition for StatementPosition {
 	type FunctionBody = FunctionBody;
@@ -835,20 +839,24 @@ impl ExpressionOrStatementPosition for StatementPosition {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		VariableIdentifier::from_reader(reader, state, options).map(Self)
+		VariableIdentifier::from_reader(reader, state, options)
+			.map(|identifier| Self { identifier, declare: false })
 	}
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
-		Some(&self.0)
+		Some(&self.identifier)
 	}
 
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
-		Some(&mut self.0)
+		Some(&mut self.identifier)
 	}
 
-	#[cfg(feature = "full-typescript")]
 	fn has_function_body(body: &Self::FunctionBody) -> bool {
 		body.0.is_some()
+	}
+
+	fn is_declare(&self) -> bool {
+		self.declare
 	}
 }
 
@@ -889,6 +897,10 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	#[cfg(feature = "full-typescript")]
 	fn has_function_body(_: &Self::FunctionBody) -> bool {
 		true
+	}
+
+	fn is_declare(&self) -> bool {
+		false
 	}
 }
 

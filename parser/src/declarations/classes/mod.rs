@@ -49,8 +49,8 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Eq + Clone + 'static
 		self.to_string_from_buffer(buf, options, local);
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 

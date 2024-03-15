@@ -21,8 +21,8 @@ pub struct Decorator {
 }
 
 impl ASTNode for Decorator {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -118,8 +118,8 @@ pub struct Decorated<T> {
 }
 
 impl<N: ASTNode> ASTNode for Decorated<N> {
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 
 	fn from_reader(
@@ -149,7 +149,7 @@ impl<U: ASTNode> Decorated<U> {
 
 	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
 		let position =
-			decorators.first().map_or(on.get_position(), |d| &d.position).union(on.get_position());
+			decorators.first().map_or(on.get_position(), |d| d.position).union(on.get_position());
 		Self { decorators, on, position }
 	}
 

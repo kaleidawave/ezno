@@ -3,8 +3,8 @@ use crate::{
 	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span, TSXKeyword, TSXToken,
-	TypeAnnotation, TypeDeclaration, TypeParameter, WithComment,
+	ExpressionOrStatementPosition, NumberRepresentation, ParseOptions, ParseResult, PropertyKey,
+	Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -15,7 +15,8 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 #[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
-	pub name: String,
+	pub is_declare: bool,
+	pub name: StatementPosition,
 	#[cfg(feature = "extras")]
 	pub is_nominal: bool,
 	pub type_parameters: Option<Vec<TypeParameter>>,
@@ -55,14 +56,15 @@ impl ASTNode for InterfaceDeclaration {
 			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
 			.is_some();
 
-		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
-		// 	Some((reader.next().unwrap().1))
-		// } else {
-		// 	None
-		// };
-
-		let TypeDeclaration { name, type_parameters, .. } =
-			TypeDeclaration::from_reader(reader, state, options)?;
+		let name = StatementPosition::from_reader(reader, state, options)?;
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
 
 		let extends = if reader
 			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
@@ -97,6 +99,7 @@ impl ASTNode for InterfaceDeclaration {
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
 			name,
+			is_declare: false,
 			#[cfg(feature = "extras")]
 			is_nominal,
 			type_parameters,
@@ -113,8 +116,11 @@ impl ASTNode for InterfaceDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		if options.include_type_annotations {
+			if self.name.is_declare() {
+				buf.push_str("declare ");
+			}
 			buf.push_str("interface ");
-			buf.push_str(&self.name);
+			self.name.identifier.to_string_from_buffer(buf, options, local);
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
 				options.push_gap_optionally(buf);
@@ -145,8 +151,8 @@ impl ASTNode for InterfaceDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
@@ -162,8 +168,6 @@ pub enum InterfaceMember {
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_optional: bool,
-		#[cfg(feature = "extras")]
-		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Property {
@@ -190,8 +194,6 @@ pub enum InterfaceMember {
 		type_parameters: Option<Vec<TypeParameter>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
-		#[cfg(feature = "extras")]
-		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Caller {
@@ -238,9 +240,10 @@ impl ASTNode for InterfaceMember {
 						None
 					};
 				// TODO parameter.pos can be union'ed with itself
-				let position = readonly_position.as_ref().unwrap_or(&parameters.position).union(
-					return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
-				);
+				let position = readonly_position
+					.as_ref()
+					.unwrap_or(&parameters.position)
+					.union(return_type.as_ref().map_or(parameters.position, ASTNode::get_position));
 				Ok(InterfaceMember::Caller {
 					is_readonly: readonly_position.is_some(),
 					position,
@@ -262,7 +265,7 @@ impl ASTNode for InterfaceMember {
 						None
 					};
 				let position =
-					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
+					return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
 				Ok(InterfaceMember::Caller {
 					is_readonly: readonly_position.is_some(),
@@ -296,14 +299,7 @@ impl ASTNode for InterfaceMember {
 					None
 				};
 
-				#[cfg(feature = "extras")]
-				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
-					Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
-
-				let end = return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
+				let end = return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
 				let position = readonly_position.as_ref().unwrap_or(&new_span).union(end);
 
@@ -311,8 +307,6 @@ impl ASTNode for InterfaceMember {
 					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
-					#[cfg(feature = "extras")]
-					performs,
 					type_parameters,
 					return_type,
 				})
@@ -456,7 +450,8 @@ impl ASTNode for InterfaceMember {
 					(property_key, type_parameters.map(|(tp, _)| tp))
 				};
 
-				let start = readonly_position.as_ref().unwrap_or_else(|| name.get_position());
+				let start =
+					readonly_position.as_ref().cloned().unwrap_or_else(|| name.get_position());
 
 				// TODO a little weird as only functions can have type parameters:
 				match reader.next().ok_or_else(parse_lexing_error)? {
@@ -481,15 +476,6 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						#[cfg(feature = "extras")]
-						let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) =
-							reader.peek()
-						{
-							Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-						} else {
-							None
-						};
-
 						Ok(InterfaceMember::Method {
 							header,
 							name,
@@ -498,8 +484,6 @@ impl ASTNode for InterfaceMember {
 							return_type,
 							is_optional: false,
 							position,
-							#[cfg(feature = "extras")]
-							performs,
 						})
 					}
 					Token(TSXToken::QuestionMark, _) => {
@@ -522,15 +506,6 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						#[cfg(feature = "extras")]
-						let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) =
-							reader.peek()
-						{
-							Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-						} else {
-							None
-						};
-
 						Ok(InterfaceMember::Method {
 							header,
 							name,
@@ -539,8 +514,6 @@ impl ASTNode for InterfaceMember {
 							is_optional: true,
 							position,
 							return_type,
-							#[cfg(feature = "extras")]
-							performs,
 						})
 					}
 					Token(TSXToken::Colon, _) => {
@@ -645,8 +618,8 @@ impl ASTNode for InterfaceMember {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 }
 

@@ -3,7 +3,7 @@ A JavaScript compiler and TypeScript checker written in Rust with a focus on sta
 > [!IMPORTANT]
 > Ezno is in active development and **currently does not support enough features to check existing projects**. Check out the [getting started guide](./checker/docs/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
 
-<!-- Currently out ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
+<!-- ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
 
 What Ezno is
 - A type checker for JavaScript usable through a CLI ([with a LSP also in the works](https://github.com/kaleidawave/ezno/issues/22))

@@ -48,8 +48,8 @@ impl<T: ASTNode + crate::Visitable> crate::Visitable for TemplateLiteralPart<T> 
 }
 
 impl ASTNode for TemplateLiteral {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(

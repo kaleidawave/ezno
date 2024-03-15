@@ -58,7 +58,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 			for (idx, field) in items.iter().enumerate() {
 				match field.get_ast_ref() {
 					ArrayDestructuringField::Spread(variable, _pos) => {
-						register_variable_identifier(
+						register_variable(
 							variable,
 							environment,
 							checking_data,
@@ -78,7 +78,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							&key,
 							environment,
 							checking_data,
-							*name.get_position(),
+							name.get_position(),
 						);
 						register_variable(name, environment, checking_data, argument);
 					}
@@ -100,7 +100,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							&key,
 							environment,
 							checking_data,
-							*variable.get_position(),
+							variable.get_position(),
 						);
 						register_variable_identifier(
 							variable,
@@ -170,7 +170,9 @@ pub(super) fn synthesise_variable_declaration_item<
 		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, *pos));
 
-	let value_ty = if let Some(value) = U::as_option_expr_ref(&variable_declaration.expression) {
+	let value_ty = if let Some(value) =
+		U::as_option_expression_ref(&variable_declaration.expression)
+	{
 		let expecting = var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 
 		let value_ty =
@@ -280,7 +282,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							&key_ty,
 							&mut checking_data.types,
 							None,
-							*name.get_position(),
+							name.get_position(),
 							&checking_data.options,
 						);
 						let value = match property {

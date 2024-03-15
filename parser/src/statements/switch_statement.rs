@@ -26,8 +26,8 @@ pub enum SwitchBranch {
 }
 
 impl ASTNode for SwitchStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(

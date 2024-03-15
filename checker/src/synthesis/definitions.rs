@@ -1,12 +1,12 @@
-use parser::{ASTNode, Declaration, Statement, StatementOrDeclaration};
+use parser::{
+	ASTNode, Declaration, ExpressionOrStatementPosition, Statement, StatementOrDeclaration,
+};
 use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
 	diagnostics::TypeCheckWarning,
-	synthesis::{
-		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
-	},
+	synthesis::type_annotations::synthesise_type_annotation,
 	Environment, LocalInformation, TypeId,
 };
 
@@ -20,10 +20,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 ) -> (Names, LocalInformation) {
 	use std::collections::HashMap;
 
-	use parser::{
-		declarations::{DeclareVariableDeclaration, TypeAlias},
-		TypeDeclaration,
-	};
+	use parser::declarations::{DeclareVariableDeclaration, TypeAlias};
 
 	let mut idx_to_types = HashMap::new();
 
@@ -35,7 +32,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		match statement {
 			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
 				let ty = environment.register_interface(
-					&interface.on.name,
+					interface.on.name.as_option_str().unwrap_or_default(),
 					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
@@ -46,10 +43,10 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}
 			StatementOrDeclaration::Declaration(Declaration::TypeAlias(alias)) => {
 				environment.new_alias(
-					&alias.type_name.name,
-					alias.type_name.type_parameters.as_deref(),
-					&alias.type_expression,
-					*alias.get_position(),
+					&alias.name.identifier.as_option_str().map_or_else(String::new, str::to_owned),
+					alias.parameters.as_deref(),
+					&alias.references,
+					alias.get_position(),
 					checking_data,
 				);
 			}
@@ -60,10 +57,6 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	for declaration in definition.items {
 		// TODO more
 		match declaration {
-			StatementOrDeclaration::Declaration(Declaration::DeclareFunction(func)) => {
-				// TODO abstract
-				synthesise_declare_function(&func, source, &mut environment, checking_data);
-			}
 			StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
 				DeclareVariableDeclaration { keyword: _, declarations, position: _, decorators: _ },
 			)) => {
@@ -98,39 +91,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					checking_data,
 				);
 			}
-			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
-				type_name,
-				type_expression: _,
-				..
-			})) => {
-				let TypeDeclaration { type_parameters, .. } = &type_name;
-
-				// To remove when implementing
-				#[allow(clippy::redundant_pattern_matching)]
-				if let Some(_) = type_parameters {
-					todo!()
-				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut root = env.new_lexical_root();
-				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
-				//         type_parameters,
-				//         &mut env,
-				//         error_handler,
-				//         type_mappings,
-				//     );
-				//     let borrow = type_parameters.0.borrow();
-				//     for parameter in borrow.iter().cloned() {
-				//         env.declare_generic_type_parameter(parameter);
-				//     }
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// } else {
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// };
-				// todo!("This should have two passes with a empty type");
-				} else {
-					// todo!("Modify alias")
-					// let ty = env.get_type_handle_errors(&type_expression, checking_data);
-					// env.register_type(ty);
-				}
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias { .. })) => {
+				todo!()
 			}
 			StatementOrDeclaration::Statement(Statement::Comment(..) | Statement::Empty(..)) => {}
 			item => checking_data.diagnostics_container.add_warning(
@@ -145,49 +107,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	(Names { variables, named_types, variable_names }, info)
 }
 
-pub(super) fn synthesise_declare_function<T: crate::ReadFromFS>(
-	function: &parser::ast::DeclareFunctionDeclaration,
-	source: SourceId,
-	environment: &mut Environment,
-	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
-) {
-	let declared_at = function.get_position().with_source(source);
-	let base = synthesise_function_annotation(
-		&function.type_parameters,
-		&function.parameters,
-		function.return_type.as_ref(),
-		environment,
-		checking_data,
-		function.performs.as_ref().into(),
-		&declared_at,
-		crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
-		None,
-	);
-
-	let base = checking_data.types.new_function_type_annotation(
-		base.type_parameters,
-		base.parameters,
-		base.return_type,
-		// TODO
-		&declared_at,
-		base.effects,
-		base.constant_function,
-	);
-
-	// TODO not sure
-	let open = checking_data.types.new_open_type(base);
-
-	let _context = decorators_to_context(&function.decorators);
-
-	environment.register_variable_handle_error(
-		function.name.as_str(),
-		VariableRegisterArguments { constant: true, space: None, initial_value: Some(open) },
-		function.get_position().with_source(source),
-		&mut checking_data.diagnostics_container,
-	);
-}
-
-pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
+pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
 		if dec.name.first() == Some(&"server".to_owned()) {
 			Some("server".to_owned())

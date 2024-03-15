@@ -78,8 +78,8 @@ pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 impl Eq for Statement {}
 
 impl ASTNode for Statement {
-	fn get_position(&self) -> &Span {
-		get_field_by_type::GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 
 	fn from_reader(
@@ -313,8 +313,8 @@ pub struct VarVariableStatement {
 }
 
 impl ASTNode for VarVariableStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -332,7 +332,7 @@ impl ASTNode for VarVariableStatement {
 			{
 				return Err(crate::ParseError::new(
 					crate::ParseErrors::DestructuringRequiresValue,
-					*value.name.get_ast_ref().get_position(),
+					value.name.get_ast_ref().get_position(),
 				));
 			}
 			declarations.push(value);

@@ -122,10 +122,10 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			Self::None(ast) => ast.get_position(),
-			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => position,
+			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => *position,
 		}
 	}
 

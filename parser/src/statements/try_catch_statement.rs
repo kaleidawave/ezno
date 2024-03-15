@@ -21,8 +21,8 @@ pub struct TryCatchStatement {
 }
 
 impl ASTNode for TryCatchStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(

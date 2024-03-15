@@ -1,6 +1,8 @@
+use std::ops::Neg;
+
 use crate::{
 	derive_ASTNode, parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	ListItem, Quoted,
+	ListItem, ParseErrors, Quoted,
 };
 use crate::{
 	errors::parse_lexing_error, expressions::TemplateLiteralPart,
@@ -8,7 +10,7 @@ use crate::{
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 
 use super::{
 	interface::{parse_interface_members, InterfaceMember},
@@ -106,9 +108,9 @@ pub enum AnnotationWithBinder {
 }
 
 impl ASTNode for AnnotationWithBinder {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			AnnotationWithBinder::Annotated { position, .. } => position,
+			AnnotationWithBinder::Annotated { position, .. } => *position,
 			AnnotationWithBinder::NoAnnotation(ty) => ty.get_position(),
 		}
 	}
@@ -192,10 +194,10 @@ impl TypeCondition {
 		}
 	}
 
-	pub(crate) fn get_position(&self) -> &Span {
+	pub(crate) fn get_position(&self) -> Span {
 		match self {
 			TypeCondition::Extends { position, .. } | TypeCondition::Is { position, .. } => {
-				position
+				*position
 			}
 		}
 	}
@@ -211,9 +213,9 @@ pub enum TypeConditionResult {
 }
 
 impl ASTNode for TypeConditionResult {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			TypeConditionResult::Infer(_, pos) => pos,
+			TypeConditionResult::Infer(_, pos) => *pos,
 			TypeConditionResult::Reference(reference) => reference.get_position(),
 		}
 	}
@@ -403,8 +405,8 @@ impl ASTNode for TypeAnnotation {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		get_field_by_type::GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 }
 
@@ -517,6 +519,20 @@ impl TypeAnnotation {
 			Token(TSXToken::NumberLiteral(num), start) => {
 				let pos = start.with_length(num.len());
 				Self::NumberLiteral(num.parse::<NumberRepresentation>().unwrap(), pos)
+			}
+			Token(TSXToken::Subtract, start) => {
+				let Token(token, pos) = reader.next().ok_or_else(parse_lexing_error)?;
+				if let TSXToken::NumberLiteral(num) = token {
+					let pos = pos.union(start.with_length(num.len()));
+					let number_representation = num.parse::<NumberRepresentation>().unwrap();
+					// important negation here
+					Self::NumberLiteral(number_representation.neg(), pos)
+				} else {
+					return Err(ParseError::new(
+						ParseErrors::ExpectedNumberLiteral,
+						start.with_length(token.length() as usize + 1),
+					));
+				}
 			}
 			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let pos = start.with_length(content.len() + 2);
@@ -861,7 +877,7 @@ impl TypeAnnotation {
 					Some(TypeOperatorKind::Function),
 					start,
 				)?;
-				let parameters_position = *reference.get_position();
+				let parameters_position = reference.get_position();
 				let position = parameters_position.union(return_type.get_position());
 				Ok(Self::FunctionLiteral {
 					position,
@@ -944,8 +960,8 @@ pub struct TypeAnnotationFunctionParameters {
 }
 
 impl ASTNode for TypeAnnotationFunctionParameters {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(

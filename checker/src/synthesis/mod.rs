@@ -107,7 +107,7 @@ impl crate::ASTImplementation for EznoParser {
 	}
 
 	fn expression_position<'_a>(expression: &'_a Self::Expression<'_a>) -> source_map::Span {
-		*ASTNode::get_position(expression)
+		ASTNode::get_position(expression)
 	}
 
 	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
@@ -240,20 +240,6 @@ pub enum Performs<'a> {
 impl crate::GenericTypeParameter for parser::TypeParameter {
 	fn get_name(&self) -> &str {
 		&self.name
-	}
-}
-
-impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
-	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
-		match value {
-			Some(parser::types::AnnotationPerforms::PerformsConst { identifier }) => {
-				Performs::Const(identifier.clone())
-			}
-			Some(parser::types::AnnotationPerforms::PerformsStatements { body: statements }) => {
-				Performs::Block(statements)
-			}
-			None => Performs::None,
-		}
 	}
 }
 

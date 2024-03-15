@@ -13,7 +13,6 @@ use crate::{
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
-	synthesis::definitions::synthesise_declare_function,
 	CheckingData, ReadFromFS, TypeId,
 };
 
@@ -35,7 +34,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
 				parser::Declaration::DeclareVariable(_)
-				| parser::Declaration::DeclareFunction(_)
 				| parser::Declaration::Class(_)
 				| parser::Declaration::Variable(_)
 				| parser::Declaration::Function(_) => {}
@@ -47,21 +45,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					"namespace",
 					ns.position.with_source(environment.get_source()),
 				),
-				parser::Declaration::DeclareInterface(interface) => {
-					// TODO any difference bc `declare`?
-					let ty = environment.register_interface(
-						&interface.name,
-						interface.is_nominal,
-						interface.type_parameters.as_deref(),
-						interface.extends.as_deref(),
-						interface.position.with_source(environment.get_source()),
-						checking_data,
-					);
-					idx_to_types.insert(interface.position.start, ty);
-				}
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.register_interface(
-						&interface.on.name,
+						&interface.on.name.identifier.as_option_str().unwrap_or_default(),
 						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
@@ -72,10 +58,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				parser::Declaration::TypeAlias(alias) => {
 					environment.new_alias(
-						&alias.type_name.name,
-						alias.type_name.type_parameters.as_deref(),
-						&alias.type_expression,
-						*alias.get_position(),
+						alias.name.as_option_str().unwrap_or_default(),
+						alias.parameters.as_deref(),
+						&alias.references,
+						alias.get_position(),
 						checking_data,
 					);
 				}
@@ -158,19 +144,23 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 							Exportable::TypeAlias(alias) => {
 								let export = environment.new_alias::<_, EznoParser>(
-									&alias.type_name.name,
-									alias.type_name.type_parameters.as_deref(),
-									&alias.type_expression,
-									*alias.get_position(),
+									alias.name.as_option_str().unwrap_or_default(),
+									alias.parameters.as_deref(),
+									&alias.references,
+									alias.get_position(),
 									checking_data,
 								);
 
 								if let crate::Scope::Module { ref mut exported, .. } =
 									environment.context_type.scope
 								{
-									exported
-										.named_types
-										.push((alias.type_name.name.clone(), export));
+									exported.named_types.push((
+										alias
+											.name
+											.as_option_str()
+											.map_or_else(String::new, str::to_owned),
+										export,
+									));
 								}
 							}
 							// Other exported things are skipped
@@ -232,12 +222,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 					}
 				}
-				parser::Declaration::DeclareFunction(function) => synthesise_declare_function(
-					function,
-					environment.get_source(),
-					environment,
-					checking_data,
-				),
 				parser::Declaration::Enum(r#enum) => {
 					checking_data.raise_unimplemented_error(
 						"enum",
@@ -344,7 +328,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				},
 				parser::Declaration::Class(_)
 				| parser::Declaration::TypeAlias(_)
-				| parser::Declaration::DeclareInterface(_)
 				| parser::Declaration::Import(_) => {}
 			},
 			StatementOrDeclaration::Marker(_, _) => {}

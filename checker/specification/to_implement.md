@@ -596,3 +596,68 @@ y.pop();
 
 - TODO cannot push
 - TODO cannot pop
+
+### Breaking
+
+> Were working, but a temporary change broke them
+
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 2
+
+#### Throw effects carry through
+
+```ts
+function throwType(a) {
+	throw a
+}
+
+try {
+	throwType(3)
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 3
+
+#### Generic condition
+
+```ts
+declare function isNumber<T>(t: T): T extends number ? true : false;
+
+isNumber(5) satisfies true;
+isNumber("5") satisfies number;
+```
+
+- Expected number, found false
+
+#### More accurate generic
+
+```ts
+declare function unwrap<T>(a: T | { item: T }): T;
+
+unwrap({ item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
+
+#### Across alias
+
+```ts
+type WithLabel<T> = { label: string, item: T };
+
+declare function getItem<T>(a: WithLabel<T>): T;
+
+getItem({ label: "item 1", item: 5 }) satisfies string;
+```
+
+- Expected string, found 5

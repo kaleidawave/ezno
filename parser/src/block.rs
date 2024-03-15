@@ -49,11 +49,11 @@ impl StatementOrDeclaration {
 }
 
 impl ASTNode for StatementOrDeclaration {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			StatementOrDeclaration::Statement(item) => item.get_position(),
 			StatementOrDeclaration::Declaration(item) => item.get_position(),
-			StatementOrDeclaration::Marker(_, pos) => pos,
+			StatementOrDeclaration::Marker(_, pos) => *pos,
 		}
 	}
 
@@ -180,8 +180,8 @@ impl ASTNode for Block {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.1
+	fn get_position(&self) -> Span {
+		self.1
 	}
 }
 
@@ -304,7 +304,7 @@ impl From<Statement> for BlockOrSingleStatement {
 }
 
 impl ASTNode for BlockOrSingleStatement {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			BlockOrSingleStatement::Braced(blk) => blk.get_position(),
 			BlockOrSingleStatement::SingleStatement(stmt) => stmt.get_position(),
@@ -392,6 +392,20 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			)) = item
 			{
 				continue;
+			}
+		}
+
+		if let (false, StatementOrDeclaration::Declaration(dec)) =
+			(options.include_type_annotations, item)
+		{
+			match dec {
+				Declaration::Function(item) if item.on.name.declare => {
+					continue;
+				}
+				Declaration::Class(item) if item.on.name.declare => {
+					continue;
+				}
+				_ => {}
 			}
 		}
 

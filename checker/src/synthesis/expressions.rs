@@ -224,7 +224,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					_ => unreachable!(),
 				};
 				return evaluate_logical_operation_with_expression(
-					(lhs_ty, *lhs.get_position()),
+					(lhs_ty, lhs.get_position()),
 					operator,
 					&**rhs,
 					checking_data,
@@ -663,7 +663,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(result)
 		}
 		Expression::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
-			let condition_pos = *condition.get_position();
+			let condition_pos = condition.get_position();
 			let condition =
 				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
@@ -1002,7 +1002,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Some(member_position),
 				);
 			}
-			ObjectLiteralMember::Property(key, expression, _) => {
+			ObjectLiteralMember::Property { key, value, assignment: _, position: _ } => {
 				let key = parser_property_key_to_checker_property_key(
 					key.get_ast_ref(),
 					environment,
@@ -1021,12 +1021,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
 				.unwrap_or(TypeId::ANY_TYPE);
 
-				let value = synthesise_expression(
-					expression,
-					environment,
-					checking_data,
-					property_expecting,
-				);
+				let value =
+					synthesise_expression(value, environment, checking_data, property_expecting);
 
 				let value = crate::types::properties::PropertyValue::Value(value);
 				object_builder.append(

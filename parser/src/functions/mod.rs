@@ -9,7 +9,7 @@ use crate::{
 };
 use crate::{PropertyKey, TSXKeyword};
 use derive_partial_eq_extras::PartialEqExtras;
-use source_map::{Span, ToString};
+use source_map::{Nullable, Span, ToString};
 use tokenizer_lib::sized_tokens::TokenStart;
 use tokenizer_lib::{Token, TokenReader};
 
@@ -200,8 +200,8 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		self.body.to_string_from_buffer(buf, options, local.next_level());
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
@@ -234,8 +234,15 @@ impl<T: FunctionBased> FunctionBase<T> {
 		}
 		let body = T::Body::from_reader(reader, state, options)?;
 		let body_pos = body.get_position();
+		let end_pos = if body_pos != Span::NULL {
+			body_pos
+		} else {
+			return_type.as_ref().map_or(parameters.position, |rt| rt.get_position())
+		};
+
 		let position =
-			header_left.unwrap_or_else(|| parameters.position.get_start()).union(body_pos);
+			header_left.unwrap_or_else(|| parameters.position.get_start()).union(end_pos);
+
 		Ok(Self { header, name, type_parameters, parameters, return_type, body, position })
 	}
 }
@@ -392,11 +399,11 @@ pub enum FunctionHeader {
 }
 
 impl ASTNode for FunctionHeader {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			FunctionHeader::VirginFunctionHeader { position, .. } => position,
+			FunctionHeader::VirginFunctionHeader { position, .. } => *position,
 			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { position, .. } => position,
+			FunctionHeader::ChadFunctionHeader { position, .. } => *position,
 		}
 	}
 
@@ -674,16 +681,19 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 	Ok((function_header, key))
 }
 
+// #[cfg(feature = "full-typescript")]
 /// None if overloaded (declaration only)
-#[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
+// #[cfg(not(feature = "full-typescript"))]
+// pub type FunctionBody = Block;
+
 #[cfg(feature = "full-typescript")]
 impl ASTNode for FunctionBody {
-	fn get_position(&self) -> &Span {
-		self.0.as_ref().map_or(&source_map::Nullable::NULL, |Block(_, pos)| pos)
+	fn get_position(&self) -> Span {
+		self.0.as_ref().map_or(source_map::Nullable::NULL, |Block(_, pos)| *pos)
 	}
 
 	fn from_reader(
@@ -713,6 +723,3 @@ impl ASTNode for FunctionBody {
 		}
 	}
 }
-
-#[cfg(not(feature = "full-typescript"))]
-pub type FunctionBody = Block;

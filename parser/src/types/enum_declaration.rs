@@ -16,8 +16,8 @@ pub struct EnumDeclaration {
 }
 
 impl ASTNode for EnumDeclaration {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -93,9 +93,9 @@ pub enum EnumMember {
 }
 
 impl ASTNode for EnumMember {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			EnumMember::Variant { position, .. } => position,
+			EnumMember::Variant { position, .. } => *position,
 		}
 	}
 

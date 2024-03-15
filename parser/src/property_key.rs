@@ -3,6 +3,7 @@ use crate::{
 	visiting::{Chain, VisitOptions, Visitable},
 	Quoted, TSXToken,
 };
+use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
@@ -90,8 +91,9 @@ impl PropertyKeyKind for PublicOrPrivate {
 }
 
 /// A key for a member in a class or object literal
-#[derive(Debug, PartialEq, Eq, Clone)]
 #[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Ident(String, Span, T),
 	StringLiteral(String, Quoted, Span),
@@ -101,15 +103,6 @@ pub enum PropertyKey<T: PropertyKeyKind> {
 }
 
 impl<U: PropertyKeyKind> PropertyKey<U> {
-	pub fn get_position(&self) -> &Span {
-		match self {
-			PropertyKey::Ident(_, pos, _)
-			| PropertyKey::StringLiteral(_, _, pos)
-			| PropertyKey::NumberLiteral(_, pos)
-			| PropertyKey::Computed(_, pos) => pos,
-		}
-	}
-
 	pub fn is_private(&self) -> bool {
 		match self {
 			PropertyKey::Ident(_, _, p) => U::is_private(p),
@@ -130,13 +123,8 @@ impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 }
 
 impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
-	fn get_position(&self) -> &Span {
-		match self {
-			PropertyKey::Ident(_, pos, _)
-			| PropertyKey::StringLiteral(_, _, pos)
-			| PropertyKey::NumberLiteral(_, pos)
-			| PropertyKey::Computed(_, pos) => pos,
-		}
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 
 	fn from_reader(
