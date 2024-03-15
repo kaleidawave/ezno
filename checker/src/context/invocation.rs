@@ -63,6 +63,10 @@ pub struct InvocationContext(Vec<InvocationKind>);
 
 pub(crate) enum InvocationKind {
 	Conditional(LocalInformation),
+	/// *Unconditional*
+	///
+	/// TODO does this need [`LocalInformation`]??
+	AlwaysTrue,
 	Function(FunctionId),
 	LoopIteration,
 }
@@ -124,6 +128,16 @@ impl InvocationContext {
 		}
 	}
 
+	pub(crate) fn new_unconditional_target(
+		&mut self,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> ApplicationResult,
+	) -> ApplicationResult {
+		self.0.push(InvocationKind::AlwaysTrue);
+		let result = cb(self);
+		self.0.pop();
+		result
+	}
+
 	pub(crate) fn new_loop_iteration<T>(
 		&mut self,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
@@ -140,5 +154,9 @@ impl InvocationContext {
 		// TODO can this every go > 1
 		crate::utils::notify!("Iteration depth {}", depth);
 		depth
+	}
+
+	pub(crate) fn in_unconditional(&self) -> bool {
+		self.0.iter().any(|mem| matches!(mem, InvocationKind::AlwaysTrue))
 	}
 }

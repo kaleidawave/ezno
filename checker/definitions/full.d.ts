@@ -1,14 +1,14 @@
-interface nominal Array<T> {
+declare class Array<T> {
     [index: number]: T | undefined;
 
     length: number;
 
-    push(item: T) performs {
+    push(item: T) {
         this[this.length] = item;
         return ++this.length
     }
 
-    pop(): T | undefined performs {
+    pop(): T | undefined {
         if (this.length === 0) {
             return undefined
         } else {
@@ -19,7 +19,7 @@ interface nominal Array<T> {
     }
 
     // TODO this argument
-    map<U>(cb: (t: T, i?: number) => U): Array <U> performs {
+    map<U>(cb: (t: T, i?: number) => U): Array<U> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
@@ -29,58 +29,58 @@ interface nominal Array<T> {
         return mapped;
     }
 
-    // TODO any is debatable
-    filter(cb: (t: T, i?: number) => any): Array <T> performs {
-        const { length } = this, filtered: Array<T> = [];
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                filtered.push(value)
-            }
-        }
-        return filtered;
-    }
+    // // TODO any is debatable
+    // filter(cb: (t: T, i?: number) => any): Array<T> {
+    //     const { length } = this, filtered: Array<T> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             filtered.push(value)
+    //         }
+    //     }
+    //     return filtered;
+    // }
 
-    // TODO any is debatable
-    find(cb: (t: T, i?: number) => any): T | undefined performs {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                return value
-            }
-        }
-    }
+    // // TODO any is debatable
+    // find(cb: (t: T, i?: number) => any): T | undefined {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             return value
+    //         }
+    //     }
+    // }
 
-    // TODO any is debatable
-    every(cb: (t: T, i?: number) => any): boolean performs {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (!cb(value, i++)) {
-                return false
-            }
-        }
-        // Vacuous truth
-        return true
-    }
+    // // TODO any is debatable
+    // every(cb: (t: T, i?: number) => any): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (!cb(value, i++)) {
+    //             return false
+    //         }
+    //     }
+    //     // Vacuous truth
+    //     return true
+    // }
 
-    some(cb: (t: T, i?: number) => any): boolean performs {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                return true
-            }
-        }
-        return false
-    }
+    // some(cb: (t: T, i?: number) => any): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             return true
+    //         }
+    //     }
+    //     return false
+    // }
 
-    // includes(searchElement: T, fromIndex?: number): boolean performs {
+    // includes(searchElement: T, fromIndex?: number): boolean {
     //     const { length } = this;
     //     let i: number = fromIndex ?? 0;
     //     while (i < length) {
@@ -92,7 +92,7 @@ interface nominal Array<T> {
     //     return false
     // }
 
-    // join(joiner?: string): string performs {
+    // join(joiner?: string): string {
     //     const j = joiner ?? ",";
     //     const { length } = this;
     //     let i = 1;
@@ -108,73 +108,83 @@ interface nominal Array<T> {
     // }
 }
 
-interface Math {
-    @DoNotIncludeThis
-    sin(x: number): number performs const sin;
-    @DoNotIncludeThis
-    cos(x: number): number performs const cos;
-    @DoNotIncludeThis
-    tan(x: number): number performs const tan;
-    @DoNotIncludeThis
-    floor(x: number): number performs const floor;
-    @DoNotIncludeThis
-    sqrt(x: number): number performs const sqrt;
-    @DoNotIncludeThis
-    cbrt(x: number): number performs const cbrt;
+declare class Math {
+    @Constant
+    static sin(x: number): number;
+    @Constant
+    static cos(x: number): number;
+    @Constant
+    static tan(x: number): number;
+    @Constant
+    static floor(x: number): number;
+    @Constant
+    static sqrt(x: number): number;
+    @Constant
+    static cbrt(x: number): number;
 
     // TODO newer method
-    trunc(x: number): number performs const trunc;
+    @Constant
+    static trunc(x: number): number;
 
-    PI: 3.141592653589793
+    static PI: 3.141592653589793
 }
 
-interface nominal string {
+@Primitive("string")
+declare class String {
     [index: number]: string | undefined;
 
-    toUpperCase(): string performs const uppercase;
-    toLowerCase(): string performs const lowercase;
+    @Constant
+    toUpperCase(): string;
+    @Constant
+    toLowerCase(): string;
 
-    get length(): number performs const string_length;
+    get length(): number;
 
     // TODO
-    slice(start: number, end ?: number): string performs const slice;
+    slice(start: number, end?: number): string;
 
     // TODO
-    split(splitter: string): Array < string > performs const split;
+    split(splitter: string): Array<string>;
 }
 
-interface Console {
-    @DoNotIncludeThis
+declare class Promise<T> { }
+
+interface Response {
+    ok: boolean;
+
+    json(): Promise<any>;
+}
+
+declare class Console {
+    @InputOutput
     log(msg: any): void;
 }
 
-interface JSON {
+declare const console: Console;
+
+declare class JSON {
     // TODO any temp
-    @DoNotIncludeThis
     parse(input: string): any;
 
     // TODO any temp
-    @DoNotIncludeThis
     stringify(input: any): string;
 }
 
-interface Function {
-    bind(this_ty: any): Function performs const bind;
+declare class Function {
+    bind(this_ty: any): Function;
 }
 
-interface Symbols {
+declare class Symbols {
     // TODO temp
     iterator: 199
 }
 
-declare var Symbol: Symbols;
+declare class Object {
+    @Constant
+    static setPrototypeOf(on: object, to: object): object;
 
-interface Object {
-    @DoNotIncludeThis
-    setPrototypeOf(on: object, to: object): object performs const set_prototype;
-
-    @DoNotIncludeThis
-    getPrototypeOf(on: object): object | null performs const get_prototype;
+    @Constant
+    static getPrototypeOf(on: object): object | null;
 
     // create(prototype: object): object performs {
     //     const n = {};
@@ -191,12 +201,8 @@ interface Object {
     // }
 }
 
-declare var JSON: JSON;
-declare var Math: Math;
-declare var console: Console;
-declare var Object: Object;
-
-declare function JSXH(tag: string, attributes: any, children?: any) performs {
+// TODO wip
+declare function JSXH(tag: string, attributes: any, children?: any) {
     return { tag, attributes, children }
 }
 
@@ -207,6 +213,10 @@ interface Document {
 interface FormData {
 }
 
+// TODO temp
+@InputOutput
+declare function fetch(from: string): Promise<Response>;
+
 @client
 declare const document: Document;
 
@@ -214,26 +224,41 @@ declare const document: Document;
 // declare function createItem(a: any);
 
 // ↓↓ Ezno testing functions ↓↓
-declare function print_type(t: any): void performs const print_type;
-declare function debug_type(t: any): void performs const debug_type;
-declare function print_and_debug_type(t: any): void performs const print_and_debug_type;
-declare function debug_type_independent(t: any): void performs const debug_type_independent;
-declare function debug_type_rust(t: any): void performs const debug_type_rust;
-declare function debug_type_rust_independent(t: any): void performs const debug_type_rust_independent;
+@Constant
+declare function print_type(t: any): void;
+@Constant
+declare function debug_type(t: any): void;
+@Constant
+declare function print_and_debug_type(t: any): void;
+@Constant
+declare function debug_type_independent(t: any): void;
+@Constant
+declare function debug_type_rust(t: any): void;
+@Constant
+declare function debug_type_rust_independent(t: any): void;
 
-declare function debug_effects_rust(t: () => {}): void performs const debug_effects_rust;
-declare function debug_effects(t: () => {}): void performs const debug_effects;
+@Constant
+declare function debug_effects_rust(t: () => {}): void;
+@Constant
+declare function debug_effects(t: () => {}): void;
 
-declare function is_dependent(t: any): void performs const is_dependent;
-declare function print_environment_state<T>(): any performs const print_environment_state;
+@Constant
+declare function is_dependent(t: any): void;
+@Constant
+declare function print_environment_state<T>(): any;
 
-declare function debug_context(): void performs const debug_context;
-declare function context_id(): void performs const context_id;
-declare function context_id_chain(): void performs const context_id_chain;
+@Constant
+declare function debug_context(): void;
+@Constant
+declare function context_id(): void;
+@Constant
+declare function context_id_chain(): void;
 
 // A function, as it should be!
-declare function satisfies<T>(t: T): T performs const satisfies;
+@Constant
+declare function satisfies<T>(t: T): T;
 
 
-declare function compile_type_to_object<T>(): any performs const compile_type_to_object;
+@Constant
+declare function compile_type_to_object<T>(): any;
 // ↑↑ Ezno Functions ↑↑

@@ -272,7 +272,8 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 // Contained here in a module to separate user facing
 mod defined_errors_and_warnings {
 	use crate::{
-		context::AssignmentError, features::operations::MathematicalAndBitwise,
+		context::AssignmentError,
+		features::{modules::CouldNotOpenFile, operations::MathematicalAndBitwise},
 		types::calling::FunctionCallingError,
 	};
 	use source_map::SpanWithSource;
@@ -374,7 +375,7 @@ mod defined_errors_and_warnings {
 		NotTopLevelImport(SpanWithSource),
 		DoubleDefaultExport(SpanWithSource),
 		CannotOpenFile {
-			file: crate::CouldNotOpenFile,
+			file: CouldNotOpenFile,
 			position: Option<SpanWithSource>,
 		},
 		VariableNotDefinedInContext {
@@ -400,6 +401,21 @@ mod defined_errors_and_warnings {
 			position: SpanWithSource,
 			from: TypeStringRepresentation,
 			to: TypeStringRepresentation,
+		},
+		/// TODO Position = Function body position. Could it be better
+		/// TODO maybe warning?
+		UnreachableVariableClosedOver(String, SpanWithSource),
+		IncompatibleOverloadParameter {
+			parameter_position: SpanWithSource,
+			overloaded_parameter_position: SpanWithSource,
+			parameter: TypeStringRepresentation,
+			overloaded_parameter: TypeStringRepresentation,
+		},
+		IncompatibleOverloadReturnType {
+			base_position: SpanWithSource,
+			overload_position: SpanWithSource,
+			base: TypeStringRepresentation,
+			overload: TypeStringRepresentation,
 		},
 	}
 
@@ -523,7 +539,7 @@ mod defined_errors_and_warnings {
 						)],
 					},
 					FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position, call_site } => Diagnostic::PositionWithAdditionalLabels {
-						reason: "Assignment mismatch".to_owned(),
+						reason: "Invalid assignment to parameter".to_owned(),
 						position: call_site.unwrap(),
 						kind,
 						labels: vec![(
@@ -532,6 +548,15 @@ mod defined_errors_and_warnings {
 							),
 							Some(assignment_position),
 						)],
+					},
+					FunctionCallingError::UnconditionalThrow { value, call_site } => {
+						Diagnostic::Position {
+							reason: format!(
+								"{value} unconditionally thrown in function"
+							),
+							position: call_site.unwrap(),
+							kind,
+						}
 					}
 				},
 				TypeCheckError::AssignmentError(error) => match error {
@@ -645,7 +670,13 @@ mod defined_errors_and_warnings {
 					position: at,
 					kind,
 				},
-				TypeCheckError::ReDeclaredVariable { name: _, position: _pos } => todo!(),
+				TypeCheckError::ReDeclaredVariable { name, position } => {
+					Diagnostic::Position {
+						reason: format!("Cannot declare variable {name}"),
+						position,
+						kind,
+					}
+				}
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
@@ -754,6 +785,35 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+				TypeCheckError::UnreachableVariableClosedOver(name, function_position) => {
+					Diagnostic::Position {
+						reason: format!("Function contains unreachable closed over variable '{}'", name),
+						position: function_position,
+						kind,
+					}
+				}
+				TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } => Diagnostic::PositionWithAdditionalLabels {
+					reason: format!(
+						"Overload with parameter of {overloaded_parameter} does not meet base parameter {parameter}",
+					),
+					labels: vec![(
+						format!("Function has base type {parameter} here"),
+						Some(parameter_position),
+					)],
+					position: overloaded_parameter_position,
+					kind,
+				},
+				TypeCheckError::IncompatibleOverloadReturnType { base_position, overload_position, base, overload } => Diagnostic::PositionWithAdditionalLabels {
+				reason: format!(
+					"Cannot return {overload} in overload because base function is expected to return {base}",
+				),
+				labels: vec![(
+					format!("Function annotated to return {base} here"),
+					Some(base_position),
+				)],
+				position: overload_position,
+				kind,
+			},
 			}
 		}
 	}

@@ -49,7 +49,7 @@ pub(crate) fn create_object_for_type(
 		}
 		Type::RootPolyType(_) => todo!(),
 		Type::Constructor(_) => todo!(),
-		Type::Interface { name, parameters: _, nominal: _, extends: _ } => {
+		Type::Interface { name, parameters: _, nominal: _ } => {
 			let name = name.clone();
 
 			// TODO: Do we need positions for the following appends?
@@ -66,7 +66,7 @@ pub(crate) fn create_object_for_type(
 				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 				// let properties = env.create_array();
-				for (_, key, property) in get_properties_on_type(ty, environment) {
+				for (_, key, property) in get_properties_on_type(ty, types, environment) {
 					let value = create_object_for_type(property, environment, types);
 					inner_object.append(
 						environment,
@@ -113,7 +113,7 @@ pub(crate) fn create_object_for_type(
 			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 			// let properties = env.create_array();
-			for (_, key, property) in get_properties_on_type(ty, environment) {
+			for (_, key, property) in get_properties_on_type(ty, types, environment) {
 				let value = create_object_for_type(property, environment, types);
 				inner_object.append(
 					environment,
@@ -133,6 +133,7 @@ pub(crate) fn create_object_for_type(
 			);
 		}
 		Type::SpecialObject(_) => todo!(),
+		Type::Class { name, parameters } => todo!(),
 	}
 	obj.build_object()
 }

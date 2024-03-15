@@ -15,6 +15,34 @@ use crate::{
 	CheckingData, Environment, TypeId,
 };
 
+pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
+	name: &VariableIdentifier,
+	environment: &mut Context<V>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+	argument: VariableRegisterArguments,
+) {
+	match name {
+		parser::VariableIdentifier::Standard(name, pos) => {
+			if let Some(reassignment_constraint) = argument.space {
+				let id = crate::VariableId(environment.get_source(), pos.start);
+				checking_data
+					.local_type_mappings
+					.variables_to_constraints
+					.0
+					.insert(id, reassignment_constraint);
+			}
+
+			environment.register_variable_handle_error(
+				name,
+				argument,
+				pos.with_source(environment.get_source()),
+				&mut checking_data.diagnostics_container,
+			);
+		}
+		parser::VariableIdentifier::Marker(..) => todo!(),
+	}
+}
+
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
 pub(crate) fn register_variable<T: crate::ReadFromFS>(
 	name: &parser::VariableField,
@@ -22,34 +50,6 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	argument: VariableRegisterArguments,
 ) {
-	fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
-		name: &VariableIdentifier,
-		environment: &mut Context<V>,
-		checking_data: &mut CheckingData<T, super::EznoParser>,
-		argument: VariableRegisterArguments,
-	) {
-		match name {
-			parser::VariableIdentifier::Standard(name, pos) => {
-				if let Some(reassignment_constraint) = argument.space {
-					let id = crate::VariableId(environment.get_source(), pos.start);
-					checking_data
-						.type_mappings
-						.variables_to_constraints
-						.0
-						.insert(id, reassignment_constraint);
-				}
-
-				environment.register_variable_handle_error(
-					name,
-					argument,
-					pos.with_source(environment.get_source()),
-					&mut checking_data.diagnostics_container,
-				);
-			}
-			parser::VariableIdentifier::Marker(..) => todo!(),
-		}
-	}
-
 	match name {
 		parser::VariableField::Name(variable) => {
 			register_variable_identifier(variable, environment, checking_data, argument);
@@ -58,16 +58,18 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 			for (idx, field) in items.iter().enumerate() {
 				match field.get_ast_ref() {
 					ArrayDestructuringField::Spread(variable, _pos) => {
+						// TODO
+						let argument = VariableRegisterArguments {
+							constant: argument.constant,
+							space: argument.space,
+							initial_value: argument.initial_value,
+						};
 						register_variable(
 							variable,
 							environment,
 							checking_data,
 							// TODO
-							VariableRegisterArguments {
-								constant: argument.constant,
-								space: argument.space,
-								initial_value: argument.initial_value,
-							},
+							argument,
 						);
 					}
 					ArrayDestructuringField::Name(name, _initial_value) => {
@@ -132,6 +134,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							from,
 							environment,
 							checking_data,
+							false,
 						);
 						let argument = get_new_register_argument_under(
 							&argument,
@@ -165,7 +168,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	// This is only added if there is an annotation, so can be None
 	let get_position = variable_declaration.get_position();
 	let var_ty_and_pos = checking_data
-		.type_mappings
+		.local_type_mappings
 		.variable_restrictions
 		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, *pos));
@@ -193,10 +196,10 @@ pub(super) fn synthesise_variable_declaration_item<
 	};
 
 	let item = variable_declaration.name.get_ast_ref();
-	assign_to_fields(item, environment, checking_data, value_ty, exported);
+	assign_initial_to_fields(item, environment, checking_data, value_ty, exported);
 }
 
-fn assign_to_fields<T: crate::ReadFromFS>(
+fn assign_initial_to_fields<T: crate::ReadFromFS>(
 	item: &VariableField,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -208,6 +211,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 			let get_position = name.get_position();
 			let id = crate::VariableId(environment.get_source(), get_position.start);
 			environment.register_initial_variable_declaration_value(id, value);
+
 			if let Some(mutability) = exported {
 				if let crate::Scope::Module { ref mut exported, .. } =
 					environment.context_type.scope
@@ -310,6 +314,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							from,
 							environment,
 							checking_data,
+							true,
 						);
 
 						// TODO if LHS = undefined ...? conditional
@@ -343,7 +348,7 @@ fn assign_to_fields<T: crate::ReadFromFS>(
 							}
 						};
 
-						assign_to_fields(
+						assign_initial_to_fields(
 							name.get_ast_ref(),
 							environment,
 							checking_data,

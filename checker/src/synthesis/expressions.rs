@@ -21,8 +21,11 @@ use crate::{
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::{
-		self,
-		functions::{register_arrow_function, register_expression_function},
+		self, await_expression,
+		functions::{
+			function_to_property, register_arrow_function, register_expression_function,
+			synthesise_function, GetterSetter,
+		},
 		variables::VariableWithValue,
 	},
 	synthesis::parser_property_key_to_checker_property_key,
@@ -266,8 +269,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				BinaryOperator::NotEqual => EqualityAndInequality::NotEqual.into(),
 				BinaryOperator::GreaterThan => EqualityAndInequality::GreaterThan.into(),
 				BinaryOperator::LessThan => EqualityAndInequality::LessThan.into(),
-				BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanEqual.into(),
-				BinaryOperator::GreaterThanEqual => EqualityAndInequality::GreaterThanEqual.into(),
+				BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanOrEqual.into(),
+				BinaryOperator::GreaterThanEqual => {
+					EqualityAndInequality::GreaterThanOrEqual.into()
+				}
 				BinaryOperator::LogicalAnd
 				| BinaryOperator::LogicalOr
 				| BinaryOperator::NullCoalescing => {
@@ -318,11 +323,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					)
 				}
 				UnaryOperator::Await => {
-					checking_data.raise_unimplemented_error(
-						"await",
+					// TODO get promise T
+					let expecting = TypeId::ANY_TYPE;
+					let on = synthesise_expression(operand, environment, checking_data, expecting);
+					Instance::RValue(await_expression(
+						on,
+						environment,
+						checking_data,
 						position.with_source(environment.get_source()),
-					);
-					return TypeId::ERROR_TYPE;
+					))
 				}
 				UnaryOperator::TypeOf => {
 					let operand_type = synthesise_expression(
@@ -643,7 +652,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				*position,
 			);
 			if let Some(special) = special {
-				checking_data.type_mappings.special_expressions.push(*position, special);
+				checking_data.local_type_mappings.special_expressions.push(*position, special);
 			}
 			Instance::RValue(result)
 		}
@@ -962,7 +971,9 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
 				// TODO use what about string, what about enumerable ...
-				for (_, key, value) in get_properties_on_type(spread, environment) {
+				for (_, key, value) in
+					get_properties_on_type(spread, &checking_data.types, environment)
+				{
 					object_builder.append(
 						environment,
 						Publicity::Public,
@@ -1002,11 +1013,12 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Some(member_position),
 				);
 			}
-			ObjectLiteralMember::Property { key, value, assignment: _, position: _ } => {
+			ObjectLiteralMember::Property { key, value, .. } => {
 				let key = parser_property_key_to_checker_property_key(
 					key.get_ast_ref(),
 					environment,
 					checking_data,
+					true,
 				);
 
 				// TODO needs improvement
@@ -1051,11 +1063,13 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				//     },
 				// )
 			}
+			// TODO abstract
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
 					method.name.get_ast_ref(),
 					environment,
 					checking_data,
+					true,
 				);
 
 				// TODO needs improvement
@@ -1076,15 +1090,16 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					expecting: property_expecting,
 				};
 
-				let function = environment.new_function(checking_data, method, behavior);
+				let function = synthesise_function(method, behavior, environment, checking_data);
 
-				let property = match &method.header {
-					MethodHeader::Get => crate::PropertyValue::Getter(Box::new(function)),
-					MethodHeader::Set => crate::PropertyValue::Setter(Box::new(function)),
-					MethodHeader::Regular { .. } => {
-						crate::PropertyValue::Value(checking_data.types.new_function_type(function))
-					}
+				let kind = match &method.header {
+					MethodHeader::Get => GetterSetter::Getter,
+					MethodHeader::Set => GetterSetter::Setter,
+					MethodHeader::Regular { .. } => GetterSetter::None,
 				};
+
+				let property =
+					function_to_property(kind, function, &mut checking_data.types, false);
 
 				object_builder.append(
 					environment,

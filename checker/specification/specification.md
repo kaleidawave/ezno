@@ -244,12 +244,14 @@ const z: false = true || 4
 (Math.PI > 3) satisfies true;
 (4 < 2) satisfies true;
 (4 > 2) satisfies number;
-(2 >= 2) satisfies string;
+(6 >= 2) satisfies string;
+(6 <= 2) satisfies 5;
 ```
 
 - Expected true, found false
 - Expected number, found true
 - Expected string, found true
+- Expected 5, found false
 
 #### String operations (constant functions can use `this`)
 
@@ -842,7 +844,7 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-- Assignment mismatch
+- Invalid assignment to parameter
 
 > Error message could be better. Full diagnostic contains labels with more information
 > `readA` is allowed, which is disallowed in Hegel, but here is allowed to preserve TSC compatibility (and because how structural subtyping is implemented)
@@ -1050,7 +1052,7 @@ function conditional(v: string) {
 	}
 }
 conditional(value);
-a satisfies string
+a satisfies string;
 ```
 
 - Expected string, found "hi" | 0
@@ -1361,7 +1363,7 @@ x.push("hi");
 > TODO other arguments (index and `this`). and poly
 
 ```ts
-[1, 2, 3].find(x => x % 2 === 0) satisfies 4
+[1, 2, 3].find(x => x % 2 === 0) satisfies 4;
 ```
 
 - Expected 4, found 2
@@ -1716,6 +1718,17 @@ X.a satisfies 3
 
 - Expected 3, found 2
 
+#### Use before defined
+
+> Declared same as `let` and `const`
+
+```ts
+const x = new X;
+class X { }
+```
+
+- Variable 'X' used before declaration
+
 ### Types
 
 #### Non existent type
@@ -1820,7 +1833,7 @@ runWithCallback(() => 3)
 
 > Here argument is fine. In the body the return type is `any` (inferred constraint, but doesn't matter)
 
-- Expected string, found any
+- Expected string, found void
 - Cannot return 5 because the function is expected to return void
 
 #### Indexing into (fixed) type
@@ -2061,10 +2074,14 @@ callFunction<string>(a => {
 
 - Expected number, found string
 
-#### Return type
+#### Returning a function
+
+> Yes, returns another function
 
 ```ts
-const x: () => ((a: string) => string) = function () {
+type ExpectedFunction = () => ((a: string) => string)
+
+const x: ExpectedFunction  = function () {
     return function (b) {
         b satisfies number;
         return b

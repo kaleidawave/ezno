@@ -13,6 +13,7 @@ use crate::{
 		objects::SpecialObjects,
 	},
 	types::{
+		calling::FunctionCallingError,
 		functions::SynthesisedArgument,
 		get_constraint, is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
@@ -300,21 +301,29 @@ pub(crate) fn apply_event(
 			match fixed_result {
 				Decidable::Known(result) => {
 					let to_evaluate = if result { events_if_truthy } else { else_events };
-					for event in to_evaluate.iter().cloned() {
-						let result = apply_event(
-							event,
-							rest_of_events,
-							this_value,
-							type_arguments,
-							environment,
-							target,
-							types,
-							errors,
-						);
+					let result =
+						target.new_unconditional_target(|target: &mut InvocationContext| {
+							for event in to_evaluate.iter().cloned() {
+								let result = apply_event(
+									event,
+									rest_of_events,
+									this_value,
+									type_arguments,
+									environment,
+									target,
+									types,
+									errors,
+								);
 
-						if result.is_it_so_over() {
-							return result;
-						}
+								if result.is_it_so_over() {
+									return result;
+								}
+							}
+							ApplicationResult::Completed
+						});
+
+					if result.is_it_so_over() {
+						return result;
 					}
 				}
 				Decidable::Unknown(condition) => {
@@ -372,7 +381,9 @@ pub(crate) fn apply_event(
 					let result = if let ApplicationResult::Conditionally { on, truthy, otherwise } =
 						result
 					{
-						// TODO
+						// TODO WIP
+						// TODO sort by interrupt and swap etc
+
 						if let (ApplicationResult::Interrupt(_), ApplicationResult::Completed) =
 							(&*truthy, &*otherwise)
 						{
@@ -391,11 +402,13 @@ pub(crate) fn apply_event(
 
 								// TODO temp
 								if otherwise_result.is_it_so_over() {
-									return ApplicationResult::Conditionally {
+									let result = ApplicationResult::Conditionally {
 										on,
 										truthy,
 										otherwise: otherwise_result.into(),
 									};
+
+									return result;
 								}
 							}
 
@@ -410,7 +423,7 @@ pub(crate) fn apply_event(
 
 							ApplicationResult::Conditionally { on, truthy, otherwise }
 						} else {
-							crate::utils::notify!("TODO");
+							crate::utils::notify!("TODO here in unknown conditional");
 
 							if let ApplicationResult::Interrupt(i) = *truthy {
 								truthy_info.events.push(i.into());
@@ -468,6 +481,19 @@ pub(crate) fn apply_event(
 				}
 				FinalEvent::Throw { thrown, position } => {
 					let substituted_thrown = substitute(thrown, type_arguments, environment, types);
+					if target.in_unconditional() {
+						let value = TypeStringRepresentation::from_type_id(
+							substituted_thrown,
+							// TODO is this okay?
+							environment,
+							types,
+							false,
+						);
+						errors.errors.push(FunctionCallingError::UnconditionalThrow {
+							value,
+							call_site: None,
+						});
+					}
 					FinalEvent::Throw { thrown: substituted_thrown, position }
 				}
 				FinalEvent::Return { returned, returned_position } => {

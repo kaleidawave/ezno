@@ -24,10 +24,7 @@ pub use map_vec::Map as SmallMap;
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
-use features::{
-	functions::SynthesisableFunction,
-	modules::{Exported, InvalidModule, SynthesisedModule},
-};
+use features::{functions::SynthesisableFunction, modules::SynthesisedModule};
 
 use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 use std::{
@@ -48,6 +45,8 @@ pub use types::{properties::PropertyValue, Constant, Type, TypeId};
 pub use context::{information::LocalInformation, Environment, Scope};
 
 pub trait ReadFromFS {
+	/// Returns `Vec<u8>` as this callback can return binary file
+	/// TODO this shouldn't take `&self`. Should be just `T::read_file`, doesn't need any data
 	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>>;
 }
 
@@ -63,13 +62,15 @@ where
 
 pub use source_map::{self, SourceId, Span};
 
+use crate::features::modules::CouldNotOpenFile;
+
 /// Contains all the modules and mappings for import statements
 ///
 /// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
 pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
 	pub(crate) file_reader: &'a FileReader,
 	pub(crate) parser_requirements: AST::ParserRequirements,
-	pub(crate) _current_working_directory: PathBuf,
+	pub(crate) current_working_directory: PathBuf,
 	/// Contains the text content of files (for source maps and diagnostics)
 	pub(crate) files: MapFileStore<WithPathMap>,
 	/// To catch cyclic imports
@@ -194,7 +195,7 @@ where
 			_currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
 			file_reader: file_resolver,
-			_current_working_directory: current_working_directory,
+			current_working_directory,
 			parser_requirements,
 		}
 	}
@@ -263,7 +264,7 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	/// Type checking errors
 	pub diagnostics_container: DiagnosticsContainer,
 	/// TODO temp pub
-	pub type_mappings: TypeMappings,
+	pub local_type_mappings: TypeMappings,
 	/// All module information
 	pub(crate) modules: ModuleData<'a, FSResolver, ModuleAST>,
 	/// Options for checking
@@ -276,9 +277,6 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	/// Do not repeat emitting unimplemented parts
 	unimplemented_items: HashSet<&'static str>,
 }
-
-#[derive(Debug, Clone)]
-pub struct CouldNotOpenFile(pub PathBuf);
 
 impl<'a, T, A> CheckingData<'a, T, A>
 where
@@ -298,99 +296,11 @@ where
 
 		Self {
 			options,
-			type_mappings: Default::default(),
+			local_type_mappings: Default::default(),
 			diagnostics_container: Default::default(),
 			modules,
 			types: Default::default(),
 			unimplemented_items: Default::default(),
-		}
-	}
-
-	pub fn import_file(
-		&mut self,
-		from: SourceId,
-		importing_path: &str,
-		environment: &mut Environment,
-	) -> Result<Result<Exported, InvalidModule>, CouldNotOpenFile> {
-		fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
-			full_importer: &Path,
-			environment: &mut Environment,
-			checking_data: &'a mut CheckingData<T, A>,
-		) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
-			let existing = checking_data.modules.files.get_source_at_path(full_importer);
-			if let Some(existing) = existing {
-				Some(Ok(checking_data
-					.modules
-					.synthesised_modules
-					.get(&existing)
-					.expect("existing file, but not synthesised")))
-			} else {
-				let content = checking_data.modules.file_reader.read_file(full_importer);
-				if let Some(content) = content {
-					let (source, module) = get_source(
-						checking_data,
-						full_importer,
-						String::from_utf8(content).unwrap(),
-					);
-
-					match module {
-						Ok(module) => {
-							let new_module_context = environment.get_root().new_module_context(
-								source,
-								module,
-								checking_data,
-							);
-							Some(Ok(new_module_context))
-						}
-						Err(err) => Some(Err(err)),
-					}
-				} else {
-					None
-				}
-			}
-		}
-
-		if importing_path.starts_with('.') {
-			let from_path = self.modules.files.get_file_path(from);
-			let from = PathBuf::from(importing_path);
-			let mut full_importer =
-				path_absolutize::Absolutize::absolutize_from(&from, from_path.parent().unwrap())
-					.unwrap()
-					.to_path_buf();
-
-			let result = if full_importer.extension().is_some() {
-				get_module(&full_importer, environment, self)
-			} else {
-				let mut result = None;
-				for ext in ["ts", "tsx", "js"] {
-					full_importer.set_extension(ext);
-					// TODO change parse options based on extension
-					result = get_module(&full_importer, environment, self);
-					if result.is_some() {
-						break;
-					}
-				}
-				result
-			};
-
-			match result {
-				Some(Ok(synthesised_module)) => {
-					environment.info.extend_ref(&synthesised_module.info);
-					Ok(Ok(synthesised_module.exported.clone()))
-				}
-				Some(Err(error)) => {
-					self.diagnostics_container.add_error(error);
-					Ok(Err(InvalidModule))
-				}
-				None => Err(CouldNotOpenFile(full_importer)),
-			}
-		} else {
-			// TODO temp + bad position
-			self.raise_unimplemented_error(
-				"non relative import (aka npm)",
-				SpanWithSource { source: from, start: 0, end: 1 },
-			);
-			Ok(Err(InvalidModule))
 		}
 	}
 
@@ -411,7 +321,7 @@ where
 	}
 
 	pub fn add_expression_mapping(&mut self, span: SpanWithSource, instance: Instance) {
-		self.type_mappings.expressions_to_instances.push(span, instance);
+		self.local_type_mappings.expressions_to_instances.push(span, instance);
 	}
 
 	pub fn check_satisfies(
@@ -435,6 +345,8 @@ where
 					add_property_restrictions: false,
 					position: source_map::Nullable::NULL,
 					object_constraints: Default::default(),
+					// IMPORTANT: FOR TESTS
+					allow_errors: false,
 				};
 				let result = subtyping::type_is_subtype(
 					to_satisfy,
@@ -472,7 +384,6 @@ where
 
 /// Used for transformers and other things after checking!!!!
 pub struct CheckOutput<A: crate::ASTImplementation> {
-	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
@@ -482,11 +393,22 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 
 impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
-	pub fn get_type_at_position(&self, _path: &str, pos: u32, debug: bool) -> Option<String> {
-		// TODO TypeMappings need to be per file
-		self.type_mappings.expressions_to_instances.get(pos).map(|instance| {
-			print_type(instance.get_value_on_ref(), &self.types, &self.top_level_information, debug)
-		})
+	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
+		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
+		self.modules
+			.get(&source_id)
+			.expect("no module")
+			.mappings
+			.expressions_to_instances
+			.get(pos)
+			.map(|instance| {
+				print_type(
+					instance.get_value_on_ref(),
+					&self.types,
+					&self.top_level_information,
+					debug,
+				)
+			})
 	}
 }
 
@@ -508,7 +430,6 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {
-			type_mappings: checking_data.type_mappings,
 			types: checking_data.types,
 			module_contents: checking_data.modules.files,
 			modules: Default::default(),
@@ -521,6 +442,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	for point in &entry_points {
 		let entry_content = checking_data.modules.file_reader.read_file(point);
+
 		if let Some(content) = entry_content {
 			let (source, module) =
 				get_source(&mut checking_data, point, String::from_utf8(content).unwrap());
@@ -543,7 +465,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	let CheckingData {
 		diagnostics_container,
-		type_mappings,
+		local_type_mappings: _,
 		modules,
 		options: _,
 		types,
@@ -551,7 +473,6 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	} = checking_data;
 
 	CheckOutput {
-		type_mappings,
 		types,
 		module_contents: modules.files,
 		modules: modules.synthesised_modules,
@@ -608,7 +529,11 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 ) {
 	let length = type_definition_files.len();
 	for path in type_definition_files {
-		let Some(file) = checking_data.modules.get_file(&path) else {
+		let file = if path == PathBuf::from(crate::INTERNAL_DEFINITION_FILE_PATH) {
+			File::Binary(crate::INTERNAL_DEFINITION_FILE.to_owned())
+		} else if let Some(file) = checking_data.modules.get_file(&path) {
+			file
+		} else {
 			checking_data.diagnostics_container.add_error(Diagnostic::Global {
 				reason: format!("could not find {}", path.display()),
 				kind: crate::DiagnosticKind::Error,
@@ -667,6 +592,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 					Ok(tdm) => {
 						let (names, info) =
 							A::synthesise_definition_file(tdm, source_id, root, checking_data);
+
 						root.variables.extend(names.variables);
 						root.named_types.extend(names.named_types);
 						root.variable_names.extend(names.variable_names);

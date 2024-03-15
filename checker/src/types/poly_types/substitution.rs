@@ -10,8 +10,8 @@ use crate::{
 		},
 	},
 	types::{
-		get_constraint, get_larger_type, is_type_truthy_falsy, Constructor, PolyNature,
-		StructureGenerics, Type, TypeStore,
+		get_constraint, get_larger_type, is_type_truthy_falsy, Constructor, ObjectNature,
+		PolyNature, StructureGenerics, Type, TypeStore,
 	},
 	Decidable, Environment, TypeId,
 };
@@ -29,11 +29,20 @@ pub(crate) fn substitute(
 		return value;
 	}
 
+	// TODO think this is correct
+	if id == TypeId::VOID_TYPE {
+		return TypeId::ANY_TYPE;
+	}
+
 	let ty = types.get_type_by_id(id);
 
 	match ty {
-		Type::Object(..) => {
-			// TODO only sometimes
+		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } | Type::Class { .. } => {
+			id
+		}
+		// This works for both objects and `AnonymousTypeAnnotation`s
+		Type::Object(ObjectNature::RealDeal | ObjectNature::AnonymousTypeAnnotation) => {
+			crate::utils::notify!("Here!!!");
 			curry_arguments(arguments, types, id)
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
@@ -50,7 +59,16 @@ pub(crate) fn substitute(
 			};
 			curry_arguments(arguments, types, id)
 		}
-		Type::FunctionReference(..) => curry_arguments(arguments, types, id),
+		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
+		| Type::FunctionReference(..) => curry_arguments(arguments, types, id),
+		Type::SpecialObject(x) => match x {
+			SpecialObjects::Promise { .. } => todo!(),
+			SpecialObjects::Generator { .. } => todo!(),
+			SpecialObjects::Proxy { .. } => todo!(),
+			SpecialObjects::Regexp(_) => todo!(),
+			SpecialObjects::Import(_) => todo!(),
+			_ => unreachable!(),
+		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
@@ -63,11 +81,12 @@ pub(crate) fn substitute(
 			let rhs = substitute(rhs, arguments, environment, types);
 			types.new_or_type(lhs, rhs)
 		}
-		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } => id,
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) = nature {
 				id
-			} else if let PolyNature::Generic { .. } = nature {
+			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
+				nature
+			{
 				crate::utils::notify!("Could not find argument for explicit generic");
 				id
 			} else {
@@ -335,8 +354,8 @@ pub(crate) fn substitute(
 					// }
 				}
 			},
+			Constructor::Awaited { .. } => todo!("should have effect result"),
 		},
-		Type::SpecialObject(_) => todo!(),
 	}
 }
 
@@ -346,6 +365,7 @@ pub(crate) fn curry_arguments(
 	id: TypeId,
 ) -> TypeId {
 	if arguments.is_empty() {
+		crate::utils::notify!("Empty");
 		id
 	} else {
 		crate::utils::notify!("Storing arguments onto object");

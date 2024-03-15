@@ -18,13 +18,15 @@ pub mod type_annotations;
 pub mod variables;
 
 use block::synthesise_block;
-use parser::{ASTNode, ParseOptions, PropertyKey as ParserPropertyKey};
+use parser::{
+	ASTNode, ExpressionPosition, ParseOptions, PropertyKey as ParserPropertyKey, StatementPosition,
+};
 use source_map::SourceId;
 
 use crate::{
 	context::{Names, VariableRegisterArguments},
 	types::properties::PropertyKey,
-	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId,
+	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId, VariableId,
 };
 
 use self::{
@@ -184,6 +186,7 @@ impl crate::ASTImplementation for EznoParser {
 	}
 }
 
+/// `perform_side_effect_computed` is used for hoisting
 pub(super) fn parser_property_key_to_checker_property_key<
 	P: parser::property_key::PropertyKeyKind,
 	T: crate::ReadFromFS,
@@ -191,6 +194,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 	property_key: &ParserPropertyKey<P>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, EznoParser>,
+	perform_side_effect_computed: bool,
 ) -> PropertyKey<'static> {
 	match property_key {
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
@@ -214,9 +218,13 @@ pub(super) fn parser_property_key_to_checker_property_key<
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
-			let key_type =
-				synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-			PropertyKey::from_type(key_type, &checking_data.types)
+			if perform_side_effect_computed {
+				let key_type =
+					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
+				PropertyKey::from_type(key_type, &checking_data.types)
+			} else {
+				PropertyKey::Type(TypeId::ANY_TYPE)
+			}
 		}
 	}
 }
@@ -231,15 +239,28 @@ impl From<(parser::ParseError, SourceId)> for Diagnostic {
 	}
 }
 
-pub enum Performs<'a> {
-	Block(&'a parser::Block),
-	Const(String),
-	None,
-}
-
 impl crate::GenericTypeParameter for parser::TypeParameter {
 	fn get_name(&self) -> &str {
 		&self.name
+	}
+}
+
+pub(self) trait StatementOrExpressionVariable {
+	fn get_variable_id(&self, under: SourceId) -> Option<VariableId>;
+}
+
+impl StatementOrExpressionVariable for StatementPosition {
+	fn get_variable_id(&self, under: SourceId) -> Option<VariableId> {
+		match self.identifier {
+			parser::VariableIdentifier::Standard(_, pos) => Some(VariableId(under, pos.start)),
+			parser::VariableIdentifier::Marker(_, _) => None,
+		}
+	}
+}
+
+impl StatementOrExpressionVariable for ExpressionPosition {
+	fn get_variable_id(&self, _under: SourceId) -> Option<VariableId> {
+		None
 	}
 }
 

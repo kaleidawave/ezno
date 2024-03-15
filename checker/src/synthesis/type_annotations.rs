@@ -32,12 +32,11 @@ use crate::{
 	context::information::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::objects::ObjectBuilder,
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		Constant, PolyNature, StructureGenerics, Type,
+		Constant, StructureGenerics, Type,
 	},
 	types::{Constructor, TypeId},
 	CheckingData, Environment,
@@ -188,53 +187,55 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						checking_data,
 					);
 
-					let mut basic_equality = BasicEquality {
-						add_property_restrictions: true,
-						position: argument_type_annotation
-							.get_position()
-							.with_source(environment.get_source()),
-						// TODO not needed
-						object_constraints: Default::default(),
-					};
+					{
+						// TODO check restriction on parameter
+						// let mut basic_equality = BasicEquality {
+						// 	add_property_restrictions: true,
+						// 	position: argument_type_annotation
+						// 		.get_position()
+						// 		.with_source(environment.get_source()),
+						// 	// TODO not needed
+						// 	object_constraints: Default::default(),
+						// 	allow_errors: true,
+						// };
 
-					let Type::RootPolyType(PolyNature::Generic {
-						name: _,
-						eager_fixed: parameter_restriction,
-					}) = checking_data.types.get_type_by_id(parameter)
-					else {
-						unreachable!()
-					};
+						// let Type::RootPolyType(PolyNature::InterfaceGeneric { name: _ }) =
+						// 	checking_data.types.get_type_by_id(parameter)
+						// else {
+						// 	unreachable!()
+						// };
 
-					// TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
-					// Definition files don't necessary need to check ...
-					let result = type_is_subtype(
-						*parameter_restriction,
-						argument,
-						&mut basic_equality,
-						environment,
-						&checking_data.types,
-					);
+						// // TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
+						// // Definition files don't necessary need to check ...
+						// let result = type_is_subtype(
+						// 	*parameter_restriction,
+						// 	argument,
+						// 	&mut basic_equality,
+						// 	environment,
+						// 	&checking_data.types,
+						// );
 
-					if let SubTypeResult::IsNotSubType(_matches) = result {
-						let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-							parameter_restriction: TypeStringRepresentation::from_type_id(
-								*parameter_restriction,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							argument: TypeStringRepresentation::from_type_id(
-								argument,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							position: argument_type_annotation
-								.get_position()
-								.with_source(environment.get_source()),
-						};
+						// if let SubTypeResult::IsNotSubType(_matches) = result {
+						// 	let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+						// 		parameter_restriction: TypeStringRepresentation::from_type_id(
+						// 			*parameter_restriction,
+						// 			environment,
+						// 			&checking_data.types,
+						// 			checking_data.options.debug_types,
+						// 		),
+						// 		argument: TypeStringRepresentation::from_type_id(
+						// 			argument,
+						// 			environment,
+						// 			&checking_data.types,
+						// 			checking_data.options.debug_types,
+						// 		),
+						// 		position: argument_type_annotation
+						// 			.get_position()
+						// 			.with_source(environment.get_source()),
+						// 	};
 
-						checking_data.diagnostics_container.add_error(error);
+						// 	checking_data.diagnostics_container.add_error(error);
+						// }
 					}
 
 					let with_source = argument_type_annotation
@@ -289,11 +290,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				Some(return_type),
 				environment,
 				checking_data,
-				super::Performs::None,
 				&position,
 				// TODO async
 				crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
-				None,
 			);
 			// TODO bit messy
 			checking_data.types.new_function_type_annotation(
@@ -301,8 +300,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				function_type.parameters,
 				function_type.return_type,
 				&position,
-				function_type.effects,
-				None,
 			)
 		}
 		TypeAnnotation::Readonly(type_annotation, _) => {
@@ -461,7 +458,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	};
 
 	checking_data
-		.type_mappings
+		.local_type_mappings
 		.types_to_types
 		.push(annotation.get_position().with_source(environment.get_source()), ty);
 
@@ -514,4 +511,43 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 		// TODO warning
 		None
 	}
+}
+
+pub(crate) fn get_annotation_from_declaration<
+	T: crate::ReadFromFS,
+	U: parser::declarations::variable::DeclarationExpression + 'static,
+>(
+	declaration: &parser::declarations::VariableDeclarationItem<U>,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> Option<TypeId> {
+	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
+		Some((
+			synthesise_type_annotation(annotation, environment, checking_data),
+			annotation.get_position().with_source(environment.get_source()),
+		))
+	}
+	// TODO only under config
+	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =
+		&declaration.name
+	{
+		comment_as_type_annotation(
+			possible_declaration,
+			&position.with_source(environment.get_source()),
+			environment,
+			checking_data,
+		)
+	} else {
+		None
+	};
+
+	if let Some((ty, span)) = result {
+		let get_position = declaration.get_position();
+		checking_data
+			.local_type_mappings
+			.variable_restrictions
+			.insert((environment.get_source(), get_position.start), (ty, span));
+	}
+
+	result.map(|(value, _span)| value)
 }

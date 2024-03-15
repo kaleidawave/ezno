@@ -24,7 +24,6 @@ use crate::{
 	events::{ApplicationResult, RootReference},
 	features::{
 		functions::ClosureChain,
-		modules::Exported,
 		objects::SpecialObjects,
 		variables::{VariableMutability, VariableOrImport},
 	},
@@ -119,25 +118,17 @@ pub type ClosedOverReferencesInScope = HashSet<RootReference>;
 
 pub type MutableRewrites = Vec<(VariableId, VariableId)>;
 
-/// TODO some of this can be as `Option<&/&mut Syntax>`
+/// TODO this could be `Option<&/&mut Syntax>`. But having issues with lifetimes
 pub trait ContextType: Sized {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_>;
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
-	/// Variables **above** this scope may change *between runs*
-	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind>;
-
-	/// Branch might not be run
-	fn is_conditional(&self) -> bool;
-
-	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
-
-	fn get_exports(&mut self) -> Option<&mut Exported>;
-
-	fn get_state(&self) -> Option<&ApplicationResult>;
+	fn as_syntax(&self) -> Option<&Syntax>;
 
 	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult>;
+
+	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
 
 // TODO enum_from
@@ -393,7 +384,8 @@ impl<T: ContextType> Context<T> {
 			```
 			*/
 
-			let is_dynamic_boundary = self.context_type.is_dynamic_boundary();
+			let is_dynamic_boundary =
+				self.context_type.as_syntax().and_then(|scope| scope.scope.is_dynamic_boundary());
 
 			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
 				if !self
@@ -547,6 +539,9 @@ impl<T: ContextType> Context<T> {
 		} = new_environment;
 
 		if let Some(self_state) = self.context_type.get_state_mut() {
+			let state =
+				if let Scope::TryBlock { .. } = scope { state.remove_throws() } else { state };
+
 			self_state.append_termination(state);
 		}
 
@@ -561,7 +556,8 @@ impl<T: ContextType> Context<T> {
 		// TODO store some information if in LSP mode
 		// checking_data.existing_contexts.parent_references.insert(context_id, self.context_id);
 
-		if let Some(current_closed_references) = self.context_type.get_closed_over_references() {
+		if let Some(current_closed_references) = self.context_type.get_closed_over_references_mut()
+		{
 			current_closed_references.extend(closed_over_references);
 		}
 
@@ -677,7 +673,7 @@ impl<T: ContextType> Context<T> {
 		default_type: Option<TypeId>,
 		types: &mut TypeStore,
 	) -> crate::types::poly_types::GenericTypeParameter {
-		let ty = Type::RootPolyType(PolyNature::Generic {
+		let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
 			name: name.to_owned(),
 			// TODO this is fixed!!
 			eager_fixed: constraint_type.unwrap_or(TypeId::ANY_TYPE),
@@ -749,12 +745,11 @@ impl<T: ContextType> Context<T> {
 			};
 		}
 
-		// TODO declare here
 		let parameters = parameters.map(|parameters| {
 			parameters
 				.iter()
 				.map(|parameter| {
-					let ty = Type::RootPolyType(PolyNature::Generic {
+					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
 						name: A::type_parameter_name(parameter).to_owned(),
 						// This is assigned later
 						eager_fixed: TypeId::ANY_TYPE,
@@ -764,14 +759,62 @@ impl<T: ContextType> Context<T> {
 				.collect()
 		});
 
-		let ty = Type::Interface {
-			name: name.to_owned(),
-			nominal,
-			// This is assigned later
-			extends: None,
-			parameters,
-		};
+		let ty = Type::Interface { name: name.to_owned(), nominal, parameters };
 		let interface_ty = checking_data.types.register_type(ty);
+		self.named_types.insert(name.to_owned(), interface_ty);
+		interface_ty
+	}
+
+	/// Registers the class type
+	pub fn register_class<'a, A: crate::ASTImplementation>(
+		&mut self,
+		name: &str,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		_extends: Option<&'a A::Expression<'a>>,
+		types: &mut TypeStore,
+	) -> TypeId {
+		{
+			// Special
+			if let Some(Scope::DefinitionModule { .. }) =
+				self.context_type.as_syntax().map(|s| &s.scope)
+			{
+				match name {
+					"Array" => {
+						return TypeId::ARRAY_TYPE;
+					}
+					"Promise" => {
+						return TypeId::PROMISE_TYPE;
+					}
+					"String" => {
+						return TypeId::STRING_TYPE;
+					}
+					"Number" => {
+						return TypeId::NUMBER_TYPE;
+					}
+					"Boolean" => {
+						return TypeId::BOOLEAN_TYPE;
+					}
+					_ => {}
+				}
+			}
+		}
+
+		let parameters = parameters.map(|parameters| {
+			parameters
+				.iter()
+				.map(|parameter| {
+					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
+						name: A::type_parameter_name(parameter).to_owned(),
+						// This is assigned later
+						eager_fixed: TypeId::ANY_TYPE,
+					});
+					types.register_type(ty)
+				})
+				.collect()
+		});
+
+		let ty = Type::Class { name: name.to_owned(), parameters };
+		let interface_ty = types.register_type(ty);
 		self.named_types.insert(name.to_owned(), interface_ty);
 		interface_ty
 	}
@@ -792,7 +835,7 @@ impl<T: ContextType> Context<T> {
 				.iter()
 				.map(|parameter| {
 					let name = A::type_parameter_name(parameter).to_owned();
-					let ty = Type::RootPolyType(PolyNature::Generic {
+					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
 						name: name.clone(),
 						eager_fixed: TypeId::ANY_TYPE,
 					});
@@ -837,6 +880,16 @@ impl<T: ContextType> Context<T> {
 		id: VariableId,
 		value_ty: TypeId,
 	) {
+		if let Some(_closed_over_references) =
+			self.context_type.as_syntax().map(|s| &s.closed_over_references)
+		{
+			// crate::utils::notify!(
+			// 	"is {:?} closed over {:?}",
+			// 	id,
+			// 	closed_over_references.get(&RootReference::Variable(id))
+			// );
+		}
+
 		self.info.variable_current_value.insert(id, value_ty);
 	}
 
@@ -930,8 +983,13 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn is_always_run(&self) -> bool {
-		!self.parents_iter().any(|c| {
-			matches!(c, GeneralContext::Syntax(s) if (s.context_type.is_conditional() || s.context_type.is_dynamic_boundary().is_some()))
+		!self.parents_iter().any(|ctx| {
+			if let GeneralContext::Syntax(s) = ctx {
+				let scope = &s.context_type.scope;
+				scope.is_conditional() || scope.is_dynamic_boundary().is_some()
+			} else {
+				false
+			}
 		})
 	}
 

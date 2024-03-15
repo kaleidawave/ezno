@@ -65,4 +65,9 @@ pub enum SpecialObjects {
 	Import(super::modules::Exported),
 	/// Yeah here
 	Function(FunctionId, ThisValue),
+	/// Mainly for printing
+	ClassConstructor {
+		name: String,
+		constructor: FunctionId,
+	},
 }

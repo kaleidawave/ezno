@@ -92,8 +92,7 @@ impl TypeArgumentStore for FunctionTypeArguments {
 	}
 
 	fn is_empty(&self) -> bool {
-		self.closure_id.is_empty()
-			&& self.local_arguments.keys().any(|t| !matches!(*t, TypeId::NEW_TARGET_ARG))
+		self.closure_id.is_empty() && self.local_arguments.is_empty()
 	}
 
 	fn get_argument<C: InformationChain>(

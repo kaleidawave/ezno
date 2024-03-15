@@ -91,6 +91,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 		add_property_restrictions: true,
 		position: variable_declared_pos,
 		object_constraints: Default::default(),
+		allow_errors: true,
 	};
 
 	let type_is_subtype = type_is_subtype(

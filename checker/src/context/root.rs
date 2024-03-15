@@ -1,6 +1,4 @@
-use super::{
-	environment::DynamicBoundaryKind, ClosedOverReferencesInScope, Context, ContextId, ContextType,
-};
+use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
 	events::ApplicationResult,
 	features::{
@@ -11,7 +9,7 @@ use crate::{
 	CheckingData, GeneralContext,
 };
 use source_map::SourceId;
-use std::{collections::HashMap, iter::FromIterator};
+use std::{collections::HashMap, iter::FromIterator, mem};
 
 pub type RootContext = Context<Root>;
 
@@ -27,27 +25,15 @@ impl ContextType for Root {
 		None
 	}
 
-	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
-		None
-	}
-
-	fn is_conditional(&self) -> bool {
-		false
-	}
-
-	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
-		None
-	}
-
-	fn get_exports(&mut self) -> Option<&mut Exported> {
-		None
-	}
-
-	fn get_state(&self) -> Option<&ApplicationResult> {
+	fn as_syntax(&self) -> Option<&super::Syntax> {
 		None
 	}
 
 	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
+		None
+	}
+
+	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		None
 	}
 }
@@ -74,6 +60,7 @@ impl RootContext {
 			("undefined".to_owned(), TypeId::UNDEFINED_TYPE),
 			("void".to_owned(), TypeId::VOID_TYPE),
 			("Array".to_owned(), TypeId::ARRAY_TYPE),
+			("Promise".to_owned(), TypeId::PROMISE_TYPE),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 		];
@@ -126,6 +113,8 @@ impl RootContext {
 			content: A::owned_module_from_module(module),
 			exported,
 			info: environment.info,
+			// TODO temp
+			mappings: mem::take(&mut checking_data.local_type_mappings),
 		};
 
 		// TODO better way to do this?

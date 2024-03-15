@@ -116,11 +116,11 @@ impl<'a> Contributions<'a> {
 		types: &TypeStore,
 		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		{
-			let lhs = crate::types::printing::print_type(on, types, environment, true);
-			let rhs = crate::types::printing::print_type(argument, types, environment, true);
-			crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
-		}
+		// {
+		// 	let lhs = crate::types::printing::print_type(on, types, environment, true);
+		// 	let rhs = crate::types::printing::print_type(argument, types, environment, true);
+		// 	crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
+		// }
 
 		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_covariant(
 			on,
@@ -185,5 +185,9 @@ impl<'a> SubTypeBehavior<'a> for Contributions<'a> {
 
 	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
 		Some(self)
+	}
+
+	fn allow_errors(&self) -> bool {
+		true
 	}
 }

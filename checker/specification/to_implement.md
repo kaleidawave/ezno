@@ -69,27 +69,6 @@ print_type(mapper)
 
 - TODO
 
-#### Interface extends
-
-```ts
-interface X {
-    a: string
-}
-
-interface Y {
-    b: string
-}
-
-interface Z extends X, Y {
-    c: string
-}
-
-({ a: "", b: "", c: "hello" }) satisfies Z;
-({ c: "hi" }) satisfies Z;
-```
-
-- Type { c: "hi" } is not assignable to Z
-
 ### Narrowing
 
 > TODO `typeof`, `instanceof`, conditional, across a function
@@ -159,14 +138,51 @@ properties satisfies boolean;
 > Although this is valid JS, it is currently assumed that this is beneficial behavior
 
 ```ts
-function x(p) {
+function getB(p) {
 	return p.b
 }
 
-x satisfies string;
+getB satisfies string;
 ```
 
 - Expected string, found (p: { b: any }) => any
+
+#### Parameter type
+
+```ts
+function Sinc(x) {
+	return Math.sin(x) / x
+}
+
+Sinc satisfies string;
+```
+
+- Expected string, found (x: number) => number
+
+#### Parameter type callable
+
+```ts
+function CallSomething(p, n: number) {
+	return p("hi", 5, c)
+}
+
+CallSomething satisfies string;
+```
+
+- Expected string, found (p: ("hi", 5, number) => any, n: number) => any
+
+#### Parameter type nested
+
+```ts
+function ComplexFunction(p) {
+	const { a, b } = p;
+	b("test")
+}
+
+ComplexFunction satisfies string;
+```
+
+- Expected string, found (p: { a: any, b: ("test") => any }) => any
 
 #### this
 
@@ -525,25 +541,6 @@ function doThing(b: number = "hello") {
 ```
 
 - Default value "hello" is not assignable to parameter of type number
-
-### Control flow
-
-#### Conditional return
-
-```ts
-declare let string: string;
-
-function stringIsHi(s: string) {
-    if (s === "hi") {
-        return true
-    }
-    return false
-}
-
-stringIsHi(string) satisfies number;
-```
-
-- Expected number, found boolean
 
 ### Statements
 

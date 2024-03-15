@@ -1,3 +1,4 @@
+/// Contains definitions of structures around functions
 use std::collections::HashMap;
 
 use source_map::SpanWithSource;
@@ -5,7 +6,7 @@ use source_map::SpanWithSource;
 use crate::{
 	context::{environment::FunctionScope, ContextType},
 	events::{Event, RootReference},
-	features::functions::{ClassPropertiesToRegister, FunctionBehavior},
+	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
 	CheckingData, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type, TypeId,
 };
 
@@ -16,30 +17,52 @@ use super::{classes::register_properties_into_environment, TypeStore};
 pub struct FunctionType {
 	/// Syntax defined pointer
 	pub id: FunctionId,
-
-	pub constant_function: Option<String>,
-
-	/// If async, generator and what to do with `this`
-	pub behavior: FunctionBehavior,
-
 	/// TODO unsure about this field and how it tails with Pi Types
 	pub type_parameters: Option<GenericTypeParameters>,
 	pub parameters: SynthesisedParameters,
 	/// This is just aesthetic TODO also throw
 	pub return_type: TypeId,
+	/// If async, generator and what to do with `this`
+	pub behavior: FunctionBehavior,
+	/// See [`FunctionEffect`]
+	pub effect: FunctionEffect,
+}
 
-	/// Side effects of the function
-	/// `None` for internal functions
-	pub effects: Option<Vec<Event>>,
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub enum FunctionEffect {
+	SideEffects {
+		/// Note that a function can still be considered to be 'pure' and have a non-empty vector of events
+		events: Vec<Event>,
 
-	/// Things that this function pulls in. Converse of closed over which is where results below use
-	/// variables in this scope.
-	pub free_variables: HashMap<RootReference, TypeId>,
+		/// Things that this function pulls in. Converse of closed over which is where results below use
+		/// variables in this scope.
+		free_variables: HashMap<RootReference, TypeId>,
 
-	/// References it needs to retain for returning / other effects where things go out.
-	///
-	/// The type is the initial value of the closure variable when this is called
-	pub closed_over_variables: HashMap<RootReference, TypeId>,
+		/// References it needs to retain for returning / other effects where things go out.
+		///
+		/// The type is the initial value of the closure variable when this is called
+		closed_over_variables: ClosedOverVariables,
+	},
+	Constant(String),
+	InputOutput(String),
+	Unknown,
+}
+
+#[derive(Debug)]
+pub enum InternalFunctionEffect {
+	Constant(String),
+	InputOutput(String),
+}
+
+impl Into<FunctionEffect> for InternalFunctionEffect {
+	fn into(self) -> FunctionEffect {
+		match self {
+			InternalFunctionEffect::Constant(identifier) => FunctionEffect::Constant(identifier),
+			InternalFunctionEffect::InputOutput(identifier) => {
+				FunctionEffect::InputOutput(identifier)
+			}
+		}
+	}
 }
 
 impl FunctionType {
@@ -89,16 +112,15 @@ impl FunctionType {
 		let (info, _free_variables) = env_data.unwrap();
 		Self {
 			id: crate::FunctionId::AUTO_CONSTRUCTOR,
-			constant_function: None,
 			type_parameters: None,
 			parameters: SynthesisedParameters::default(),
-			// Only needed for printing
 			return_type: on,
-			effects: Some(info.events),
 			behavior,
-			// TODO ???
-			free_variables: Default::default(),
-			closed_over_variables: Default::default(),
+			effect: FunctionEffect::SideEffects {
+				events: info.events,
+				free_variables: Default::default(),
+				closed_over_variables: Default::default(),
+			},
 		}
 	}
 }
@@ -111,7 +133,8 @@ pub(crate) fn create_this_before_function_synthesis(
 ) -> TypeId {
 	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-	crate::utils::notify!("Registered 'this' type as {:?}", ty);
+	// crate::utils::notify!("Registered 'this' in constructor as {:?}", ty);
+
 	let value = Event::CreateObject {
 		referenced_in_scope_as: ty,
 		prototype: crate::events::PrototypeArgument::Yeah(prototype),
@@ -136,7 +159,7 @@ pub enum GetSet {
 pub struct SynthesisedParameter {
 	pub name: String,
 	/// This is also for parameters with default (which is handled behind the scenes)
-	pub optional: bool,
+	pub is_optional: bool,
 	/// This is the generic parameter type, not the restriction
 	pub ty: TypeId,
 	pub position: SpanWithSource,

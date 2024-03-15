@@ -192,8 +192,8 @@ pub enum EqualityAndInequality {
 	NotEqual,
 	GreaterThan,
 	LessThan,
-	LessThanEqual,
-	GreaterThanEqual,
+	LessThanOrEqual,
+	GreaterThanOrEqual,
 }
 
 /// Canonical / irreducible
@@ -293,11 +293,42 @@ pub fn evaluate_equality_inequality_operation(
 
 			attempt_less_than(lhs, rhs, types, strict_casts)
 		}
+		// equal OR less than
+		EqualityAndInequality::LessThanOrEqual => {
+			let equality_result = evaluate_equality_inequality_operation(
+				lhs,
+				&EqualityAndInequality::StrictEqual,
+				rhs,
+				types,
+				strict_casts,
+			)?;
+
+			if equality_result == TypeId::TRUE {
+				Ok(equality_result)
+			} else if equality_result == TypeId::FALSE {
+				evaluate_equality_inequality_operation(
+					lhs,
+					&EqualityAndInequality::LessThan,
+					rhs,
+					types,
+					strict_casts,
+				)
+			} else {
+				let less_than_result = evaluate_equality_inequality_operation(
+					lhs,
+					&EqualityAndInequality::LessThan,
+					rhs,
+					types,
+					strict_casts,
+				)?;
+				Ok(new_logical_or_type(equality_result, less_than_result, types))
+			}
+		}
 		EqualityAndInequality::StrictNotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::StrictEqual,
 				lhs,
+				&EqualityAndInequality::StrictEqual,
+				rhs,
 				types,
 				strict_casts,
 			)?;
@@ -314,9 +345,9 @@ pub fn evaluate_equality_inequality_operation(
 		}
 		EqualityAndInequality::NotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::Equal,
 				lhs,
+				&EqualityAndInequality::Equal,
+				rhs,
 				types,
 				strict_casts,
 			)?;
@@ -327,6 +358,7 @@ pub fn evaluate_equality_inequality_operation(
 				strict_casts,
 			)
 		}
+		// Swap operands!
 		EqualityAndInequality::GreaterThan => evaluate_equality_inequality_operation(
 			rhs,
 			&EqualityAndInequality::LessThan,
@@ -334,39 +366,10 @@ pub fn evaluate_equality_inequality_operation(
 			types,
 			strict_casts,
 		),
-		EqualityAndInequality::LessThanEqual => {
-			let lhs = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::StrictEqual,
-				lhs,
-				types,
-				strict_casts,
-			)?;
-
-			if lhs == TypeId::TRUE {
-				Ok(lhs)
-			} else if lhs == TypeId::FALSE {
-				evaluate_equality_inequality_operation(
-					rhs,
-					&EqualityAndInequality::LessThan,
-					lhs,
-					types,
-					strict_casts,
-				)
-			} else {
-				let rhs = evaluate_equality_inequality_operation(
-					rhs,
-					&EqualityAndInequality::LessThan,
-					lhs,
-					types,
-					strict_casts,
-				)?;
-				Ok(new_logical_or_type(lhs, rhs, types))
-			}
-		}
-		EqualityAndInequality::GreaterThanEqual => evaluate_equality_inequality_operation(
+		// Swap operands!
+		EqualityAndInequality::GreaterThanOrEqual => evaluate_equality_inequality_operation(
 			rhs,
-			&EqualityAndInequality::LessThanEqual,
+			&EqualityAndInequality::LessThanOrEqual,
 			lhs,
 			types,
 			strict_casts,
