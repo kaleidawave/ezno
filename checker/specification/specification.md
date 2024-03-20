@@ -51,6 +51,15 @@ const a = c
 
 - Could not find variable 'c' in scope
 
+#### Assigning before declaration
+
+```ts
+a = 3;
+let a = 2;
+```
+
+- Cannot assign to variable 'a' before initialisation
+
 #### Assignment to non-existent variable
 
 ```ts
@@ -863,25 +872,6 @@ function getObject(condition: boolean) {
 ```
 
 - Expected string, found 4
-
-#### Mutating an object by a function
-
-> This is where the object loses its constant-ness
-
-```ts
-function doThingWithCallback(callback: (obj: { x: number }) => any) {
-	const obj: { x: number } = { x: 8 };
-	callback(obj);
-	(obj.x satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
-object.x satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
 
 #### Assigning to parameter observed via effect
 

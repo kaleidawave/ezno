@@ -82,9 +82,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			name => {
 				if let Some(ty) = environment.get_type_from_name(name) {
 					// Warn if it requires parameters. e.g. Array
-					if let Type::AliasTo { parameters: Some(_), .. }
-					| Type::Interface { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
-					{
+					if checking_data.types.get_type_by_id(ty).get_parameters().is_some() {
 						// TODO check defaults...
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::TypeNeedsTypeArguments(
@@ -246,11 +244,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				}
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
-				let mut arguments = StructureGenericArguments {
-					type_restrictions: type_arguments,
-					properties: map_vec::Map::new(),
-					closures: Default::default(),
-				};
+				let mut arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
 				if let Some(on) = is_type_alias_to {
 					crate::types::substitute(
 						on,

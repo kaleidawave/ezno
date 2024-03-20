@@ -11,7 +11,7 @@ use crate::{
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
 		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, substitute,
-		FunctionType, GenericChain, ObjectNature, StructureGenerics,
+		FunctionType, GenericChain, GenericChainLink, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
@@ -253,7 +253,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
 		logical: Logical<PropertyValue>,
 		on: TypeId,
-		generics: Option<GenericChain>,
+		generics: GenericChain,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		behavior: &mut E,
@@ -274,13 +274,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							}
 							Type::FunctionReference(_) => {
 								let ty = if let Some(chain) = generics {
-									assert!(chain.parent.is_none());
-									types.register_type(Type::Constructor(
-										Constructor::StructureGenerics(StructureGenerics {
-											on: value,
-											arguments: chain.value.into_owned(),
-										}),
-									))
+									todo!()
+								// assert!(chain.parent.is_none());
+								// types.register_type(Type::Constructor(
+								// 	Constructor::StructureGenerics(StructureGenerics {
+								// 		on: value,
+								// 		arguments: chain.value.into_owned(),
+								// 	}),
+								// ))
 								} else {
 									value
 								};
@@ -367,7 +368,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 			Logical::Implies { on: log_on, antecedent } => resolve_property_on_logical(
 				*log_on,
 				on,
-				Some(GenericChain::append(generics.as_ref(), &antecedent)),
+				GenericChainLink::append(generics.as_ref(), &antecedent),
 				environment,
 				types,
 				behavior,

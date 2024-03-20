@@ -18,6 +18,7 @@ use crate::{
 		classes::ClassValue,
 		functions::SynthesisedParameters,
 		poly_types::GenericTypeParameters,
+		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
 		StructureGenerics, SynthesisedParameter, SynthesisedRestParameter, TypeStore,
@@ -29,6 +30,7 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
 pub enum ThisValue {
 	Passed(TypeId),
+	/// Or pick from [`Constructor::Property`]
 	#[default]
 	UseParent,
 }
@@ -38,7 +40,7 @@ impl ThisValue {
 		self,
 		environment: &mut Environment,
 		types: &TypeStore,
-		position: &SpanWithSource,
+		position: SpanWithSource,
 	) -> TypeId {
 		match self {
 			ThisValue::Passed(value) => value,
@@ -473,6 +475,15 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+
+			if let Some((or, _)) =
+				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
+			{
+				crate::utils::notify!(
+					"First expected parameter {:?}",
+					print_type(or, &checking_data.types, base_environment, true)
+				);
+			}
 
 			FunctionKind {
 				behavior: FunctionBehavior::ArrowFunction { is_async },

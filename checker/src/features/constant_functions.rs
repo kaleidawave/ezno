@@ -183,6 +183,9 @@ pub(crate) fn call_constant_function(
 
 			let get_type_by_id = types.get_type_by_id(ty);
 			if let Type::SpecialObject(SpecialObjects::Function(func, _))
+			| Type::SpecialObject(SpecialObjects::ClassConstructor {
+				constructor: func, ..
+			})
 			| Type::FunctionReference(func) = get_type_by_id
 			{
 				let function_type =

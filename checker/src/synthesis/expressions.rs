@@ -579,65 +579,93 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Err(()) => return TypeId::ERROR_TYPE,
 			}
 		}
-		Expression::ThisReference(pos) => {
-			let position = pos.with_source(environment.get_source());
-			Instance::RValue(environment.get_value_of_this(&checking_data.types, &position))
-		}
-		Expression::SuperExpression(reference, _position) => match reference {
-			SuperReference::Call { arguments: _ } => {
-				todo!();
+		Expression::ThisReference(pos) => Instance::RValue(
+			environment
+				.get_value_of_this(&checking_data.types, pos.with_source(environment.get_source())),
+		),
+		Expression::SuperExpression(reference, position) => {
+			let super_type = environment.get_type_of_super();
+			if let Some(super_type) = super_type {
+				match reference {
+					SuperReference::Call { arguments } => {
+						let this_type = environment.get_value_of_this(
+							&checking_data.types,
+							position.with_source(environment.get_source()),
+						);
+						let (result, special) = call_function(
+							super_type,
+							CalledWithNew::SpecialSuperCall { this_type },
+							&None,
+							Some(arguments),
+							environment,
+							checking_data,
+							*position,
+							expecting,
+						);
+						if let Some(special) = special {
+							checking_data
+								.local_type_mappings
+								.special_expressions
+								.push(*position, special);
+						}
 
-				// let constructor =
-				// 	environment.get_current_constructor().expect("not in constructor");
-				// let crate::ConstructorInformation {
-				// 	fields,
-				// 	class_constructor_ty,
-				// 	class_instance_ty,
-				// 	..
-				// } = checking_data
-				// 	.functions
-				// 	.constructor_information
-				// 	.get(&constructor_pointer)
-				// 	.unwrap()
-				// 	.clone();
+						crate::utils::notify!("TODO unlock reference to `this`");
 
-				// let super_ty = if let Type::AliasTo { to, .. } =
-				// 	environment.get_type_by_id(class_instance_ty)
-				// {
-				// 	*to
-				// } else {
-				// 	panic!("No super")
-				// };
+						Instance::RValue(result)
+						// let crate::ConstructorInformation {
+						// 	fields,
+						// 	class_constructor_ty,
+						// 	class_instance_ty,
+						// 	..
+						// } = checking_data
+						// 	.functions
+						// 	.constructor_information
+						// 	.get(&constructor_pointer)
+						// 	.unwrap()
+						// 	.clone();
 
-				// let this_constructor =
-				// 	environment.get_constructor_for_prototype(class_instance_ty).unwrap();
-				// let super_constructor =
-				// 	environment.get_constructor_for_prototype(super_ty).unwrap();
+						// let super_ty = if let Type::AliasTo { to, .. } =
+						// 	environment.get_type_by_id(class_instance_ty)
+						// {
+						// 	*to
+						// } else {
+						// 	panic!("No super")
+						// };
 
-				// let this = environment.create_this(class_instance_ty);
+						// let this_constructor =
+						// 	environment.get_constructor_for_prototype(class_instance_ty).unwrap();
+						// let super_constructor =
+						// 	environment.get_constructor_for_prototype(super_ty).unwrap();
 
-				// let mut chain = Chain::new();
-				// let mut chain = Annex::new(&chain);
+						// let this = environment.create_this(class_instance_ty);
 
-				// let ty = call_function(
-				// 	super_constructor,
-				// 	&None,
-				// 	Some(arguments),
-				// 	environment,
-				// 	checking_data,
-				// 	&
-				// 	position,
-				// 	CalledWithNew::SpecialSuperCall { on: this_constructor },
-				// );
+						// let mut chain = Chain::new();
+						// let mut chain = Annex::new(&chain);
 
-				// TODO explain
-				// synthesise_class_fields(fields, environment, checking_data, &chain);
+						// let ty = call_function(
+						// 	super_constructor,
+						// 	&None,
+						// 	Some(arguments),
+						// 	environment,
+						// 	checking_data,
+						// 	&
+						// 	position,
+						// 	CalledWithNew::SpecialSuperCall { on: this_constructor },
+						// );
 
-				// Instance::RValue(ty)
+						// TODO explain
+						// synthesise_class_fields(fields, environment, checking_data, &chain);
+
+						// Instance::RValue(ty)
+					}
+					SuperReference::PropertyAccess { property: _ } => todo!(),
+					SuperReference::Index { indexer: _ } => todo!(),
+				}
+			} else {
+				crate::utils::notify!("TODO error");
+				Instance::RValue(TypeId::ERROR_TYPE)
 			}
-			SuperReference::PropertyAccess { property: _ } => todo!(),
-			SuperReference::Index { indexer: _ } => todo!(),
-		},
+		}
 		Expression::NewTarget(..) => todo!(),
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
 			let on = synthesise_expression(function, environment, checking_data, TypeId::ANY_TYPE);
@@ -650,6 +678,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 				*position,
+				expecting,
 			);
 			if let Some(special) = special {
 				checking_data.local_type_mappings.special_expressions.push(*position, special);
@@ -668,6 +697,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 				*position,
+				expecting,
 			);
 			Instance::RValue(result)
 		}
@@ -911,6 +941,7 @@ fn call_function<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
+	expected: TypeId,
 ) -> (TypeId, Option<SpecialExpressions>) {
 	let generic_type_arguments = type_arguments.as_ref().map(|type_arguments| {
 		type_arguments
@@ -952,6 +983,7 @@ fn call_function<T: crate::ReadFromFS>(
 		},
 		environment,
 		checking_data,
+		expected,
 	)
 }
 

@@ -62,7 +62,7 @@ pub(crate) fn apply_event(
 							TypeId::ERROR_TYPE
 						}
 					}
-					RootReference::This => this_value.get(environment, types, &position),
+					RootReference::This => this_value.get(environment, types, position),
 				};
 				type_arguments.set_id_from_event_application(id, value);
 			}
@@ -73,7 +73,7 @@ pub(crate) fn apply_event(
 			// TODO temp assigns to many contexts, which is bad.
 			// Closures should have an indicator of what they close over #56
 			let info = target.get_latest_info(environment);
-			for closure_id in &type_arguments.closure_id {
+			for closure_id in &type_arguments.closure_ids {
 				info.closure_current_values
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
@@ -387,6 +387,8 @@ pub(crate) fn apply_event(
 						if let (ApplicationResult::Interrupt(_), ApplicationResult::Completed) =
 							(&*truthy, &*otherwise)
 						{
+							crate::utils::notify!("Here left interrupt, right completed");
+
 							// Evaluate the rest of the events conditionally
 							while let Some(event) = rest_of_events.next() {
 								let otherwise_result = apply_event(

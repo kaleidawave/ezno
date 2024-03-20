@@ -14,7 +14,8 @@ use crate::{
 		variables::VariableMutability,
 	},
 	synthesis::{
-		classes::register_class_and_members, type_annotations::get_annotation_from_declaration,
+		classes::register_statement_class_with_members,
+		type_annotations::get_annotation_from_declaration,
 	},
 	CheckingData, ReadFromFS, TypeId,
 };
@@ -380,8 +381,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								);
 							}
 							Exportable::Class(class) => {
-								let _ =
-									register_class_and_members(class, environment, checking_data);
+								register_statement_class_with_members(
+									class,
+									environment,
+									checking_data,
+								);
 							}
 							Exportable::TypeAlias(_) | Exportable::ImportAll { .. } => {}
 							// TODO
@@ -393,9 +397,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						todo!()
 					}
 				},
-				parser::Declaration::Class(_)
-				| parser::Declaration::TypeAlias(_)
-				| parser::Declaration::Import(_) => {}
+				parser::Declaration::Class(class) => {
+					register_statement_class_with_members(&class.on, environment, checking_data);
+				}
+				parser::Declaration::TypeAlias(_) | parser::Declaration::Import(_) => {}
 			},
 			StatementOrDeclaration::Marker(_, _) => {}
 		}

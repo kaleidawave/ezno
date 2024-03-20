@@ -188,7 +188,7 @@ pub struct SynthesisedParameters {
 
 impl SynthesisedParameters {
 	// TODO should be aware of undefined in optionals possibly
-	pub(crate) fn get_type_constraint_at_index(
+	pub(crate) fn get_parameter_type_at_index(
 		&self,
 		idx: usize,
 	) -> Option<(TypeId, SpanWithSource)> {

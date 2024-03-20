@@ -1,3 +1,6 @@
+@Constant
+declare function debug_type_independent(t: any): void;
+
 declare class Array<T> {
     [index: number]: T | undefined;
 
@@ -30,55 +33,55 @@ declare class Array<T> {
     }
 
     // // TODO any is debatable
-    // filter(cb: (t: T, i?: number) => any): Array<T> {
-    //     const { length } = this, filtered: Array<T> = [];
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         if (cb(value, i++)) {
-    //             filtered.push(value)
-    //         }
-    //     }
-    //     return filtered;
-    // }
+    filter(cb: (t: T, i?: number) => any): Array<T> {
+        const { length } = this, filtered: Array<T> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            if (cb(value, i++)) {
+                filtered.push(value)
+            }
+        }
+        return filtered;
+    }
 
-    // // TODO any is debatable
-    // find(cb: (t: T, i?: number) => any): T | undefined {
-    //     const { length } = this;
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         if (cb(value, i++)) {
-    //             return value
-    //         }
-    //     }
-    // }
+    // TODO any is debatable
+    find(cb: (t: T, i?: number) => any): T | undefined {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            if (cb(value, i++)) {
+                return value
+            }
+        }
+    }
 
-    // // TODO any is debatable
-    // every(cb: (t: T, i?: number) => any): boolean {
-    //     const { length } = this;
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         if (!cb(value, i++)) {
-    //             return false
-    //         }
-    //     }
-    //     // Vacuous truth
-    //     return true
-    // }
+    // TODO any is debatable
+    every(cb: (t: T, i?: number) => any): boolean {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            if (!cb(value, i++)) {
+                return false
+            }
+        }
+        // Vacuous truth
+        return true
+    }
 
-    // some(cb: (t: T, i?: number) => any): boolean {
-    //     const { length } = this;
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         if (cb(value, i++)) {
-    //             return true
-    //         }
-    //     }
-    //     return false
-    // }
+    some(cb: (t: T, i?: number) => any): boolean {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            if (cb(value, i++)) {
+                return true
+            }
+        }
+        return false
+    }
 
     // includes(searchElement: T, fromIndex?: number): boolean {
     //     const { length } = this;
@@ -92,20 +95,20 @@ declare class Array<T> {
     //     return false
     // }
 
-    // join(joiner?: string): string {
-    //     const j = joiner ?? ",";
-    //     const { length } = this;
-    //     let i = 1;
-    //     if (length === 0) {
-    //         return ""
-    //     }
-    //     let s: string = "" + this[0];
-    //     while (i < length) {
-    //         s += j;
-    //         s += this[i++];
-    //     }
-    //     return s
-    // }
+    join(joiner: string = ","): string {
+        const { length } = this;
+        let i: number = 1;
+        if (length === 0) {
+            return ""
+        }
+        let s: string = "" + this[0];
+        while (i < length) {
+            s += joiner;
+            s += this[i++];
+            // debug_type_independent(s)
+        }
+        return s
+    }
 }
 
 declare class Math {
@@ -230,8 +233,6 @@ declare function print_type(t: any): void;
 declare function debug_type(t: any): void;
 @Constant
 declare function print_and_debug_type(t: any): void;
-@Constant
-declare function debug_type_independent(t: any): void;
 @Constant
 declare function debug_type_rust(t: any): void;
 @Constant

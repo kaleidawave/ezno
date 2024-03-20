@@ -11,8 +11,11 @@ use crate::{
 		Logical,
 	},
 	events::{Event, FinalEvent},
-	features::objects::SpecialObjects,
-	types::{get_constraint, Constructor, ObjectNature, StructureGenerics, TypeRelationOperator},
+	features::{functions::ThisValue, objects::SpecialObjects},
+	types::{
+		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, Constructor,
+		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
+	},
 	Constant, PropertyValue,
 };
 
@@ -24,14 +27,22 @@ pub fn print_type(
 	debug: bool,
 ) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(id, &mut buf, &mut HashSet::new(), None, types, info_chain, debug);
+	print_type_into_buf(
+		id,
+		&mut buf,
+		&mut HashSet::new(),
+		GenericChain::None,
+		types,
+		info_chain,
+		debug,
+	);
 	buf
 }
 
 #[must_use]
 pub fn print_type_with_type_arguments(
 	id: TypeId,
-	type_arguments: Option<GenericChain>,
+	type_arguments: GenericChain,
 	types: &TypeStore,
 	info_chain: &impl InformationChain,
 	debug: bool,
@@ -54,7 +65,7 @@ fn print_type_into_buf<C: InformationChain>(
 	ty: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
-	args: Option<GenericChain>,
+	args: GenericChain,
 	types: &TypeStore,
 	info_chain: &C,
 	debug: bool,
@@ -85,8 +96,10 @@ fn print_type_into_buf<C: InformationChain>(
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::FunctionGeneric { name, .. }
 			| PolyNature::StructureGeneric { name, constrained: _ } => {
-				if let Some(argvs) = args.and_then(|args| args.get_arg(ty, info_chain)) {
-					for (more, arg) in argvs.iter().nendiate() {
+				if let Some(structure_args) =
+					args.and_then(|args| args.get_argument(ty, info_chain, types))
+				{
+					for (more, arg) in structure_args.iter().nendiate() {
 						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
 						if more {
 							buf.push_str(" | ");
@@ -169,22 +182,30 @@ fn print_type_into_buf<C: InformationChain>(
 				{
 					// on can be sometimes be generic
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
-					buf.push('<');
-					let nendiate = arguments.type_restrictions.values().nendiate();
-					for (not_at_end, (arg, _)) in nendiate {
-						crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
-						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
-						if not_at_end {
-							buf.push_str(", ");
+					match arguments {
+						StructureGenericArguments::ExplicitRestrictions(type_restrictions) => {
+							buf.push('<');
+							let nendiate = type_restrictions.values().nendiate();
+							for (not_at_end, (arg, _)) in nendiate {
+								crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
+								print_type_into_buf(
+									*arg, buf, cycles, args, types, info_chain, debug,
+								);
+								if not_at_end {
+									buf.push_str(", ");
+								}
+							}
+							buf.push('>');
 						}
+						StructureGenericArguments::Closure(..)
+						| StructureGenericArguments::LookUp { .. } => {}
 					}
-					buf.push('>');
 				} else {
 					print_type_into_buf(
 						*on,
 						buf,
 						cycles,
-						Some(GenericChain::append(args.as_ref(), arguments)),
+						GenericChainLink::append(args.as_ref(), arguments),
 						types,
 						info_chain,
 						debug,
@@ -279,7 +300,7 @@ fn print_type_into_buf<C: InformationChain>(
 						*result,
 						buf,
 						cycles,
-						Some(GenericChain::append(args.as_ref(), &sgs.arguments)),
+						GenericChainLink::append(args.as_ref(), &sgs.arguments),
 						types,
 						info_chain,
 						debug,
@@ -321,7 +342,25 @@ fn print_type_into_buf<C: InformationChain>(
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
 				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
-				write!(buf, "[func{kind} #{}, kind {:?}] = ", ty.0, func.effect).unwrap();
+				write!(buf, "[func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
+				if let FunctionEffect::SideEffects {
+					events: _,
+					free_variables,
+					closed_over_variables,
+				} = &func.effect
+				{
+					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?} ")
+						.unwrap()
+				} else {
+					write!(buf, "{:?} ", func.effect).unwrap()
+				}
+				if let Type::SpecialObject(SpecialObjects::Function(_, ThisValue::Passed(p))) =
+					r#type
+				{
+					buf.push_str(", this ");
+					print_type_into_buf(*p, buf, cycles, args, types, info_chain, debug);
+				}
+				buf.push_str("] = ")
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -342,6 +381,20 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push('>');
 			}
+			// TODO don't think this is needed
+			// let args = if let Type::SpecialObject(SpecialObjects::Function(_, this)) = r#type {
+			// 	if let Some(Type::Constructor(Constructor::StructureGenerics(sgs))) = this
+			// 		.get_passed()
+			// 		.map(|ty| get_constraint(ty, types).unwrap_or(ty))
+			// 		.map(|ty| types.get_type_by_id(ty))
+			// 	{
+			// 		Some(GenericChain::append(args.as_ref(), &sgs.arguments))
+			// 	} else {
+			// 		args
+			// 	}
+			// } else {
+			// 	args
+			// };
 			buf.push('(');
 			for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
 				buf.push_str(&param.name);
@@ -505,7 +558,15 @@ pub fn print_property_key<C: InformationChain>(
 	debug: bool,
 ) -> String {
 	let mut string = String::new();
-	print_property_key_into_buf(key, &mut string, &mut HashSet::new(), None, types, info, debug);
+	print_property_key_into_buf(
+		key,
+		&mut string,
+		&mut HashSet::new(),
+		GenericChain::None,
+		types,
+		info,
+		debug,
+	);
 	string
 }
 
@@ -513,7 +574,7 @@ pub(crate) fn print_property_key_into_buf<C: InformationChain>(
 	key: &PropertyKey,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
-	args: Option<GenericChain>,
+	args: GenericChain,
 	types: &TypeStore,
 	info: &C,
 	debug: bool,
@@ -537,7 +598,7 @@ pub fn debug_effects<C: InformationChain>(
 ) {
 	use std::fmt::Write;
 
-	let args = None;
+	let args = GenericChain::None;
 
 	for event in events {
 		match event {

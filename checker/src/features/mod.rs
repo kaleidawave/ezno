@@ -116,6 +116,11 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				))
 			}
 			None => {
+				crate::utils::notify!(
+					"Await on {:?}, got {:?}",
+					checking_data.types.get_type_by_id(on),
+					checking_data.types.get_type_by_id(constraint)
+				);
 				checking_data.raise_unimplemented_error(
 					"await has no effect (or awaited expression is more complex)",
 					position,

@@ -932,7 +932,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO is this the generic?
-	pub fn get_value_of_this(&mut self, _types: &TypeStore, _position: &SpanWithSource) -> TypeId {
+	pub fn get_value_of_this(&mut self, _types: &TypeStore, _position: SpanWithSource) -> TypeId {
 		self.parents_iter()
 			.find_map(|env| {
 				if let GeneralContext::Syntax(ctx) = env {
@@ -1027,20 +1027,33 @@ impl<T: ContextType> Context<T> {
 				}
 			})
 			.and_then(|func_scope| {
-				if let crate::context::environment::FunctionScope::ArrowFunction {
-					expected_return,
-					..
-				}
-				| crate::context::environment::FunctionScope::Function {
-					expected_return,
-					..
-				}
-				| crate::context::environment::FunctionScope::MethodFunction {
-					expected_return,
-					..
-				} = func_scope
+				if let FunctionScope::ArrowFunction { expected_return, .. }
+				| FunctionScope::Function { expected_return, .. }
+				| FunctionScope::MethodFunction { expected_return, .. } = func_scope
 				{
 					*expected_return
+				} else {
+					None
+				}
+			})
+	}
+
+	pub(crate) fn get_type_of_super(&self) -> Option<TypeId> {
+		self.parents_iter()
+			.find_map(|env| {
+				if let GeneralContext::Syntax(Context {
+					context_type: Syntax { scope: Scope::Function(func_scope), .. },
+					..
+				}) = env
+				{
+					Some(func_scope)
+				} else {
+					None
+				}
+			})
+			.and_then(|func_scope| {
+				if let FunctionScope::Constructor { type_of_super, .. } = func_scope {
+					*type_of_super
 				} else {
 					None
 				}

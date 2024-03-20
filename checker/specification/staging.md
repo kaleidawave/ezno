@@ -191,20 +191,36 @@ function func() {
 
 ### Classes
 
-#### Hoisting of the type
+#### Class type `extends`
 
 ```ts
-function doThingWithClass(instance: Class1) {
+class BaseClass {
+    b: boolean = false
+}
+
+class Class extends BaseClass {
+    a: number = 2
+}
+
+new Class().b satisfies 5
+```
+
+- Expected 5, found false
+
+#### Hoisting of class type
+
+```ts
+function doThingWithClass(instance: Class) {
     instance.prop satisfies string;
     instance.parent_prop satisfies boolean;
     instance.method(4);
 }
 
-class Class2 {
+class BaseClass {
     parent_prop: number
 }
 
-class Class1 extends Class2 {
+class Class extends BaseClass {
     prop: number
 
     method(s: string) {}
@@ -214,6 +230,25 @@ class Class1 extends Class2 {
 - Expected string, found number
 - Expected boolean, found number
 - Argument of type 4 is not assignable to parameter of type string
+
+#### Hoisting of class type with `extends`
+
+```ts
+function doThingWithClass(instance: Class) {
+    instance.a satisfies number;
+    instance.b satisfies string;
+}
+
+class BaseClass {
+    b: boolean
+}
+
+class Class extends BaseClass {
+    a: number
+}
+```
+
+- Expected string, found boolean
 
 ### Overloads
 
@@ -260,12 +295,118 @@ stringIsHi(string) satisfies number;
 ```ts
 type ExpectedFunction = () => ((a: string) => string)
 
-const x: ExpectedFunction  = function () {
+const x: ExpectedFunction = function () {
     return function (b) {
         b satisfies number;
         return b
     }
 }
+```
+
+- Expected number, found string
+
+#### Computed generics from collection
+
+```ts
+const x = [1, 2, 3];
+x.map(a => (a satisfies string, 2))
+```
+
+- Expected string, found 1 | 2 | 3
+
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number
+
+### Asynchronous functions and promises
+
+> TODO Promise properties
+
+#### Async function
+
+```ts
+async function x() {
+	return 2
+}
+
+x satisfies string;
+```
+
+- Expected string, found Promise { 2 }
+
+#### Await promise
+
+```ts
+async function x() {
+	return 2
+}
+
+(await x) satisfies string;
+```
+
+- Expected string, found 2
+
+#### External promise
+
+```ts
+declare let a: Promise<string>;
+
+(await a) satisfies number
 ```
 
 - Expected number, found string
@@ -277,7 +418,7 @@ This contains new features (which don't have)
 #### Comments as type annotations
 
 ```ts
-function x(a: /* : string */) {
+function x(a /* : string */) {
     a satisfies number
 }
 

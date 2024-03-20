@@ -1,12 +1,15 @@
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
 	functions::MethodHeader,
-	ASTNode, Decorated, PropertyKey as ParserPropertyKey, StatementPosition,
+	ASTNode, Decorated, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	context::{information::Publicity, Environment, VariableRegisterArguments},
+	context::{
+		information::{InformationChain, Publicity},
+		Environment, VariableRegisterArguments,
+	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::functions::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
@@ -67,7 +70,15 @@ pub(super) fn synthesise_class_declaration<
 	};
 
 	let extends = class.extends.as_ref().map(|extends| {
-		synthesise_expression(extends, environment, checking_data, TypeId::ANY_TYPE)
+		let ty = synthesise_expression(extends, environment, checking_data, TypeId::ANY_TYPE);
+
+		if let TypeId::NULL_TYPE = ty {
+			checking_data.raise_unimplemented_error(
+				"extends `null` edge case",
+				extends.get_position().with_source(environment.get_source()),
+			);
+		}
+		ty
 	});
 
 	let class_constructor = class.members.iter().find_map(|member| {
@@ -77,6 +88,17 @@ pub(super) fn synthesise_class_declaration<
 			None
 		}
 	});
+
+	// From table here https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/extends#description
+	// TODO explain that no prototype => prototype = Function.prototype
+	if let Some(extends) = extends {
+		environment.info.prototypes.insert(class_prototype, extends);
+		let copied =
+			environment.get_chain_of_info().find_map(|info| info.prototypes.get(&extends)).copied();
+		if let Some(extends_prototype) = copied {
+			environment.info.prototypes.insert(class_prototype, extends_prototype);
+		}
+	}
 
 	let mut properties = Vec::new();
 
@@ -332,13 +354,14 @@ pub(super) fn synthesise_class_declaration<
 }
 
 /// Also sets variable
-pub(super) fn register_class_and_members<T: crate::ReadFromFS>(
+pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	class: &ClassDeclaration<StatementPosition>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	{
 		const CLASS_VARIABLE_CONSTANT: bool = true;
+		crate::utils::notify!("registering {:?}", class.name.identifier);
 
 		register_variable_identifier(
 			&class.name.identifier,
@@ -358,6 +381,15 @@ pub(super) fn register_class_and_members<T: crate::ReadFromFS>(
 		.types_to_types
 		.get(class.get_position().start)
 		.expect("class type not lifted");
+
+	if let Some(ref extends) = class.extends {
+		let extends = get_extends_as_simple_type(extends, environment, checking_data);
+
+		crate::utils::notify!("Hoisting class with extends {:?}", extends);
+		if let Some(ty) = extends {
+			environment.info.prototypes.insert(class_type, ty);
+		}
+	}
 
 	let get_type_by_id = checking_data.types.get_type_by_id(class_type);
 
@@ -463,7 +495,7 @@ pub(super) fn register_class_and_members<T: crate::ReadFromFS>(
 					for overload in overloads {
 						for (idx, op) in overload.1.parameters.iter().enumerate() {
 							if let Some((base_type, position)) =
-								expected_parameters.get_type_constraint_at_index(idx)
+								expected_parameters.get_parameter_type_at_index(idx)
 							{
 								let res = type_is_subtype(
 									base_type,
@@ -646,7 +678,7 @@ pub(super) fn register_class_and_members<T: crate::ReadFromFS>(
 fn synthesise_shape<T: crate::ReadFromFS>(
 	method: &parser::FunctionBase<parser::ast::ClassFunctionBase>,
 	environment: &mut Environment,
-	checking_data: &mut CheckingData<'_, T, super::EznoParser>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> PartialFunction {
 	let type_parameters = method.type_parameters.as_ref().map(|type_parameters| {
 		super::functions::synthesise_type_parameters(type_parameters, environment, checking_data)
@@ -693,4 +725,38 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 		SynthesisedParameters { parameters, rest_parameter },
 		return_type,
 	)
+}
+
+/// Don't want to evaluate side effects during this stage
+fn get_extends_as_simple_type<T: crate::ReadFromFS>(
+	extends: &Expression,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> Option<TypeId> {
+	if let Expression::VariableReference(name, pos) = extends {
+		if let Some(ty) = environment.get_type_from_name(name) {
+			// Warn if it requires parameters. e.g. Array
+			Some(if checking_data.types.get_type_by_id(ty).get_parameters().is_some() {
+				// TODO check defaults...
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::TypeNeedsTypeArguments(
+						name,
+						pos.with_source(environment.get_source()),
+					),
+				);
+				TypeId::ERROR_TYPE
+			} else {
+				ty
+			})
+		} else {
+			None
+			// checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
+			// 	name,
+			// 	pos.with_source(environment.get_source()),
+			// ));
+			// TypeId::ERROR_TYPE
+		}
+	} else {
+		None
+	}
 }

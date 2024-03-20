@@ -224,7 +224,7 @@ pub(crate) fn get_property_unbound(
 		info: &LocalInformation,
 		types: &TypeStore,
 		on: TypeId,
-		on_type_arguments: Option<&GenericChain>,
+		on_type_arguments: GenericChain,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
 		info.current_properties
@@ -243,7 +243,7 @@ pub(crate) fn get_property_unbound(
 fn get_property_under(
 	properties: &[(Publicity, PropertyKey<'_>, PropertyValue)],
 	(want_publicity, want_key): (Publicity, &PropertyKey<'_>),
-	key_type_arguments: Option<&GenericChain>,
+	key_type_arguments: GenericChain,
 	types: &TypeStore,
 ) -> Option<PropertyValue> {
 	// 'rev' is important
@@ -271,12 +271,12 @@ fn get_property_under(
 /// TODO contributions for `P`
 fn key_matches(
 	key: TypeId,
-	key_type_arguments: Option<&GenericChain<'_>>,
+	key_type_arguments: GenericChain,
 	want_key: &PropertyKey<'_>,
 	types: &TypeStore,
 ) -> bool {
 	let key = if let Some(on_type_arguments) = key_type_arguments {
-		on_type_arguments.get_single_arg(key).unwrap_or(key)
+		on_type_arguments.get_single_argument(key).unwrap_or(key)
 	} else {
 		key
 	};

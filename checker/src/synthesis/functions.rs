@@ -366,7 +366,7 @@ fn synthesise_function_parameters<
 					// Try use expected type
 					expected_parameters
 						.as_ref()
-						.and_then(|p| p.get_type_constraint_at_index(idx).map(|(t, _pos)| t))
+						.and_then(|p| p.get_parameter_type_at_index(idx).map(|(t, _pos)| t))
 				})
 				.unwrap_or(TypeId::ANY_TYPE);
 

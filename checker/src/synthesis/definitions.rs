@@ -8,7 +8,7 @@ use crate::{
 	diagnostics::TypeCheckWarning,
 	features::functions::synthesise_declare_statement_function,
 	synthesis::{
-		classes::{register_class_and_members, synthesise_class_declaration},
+		classes::{register_statement_class_with_members, synthesise_class_declaration},
 		type_annotations::synthesise_type_annotation,
 		EznoParser,
 	},
@@ -114,7 +114,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 			}
 			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
-				register_class_and_members(&class.on, &mut environment, checking_data)
+				register_statement_class_with_members(&class.on, &mut environment, checking_data)
 			}
 			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
 				name: _,

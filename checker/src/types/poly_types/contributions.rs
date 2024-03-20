@@ -2,7 +2,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, AlreadyChecked, SubTypeBehavior, SubTypeResult},
-	types::{LookUpGeneric, TypeRestrictions, TypeStore},
+	types::{GenericChain, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
@@ -33,17 +33,12 @@ pub struct Contributions<'a> {
 impl<'a> Contributions<'a> {
 	/// TODO return position?
 	fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {
-		let cstr =
-			self.call_site_type_arguments.and_then(|csta| csta.get(&under).map(|(c, _pos)| *c));
+		let cstr = self.call_site_type_arguments.and_then(|ta| ta.get(&under).map(|(c, _pos)| *c));
 		if let cstr @ Some(_) = cstr {
 			cstr
 		} else {
-			self.parent.and_then(|parent| parent.type_restrictions.get(&under).map(|(c, _pos)| *c))
+			self.parent.and_then(|parent| parent.get_structure_restriction(under))
 		}
-	}
-
-	fn get_lookup(&self, under: TypeId) -> Option<LookUpGeneric> {
-		self.parent.and_then(|parent| parent.properties.get(&under).cloned())
 	}
 
 	fn passes_under_current_covariant(
@@ -52,52 +47,55 @@ impl<'a> Contributions<'a> {
 		argument: TypeId,
 		environment: &Environment,
 		types: &TypeStore,
-		lookup_properties: bool,
+		_lookup_properties: bool,
 		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
+		// else if let Some(lookup_restriction) = lookup_properties
+		// 	.then(|| prototype.and_then(|prototype| self.get_lookup(prototype, under, types)))
+		// 	.flatten()
+		// {
+		// 	// TODO don't create vec
+		// 	for constraint in lookup_restriction.calculate_lookup(environment) {
+		// 		if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype_with_generics(
+		// 			constraint,
+		// 			None,
+		// 			argument,
+		// 			None,
+		// 			self,
+		// 			environment,
+		// 			types,
+		// 			Default::default(),
+		// 			already_checked,
+		// 		) {
+		// 			return e;
+		// 		}
+		// 	}
+
+		// 	SubTypeResult::IsSubType
+		// }
+
 		// TODO staging_contravariant
 		if let Some(constraint) = self.get_standard_restriction(under) {
 			type_is_subtype_with_generics(
 				constraint,
-				None,
+				GenericChain::None,
 				argument,
-				None,
+				GenericChain::None,
 				self,
 				environment,
 				types,
 				Default::default(),
 				already_checked,
 			)
-		} else if let Some(lookup_restriction) =
-			lookup_properties.then(|| self.get_lookup(under)).flatten()
-		{
-			// TODO don't create vec
-			for constraint in lookup_restriction.calculate_lookup(environment) {
-				if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype_with_generics(
-					constraint,
-					None,
-					argument,
-					None,
-					self,
-					environment,
-					types,
-					Default::default(),
-					already_checked,
-				) {
-					return e;
-				}
-			}
-
-			SubTypeResult::IsSubType
 		} else {
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
 			crate::utils::notify!("Here, constraint={:?}", constraint);
 			type_is_subtype_with_generics(
 				constraint,
-				None,
+				GenericChain::None,
 				argument,
-				None,
+				GenericChain::None,
 				self,
 				environment,
 				types,
@@ -154,9 +152,9 @@ impl<'a> Contributions<'a> {
 		if let Some(under) = self.get_standard_restriction(on) {
 			type_is_subtype_with_generics(
 				under,
-				None,
+				GenericChain::None,
 				restriction,
-				None,
+				GenericChain::None,
 				self,
 				environment,
 				types,

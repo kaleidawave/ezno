@@ -225,39 +225,20 @@ print_type(call)
 
 > TODO Promise properties
 
-#### Async function
+#### Async function side effects
 
 ```ts
-async function x() {
-	return 2
+let fv: number = 2;
+function doFetch() {
+	await fetch("/thing");
+	fv += 1;
 }
 
-x satisfies string;
-```
-
-- Expected string, found Promise { 2 }
-
-#### Await promise
-
-```ts
-async function x() {
-	return 2
-}
-
-(await x) satisfies string;
+const x = doFetch();
+fv satisfies string;
 ```
 
 - Expected string, found 2
-
-#### External promise
-
-```ts
-declare let a: Promise<string>;
-
-(await a) satisfies number
-```
-
-- Expected number, found string
 
 ### Generators
 

@@ -29,11 +29,6 @@ pub(crate) fn substitute(
 		return value;
 	}
 
-	// TODO think this is correct
-	if id == TypeId::VOID_TYPE {
-		return TypeId::ANY_TYPE;
-	}
-
 	let ty = types.get_type_by_id(id);
 
 	match ty {
@@ -43,7 +38,7 @@ pub(crate) fn substitute(
 		// This works for both objects and `AnonymousTypeAnnotation`s
 		Type::Object(ObjectNature::RealDeal | ObjectNature::AnonymousTypeAnnotation) => {
 			crate::utils::notify!("Here!!!");
-			curry_arguments(arguments, types, id)
+			arguments.curry_arguments(types, id)
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
 			// Also sub the this type
@@ -57,10 +52,10 @@ pub(crate) fn substitute(
 			} else {
 				id
 			};
-			curry_arguments(arguments, types, id)
+			arguments.curry_arguments(types, id)
 		}
 		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
-		| Type::FunctionReference(..) => curry_arguments(arguments, types, id),
+		| Type::FunctionReference(..) => arguments.curry_arguments(types, id),
 		Type::SpecialObject(x) => match x {
 			SpecialObjects::Promise { .. } => todo!(),
 			SpecialObjects::Generator { .. } => todo!(),
@@ -257,23 +252,24 @@ pub(crate) fn substitute(
 				on,
 				arguments: structure_arguments,
 			}) => {
-				let type_arguments = structure_arguments
-					.type_restrictions
-					.into_iter()
-					.map(|(lhs, (argument, pos))| {
-						(lhs, (substitute(argument, arguments, environment, types), pos))
-					})
-					.collect();
+				let new_structure_arguments = match structure_arguments {
+					StructureGenericArguments::ExplicitRestrictions(restrictions) => {
+						let restrictions = restrictions
+							.into_iter()
+							.map(|(lhs, (arg, pos))| {
+								(lhs, (substitute(arg, arguments, environment, types), pos))
+							})
+							.collect();
+						StructureGenericArguments::ExplicitRestrictions(restrictions)
+					}
+					StructureGenericArguments::Closure(_) => return id,
+					StructureGenericArguments::LookUp { on } => StructureGenericArguments::LookUp {
+						on: substitute(on, arguments, environment, types),
+					},
+				};
 
 				types.register_type(Type::Constructor(Constructor::StructureGenerics(
-					StructureGenerics {
-						on,
-						arguments: StructureGenericArguments {
-							type_restrictions: type_arguments,
-							closures: structure_arguments.closures,
-							properties: structure_arguments.properties,
-						},
-					},
+					StructureGenerics { on, arguments: new_structure_arguments },
 				)))
 			}
 
@@ -356,24 +352,5 @@ pub(crate) fn substitute(
 			},
 			Constructor::Awaited { .. } => todo!("should have effect result"),
 		},
-	}
-}
-
-pub(crate) fn curry_arguments(
-	arguments: &impl TypeArgumentStore,
-	types: &mut TypeStore,
-	id: TypeId,
-) -> TypeId {
-	if arguments.is_empty() {
-		crate::utils::notify!("Empty");
-		id
-	} else {
-		crate::utils::notify!("Storing arguments onto object");
-		// TODO only carry arguments that are used
-		let arguments = arguments.to_structural_generic_arguments();
-
-		types.register_type(Type::Constructor(Constructor::StructureGenerics(
-			crate::types::StructureGenerics { on: id, arguments },
-		)))
 	}
 }

@@ -12,7 +12,7 @@ use crate::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
 	},
-	types::{FunctionType, GenericChain, PolyNature, Type},
+	types::{FunctionType, GenericChain, GenericChainLink, PolyNature, Type},
 	Environment, FunctionId, LocalInformation, TypeId,
 };
 
@@ -27,6 +27,9 @@ use super::{
 pub struct TypeStore {
 	/// Contains all of the types. Indexed by [TypeId]
 	types: Vec<Type>,
+
+	/// Some types are prototypes but have generic parameters but
+	pub(crate) lookup_generic_map: HashMap<TypeId, LookUpGenericMap>,
 
 	/// Set after the interface [`Type`] is created, so here
 	/// TODO private
@@ -114,8 +117,14 @@ impl Default for TypeStore {
 		// Check that above is correct, TODO eventually a macro
 		assert_eq!(types.len(), TypeId::INTERNAL_TYPE_COUNT);
 
+		let lookup_generic_map = HashMap::from_iter([(
+			TypeId::ARRAY_TYPE,
+			SmallMap::from_iter([(TypeId::T_TYPE, LookUpGeneric::NumberPropertyOfSelf)]),
+		)]);
+
 		Self {
 			types: types.clone(),
+			lookup_generic_map,
 			functions: HashMap::new(),
 			_dependent_dependencies: Default::default(),
 			_specialisations: Default::default(),
@@ -262,14 +271,21 @@ impl TypeStore {
 		if truthy_result == otherwise_result {
 			return truthy_result;
 		}
-		// TODO on is negation then swap operands
-		let ty = Type::Constructor(super::Constructor::ConditionalResult {
-			condition,
-			truthy_result,
-			otherwise_result,
-			result_union: self.new_or_type(truthy_result, otherwise_result),
-		});
-		self.register_type(ty)
+
+		// TODO reverse as well
+		if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
+			condition
+		// self.new_logical_or_type(condition, otherwise_result)
+		} else {
+			// TODO on is negation then swap operands
+			let ty = Type::Constructor(super::Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				otherwise_result,
+				result_union: self.new_or_type(truthy_result, otherwise_result),
+			});
+			self.register_type(ty)
+		}
 	}
 
 	pub fn new_anonymous_interface_ty(&mut self) -> TypeId {
@@ -286,17 +302,17 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
-	/// TOOD this is just for property lookup, right?
+	/// TODO this is just for property lookup, right?
 	pub(crate) fn get_fact_about_type<C: InformationChain, TData: Copy, TResult>(
 		&self,
 		info_chain: &C,
 		on: TypeId,
-		on_type_arguments: Option<&GenericChain>,
+		on_type_arguments: GenericChain,
 		resolver: &impl Fn(
 			&LocalInformation,
 			&TypeStore,
 			TypeId,
-			Option<&GenericChain>,
+			GenericChain,
 			TData,
 		) -> Option<TResult>,
 		data: TData,
@@ -420,12 +436,14 @@ impl TypeStore {
 
 				on_sg_type
 					.or_else(|| {
-						let on_type_arguments = GenericChain::append(on_type_arguments, arguments);
+						let on_type_arguments =
+							GenericChainLink::append(on_type_arguments.as_ref(), arguments);
+
 						let fact_opt = self
 							.get_fact_about_type(
 								info_chain,
 								*base,
-								Some(&on_type_arguments),
+								on_type_arguments,
 								resolver,
 								data,
 							)
@@ -516,14 +534,11 @@ impl TypeStore {
 
 				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
 					gens.cloned()
-				} else if let Some(prototype) = prototype {
-					self.get_look_up_generic_map_from_prototype(prototype, on).map(|properties| {
-						StructureGenericArguments {
-							type_restrictions: SmallMap::new(),
-							properties,
-							closures: Vec::new(),
-						}
-					})
+				} else if prototype
+					.is_some_and(|prototype| self.lookup_generic_map.contains_key(&prototype))
+				{
+					crate::utils::notify!("Registering lookup");
+					Some(StructureGenericArguments::LookUp { on })
 				} else {
 					None
 				};
@@ -567,9 +582,8 @@ impl TypeStore {
 					})
 					.ok_or(crate::context::Missing::None)
 			}
-			Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
-			| Type::Interface { .. }
-			| Type::Class { .. } => info_chain
+
+			Type::Interface { .. } => info_chain
 				.get_chain_of_info()
 				.find_map(|env| resolver(env, self, on, on_type_arguments, data))
 				.map(Logical::Pure)
@@ -589,6 +603,29 @@ impl TypeStore {
 					}
 				})
 				.ok_or(crate::context::Missing::None),
+			Type::SpecialObject(SpecialObjects::ClassConstructor { .. }) | Type::Class { .. } => {
+				info_chain
+					.get_chain_of_info()
+					.find_map(|env| resolver(env, self, on, on_type_arguments, data))
+					.map(Logical::Pure)
+					.or_else(|| {
+						if let Some(prototype) =
+							info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+						{
+							self.get_fact_about_type(
+								info_chain,
+								*prototype,
+								on_type_arguments,
+								resolver,
+								data,
+							)
+							.ok()
+						} else {
+							None
+						}
+					})
+					.ok_or(crate::context::Missing::None)
+			}
 			Type::Constant(cst) => info_chain
 				.get_chain_of_info()
 				.find_map(|info| resolver(info, self, on, on_type_arguments, data))
@@ -609,42 +646,22 @@ impl TypeStore {
 		}
 	}
 
-	pub(crate) fn get_look_up_generic_map_from_prototype(
-		&self,
-		prototype: TypeId,
-		on: TypeId,
-	) -> Option<LookUpGenericMap> {
-		if prototype == TypeId::ARRAY_TYPE {
-			// Cannot create a union here
-			Some(SmallMap::from_iter([(
-				TypeId::T_TYPE,
-				super::LookUpGeneric::NumberPropertyOf(on),
-			)]))
-		} else if let Type::Interface { parameters: Some(_parameters), .. } =
-			self.get_type_by_id(prototype)
-		{
-			todo!("Should be stored during type definition synthesis")
-		} else {
-			None
-		}
-	}
-
-	pub(crate) fn get_look_up_generic_from_prototype(
-		&self,
-		prototype: TypeId,
-		on: TypeId,
-	) -> Option<LookUpGeneric> {
-		if prototype == TypeId::ARRAY_TYPE {
-			// Cannot create a union here
-			Some(super::LookUpGeneric::NumberPropertyOf(on))
-		} else if let Type::Interface { parameters: Some(_parameters), .. } =
-			self.get_type_by_id(prototype)
-		{
-			todo!("Should be stored during type definition synthesis")
-		} else {
-			None
-		}
-	}
+	// pub(crate) fn get_look_up_generic_from_prototype(
+	// 	&self,
+	// 	prototype: TypeId,
+	// 	on: TypeId,
+	// ) -> Option<LookUpGeneric> {
+	// 	if prototype == TypeId::ARRAY_TYPE {
+	// 		// Cannot create a union here
+	// 		Some(super::LookUpGeneric::NumberPropertyOf(on))
+	// 	} else if let Type::Interface { parameters: Some(_parameters), .. } =
+	// 		self.get_type_by_id(prototype)
+	// 	{
+	// 		todo!("Should be stored during type definition synthesis")
+	// 	} else {
+	// 		None
+	// 	}
+	// }
 
 	pub fn new_closure_id(&mut self) -> ClosureId {
 		self.closure_counter += 1;
@@ -725,14 +742,9 @@ impl TypeStore {
 	pub fn new_array_type(&mut self, item_type: TypeId, position: SpanWithSource) -> TypeId {
 		let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 			on: TypeId::ARRAY_TYPE,
-			arguments: StructureGenericArguments {
-				type_restrictions: FromIterator::from_iter([(
-					TypeId::T_TYPE,
-					(item_type, position),
-				)]),
-				properties: map_vec::Map::new(),
-				closures: Default::default(),
-			},
+			arguments: StructureGenericArguments::ExplicitRestrictions(FromIterator::from_iter([
+				(TypeId::T_TYPE, (item_type, position)),
+			])),
 		}));
 		self.register_type(ty)
 	}

@@ -8,7 +8,10 @@ use crate::{
 		Environment, GeneralContext, Logical,
 	},
 	features::objects::SpecialObjects,
-	types::{printing::print_type, TypeStore},
+	types::{
+		poly_types::generic_type_arguments::StructureGenericArguments, printing::print_type,
+		GenericChainLink, TypeStore,
+	},
 	PropertyValue, TypeId,
 };
 
@@ -68,9 +71,9 @@ pub fn type_is_subtype<'a, T: SubTypeBehavior<'a>>(
 ) -> SubTypeResult {
 	type_is_subtype_with_generics(
 		base_type,
-		None,
+		GenericChain::None,
 		ty,
-		None,
+		GenericChain::None,
 		behavior,
 		environment,
 		types,
@@ -85,9 +88,9 @@ pub type AlreadyChecked = Vec<(TypeId, TypeId)>;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 	base_type: TypeId,
-	base_structure_arguments: Option<GenericChain>,
+	base_structure_arguments: GenericChain,
 	ty: TypeId,
-	ty_structure_arguments: Option<GenericChain>,
+	ty_structure_arguments: GenericChain,
 	behavior: &mut T,
 	environment: &Environment,
 	types: &TypeStore,
@@ -194,7 +197,7 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 		Type::Constructor(Constructor::StructureGenerics(..)) => {}
 		Type::RootPolyType(..) | Type::Constructor(..) => {
 			if let Some(args) =
-				ty_structure_arguments.and_then(|args| args.get_arg(ty, environment))
+				ty_structure_arguments.and_then(|tas| tas.get_argument(ty, environment, types))
 			{
 				// TODO what
 				for arg in args {
@@ -220,29 +223,29 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 
 			// If lhs is not operator unless argument is operator
 			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
-			let arg = get_constraint(ty, types).unwrap();
+			let right_arg = get_constraint(ty, types).unwrap();
 			// This is important that LHS is not operator
 			let left_is_operator_right_is_not =
-				left_ty.is_operator() && !types.get_type_by_id(arg).is_operator();
+				left_ty.is_operator() && !types.get_type_by_id(right_arg).is_operator();
 
 			// edge cases on edge cases
+			// If any of these are true. Then do not perform constraint argument lookup
 			let edge_case = left_is_operator_right_is_not
 				|| matches!(
 					left_ty,
-					Type::RootPolyType(
-						PolyNature::FunctionGeneric { .. } | PolyNature::Parameter { .. }
-					)
+					Type::RootPolyType(rpt)
+					if rpt.is_substitutable()
 				) || matches!(
-				left_ty,
-				Type::Constructor(cst)
-				if !cst.is_structure_generics()
+				   left_ty,
+				   Type::Constructor(cst)
+				   if !cst.is_structure_generics()
 			);
 
 			if !edge_case {
 				return type_is_subtype_with_generics(
 					base_type,
 					base_structure_arguments,
-					arg,
+					right_arg,
 					ty_structure_arguments,
 					behavior,
 					environment,
@@ -394,8 +397,8 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 		}
 		Type::RootPolyType(nature) => {
 			// TODO little weird, handing two very different cases beside each other. Might introduce bugs.. :(
-			if let Some(args) =
-				base_structure_arguments.and_then(|args| args.get_arg(base_type, environment))
+			if let Some(args) = base_structure_arguments
+				.and_then(|args| args.get_argument(base_type, environment, types))
 			{
 				// TODO what
 				for arg in args {
@@ -495,6 +498,57 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 			on,
 			arguments,
 		})) => {
+			if let Some(lookup) = types.lookup_generic_map.get(on) {
+				fn get_structure_generics_on(
+					r#type: &Type,
+					expected: TypeId,
+				) -> Option<&StructureGenericArguments> {
+					match r#type {
+						Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+							on,
+							arguments,
+						})) if expected == *on => Some(arguments),
+						_ => None,
+					}
+				}
+				return if let Some(sgs) = get_structure_generics_on(right_ty, *on) {
+					crate::utils::notify!("TODO here");
+					SubTypeResult::IsSubType
+				} else if let Type::Object(super::ObjectNature::RealDeal) = right_ty {
+					let prototype =
+						environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty));
+
+					crate::utils::notify!("prototype is {:?}", prototype);
+
+					if prototype.is_some_and(|prototype| prototype == on) {
+						for (argument, lookup) in lookup.iter() {
+							// TODO no vec
+							let backing_type =
+								arguments.get_structure_restriction(*argument).unwrap();
+							for value in lookup.calculate_lookup(environment, ty) {
+								let type_is_subtype = type_is_subtype(
+									backing_type,
+									value,
+									behavior,
+									environment,
+									types,
+								);
+								if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype {
+									return e;
+								}
+							}
+						}
+						SubTypeResult::IsSubType
+					} else {
+						crate::utils::notify!("Here");
+						SubTypeResult::IsSubType
+					}
+				} else {
+					crate::utils::notify!("Here");
+					SubTypeResult::IsSubType
+				};
+			}
+
 			if let TypeId::ARRAY_TYPE = *on {
 				let backing_type = arguments
 					.get_structure_restriction(TypeId::T_TYPE)
@@ -507,21 +561,17 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 
 				// TODO temp fix for general parameters
 				if let Type::Object(_) = right_ty {
-					let Some(lookup_restriction) =
-						types.get_look_up_generic_from_prototype(TypeId::ARRAY_TYPE, ty)
-					else {
-						crate::utils::notify!("Here");
-						return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
-					};
+					// let Some(lookup_restriction) =
+					// 	types.get_look_up_generic_from_prototype(TypeId::ARRAY_TYPE, ty)
+					// else {
+					// 	crate::utils::notify!("Here");
+					// 	return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+					// };
 
 					// TODO don't create vec
-					for value in lookup_restriction.calculate_lookup(environment) {
-						if let e @ SubTypeResult::IsNotSubType(_) =
-							type_is_subtype(backing_type, value, behavior, environment, types)
-						{
-							return e;
-						}
-					}
+					// for value in lookup_restriction.calculate_lookup(environment) {
+
+					// }
 
 					behavior.add_object_mutation_constraint(ty, base_type);
 
@@ -554,7 +604,8 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 				}
 			} else {
 				let base_type_arguments =
-					Some(GenericChain::append(base_structure_arguments.as_ref(), arguments));
+					GenericChainLink::append(base_structure_arguments.as_ref(), arguments);
+
 				type_is_subtype_with_generics(
 					*on,
 					base_type_arguments,
@@ -743,7 +794,7 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 					base_type,
 					base_structure_arguments,
 					*on,
-					Some(GenericChain::append(ty_structure_arguments.as_ref(), arguments)),
+					GenericChainLink::append(ty_structure_arguments.as_ref(), arguments),
 					behavior,
 					environment,
 					types,
@@ -757,7 +808,7 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 				}
 				Type::Constructor(..) | Type::RootPolyType(..) => {
 					let arg = base_structure_arguments
-						.and_then(|args| args.get_arg(base_type, environment));
+						.and_then(|args| args.get_argument(base_type, environment, types));
 
 					if let Some(args) = arg {
 						for arg in args {
@@ -810,8 +861,8 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 #[allow(clippy::too_many_arguments)]
 fn subtype_function<'a, T: SubTypeBehavior<'a>>(
 	left_func: crate::FunctionId,
-	base_type_arguments: Option<GenericChain>,
-	(right_ty, ty, right_type_arguments): (&Type, TypeId, Option<GenericChain>),
+	base_type_arguments: GenericChain,
+	(right_ty, ty, right_type_arguments): (&Type, TypeId, GenericChain),
 	behavior: &mut T,
 	environment: &Environment,
 	types: &TypeStore,
@@ -844,7 +895,7 @@ fn subtype_function<'a, T: SubTypeBehavior<'a>>(
 	let right_func = types.functions.get(right_func).unwrap();
 
 	for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
-		match right_func.parameters.get_type_constraint_at_index(idx) {
+		match right_func.parameters.get_parameter_type_at_index(idx) {
 			Some((right_param_ty, position)) => {
 				// Reverse is important
 				let result = type_is_subtype_with_generics(
@@ -911,9 +962,9 @@ fn subtype_function<'a, T: SubTypeBehavior<'a>>(
 #[allow(clippy::too_many_arguments)]
 fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 	base_type: TypeId,
-	base_type_arguments: Option<GenericChain>,
+	base_type_arguments: GenericChain,
 	ty: TypeId,
-	right_type_arguments: Option<GenericChain>,
+	right_type_arguments: GenericChain,
 	behavior: &mut T,
 	environment: &Environment,
 	types: &TypeStore,
@@ -933,9 +984,7 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 
 		let key = match key {
 			PropertyKey::Type(ty) => PropertyKey::from_type(
-				base_type_arguments
-					.and_then(|base_type_arguments| base_type_arguments.get_single_arg(*ty))
-					.unwrap_or(*ty),
+				base_type_arguments.unwrap().get_single_argument(*ty).unwrap_or(*ty),
 				types,
 			),
 			PropertyKey::String(_) => key.clone(),
@@ -990,9 +1039,9 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 fn check_lhs_property_is_super_type_of_rhs<'a, T: SubTypeBehavior<'a>>(
 	key: &PropertyKey<'_>,
 	lhs_property: &PropertyValue,
-	base_type_arguments: Option<GenericChain<'_>>,
+	base_type_arguments: GenericChain,
 	ty: TypeId,
-	right_type_arguments: Option<GenericChain<'_>>,
+	right_type_arguments: GenericChain,
 	publicity: Publicity,
 	types: &TypeStore,
 	environment: &Environment,
@@ -1082,9 +1131,9 @@ fn check_lhs_property_is_super_type_of_rhs<'a, T: SubTypeBehavior<'a>>(
 #[allow(clippy::too_many_arguments)]
 fn check_logical_property<'a, T: SubTypeBehavior<'a>>(
 	base: TypeId,
-	base_type_arguments: Option<GenericChain>,
+	base_type_arguments: GenericChain,
 	rhs_property: Logical<PropertyValue>,
-	right_type_arguments: Option<GenericChain>,
+	right_type_arguments: GenericChain,
 	behavior: &mut T,
 	environment: &Environment,
 	types: &TypeStore,
@@ -1117,7 +1166,7 @@ fn check_logical_property<'a, T: SubTypeBehavior<'a>>(
 		Logical::Or { .. } => todo!(),
 		Logical::Implies { on, antecedent } => check_logical_property(
 			base,
-			Some(GenericChain::append(base_type_arguments.as_ref(), &antecedent)),
+			GenericChainLink::append(base_type_arguments.as_ref(), &antecedent),
 			*on,
 			right_type_arguments,
 			behavior,
@@ -1133,7 +1182,7 @@ fn check_logical_property<'a, T: SubTypeBehavior<'a>>(
 /// maybe sub function
 pub fn type_is_subtype_of_property<'a, T: SubTypeBehavior<'a>>(
 	property: &Logical<PropertyValue>,
-	property_generics: Option<GenericChain>,
+	property_generics: GenericChain,
 	ty: TypeId,
 	behavior: &mut T,
 	environment: &Environment,
@@ -1144,7 +1193,7 @@ pub fn type_is_subtype_of_property<'a, T: SubTypeBehavior<'a>>(
 			prop.as_set_type(),
 			property_generics,
 			ty,
-			None,
+			GenericChain::None,
 			behavior,
 			environment,
 			types,
@@ -1176,7 +1225,7 @@ pub fn type_is_subtype_of_property<'a, T: SubTypeBehavior<'a>>(
 		}
 		Logical::Implies { on, antecedent } => type_is_subtype_of_property(
 			on,
-			Some(GenericChain::append(property_generics.as_ref(), antecedent)),
+			GenericChainLink::append(property_generics.as_ref(), antecedent),
 			ty,
 			behavior,
 			environment,

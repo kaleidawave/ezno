@@ -5,7 +5,7 @@
 use crate::{
 	context::{environment::Label, information::InformationChain},
 	diagnostics,
-	types::{printing::print_type_with_type_arguments, GenericChain},
+	types::{printing::print_type_with_type_arguments, GenericChain, GenericChainLink},
 };
 use source_map::{SourceId, SpanWithSource};
 use std::{
@@ -193,7 +193,7 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id_with_generics(
 		id: TypeId,
-		type_arguments: Option<GenericChain>,
+		type_arguments: GenericChain,
 		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
@@ -205,7 +205,7 @@ impl TypeStringRepresentation {
 	/// TODO working it out
 	pub(crate) fn from_property_constraint(
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
-		generics: Option<GenericChain>,
+		generics: GenericChain,
 		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
@@ -242,7 +242,7 @@ impl TypeStringRepresentation {
 				}
 				Self::from_property_constraint(
 					*on,
-					Some(GenericChain::new(&antecedent)),
+					Some(GenericChainLink::Link { parent: None, value: &antecedent }),
 					ctx,
 					types,
 					debug_mode,
