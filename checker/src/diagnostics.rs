@@ -599,6 +599,13 @@ mod defined_errors_and_warnings {
 							kind,
 						}
 					}
+					AssignmentError::TDZ(TDZ { variable_name, position }) => {
+						Diagnostic::Position {
+							reason: format!("Cannot assign to '{variable_name}' before declaration"),
+							position,
+							kind,
+						}
+					}
 				},
 				TypeCheckError::InvalidJSXAttribute {
 					attribute_name,

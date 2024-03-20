@@ -55,8 +55,6 @@ struct FunctionLike {
 	pub(crate) function: FunctionId,
 	/// For generic calls
 	pub(crate) from: Option<TypeId>,
-	/// TODO WIP
-	pub(crate) _is_dependent: bool,
 	pub(crate) this_value: ThisValue,
 }
 
@@ -82,22 +80,34 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			}) = callable
 			{
 				if let Type::Object(..) = checking_data.types.get_type_by_id(this_passed) {
-					let prototype = environment
+					if let Some(object_constraint) = environment
 						.get_chain_of_info()
-						.find_map(|facts| facts.prototypes.get(&this_passed))
-						.copied();
-
-					// if let gens @ Some(_) = object_constraint_structure_generics {
-					// 	gens.cloned()
-					// } else
-					if prototype.is_some_and(|prototype| {
-						checking_data.types.lookup_generic_map.contains_key(&prototype)
-					}) {
-						crate::utils::notify!("Registering lookup for calling");
-
-						Some(StructureGenericArguments::LookUp { on: this_passed })
+						.find_map(|c| c.object_constraints.get(&this_passed).copied())
+					{
+						if let Type::Constructor(Constructor::StructureGenerics(
+							StructureGenerics { arguments, .. },
+						)) = checking_data.types.get_type_by_id(object_constraint)
+						{
+							crate::utils::notify!("Here");
+							Some(arguments.clone())
+						} else {
+							None
+						}
 					} else {
-						None
+						let prototype = environment
+							.get_chain_of_info()
+							.find_map(|facts| facts.prototypes.get(&this_passed))
+							.copied();
+
+						if prototype.is_some_and(|prototype| {
+							checking_data.types.lookup_generic_map.contains_key(&prototype)
+						}) {
+							crate::utils::notify!("Registering lookup for calling");
+
+							Some(StructureGenericArguments::LookUp { on: this_passed })
+						} else {
+							None
+						}
 					}
 				} else {
 					None
@@ -236,15 +246,12 @@ fn get_logical_callable_from_type(
 				function: *f,
 				from,
 				this_value: on.unwrap_or(ThisValue::UseParent),
-				// Hopefully
-				_is_dependent: true,
 			};
 			Ok(Logical::Pure(function))
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
 			// Always from
 			Ok(Logical::Pure(FunctionLike {
-				_is_dependent: from.is_some(),
 				from: Some(from.unwrap_or(ty)),
 				function: *f,
 				this_value: on.unwrap_or(*t),
@@ -252,7 +259,6 @@ fn get_logical_callable_from_type(
 		}
 		Type::SpecialObject(SpecialObjects::ClassConstructor { constructor, .. }) => {
 			Ok(Logical::Pure(FunctionLike {
-				_is_dependent: from.is_some(),
 				from,
 				function: *constructor,
 				this_value: ThisValue::UseParent,

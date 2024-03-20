@@ -502,6 +502,7 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 			annotation.get_position().with_source(source),
 		))
 	} else {
+		crate::utils::notify!("Failed comment as type annotation");
 		// TODO warning
 		None
 	}
@@ -525,6 +526,7 @@ pub(crate) fn get_annotation_from_declaration<
 	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =
 		&declaration.name
 	{
+		crate::utils::notify!("Here {:?}", possible_declaration);
 		comment_as_type_annotation(
 			possible_declaration,
 			&position.with_source(environment.get_source()),

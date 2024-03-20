@@ -504,7 +504,7 @@ impl<'a> Environment<'a> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
-		if let Some((_, _, variable)) = variable_in_map {
+		if let Some((_, boundary, variable)) = variable_in_map {
 			match variable {
 				VariableOrImport::Variable { mutability, declared_at, context: _ } => {
 					match mutability {
@@ -514,6 +514,17 @@ impl<'a> Environment<'a> {
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
 							let variable_site = *declared_at;
+							let variable_id = variable.get_id();
+
+							if boundary.is_none()
+								&& !self.get_chain_of_info().any(|info| {
+									info.variable_current_value.contains_key(&variable_id)
+								}) {
+								return Err(AssignmentError::TDZ(TDZ {
+									position: assignment_position,
+									variable_name: variable_name.to_owned(),
+								}));
+							}
 
 							if let Some(reassignment_constraint) = *reassignment_constraint {
 								// TODO tuple with position:
@@ -553,8 +564,6 @@ impl<'a> Environment<'a> {
 									});
 								}
 							}
-
-							let variable_id = variable.get_id();
 
 							self.info.events.push(Event::SetsVariable(
 								variable_id,

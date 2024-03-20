@@ -418,12 +418,12 @@ This contains new features (which don't have)
 #### Comments as type annotations
 
 ```ts
-function x(a /* : string */) {
+function x(a /** string */) {
     a satisfies number
 }
 
-const c /* : number */ = "5"
+const c /** number */ = "5"
 ```
 
 - Expected number, found string
-- Cannot assign "5" to type number
+- Type "5" is not assignable to type number

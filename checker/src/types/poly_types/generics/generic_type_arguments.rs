@@ -78,37 +78,42 @@ impl TypeArgumentStore for FunctionTypeArguments {
 		None
 	}
 
-	fn curry_arguments(&self, types: &mut TypeStore, id: TypeId) -> TypeId {
+	fn curry_arguments(&self, types: &mut TypeStore, on: TypeId) -> TypeId {
 		// TODO some types might not have parameters, but still need specialising so this here will miss things out
 		// types.get_type_by_id(id).get_parameters() {
 		// 	let arguments = parameters
 		// 		.into_iter()
 		// .map(|p| (p, (self.local_arguments.get(&p).copied().unwrap_or(p), self.call_site)))
 		// .collect();
-		let id = if self.local_arguments.is_empty() {
-			id
+		if let Type::Object(crate::types::ObjectNature::RealDeal) | Type::SpecialObject(..) =
+			types.get_type_by_id(on)
+		{
+			if self.closure_ids.is_empty() {
+				on
+			} else {
+				types.register_type(Type::Constructor(
+					crate::types::Constructor::StructureGenerics(StructureGenerics {
+						on,
+						arguments: StructureGenericArguments::Closure(self.closure_ids.clone()),
+					}),
+				))
+			}
 		} else {
-			types.register_type(Type::Constructor(crate::types::Constructor::StructureGenerics(
-				StructureGenerics {
-					on: id,
-					arguments: StructureGenericArguments::ExplicitRestrictions(
-						self.local_arguments
-							.iter()
-							.map(|(on, arg)| (*on, (*arg, self.call_site)))
-							.collect(),
-					),
-				},
-			)))
-		};
-		if self.closure_ids.is_empty() {
-			id
-		} else {
-			types.register_type(Type::Constructor(crate::types::Constructor::StructureGenerics(
-				StructureGenerics {
-					on: id,
-					arguments: StructureGenericArguments::Closure(self.closure_ids.clone()),
-				},
-			)))
+			if self.local_arguments.is_empty() {
+				on
+			} else {
+				types.register_type(Type::Constructor(
+					crate::types::Constructor::StructureGenerics(StructureGenerics {
+						on,
+						arguments: StructureGenericArguments::ExplicitRestrictions(
+							self.local_arguments
+								.iter()
+								.map(|(on, arg)| (*on, (*arg, self.call_site)))
+								.collect(),
+						),
+					}),
+				))
+			}
 		}
 	}
 
@@ -135,6 +140,11 @@ pub enum StructureGenericArguments {
 		/// The object that has a generic prototype
 		on: TypeId,
 	},
+	// /// TODO this shouldn't exist, but as there is no way to disce
+	// ClosuresAndGenerics {
+	// 	closures: Vec<ClosureId>,
+	// 	restrictions: TypeRestrictions,
+	// },
 }
 
 impl StructureGenericArguments {
@@ -155,8 +165,9 @@ impl StructureGenericArguments {
 		types: &TypeStore,
 	) -> Option<Vec<TypeId>> {
 		match self {
-			StructureGenericArguments::ExplicitRestrictions(s) => {
-				s.get(&under).map(|(ty, _)| vec![*ty])
+			// | Self::ClosuresAndGenerics { restrictions, .. } => {
+			StructureGenericArguments::ExplicitRestrictions(restrictions) => {
+				restrictions.get(&under).map(|(ty, _)| vec![*ty])
 			}
 			StructureGenericArguments::Closure(_) => None,
 			StructureGenericArguments::LookUp { on } => {

@@ -259,7 +259,6 @@ declare function context_id_chain(): void;
 @Constant
 declare function satisfies<T>(t: T): T;
 
-
 @Constant
 declare function compile_type_to_object<T>(): any;
 // ↑↑ Ezno Functions ↑↑

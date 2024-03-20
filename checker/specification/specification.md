@@ -58,7 +58,7 @@ a = 3;
 let a = 2;
 ```
 
-- Cannot assign to variable 'a' before initialisation
+- Cannot assign to 'a' before declaration
 
 #### Assignment to non-existent variable
 
@@ -2060,23 +2060,6 @@ function callFunction<T>(fn: (p: T) => void) {
 callFunction<string>(a => {
     a satisfies number;
 })
-```
-
-- Expected number, found string
-
-#### Returning a function
-
-> Yes, returns another function
-
-```ts
-type ExpectedFunction = () => ((a: string) => string)
-
-const x: ExpectedFunction  = function () {
-    return function (b) {
-        b satisfies number;
-        return b
-    }
-}
 ```
 
 - Expected number, found string

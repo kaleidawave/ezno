@@ -19,7 +19,7 @@ use source_map::{Span, SpanWithSource};
 use crate::{
 	context::environment::ExpectedReturnType,
 	diagnostics::{
-		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
 	},
 	events::{ApplicationResult, RootReference},
 	features::{
@@ -354,6 +354,8 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// Similar to [`Context::get_this_unbound`]
+	///
+	/// First `bool` is whether this variable is on [`Context<Root>`]
 	fn get_variable_unbound(
 		&self,
 		variable_name: &str,
@@ -1080,6 +1082,7 @@ pub enum AssignmentError {
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 	},
+	TDZ(TDZ),
 }
 
 /// Wraps logic

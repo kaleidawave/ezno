@@ -228,12 +228,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 		}
 	}
 
-	// Second stage
+	// Second stage: variables and function type hoisting
 	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(stmt) = stmt {
 					for declaration in &stmt.declarations {
+						crate::utils::notify!("declaration.name {:?}", declaration.name);
 						let constraint = get_annotation_from_declaration(
 							declaration,
 							environment,
