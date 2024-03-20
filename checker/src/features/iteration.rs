@@ -495,7 +495,9 @@ pub(crate) fn run_iteration_block(
 		}
 		IterationKind::Properties { on, variable } => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				for (_publicity, property, _value) in get_properties_on_type(on, top_environment) {
+				for (_publicity, property, _value) in
+					get_properties_on_type(on, types, top_environment)
+				{
 					crate::utils::notify!("Property: {:?}", property);
 
 					let property_key_as_type = match property {

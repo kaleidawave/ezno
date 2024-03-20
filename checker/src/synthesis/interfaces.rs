@@ -70,21 +70,30 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		environment: &mut Environment,
 	) {
 		let (publicity, under) = match key {
-			ParserPropertyKeyType::ClassProperty(key) => (
-				if matches!(
-					key,
-					parser::PropertyKey::Ident(
-						_,
-						_,
-						parser::property_key::PublicOrPrivate::Private
-					)
-				) {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				},
-				parser_property_key_to_checker_property_key(key, environment, checking_data),
-			),
+			ParserPropertyKeyType::ClassProperty(key) => {
+				// TODO
+				let perform_side_effect_computed = true;
+				(
+					if matches!(
+						key,
+						parser::PropertyKey::Ident(
+							_,
+							_,
+							parser::property_key::PublicOrPrivate::Private
+						)
+					) {
+						Publicity::Private
+					} else {
+						Publicity::Public
+					},
+					parser_property_key_to_checker_property_key(
+						key,
+						environment,
+						checking_data,
+						perform_side_effect_computed,
+					),
+				)
+			}
 			// ParserPropertyKeyType::ObjectProperty(key) => (
 			// 	Publicity::Public,
 			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
@@ -174,10 +183,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						return_type.as_ref(),
 						environment,
 						checking_data,
-						crate::synthesis::Performs::None,
 						&position.with_source(environment.get_source()),
 						behavior,
-						interface_register_behavior.interface_type(),
 					);
 
 					interface_register_behavior.register(
@@ -274,7 +281,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 
 					// TODO
 					let _parameter = checking_data.types.register_type(Type::RootPolyType(
-						crate::types::PolyNature::Generic {
+						crate::types::PolyNature::FunctionGeneric {
 							name: parameter.clone(),
 							eager_fixed: to,
 						},

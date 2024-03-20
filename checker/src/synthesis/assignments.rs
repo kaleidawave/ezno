@@ -55,6 +55,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 									from,
 									environment,
 									checking_data,
+									true,
 								);
 								let a = synthesise_object_shorthand_assignable(
 									name,

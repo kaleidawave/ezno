@@ -52,29 +52,39 @@ jobs:
       - name: Run checker performance
         shell: bash
         run: |
+          cat ./checker/specification/specification.md
+          echo "Here1"
+
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md demo.ts
+          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
+
+          echo "Here2"
+          cat ./demo.ts
 
           echo "<details>
           <summary>Input</summary>
 
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
+
           lines=$(scc -c --no-cocomo -f json .\private\tocheck\all.ts | jq ".[0].Code")
           echo "// $lines of TypeScript" >> $GITHUB_STEP_SUMMARY
-          cat demo.ts >> $GITHUB_STEP_SUMMARY
+          cat ./demo.ts >> $GITHUB_STEP_SUMMARY
+
           echo "\`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          # Printing diagnostics, so turn colors off for GH Summary
-          NO_COLOR=1
-        
+          
           echo "<details>
           <summary>Diagnostics</summary>
-
+          
           \`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Printing diagnostics, so turn colors off for GH Summary
+          NO_COLOR=1
           ./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY
+
           echo "\`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY

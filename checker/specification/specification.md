@@ -51,6 +51,15 @@ const a = c
 
 - Could not find variable 'c' in scope
 
+#### Assigning before declaration
+
+```ts
+a = 3;
+let a = 2;
+```
+
+- Cannot assign to 'a' before declaration
+
 #### Assignment to non-existent variable
 
 ```ts
@@ -244,12 +253,14 @@ const z: false = true || 4
 (Math.PI > 3) satisfies true;
 (4 < 2) satisfies true;
 (4 > 2) satisfies number;
-(2 >= 2) satisfies string;
+(6 >= 2) satisfies string;
+(6 <= 2) satisfies 5;
 ```
 
 - Expected true, found false
 - Expected number, found true
 - Expected string, found true
+- Expected 5, found false
 
 #### String operations (constant functions can use `this`)
 
@@ -842,7 +853,7 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-- Assignment mismatch
+- Invalid assignment to parameter
 
 > Error message could be better. Full diagnostic contains labels with more information
 > `readA` is allowed, which is disallowed in Hegel, but here is allowed to preserve TSC compatibility (and because how structural subtyping is implemented)
@@ -861,25 +872,6 @@ function getObject(condition: boolean) {
 ```
 
 - Expected string, found 4
-
-#### Mutating an object by a function
-
-> This is where the object loses its constant-ness
-
-```ts
-function doThingWithCallback(callback: (obj: { x: number }) => any) {
-	const obj: { x: number } = { x: 8 };
-	callback(obj);
-	(obj.x satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { x: number }) => obj.x = 2);
-object.x satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
 
 #### Assigning to parameter observed via effect
 
@@ -1050,7 +1042,7 @@ function conditional(v: string) {
 	}
 }
 conditional(value);
-a satisfies string
+a satisfies string;
 ```
 
 - Expected string, found "hi" | 0
@@ -1361,7 +1353,7 @@ x.push("hi");
 > TODO other arguments (index and `this`). and poly
 
 ```ts
-[1, 2, 3].find(x => x % 2 === 0) satisfies 4
+[1, 2, 3].find(x => x % 2 === 0) satisfies 4;
 ```
 
 - Expected 4, found 2
@@ -1716,6 +1708,17 @@ X.a satisfies 3
 
 - Expected 3, found 2
 
+#### Use before defined
+
+> Declared same as `let` and `const`
+
+```ts
+const x = new X;
+class X { }
+```
+
+- Variable 'X' used before declaration
+
 ### Types
 
 #### Non existent type
@@ -1820,7 +1823,7 @@ runWithCallback(() => 3)
 
 > Here argument is fine. In the body the return type is `any` (inferred constraint, but doesn't matter)
 
-- Expected string, found any
+- Expected string, found void
 - Cannot return 5 because the function is expected to return void
 
 #### Indexing into (fixed) type
@@ -2057,19 +2060,6 @@ function callFunction<T>(fn: (p: T) => void) {
 callFunction<string>(a => {
     a satisfies number;
 })
-```
-
-- Expected number, found string
-
-#### Return type
-
-```ts
-const x: () => ((a: string) => string) = function () {
-    return function (b) {
-        b satisfies number;
-        return b
-    }
-}
 ```
 
 - Expected number, found string

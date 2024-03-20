@@ -56,9 +56,7 @@ fn check_errors(
 		vec![PathBuf::from("main.ts")],
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path: &Path| -> Option<Vec<u8>> {
-			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
-			} else if code.len() == 1 {
+			if code.len() == 1 {
 				Some(code[0].1.to_owned().into())
 			} else {
 				code.iter()

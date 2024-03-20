@@ -291,6 +291,7 @@ dependencies = [
  "ordered-float",
  "path-absolutize",
  "serde",
+ "simple-json-parser",
  "source-map",
  "temporary-annex",
  "tsify",
@@ -748,6 +749,12 @@ dependencies = [
  "ryu",
  "serde",
 ]
+
+[[package]]
+name = "simple-json-parser"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "837c5f8866aeabd3ac8addcf50ef1e2779fe8c2a8d74bdd97102bdfe5605c629"
 
 [[package]]
 name = "source-map"
