@@ -261,6 +261,7 @@ impl ASTNode for ArrayDestructuringField {
 #[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType, Eq)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
+// REVIEW: why separate named and mapped?
 pub enum ObjectDestructuringField {
 	/// `{ x }` and (annoyingly) `{ x = 2 }`
 	Name(VariableIdentifier, Option<Box<Expression>>, Span),
