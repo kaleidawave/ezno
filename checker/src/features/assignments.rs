@@ -11,7 +11,7 @@ use super::operations::{LogicalOperator, MathematicalAndBitwise};
 pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
 	Reference(Reference),
 	ObjectDestructuring(Vec<WithComment<AssignableObjectDestructuringField<A>>>),
-	ArrayDestructuring(Vec<Option<Assignable<A>>>),
+	ArrayDestructuring(Vec<WithComment<AssignableArrayDestructuringField<A>>>),
 }
 
 // TODO derive copy, when span derives copy
@@ -33,6 +33,14 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 	},
 	/// `{ ...x }`
 	Spread(VariableIdentifier, SpanWithSource),
+}
+
+pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
+	Spread(Assignable<A>, SpanWithSource),
+	// TODO (#125): do not rely on static lifetime
+	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
+	Comment { content: String, is_multiline: bool, position: SpanWithSource },
+	None,
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number

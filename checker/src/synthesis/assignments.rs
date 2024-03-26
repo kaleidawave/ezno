@@ -6,7 +6,10 @@ use parser::{
 
 use crate::{
 	context::{information::Publicity, Environment},
-	features::assignments::{Assignable, AssignableObjectDestructuringField, Reference},
+	features::assignments::{
+		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
+		Reference,
+	},
 	synthesis::expressions::synthesise_expression,
 	types::properties::PropertyKey,
 	CheckingData, TypeId,
@@ -77,21 +80,43 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 		LHSOfAssignment::ArrayDestructuring(items, _) => Assignable::ArrayDestructuring(
 			items
 				.iter()
-				.map(|item| match item.get_ast_ref() {
-					parser::ArrayDestructuringField::Spread(_, _) => todo!(),
-					parser::ArrayDestructuringField::Name(name, _) => match name {
-						parser::VariableField::Name(name) => {
-							Some(synthesise_object_shorthand_assignable(
-								name,
-								checking_data,
-								environment,
-							))
+				.map(|item_with_comment| {
+					item_with_comment.map_ref(|item| match item {
+						parser::ArrayDestructuringField::Spread(name, position) => {
+							AssignableArrayDestructuringField::Spread(
+								synthesise_lhs_of_assignment_to_reference(
+									// TODO (#125): try not to convert back to `LHSOfAssignment`
+									&LHSOfAssignment::from(name),
+									environment,
+									checking_data,
+								),
+								position.with_source(environment.get_source()),
+							)
 						}
-						parser::VariableField::Array(_, _) => todo!(),
-						parser::VariableField::Object(_, _) => todo!(),
-					},
-					parser::ArrayDestructuringField::Comment { .. }
-					| parser::ArrayDestructuringField::None => None,
+						parser::ArrayDestructuringField::Name(name, default_value) => {
+							AssignableArrayDestructuringField::Name(
+								synthesise_lhs_of_assignment_to_reference(
+									// TODO (#125): try not to convert back to `LHSOfAssignment`
+									&LHSOfAssignment::from(name),
+									environment,
+									checking_data,
+								),
+								default_value.clone(),
+							)
+						}
+						parser::ArrayDestructuringField::Comment {
+							content,
+							is_multiline,
+							position,
+						} => AssignableArrayDestructuringField::Comment {
+							content: content.clone(),
+							is_multiline: *is_multiline,
+							position: position.with_source(environment.get_source()),
+						},
+						parser::ArrayDestructuringField::None => {
+							AssignableArrayDestructuringField::None
+						}
+					})
 				})
 				.collect(),
 		),
