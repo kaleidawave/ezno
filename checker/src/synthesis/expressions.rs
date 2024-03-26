@@ -549,7 +549,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				publicity,
 				&property,
 				checking_data,
-				*position,
+				position.with_source(environment.get_source()),
 			);
 
 			match result {
@@ -573,7 +573,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Publicity::Public,
 				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
-				*position,
+				position.with_source(environment.get_source()),
 			);
 
 			match result {
