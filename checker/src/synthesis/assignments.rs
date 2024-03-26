@@ -6,7 +6,7 @@ use parser::{
 
 use crate::{
 	context::{information::Publicity, Environment},
-	features::assignments::{Assignable, Reference},
+	features::assignments::{Assignable, AssignableObjectDestructuringField, Reference},
 	synthesis::expressions::synthesise_expression,
 	types::properties::PropertyKey,
 	CheckingData, TypeId,
@@ -25,49 +25,52 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 		LHSOfAssignment::ObjectDestructuring(items, _) => Assignable::ObjectDestructuring(
 			items
 				.iter()
-				.map(|item| match item.get_ast_ref() {
-					parser::ObjectDestructuringField::Name(name, _, _) => {
-						let on = if let VariableIdentifier::Standard(name, _) = name {
-							PropertyKey::String(Cow::Owned(name.clone()))
-						} else {
-							todo!()
-						};
-						(
-							on,
-							synthesise_object_shorthand_assignable(
-								name,
-								checking_data,
-								environment,
-							),
-						)
-					}
-					parser::ObjectDestructuringField::Spread(_, _) => todo!(),
-					parser::ObjectDestructuringField::Map {
-						from,
-						name,
-						default_value: _,
-						position: _,
-					} => {
-						// TODO into function
-						match name.get_ast_ref() {
-							parser::VariableField::Name(name) => {
-								let on = parser_property_key_to_checker_property_key(
-									from,
-									environment,
-									checking_data,
-									true,
-								);
-								let a = synthesise_object_shorthand_assignable(
+				.map(|item_with_comment| {
+					item_with_comment.map_ref(|item| match item {
+						parser::ObjectDestructuringField::Name(name, default_value, position) => {
+							AssignableObjectDestructuringField::Mapped {
+								on: synthesise_object_property_key(name, &environment),
+								name: synthesise_object_shorthand_assignable(
 									name,
 									checking_data,
 									environment,
-								);
-								(on, a)
+								),
+								default_value: default_value.clone(),
+								position: position.with_source(environment.get_source()),
 							}
-							parser::VariableField::Array(_, _) => todo!(),
-							parser::VariableField::Object(_, _) => todo!(),
 						}
-					}
+						parser::ObjectDestructuringField::Spread(name, position) => {
+							AssignableObjectDestructuringField::Spread(
+								name.clone(),
+								position.with_source(environment.get_source()),
+							)
+						}
+						parser::ObjectDestructuringField::Map {
+							from,
+							name,
+							default_value,
+							position,
+						} => {
+							let on = parser_property_key_to_checker_property_key(
+								from,
+								environment,
+								checking_data,
+								true,
+							);
+
+							AssignableObjectDestructuringField::Mapped {
+								on,
+								name: synthesise_lhs_of_assignment_to_reference(
+									// TODO (#125): try not to convert back to `LHSOfAssignment`
+									&LHSOfAssignment::from(name.get_ast_ref()),
+									environment,
+									checking_data,
+								),
+								default_value: default_value.clone(),
+								position: position.with_source(environment.get_source()),
+							}
+						}
+					})
 				})
 				.collect(),
 		),
@@ -107,6 +110,18 @@ fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
 			Reference::Variable(name.clone(), pos.with_source(environment.get_source())),
 		),
+		parser::VariableIdentifier::Marker(..) => todo!(),
+	}
+}
+
+fn synthesise_object_property_key(
+	name: &parser::VariableIdentifier,
+	environment: &Environment,
+) -> PropertyKey<'static> {
+	match name {
+		parser::VariableIdentifier::Standard(name, pos) => {
+			PropertyKey::String(Cow::Owned(name.to_owned()))
+		}
 		parser::VariableIdentifier::Marker(..) => todo!(),
 	}
 }

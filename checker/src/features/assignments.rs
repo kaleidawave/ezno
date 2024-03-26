@@ -1,13 +1,17 @@
+use parser::{Expression, VariableIdentifier, WithComment};
 use source_map::SpanWithSource;
 
-use crate::{context::information::Publicity, types::properties::PropertyKey, TypeId};
+use crate::{
+	context::information::Publicity, synthesis::EznoParser, types::properties::PropertyKey, TypeId,
+};
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
-pub enum Assignable {
+// TODO (#125): do not default to `EznoParser`
+pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<(PropertyKey<'static>, Assignable)>),
-	ArrayDestructuring(Vec<Option<Assignable>>),
+	ObjectDestructuring(Vec<WithComment<AssignableObjectDestructuringField<A>>>),
+	ArrayDestructuring(Vec<Option<Assignable<A>>>),
 }
 
 // TODO derive copy, when span derives copy
@@ -16,6 +20,19 @@ pub enum Assignable {
 pub enum Reference {
 	Variable(String, SpanWithSource),
 	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
+}
+
+pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
+	/// `{ x: y }`
+	Mapped {
+		on: PropertyKey<'static>,
+		name: Assignable<A>,
+		// TODO (#125): do not rely on static lifetime
+		default_value: Option<Box<A::Expression<'static>>>,
+		position: SpanWithSource,
+	},
+	/// `{ ...x }`
+	Spread(VariableIdentifier, SpanWithSource),
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number

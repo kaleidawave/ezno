@@ -8,7 +8,7 @@ use crate::{
 	},
 	events::{ApplicationResult, Event, FinalEvent, RootReference},
 	features::{
-		assignments::{Assignable, AssignmentKind, Reference},
+		assignments::{Assignable, AssignableObjectDestructuringField, AssignmentKind, Reference},
 		modules::Exported,
 		objects::SpecialObjects,
 		operations::{
@@ -238,7 +238,7 @@ impl<'a> Environment<'a> {
 		A: crate::ASTImplementation,
 	>(
 		&mut self,
-		lhs: Assignable,
+		lhs: Assignable<A>,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
 		expression: Option<&'b A::Expression<'b>>,
@@ -327,13 +327,13 @@ impl<'a> Environment<'a> {
 
 				match operator {
 					AssignmentKind::Assign => {
-						let new = A::synthesise_expression(
+						let rhs = A::synthesise_expression(
 							expression.unwrap(),
 							TypeId::ANY_TYPE,
 							self,
 							checking_data,
 						);
-						let result = set_reference(self, reference, new, checking_data);
+						let result = set_reference(self, reference, rhs, checking_data);
 						match result {
 							Ok(ty) => ty,
 							Err(error) => {
@@ -342,12 +342,21 @@ impl<'a> Environment<'a> {
 									error,
 									assignment_span.with_source(self.get_source()),
 									&checking_data.types,
-									new,
+									rhs,
 								);
 								checking_data.diagnostics_container.add_error(error);
 								TypeId::ERROR_TYPE
 							}
 						}
+
+						// TODO (#125): use `assign_to_assign_only_handle_errors`
+
+						// return self.assign_to_assign_only_handle_errors(
+						// 	lhs,
+						// 	expression,
+						// 	assignment_span,
+						// 	checking_data,
+						// )
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
@@ -464,8 +473,183 @@ impl<'a> Environment<'a> {
 					}
 				}
 			}
-			Assignable::ObjectDestructuring(_) => todo!(),
+			Assignable::ObjectDestructuring(..) => {
+				debug_assert!(matches!(operator, AssignmentKind::Assign));
+
+				let rhs = A::synthesise_expression(
+					expression.unwrap(),
+					TypeId::ANY_TYPE,
+					self,
+					checking_data,
+				);
+
+				self.assign_to_assign_only_handle_errors(lhs, rhs, assignment_span, checking_data)
+			}
 			Assignable::ArrayDestructuring(_) => todo!(),
+		}
+	}
+
+	pub fn assign_to_assign_only_handle_errors<
+		'b,
+		T: crate::ReadFromFS,
+		A: crate::ASTImplementation,
+	>(
+		&mut self,
+		lhs: Assignable<A>,
+		rhs: TypeId,
+		assignment_span: Span,
+		checking_data: &mut CheckingData<T, A>,
+	) -> TypeId {
+		match lhs {
+			Assignable::Reference(reference) => {
+				/// Returns
+				fn get_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
+					env: &mut Environment,
+					reference: Reference,
+					checking_data: &mut CheckingData<U, A>,
+				) -> TypeId {
+					match reference {
+						Reference::Variable(name, position) => {
+							env.get_variable_handle_error(&name, position, checking_data).unwrap().1
+						}
+						Reference::Property { on, with, publicity, span } => {
+							let get_property_handle_errors = env.get_property_handle_errors(
+								on,
+								publicity,
+								&with,
+								checking_data,
+								span.without_source(),
+							);
+							match get_property_handle_errors {
+								Ok(i) => i.get_value(),
+								Err(()) => TypeId::ERROR_TYPE,
+							}
+						}
+					}
+				}
+
+				fn set_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
+					env: &mut Environment,
+					reference: Reference,
+					rhs: TypeId,
+					checking_data: &mut CheckingData<U, A>,
+				) -> Result<TypeId, SetPropertyError> {
+					match reference {
+						Reference::Variable(name, position) => Ok(env
+							.assign_to_variable_handle_errors(
+								name.as_str(),
+								position,
+								rhs,
+								checking_data,
+							)),
+						Reference::Property { on, with, publicity, span } => Ok(env
+							.set_property(
+								on,
+								publicity,
+								&with,
+								rhs,
+								&mut checking_data.types,
+								Some(span),
+								&checking_data.options,
+							)?
+							.unwrap_or(rhs)),
+					}
+				}
+
+				fn set_property_error_to_type_check_error(
+					ctx: &impl InformationChain,
+					error: SetPropertyError,
+					assignment_span: SpanWithSource,
+					types: &TypeStore,
+					new: TypeId,
+				) -> TypeCheckError<'static> {
+					match error {
+						SetPropertyError::NotWriteable => {
+							TypeCheckError::PropertyNotWriteable(assignment_span)
+						}
+						SetPropertyError::DoesNotMeetConstraint {
+							property_constraint,
+							reason: _,
+						} => TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
+							property_constraint,
+							value_type: TypeStringRepresentation::from_type_id(
+								new, ctx, types, false,
+							),
+							assignment_position: assignment_span,
+						}),
+					}
+				}
+
+				let result = set_reference(self, reference, rhs, checking_data);
+				match result {
+					Ok(ty) => ty,
+					Err(error) => {
+						let error = set_property_error_to_type_check_error(
+							self,
+							error,
+							assignment_span.with_source(self.get_source()),
+							&checking_data.types,
+							rhs,
+						);
+						checking_data.diagnostics_container.add_error(error);
+						TypeId::ERROR_TYPE
+					}
+				}
+			}
+			Assignable::ObjectDestructuring(assignments) => {
+				for assignment in assignments {
+					match assignment.get_ast() {
+						AssignableObjectDestructuringField::Mapped {
+							on,
+							name,
+							default_value,
+							position,
+						} => {
+							let value = self.get_property(
+								rhs,
+								Publicity::Public,
+								&on,
+								&mut checking_data.types,
+								None,
+								assignment_span,
+								&checking_data.options,
+							);
+
+							let rhs_value = if let Some((_, value)) = value {
+								value
+							} else if let Some(default_value) = default_value {
+								A::synthesise_expression(
+									default_value.as_ref(),
+									TypeId::ANY_TYPE,
+									self,
+									checking_data,
+								)
+							} else {
+								// TODO (#125): better error
+								TypeId::ERROR_TYPE
+							};
+
+							self.assign_to_assign_only_handle_errors(
+								name,
+								rhs_value,
+								assignment_span,
+								checking_data,
+							);
+						}
+						AssignableObjectDestructuringField::Spread(_, _) => todo!(),
+					}
+				}
+
+				rhs
+			}
+			Assignable::ArrayDestructuring(_) => {
+				checking_data.raise_unimplemented_error(
+					"destructuring array (needs iterator)",
+					assignment_span.with_source(self.get_source()),
+				);
+
+				todo!()
+			}
 		}
 	}
 

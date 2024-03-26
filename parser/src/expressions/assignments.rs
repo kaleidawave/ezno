@@ -362,6 +362,29 @@ impl TryFrom<Expression> for LHSOfAssignment {
 	}
 }
 
+// TODO (#125): better way of converting from `&crate::VariableField` to `LHSOfAssignment`
+impl From<&crate::VariableField> for LHSOfAssignment {
+	fn from(value: &crate::VariableField) -> Self {
+		match value {
+			crate::VariableField::Name(name) => match name {
+				crate::VariableIdentifier::Standard(name, pos) => {
+					LHSOfAssignment::VariableOrPropertyAccess(VariableOrPropertyAccess::Variable(
+						name.clone(),
+						*pos,
+					))
+				}
+				crate::VariableIdentifier::Marker(_, _) => todo!(),
+			},
+			crate::VariableField::Array(fields, pos) => {
+				LHSOfAssignment::ArrayDestructuring(fields.clone(), *pos)
+			}
+			crate::VariableField::Object(fields, pos) => {
+				LHSOfAssignment::ObjectDestructuring(fields.clone(), *pos)
+			}
+		}
+	}
+}
+
 fn lhs_to_variable_field(lhs: LHSOfAssignment) -> Result<crate::VariableField, ParseError> {
 	match lhs {
 		LHSOfAssignment::VariableOrPropertyAccess(VariableOrPropertyAccess::Variable(

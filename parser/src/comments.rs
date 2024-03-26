@@ -88,6 +88,18 @@ impl<T> WithComment<T> {
 			}
 		}
 	}
+
+	pub fn map_ref<U>(&self, cb: impl FnOnce(&T) -> U) -> WithComment<U> {
+		match self {
+			Self::None(item) => WithComment::None(cb(item)),
+			Self::PrefixComment(comment, item, position) => {
+				WithComment::PrefixComment(comment.clone(), cb(item), *position)
+			}
+			Self::PostfixComment(item, comment, position) => {
+				WithComment::PostfixComment(cb(item), comment.clone(), *position)
+			}
+		}
+	}
 }
 
 impl<T: ASTNode> ASTNode for WithComment<T> {

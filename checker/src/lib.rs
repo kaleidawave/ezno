@@ -133,8 +133,8 @@ pub trait ASTImplementation: Sized {
 	) -> (Names, LocalInformation);
 
 	/// Expected is used for eagerly setting function parameters
-	fn synthesise_expression<'a, T: crate::ReadFromFS>(
-		expression: &'a Self::Expression<'a>,
+	fn synthesise_expression<'a, 'b, T: crate::ReadFromFS>(
+		expression: &'a Self::Expression<'b>, // REVIEW (#125): 'b is only used for static lifetimes
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
