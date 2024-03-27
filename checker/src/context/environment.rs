@@ -488,13 +488,13 @@ impl<'a> Environment<'a> {
 		A: crate::ASTImplementation,
 	>(
 		&mut self,
-		assignments: Vec<parser::WithComment<AssignableObjectDestructuringField<A>>>,
+		assignments: Vec<AssignableObjectDestructuringField<A>>,
 		rhs: TypeId,
 		assignment_span: Span,
 		checking_data: &mut CheckingData<'b, T, A>,
 	) -> TypeId {
 		for assignment in assignments {
-			match assignment.get_ast() {
+			match assignment {
 				AssignableObjectDestructuringField::Mapped {
 					on,
 					name,
@@ -565,7 +565,7 @@ impl<'a> Environment<'a> {
 		A: crate::ASTImplementation,
 	>(
 		&mut self,
-		assignments: Vec<parser::WithComment<AssignableArrayDestructuringField<A>>>,
+		assignments: Vec<AssignableArrayDestructuringField<A>>,
 		rhs: TypeId,
 		assignment_span: Span,
 		checking_data: &mut CheckingData<'b, T, A>,

@@ -10,8 +10,8 @@ use super::operations::{LogicalOperator, MathematicalAndBitwise};
 // TODO (#125): do not default to `EznoParser`
 pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<WithComment<AssignableObjectDestructuringField<A>>>),
-	ArrayDestructuring(Vec<WithComment<AssignableArrayDestructuringField<A>>>),
+	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
+	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
 }
 
 // TODO derive copy, when span derives copy
