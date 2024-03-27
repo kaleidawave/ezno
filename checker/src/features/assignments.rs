@@ -7,8 +7,8 @@ use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
 pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<WithComment<AssignableObjectDestructuringField<A>>>),
-	ArrayDestructuring(Vec<WithComment<AssignableArrayDestructuringField<A>>>),
+	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
+	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
 }
 
 // TODO derive copy, when span derives copy
