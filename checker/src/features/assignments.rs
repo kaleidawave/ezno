@@ -7,7 +7,6 @@ use crate::{
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
-// TODO (#125): do not default to `EznoParser`
 pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
 	Reference(Reference),
 	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
@@ -27,7 +26,6 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 	Mapped {
 		on: PropertyKey<'static>,
 		name: Assignable<A>,
-		// TODO (#125): do not rely on static lifetime
 		default_value: Option<Box<A::Expression<'static>>>,
 		position: SpanWithSource,
 	},
@@ -37,7 +35,6 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 
 pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
 	Spread(Assignable<A>, SpanWithSource),
-	// TODO (#125): do not rely on static lifetime
 	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
 	Comment { content: String, is_multiline: bool, position: SpanWithSource },
 	None,
