@@ -188,6 +188,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
+	bind_this: bool,
 ) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE
 		|| matches!(under, PropertyKey::Type(under) if *under == TypeId::ERROR_TYPE)
@@ -215,6 +216,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			behavior,
 			types,
 			position,
+			bind_this,
 		)
 	} else if top_environment.possibly_mutated_objects.contains(&on) {
 		let Some(constraint) = top_environment.get_object_constraint(on) else {
@@ -231,13 +233,14 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			behavior,
 			types,
 			position,
+			bind_this,
 		)
 	} else {
 		// if environment.get_poly_base(under, types).is_some() {
 		// 	todo!()
 		// }
 		// TODO
-		get_from_an_object(on, publicity, under, top_environment, behavior, types)
+		get_from_an_object(on, publicity, under, top_environment, behavior, types, bind_this)
 	}
 }
 
@@ -248,6 +251,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
+	bind_this: bool,
 ) -> Option<(PropertyKind, TypeId)> {
 	/// Generates closure arguments, values of this and more. Runs getters
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
@@ -257,6 +261,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		behavior: &mut E,
+		bind_this: bool,
 	) -> Option<(PropertyKind, TypeId)> {
 		match logical {
 			Logical::Pure(property) => {
@@ -264,10 +269,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Value(value) => {
 						let ty = types.get_type_by_id(value);
 						match ty {
-							// TODO function :: bind_this
 							Type::SpecialObject(SpecialObjects::Function(func, _state)) => {
+								let this_value = if bind_this {
+									ThisValue::Passed(on)
+								} else {
+									ThisValue::UseParent
+								};
 								let func = types.register_type(Type::SpecialObject(
-									SpecialObjects::Function(*func, ThisValue::Passed(on)),
+									SpecialObjects::Function(*func, this_value),
 								));
 
 								Some((PropertyKind::Direct, func))
@@ -372,6 +381,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 				environment,
 				types,
 				behavior,
+				bind_this,
 			),
 		}
 	}
@@ -388,7 +398,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	// ? is okay here
 	let result = get_property_unbound(on, publicity, under, types, environment).ok()?;
 
-	resolve_property_on_logical(result, on, None, environment, types, behavior)
+	resolve_property_on_logical(result, on, None, environment, types, behavior, bind_this)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -402,6 +412,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
+	bind_this: bool,
 ) -> Option<(PropertyKind, TypeId)> {
 	fn resolve_logical_with_poly(
 		fact: Logical<PropertyValue>,
@@ -411,6 +422,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		arguments: Option<&StructureGenericArguments>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
+		bind_this: bool,
 	) -> Option<TypeId> {
 		match fact {
 			Logical::Pure(og) => {
@@ -431,8 +443,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								on,
 								under: under.into_owned(),
 								result,
-								// TODO #98
-								bind_this: true,
+								bind_this,
 							}))
 						}
 						// Don't need to set this here. It is picked up from `on` during lookup
@@ -441,15 +452,12 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::AliasTo { .. }
 						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
 						| Type::Interface { .. }
-						| Type::Class { .. } => {
-							types.register_type(Type::Constructor(Constructor::Property {
-								on,
-								under: under.into_owned(),
-								result: value,
-								// TODO #98
-								bind_this: true,
-							}))
-						}
+						| Type::Class { .. } => types.register_type(Type::Constructor(Constructor::Property {
+							on,
+							under: under.into_owned(),
+							result: value,
+							bind_this,
+						})),
 						Type::Constant(_)
 						| Type::Object(ObjectNature::RealDeal)
 						| Type::SpecialObject(..) => value,
@@ -497,9 +505,17 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						arguments,
 						environment,
 						types,
+						bind_this,
 					)?;
-					let rhs =
-						resolve_logical_with_poly(rhs, on, under, arguments, environment, types)?;
+					let rhs = resolve_logical_with_poly(
+						rhs,
+						on,
+						under,
+						arguments,
+						environment,
+						types,
+						bind_this,
+					)?;
 					Some(types.new_conditional_type(based_on, lhs, rhs))
 				} else {
 					crate::utils::notify!("TODO emit some diagnostic about missing");
@@ -518,6 +534,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					Some(&antecedent),
 					environment,
 					types,
+					bind_this,
 				)
 			}
 		}
@@ -527,7 +544,15 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 	// crate::utils::notify!("unbound is is {:?}", fact);
 
-	let value = resolve_logical_with_poly(fact, on, under.clone(), None, top_environment, types)?;
+	let value = resolve_logical_with_poly(
+		fact,
+		on,
+		under.clone(),
+		None,
+		top_environment,
+		types,
+		bind_this,
+	)?;
 
 	behavior.get_latest_info(top_environment).events.push(Event::Getter {
 		on,

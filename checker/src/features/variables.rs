@@ -184,6 +184,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				under,
 				checking_data,
 				position,
+				true,
 			)
 			.map_or(TypeId::ERROR_TYPE, Instance::get_value)
 	});

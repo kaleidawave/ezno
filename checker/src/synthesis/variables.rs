@@ -288,6 +288,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							None,
 							position,
 							&checking_data.options,
+							false,
 						);
 						let value = match property {
 							Some((_, value)) => value,
@@ -353,6 +354,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							None,
 							position.with_source(environment.get_source()),
 							&checking_data.options,
+							false,
 						);
 
 						let value = match property_value {
