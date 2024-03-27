@@ -95,9 +95,17 @@ pub(crate) fn apply_event(
 				under @ PropertyKey::String(_) => under,
 			};
 
-			let Some((_, value)) =
-				get_property(on, publicity, &under, None, environment, target, types, position)
-			else {
+			let Some((_, value)) = get_property(
+				on,
+				publicity,
+				&under,
+				None,
+				environment,
+				target,
+				types,
+				position,
+				true,
+			) else {
 				panic!(
 					"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
 					print_type(on, types, environment, true)

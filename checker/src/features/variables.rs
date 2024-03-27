@@ -136,6 +136,8 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 	checking_data: &mut CheckingData<T, A>,
 	at: Span,
 ) -> VariableRegisterArguments {
+	let position = at.with_source(environment.get_source());
+
 	let space = on.space.map(|space| {
 		let property_constraint = get_property_unbound(
 			space,
@@ -168,7 +170,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					&checking_data.types,
 					false,
 				),
-				site: at.with_source(environment.get_source()),
+				site: position,
 			});
 			TypeId::ERROR_TYPE
 		}
@@ -176,7 +178,14 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 
 	let initial_value = on.initial_value.map(|initial_value| {
 		environment
-			.get_property_handle_errors(initial_value, Publicity::Public, under, checking_data, at)
+			.get_property_handle_errors(
+				initial_value,
+				Publicity::Public,
+				under,
+				checking_data,
+				position,
+				true,
+			)
 			.map_or(TypeId::ERROR_TYPE, Instance::get_value)
 	});
 

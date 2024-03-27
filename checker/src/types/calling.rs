@@ -274,18 +274,12 @@ fn get_logical_callable_from_type(
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
 			})
 		}
-		Type::Constructor(Constructor::Property { on, under: _, result, bind_this: true }) => {
-			// bind_this from #98
-			// Bind does not happen for theses calls, so done here *conditionally on `bind_this`*
-
+		Type::Constructor(Constructor::Property { on, under: _, result, bind_this }) => {
 			crate::utils::notify!("Passing {:?}", on);
 
-			let result = get_logical_callable_from_type(
-				*result,
-				Some(ThisValue::Passed(*on)),
-				Some(ty),
-				types,
-			)?;
+			let this_value = if *bind_this { ThisValue::Passed(*on) } else { ThisValue::UseParent };
+			let result =
+				get_logical_callable_from_type(*result, Some(this_value), Some(ty), types)?;
 
 			if let Some(antecedent) = get_constraint(*on, types).and_then(|c| {
 				if let Type::Constructor(Constructor::StructureGenerics(generic)) =

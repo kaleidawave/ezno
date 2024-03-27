@@ -8,10 +8,10 @@ use parser::{
 use super::expressions::synthesise_expression;
 use crate::{
 	context::{information::Publicity, Context, ContextType, VariableRegisterArguments},
-	diagnostics::TypeCheckError,
+	diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation},
 	features::variables::{get_new_register_argument_under, VariableMutability},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::properties::PropertyKey,
+	types::{printing, properties::PropertyKey},
 	CheckingData, Environment, TypeId,
 };
 
@@ -268,8 +268,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				match item.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, _) => todo!(),
 					ObjectDestructuringField::Name(name, default_value, _) => {
-						let id =
-							crate::VariableId(environment.get_source(), name.get_position().start);
+						let position = name.get_position().with_source(environment.get_source());
+						let id = crate::VariableId(environment.get_source(), position.start);
 
 						let key_ty = match name {
 							VariableIdentifier::Standard(name, _) => {
@@ -286,13 +286,13 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							&key_ty,
 							&mut checking_data.types,
 							None,
-							name.get_position(),
+							position,
 							&checking_data.options,
+							false,
 						);
 						let value = match property {
 							Some((_, value)) => value,
 							None => {
-								// TODO non decidable error
 								if let Some(else_expression) = default_value {
 									synthesise_expression(
 										else_expression,
@@ -301,7 +301,33 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
-									// TODO emit error
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::PropertyDoesNotExist {
+											property: match key_ty {
+												PropertyKey::String(s) => {
+													PropertyRepresentation::StringKey(s.to_string())
+												}
+												PropertyKey::Type(t) => {
+													PropertyRepresentation::Type(
+														printing::print_type(
+															t,
+															&checking_data.types,
+															environment,
+															false,
+														),
+													)
+												}
+											},
+											on: TypeStringRepresentation::from_type_id(
+												value,
+												environment,
+												&checking_data.types,
+												false,
+											),
+											site: position,
+										},
+									);
+
 									TypeId::ERROR_TYPE
 								}
 							}
@@ -326,14 +352,14 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							&key_ty,
 							&mut checking_data.types,
 							None,
-							*position,
+							position.with_source(environment.get_source()),
 							&checking_data.options,
+							false,
 						);
 
 						let value = match property_value {
 							Some((_, value)) => value,
 							None => {
-								// TODO non decidable error
 								if let Some(default_value) = default_value {
 									synthesise_expression(
 										default_value,
@@ -342,7 +368,33 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
-									// TODO emit error
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::PropertyDoesNotExist {
+											property: match key_ty {
+												PropertyKey::String(s) => {
+													PropertyRepresentation::StringKey(s.to_string())
+												}
+												PropertyKey::Type(t) => {
+													PropertyRepresentation::Type(
+														printing::print_type(
+															t,
+															&checking_data.types,
+															environment,
+															false,
+														),
+													)
+												}
+											},
+											on: TypeStringRepresentation::from_type_id(
+												value,
+												environment,
+												&checking_data.types,
+												false,
+											),
+											site: position.with_source(environment.get_source()),
+										},
+									);
+
 									TypeId::ERROR_TYPE
 								}
 							}
