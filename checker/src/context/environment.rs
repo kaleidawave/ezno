@@ -269,7 +269,7 @@ impl<'a> Environment<'a> {
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
 						let reference_position = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data);
+						let existing = self.get_reference(reference.clone(), checking_data, true);
 
 						let expression = expression.unwrap();
 						let expression_pos =
@@ -308,7 +308,7 @@ impl<'a> Environment<'a> {
 						// let value =
 						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
 						let span = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data);
+						let existing = self.get_reference(reference.clone(), checking_data, true);
 
 						// TODO existing needs to be cast to number!!
 
@@ -351,7 +351,7 @@ impl<'a> Environment<'a> {
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
-						let existing = self.get_reference(reference.clone(), checking_data);
+						let existing = self.get_reference(reference.clone(), checking_data, true);
 						let expression = expression.unwrap();
 						let new = evaluate_logical_operation_with_expression(
 							(existing, reference.get_position().without_source()),
@@ -509,6 +509,7 @@ impl<'a> Environment<'a> {
 						None,
 						position,
 						&checking_data.options,
+						false,
 					);
 
 					let rhs_value = if let Some((_, value)) = value {
@@ -581,14 +582,21 @@ impl<'a> Environment<'a> {
 		&mut self,
 		reference: Reference,
 		checking_data: &mut CheckingData<U, A>,
+		bind_this: bool,
 	) -> TypeId {
 		match reference {
 			Reference::Variable(name, position) => {
 				self.get_variable_handle_error(&name, position, checking_data).unwrap().1
 			}
 			Reference::Property { on, with, publicity, span } => {
-				let get_property_handle_errors =
-					self.get_property_handle_errors(on, publicity, &with, checking_data, span);
+				let get_property_handle_errors = self.get_property_handle_errors(
+					on,
+					publicity,
+					&with,
+					checking_data,
+					span,
+					bind_this,
+				);
 				match get_property_handle_errors {
 					Ok(i) => i.get_value(),
 					Err(()) => TypeId::ERROR_TYPE,
@@ -818,6 +826,7 @@ impl<'a> Environment<'a> {
 		with: Option<TypeId>,
 		position: SpanWithSource,
 		options: &TypeCheckOptions,
+		bind_this: bool,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -828,6 +837,7 @@ impl<'a> Environment<'a> {
 			&mut CheckThings { debug_types: options.debug_types },
 			types,
 			position,
+			bind_this,
 		)
 	}
 
@@ -838,6 +848,7 @@ impl<'a> Environment<'a> {
 		key: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
 		site: SpanWithSource,
+		bind_this: bool,
 	) -> Result<Instance, ()> {
 		let get_property = self.get_property(
 			on,
@@ -847,6 +858,7 @@ impl<'a> Environment<'a> {
 			None,
 			site,
 			&checking_data.options,
+			bind_this,
 		);
 
 		if let Some((kind, result)) = get_property {

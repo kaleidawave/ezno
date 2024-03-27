@@ -548,6 +548,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				&property,
 				checking_data,
 				position.with_source(environment.get_source()),
+				true,
 			);
 
 			match result {
@@ -572,6 +573,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
 				position.with_source(environment.get_source()),
+				true,
 			);
 
 			match result {

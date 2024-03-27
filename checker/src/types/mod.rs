@@ -287,7 +287,6 @@ pub enum Constructor {
 		on: TypeId,
 		under: PropertyKey<'static>,
 		result: TypeId,
-		/// See issue #98
 		bind_this: bool,
 	},
 	/// For await a poly type
