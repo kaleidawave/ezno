@@ -5,7 +5,7 @@ use crate::{context::information::Publicity, types::properties::PropertyKey, Typ
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
-pub enum Assignable<A: crate::ASTImplementation> {
+pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
 	Reference(Reference),
 	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
 	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
@@ -24,7 +24,6 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 	Mapped {
 		on: PropertyKey<'static>,
 		name: Assignable<A>,
-		// TODO (#125): do not rely on static lifetime
 		default_value: Option<Box<A::Expression<'static>>>,
 		position: SpanWithSource,
 	},
@@ -34,7 +33,6 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 
 pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
 	Spread(Assignable<A>, SpanWithSource),
-	// TODO (#125): do not rely on static lifetime
 	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
 	Comment { content: String, is_multiline: bool, position: SpanWithSource },
 	None,
