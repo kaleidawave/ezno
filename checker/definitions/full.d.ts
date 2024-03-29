@@ -6,7 +6,7 @@ declare class Array<T> {
 
     length: number;
 
-    push(item: T) {
+    push(this: Array<T>, item: T) {
         this[this.length] = item;
         return ++this.length
     }
