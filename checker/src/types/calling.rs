@@ -944,16 +944,16 @@ impl FunctionType {
 					TypeId::UNDEFINED_TYPE
 				};
 
-				let mut basic_subtyping = BasicEquality {
-					add_property_restrictions: false,
-					position: call_site,
-					object_constraints: Default::default(),
-					allow_errors: true,
-				};
+				if let Some(constraint) = get_constraint(free_this_id, types) {
+					let mut basic_subtyping = BasicEquality {
+						add_property_restrictions: false,
+						position: call_site,
+						object_constraints: Default::default(),
+						allow_errors: true,
+					};
 
-				if let Some(lhs) = get_constraint(free_this_id, types) {
 					let type_is_subtype = type_is_subtype(
-						lhs,
+						constraint,
 						value_of_this,
 						&mut basic_subtyping,
 						environment,
