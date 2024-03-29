@@ -522,6 +522,11 @@ pub enum FunctionCallingError {
 		/// Should be set
 		call_site: Option<SpanWithSource>,
 	},
+	MismatchedThis {
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+		call_site: SpanWithSource,
+	},
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -703,6 +708,7 @@ impl FunctionType {
 			types,
 			&mut errors,
 			call_site,
+			behavior,
 		);
 
 		let local_arguments = self.assign_arguments_to_parameters::<E>(
@@ -904,7 +910,7 @@ impl FunctionType {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn set_this_for_behavior(
+	fn set_this_for_behavior<E: CallCheckingBehavior>(
 		&self,
 		called_with_new: CalledWithNew,
 		this_value: ThisValue,
@@ -913,6 +919,7 @@ impl FunctionType {
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
 		call_site: source_map::BaseSpan<SourceId>,
+		behavior: &E,
 	) {
 		match self.behavior {
 			FunctionBehavior::ArrowFunction { .. } => {}
@@ -926,6 +933,46 @@ impl FunctionType {
 					);
 					TypeId::UNDEFINED_TYPE
 				};
+
+				let mut basic_subtyping = BasicEquality {
+					add_property_restrictions: false,
+					position: call_site,
+					object_constraints: Default::default(),
+					allow_errors: true,
+				};
+
+				if let Some(lhs) = get_constraint(free_this_id, types) {
+					let type_is_subtype = type_is_subtype(
+						lhs,
+						value_of_this,
+						&mut basic_subtyping,
+						environment,
+						types,
+					);
+
+					match type_is_subtype {
+						SubTypeResult::IsSubType => {}
+						SubTypeResult::IsNotSubType(reason) => {
+							errors.errors.push(FunctionCallingError::MismatchedThis {
+								expected: TypeStringRepresentation::from_type_id(
+									free_this_id,
+									environment,
+									types,
+									behavior.debug_types(),
+								),
+								found: TypeStringRepresentation::from_type_id(
+									value_of_this,
+									environment,
+									types,
+									behavior.debug_types(),
+								),
+								call_site,
+							});
+						}
+					}
+				} else {
+					crate::utils::notify!("No constraint for this");
+				}
 
 				crate::utils::notify!(
 					"free this id {:?} & value of this {:?}",
