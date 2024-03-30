@@ -16,7 +16,7 @@ declare class Array<T> {
         return ++this.length
     }
 
-    pop(): T | undefined {
+    pop(this: Array<T>,): T | undefined {
         if (this.length === 0) {
             return undefined
         } else {
@@ -27,7 +27,7 @@ declare class Array<T> {
     }
 
     // TODO this argument
-    map<U>(cb: (t: T, i?: number) => U): Array<U> {
+    map<U>(this: Array<T>, cb: (t: T, i?: number) => U): Array<U> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
@@ -38,7 +38,7 @@ declare class Array<T> {
     }
 
     // // TODO any is debatable
-    filter(cb: (t: T, i?: number) => any): Array<T> {
+    filter(this: Array<T>, cb: (t: T, i?: number) => any): Array<T> {
         const { length } = this, filtered: Array<T> = [];
         let i: number = 0;
         while (i < length) {
@@ -51,7 +51,7 @@ declare class Array<T> {
     }
 
     // TODO any is debatable
-    find(cb: (t: T, i?: number) => any): T | undefined {
+    find(this: Array<T>, cb: (t: T, i?: number) => any): T | undefined {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -63,7 +63,7 @@ declare class Array<T> {
     }
 
     // TODO any is debatable
-    every(cb: (t: T, i?: number) => any): boolean {
+    every(this: Array<T>, cb: (t: T, i?: number) => any): boolean {
         const { length } = this;
         let i: number = 0;
         while (i < length) {
@@ -76,7 +76,7 @@ declare class Array<T> {
         return true
     }
 
-    some(cb: (t: T, i?: number) => any): boolean {
+    some(this: Array<T>, cb: (t: T, i?: number) => any): boolean {
         const { length } = this;
         let i: number = 0;
         while (i < length) {

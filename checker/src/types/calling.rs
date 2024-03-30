@@ -944,44 +944,42 @@ impl FunctionType {
 					TypeId::UNDEFINED_TYPE
 				};
 
-				if let Some(constraint) = get_constraint(free_this_id, types) {
-					let mut basic_subtyping = BasicEquality {
-						add_property_restrictions: false,
-						position: call_site,
-						object_constraints: Default::default(),
-						allow_errors: true,
-					};
+				let base_type = get_constraint(free_this_id, types).unwrap_or(free_this_id);
 
-					let type_is_subtype = type_is_subtype(
-						constraint,
-						value_of_this,
-						&mut basic_subtyping,
-						environment,
-						types,
-					);
+				let mut basic_subtyping = BasicEquality {
+					add_property_restrictions: false,
+					position: call_site,
+					object_constraints: Default::default(),
+					allow_errors: true,
+				};
 
-					match type_is_subtype {
-						SubTypeResult::IsSubType => {}
-						SubTypeResult::IsNotSubType(reason) => {
-							errors.errors.push(FunctionCallingError::MismatchedThis {
-								expected: TypeStringRepresentation::from_type_id(
-									free_this_id,
-									environment,
-									types,
-									behavior.debug_types(),
-								),
-								found: TypeStringRepresentation::from_type_id(
-									value_of_this,
-									environment,
-									types,
-									behavior.debug_types(),
-								),
-								call_site,
-							});
-						}
+				let type_is_subtype = type_is_subtype(
+					base_type,
+					value_of_this,
+					&mut basic_subtyping,
+					environment,
+					types,
+				);
+
+				match type_is_subtype {
+					SubTypeResult::IsSubType => {}
+					SubTypeResult::IsNotSubType(reason) => {
+						errors.errors.push(FunctionCallingError::MismatchedThis {
+							expected: TypeStringRepresentation::from_type_id(
+								free_this_id,
+								environment,
+								types,
+								behavior.debug_types(),
+							),
+							found: TypeStringRepresentation::from_type_id(
+								value_of_this,
+								environment,
+								types,
+								behavior.debug_types(),
+							),
+							call_site,
+						});
 					}
-				} else {
-					crate::utils::notify!("No constraint for this");
 				}
 
 				crate::utils::notify!(
