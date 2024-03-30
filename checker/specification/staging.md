@@ -250,7 +250,7 @@ class Class extends BaseClass {
 
 - Expected string, found boolean
 
-### Class `this` binding
+#### Class `this` binding
 
 ```ts
 class X {
@@ -393,7 +393,7 @@ x.a = "hi"
 ```ts
 const { toUpperCase } = "hi";
 
-print_type(toUpperCase());
+toUpperCase();
 ```
 
 - The 'this' context of the function is expected to be string, found undefined
