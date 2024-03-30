@@ -250,6 +250,21 @@ class Class extends BaseClass {
 
 - Expected string, found boolean
 
+### Class `this` binding
+
+```ts
+class X {
+    method() {
+        return this;
+    }
+}
+
+const { method } = new X();
+method();
+```
+
+- The 'this' context of the function is expected to be X, found undefined
+
 ### Overloads
 
 #### Calling
@@ -372,6 +387,16 @@ x.a = "hi"
 ```
 
 - Cannot assign. Restricted to number
+
+#### Unbinding the `this` context of a function
+
+```ts
+const { toUpperCase } = "hi";
+
+print_type(toUpperCase());
+```
+
+- The 'this' context of the function is expected to be string, found undefined
 
 ### Asynchronous functions and promises
 
