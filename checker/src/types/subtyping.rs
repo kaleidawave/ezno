@@ -709,6 +709,17 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
+			Type::Object(..) => subtype_properties(
+				base_type,
+				base_structure_arguments,
+				ty,
+				ty_structure_arguments,
+				behavior,
+				environment,
+				types,
+				mode,
+				already_checked,
+			),
 			_ => SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch),
 		},
 		Type::Interface { nominal: base_type_nominal, .. } => {
