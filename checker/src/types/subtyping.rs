@@ -720,6 +720,20 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 				mode,
 				already_checked,
 			),
+			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on,
+				arguments,
+			})) => type_is_subtype_with_generics(
+				base_type,
+				base_structure_arguments,
+				*on,
+				GenericChainLink::append(ty_structure_arguments.as_ref(), arguments),
+				behavior,
+				environment,
+				types,
+				mode,
+				already_checked,
+			),
 			_ => SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch),
 		},
 		Type::Interface { nominal: base_type_nominal, .. } => {
