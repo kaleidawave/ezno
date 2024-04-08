@@ -61,7 +61,7 @@ jobs:
           echo "::group::Generated demo.ts"
           cat ./demo.ts
 
-          cargo run -p ezno-parser --example parse ./demo.ts
+          cargo run -p ezno-parser --example parse demo.ts --timings
           echo "::endgroup::"
 
           echo "::info::Finished file generation"
@@ -72,8 +72,8 @@ jobs:
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
 
-          lines=$(scc -c --no-cocomo -f json .\demo.ts | jq ".[0].Code")
-          echo "// $lines of TypeScript" >> $GITHUB_STEP_SUMMARY
+          lines=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
+          echo "// $lines lines of TypeScript" >> $GITHUB_STEP_SUMMARY
           cat ./demo.ts >> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`
@@ -89,7 +89,7 @@ jobs:
           
           # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
           NO_COLOR=1
-          ./target/release/ezno check ./demo.ts --timings &>> $GITHUB_STEP_SUMMARY
+          ./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`
           </details>
@@ -98,12 +98,12 @@ jobs:
           echo "### Checking
           \`\`\`shell" >> $GITHUB_STEP_SUMMARY
 
-          hyperfine -i './target/release/ezno check ./demo.ts' >> $GITHUB_STEP_SUMMARY
+          hyperfine -i './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
           echo "::group::Comparing printing of diagnostics"
-          hyperfine -i './target/release/ezno check ./demo.ts' './target/release/ezno check ./demo.ts --count-diagnostics'
+          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
           echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
