@@ -191,7 +191,6 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	let calling_input = CallingInput {
 		called_with_new: crate::types::calling::CalledWithNew::None,
-		this_value: None,
 		call_site: position,
 		call_site_type_arguments: None,
 	};

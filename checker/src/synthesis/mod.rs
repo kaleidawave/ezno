@@ -184,6 +184,10 @@ impl crate::ASTImplementation for EznoParser {
 			},
 		);
 	}
+
+	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool {
+		parameter.extends.is_some()
+	}
 }
 
 /// `perform_side_effect_computed` is used for hoisting
@@ -245,7 +249,7 @@ impl crate::GenericTypeParameter for parser::TypeParameter {
 	}
 }
 
-pub(self) trait StatementOrExpressionVariable {
+pub trait StatementOrExpressionVariable {
 	fn get_variable_id(&self, under: SourceId) -> Option<VariableId>;
 }
 

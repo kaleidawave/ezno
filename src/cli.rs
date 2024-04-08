@@ -118,6 +118,9 @@ pub(crate) struct CheckArguments {
 	/// whether to display check time
 	#[argh(switch)]
 	pub timings: bool,
+	/// whether to print all diagnostics
+	#[argh(switch)]
+	pub count_diagnostics: bool,
 }
 
 // /// Run project using Deno
@@ -168,7 +171,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			crate::utilities::print_info();
 		}
 		CompilerSubCommand::Check(check_arguments) => {
-			let CheckArguments { input, watch: _, definition_file, timings } = check_arguments;
+			let CheckArguments { input, watch: _, definition_file, timings, count_diagnostics } =
+				check_arguments;
 			let entry_points = vec![input];
 
 			#[cfg(not(target_family = "wasm"))]
@@ -184,11 +188,18 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				eprintln!("Checked in {:?}", start.elapsed());
 			};
 
-			if !diagnostics.has_error() {
+			if diagnostics.has_error() {
+				let diagnostics = diagnostics.into_iter();
+				if count_diagnostics {
+					let count = diagnostics.count();
+					print_to_cli(format_args!("Found {count} type errors and warnings 😬",))
+				} else {
+					for diagnostic in diagnostics {
+						emit_ezno_diagnostic(diagnostic, &module_contents).unwrap();
+					}
+				}
+			} else {
 				print_to_cli(format_args!("No type errors found 🎉"))
-			}
-			for diagnostic in diagnostics.into_iter() {
-				emit_ezno_diagnostic(diagnostic, &module_contents).unwrap();
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {

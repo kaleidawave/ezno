@@ -29,6 +29,7 @@ jobs:
         with:
           packages: hyperfine
 
+      # For displaying line count in file
       - name: Download scc
         run: |
           mkdir scc
@@ -52,14 +53,18 @@ jobs:
       - name: Run checker performance
         shell: bash
         run: |
-          cat ./checker/specification/specification.md
-          echo "Here1"
+          echo "::info::Found specification"
 
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
 
-          echo "Here2"
+          echo "::group::Generated demo.ts"
           cat ./demo.ts
+
+          cargo run -p ezno-parser --example parse demo.ts --timings
+          echo "::endgroup::"
+
+          echo "::info::Finished file generation"
 
           echo "<details>
           <summary>Input</summary>
@@ -67,21 +72,22 @@ jobs:
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
 
-          lines=$(scc -c --no-cocomo -f json .\private\tocheck\all.ts | jq ".[0].Code")
-          echo "// $lines of TypeScript" >> $GITHUB_STEP_SUMMARY
+          lines=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
+          echo "// $lines lines of TypeScript" >> $GITHUB_STEP_SUMMARY
           cat ./demo.ts >> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          
+          echo "::info::Wrote code to summary"
+
           echo "<details>
           <summary>Diagnostics</summary>
           
           \`\`\`" >> $GITHUB_STEP_SUMMARY
           
-          # Printing diagnostics, so turn colors off for GH Summary
+          # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
           NO_COLOR=1
           ./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY
 
@@ -91,8 +97,14 @@ jobs:
           
           echo "### Checking
           \`\`\`shell" >> $GITHUB_STEP_SUMMARY
-          hyperfine './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
+
+          hyperfine -i './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
+
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "::group::Comparing printing of diagnostics"
+          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
+          echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
         shell: bash

@@ -98,22 +98,20 @@ impl TypeArgumentStore for FunctionTypeArguments {
 					}),
 				))
 			}
+		} else if self.local_arguments.is_empty() {
+			on
 		} else {
-			if self.local_arguments.is_empty() {
-				on
-			} else {
-				types.register_type(Type::Constructor(
-					crate::types::Constructor::StructureGenerics(StructureGenerics {
-						on,
-						arguments: StructureGenericArguments::ExplicitRestrictions(
-							self.local_arguments
-								.iter()
-								.map(|(on, arg)| (*on, (*arg, self.call_site)))
-								.collect(),
-						),
-					}),
-				))
-			}
+			types.register_type(Type::Constructor(crate::types::Constructor::StructureGenerics(
+				StructureGenerics {
+					on,
+					arguments: StructureGenericArguments::ExplicitRestrictions(
+						self.local_arguments
+							.iter()
+							.map(|(on, arg)| (*on, (*arg, self.call_site)))
+							.collect(),
+					),
+				},
+			)))
 		}
 	}
 
@@ -151,6 +149,7 @@ impl StructureGenericArguments {
 	#[must_use]
 	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
 		if let StructureGenericArguments::ExplicitRestrictions(type_restrictions) = self {
+			crate::utils::notify!("under={:?}", under);
 			type_restrictions.get(&under).map(|(l, _)| *l)
 		} else {
 			None
@@ -172,7 +171,7 @@ impl StructureGenericArguments {
 			StructureGenericArguments::Closure(_) => None,
 			StructureGenericArguments::LookUp { on } => {
 				let prototype =
-					*info.get_chain_of_info().find_map(|env| env.prototypes.get(&on)).unwrap();
+					*info.get_chain_of_info().find_map(|env| env.prototypes.get(on)).unwrap();
 
 				let lookup = types
 					.lookup_generic_map
@@ -196,7 +195,7 @@ impl TypeArgumentStore for StructureGenericArguments {
 	) -> Option<TypeId> {
 		if let StructureGenericArguments::LookUp { on } = self {
 			let prototype =
-				*info.get_chain_of_info().find_map(|env| env.prototypes.get(&on)).unwrap();
+				*info.get_chain_of_info().find_map(|env| env.prototypes.get(on)).unwrap();
 
 			let lookup =
 				types.lookup_generic_map.get(&prototype).and_then(|lookup| lookup.get(&under))?;

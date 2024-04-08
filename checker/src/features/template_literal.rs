@@ -3,7 +3,7 @@ use source_map::Span;
 use crate::{
 	context::invocation::CheckThings,
 	features::objects::ObjectBuilder,
-	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
+	types::{calling::CallingInput, cast_as_string, SynthesisedArgument, TypeStore},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
 
@@ -14,7 +14,7 @@ pub enum TemplateLiteralPart<'a, T> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn synthesise_template_literal<'a, T, A>(
+pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
 	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
 	position: &Span,
@@ -107,7 +107,6 @@ where
 
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
-			this_value: None,
 			call_site,
 			call_site_type_arguments: None,
 		};
@@ -148,5 +147,43 @@ where
 		} else {
 			checking_data.types.new_constant_type(Constant::String(String::new()))
 		}
+	}
+}
+
+/// **Expects static part first**
+/// TODO API is different to the `synthesise_template_literal_expression` above
+pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStore) -> TypeId {
+	let mut parts_iter = parts.into_iter();
+	if let Some(first) = parts_iter.next() {
+		let mut acc = first;
+		for other in parts_iter {
+			// TODO unfold_alias function
+			let other = if let Type::AliasTo { to, .. } = types.get_type_by_id(other) {
+				*to
+			} else {
+				other
+			};
+			let result = super::operations::evaluate_mathematical_operation(
+				acc,
+				crate::features::operations::MathematicalAndBitwise::Add,
+				other,
+				types,
+				true,
+			);
+			match result {
+				Ok(result) => acc = result,
+				Err(()) => {
+					// crate::utils::notify!(
+					// 	"acc is {:?}, other is {:?}",
+					// 	types.get_type_by_id(acc),
+					// 	types.get_type_by_id(other)
+					// );
+					crate::utils::notify!("Invalid type template literal concatenation");
+				}
+			}
+		}
+		acc
+	} else {
+		types.new_constant_type(Constant::String(String::new()))
 	}
 }

@@ -28,6 +28,8 @@ If you don't want to run the whole Ezno CLI. You can run just the checker with
 cargo run -p ezno-checker --example run path/to/file.ts
 ```
 
+Note you can skip the cache with the additional `--no-cache` option (re-reads base `.d.ts` file)
+
 If you want to check all the checker tests
 
 ```shell
@@ -38,10 +40,13 @@ cargo test -p ezno-checker-specification -F staging
 cargo test -p ezno-checker-specification -F all
 ```
 
+> [!IMPORTANT]
+> `cache` might need to be regenerated between specification runs if working on internal methods (e.g. `Array.map` etc). See below
+
 If you want to regenerate the binary definition file
 
 ```shell
-cargo run -p ezno-checker -F ezno-parser --example cache ./checker/definitions/full.d.ts ./checker/definitions/internal.ts.d.bin
+cargo run -p ezno-checker -F ezno-parser --example cache ./checker/definitions/overrides.d.ts ./checker/definitions/internal.ts.d.bin
 ```
 
 If you want to test the lexing and parsing in Ezno's parser
@@ -60,7 +65,7 @@ cargo run -p ezno-parser --example lex path/to/file.ts
 - Run all tests `cargo test --workspace --verbose`
 - Use `cargo clippy -- -A warnings` to find blocking lints
 
-### The notify! macro
+### The `notify!` macro
 
 The checker crate has the `crate::utils::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
 

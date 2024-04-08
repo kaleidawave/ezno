@@ -58,7 +58,7 @@ pub(super) fn synthesise_class_declaration<
 	}
 
 	let existing_id =
-		checking_data.local_type_mappings.types_to_types.get_exact(class.position).cloned();
+		checking_data.local_type_mappings.types_to_types.get_exact(class.position).copied();
 
 	// Will leak hoisted properties on existing class ...?
 	let class_prototype = if let Some(existing_id) = existing_id {
@@ -217,13 +217,14 @@ pub(super) fn synthesise_class_declaration<
 		let behavior = FunctionRegisterBehavior::Constructor {
 			prototype: class_prototype,
 			super_type: extends,
-			properties: ClassPropertiesToRegister(properties),
+			properties: ClassPropertiesToRegister { properties },
 		};
 		synthesise_function(constructor, behavior, environment, checking_data)
 	} else {
 		FunctionType::new_auto_constructor(
 			class_prototype,
-			ClassPropertiesToRegister(properties),
+			extends,
+			ClassPropertiesToRegister { properties },
 			environment,
 			checking_data,
 		)
@@ -334,7 +335,7 @@ pub(super) fn synthesise_class_declaration<
 				}
 				ClassMember::StaticBlock(block) => {
 					environment.new_lexical_environment_fold_into_parent(
-						Scope::StaticBlock {},
+						Scope::StaticBlock { this_type: class_type },
 						checking_data,
 						|environment, checking_data| {
 							synthesise_block(&block.0, environment, checking_data);
@@ -404,7 +405,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 			let Type::RootPolyType(PolyNature::StructureGeneric { name, constrained: _ }) =
 				parameter_ty
 			else {
-				unreachable!()
+				unreachable!("{parameter_ty:?}")
 			};
 
 			environment.named_types.insert(name.clone(), *parameter);
@@ -466,137 +467,6 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					(Vec::new(), actual)
 				};
 
-				// TODO also check generics?
-				fn build_overloaded_function(
-					id: FunctionId,
-					behavior: FunctionBehavior,
-					overloads: Vec<PartialFunction>,
-					actual: PartialFunction,
-					environment: &Environment,
-					types: &mut TypeStore,
-					diagnostics: &mut DiagnosticsContainer,
-				) -> TypeId {
-					// TODO bad
-					let expected_parameters = actual.1.clone();
-
-					let as_function = FunctionType {
-						id,
-						behavior,
-						type_parameters: actual.0,
-						parameters: actual.1,
-						return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-						effect: crate::types::FunctionEffect::Unknown,
-					};
-
-					let actual_func = types.new_hoisted_function_type(as_function);
-
-					let mut result = actual_func;
-
-					for overload in overloads {
-						for (idx, op) in overload.1.parameters.iter().enumerate() {
-							if let Some((base_type, position)) =
-								expected_parameters.get_parameter_type_at_index(idx)
-							{
-								let res = type_is_subtype(
-									base_type,
-									op.ty,
-									&mut BasicEquality {
-										add_property_restrictions: false,
-										allow_errors: true,
-										position,
-										object_constraints: Vec::new(),
-									},
-									environment,
-									types,
-								);
-								if let SubTypeResult::IsNotSubType(..) = res {
-									diagnostics.add_error(
-										TypeCheckError::IncompatibleOverloadParameter {
-											parameter_position: position,
-											overloaded_parameter_position: op.position,
-											parameter: TypeStringRepresentation::from_type_id(
-												base_type,
-												environment,
-												types,
-												false,
-											),
-											overloaded_parameter:
-												TypeStringRepresentation::from_type_id(
-													op.ty,
-													environment,
-													types,
-													false,
-												),
-										},
-									);
-								}
-							} else {
-								// TODO warning
-							}
-						}
-
-						// TODO other cases
-						if let (
-							Some(ReturnType(base, base_position)),
-							Some(ReturnType(overload, overload_position)),
-						) = (actual.2, overload.2)
-						{
-							let res = type_is_subtype(
-								base,
-								overload,
-								&mut BasicEquality {
-									add_property_restrictions: false,
-									allow_errors: true,
-									position: SpanWithSource::NULL,
-									object_constraints: Vec::new(),
-								},
-								environment,
-								types,
-							);
-							if let SubTypeResult::IsNotSubType(..) = res {
-								diagnostics.add_error(
-									TypeCheckError::IncompatibleOverloadReturnType {
-										base_position,
-										overload_position,
-										base: TypeStringRepresentation::from_type_id(
-											base,
-											environment,
-											types,
-											false,
-										),
-										overload: TypeStringRepresentation::from_type_id(
-											overload,
-											environment,
-											types,
-											false,
-										),
-									},
-								);
-							}
-						} else {
-							// TODO warning
-						}
-
-						// Partial
-						let as_function = FunctionType {
-							id,
-							behavior,
-							type_parameters: overload.0,
-							parameters: overload.1,
-							return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-							effect: crate::types::FunctionEffect::Unknown,
-						};
-
-						// TODO
-						let func = types.new_hoisted_function_type(as_function);
-
-						// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
-						result = types.new_and_type(func, result).unwrap();
-					}
-
-					result
-				}
-
 				let value = build_overloaded_function(
 					FunctionId(environment.get_source(), method.position.start),
 					FunctionBehavior::Method {
@@ -606,7 +476,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					},
 					overloads,
 					actual,
-					&environment,
+					environment,
 					&mut checking_data.types,
 					&mut checking_data.diagnostics_container,
 				);
@@ -691,7 +561,7 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 		.map(|parameter| {
 			let parameter_constraint =
 				parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |ta| {
-					synthesise_type_annotation(&ta, environment, checking_data)
+					synthesise_type_annotation(ta, environment, checking_data)
 				});
 
 			// TODO I think this is correct
@@ -759,4 +629,126 @@ fn get_extends_as_simple_type<T: crate::ReadFromFS>(
 	} else {
 		None
 	}
+}
+
+/// TODO WIP
+/// TODO also check generics?
+fn build_overloaded_function(
+	id: FunctionId,
+	behavior: FunctionBehavior,
+	overloads: Vec<PartialFunction>,
+	actual: PartialFunction,
+	environment: &Environment,
+	types: &mut TypeStore,
+	diagnostics: &mut DiagnosticsContainer,
+) -> TypeId {
+	// TODO bad
+	let expected_parameters = actual.1.clone();
+
+	let as_function = FunctionType {
+		id,
+		behavior,
+		type_parameters: actual.0,
+		parameters: actual.1,
+		return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+		effect: crate::types::FunctionEffect::Unknown,
+	};
+
+	let actual_func = types.new_hoisted_function_type(as_function);
+
+	let mut result = actual_func;
+
+	for overload in overloads {
+		for (idx, op) in overload.1.parameters.iter().enumerate() {
+			if let Some((base_type, position)) =
+				expected_parameters.get_parameter_type_at_index(idx)
+			{
+				let res = type_is_subtype(
+					base_type,
+					op.ty,
+					&mut BasicEquality {
+						add_property_restrictions: false,
+						allow_errors: true,
+						position,
+						object_constraints: Vec::new(),
+					},
+					environment,
+					types,
+				);
+				if let SubTypeResult::IsNotSubType(..) = res {
+					diagnostics.add_error(TypeCheckError::IncompatibleOverloadParameter {
+						parameter_position: position,
+						overloaded_parameter_position: op.position,
+						parameter: TypeStringRepresentation::from_type_id(
+							base_type,
+							environment,
+							types,
+							false,
+						),
+						overloaded_parameter: TypeStringRepresentation::from_type_id(
+							op.ty,
+							environment,
+							types,
+							false,
+						),
+					});
+				}
+			} else {
+				// TODO warning
+			}
+		}
+
+		// TODO other cases
+		if let (
+			Some(ReturnType(base, base_position)),
+			Some(ReturnType(overload, overload_position)),
+		) = (actual.2, overload.2)
+		{
+			let res = type_is_subtype(
+				base,
+				overload,
+				&mut BasicEquality {
+					add_property_restrictions: false,
+					allow_errors: true,
+					position: SpanWithSource::NULL,
+					object_constraints: Vec::new(),
+				},
+				environment,
+				types,
+			);
+			if let SubTypeResult::IsNotSubType(..) = res {
+				diagnostics.add_error(TypeCheckError::IncompatibleOverloadReturnType {
+					base_position,
+					overload_position,
+					base: TypeStringRepresentation::from_type_id(base, environment, types, false),
+					overload: TypeStringRepresentation::from_type_id(
+						overload,
+						environment,
+						types,
+						false,
+					),
+				});
+			}
+		} else {
+			// TODO warning
+		}
+
+		// Partial
+		let as_function = FunctionType {
+			id,
+			behavior,
+			type_parameters: overload.0,
+			parameters: overload.1,
+			return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+			effect: crate::types::FunctionEffect::Unknown,
+		};
+
+		// TODO
+		let func = types.new_hoisted_function_type(as_function);
+
+		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
+		result = types.new_and_type(func, result).unwrap();
+	}
+
+	result
 }

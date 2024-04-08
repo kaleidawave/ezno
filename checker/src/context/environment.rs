@@ -149,7 +149,7 @@ pub enum FunctionScope {
 		/// Can call `super`
 		extends: bool,
 		type_of_super: Option<TypeId>,
-		// This is always creates, but may not be used (or have the relevant properties & prototype)
+		// This is always created, but may not be used (or have the relevant properties & prototype)
 		this_object_type: TypeId,
 	},
 }
@@ -208,7 +208,9 @@ pub enum Scope {
 	},
 	/// For generic parameters
 	TypeAlias,
-	StaticBlock {},
+	StaticBlock {
+		this_type: TypeId,
+	},
 	/// For repl only
 	PassThrough {
 		source: SourceId,
@@ -216,6 +218,7 @@ pub enum Scope {
 }
 
 impl Scope {
+	#[must_use]
 	pub fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
 		match self {
 			Scope::Function { .. } => Some(DynamicBoundaryKind::Function),
@@ -224,6 +227,7 @@ impl Scope {
 		}
 	}
 
+	#[must_use]
 	pub fn is_conditional(&self) -> bool {
 		matches!(self, Scope::Conditional { .. })
 	}
@@ -1354,7 +1358,7 @@ impl<'a> Environment<'a> {
 					| Scope::Module { .. }
 					| Scope::DefinitionModule { .. }
 					| Scope::TypeAlias
-					| Scope::StaticBlock {} => {
+					| Scope::StaticBlock { .. } => {
 						break;
 					}
 					Scope::Iteration { ref label } => {

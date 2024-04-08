@@ -97,14 +97,14 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 	mode: SubTypingMode,
 	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
-	// {
-	// 	let debug = true;
-	// 	crate::utils::notify!(
-	// 		"Checking {} :>= {}",
-	// 		print_type(base_type, types, environment, debug),
-	// 		print_type(ty, types, environment, debug)
-	// 	);
-	// }
+	{
+		let debug = true;
+		crate::utils::notify!(
+			"Checking {} :>= {}",
+			print_type(base_type, types, environment, debug),
+			print_type(ty, types, environment, debug)
+		);
+	}
 
 	if behavior.allow_errors() && (base_type == TypeId::ERROR_TYPE || ty == TypeId::ERROR_TYPE) {
 		return SubTypeResult::IsSubType;
@@ -511,7 +511,11 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 						_ => None,
 					}
 				}
-				return if let Some(sgs) = get_structure_generics_on(right_ty, *on) {
+
+				behavior.add_object_mutation_constraint(ty, base_type);
+				// TODO a bit of a mess
+
+				return if let Some(_sgs) = get_structure_generics_on(right_ty, *on) {
 					crate::utils::notify!("TODO here");
 					SubTypeResult::IsSubType
 				} else if let Type::Object(super::ObjectNature::RealDeal) = right_ty {
@@ -656,11 +660,8 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 		},
 		// TODO aliasing might work differently
 		Type::AliasTo { to, parameters, name: _ } => {
-			if parameters.is_some() {
-				todo!()
-			}
-
-			if base_type == TypeId::CONSTANT_RESTRICTION {
+			if base_type == TypeId::LITERAL_RESTRICTION {
+				crate::utils::notify!("Here");
 				return if let Type::Constant(rhs_constant) = right_ty {
 					type_is_subtype_with_generics(
 						*to,
@@ -679,6 +680,13 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				};
 			}
+
+			let base_structure_arguments = if let Some(parameters) = parameters {
+				crate::utils::notify!("Skipping looking at parameters {:?}", parameters);
+				base_structure_arguments
+			} else {
+				base_structure_arguments
+			};
 
 			type_is_subtype_with_generics(
 				*to,

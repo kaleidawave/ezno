@@ -970,33 +970,6 @@ value.getValue() satisfies 6
 
 - Expected 6, found 10
 
-### Collection types
-
-> Some of these are built of exiting features.
-> But they are important enough in code for them to have their own usage tests
-
-#### Array push
-
-```ts
-const x = [1]
-x.push("hi")
-x[1] satisfies 3
-x.length satisfies 4;
-```
-
-- Expected 3, found "hi"
-- Expected 4, found 2
-
-#### Array pop
-
-```ts
-const myArray = [6, "hi"]
-myArray.pop() satisfies 3;
-myArray.length satisfies 1;
-```
-
-- Expected 3, found "hi"
-
 ### Control flow
 
 #### Resolving conditional
@@ -1132,6 +1105,23 @@ i satisfies string;
 ```
 
 - Expected string, found 1 | 2
+
+#### Conditional return
+
+```ts
+declare let string: string;
+
+function stringIsHi(s: string) {
+    if (s === "hi") {
+        return true
+    }
+    return false
+}
+
+stringIsHi(string) satisfies number;
+```
+
+- Expected number, found boolean
 
 ### Iteration
 
@@ -1327,6 +1317,31 @@ properties satisfies boolean;
 
 ### Collections
 
+> Some of these are built of exiting features.
+> But they are important enough in code for them to have their own usage tests
+
+#### Array push
+
+```ts
+const x = [1]
+x.push("hi")
+x[1] satisfies 3
+x.length satisfies 4;
+```
+
+- Expected 3, found "hi"
+- Expected 4, found 2
+
+#### Array pop
+
+```ts
+const myArray = [6, "hi"]
+myArray.pop() satisfies 3;
+myArray.length satisfies 1;
+```
+
+- Expected 3, found "hi"
+
 #### Array push restriction
 
 ```ts
@@ -1354,9 +1369,12 @@ x.push("hi");
 
 ```ts
 [1, 2, 3].find(x => x % 2 === 0) satisfies 4;
+
+// [1, 2, 3].includes(6) satisfies string;
 ```
 
 - Expected 4, found 2
+<!-- - Expected string, found false -->
 
 ### Statements, declarations and expressions
 
@@ -1612,6 +1630,51 @@ s satisfies number;
 - Expected string, found undefined
 - Expected number, found "hello"
 
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 2
+
+#### Throw effects carry through
+
+```ts
+function throwType(a) {
+	throw a
+}
+
+try {
+	throwType(3)
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 3
+
+### Async and `Promise`s
+
+> Position of await is not checked (here is fine because top level await)
+
+#### `fetch`
+
+> Uses external `Promise`
+
+```ts
+const resp = await (fetch("/some-endpoint") satisfies string);
+
+resp.ok satisfies number;
+```
+
+- Expected string, found Promise\<Response\>
+- Expected number, found boolean
+
 ### Classes
 
 #### Constructor
@@ -1631,7 +1694,7 @@ x.value satisfies string
 
 #### Property keys
 
-> Property keys are synthesised once and their effects are once (as opposed to their value)
+> Property keys are synthesised once and their effects run once (as opposed to their value)
 
 ```ts
 let global: number = 0;
@@ -1648,7 +1711,7 @@ global satisfies string;
 - Expected "a", found "b"
 - Expected string, found 1
 
-#### Properties
+#### Property field side effects
 
 ```ts
 let global: number = 0;
@@ -1664,6 +1727,29 @@ class X {
 
 - Expected string, found 1
 - Expected boolean, found 3
+
+#### Mix of property fields and assigned
+
+> Property fields are assigned first
+
+```ts
+let global: number = 0;
+
+class X {
+	prop1 = ++global;
+
+	constructor() {
+		this.prop2 = ++global;
+	}
+}
+
+const x = new X();
+x.prop1 satisfies string;
+x.prop2 satisfies boolean;
+```
+
+- Expected string, found 1
+- Expected boolean, found 2
 
 #### Class methods
 
@@ -1719,6 +1805,81 @@ class X { }
 
 - Variable 'X' used before declaration
 
+#### Class type `extends`
+
+```ts
+class BaseClass {
+    b: boolean = false
+}
+
+class Class extends BaseClass {
+    a: number = 2
+}
+
+new Class().b satisfies 5
+```
+
+- Expected 5, found false
+
+#### Static blocks
+
+```ts
+class X {
+    static x = 2;
+
+    static {
+        const property: 4 = ++this.x;
+    }
+}
+
+X.x satisfies 3;
+```
+
+- Type 3 is not assignable to type 4
+
+#### Hoisting of class type
+
+```ts
+function doThingWithClass(instance: Class) {
+    instance.prop satisfies string;
+    instance.parent_prop satisfies boolean;
+    instance.method(4);
+}
+
+class BaseClass {
+    parent_prop: number
+}
+
+class Class extends BaseClass {
+    prop: number
+
+    method(s: string) {}
+}
+```
+
+- Expected string, found number
+- Expected boolean, found number
+- Argument of type 4 is not assignable to parameter of type string
+
+#### Hoisting of class type with `extends`
+
+```ts
+function doThingWithClass(instance: Class) {
+    instance.a satisfies number;
+    instance.b satisfies string;
+}
+
+class BaseClass {
+    b: boolean
+}
+
+class Class extends BaseClass {
+    a: number
+}
+```
+
+- Expected string, found boolean
+
 ### Types
 
 #### Non existent type
@@ -1754,7 +1915,7 @@ type X<T> = T;
 ```ts
 type X<T> = T;
 
-2 satisfies X;
+const b: X = 2;
 ```
 
 - Type X requires type arguments
@@ -1968,6 +2129,66 @@ type Y = string & number;
 - No intersection between types 2 and "hi"
 - No intersection between types string and number
 
+#### Interface extends
+
+```ts
+interface X {
+    a: string
+}
+
+interface Y {
+    b: string
+}
+
+interface Z extends X, Y {
+    c: string
+}
+
+({ a: "", b: "", c: "hello" }) satisfies Z;
+({ a: "", b: 4, c: "hello" }) satisfies Z;
+({ c: "hi" }) satisfies Z;
+```
+
+- Expected Z, found { a: "", b: 4, c: "hello" }
+- Expected Z, found { c: "hi" }
+
+#### Specialisation of return for declare functions
+
+```ts
+declare function id<T>(a: T): T;
+declare function box<T>(a: T): { item: T };
+declare let someNumber: number;
+
+id(someNumber) satisfies string;
+box(someNumber) satisfies boolean;
+```
+
+- Expected string, found number
+- Expected boolean, found { item: number }
+
+#### Template literal type restriction
+
+> TODO dynamic restriction
+
+```ts
+type Name = "Ben"
+"test" satisfies `Hello ${Name}`;
+```
+
+- Expected "Hello Ben", found "test"
+
+#### Template literal type specialisation
+
+> Uses `+` logic behind the scenes
+
+```ts
+declare function Concat<T extends string, U extends string>(a: T, b: U): `${T}, ${U}`;
+
+Concat("test", "something") satisfies boolean
+```
+
+- Expected boolean, found "test, something"
+
 ### Generic types
 
 #### Generic interface
@@ -2014,7 +2235,56 @@ function add() {
 
 - Argument of type "hi" is not assignable to parameter of type number
 
-#### Mapped types
+#### Generic condition
+
+```ts
+declare function isNumber<T>(t: T): T extends number ? true : false;
+
+isNumber(5) satisfies true;
+isNumber("5") satisfies number;
+```
+
+- Expected number, found false
+
+#### More accurate generic
+
+```ts
+declare function unwrap<T>(a: T | { item: T }): T;
+
+unwrap({ item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
+
+#### Across alias
+
+```ts
+type WithLabel<T> = { label: string, item: T };
+
+declare function getItem<T>(a: WithLabel<T>): T;
+
+getItem({ label: "item 1", item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
+
+#### Double generics
+
+> Really want to only have one covariant and one contravariant but want to keep TSC semantics
+
+```ts
+declare function what<T>(a: T, b: T): T;
+
+what(2, 3) satisfies string;
+```
+
+- Expected string, found 2 | 3
+
+### Mapped types
+
+> Aka generic property keys
+
+#### Simple key
 
 ```ts
 type Record2<K extends string, T> = { [P in K]: T }
@@ -2027,6 +2297,39 @@ myRecord.hello;
 
 - Expected string, found number
 - No property 'hello' on { [\"hi\"]: number }
+
+#### Assignment
+
+```ts
+type Record2<K extends string, T> = { [P in K]: T }
+
+const x: Record2<"test", boolean> = { no: false },
+      y: Record2<"test", boolean> = { test: 6 },
+      z: Record2<"test", boolean> = { test: false };
+```
+
+- Type { no: false } is not assignable to type { [\"test\"]: boolean }
+- Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
+
+#### Union and types
+
+```ts
+type Record2<K extends string, T> = { [P in K]: T }
+
+declare let obj1: Record2<"hi" | "hello", boolean>;
+
+obj1.hi satisfies boolean;
+obj1.hello satisfies boolean;
+
+obj1.bye;
+
+declare let obj2: Record2<string, boolean>;
+obj2.fine satisfies boolean;
+obj2[2];
+```
+
+- No property 'bye' on { ["hi" | "hello"]: boolean }
+- No property '2' on { [string]: boolean }
 
 ### Forward inference
 
@@ -2063,6 +2366,15 @@ callFunction<string>(a => {
 ```
 
 - Expected number, found string
+
+#### Computed generics from collection
+
+```ts
+const x = [1, 2, 3];
+x.map(a => (a satisfies string, 2))
+```
+
+- Expected string, found 1 | 2 | 3
 
 ### Object constraint
 
@@ -2382,3 +2694,54 @@ export const x = { a: 2 };
 
 - Expected string, found { a: 2 }
 - Expected number, found { a: 2, b: 4 }
+
+#### Import package
+
+> Yay doesn't require type definition to be shipped!!
+
+```ts
+import { mean_gravity } from "earth";
+
+mean_gravity satisfies 2;
+
+// in node_modules/earth/package.json
+{
+    "main": "constants.js"
+}
+
+// in node_modules/earth/constants.js
+export const mean_gravity = 9.806;
+```
+
+- Expected 2, found 9.806
+
+### Extras
+
+> This contains new features. Most are WIP
+
+#### Comments as type annotations
+
+```ts
+function x(a /** string */) {
+    a satisfies number
+}
+
+const c /** number */ = "hello"
+```
+
+- Expected number, found string
+- Type "hello" is not assignable to type number
+
+#### Literal special type
+
+```ts
+function register(a: Literal<string>) {
+    // ...
+}
+
+register("something")
+// `document.title` is an unknown string, non-literal
+register(document.title)
+```
+
+- Argument of type string is not assignable to parameter of type Literal\<string\>

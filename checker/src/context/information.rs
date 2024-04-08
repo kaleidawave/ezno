@@ -262,13 +262,14 @@ fn get_property_under(
 				}
 			}
 			PropertyKey::Type(key) => {
-				key_matches(*key, key_type_arguments, &want_key, types).then(|| value.clone())
+				key_matches(*key, key_type_arguments, want_key, types).then(|| value.clone())
 			}
 		}
 	})
 }
 
 /// TODO contributions for `P`
+#[allow(clippy::if_same_then_else)]
 fn key_matches(
 	key: TypeId,
 	key_type_arguments: GenericChain,

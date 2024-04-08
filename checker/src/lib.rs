@@ -165,6 +165,8 @@ pub trait ASTImplementation: Sized {
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
+	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool;
+
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;

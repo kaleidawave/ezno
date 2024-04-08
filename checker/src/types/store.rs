@@ -12,7 +12,10 @@ use crate::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
 	},
-	types::{FunctionType, GenericChain, GenericChainLink, PolyNature, Type},
+	types::{
+		get_structure_arguments_based_on_object_constraint, FunctionType, GenericChain,
+		GenericChainLink, PolyNature, Type,
+	},
 	Environment, FunctionId, LocalInformation, TypeId,
 };
 
@@ -65,8 +68,8 @@ impl Default for TypeStore {
 			Type::Class { name: "boolean".to_owned(), parameters: None },
 			Type::Class { name: "number".to_owned(), parameters: None },
 			Type::Class { name: "string".to_owned(), parameters: None },
-			Type::Interface { name: "undefined".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "null".to_owned(), parameters: None, nominal: true },
+			Type::Constant(crate::Constant::Undefined),
+			Type::Constant(crate::Constant::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 			Type::Class { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
@@ -108,7 +111,12 @@ impl Default for TypeStore {
 			},
 			// TODO WIP
 			Type::AliasTo {
-				name: "Constant".into(),
+				name: "Literal".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Readonly".into(),
 				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
@@ -511,21 +519,7 @@ impl TypeStore {
 			}
 			Type::Object(..) => {
 				let object_constraint_structure_generics =
-					if let Some(object_constraint) = info_chain
-						.get_chain_of_info()
-						.find_map(|c| c.object_constraints.get(&on).copied())
-					{
-						if let Type::Constructor(Constructor::StructureGenerics(
-							StructureGenerics { arguments, .. },
-						)) = self.get_type_by_id(object_constraint)
-						{
-							Some(arguments)
-						} else {
-							None
-						}
-					} else {
-						None
-					};
+					get_structure_arguments_based_on_object_constraint(on, info_chain, self);
 
 				let prototype = info_chain
 					.get_chain_of_info()
@@ -533,7 +527,7 @@ impl TypeStore {
 					.copied();
 
 				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
-					gens.cloned()
+					gens
 				} else if prototype
 					.is_some_and(|prototype| self.lookup_generic_map.contains_key(&prototype))
 				{

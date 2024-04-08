@@ -321,7 +321,7 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		fs_reader: &T,
 	) -> Result<(PathBuf, Option<PathBuf>), ()> {
 		// TODO support non `node_modules` or is that over ?
-		let package_directory = cwd.join("node_modules".to_owned());
+		let package_directory = cwd.join("node_modules");
 		let package_root = package_directory.join(name);
 		let package_json_path = package_root.join("package.json");
 		// TODO error

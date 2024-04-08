@@ -801,7 +801,7 @@ mod defined_errors_and_warnings {
 				}
 				TypeCheckError::UnreachableVariableClosedOver(name, function_position) => {
 					Diagnostic::Position {
-						reason: format!("Function contains unreachable closed over variable '{}'", name),
+						reason: format!("Function contains unreachable closed over variable '{name}'"),
 						position: function_position,
 						kind,
 					}
