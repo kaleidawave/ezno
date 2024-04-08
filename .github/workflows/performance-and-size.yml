@@ -53,14 +53,18 @@ jobs:
       - name: Run checker performance
         shell: bash
         run: |
-          cat ./checker/specification/specification.md
-          echo "::debug::Found specification"
+          echo "::info::Found specification"
 
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
 
-          echo "::debug::Generated demo.ts"
+          echo "::group::Generated demo.ts"
           cat ./demo.ts
+
+          cargo run -p ezno-parser --example parse ./demo.ts
+          echo "::endgroup::"
+
+          echo "::info::Finished file generation"
 
           echo "<details>
           <summary>Input</summary>
@@ -76,15 +80,16 @@ jobs:
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          
+          echo "::info::Wrote code to summary"
+
           echo "<details>
           <summary>Diagnostics</summary>
           
           \`\`\`" >> $GITHUB_STEP_SUMMARY
           
-          # Printing diagnostics, so turn colors off for GH Summary
+          # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
           NO_COLOR=1
-          ./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY
+          ./target/release/ezno check ./demo.ts --timings &>> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`
           </details>
@@ -92,8 +97,14 @@ jobs:
           
           echo "### Checking
           \`\`\`shell" >> $GITHUB_STEP_SUMMARY
-          hyperfine './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
+
+          hyperfine -i './target/release/ezno check ./demo.ts' >> $GITHUB_STEP_SUMMARY
+
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "::group::Comparing printing of diagnostics"
+          hyperfine -i './target/release/ezno check ./demo.ts' './target/release/ezno check ./demo.ts --count-diagnostics'
+          echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
         shell: bash

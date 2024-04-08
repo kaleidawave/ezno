@@ -675,7 +675,7 @@ pub fn debug_effects<C: InformationChain>(
 			} => {
 				buf.push_str("call ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
-				write!(buf, " into {:?} ", reflects_dependency).unwrap();
+				write!(buf, " into {reflects_dependency:?} ",).unwrap();
 				buf.push_str(match timing {
 					crate::events::CallingTiming::Synchronous => "now",
 					crate::events::CallingTiming::QueueTask => "queue",
