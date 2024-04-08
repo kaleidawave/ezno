@@ -1004,6 +1004,14 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 	mode: SubTypingMode,
 	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
+	// TODO (#128): This is a compromise where only boolean and number types are treated as nominal
+	match base_type {
+		TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE => {
+			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+		}
+		_ => {}
+	}
+
 	let mode = mode.one_deeper();
 
 	let mut property_errors = Vec::new();
