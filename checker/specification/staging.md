@@ -39,6 +39,29 @@ box(someNumber) satisfies boolean;
 - Expected string, found number
 - Expected boolean, found { item: number }
 
+#### Template literal type restriction
+
+> TODO dynamic restriction
+
+```ts
+type Name = "Ben"
+"test" satisfies `Hello ${Name}`;
+```
+
+- Expected "Hello Ben", found "test"
+
+#### Template literal type specialisation
+
+> Uses `+` logic behind the scenes
+
+```ts
+declare function Concat<T extends string, U extends string>(a: T, b: U): `${T}, ${U}`;
+
+Concat("test", "something") satisfies boolean
+```
+
+- Expected boolean, found "test, something"
+
 ### Mapped types
 
 > Aka generic property keys
@@ -76,24 +99,6 @@ obj2[2];
 - No property 'bye' on { ["hi" | "hello"]: boolean }
 - No property '2' on { [string]: boolean }
 
-#### Specialisation
-
-```ts
-type Id<T> = { [P in K]: T[P] }
-
-```
-
-- TODO
-
-#### Negated
-
-```ts
-type Omit<K extends string, T> = { [P in K]-?: T }
-
-```
-
-- TODO
-
 ### Imports
 
 #### Import package
@@ -116,55 +121,13 @@ export const mean_gravity = 9.806;
 
 - Expected 2, found 9.806
 
-#### Import package with definition file
+### Async and `Promise`s
 
-> Does have to synthesis both files. The definition file doesn't include additional information and
-> the normal shipped file doesn't include type definitions and restrictions
+> Position of await is not checked (here is fine because top level await)
 
-```ts
-import { spin } from "earth";
+#### `fetch`
 
-spin("10");
-spin(720) satisfies 1;
-
-// in node_modules/earth/package.json
-{
-    "main": "index.ts",
-    "types": "index.d.ts"
-}
-
-// in node_modules/earth/index.ts
-export function spin(degrees) {
-    degrees satisfies boolean;
-    // ..
-    return degrees / 360;
-}
-
-// in node_modules/earth/index.d.ts
-export function spin(degrees: number): number;
-```
-
-- Expected boolean, found number
-- Argument "10" not assignable to number
-- Expected 1, found 2
-
-### Expressions
-
-#### Optional thing
-
-```ts
-interface X {
-    possibly?: string
-}
-
-declare let x: X;
-
-x?.possibly satisfies number;
-```
-
-- Expected string, found string | undefined
-
-### Async and promises
+> Uses external `Promise`
 
 ```ts
 const resp = await (fetch("/some-endpoint") satisfies string);
@@ -174,20 +137,6 @@ resp.ok satisfies number;
 
 - Expected string, found Promise\<Response\>
 - Expected number, found boolean
-
-### Closures
-
-#### TDZ
-
-```ts
-function func() {
-    return function () { return closedOverVariable }
-    let closedOverVariable = 2;
-}
-```
-
-- Unreachable statement
-- Function contains unreachable closed over variable 'closedOverVariable'
 
 ### Classes
 
@@ -206,6 +155,22 @@ new Class().b satisfies 5
 ```
 
 - Expected 5, found false
+
+#### Static blocks
+
+```ts
+class X {
+    static x = 2;
+
+    static {
+        const property: 4 = ++this.x;
+    }
+}
+
+X.x satisfies 3;
+```
+
+- Type 3 is not assignable to type 4
 
 #### Hoisting of class type
 
@@ -250,23 +215,6 @@ class Class extends BaseClass {
 
 - Expected string, found boolean
 
-### Overloads
-
-#### Calling
-
-```ts
-interface X {
-    overload(a: number): string;
-    overload(a: string): number;
-}
-
-declare let x: X;
-x.overload(5) satisfies string;
-x.overload("hi") satisfies boolean;
-```
-
-- Expected boolean, found string
-
 ### Control flow
 
 #### Conditional return
@@ -288,23 +236,6 @@ stringIsHi(string) satisfies number;
 
 ### Forward inference
 
-#### Returning a function
-
-> Yes, returns another function
-
-```ts
-type ExpectedFunction = () => ((a: string) => string)
-
-const x: ExpectedFunction = function () {
-    return function (b) {
-        b satisfies number;
-        return b
-    }
-}
-```
-
-- Expected number, found string
-
 #### Computed generics from collection
 
 ```ts
@@ -314,106 +245,9 @@ x.map(a => (a satisfies string, 2))
 
 - Expected string, found 1 | 2 | 3
 
-### Object constraints
-
-#### Mutation by a function with unknown effects
-
-> This is where the object loses its constant-ness
-> Effectively raises it to the parameter type
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
-object.prop satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
-
-#### Mutation negated via `readonly`
-
-> This is where the object loses its constant-ness
-
-```ts
-function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 6);
-}
-```
-
-- Expected 6, found 8
-
-#### Possible mutation breaks object constraint
-
-> This unfortunately can flag up valid code, but handling those is too difficult atm
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
-	const obj: { prop: number } = { prop: 8 };
-	callback(obj);
-}
-```
-
-- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
-
-#### Possible mutation via anytime function
-
-```ts
-const x = { a: 2 }
-setTimeout(() => { Math.sin(x.a) })
-x.a = "hi"
-```
-
-- Cannot assign. Restricted to number
-
-### Asynchronous functions and promises
-
-> TODO Promise properties
-
-#### Async function
-
-```ts
-async function x() {
-	return 2
-}
-
-x satisfies string;
-```
-
-- Expected string, found Promise { 2 }
-
-#### Await promise
-
-```ts
-async function x() {
-	return 2
-}
-
-(await x) satisfies string;
-```
-
-- Expected string, found 2
-
-#### External promise
-
-```ts
-declare let a: Promise<string>;
-
-(await a) satisfies number
-```
-
-- Expected number, found string
-
 ### Extras
 
-This contains new features (which don't have)
+> This contains new features. Most are WIP
 
 #### Comments as type annotations
 
@@ -422,8 +256,22 @@ function x(a /** string */) {
     a satisfies number
 }
 
-const c /** number */ = "5"
+const c /** number */ = "hello"
 ```
 
 - Expected number, found string
-- Type "5" is not assignable to type number
+- Type "hello" is not assignable to type number
+
+#### Literal special type
+
+```ts
+function register(a: Literal<string>) {
+    // ...
+}
+
+register("something")
+// `document.title` is an unknown string, non-literal
+register(document.title)
+```
+
+- Argument of type string is not assignable to parameter of type Literal\<string\>

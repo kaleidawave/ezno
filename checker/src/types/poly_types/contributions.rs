@@ -76,6 +76,7 @@ impl<'a> Contributions<'a> {
 
 		// TODO staging_contravariant
 		if let Some(constraint) = self.get_standard_restriction(under) {
+			crate::utils::notify!("Constraint is {:?}", constraint);
 			type_is_subtype_with_generics(
 				constraint,
 				GenericChain::None,

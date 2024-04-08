@@ -805,10 +805,9 @@ impl<T: ContextType> Context<T> {
 			parameters
 				.iter()
 				.map(|parameter| {
-					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
+					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
 						name: A::type_parameter_name(parameter).to_owned(),
-						// This is assigned later
-						eager_fixed: TypeId::ANY_TYPE,
+						constrained: A::parameter_constrained(parameter),
 					});
 					types.register_type(ty)
 				})
@@ -949,6 +948,7 @@ impl<T: ContextType> Context<T> {
 						Scope::Function(FunctionScope::Function { this_type, .. }) => {
 							Some(this_type)
 						}
+						Scope::StaticBlock { this_type } => Some(this_type),
 						_ => None,
 					}
 				} else {

@@ -96,9 +96,10 @@ impl TypeId {
 
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(23);
 
-	pub const CONSTANT_RESTRICTION: Self = Self(24);
+	pub const LITERAL_RESTRICTION: Self = Self(24);
+	pub const READONLY_RESTRICTION: Self = Self(25);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 25;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 26;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -169,6 +170,7 @@ pub enum PolyNature {
 }
 
 impl PolyNature {
+	#[must_use]
 	pub fn is_substitutable(&self) -> bool {
 		matches!(
 			self,
@@ -504,6 +506,7 @@ impl<'a> GenericChainLink<'a> {
 		GenericChainLink::Link { parent, value }
 	}
 
+	#[allow(clippy::unnecessary_wraps)]
 	pub(crate) fn append(
 		parent: GenericChainParent<'a>,
 		value: &'a StructureGenericArguments,
@@ -623,7 +626,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	Some(*constraint)
 				// }
 			}
-			Constructor::Image { on: _, with: _, result } => Some(result),
+			Constructor::Awaited { on: _, result }
+			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
@@ -641,7 +645,6 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			},
 			// TODO sure?
 			Constructor::StructureGenerics { .. } => None,
-			Constructor::Awaited { on: _, result } => Some(result),
 		},
 		Type::Object(ObjectNature::RealDeal) => {
 			// crate::utils::notify!("Might be missing some mutations that are possible here");
@@ -734,4 +737,28 @@ impl TypeCombinable for TypeId {
 pub enum Confirmation {
 	HasProperty { on: (), property: () },
 	IsType { on: (), ty: () },
+}
+
+pub(crate) fn get_structure_arguments_based_on_object_constraint<C: InformationChain>(
+	object: TypeId,
+	info_chain: &C,
+	types: &TypeStore,
+) -> Option<StructureGenericArguments> {
+	if let Some(object_constraint) =
+		info_chain.get_chain_of_info().find_map(|c| c.object_constraints.get(&object).copied())
+	{
+		let ty = types.get_type_by_id(object_constraint);
+		if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			arguments,
+			..
+		})) = ty
+		{
+			Some(arguments.clone())
+		} else {
+			crate::utils::notify!("Generics might be missed here {:?}", ty);
+			None
+		}
+	} else {
+		None
+	}
 }

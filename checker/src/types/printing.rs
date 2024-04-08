@@ -80,9 +80,6 @@ fn print_type_into_buf<C: InformationChain>(
 
 	let r#type = types.get_type_by_id(ty);
 	match r#type {
-		Type::AliasTo { to: _, name, parameters: _ } => {
-			buf.push_str(name);
-		}
 		Type::And(a, b) => {
 			print_type_into_buf(*a, buf, cycles, args, types, info_chain, debug);
 			buf.push_str(" & ");
@@ -215,7 +212,7 @@ fn print_type_into_buf<C: InformationChain>(
 			constructor if debug => match constructor {
 				Constructor::BinaryOperator { lhs, operator, rhs } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, info_chain, debug);
-					write!(buf, " {:?} ", operator).unwrap();
+					write!(buf, " {operator:?} ").unwrap();
 					print_type_into_buf(*rhs, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
@@ -258,7 +255,7 @@ fn print_type_into_buf<C: InformationChain>(
 					print_property_key_into_buf(under, buf, cycles, args, types, info_chain, debug);
 					buf.push(']');
 					if !bind_this {
-						buf.push_str(" no bind")
+						buf.push_str(" no bind");
 					};
 					buf.push_str(" = ");
 					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
@@ -314,7 +311,9 @@ fn print_type_into_buf<C: InformationChain>(
 				print_type_into_buf(base, buf, cycles, args, types, info_chain, debug);
 			}
 		},
-		Type::Class { name, parameters: _, .. } | Type::Interface { name, parameters: _, .. } => {
+		Type::Class { name, parameters: _, .. }
+		| Type::Interface { name, parameters: _, .. }
+		| Type::AliasTo { to: _, name, parameters: _ } => {
 			// if debug && ty.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
 			// write!(buf, "(r{} nom={:?}) {name}", ty.0, nominal).unwrap();
 			// } else {
@@ -350,9 +349,9 @@ fn print_type_into_buf<C: InformationChain>(
 				} = &func.effect
 				{
 					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?} ")
-						.unwrap()
+						.unwrap();
 				} else {
-					write!(buf, "{:?} ", func.effect).unwrap()
+					write!(buf, "{:?} ", func.effect).unwrap();
 				}
 				if let Type::SpecialObject(SpecialObjects::Function(_, ThisValue::Passed(p))) =
 					r#type
@@ -360,7 +359,7 @@ fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(", this ");
 					print_type_into_buf(*p, buf, cycles, args, types, info_chain, debug);
 				}
-				buf.push_str("] = ")
+				buf.push_str("] = ");
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -624,7 +623,7 @@ pub fn debug_effects<C: InformationChain>(
 					info,
 					debug,
 				);
-				write!(buf, " into {:?}", reflects_dependency).unwrap();
+				write!(buf, " into {reflects_dependency:?}").unwrap();
 			}
 			Event::Setter { on, under, new, initialization, publicity: _, position: _ } => {
 				if *initialization {
@@ -709,7 +708,7 @@ pub fn debug_effects<C: InformationChain>(
 				if *is_function_this {
 					write!(buf, "create this function object").unwrap();
 				} else {
-					write!(buf, "create object as {:?}", referenced_in_scope_as).unwrap();
+					write!(buf, "create object as {referenced_in_scope_as:?}").unwrap();
 				}
 			}
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {

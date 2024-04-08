@@ -114,7 +114,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				);
 			}
 			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
-				register_statement_class_with_members(&class.on, &mut environment, checking_data)
+				register_statement_class_with_members(&class.on, &mut environment, checking_data);
 			}
 			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
 				name: _,

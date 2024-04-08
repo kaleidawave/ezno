@@ -6,6 +6,11 @@ declare class Array<T> {
 
     length: number;
 
+    // TODO WIP
+    // constructor(...items: Array<T>) {
+    //     return items;
+    // }
+
     push(item: T) {
         this[this.length] = item;
         return ++this.length
@@ -85,6 +90,7 @@ declare class Array<T> {
 
     // includes(searchElement: T, fromIndex?: number): boolean {
     //     const { length } = this;
+    //     // TODO this is currently broken
     //     let i: number = fromIndex ?? 0;
     //     while (i < length) {
     //         const value = this[i++];
@@ -95,20 +101,20 @@ declare class Array<T> {
     //     return false
     // }
 
-    join(joiner: string = ","): string {
-        const { length } = this;
-        let i: number = 1;
-        if (length === 0) {
-            return ""
-        }
-        let s: string = "" + this[0];
-        while (i < length) {
-            s += joiner;
-            s += this[i++];
-            // debug_type_independent(s)
-        }
-        return s
-    }
+    // join(joiner: string = ","): string {
+    //     const { length } = this;
+    //     let i: number = 1;
+    //     if (length === 0) {
+    //         return ""
+    //     }
+    //     let s: string = "" + this[0];
+    //     while (i < length) {
+    //         s += joiner;
+    //         s += this[i++];
+    //         // debug_type_independent(s)
+    //     }
+    //     return s
+    // }
 }
 
 declare class Math {
@@ -231,6 +237,8 @@ declare const document: Document;
 declare function print_type(t: any): void;
 @Constant
 declare function debug_type(t: any): void;
+@Constant
+declare function print_constraint(t: any): void;
 @Constant
 declare function print_and_debug_type(t: any): void;
 @Constant

@@ -273,7 +273,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								Some((PropertyKind::Direct, func))
 							}
 							Type::FunctionReference(_) => {
-								let ty = if let Some(chain) = generics {
+								let ty = if let Some(_chain) = generics {
 									todo!()
 								// assert!(chain.parent.is_none());
 								// types.register_type(Type::Constructor(

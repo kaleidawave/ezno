@@ -46,7 +46,7 @@ pub struct RegisterClassPropertiesEvent {
 fn _register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	class_prototype: TypeId,
-	properties: ClassPropertiesToRegister<'_, A>,
+	properties: ClassPropertiesToRegister<A>,
 	checking_data: &mut CheckingData<T, A>,
 ) {
 	let scope = crate::Scope::Function(crate::context::environment::FunctionScope::Constructor {
@@ -81,9 +81,9 @@ pub(crate) fn register_properties_into_environment<
 	environment: &mut Environment,
 	on: TypeId,
 	checking_data: &mut CheckingData<T, A>,
-	properties: ClassPropertiesToRegister<A>,
+	ClassPropertiesToRegister { properties }: ClassPropertiesToRegister<A>,
 ) {
-	for ClassValue { publicity, key, value } in properties.0 {
+	for ClassValue { publicity, key, value } in properties {
 		let value = if let Some(expression) = value {
 			PropertyValue::Value(A::synthesise_expression(
 				expression,

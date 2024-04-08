@@ -20,6 +20,7 @@
 
 use std::convert::TryInto;
 
+use map_vec::Map;
 use parser::{
 	type_annotations::{
 		AnnotationWithBinder, CommonTypes, TupleElementKind, TypeCondition, TypeConditionResult,
@@ -31,14 +32,13 @@ use source_map::SpanWithSource;
 use crate::{
 	context::information::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::objects::ObjectBuilder,
+	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		Constant, StructureGenerics, Type,
+		Constant, Constructor, StructureGenerics, Type, TypeId,
 	},
-	types::{Constructor, TypeId},
 	CheckingData, Environment,
 };
 
@@ -152,13 +152,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 			acc
 		}
-		// This will take the found type and generate a InstanceOfGeneric based on the type arguments
+		// This will take the found type and generate a `StructureGeneric` based on the type arguments
 		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
-			match name.as_str() {
-				"ReturnType" => todo!(),
-				"Constructor" => todo!(),
-				_ => {}
-			}
+			// match name.as_str() {
+			// 	"ReturnType" => todo!(),
+			// 	"Constructor" => todo!(),
+			// 	_ => {}
+			// }
 
 			let Some(inner_type_id) = environment.get_type_from_name(name) else {
 				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
@@ -170,9 +170,23 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
+			// crate::utils::notify!("{:?}", inner_type);
+
 			if let Some(parameters) = inner_type.get_parameters() {
-				let is_type_alias_to =
-					if let Type::AliasTo { to, .. } = inner_type { Some(*to) } else { None };
+				let is_flattenable_alias = if let Type::AliasTo { to, .. } = inner_type {
+					// Important that these wrappers are kept as there 'wrap' holds information
+					if matches!(
+						inner_type_id,
+						TypeId::LITERAL_RESTRICTION | TypeId::READONLY_RESTRICTION
+					) {
+						None
+					} else {
+						Some(*to)
+					}
+				} else {
+					None
+				};
+
 				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
 					map_vec::Map::new();
 
@@ -245,7 +259,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
 				let mut arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
-				if let Some(on) = is_type_alias_to {
+				if let Some(on) = is_flattenable_alias {
 					crate::types::substitute(
 						on,
 						&mut arguments,
@@ -296,11 +310,20 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				&position,
 			)
 		}
-		TypeAnnotation::Readonly(type_annotation, _) => {
-			let _underlying_type =
+		TypeAnnotation::Readonly(type_annotation, pos) => {
+			let underlying_type =
 				synthesise_type_annotation(type_annotation, environment, checking_data);
 
-			todo!();
+			let restrictions = Map::from_iter([(
+				TypeId::T_TYPE,
+				(underlying_type, pos.with_source(environment.get_source())),
+			)]);
+			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on: TypeId::READONLY_RESTRICTION,
+				arguments: StructureGenericArguments::ExplicitRestrictions(restrictions),
+			}));
+
+			checking_data.types.register_type(ty)
 
 			// let ty_to_be_readonly = checking_data.types.register_type(Type::AliasTo {
 			// 	to: underlying_type,
@@ -447,7 +470,25 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			crate::utils::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
-		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
+		TypeAnnotation::TemplateLiteral(parts, _) => {
+			let parts = parts
+				.iter()
+				.map(|part| match part {
+					parser::ast::TemplateLiteralPart::Static(s) => {
+						checking_data.types.new_constant_type(Constant::String(s.clone()))
+					}
+					parser::ast::TemplateLiteralPart::Dynamic(p) => {
+						let annotation = match &**p {
+							AnnotationWithBinder::Annotated { ty, .. }
+							| AnnotationWithBinder::NoAnnotation(ty) => ty,
+						};
+						synthesise_type_annotation(annotation, environment, checking_data)
+					}
+				})
+				.collect();
+
+			synthesize_template_literal_type(parts, &mut checking_data.types)
+		}
 		TypeAnnotation::Symbol { .. } => todo!(),
 	};
 

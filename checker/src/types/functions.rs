@@ -1,13 +1,16 @@
 /// Contains definitions of structures around functions
 use std::collections::HashMap;
 
-use source_map::SpanWithSource;
+use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
-	context::{environment::FunctionScope, ContextType},
+	call_type_handle_errors,
+	context::environment::FunctionScope,
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
-	CheckingData, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type, TypeId,
+	types::calling::CallingInput,
+	CheckingData, Environment, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type,
+	TypeId,
 };
 
 use super::{classes::register_properties_into_environment, TypeStore};
@@ -54,9 +57,9 @@ pub enum InternalFunctionEffect {
 	InputOutput(String),
 }
 
-impl Into<FunctionEffect> for InternalFunctionEffect {
-	fn into(self) -> FunctionEffect {
-		match self {
+impl From<InternalFunctionEffect> for FunctionEffect {
+	fn from(value: InternalFunctionEffect) -> Self {
+		match value {
 			InternalFunctionEffect::Constant(identifier) => FunctionEffect::Constant(identifier),
 			InternalFunctionEffect::InputOutput(identifier) => {
 				FunctionEffect::InputOutput(identifier)
@@ -66,24 +69,21 @@ impl Into<FunctionEffect> for InternalFunctionEffect {
 }
 
 impl FunctionType {
-	pub(crate) fn new_auto_constructor<
-		T: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-		S: ContextType,
-	>(
+	pub(crate) fn new_auto_constructor<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		class_prototype: TypeId,
+		extends: Option<TypeId>,
 		properties: ClassPropertiesToRegister<A>,
-		// TODO S overkill
-		context: &mut crate::context::Context<S>,
+		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
 	) -> Self {
 		let scope = Scope::Function(FunctionScope::Constructor {
 			extends: false,
 			type_of_super: None,
+			// Set later
 			this_object_type: TypeId::ERROR_TYPE,
 		});
 
-		let (on, env_data, _) = context.new_lexical_environment_fold_into_parent(
+		let (on, env_data, _) = environment.new_lexical_environment_fold_into_parent(
 			scope,
 			checking_data,
 			|environment, checking_data| {
@@ -100,12 +100,32 @@ impl FunctionType {
 					*this_object_type = on;
 				}
 
+				if let Some(extends) = extends {
+					crate::utils::notify!("Here extends");
+					let called_with_new =
+						super::calling::CalledWithNew::SpecialSuperCall { this_type: on };
+
+					let input = CallingInput {
+						call_site: BaseSpan::NULL,
+						called_with_new,
+						call_site_type_arguments: None,
+					};
+					let _ = call_type_handle_errors(
+						extends,
+						&[],
+						input,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
+					);
+				}
+
 				register_properties_into_environment(environment, on, checking_data, properties);
+
 				on
 			},
 		);
-		// TODO think Some fine
-		// TODO
+
 		let behavior =
 			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
 

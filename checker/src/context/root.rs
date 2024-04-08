@@ -52,7 +52,7 @@ impl RootContext {
 	#[must_use]
 	pub fn new_with_primitive_references() -> Self {
 		// TODO number might not be a reference at some point
-		let types = [
+		let named_types = HashMap::from_iter([
 			("number".to_owned(), TypeId::NUMBER_TYPE),
 			("string".to_owned(), TypeId::STRING_TYPE),
 			("boolean".to_owned(), TypeId::BOOLEAN_TYPE),
@@ -63,7 +63,9 @@ impl RootContext {
 			("Promise".to_owned(), TypeId::PROMISE_TYPE),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),
-		];
+			("Literal".to_owned(), TypeId::LITERAL_RESTRICTION),
+			("Readonly".to_owned(), TypeId::READONLY_RESTRICTION),
+		]);
 
 		let mut info = crate::LocalInformation::default();
 
@@ -83,7 +85,7 @@ impl RootContext {
 		Self {
 			context_type: Root,
 			context_id: ContextId::ROOT,
-			named_types: HashMap::from_iter(types),
+			named_types,
 			variables: HashMap::from_iter(variables),
 			variable_names: Default::default(),
 			deferred_function_constraints: Default::default(),

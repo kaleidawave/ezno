@@ -970,33 +970,6 @@ value.getValue() satisfies 6
 
 - Expected 6, found 10
 
-### Collection types
-
-> Some of these are built of exiting features.
-> But they are important enough in code for them to have their own usage tests
-
-#### Array push
-
-```ts
-const x = [1]
-x.push("hi")
-x[1] satisfies 3
-x.length satisfies 4;
-```
-
-- Expected 3, found "hi"
-- Expected 4, found 2
-
-#### Array pop
-
-```ts
-const myArray = [6, "hi"]
-myArray.pop() satisfies 3;
-myArray.length satisfies 1;
-```
-
-- Expected 3, found "hi"
-
 ### Control flow
 
 #### Resolving conditional
@@ -1327,6 +1300,31 @@ properties satisfies boolean;
 
 ### Collections
 
+> Some of these are built of exiting features.
+> But they are important enough in code for them to have their own usage tests
+
+#### Array push
+
+```ts
+const x = [1]
+x.push("hi")
+x[1] satisfies 3
+x.length satisfies 4;
+```
+
+- Expected 3, found "hi"
+- Expected 4, found 2
+
+#### Array pop
+
+```ts
+const myArray = [6, "hi"]
+myArray.pop() satisfies 3;
+myArray.length satisfies 1;
+```
+
+- Expected 3, found "hi"
+
 #### Array push restriction
 
 ```ts
@@ -1354,9 +1352,12 @@ x.push("hi");
 
 ```ts
 [1, 2, 3].find(x => x % 2 === 0) satisfies 4;
+
+// [1, 2, 3].includes(6) satisfies string;
 ```
 
 - Expected 4, found 2
+<!-- - Expected string, found false -->
 
 ### Statements, declarations and expressions
 
@@ -1612,6 +1613,34 @@ s satisfies number;
 - Expected string, found undefined
 - Expected number, found "hello"
 
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 2
+
+#### Throw effects carry through
+
+```ts
+function throwType(a) {
+	throw a
+}
+
+try {
+	throwType(3)
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 3
+
 ### Classes
 
 #### Constructor
@@ -1631,7 +1660,7 @@ x.value satisfies string
 
 #### Property keys
 
-> Property keys are synthesised once and their effects are once (as opposed to their value)
+> Property keys are synthesised once and their effects run once (as opposed to their value)
 
 ```ts
 let global: number = 0;
@@ -1648,7 +1677,7 @@ global satisfies string;
 - Expected "a", found "b"
 - Expected string, found 1
 
-#### Properties
+#### Property field side effects
 
 ```ts
 let global: number = 0;
@@ -1664,6 +1693,29 @@ class X {
 
 - Expected string, found 1
 - Expected boolean, found 3
+
+#### Mix of property fields and assigned
+
+> Property fields are assigned first
+
+```ts
+let global: number = 0;
+
+class X {
+	prop1 = ++global;
+
+	constructor() {
+		this.prop2 = ++global;
+	}
+}
+
+const x = new X();
+x.prop1 satisfies string;
+x.prop2 satisfies boolean;
+```
+
+- Expected string, found 1
+- Expected boolean, found 2
 
 #### Class methods
 
@@ -1754,7 +1806,7 @@ type X<T> = T;
 ```ts
 type X<T> = T;
 
-2 satisfies X;
+const b: X = 2;
 ```
 
 - Type X requires type arguments
@@ -2014,7 +2066,54 @@ function add() {
 
 - Argument of type "hi" is not assignable to parameter of type number
 
-#### Mapped types
+#### Generic condition
+
+```ts
+declare function isNumber<T>(t: T): T extends number ? true : false;
+
+isNumber(5) satisfies true;
+isNumber("5") satisfies number;
+```
+
+- Expected number, found false
+
+#### More accurate generic
+
+```ts
+declare function unwrap<T>(a: T | { item: T }): T;
+
+unwrap({ item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
+
+#### Across alias
+
+```ts
+type WithLabel<T> = { label: string, item: T };
+
+declare function getItem<T>(a: WithLabel<T>): T;
+
+getItem({ label: "item 1", item: 5 }) satisfies string;
+```
+
+- Expected string, found 5
+
+#### Double generics
+
+> Really want to only have one covariant and one contravariant but want to keep TSC semantics
+
+```ts
+declare function what<T>(a: T, b: T): T;
+
+what(2, 3) satisfies string;
+```
+
+- Expected string, found 2 | 3
+
+### Mapped types
+
+#### Simple key
 
 ```ts
 type Record2<K extends string, T> = { [P in K]: T }

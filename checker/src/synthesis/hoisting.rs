@@ -390,7 +390,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 							Exportable::TypeAlias(_) | Exportable::ImportAll { .. } => {}
 							// TODO
-							Exportable::Parts(..) | Exportable::ImportParts { .. } => {}
+							Exportable::Parts(..) | Exportable::ImportParts { .. } => {
+								crate::utils::notify!("TODO");
+							}
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
@@ -430,7 +432,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						&function.on,
 						environment,
 						checking_data,
-					)
+					);
 				} else {
 					synthesise_hoisted_statement_function(
 						variable_id,

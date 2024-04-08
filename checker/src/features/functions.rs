@@ -134,6 +134,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 		.insert(variable_id, checking_data.types.new_function_type(function));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
 	is_async: bool,
@@ -258,7 +259,7 @@ pub enum FunctionBehavior {
 }
 
 impl FunctionBehavior {
-	pub(crate) fn can_be_bound(&self) -> bool {
+	pub(crate) fn can_be_bound(self) -> bool {
 		matches!(self, Self::Method { .. } | Self::Function { .. })
 	}
 }
@@ -376,7 +377,9 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 	},
 }
 
-pub struct ClassPropertiesToRegister<'a, A: crate::ASTImplementation>(pub Vec<ClassValue<'a, A>>);
+pub struct ClassPropertiesToRegister<'a, A: crate::ASTImplementation> {
+	pub properties: Vec<ClassValue<'a, A>>,
+}
 
 impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
 	#[must_use]
@@ -951,7 +954,7 @@ where
 			None => FunctionEffect::Unknown,
 		};
 
-		FunctionType { id, behavior, type_parameters, parameters, return_type, effect }
+		FunctionType { id, type_parameters, parameters, return_type, behavior, effect }
 	}
 }
 

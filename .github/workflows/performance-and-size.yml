@@ -29,6 +29,7 @@ jobs:
         with:
           packages: hyperfine
 
+      # For displaying line count in file
       - name: Download scc
         run: |
           mkdir scc
@@ -53,12 +54,12 @@ jobs:
         shell: bash
         run: |
           cat ./checker/specification/specification.md
-          echo "Here1"
+          echo "::debug::Found specification"
 
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
 
-          echo "Here2"
+          echo "::debug::Generated demo.ts"
           cat ./demo.ts
 
           echo "<details>
@@ -67,7 +68,7 @@ jobs:
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
 
-          lines=$(scc -c --no-cocomo -f json .\private\tocheck\all.ts | jq ".[0].Code")
+          lines=$(scc -c --no-cocomo -f json .\demo.ts | jq ".[0].Code")
           echo "// $lines of TypeScript" >> $GITHUB_STEP_SUMMARY
           cat ./demo.ts >> $GITHUB_STEP_SUMMARY
 

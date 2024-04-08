@@ -46,7 +46,7 @@ use crate::{
 			evaluate_pure_binary_operation_handle_errors, evaluate_pure_unary_operator,
 			EqualityAndInequality, MathematicalAndBitwise, PureUnary,
 		},
-		template_literal::synthesise_template_literal,
+		template_literal::synthesise_template_literal_expression,
 	},
 	types::calling::CalledWithNew,
 	types::{Constant, TypeId},
@@ -168,19 +168,21 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 			}
 
-			// TODO spread
-			let length = checking_data
-				.types
-				.new_constant_type(Constant::Number((elements.len() as f64).try_into().unwrap()));
+			{
+				// TODO spread
+				let length = checking_data.types.new_constant_type(Constant::Number(
+					(elements.len() as f64).try_into().unwrap(),
+				));
 
-			// TODO: Should there be a position here?
-			basis.append(
-				environment,
-				Publicity::Public,
-				PropertyKey::String("length".into()),
-				crate::types::properties::PropertyValue::Value(length),
-				None,
-			);
+				// TODO: Should there be a position here?
+				basis.append(
+					environment,
+					Publicity::Public,
+					PropertyKey::String("length".into()),
+					crate::types::properties::PropertyValue::Value(length),
+					None,
+				);
+			}
 
 			Instance::RValue(basis.build_object())
 		}
@@ -203,7 +205,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE)
 			});
 
-			Instance::RValue(synthesise_template_literal(
+			Instance::RValue(synthesise_template_literal_expression(
 				tag,
 				parts_iter,
 				position,
@@ -933,6 +935,7 @@ fn operator_to_assignment_kind(
 /// Generic for functions + constructor calls
 ///
 /// TODO error with `function_type_id` should be handled earlier
+#[allow(clippy::too_many_arguments)]
 fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
@@ -977,7 +980,6 @@ fn call_function<T: crate::ReadFromFS>(
 		&arguments,
 		CallingInput {
 			called_with_new,
-			this_value: Default::default(),
 			call_site: call_site.with_source(environment.get_source()),
 			call_site_type_arguments: generic_type_arguments,
 		},

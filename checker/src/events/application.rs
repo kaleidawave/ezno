@@ -233,7 +233,6 @@ pub(crate) fn apply_event(
 						with,
 						&crate::types::calling::CallingInput {
 							called_with_new,
-							this_value: Default::default(),
 							call_site_type_arguments: None,
 							// TODO:
 							call_site: source_map::Nullable::NULL,

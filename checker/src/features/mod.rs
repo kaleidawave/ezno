@@ -108,25 +108,22 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	if let Some(constraint) = get_constraint(on, &checking_data.types) {
 		// TODO mark type as awaited
 		let inner_type = get_promise_value(constraint, &checking_data.types);
-		match inner_type {
-			Some(result) => {
-				crate::utils::notify!("Queue await effect");
-				checking_data.types.register_type(Type::Constructor(
-					crate::types::Constructor::Awaited { on, result },
-				))
-			}
-			None => {
-				crate::utils::notify!(
-					"Await on {:?}, got {:?}",
-					checking_data.types.get_type_by_id(on),
-					checking_data.types.get_type_by_id(constraint)
-				);
-				checking_data.raise_unimplemented_error(
-					"await has no effect (or awaited expression is more complex)",
-					position,
-				);
-				on
-			}
+		if let Some(result) = inner_type {
+			crate::utils::notify!("Queue await effect");
+			checking_data
+				.types
+				.register_type(Type::Constructor(crate::types::Constructor::Awaited { on, result }))
+		} else {
+			crate::utils::notify!(
+				"Await on {:?}, got {:?}",
+				checking_data.types.get_type_by_id(on),
+				checking_data.types.get_type_by_id(constraint)
+			);
+			checking_data.raise_unimplemented_error(
+				"await has no effect (or awaited expression is more complex)",
+				position,
+			);
+			on
 		}
 	} else {
 		checking_data.raise_unimplemented_error("await on object", position);
