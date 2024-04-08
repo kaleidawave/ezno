@@ -1016,10 +1016,16 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 		crate::utils::notify!("key {:?} with {:?}", key, base_type_arguments);
 
 		let key = match key {
-			PropertyKey::Type(ty) => PropertyKey::from_type(
-				base_type_arguments.unwrap().get_single_argument(*ty).unwrap_or(*ty),
-				types,
-			),
+			PropertyKey::Type(ty) => {
+				if let Some(base_type_arguments) = base_type_arguments {
+					PropertyKey::from_type(
+						base_type_arguments.get_single_argument(*ty).unwrap_or(*ty),
+						types,
+					)
+				} else {
+					key.clone()
+				}
+			}
 			PropertyKey::String(_) => key.clone(),
 		};
 
