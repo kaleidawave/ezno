@@ -1006,7 +1006,7 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 ) -> SubTypeResult {
 	// TODO (#128): This is a compromise where only boolean and number types are treated as nominal
 	match base_type {
-		TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE => {
+		TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE if base_type != ty => {
 			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 		}
 		_ => {}
@@ -1127,7 +1127,36 @@ fn check_lhs_property_is_super_type_of_rhs<'a, T: SubTypeBehavior<'a>>(
 				Err(..) => Err(PropertyError::Missing),
 			}
 		}
-		PropertyValue::Getter(_) => todo!(),
+		PropertyValue::Getter(getter) => {
+			let rhs_property = get_property_unbound(ty, publicity, key, types, environment);
+			crate::utils::notify!("looking for {:?} found {:?}", key, rhs_property);
+
+			match rhs_property {
+				Ok(rhs_property) => {
+					let res = check_logical_property(
+						getter.return_type,
+						base_type_arguments,
+						rhs_property,
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						mode,
+						already_checked,
+					);
+					match res {
+						SubTypeResult::IsSubType => Ok(()),
+						SubTypeResult::IsNotSubType(err) => Err(PropertyError::Invalid {
+							expected: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							mismatch: err,
+						}),
+					}
+				}
+				// TODO
+				Err(..) => Err(PropertyError::Missing),
+			}
+		}
 		PropertyValue::Setter(_) => todo!(),
 		PropertyValue::Deleted => {
 			// TODO WIP
