@@ -270,6 +270,20 @@ impl ApplicationResult {
 			}
 		}
 	}
+
+	pub(crate) fn remove_throws(self) -> ApplicationResult {
+		match self {
+			ApplicationResult::Interrupt(FinalEvent::Throw { .. }) => ApplicationResult::Completed,
+			ApplicationResult::Conditionally { on, truthy, otherwise } => {
+				ApplicationResult::Conditionally {
+					on,
+					truthy: truthy.remove_throws().into(),
+					otherwise: otherwise.remove_throws().into(),
+				}
+			}
+			ApplicationResult::Completed | ApplicationResult::Interrupt(..) => self,
+		}
+	}
 }
 
 impl From<Option<FinalEvent>> for ApplicationResult {

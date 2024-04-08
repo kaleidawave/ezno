@@ -1,40 +1,37 @@
-use std::{collections::HashMap, iter};
+use std::iter;
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
 	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
-	StatementOrDeclaration, VariableIdentifier, WithComment,
+	StatementOrDeclaration, VariableIdentifier,
 };
 
 use crate::{
 	context::{Environment, VariableRegisterArguments},
 	features::{
-		functions::synthesise_hoisted_statement_function,
+		functions::{synthesise_declare_statement_function, synthesise_hoisted_statement_function},
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
+	},
+	synthesis::{
+		classes::register_statement_class_with_members,
+		type_annotations::get_annotation_from_declaration,
 	},
 	CheckingData, ReadFromFS, TypeId,
 };
 
-use super::{
-	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
-	variables::register_variable,
-	EznoParser,
-};
+use super::{variables::register_variable, EznoParser};
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	let mut idx_to_types = HashMap::new();
-
 	// First stage: imports and types
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
 				parser::Declaration::DeclareVariable(_)
-				| parser::Declaration::Class(_)
 				| parser::Declaration::Variable(_)
 				| parser::Declaration::Function(_) => {}
 				parser::Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
@@ -47,23 +44,39 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				),
 				parser::Declaration::Interface(interface) => {
 					let ty = environment.register_interface(
-						interface.on.name.identifier.as_option_str().unwrap_or_default(),
+						interface.on.name.as_option_str().unwrap_or_default(),
 						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
 						interface.on.position.with_source(environment.get_source()),
 						checking_data,
 					);
-					idx_to_types.insert(interface.on.position.start, ty);
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(interface.on.get_position(), ty);
+				}
+				parser::Declaration::Class(class) => {
+					let ty = environment.register_class::<EznoParser>(
+						class.on.name.as_option_str().unwrap_or_default(),
+						class.on.type_parameters.as_deref(),
+						class.on.extends.as_deref(),
+						&mut checking_data.types,
+					);
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(class.on.get_position(), ty);
 				}
 				parser::Declaration::TypeAlias(alias) => {
-					environment.new_alias(
+					let ty = environment.new_alias(
 						alias.name.as_option_str().unwrap_or_default(),
 						alias.parameters.as_deref(),
 						&alias.references,
 						alias.get_position(),
 						checking_data,
 					);
+					checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
 				}
 				parser::Declaration::Import(import) => {
 					let items = match &import.items {
@@ -142,8 +155,54 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									*type_definitions_only,
 								);
 							}
+							Exportable::Interface(interface) => {
+								let ty = environment.register_interface(
+									interface.name.as_option_str().unwrap_or_default(),
+									interface.is_nominal,
+									interface.type_parameters.as_deref(),
+									interface.extends.as_deref(),
+									interface.position.with_source(environment.get_source()),
+									checking_data,
+								);
+								checking_data
+									.local_type_mappings
+									.types_to_types
+									.push(interface.get_position(), ty);
+
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.scope
+								{
+									let name = interface
+										.name
+										.as_option_str()
+										.unwrap_or_default()
+										.to_owned();
+									exported.named_types.push((name, ty));
+								}
+							}
+							Exportable::Class(class) => {
+								let ty = environment.register_class::<EznoParser>(
+									class.name.as_option_str().unwrap_or_default(),
+									class.type_parameters.as_deref(),
+									class.extends.as_deref(),
+									&mut checking_data.types,
+								);
+								checking_data
+									.local_type_mappings
+									.types_to_types
+									.push(class.get_position(), ty);
+
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.scope
+								{
+									exported.named_types.push((
+										class.name.as_option_str().unwrap_or_default().to_owned(),
+										ty,
+									));
+								}
+							}
 							Exportable::TypeAlias(alias) => {
-								let export = environment.new_alias::<_, EznoParser>(
+								let ty = environment.new_alias::<_, EznoParser>(
 									alias.name.as_option_str().unwrap_or_default(),
 									alias.parameters.as_deref(),
 									&alias.references,
@@ -155,11 +214,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									environment.context_type.scope
 								{
 									exported.named_types.push((
-										alias
-											.name
-											.as_option_str()
-											.map_or_else(String::new, str::to_owned),
-										export,
+										alias.name.as_option_str().unwrap_or_default().to_owned(),
+										ty,
 									));
 								}
 							}
@@ -172,12 +228,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 		}
 	}
 
-	// Second stage
+	// Second stage: variables and function type hoisting
 	for item in items {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(stmt) = stmt {
 					for declaration in &stmt.declarations {
+						crate::utils::notify!("declaration.name {:?}", declaration.name);
 						let constraint = get_annotation_from_declaration(
 							declaration,
 							environment,
@@ -229,7 +286,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
+					let ty = *checking_data
+						.local_type_mappings
+						.types_to_types
+						.get(interface.on.get_position().start)
+						.unwrap();
+
 					super::interfaces::synthesise_signatures(
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
@@ -304,7 +366,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								hoist_variable_declaration(declaration, environment, checking_data);
 							}
 							Exportable::Interface(interface) => {
-								let ty = idx_to_types.remove(&interface.position.start).unwrap();
+								let ty = *checking_data
+									.local_type_mappings
+									.types_to_types
+									.get(interface.get_position().start)
+									.unwrap();
+
 								super::interfaces::synthesise_signatures(
 									interface.type_parameters.as_deref(),
 									interface.extends.as_deref(),
@@ -314,11 +381,18 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									checking_data,
 								);
 							}
-							Exportable::TypeAlias(_)
-							| Exportable::Parts(..)
-							| Exportable::ImportAll { .. }
-							| Exportable::ImportParts { .. }
-							| Exportable::Class(_) => {}
+							Exportable::Class(class) => {
+								register_statement_class_with_members(
+									class,
+									environment,
+									checking_data,
+								);
+							}
+							Exportable::TypeAlias(_) | Exportable::ImportAll { .. } => {}
+							// TODO
+							Exportable::Parts(..) | Exportable::ImportParts { .. } => {
+								crate::utils::notify!("TODO");
+							}
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
@@ -326,9 +400,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						todo!()
 					}
 				},
-				parser::Declaration::Class(_)
-				| parser::Declaration::TypeAlias(_)
-				| parser::Declaration::Import(_) => {}
+				parser::Declaration::Class(class) => {
+					register_statement_class_with_members(&class.on, environment, checking_data);
+				}
+				parser::Declaration::TypeAlias(_) | parser::Declaration::Import(_) => {}
 			},
 			StatementOrDeclaration::Marker(_, _) => {}
 		}
@@ -347,15 +422,28 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
-				synthesise_hoisted_statement_function(
-					variable_id,
-					is_async,
-					is_generator,
-					location,
-					&function.on,
-					environment,
-					checking_data,
-				);
+				if function.on.name.declare {
+					synthesise_declare_statement_function(
+						variable_id,
+						is_async,
+						is_generator,
+						location,
+						None,
+						&function.on,
+						environment,
+						checking_data,
+					);
+				} else {
+					synthesise_hoisted_statement_function(
+						variable_id,
+						is_async,
+						is_generator,
+						location,
+						&function.on,
+						environment,
+						checking_data,
+					);
+				}
 			}
 			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
 				on:
@@ -510,43 +598,4 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			}
 		}
 	}
-}
-
-fn get_annotation_from_declaration<
-	T: crate::ReadFromFS,
-	U: parser::declarations::variable::DeclarationExpression + 'static,
->(
-	declaration: &parser::declarations::VariableDeclarationItem<U>,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Option<TypeId> {
-	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
-		Some((
-			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().with_source(environment.get_source()),
-		))
-	}
-	// TODO only under config
-	else if let WithComment::PostfixComment(_item, possible_declaration, position) =
-		&declaration.name
-	{
-		comment_as_type_annotation(
-			possible_declaration,
-			&position.with_source(environment.get_source()),
-			environment,
-			checking_data,
-		)
-	} else {
-		None
-	};
-
-	if let Some((ty, span)) = result {
-		let get_position = declaration.get_position();
-		checking_data
-			.type_mappings
-			.variable_restrictions
-			.insert((environment.get_source(), get_position.start), (ty, span));
-	}
-
-	result.map(|(value, _span)| value)
 }

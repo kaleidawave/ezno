@@ -20,6 +20,7 @@
 
 use std::convert::TryInto;
 
+use map_vec::Map;
 use parser::{
 	type_annotations::{
 		AnnotationWithBinder, CommonTypes, TupleElementKind, TypeCondition, TypeConditionResult,
@@ -31,15 +32,13 @@ use source_map::SpanWithSource;
 use crate::{
 	context::information::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::objects::ObjectBuilder,
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
 		poly_types::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
-		Constant, PolyNature, StructureGenerics, Type,
+		Constant, Constructor, StructureGenerics, Type, TypeId,
 	},
-	types::{Constructor, TypeId},
 	CheckingData, Environment,
 };
 
@@ -83,9 +82,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			name => {
 				if let Some(ty) = environment.get_type_from_name(name) {
 					// Warn if it requires parameters. e.g. Array
-					if let Type::AliasTo { parameters: Some(_), .. }
-					| Type::Interface { parameters: Some(_), .. } = checking_data.types.get_type_by_id(ty)
-					{
+					if checking_data.types.get_type_by_id(ty).get_parameters().is_some() {
 						// TODO check defaults...
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::TypeNeedsTypeArguments(
@@ -155,13 +152,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 			acc
 		}
-		// This will take the found type and generate a InstanceOfGeneric based on the type arguments
+		// This will take the found type and generate a `StructureGeneric` based on the type arguments
 		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
-			match name.as_str() {
-				"ReturnType" => todo!(),
-				"Constructor" => todo!(),
-				_ => {}
-			}
+			// match name.as_str() {
+			// 	"ReturnType" => todo!(),
+			// 	"Constructor" => todo!(),
+			// 	_ => {}
+			// }
 
 			let Some(inner_type_id) = environment.get_type_from_name(name) else {
 				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
@@ -173,9 +170,23 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
+			// crate::utils::notify!("{:?}", inner_type);
+
 			if let Some(parameters) = inner_type.get_parameters() {
-				let is_type_alias_to =
-					if let Type::AliasTo { to, .. } = inner_type { Some(*to) } else { None };
+				let is_flattenable_alias = if let Type::AliasTo { to, .. } = inner_type {
+					// Important that these wrappers are kept as there 'wrap' holds information
+					if matches!(
+						inner_type_id,
+						TypeId::LITERAL_RESTRICTION | TypeId::READONLY_RESTRICTION
+					) {
+						None
+					} else {
+						Some(*to)
+					}
+				} else {
+					None
+				};
+
 				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
 					map_vec::Map::new();
 
@@ -188,53 +199,55 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						checking_data,
 					);
 
-					let mut basic_equality = BasicEquality {
-						add_property_restrictions: true,
-						position: argument_type_annotation
-							.get_position()
-							.with_source(environment.get_source()),
-						// TODO not needed
-						object_constraints: Default::default(),
-					};
+					{
+						// TODO check restriction on parameter
+						// let mut basic_equality = BasicEquality {
+						// 	add_property_restrictions: true,
+						// 	position: argument_type_annotation
+						// 		.get_position()
+						// 		.with_source(environment.get_source()),
+						// 	// TODO not needed
+						// 	object_constraints: Default::default(),
+						// 	allow_errors: true,
+						// };
 
-					let Type::RootPolyType(PolyNature::Generic {
-						name: _,
-						eager_fixed: parameter_restriction,
-					}) = checking_data.types.get_type_by_id(parameter)
-					else {
-						unreachable!()
-					};
+						// let Type::RootPolyType(PolyNature::InterfaceGeneric { name: _ }) =
+						// 	checking_data.types.get_type_by_id(parameter)
+						// else {
+						// 	unreachable!()
+						// };
 
-					// TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
-					// Definition files don't necessary need to check ...
-					let result = type_is_subtype(
-						*parameter_restriction,
-						argument,
-						&mut basic_equality,
-						environment,
-						&checking_data.types,
-					);
+						// // TODO it is a bit weird with the arguments, maybe should get their restriction directly here?
+						// // Definition files don't necessary need to check ...
+						// let result = type_is_subtype(
+						// 	*parameter_restriction,
+						// 	argument,
+						// 	&mut basic_equality,
+						// 	environment,
+						// 	&checking_data.types,
+						// );
 
-					if let SubTypeResult::IsNotSubType(_matches) = result {
-						let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-							parameter_restriction: TypeStringRepresentation::from_type_id(
-								*parameter_restriction,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							argument: TypeStringRepresentation::from_type_id(
-								argument,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							position: argument_type_annotation
-								.get_position()
-								.with_source(environment.get_source()),
-						};
+						// if let SubTypeResult::IsNotSubType(_matches) = result {
+						// 	let error = TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+						// 		parameter_restriction: TypeStringRepresentation::from_type_id(
+						// 			*parameter_restriction,
+						// 			environment,
+						// 			&checking_data.types,
+						// 			checking_data.options.debug_types,
+						// 		),
+						// 		argument: TypeStringRepresentation::from_type_id(
+						// 			argument,
+						// 			environment,
+						// 			&checking_data.types,
+						// 			checking_data.options.debug_types,
+						// 		),
+						// 		position: argument_type_annotation
+						// 			.get_position()
+						// 			.with_source(environment.get_source()),
+						// 	};
 
-						checking_data.diagnostics_container.add_error(error);
+						// 	checking_data.diagnostics_container.add_error(error);
+						// }
 					}
 
 					let with_source = argument_type_annotation
@@ -245,12 +258,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				}
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
-				let mut arguments = StructureGenericArguments {
-					type_restrictions: type_arguments,
-					properties: map_vec::Map::new(),
-					closures: Default::default(),
-				};
-				if let Some(on) = is_type_alias_to {
+				let mut arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
+				if let Some(on) = is_flattenable_alias {
 					crate::types::substitute(
 						on,
 						&mut arguments,
@@ -289,11 +298,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				Some(return_type),
 				environment,
 				checking_data,
-				super::Performs::None,
 				&position,
 				// TODO async
 				crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
-				None,
 			);
 			// TODO bit messy
 			checking_data.types.new_function_type_annotation(
@@ -301,15 +308,22 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				function_type.parameters,
 				function_type.return_type,
 				&position,
-				function_type.effects,
-				None,
 			)
 		}
-		TypeAnnotation::Readonly(type_annotation, _) => {
-			let _underlying_type =
+		TypeAnnotation::Readonly(type_annotation, pos) => {
+			let underlying_type =
 				synthesise_type_annotation(type_annotation, environment, checking_data);
 
-			todo!();
+			let restrictions = Map::from_iter([(
+				TypeId::T_TYPE,
+				(underlying_type, pos.with_source(environment.get_source())),
+			)]);
+			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on: TypeId::READONLY_RESTRICTION,
+				arguments: StructureGenericArguments::ExplicitRestrictions(restrictions),
+			}));
+
+			checking_data.types.register_type(ty)
 
 			// let ty_to_be_readonly = checking_data.types.register_type(Type::AliasTo {
 			// 	to: underlying_type,
@@ -456,12 +470,30 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			crate::utils::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
-		TypeAnnotation::TemplateLiteral(_, _) => todo!(),
+		TypeAnnotation::TemplateLiteral(parts, _) => {
+			let parts = parts
+				.iter()
+				.map(|part| match part {
+					parser::ast::TemplateLiteralPart::Static(s) => {
+						checking_data.types.new_constant_type(Constant::String(s.clone()))
+					}
+					parser::ast::TemplateLiteralPart::Dynamic(p) => {
+						let annotation = match &**p {
+							AnnotationWithBinder::Annotated { ty, .. }
+							| AnnotationWithBinder::NoAnnotation(ty) => ty,
+						};
+						synthesise_type_annotation(annotation, environment, checking_data)
+					}
+				})
+				.collect();
+
+			synthesize_template_literal_type(parts, &mut checking_data.types)
+		}
 		TypeAnnotation::Symbol { .. } => todo!(),
 	};
 
 	checking_data
-		.type_mappings
+		.local_type_mappings
 		.types_to_types
 		.push(annotation.get_position().with_source(environment.get_source()), ty);
 
@@ -511,7 +543,48 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 			annotation.get_position().with_source(source),
 		))
 	} else {
+		crate::utils::notify!("Failed comment as type annotation");
 		// TODO warning
 		None
 	}
+}
+
+pub(crate) fn get_annotation_from_declaration<
+	T: crate::ReadFromFS,
+	U: parser::declarations::variable::DeclarationExpression + 'static,
+>(
+	declaration: &parser::declarations::VariableDeclarationItem<U>,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> Option<TypeId> {
+	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
+		Some((
+			synthesise_type_annotation(annotation, environment, checking_data),
+			annotation.get_position().with_source(environment.get_source()),
+		))
+	}
+	// TODO only under config
+	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =
+		&declaration.name
+	{
+		crate::utils::notify!("Here {:?}", possible_declaration);
+		comment_as_type_annotation(
+			possible_declaration,
+			&position.with_source(environment.get_source()),
+			environment,
+			checking_data,
+		)
+	} else {
+		None
+	};
+
+	if let Some((ty, span)) = result {
+		let get_position = declaration.get_position();
+		checking_data
+			.local_type_mappings
+			.variable_restrictions
+			.insert((environment.get_source(), get_position.start), (ty, span));
+	}
+
+	result.map(|(value, _span)| value)
 }

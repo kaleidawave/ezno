@@ -11,8 +11,11 @@ use crate::{
 		Logical,
 	},
 	events::{Event, FinalEvent},
-	features::objects::SpecialObjects,
-	types::{get_constraint, Constructor, StructureGenerics, TypeRelationOperator},
+	features::{functions::ThisValue, objects::SpecialObjects},
+	types::{
+		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, Constructor,
+		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
+	},
 	Constant, PropertyValue,
 };
 
@@ -24,14 +27,22 @@ pub fn print_type(
 	debug: bool,
 ) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(id, &mut buf, &mut HashSet::new(), None, types, info_chain, debug);
+	print_type_into_buf(
+		id,
+		&mut buf,
+		&mut HashSet::new(),
+		GenericChain::None,
+		types,
+		info_chain,
+		debug,
+	);
 	buf
 }
 
 #[must_use]
 pub fn print_type_with_type_arguments(
 	id: TypeId,
-	type_arguments: Option<GenericChain>,
+	type_arguments: GenericChain,
 	types: &TypeStore,
 	info_chain: &impl InformationChain,
 	debug: bool,
@@ -51,27 +62,24 @@ pub fn print_type_with_type_arguments(
 
 /// Recursion safe + reuses buffer
 fn print_type_into_buf<C: InformationChain>(
-	id: TypeId,
+	ty: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
-	args: Option<GenericChain>,
+	args: GenericChain,
 	types: &TypeStore,
 	info_chain: &C,
 	debug: bool,
 ) {
 	use std::fmt::Write;
 
-	let not_in_cycle = cycles.insert(id);
+	let not_in_cycle = cycles.insert(ty);
 	if !not_in_cycle {
 		buf.push_str("*cycle*");
 		return;
 	}
 
-	let ty = types.get_type_by_id(id);
-	match ty {
-		Type::AliasTo { to: _, name, parameters: _ } => {
-			buf.push_str(name);
-		}
+	let r#type = types.get_type_by_id(ty);
+	match r#type {
 		Type::And(a, b) => {
 			print_type_into_buf(*a, buf, cycles, args, types, info_chain, debug);
 			buf.push_str(" & ");
@@ -83,19 +91,33 @@ fn print_type_into_buf<C: InformationChain>(
 			print_type_into_buf(*b, buf, cycles, args, types, info_chain, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
-			PolyNature::Generic { name, eager_fixed } => {
-				if let Some(argvs) = args.and_then(|args| args.get_arg(id, info_chain)) {
-					for (more, arg) in argvs.iter().nendiate() {
+			PolyNature::FunctionGeneric { name, .. }
+			| PolyNature::StructureGeneric { name, constrained: _ } => {
+				if let Some(structure_args) =
+					args.and_then(|args| args.get_argument(ty, info_chain, types))
+				{
+					for (more, arg) in structure_args.iter().nendiate() {
 						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
 						if more {
 							buf.push_str(" | ");
 						}
 					}
 				} else if debug {
-					// TODO restriction
-					write!(buf, "[generic {} {}, fixed to ", name, id.0).unwrap();
-					print_type_into_buf(*eager_fixed, buf, cycles, args, types, info_chain, debug);
-					buf.push(']');
+					if let PolyNature::FunctionGeneric { eager_fixed, .. } = nature {
+						write!(buf, "[fg {} {}, @ ", name, ty.0).unwrap();
+						print_type_into_buf(
+							*eager_fixed,
+							buf,
+							cycles,
+							args,
+							types,
+							info_chain,
+							debug,
+						);
+						buf.push(']');
+					} else {
+						write!(buf, "[sg {} {}]", name, ty.0).unwrap();
+					}
 				} else {
 					buf.push_str(name);
 				}
@@ -103,23 +125,23 @@ fn print_type_into_buf<C: InformationChain>(
 			PolyNature::FreeVariable { based_on: to, .. } => {
 				if debug {
 					// FV = free variable
-					write!(buf, "[FV {}] fixed to ", id.0).unwrap();
+					write!(buf, "[FV {}] @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info_chain, debug);
 			}
 			PolyNature::Parameter { fixed_to: to } => {
 				if debug {
-					write!(buf, "[param {}] fixed to ", id.0).unwrap();
+					write!(buf, "[param {}] @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info_chain, debug);
 			}
 			PolyNature::Open(to) => {
 				if debug {
-					write!(buf, "[open {}] ", id.0).unwrap();
+					write!(buf, "[open {}] ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info_chain, debug);
 			}
-			PolyNature::RecursiveFunction(_, _) => {
+			PolyNature::RecursiveFunction(..) => {
 				todo!()
 				// let modified_base = match env {
 				// 	GeneralContext::Syntax(syn) => {
@@ -138,9 +160,9 @@ fn print_type_into_buf<C: InformationChain>(
 				result_union: _,
 			} => {
 				if debug {
-					write!(buf, "[? {id:? }").unwrap();
+					write!(buf, "?#{} ", ty.0).unwrap();
 					print_type_into_buf(*condition, buf, cycles, args, types, info_chain, debug);
-					buf.push(']');
+					buf.push_str("? ");
 				}
 				print_type_into_buf(*truthy_result, buf, cycles, args, types, info_chain, debug);
 				buf.push_str(if debug { " : " } else { " | " });
@@ -148,29 +170,39 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 			Constructor::StructureGenerics(StructureGenerics { on, arguments }) => {
 				if debug {
-					write!(buf, "SG({:?})(", id.0).unwrap();
+					write!(buf, "SG({:?})(", ty.0).unwrap();
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 					buf.push(')');
-					buf.write_fmt(format_args!("<{arguments:?}>")).unwrap();
-				} else if let Type::Interface { .. } | Type::AliasTo { .. } =
+					write!(buf, "<{arguments:?}>").unwrap();
+				} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
 					types.get_type_by_id(*on)
 				{
+					// on can be sometimes be generic
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
-					buf.push('<');
-					let nendiate = arguments.type_restrictions.values().nendiate();
-					for (not_at_end, (arg, _)) in nendiate {
-						print_type_into_buf(*arg, buf, cycles, args, types, info_chain, debug);
-						if not_at_end {
-							buf.push_str(", ");
+					match arguments {
+						StructureGenericArguments::ExplicitRestrictions(type_restrictions) => {
+							buf.push('<');
+							let nendiate = type_restrictions.values().nendiate();
+							for (not_at_end, (arg, _)) in nendiate {
+								crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
+								print_type_into_buf(
+									*arg, buf, cycles, args, types, info_chain, debug,
+								);
+								if not_at_end {
+									buf.push_str(", ");
+								}
+							}
+							buf.push('>');
 						}
+						StructureGenericArguments::Closure(..)
+						| StructureGenericArguments::LookUp { .. } => {}
 					}
-					buf.push('>');
 				} else {
 					print_type_into_buf(
 						*on,
 						buf,
 						cycles,
-						Some(GenericChain::append(args.as_ref(), arguments)),
+						GenericChainLink::append(args.as_ref(), arguments),
 						types,
 						info_chain,
 						debug,
@@ -180,7 +212,7 @@ fn print_type_into_buf<C: InformationChain>(
 			constructor if debug => match constructor {
 				Constructor::BinaryOperator { lhs, operator, rhs } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, info_chain, debug);
-					buf.write_fmt(format_args!(" {operator:?} ")).unwrap();
+					write!(buf, " {operator:?} ").unwrap();
 					print_type_into_buf(*rhs, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
@@ -196,11 +228,11 @@ fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*rhs, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::UnaryOperator { operator, operand } => {
-					buf.write_fmt(format_args!("{operator:?} ")).unwrap();
+					write!(buf, "{operator:?} ").unwrap();
 					print_type_into_buf(*operand, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::TypeOperator(to) => {
-					buf.write_fmt(format_args!("TypeOperator = {to:?}")).unwrap();
+					write!(buf, "TypeOperator = {to:?}").unwrap();
 				}
 				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
 					ty,
@@ -211,19 +243,36 @@ fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*extends, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::Image { on: _, with: _, result } => {
-					buf.write_fmt(format_args!("[func result {}] (*args here*)", id.0)).unwrap();
+					write!(buf, "[func result {}] (*args here*)", ty.0).unwrap();
 					// TODO arguments
 					buf.push_str(" -> ");
 					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
 				}
-				Constructor::Property { on, under, result: _, bind_this: _ } => {
+				Constructor::Property { on, under, result, bind_this } => {
+					buf.push('(');
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
-					buf.push('[');
-					print_property_key_into_buf(buf, under, cycles, args, types, info_chain, debug);
+					buf.push_str(")[");
+					print_property_key_into_buf(under, buf, cycles, args, types, info_chain, debug);
 					buf.push(']');
+					if !bind_this {
+						buf.push_str(" no bind");
+					};
+					buf.push_str(" = ");
+					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
 				}
 				Constructor::StructureGenerics { .. } | Constructor::ConditionalResult { .. } => {
 					unreachable!()
+				}
+				Constructor::Awaited { on, result } => {
+					if debug {
+						buf.push_str("Awaited<");
+						print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
+						buf.push_str(", R=");
+						print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
+						buf.push('>');
+					} else {
+						print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
+					}
 				}
 			},
 			Constructor::Property { on, under, result, bind_this: _ } => {
@@ -241,33 +290,48 @@ fn print_type_into_buf<C: InformationChain>(
 						}
 					};
 					buf.push(']');
+				} else if let Some(Type::Constructor(Constructor::StructureGenerics(sgs))) =
+					get_constraint(*on, types).map(|ty| types.get_type_by_id(ty))
+				{
+					print_type_into_buf(
+						*result,
+						buf,
+						cycles,
+						GenericChainLink::append(args.as_ref(), &sgs.arguments),
+						types,
+						info_chain,
+						debug,
+					);
 				} else {
 					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
 				}
 			}
 			_constructor => {
-				let base = get_constraint(id, types).unwrap();
+				let base = get_constraint(ty, types).unwrap();
 				print_type_into_buf(base, buf, cycles, args, types, info_chain, debug);
 			}
 		},
-		Type::Interface { name, parameters, nominal, extends: _ } => {
-			if debug && id.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
-				write!(buf, "(r{} nom={:?}) {name}", id.0, nominal).unwrap();
-			} else {
-				buf.push_str(name);
-			}
-			if let (true, Some(parameters)) = (debug, parameters) {
-				buf.push('<');
-				for param in parameters {
-					print_type_into_buf(*param, buf, cycles, args, types, info_chain, debug);
-					buf.push_str(", ");
-				}
-				buf.push('>');
-			}
+		Type::Class { name, parameters: _, .. }
+		| Type::Interface { name, parameters: _, .. }
+		| Type::AliasTo { to: _, name, parameters: _ } => {
+			// if debug && ty.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
+			// write!(buf, "(r{} nom={:?}) {name}", ty.0, nominal).unwrap();
+			// } else {
+			buf.push_str(name);
+			// }
+
+			// if let (true, Some(parameters)) = (debug, parameters) {
+			// 	buf.push('{');
+			// 	for param in parameters {
+			// 		print_type_into_buf(*param, buf, cycles, args, types, info_chain, debug);
+			// 		buf.push_str(", ");
+			// 	}
+			// 	buf.push('}');
+			// }
 		}
 		Type::Constant(cst) => {
 			if debug {
-				write!(buf, "({}) {}", id.0, cst.as_type_name()).unwrap();
+				write!(buf, "({}) {}", ty.0, cst.as_type_name()).unwrap();
 			} else {
 				buf.push_str(&cst.as_type_name());
 			}
@@ -276,16 +340,26 @@ fn print_type_into_buf<C: InformationChain>(
 		| Type::SpecialObject(SpecialObjects::Function(func_id, _)) => {
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
-				write!(
-					buf,
-					"[func #{}, fvs {:?}, clo {:?}, const {:?}] ", // this {:?},
-					id.0,
-					func.free_variables,
-					func.closed_over_variables,
-					// this_ty,
-					func.constant_function.as_deref().unwrap_or("-")
-				)
-				.unwrap();
+				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
+				write!(buf, "[func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
+				if let FunctionEffect::SideEffects {
+					events: _,
+					free_variables,
+					closed_over_variables,
+				} = &func.effect
+				{
+					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?} ")
+						.unwrap();
+				} else {
+					write!(buf, "{:?} ", func.effect).unwrap();
+				}
+				if let Type::SpecialObject(SpecialObjects::Function(_, ThisValue::Passed(p))) =
+					r#type
+				{
+					buf.push_str(", this ");
+					print_type_into_buf(*p, buf, cycles, args, types, info_chain, debug);
+				}
+				buf.push_str("] = ");
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -306,6 +380,20 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push('>');
 			}
+			// TODO don't think this is needed
+			// let args = if let Type::SpecialObject(SpecialObjects::Function(_, this)) = r#type {
+			// 	if let Some(Type::Constructor(Constructor::StructureGenerics(sgs))) = this
+			// 		.get_passed()
+			// 		.map(|ty| get_constraint(ty, types).unwrap_or(ty))
+			// 		.map(|ty| types.get_type_by_id(ty))
+			// 	{
+			// 		Some(GenericChain::append(args.as_ref(), &sgs.arguments))
+			// 	} else {
+			// 		args
+			// 	}
+			// } else {
+			// 	args
+			// };
 			buf.push('(');
 			for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
 				buf.push_str(&param.name);
@@ -322,21 +410,26 @@ fn print_type_into_buf<C: InformationChain>(
 			buf.push_str(") => ");
 			print_type_into_buf(func.return_type, buf, cycles, args, types, info_chain, debug);
 		}
-		Type::Object(..) => {
+		Type::Object(kind) => {
 			if debug {
-				write!(buf, "[obj {}]", id.0).unwrap();
+				if let ObjectNature::RealDeal = kind {
+					write!(buf, "[obj {}]", ty.0).unwrap();
+				} else {
+					write!(buf, "[aol {}]", ty.0).unwrap();
+				}
 			}
 			let prototype =
-				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&id).copied());
+				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&ty).copied());
+
 			if let Some(TypeId::ARRAY_TYPE) = prototype {
-				if let Some(n) = get_array_length(info_chain, id, types) {
+				if let Some(n) = get_array_length(info_chain, ty, types) {
 					buf.push('[');
 					for i in 0..(n.into_inner() as usize) {
 						if i != 0 {
 							buf.push_str(", ");
 						}
 						let value =
-							get_simple_value(info_chain, id, &PropertyKey::from_usize(i), types);
+							get_simple_value(info_chain, ty, &PropertyKey::from_usize(i), types);
 
 						if let Some(value) = value {
 							print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
@@ -352,20 +445,20 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 			} else {
 				if let Some(prototype) = prototype {
-					// crate::utils::notify!("Proto during print {:?}", prototype);
+					// crate::utils::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info_chain, debug);
 					buf.push_str("] ");
 				} else {
-					// crate::utils::notify!("no Proto on {:?} during print", id);
+					// crate::utils::notify!("no P on {:?} during print", id);
 				}
 				buf.push_str("{ ");
-				let properties = get_properties_on_type(id, info_chain);
+				let properties = get_properties_on_type(ty, types, info_chain);
 				for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
 					if let Publicity::Private = publicity {
 						buf.push('#');
 					}
-					print_property_key_into_buf(buf, &key, cycles, args, types, info_chain, debug);
+					print_property_key_into_buf(&key, buf, cycles, args, types, info_chain, debug);
 					buf.push_str(": ");
 					print_type_into_buf(value, buf, cycles, args, types, info_chain, debug);
 					if not_at_end {
@@ -413,10 +506,13 @@ fn print_type_into_buf<C: InformationChain>(
 				buf.push('/');
 			}
 			SpecialObjects::Function(..) => unreachable!(),
+			SpecialObjects::ClassConstructor { name, constructor: _ } => {
+				buf.push_str(name);
+			}
 		},
 	}
 
-	cycles.remove(&id);
+	cycles.remove(&ty);
 }
 
 /// For getting `length` and stuff
@@ -461,15 +557,23 @@ pub fn print_property_key<C: InformationChain>(
 	debug: bool,
 ) -> String {
 	let mut string = String::new();
-	print_property_key_into_buf(&mut string, key, &mut HashSet::new(), None, types, info, debug);
+	print_property_key_into_buf(
+		key,
+		&mut string,
+		&mut HashSet::new(),
+		GenericChain::None,
+		types,
+		info,
+		debug,
+	);
 	string
 }
 
 pub(crate) fn print_property_key_into_buf<C: InformationChain>(
-	buf: &mut String,
 	key: &PropertyKey,
+	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
-	args: Option<GenericChain>,
+	args: GenericChain,
 	types: &TypeStore,
 	info: &C,
 	debug: bool,
@@ -493,16 +597,15 @@ pub fn debug_effects<C: InformationChain>(
 ) {
 	use std::fmt::Write;
 
-	let args = None;
+	let args = GenericChain::None;
 
 	for event in events {
 		match event {
 			Event::ReadsReference { reference, reflects_dependency, position: _ } => {
-				buf.write_fmt(format_args!("read '{reference:?}' into {reflects_dependency:?}"))
-					.unwrap();
+				write!(buf, "read '{reference:?}' into {reflects_dependency:?}").unwrap();
 			}
 			Event::SetsVariable(variable, value, _) => {
-				buf.write_fmt(format_args!("'{variable:?}' =")).unwrap();
+				write!(buf, "{variable:?}' =").unwrap();
 				print_type_into_buf(*value, buf, &mut HashSet::new(), args, types, info, debug);
 			}
 			Event::Getter { on, under, reflects_dependency, publicity: _, position: _ } => {
@@ -512,19 +615,19 @@ pub fn debug_effects<C: InformationChain>(
 					buf.push('.');
 				}
 				print_property_key_into_buf(
-					buf,
 					under,
+					buf,
 					&mut HashSet::new(),
 					args,
 					types,
 					info,
 					debug,
 				);
-				buf.write_fmt(format_args!(" into {reflects_dependency:?}")).unwrap();
+				write!(buf, " into {reflects_dependency:?}").unwrap();
 			}
 			Event::Setter { on, under, new, initialization, publicity: _, position: _ } => {
 				if *initialization {
-					buf.write_fmt(format_args!("initialise {:?} with ", *on)).unwrap();
+					write!(buf, "initialise {:?} with ", *on).unwrap();
 					if let PropertyValue::Value(new) = new {
 						print_type_into_buf(
 							*new,
@@ -540,8 +643,8 @@ pub fn debug_effects<C: InformationChain>(
 					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
 					buf.push('[');
 					print_property_key_into_buf(
-						buf,
 						under,
+						buf,
 						&mut HashSet::default(),
 						args,
 						types,
@@ -572,7 +675,7 @@ pub fn debug_effects<C: InformationChain>(
 			} => {
 				buf.push_str("call ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
-				buf.write_fmt(format_args!(" into {reflects_dependency:?} ")).unwrap();
+				write!(buf, " into {reflects_dependency:?} ",).unwrap();
 				buf.push_str(match timing {
 					crate::events::CallingTiming::Synchronous => "now",
 					crate::events::CallingTiming::QueueTask => "queue",
@@ -603,10 +706,9 @@ pub fn debug_effects<C: InformationChain>(
 				is_function_this,
 			} => {
 				if *is_function_this {
-					buf.write_fmt(format_args!("create this function object")).unwrap();
+					write!(buf, "create this function object").unwrap();
 				} else {
-					buf.write_fmt(format_args!("create object as {referenced_in_scope_as:?}"))
-						.unwrap();
+					write!(buf, "create object as {referenced_in_scope_as:?}").unwrap();
 				}
 			}
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {

@@ -11,7 +11,7 @@ use crate::{
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
 		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, substitute,
-		FunctionType, GenericChain, ObjectNature, StructureGenerics,
+		FunctionType, GenericChain, GenericChainLink, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,
 };
@@ -177,7 +177,7 @@ impl PropertyValue {
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
 /// types at some point*
-// https://github.com/kaleidawave/ezno/pull/88
+/// TODO: `optional_chain`
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn get_property<E: CallCheckingBehavior>(
 	on: TypeId,
@@ -218,7 +218,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 		)
 	} else if top_environment.possibly_mutated_objects.contains(&on) {
 		let Some(constraint) = top_environment.get_object_constraint(on) else {
-			todo!("inference")
+			todo!("mutated property inference")
 		};
 
 		// TODO ...
@@ -253,7 +253,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
 		logical: Logical<PropertyValue>,
 		on: TypeId,
-		generics: Option<GenericChain>,
+		generics: GenericChain,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		behavior: &mut E,
@@ -272,23 +272,18 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 
 								Some((PropertyKind::Direct, func))
 							}
-							Type::FunctionReference(func) => {
-								// used for `"hi".toUpperCase()`;
-								// TODO a little bit weird how it goes from FunctionReference -> Function... but should be okay.
-								let func = types.register_type(Type::SpecialObject(
-									SpecialObjects::Function(*func, ThisValue::Passed(on)),
-								));
-
-								let ty = if let Some(chain) = generics {
-									assert!(chain.parent.is_none());
-									types.register_type(Type::Constructor(
-										Constructor::StructureGenerics(StructureGenerics {
-											on: func,
-											arguments: chain.value.into_owned(),
-										}),
-									))
+							Type::FunctionReference(_) => {
+								let ty = if let Some(_chain) = generics {
+									todo!()
+								// assert!(chain.parent.is_none());
+								// types.register_type(Type::Constructor(
+								// 	Constructor::StructureGenerics(StructureGenerics {
+								// 		on: value,
+								// 		arguments: chain.value.into_owned(),
+								// 	}),
+								// ))
 								} else {
-									func
+									value
 								};
 
 								Some((PropertyKind::Direct, ty))
@@ -298,7 +293,10 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							| Type::Object(..)
 							| Type::RootPolyType { .. }
 							| Type::Constant(..) => Some((PropertyKind::Direct, value)),
-							Type::Interface { .. } | Type::And(_, _) | Type::Or(_, _) => {
+							Type::Class { .. }
+							| Type::Interface { .. }
+							| Type::And(_, _)
+							| Type::Or(_, _) => {
 								crate::utils::notify!(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
 								    property, ty
@@ -370,7 +368,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 			Logical::Implies { on: log_on, antecedent } => resolve_property_on_logical(
 				*log_on,
 				on,
-				Some(GenericChain::append(generics.as_ref(), &antecedent)),
+				GenericChainLink::append(generics.as_ref(), &antecedent),
 				environment,
 				types,
 				behavior,
@@ -437,12 +435,13 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								bind_this: true,
 							}))
 						}
-						Type::SpecialObject(SpecialObjects::Function(..)) => unreachable!(),
-						// Don't need to set this here
-						Type::FunctionReference(..)
+						// Don't need to set this here. It is picked up from `on` during lookup
+						Type::SpecialObject(SpecialObjects::Function(..))
+						| Type::FunctionReference(..)
 						| Type::AliasTo { .. }
 						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
-						| Type::Interface { .. } => {
+						| Type::Interface { .. }
+						| Type::Class { .. } => {
 							types.register_type(Type::Constructor(Constructor::Property {
 								on,
 								under: under.into_owned(),
@@ -581,6 +580,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				// TODO position here
 				position: source_map::Nullable::NULL,
 				object_constraints: Default::default(),
+				allow_errors: true,
 			};
 
 			match new {

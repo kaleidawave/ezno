@@ -12,7 +12,10 @@ use crate::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
 	},
-	types::{FunctionType, GenericChain, PolyNature, Type},
+	types::{
+		get_structure_arguments_based_on_object_constraint, FunctionType, GenericChain,
+		GenericChainLink, PolyNature, Type,
+	},
 	Environment, FunctionId, LocalInformation, TypeId,
 };
 
@@ -27,6 +30,20 @@ use super::{
 pub struct TypeStore {
 	/// Contains all of the types. Indexed by [TypeId]
 	types: Vec<Type>,
+
+	/// Some types are prototypes but have generic parameters but
+	pub(crate) lookup_generic_map: HashMap<TypeId, LookUpGenericMap>,
+
+	/// Set after the interface [`Type`] is created, so here
+	/// TODO private
+	pub(crate) interface_extends: HashMap<TypeId, TypeId>,
+
+	/// Set after the interface [`Type`] is created, so here
+	interface_type_parameter_extends: HashMap<TypeId, TypeId>,
+
+	/// Contains all the function types
+	///
+	/// TODO is there a faster alternative to a [`HashMap`] like how [`Type`]s are stored in a [`Vec`]
 	pub(crate) functions: HashMap<FunctionId, FunctionType>,
 
 	// TODO
@@ -45,83 +62,26 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let types = vec![
-			Type::Interface {
-				name: "error".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "never".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "any".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "boolean".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "number".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "string".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "undefined".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "null".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
-			Type::Interface {
-				name: "Array".to_owned(),
-				parameters: Some(vec![TypeId::T_TYPE]),
-				nominal: true,
-				extends: None,
-			},
-			// Array T
-			Type::RootPolyType(PolyNature::Generic {
-				name: "T".to_owned(),
-				eager_fixed: TypeId::ANY_TYPE,
+			Type::Interface { name: "error".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
+			Type::Class { name: "boolean".to_owned(), parameters: None },
+			Type::Class { name: "number".to_owned(), parameters: None },
+			Type::Class { name: "string".to_owned(), parameters: None },
+			Type::Constant(crate::Constant::Undefined),
+			Type::Constant(crate::Constant::Null),
+			// `void` type. Has special subtyping in returns
+			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
+			Type::Class { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::Class { name: "Promise".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			// Array and Promise type parameter. Simplifies things
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "T".into(),
+				constrained: false,
 			}),
-			Type::Interface {
-				name: "object".to_owned(),
-				parameters: None,
-				nominal: false,
-				extends: None,
-			},
-			Type::Interface {
-				name: "Function".to_owned(),
-				parameters: None,
-				nominal: false,
-				extends: None,
-			},
-			Type::Interface {
-				name: "RegExp".to_owned(),
-				parameters: None,
-				nominal: true,
-				extends: None,
-			},
+			Type::Interface { name: "object".to_owned(), parameters: None, nominal: false },
+			Type::Class { name: "Function".to_owned(), parameters: None },
+			Type::Class { name: "RegExp".to_owned(), parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(crate::Constant::Boolean(true)),
@@ -138,31 +98,48 @@ impl Default for TypeStore {
 				reference: crate::events::RootReference::This,
 				based_on: TypeId::ANY_TYPE,
 			}),
-			Type::RootPolyType(PolyNature::Generic {
+			Type::RootPolyType(PolyNature::FunctionGeneric {
 				name: "new.target".to_owned(),
 				// TODO
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
 			// TODO Symbols, needs Constant::Symbol
 			Type::AliasTo {
-				to: TypeId::ANY_TYPE,
 				name: "SymbolToPrimitive".into(),
+				to: TypeId::ANY_TYPE,
 				parameters: None,
 			},
-			// `void` type. Does not block sometimes
-			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
+			// TODO WIP
+			Type::AliasTo {
+				name: "Literal".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Readonly".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
 		];
 
 		// Check that above is correct, TODO eventually a macro
 		assert_eq!(types.len(), TypeId::INTERNAL_TYPE_COUNT);
 
+		let lookup_generic_map = HashMap::from_iter([(
+			TypeId::ARRAY_TYPE,
+			SmallMap::from_iter([(TypeId::T_TYPE, LookUpGeneric::NumberPropertyOfSelf)]),
+		)]);
+
 		Self {
 			types: types.clone(),
+			lookup_generic_map,
 			functions: HashMap::new(),
 			_dependent_dependencies: Default::default(),
 			_specialisations: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
+			interface_extends: Default::default(),
+			interface_type_parameter_extends: Default::default(),
 		}
 	}
 }
@@ -228,11 +205,7 @@ impl TypeStore {
 			if l != r {
 				return Err(());
 			}
-		} else if let (
-			Type::Interface { nominal: true, .. },
-			Type::Interface { nominal: true, .. },
-		) = (left_ty, right_ty)
-		{
+		} else if left_ty.is_nominal() && right_ty.is_nominal() {
 			return Err(());
 		}
 
@@ -268,21 +241,14 @@ impl TypeStore {
 		parameters: crate::types::functions::SynthesisedParameters,
 		return_type: TypeId,
 		declared_at: &source_map::SpanWithSource,
-		effects: Option<Vec<crate::events::Event>>,
-		constant_function: Option<String>,
 	) -> TypeId {
 		let id = crate::FunctionId(declared_at.source, declared_at.start);
 		let function_type = FunctionType {
 			type_parameters,
 			parameters,
 			return_type,
-			effects,
-			// TODO
-			free_variables: Default::default(),
-			closed_over_variables: Default::default(),
-			// TODO
+			effect: super::FunctionEffect::Unknown,
 			behavior: FunctionBehavior::ArrowFunction { is_async: false },
-			constant_function,
 			id,
 		};
 		self.functions.insert(id, function_type);
@@ -313,14 +279,21 @@ impl TypeStore {
 		if truthy_result == otherwise_result {
 			return truthy_result;
 		}
-		// TODO on is negation then swap operands
-		let ty = Type::Constructor(super::Constructor::ConditionalResult {
-			condition,
-			truthy_result,
-			otherwise_result,
-			result_union: self.new_or_type(truthy_result, otherwise_result),
-		});
-		self.register_type(ty)
+
+		// TODO reverse as well
+		if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
+			condition
+		// self.new_logical_or_type(condition, otherwise_result)
+		} else {
+			// TODO on is negation then swap operands
+			let ty = Type::Constructor(super::Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				otherwise_result,
+				result_union: self.new_or_type(truthy_result, otherwise_result),
+			});
+			self.register_type(ty)
+		}
 	}
 
 	pub fn new_anonymous_interface_ty(&mut self) -> TypeId {
@@ -337,21 +310,17 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
-	/// Note it does call it over every context
-	/// For:
-	/// - Properties
-	/// - Equality
-	/// - Functions
+	/// TODO this is just for property lookup, right?
 	pub(crate) fn get_fact_about_type<C: InformationChain, TData: Copy, TResult>(
 		&self,
 		info_chain: &C,
 		on: TypeId,
-		on_type_arguments: Option<&GenericChain>,
+		on_type_arguments: GenericChain,
 		resolver: &impl Fn(
 			&LocalInformation,
 			&TypeStore,
 			TypeId,
-			Option<&GenericChain>,
+			GenericChain,
 			TData,
 		) -> Option<TResult>,
 		data: TData,
@@ -475,12 +444,14 @@ impl TypeStore {
 
 				on_sg_type
 					.or_else(|| {
-						let on_type_arguments = GenericChain::append(on_type_arguments, arguments);
+						let on_type_arguments =
+							GenericChainLink::append(on_type_arguments.as_ref(), arguments);
+
 						let fact_opt = self
 							.get_fact_about_type(
 								info_chain,
 								*base,
-								Some(&on_type_arguments),
+								on_type_arguments,
 								resolver,
 								data,
 							)
@@ -533,6 +504,7 @@ impl TypeStore {
 						// TODO implies ???
 						let constraint =
 							get_constraint(on, self).expect("no constraint for constructor");
+
 						// TODO might need to send more information here, rather than forgetting via .get_type
 						self.get_fact_about_type(
 							info_chain,
@@ -547,21 +519,7 @@ impl TypeStore {
 			}
 			Type::Object(..) => {
 				let object_constraint_structure_generics =
-					if let Some(object_constraint) = info_chain
-						.get_chain_of_info()
-						.find_map(|c| c.object_constraints.get(&on).copied())
-					{
-						if let Type::Constructor(Constructor::StructureGenerics(
-							StructureGenerics { arguments, .. },
-						)) = self.get_type_by_id(object_constraint)
-						{
-							Some(arguments)
-						} else {
-							None
-						}
-					} else {
-						None
-					};
+					get_structure_arguments_based_on_object_constraint(on, info_chain, self);
 
 				let prototype = info_chain
 					.get_chain_of_info()
@@ -569,15 +527,12 @@ impl TypeStore {
 					.copied();
 
 				let generics = if let gens @ Some(_) = object_constraint_structure_generics {
-					gens.cloned()
-				} else if let Some(prototype) = prototype {
-					self.get_look_up_generic_map_from_prototype(prototype, on).map(|properties| {
-						StructureGenericArguments {
-							type_restrictions: SmallMap::new(),
-							properties,
-							closures: Vec::new(),
-						}
-					})
+					gens
+				} else if prototype
+					.is_some_and(|prototype| self.lookup_generic_map.contains_key(&prototype))
+				{
+					crate::utils::notify!("Registering lookup");
+					Some(StructureGenericArguments::LookUp { on })
 				} else {
 					None
 				};
@@ -621,12 +576,14 @@ impl TypeStore {
 					})
 					.ok_or(crate::context::Missing::None)
 			}
-			Type::Interface { extends, .. } => info_chain
+
+			Type::Interface { .. } => info_chain
 				.get_chain_of_info()
 				.find_map(|env| resolver(env, self, on, on_type_arguments, data))
 				.map(Logical::Pure)
 				.or_else(|| {
-					if let Some(extends) = extends {
+					// TODO class and class constructor extends etc
+					if let Some(extends) = self.interface_extends.get(&on) {
 						self.get_fact_about_type(
 							info_chain,
 							*extends,
@@ -640,6 +597,29 @@ impl TypeStore {
 					}
 				})
 				.ok_or(crate::context::Missing::None),
+			Type::SpecialObject(SpecialObjects::ClassConstructor { .. }) | Type::Class { .. } => {
+				info_chain
+					.get_chain_of_info()
+					.find_map(|env| resolver(env, self, on, on_type_arguments, data))
+					.map(Logical::Pure)
+					.or_else(|| {
+						if let Some(prototype) =
+							info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+						{
+							self.get_fact_about_type(
+								info_chain,
+								*prototype,
+								on_type_arguments,
+								resolver,
+								data,
+							)
+							.ok()
+						} else {
+							None
+						}
+					})
+					.ok_or(crate::context::Missing::None)
+			}
 			Type::Constant(cst) => info_chain
 				.get_chain_of_info()
 				.find_map(|info| resolver(info, self, on, on_type_arguments, data))
@@ -660,42 +640,22 @@ impl TypeStore {
 		}
 	}
 
-	pub(crate) fn get_look_up_generic_map_from_prototype(
-		&self,
-		prototype: TypeId,
-		on: TypeId,
-	) -> Option<LookUpGenericMap> {
-		if prototype == TypeId::ARRAY_TYPE {
-			// Cannot create a union here
-			Some(SmallMap::from_iter([(
-				TypeId::T_TYPE,
-				super::LookUpGeneric::NumberPropertyOf(on),
-			)]))
-		} else if let Type::Interface { parameters: Some(_parameters), .. } =
-			self.get_type_by_id(prototype)
-		{
-			todo!("Should be stored during type definition synthesis")
-		} else {
-			None
-		}
-	}
-
-	pub(crate) fn get_look_up_generic_from_prototype(
-		&self,
-		prototype: TypeId,
-		on: TypeId,
-	) -> Option<LookUpGeneric> {
-		if prototype == TypeId::ARRAY_TYPE {
-			// Cannot create a union here
-			Some(super::LookUpGeneric::NumberPropertyOf(on))
-		} else if let Type::Interface { parameters: Some(_parameters), .. } =
-			self.get_type_by_id(prototype)
-		{
-			todo!("Should be stored during type definition synthesis")
-		} else {
-			None
-		}
-	}
+	// pub(crate) fn get_look_up_generic_from_prototype(
+	// 	&self,
+	// 	prototype: TypeId,
+	// 	on: TypeId,
+	// ) -> Option<LookUpGeneric> {
+	// 	if prototype == TypeId::ARRAY_TYPE {
+	// 		// Cannot create a union here
+	// 		Some(super::LookUpGeneric::NumberPropertyOf(on))
+	// 	} else if let Type::Interface { parameters: Some(_parameters), .. } =
+	// 		self.get_type_by_id(prototype)
+	// 	{
+	// 		todo!("Should be stored during type definition synthesis")
+	// 	} else {
+	// 		None
+	// 	}
+	// }
 
 	pub fn new_closure_id(&mut self) -> ClosureId {
 		self.closure_counter += 1;
@@ -711,6 +671,12 @@ impl TypeStore {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
 		self.register_type(Type::SpecialObject(SpecialObjects::Function(id, Default::default())))
+	}
+
+	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
+		let id = function_type.id;
+		self.functions.insert(id, function_type);
+		self.register_type(Type::FunctionReference(id))
 	}
 
 	/// TODO WIP
@@ -756,6 +722,8 @@ impl TypeStore {
 	}
 
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
+		// TODO this has problems if there are two generic types. Aka `(a: T, b: T) -> T`. Although I have
+		// no idea why this is possible so should be fine?
 		if let Type::RootPolyType(_) = self.get_type_by_id(parameter_constraint) {
 			parameter_constraint
 		} else {
@@ -768,14 +736,9 @@ impl TypeStore {
 	pub fn new_array_type(&mut self, item_type: TypeId, position: SpanWithSource) -> TypeId {
 		let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 			on: TypeId::ARRAY_TYPE,
-			arguments: StructureGenericArguments {
-				type_restrictions: FromIterator::from_iter([(
-					TypeId::T_TYPE,
-					(item_type, position),
-				)]),
-				properties: map_vec::Map::new(),
-				closures: Default::default(),
-			},
+			arguments: StructureGenericArguments::ExplicitRestrictions(FromIterator::from_iter([
+				(TypeId::T_TYPE, (item_type, position)),
+			])),
 		}));
 		self.register_type(ty)
 	}
@@ -789,23 +752,26 @@ impl TypeStore {
 	pub(crate) fn modify_interface_type_parameter_constraint(
 		&mut self,
 		ty: TypeId,
-		new_constraint: TypeId,
+		constraint: TypeId,
 	) {
-		if let Type::RootPolyType(PolyNature::Generic { ref mut eager_fixed, .. }) =
-			self.types[ty.0 as usize]
-		{
-			*eager_fixed = new_constraint;
-		} else {
-			unreachable!()
-		}
+		self.interface_type_parameter_extends.insert(ty, constraint);
 	}
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
-	pub(crate) fn set_extends_on_interface(&mut self, interface_type: TypeId, new_extends: TypeId) {
-		if let Type::Interface { ref mut extends, .. } = self.types[interface_type.0 as usize] {
-			*extends = Some(new_extends);
-		} else {
-			unreachable!()
-		}
+	pub(crate) fn set_extends_on_interface(&mut self, interface_type: TypeId, extends: TypeId) {
+		self.interface_extends.insert(interface_type, extends);
+	}
+
+	pub(crate) fn new_class_constructor_type(
+		&mut self,
+		name: String,
+		constructor: FunctionType,
+	) -> TypeId {
+		let id = constructor.id;
+		self.functions.insert(id, constructor);
+		self.register_type(Type::SpecialObject(SpecialObjects::ClassConstructor {
+			name,
+			constructor: id,
+		}))
 	}
 }

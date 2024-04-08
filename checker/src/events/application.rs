@@ -13,6 +13,7 @@ use crate::{
 		objects::SpecialObjects,
 	},
 	types::{
+		calling::FunctionCallingError,
 		functions::SynthesisedArgument,
 		get_constraint, is_type_truthy_falsy,
 		poly_types::FunctionTypeArguments,
@@ -61,7 +62,7 @@ pub(crate) fn apply_event(
 							TypeId::ERROR_TYPE
 						}
 					}
-					RootReference::This => this_value.get(environment, types, &position),
+					RootReference::This => this_value.get(environment, types, position),
 				};
 				type_arguments.set_id_from_event_application(id, value);
 			}
@@ -72,7 +73,7 @@ pub(crate) fn apply_event(
 			// TODO temp assigns to many contexts, which is bad.
 			// Closures should have an indicator of what they close over #56
 			let info = target.get_latest_info(environment);
-			for closure_id in &type_arguments.closure_id {
+			for closure_id in &type_arguments.closure_ids {
 				info.closure_current_values
 					.insert((*closure_id, RootReference::Variable(variable)), new_value);
 			}
@@ -232,7 +233,6 @@ pub(crate) fn apply_event(
 						with,
 						&crate::types::calling::CallingInput {
 							called_with_new,
-							this_value: Default::default(),
 							call_site_type_arguments: None,
 							// TODO:
 							call_site: source_map::Nullable::NULL,
@@ -300,21 +300,29 @@ pub(crate) fn apply_event(
 			match fixed_result {
 				Decidable::Known(result) => {
 					let to_evaluate = if result { events_if_truthy } else { else_events };
-					for event in to_evaluate.iter().cloned() {
-						let result = apply_event(
-							event,
-							rest_of_events,
-							this_value,
-							type_arguments,
-							environment,
-							target,
-							types,
-							errors,
-						);
+					let result =
+						target.new_unconditional_target(|target: &mut InvocationContext| {
+							for event in to_evaluate.iter().cloned() {
+								let result = apply_event(
+									event,
+									rest_of_events,
+									this_value,
+									type_arguments,
+									environment,
+									target,
+									types,
+									errors,
+								);
 
-						if result.is_it_so_over() {
-							return result;
-						}
+								if result.is_it_so_over() {
+									return result;
+								}
+							}
+							ApplicationResult::Completed
+						});
+
+					if result.is_it_so_over() {
+						return result;
 					}
 				}
 				Decidable::Unknown(condition) => {
@@ -372,10 +380,14 @@ pub(crate) fn apply_event(
 					let result = if let ApplicationResult::Conditionally { on, truthy, otherwise } =
 						result
 					{
-						// TODO
+						// TODO WIP
+						// TODO sort by interrupt and swap etc
+
 						if let (ApplicationResult::Interrupt(_), ApplicationResult::Completed) =
 							(&*truthy, &*otherwise)
 						{
+							crate::utils::notify!("Here left interrupt, right completed");
+
 							// Evaluate the rest of the events conditionally
 							while let Some(event) = rest_of_events.next() {
 								let otherwise_result = apply_event(
@@ -391,11 +403,13 @@ pub(crate) fn apply_event(
 
 								// TODO temp
 								if otherwise_result.is_it_so_over() {
-									return ApplicationResult::Conditionally {
+									let result = ApplicationResult::Conditionally {
 										on,
 										truthy,
 										otherwise: otherwise_result.into(),
 									};
+
+									return result;
 								}
 							}
 
@@ -410,7 +424,7 @@ pub(crate) fn apply_event(
 
 							ApplicationResult::Conditionally { on, truthy, otherwise }
 						} else {
-							crate::utils::notify!("TODO");
+							crate::utils::notify!("TODO here in unknown conditional");
 
 							if let ApplicationResult::Interrupt(i) = *truthy {
 								truthy_info.events.push(i.into());
@@ -468,6 +482,19 @@ pub(crate) fn apply_event(
 				}
 				FinalEvent::Throw { thrown, position } => {
 					let substituted_thrown = substitute(thrown, type_arguments, environment, types);
+					if target.in_unconditional() {
+						let value = TypeStringRepresentation::from_type_id(
+							substituted_thrown,
+							// TODO is this okay?
+							environment,
+							types,
+							false,
+						);
+						errors.errors.push(FunctionCallingError::UnconditionalThrow {
+							value,
+							call_site: None,
+						});
+					}
 					FinalEvent::Throw { thrown: substituted_thrown, position }
 				}
 				FinalEvent::Return { returned, returned_position } => {

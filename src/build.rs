@@ -45,7 +45,6 @@ pub type EznoParsePostCheckVisitors =
 	parser::visiting::VisitorsMut<CheckingOutputWithoutDiagnostics>;
 
 pub struct CheckingOutputWithoutDiagnostics {
-	pub type_mappings: checker::TypeMappings,
 	pub types: checker::types::TypeStore,
 	pub module_contents: parser::source_map::MapFileStore<parser::source_map::WithPathMap>,
 	pub modules: std::collections::HashMap<
@@ -80,7 +79,6 @@ pub fn build<T: crate::ReadFromFS>(
 	let mut data = CheckingOutputWithoutDiagnostics {
 		module_contents: result.module_contents,
 		modules: result.modules,
-		type_mappings: result.type_mappings,
 		types: result.types,
 	};
 

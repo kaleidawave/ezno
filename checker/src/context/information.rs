@@ -28,6 +28,8 @@ pub struct LocalInformation {
 	pub(crate) variable_current_value: HashMap<VariableId, TypeId>,
 	pub(crate) current_properties:
 		HashMap<TypeId, Vec<(Publicity, PropertyKey<'static>, PropertyValue)>>,
+
+	/// Can be modified (unfortunately) so here
 	pub(crate) prototypes: HashMap<TypeId, TypeId>,
 
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
@@ -169,7 +171,7 @@ impl InformationChain for LocalInformation {
 	}
 }
 
-/// Get all properties on a type (for printing and other non one property uses)
+/// Get all properties on a type (for printing and other non-one property uses)
 ///
 /// - TODO make aware of ands and aliases
 /// - TODO prototypes
@@ -178,6 +180,7 @@ impl InformationChain for LocalInformation {
 /// - TODO doesn't evaluate properties
 pub fn get_properties_on_type(
 	base: TypeId,
+	_types: &TypeStore,
 	info: &impl InformationChain,
 ) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
 	let reversed_flattened_properties = info
@@ -221,7 +224,7 @@ pub(crate) fn get_property_unbound(
 		info: &LocalInformation,
 		types: &TypeStore,
 		on: TypeId,
-		on_type_arguments: Option<&GenericChain>,
+		on_type_arguments: GenericChain,
 		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
 		info.current_properties
@@ -239,13 +242,12 @@ pub(crate) fn get_property_unbound(
 
 fn get_property_under(
 	properties: &[(Publicity, PropertyKey<'_>, PropertyValue)],
-	under: (Publicity, &PropertyKey<'_>),
-	on_type_arguments: Option<&GenericChain>,
+	(want_publicity, want_key): (Publicity, &PropertyKey<'_>),
+	key_type_arguments: GenericChain,
 	types: &TypeStore,
 ) -> Option<PropertyValue> {
 	// 'rev' is important
 	properties.iter().rev().find_map(move |(publicity, key, value)| {
-		let (want_publicity, want_key) = under;
 		if *publicity != want_publicity {
 			return None;
 		}
@@ -260,43 +262,52 @@ fn get_property_under(
 				}
 			}
 			PropertyKey::Type(key) => {
-				// TODO wip, need recursive function
-				let key = if let Some(on_type_arguments) = on_type_arguments {
-					on_type_arguments.get_single_arg(*key).unwrap_or(*key)
-				} else {
-					*key
-				};
-				match want_key {
-					PropertyKey::Type(want) => {
-						crate::utils::notify!("want {:?} key {:?}", want, key);
-						let want = get_constraint(*want, types).unwrap_or(*want);
-						crate::utils::notify!("want {:?} key {:?}", want, key);
-						if key == want {
-							Some(value.clone())
-						} else {
-							None
-						}
-					}
-					PropertyKey::String(s) => {
-						// TODO temp
-						if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
-							Some(value.clone())
-						} else if let Type::Constant(Constant::String(ks)) =
-							types.get_type_by_id(key)
-						{
-							if ks == s {
-								Some(value.clone())
-							} else {
-								None
-							}
-						} else {
-							None
-						}
-					}
-				}
+				key_matches(*key, key_type_arguments, want_key, types).then(|| value.clone())
 			}
 		}
 	})
+}
+
+/// TODO contributions for `P`
+#[allow(clippy::if_same_then_else)]
+fn key_matches(
+	key: TypeId,
+	key_type_arguments: GenericChain,
+	want_key: &PropertyKey<'_>,
+	types: &TypeStore,
+) -> bool {
+	let key = if let Some(on_type_arguments) = key_type_arguments {
+		on_type_arguments.get_single_argument(key).unwrap_or(key)
+	} else {
+		key
+	};
+	if let Type::Or(lhs, rhs) = types.get_type_by_id(key) {
+		key_matches(*lhs, key_type_arguments, want_key, types)
+			|| key_matches(*rhs, key_type_arguments, want_key, types)
+	} else {
+		match want_key {
+			PropertyKey::Type(want) => {
+				crate::utils::notify!("want {:?} key {:?}", want, key);
+				let want = get_constraint(*want, types).unwrap_or(*want);
+				crate::utils::notify!("want {:?} key {:?}", want, key);
+				key == want
+			}
+			PropertyKey::String(s) => {
+				// TODO WIP
+				if key == TypeId::ANY_TYPE {
+					true
+				} else if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
+					true
+				} else if key == TypeId::STRING_TYPE && s.parse::<usize>().is_err() {
+					true
+				} else if let Type::Constant(Constant::String(ks)) = types.get_type_by_id(key) {
+					ks == s
+				} else {
+					false
+				}
+			}
+		}
+	}
 }
 
 pub fn merge_info(

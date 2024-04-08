@@ -1,4 +1,5 @@
-These tests do not pass ATM. But hopefully will in the future 🤞
+> [!IMPORTANT]
+> These tests do not pass on the current build. But hopefully will in the future 🤞
 
 ### Types
 
@@ -69,26 +70,58 @@ print_type(mapper)
 
 - TODO
 
-#### Interface extends
+### Mapped types
+
+#### Specialisation
 
 ```ts
-interface X {
-    a: string
-}
-
-interface Y {
-    b: string
-}
-
-interface Z extends X, Y {
-    c: string
-}
-
-({ a: "", b: "", c: "hello" }) satisfies Z;
-({ c: "hi" }) satisfies Z;
+type Id<T> = { [P in K]: T[P] }
 ```
 
-- Type { c: "hi" } is not assignable to Z
+- TODO
+
+#### Negated
+
+```ts
+type Omit<K extends string, T> = { [P in K]-?: T }
+
+```
+
+- TODO
+
+### Imports
+
+#### Import package with definition file
+
+> Does have to synthesis both files. The definition file doesn't include additional information and
+> the normal shipped file doesn't include type definitions and restrictions
+
+```ts
+import { spin } from "earth";
+
+spin("10");
+spin(720) satisfies 1;
+
+// in node_modules/earth/package.json
+{
+    "main": "index.ts",
+    "types": "index.d.ts"
+}
+
+// in node_modules/earth/index.ts
+export function spin(degrees) {
+    degrees satisfies boolean;
+    // ..
+    return degrees / 360;
+}
+
+// in node_modules/earth/index.d.ts
+export function spin(degrees: number): number;
+```
+
+- Expected boolean, found number
+- Argument "10" not assignable to number
+- Expected 1, found 2
 
 ### Narrowing
 
@@ -119,6 +152,25 @@ x() satisfies 3
 ```
 
 - Expected 3, found 2
+
+### Forward inference
+
+#### Returning a function
+
+> Yes, returns another function
+
+```ts
+type ExpectedFunction = () => ((a: string) => string)
+
+const x: ExpectedFunction = function () {
+    return function (b) {
+        b satisfies number;
+        return b
+    }
+}
+```
+
+- Expected number, found string
 
 ### Iteration
 
@@ -159,14 +211,51 @@ properties satisfies boolean;
 > Although this is valid JS, it is currently assumed that this is beneficial behavior
 
 ```ts
-function x(p) {
+function getB(p) {
 	return p.b
 }
 
-x satisfies string;
+getB satisfies string;
 ```
 
 - Expected string, found (p: { b: any }) => any
+
+#### Parameter type
+
+```ts
+function Sinc(x) {
+	return Math.sin(x) / x
+}
+
+Sinc satisfies string;
+```
+
+- Expected string, found (x: number) => number
+
+#### Parameter type callable
+
+```ts
+function CallSomething(p, n: number) {
+	return p("hi", 5, c)
+}
+
+CallSomething satisfies string;
+```
+
+- Expected string, found (p: ("hi", 5, number) => any, n: number) => any
+
+#### Parameter type nested
+
+```ts
+function ComplexFunction(p) {
+	const { a, b } = p;
+	b("test")
+}
+
+ComplexFunction satisfies string;
+```
+
+- Expected string, found (p: { a: any, b: ("test") => any }) => any
 
 #### this
 
@@ -207,41 +296,42 @@ print_type(call)
 
 ### Asynchronous functions and promises
 
-> TODO Promise properties
+> TODO `Promise.then` etc
 
 #### Async function
 
+> Tests return type, usage and awaiting on runtime `Promise`
+
 ```ts
-async function x() {
-	return 2
+async function get2(): 2 {
+    return 2
 }
 
-x satisfies string;
+function nonAsync() {
+    await get2()
+}
+
+const four: 4 = await get2();
 ```
 
-- Expected string, found Promise { 2 }
+- Expected to return 2, found Promise<2>
+- Cannot use await in non-async context
+- Type 2, is not assignable to 4
 
-#### Await promise
+#### Async function side effects
 
 ```ts
-async function x() {
-	return 2
+let fv: number = 2;
+function doFetch() {
+	await fetch("/thing");
+	fv += 1;
 }
 
-(await x) satisfies string;
+const x = doFetch();
+fv satisfies string;
 ```
 
 - Expected string, found 2
-
-#### External promise
-
-```ts
-declare let a: Promise<string>;
-
-(await a) satisfies number
-```
-
-- Expected number, found string
 
 ### Generators
 
@@ -254,6 +344,20 @@ function x*() {
 ```
 
 - TODO
+
+### Closures
+
+#### TDZ
+
+```ts
+function func() {
+    return function () { return closedOverVariable }
+    let closedOverVariable = 2;
+}
+```
+
+- Unreachable statement
+- Function contains unreachable closed over variable 'closedOverVariable'
 
 ### `Proxy` and `Object`
 
@@ -321,9 +425,7 @@ array2[2] satisfies string;
 
 - Expected string, found 3
 
-#### Destructuring assign
-
-> TODO include an object destructure here
+#### Array destructuring assign
 
 ```ts
 let array1 = [1, 2, 3];
@@ -387,7 +489,23 @@ class Y {}
 
 - Expected number, found true
 
+#### Optional property access
+
+```ts
+interface X {
+    possibly?: string
+}
+
+declare let x: X;
+
+x?.possibly satisfies number;
+```
+
+- Expected string, found string | undefined
+
 ### Runtime
+
+#### Free variable + anytime calls
 
 ```ts
 let x: number = 0;
@@ -404,34 +522,66 @@ document.addEventListener("scroll", () => {
 
 - Expected 0, found number
 
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number
+
 ### Classes
-
-#### Class type
-
-```ts
-class X {
-	a: number
-}
-
-function doThingWithX(x: X) {
-	x.a satisfies string;
-}
-```
-
-- Expected string, found number
-
-#### Extends
-
-```ts
-class BaseClass extends class { x: 2 } {
-	y: 3
-}
-
-const b = new BaseClass;
-print_type(b.x);
-```
-
-- TODO
 
 #### Privacy
 
@@ -526,25 +676,6 @@ function doThing(b: number = "hello") {
 
 - Default value "hello" is not assignable to parameter of type number
 
-### Control flow
-
-#### Conditional return
-
-```ts
-declare let string: string;
-
-function stringIsHi(s: string) {
-    if (s === "hi") {
-        return true
-    }
-    return false
-}
-
-stringIsHi(string) satisfies number;
-```
-
-- Expected number, found boolean
-
 ### Statements
 
 #### Try catch variable
@@ -571,7 +702,7 @@ a satisfies 1; b satisfies string;
 
 - Expected string, found 2
 
-#### Destructuring assignment
+#### Array destructuring assignment
 
 ```ts
 let a = 2, b = 3;
@@ -581,95 +712,19 @@ a satisfies 3; b satisfies string;
 
 - Expected string, found 2
 
-#### Tuple push and pop
+### Overloads
 
-> Should flag up length constraint
-> This is caught, but the errors aren't great
-
-```ts
-const x: [1, 2, 3] = [1, 2, 3];
-x.push(4);
-
-const y: [1, 2, 3] = [1, 2, 3];
-y.pop();
-```
-
-- TODO cannot push
-- TODO cannot pop
-
-### Breaking
-
-> Were working, but a temporary change broke them
-
-#### Try-catch and throw
+#### Calling
 
 ```ts
-try {
-	throw 2
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 2
-
-#### Throw effects carry through
-
-```ts
-function throwType(a) {
-	throw a
+interface X {
+    overload(a: number): string;
+    overload(a: string): number;
 }
 
-try {
-	throwType(3)
-} catch (err) {
-	err satisfies string
-}
+declare let x: X;
+x.overload(5) satisfies string;
+x.overload("hi") satisfies boolean;
 ```
 
-- Expected string, found 3
-
-#### Generic condition
-
-```ts
-declare function isNumber<T>(t: T): T extends number ? true : false;
-
-isNumber(5) satisfies true;
-isNumber("5") satisfies number;
-```
-
-- Expected number, found false
-
-#### More accurate generic
-
-```ts
-declare function unwrap<T>(a: T | { item: T }): T;
-
-unwrap({ item: 5 }) satisfies string;
-```
-
-- Expected string, found 5
-
-#### Across alias
-
-```ts
-type WithLabel<T> = { label: string, item: T };
-
-declare function getItem<T>(a: WithLabel<T>): T;
-
-getItem({ label: "item 1", item: 5 }) satisfies string;
-```
-
-- Expected string, found 5
-
-#### Double generics
-
-> Really want to only have one covariant and one contravariant but want to keep TSC semantics
-
-```ts
-declare function what<T>(a: T, b: T): T;
-
-what(2, 3) satisfies string;
-```
-
-- Expected string, found 2 | 3
+- Expected boolean, found string

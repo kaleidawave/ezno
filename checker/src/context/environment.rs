@@ -9,7 +9,6 @@ use crate::{
 	events::{ApplicationResult, Event, FinalEvent, RootReference},
 	features::{
 		assignments::{Assignable, AssignmentKind, Reference},
-		functions,
 		modules::Exported,
 		objects::SpecialObjects,
 		operations::{
@@ -83,36 +82,16 @@ impl<'a> ContextType for Syntax<'a> {
 		Some(&self.parent)
 	}
 
-	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
-		match &self.scope {
-			Scope::Function { .. } => Some(DynamicBoundaryKind::Function),
-			Scope::Iteration { .. } => Some(DynamicBoundaryKind::Loop),
-			_ => None,
-		}
-	}
-
-	fn is_conditional(&self) -> bool {
-		matches!(self.scope, Scope::Conditional { .. })
-	}
-
-	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
-		Some(&mut self.closed_over_references)
-	}
-
-	fn get_exports(&mut self) -> Option<&mut Exported> {
-		if let Scope::Module { ref mut exported, .. } = self.scope {
-			Some(exported)
-		} else {
-			None
-		}
-	}
-
-	fn get_state(&self) -> Option<&ApplicationResult> {
-		Some(&self.state)
+	fn as_syntax(&self) -> Option<&Syntax> {
+		Some(self)
 	}
 
 	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
 		Some(&mut self.state)
+	}
+
+	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
+		Some(&mut self.closed_over_references)
 	}
 }
 
@@ -133,7 +112,9 @@ impl ExpectedReturnType {
 }
 
 /// TODO better names
-/// Decides whether `await` and `yield` are available
+/// Decides whether `await` and `yield` are available and many others
+///
+/// `this` is the dependent type
 #[derive(Debug, Clone)]
 pub enum FunctionScope {
 	ArrowFunction {
@@ -142,12 +123,14 @@ pub enum FunctionScope {
 		is_async: bool,
 		expected_return: Option<ExpectedReturnType>,
 	},
+	/// TODO does this need to gdistinguish class
 	MethodFunction {
 		// This always points to a poly free variable type
 		free_this_type: TypeId,
 		is_async: bool,
-		expected_return: Option<ExpectedReturnType>,
 		is_generator: bool,
+
+		expected_return: Option<ExpectedReturnType>,
 	},
 	// is new-able
 	Function {
@@ -157,12 +140,13 @@ pub enum FunctionScope {
 		// This always points to a conditional type based on `new.target === undefined`
 		this_type: TypeId,
 		type_of_super: TypeId,
+		location: ContextLocation,
 	},
 	Constructor {
 		/// Can call `super`
 		extends: bool,
 		type_of_super: Option<TypeId>,
-		// This is always creates, but may not be used (or have the relevant properties & prototype)
+		// This is always created, but may not be used (or have the relevant properties & prototype)
 		this_object_type: TypeId,
 	},
 }
@@ -221,11 +205,29 @@ pub enum Scope {
 	},
 	/// For generic parameters
 	TypeAlias,
-	StaticBlock {},
+	StaticBlock {
+		this_type: TypeId,
+	},
 	/// For repl only
 	PassThrough {
 		source: SourceId,
 	},
+}
+
+impl Scope {
+	#[must_use]
+	pub fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
+		match self {
+			Scope::Function { .. } => Some(DynamicBoundaryKind::Function),
+			Scope::Iteration { .. } => Some(DynamicBoundaryKind::Loop),
+			_ => None,
+		}
+	}
+
+	#[must_use]
+	pub fn is_conditional(&self) -> bool {
+		matches!(self, Scope::Conditional { .. })
+	}
 }
 
 impl<'a> Environment<'a> {
@@ -471,20 +473,6 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn new_function<U, F, A>(
-		&mut self,
-		checking_data: &mut CheckingData<U, A>,
-		function: &F,
-		behavior: functions::FunctionRegisterBehavior<A>,
-	) -> crate::types::FunctionType
-	where
-		U: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-		F: functions::SynthesisableFunction<A>,
-	{
-		functions::synthesise_function(self, behavior, function, checking_data)
-	}
-
 	pub fn assign_to_variable_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		variable_name: &str,
@@ -520,7 +508,7 @@ impl<'a> Environment<'a> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
-		if let Some((_, _, variable)) = variable_in_map {
+		if let Some((_, boundary, variable)) = variable_in_map {
 			match variable {
 				VariableOrImport::Variable { mutability, declared_at, context: _ } => {
 					match mutability {
@@ -530,6 +518,17 @@ impl<'a> Environment<'a> {
 						VariableMutability::Mutable { reassignment_constraint } => {
 							let variable = variable.clone();
 							let variable_site = *declared_at;
+							let variable_id = variable.get_id();
+
+							if boundary.is_none()
+								&& !self.get_chain_of_info().any(|info| {
+									info.variable_current_value.contains_key(&variable_id)
+								}) {
+								return Err(AssignmentError::TDZ(TDZ {
+									position: assignment_position,
+									variable_name: variable_name.to_owned(),
+								}));
+							}
 
 							if let Some(reassignment_constraint) = *reassignment_constraint {
 								// TODO tuple with position:
@@ -537,6 +536,7 @@ impl<'a> Environment<'a> {
 									add_property_restrictions: false,
 									position: *declared_at,
 									object_constraints: Default::default(),
+									allow_errors: true,
 								};
 
 								let result = type_is_subtype(
@@ -568,8 +568,6 @@ impl<'a> Environment<'a> {
 									});
 								}
 							}
-
-							let variable_id = variable.get_id();
 
 							self.info.events.push(Event::SetsVariable(
 								variable_id,
@@ -783,7 +781,7 @@ impl<'a> Environment<'a> {
 			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
 					let constraint = checking_data
-						.type_mappings
+						.local_type_mappings
 						.variables_to_constraints
 						.0
 						.get(&og_var.get_origin_variable_id());
@@ -829,13 +827,14 @@ impl<'a> Environment<'a> {
 				VariableMutability::Mutable { reassignment_constraint } => {
 					// TODO is there a nicer way to do this
 					// Look for reassignments
-					for p in self.parents_iter() {
+					for ctx in self.parents_iter() {
 						if let Some(value) =
-							get_on_ctx!(p.info.variable_current_value.get(&og_var.get_id()))
+							get_on_ctx!(ctx.info.variable_current_value.get(&og_var.get_id()))
 						{
 							return Ok(VariableWithValue(og_var.clone(), *value));
 						}
-						if get_on_ctx!(p.context_type.is_dynamic_boundary()).is_some() {
+						let is_dynamic = matches!(ctx, GeneralContext::Syntax(s) if s.context_type.scope.is_dynamic_boundary().is_some());
+						if is_dynamic {
 							break;
 						}
 					}
@@ -1064,6 +1063,7 @@ impl<'a> Environment<'a> {
 					add_property_restrictions: false,
 					position: source_map::Nullable::NULL,
 					object_constraints: Default::default(),
+					allow_errors: true,
 				};
 
 				let result = type_is_subtype(
@@ -1190,7 +1190,7 @@ impl<'a> Environment<'a> {
 					| Scope::Module { .. }
 					| Scope::DefinitionModule { .. }
 					| Scope::TypeAlias
-					| Scope::StaticBlock {} => {
+					| Scope::StaticBlock { .. } => {
 						break;
 					}
 					Scope::Iteration { ref label } => {

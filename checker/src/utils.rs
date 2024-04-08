@@ -1,5 +1,6 @@
 static IS_DEBUG_MODE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
+#[allow(clippy::manual_is_variant_and)]
 pub(crate) fn is_debug_mode() -> bool {
 	*IS_DEBUG_MODE.lock().unwrap().get_or_insert_with(|| {
 		std::env::var("EZNO_DEBUG").map(|value| !value.is_empty()).unwrap_or_default()

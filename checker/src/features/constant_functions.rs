@@ -2,10 +2,10 @@ use crate::{
 	context::{get_on_ctx, information::InformationChain},
 	// subtyping::check_satisfies,
 	types::{
-		functions::SynthesisedArgument, printing::debug_effects, Constructor, StructureGenerics,
-		TypeRestrictions,
+		functions::SynthesisedArgument,
+		printing::{debug_effects, print_type},
+		Constructor, FunctionEffect, StructureGenerics, Type, TypeRestrictions, TypeStore,
 	},
-	types::{printing::print_type, Type, TypeStore},
 	Constant,
 	Environment,
 	TypeId,
@@ -95,13 +95,13 @@ pub(crate) fn call_constant_function(
 				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN_TYPE)),
 			}
 		}
-		"uppercase" | "lowercase" | "string_length" => {
+		"toUpperCase" | "toLowerCase" | "string_length" => {
 			if let Some(Type::Constant(Constant::String(s))) =
 				this_argument.get_passed().map(|t| types.get_type_by_id(t))
 			{
 				let result = types.new_constant_type(match id {
-					"uppercase" => Constant::String(s.to_uppercase()),
-					"lowercase" => Constant::String(s.to_lowercase()),
+					"toUpperCase" => Constant::String(s.to_uppercase()),
+					"toLowerCase" => Constant::String(s.to_lowercase()),
 					"string_length" => Constant::Number(
 						(s.len() as f64).try_into().map_err(|_| ConstantFunctionError::BadCall)?,
 					),
@@ -182,21 +182,33 @@ pub(crate) fn call_constant_function(
 			};
 
 			let get_type_by_id = types.get_type_by_id(ty);
-			if let Type::SpecialObject(SpecialObjects::Function(func, _))
+			if let Type::SpecialObject(
+				SpecialObjects::Function(func, _)
+				| SpecialObjects::ClassConstructor { constructor: func, .. },
+			)
 			| Type::FunctionReference(func) = get_type_by_id
 			{
-				let effects =
-					&types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?.effects;
-				if let Some(effects) = effects {
-					if id.ends_with("rust") {
-						Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
-					} else {
-						let mut buf = String::new();
-						debug_effects(&mut buf, effects, types, environment, true);
-						Ok(ConstantOutput::Diagnostic(buf))
-					}
+				let function_type =
+					types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?;
+
+				let effects = &function_type.effect;
+				if id.ends_with("rust") {
+					Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
 				} else {
-					Ok(ConstantOutput::Diagnostic("functions does not have know effects".into()))
+					match effects {
+						FunctionEffect::SideEffects { events, .. } => {
+							let mut buf = String::new();
+							debug_effects(&mut buf, events, types, environment, true);
+							Ok(ConstantOutput::Diagnostic(buf))
+						}
+						FunctionEffect::Constant(identifier) => {
+							Ok(ConstantOutput::Diagnostic(format!("Constant: {identifier}")))
+						}
+						FunctionEffect::InputOutput(identifier) => {
+							Ok(ConstantOutput::Diagnostic(format!("InputOutput: {identifier}")))
+						}
+						FunctionEffect::Unknown => Ok(ConstantOutput::Diagnostic("unknown".into())),
+					}
 				}
 			} else {
 				Ok(ConstantOutput::Diagnostic(format!("{get_type_by_id:?} is not a function")))
@@ -225,7 +237,7 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"set_prototype" => {
+		"setPrototypeOf" => {
 			if let [first, second] = arguments {
 				let _prototype = environment
 					.info
@@ -237,7 +249,7 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"get_prototype" => {
+		"getPrototypeOf" => {
 			if let Some(first) = arguments.first() {
 				crate::utils::notify!("TODO walk up chain");
 				let prototype = environment

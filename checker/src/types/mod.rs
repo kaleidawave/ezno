@@ -30,7 +30,6 @@ use crate::{
 	Decidable, Environment, FunctionId, SmallMap,
 };
 
-// Export
 pub use self::functions::*;
 
 use self::{
@@ -46,8 +45,8 @@ pub type LookUpGenericMap = SmallMap<TypeId, LookUpGeneric>;
 
 /// References [Type]
 ///
-/// TODO maybe u32 or u64
-/// TODO maybe on environment rather than here
+/// TODO maybe [`u32`] or [`u64`]
+/// TODO maybe [`crate::SourceId`] like to reference a block, then [`u16`] references some offset
 #[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
 pub struct TypeId(pub(crate) u16);
 
@@ -66,35 +65,41 @@ impl TypeId {
 	pub const STRING_TYPE: Self = Self(5);
 
 	pub const UNDEFINED_TYPE: Self = Self(6);
-	pub const VOID_TYPE: Self = Self(22);
 	pub const NULL_TYPE: Self = Self(7);
+	pub const VOID_TYPE: Self = Self(8);
 
 	/// This is the inner version
-	pub const ARRAY_TYPE: Self = Self(8);
+	pub const ARRAY_TYPE: Self = Self(9);
+	pub const PROMISE_TYPE: Self = Self(10);
 
 	/// Used for Array and Promise
-	pub const T_TYPE: Self = Self(9);
+	pub const T_TYPE: Self = Self(11);
 
-	pub const OBJECT_TYPE: Self = Self(10);
-	pub const FUNCTION_TYPE: Self = Self(11);
-	pub const REGEXP_TYPE: Self = Self(12);
-	pub const SYMBOL_TYPE: Self = Self(13);
+	pub const OBJECT_TYPE: Self = Self(12);
+	pub const FUNCTION_TYPE: Self = Self(13);
+	pub const REGEXP_TYPE: Self = Self(14);
+	pub const SYMBOL_TYPE: Self = Self(15);
 
 	/// For more direct stuff and the rules
-	pub const TRUE: Self = Self(14);
-	pub const FALSE: Self = Self(15);
-	pub const ZERO: Self = Self(16);
-	pub const ONE: Self = Self(17);
-	pub const NAN_TYPE: Self = Self(18);
+	pub const TRUE: Self = Self(16);
+	pub const FALSE: Self = Self(17);
+	pub const ZERO: Self = Self(18);
+	pub const ONE: Self = Self(19);
+	pub const NAN_TYPE: Self = Self(20);
 
-	/// TODO remove. Shortcut for inferred this
-	pub const ANY_INFERRED_FREE_THIS: Self = Self(19);
+	/// Shortcut for inferred this
+	/// TODO remove
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(21);
+
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
-	pub const NEW_TARGET_ARG: Self = Self(20);
+	pub const NEW_TARGET_ARG: Self = Self(22);
 
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(21);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(23);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 23;
+	pub const LITERAL_RESTRICTION: Self = Self(24);
+	pub const READONLY_RESTRICTION: Self = Self(25);
+
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 26;
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -121,7 +126,11 @@ pub enum Type {
 		// Whether only values under this type can be matched
 		nominal: bool,
 		parameters: Option<Vec<TypeId>>,
-		extends: Option<TypeId>,
+	},
+	/// Pretty much same as [`Type::Interface`]
+	Class {
+		name: String,
+		parameters: Option<Vec<TypeId>>,
 	},
 	/// *Dependent equality types*
 	Constant(crate::Constant),
@@ -142,7 +151,11 @@ pub enum PolyNature {
 	Parameter {
 		fixed_to: TypeId,
 	},
-	Generic {
+	StructureGeneric {
+		name: String,
+		constrained: bool,
+	},
+	FunctionGeneric {
 		name: String,
 		eager_fixed: TypeId,
 	},
@@ -154,6 +167,16 @@ pub enum PolyNature {
 		based_on: TypeId,
 	},
 	RecursiveFunction(FunctionId, TypeId),
+}
+
+impl PolyNature {
+	#[must_use]
+	pub fn is_substitutable(&self) -> bool {
+		matches!(
+			self,
+			Self::Parameter { .. } | Self::StructureGeneric { .. } | Self::FunctionGeneric { .. }
+		)
+	}
 }
 
 // TODO
@@ -168,6 +191,7 @@ pub fn is_primitive(ty: TypeId, _types: &TypeStore) -> bool {
 /// not full constant but
 #[must_use]
 pub fn is_type_constant(ty: TypeId, types: &TypeStore) -> bool {
+	// TODO `Type::SpecialObject(..)` might cause issues
 	matches!(ty, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
 		|| matches!(
 			types.get_type_by_id(ty),
@@ -186,7 +210,10 @@ pub enum ObjectNature {
 
 impl Type {
 	pub(crate) fn get_parameters(&self) -> Option<Vec<TypeId>> {
-		if let Type::Interface { parameters, .. } | Type::AliasTo { parameters, .. } = self {
+		if let Type::Class { parameters, .. }
+		| Type::Interface { parameters, .. }
+		| Type::AliasTo { parameters, .. } = self
+		{
 			parameters.clone()
 		} else {
 			None
@@ -203,25 +230,26 @@ impl Type {
 			Type::Constructor(_) | Type::RootPolyType(_) => true,
 			// TODO what about if left or right
 			Type::And(_, _) | Type::Or(_, _) => false,
-			// TODO what about if it aliases
-			Type::AliasTo { .. } | Type::Interface { .. } => {
-				// TODO unsure
-				false
-			}
+			// TODO what about if it aliases dependent?
+			Type::AliasTo { .. } => false,
+			Type::Interface { .. } | Type::Class { .. } => false,
 			Type::Constant(_)
-			| Type::SpecialObject(SpecialObjects::Function(..))
+			| Type::SpecialObject(_)
 			| Type::FunctionReference(..)
 			| Type::Object(_) => false,
-			Type::SpecialObject(_) => todo!(),
 		}
 	}
 
 	pub(crate) fn is_operator(&self) -> bool {
 		matches!(self, Self::And(..) | Self::Or(..))
 	}
+
+	fn is_nominal(&self) -> bool {
+		matches!(self, Self::Class { .. } | Self::Interface { nominal: true, .. })
+	}
 }
 
-/// TODO work in progress types
+/// - Note that no || etc. This is handled using [`Constructor::ConditionalResult`]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
 	// TODO separate add?
@@ -256,6 +284,7 @@ pub enum Constructor {
 		with: Box<[SynthesisedArgument]>,
 		result: TypeId,
 	},
+	/// Access
 	Property {
 		on: TypeId,
 		under: PropertyKey<'static>,
@@ -263,14 +292,25 @@ pub enum Constructor {
 		/// See issue #98
 		bind_this: bool,
 	},
+	/// For await a poly type
+	Awaited {
+		on: TypeId,
+		result: TypeId,
+	},
+	/// **e.g `Array<string>`
 	/// Might not be best place but okay.
 	StructureGenerics(StructureGenerics),
 }
 
 impl Constructor {
+	fn is_structure_generics(&self) -> bool {
+		matches!(self, Constructor::StructureGenerics(..))
+	}
+
 	fn get_base(&self) -> Option<TypeId> {
 		match self {
 			Constructor::ConditionalResult { result_union: result, .. }
+			| Constructor::Awaited { result, .. }
 			| Constructor::Image { result, .. } => Some(*result),
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
@@ -323,7 +363,8 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 			| Type::Or(_, _)
 			| Type::RootPolyType(_)
 			| Type::Constructor(_)
-			| Type::Interface { .. } => {
+			| Type::Interface { .. }
+			| Type::Class { .. } => {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
 			}
@@ -343,6 +384,8 @@ pub struct BasicEquality {
 	pub position: SpanWithSource,
 	pub add_property_restrictions: bool,
 	pub object_constraints: Vec<(TypeId, TypeId)>,
+	/// used in `satisfies` assertions for the unit tests lol
+	pub allow_errors: bool,
 }
 
 /// For subtyping
@@ -359,6 +402,8 @@ pub trait SubTypeBehavior<'a> {
 		function_id: FunctionId,
 		function_type: FunctionType,
 	);
+
+	fn allow_errors(&self) -> bool;
 
 	// /// TODO can go faster than Vec, by passing all options,
 	// fn get_constraint<C: InformationChain>(&self, under: TypeId, info: &C) -> Option<ArgumentOrLookup>;
@@ -390,6 +435,10 @@ impl<'a> SubTypeBehavior<'a> for BasicEquality {
 
 		debug_assert!(result.is_none());
 	}
+
+	fn allow_errors(&self) -> bool {
+		self.allow_errors
+	}
 }
 
 /// TODO implement `Try` / `?` on `SubTypeResult`
@@ -399,73 +448,88 @@ pub enum SubTypeResult {
 	IsNotSubType(NonEqualityReason),
 }
 
-/// Used for printing and subtyping. Handles nested restrictions
+pub type GenericChain<'a> = Option<GenericChainLink<'a>>;
+pub type GenericChainParent<'a> = Option<&'a GenericChainLink<'a>>;
+
+/// - Used for printing and subtyping. Handles nested restrictions
+/// - Uses lifetimes because lifetimes
 #[derive(Clone, Copy, Debug)]
-pub struct GenericChain<'a> {
-	parent: Option<&'a GenericChain<'a>>,
-	value: StructureGenericArgumentsRef<'a>,
+pub enum GenericChainLink<'a> {
+	Link {
+		parent: GenericChainParent<'a>,
+		value: &'a StructureGenericArguments,
+	},
+	FunctionRoot {
+		parent: Option<&'a StructureGenericArguments>,
+		call_site_type_arguments: Option<&'a map_vec::Map<TypeId, (TypeId, SpanWithSource)>>,
+		type_arguments: &'a map_vec::Map<TypeId, TypeId>,
+	},
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct StructureGenericArgumentsRef<'a> {
-	type_restrictions: &'a TypeRestrictions,
-	properties: &'a SmallMap<TypeId, LookUpGeneric>,
-}
-
-impl<'a> StructureGenericArgumentsRef<'a> {
-	pub(crate) fn from_owned(owned: &'a StructureGenericArguments) -> Self {
-		Self { type_restrictions: &owned.type_restrictions, properties: &owned.properties }
-	}
-
-	pub(crate) fn into_owned(self) -> StructureGenericArguments {
-		StructureGenericArguments {
-			type_restrictions: self.type_restrictions.clone(),
-			properties: self.properties.clone(),
-			// TODO
-			closures: Vec::new(),
+impl<'a> GenericChainLink<'a> {
+	fn _get_value(self) -> Option<&'a StructureGenericArguments> {
+		if let Self::Link { value, .. } = self {
+			Some(value)
+		} else {
+			None
 		}
-	}
-}
-
-impl<'a> GenericChain<'a> {
-	pub(crate) fn new(value: &'a StructureGenericArguments) -> Self {
-		Self::new_from_ref(StructureGenericArgumentsRef::from_owned(value))
-	}
-
-	pub(crate) fn new_from_ref(value: StructureGenericArgumentsRef<'a>) -> Self {
-		Self { value, parent: None }
 	}
 
 	/// TODO wip
-	pub(crate) fn get_arg(&self, on: TypeId, info: &impl InformationChain) -> Option<Vec<TypeId>> {
-		if let Some((t, _pos)) = self.value.type_restrictions.get(&on) {
-			Some(vec![*t])
-		} else if let Some(lookup) = self.value.properties.get(&on) {
-			Some(lookup.calculate_lookup(info))
-		} else {
-			self.parent.and_then(|parent| parent.get_arg(on, info))
+	#[allow(unused)]
+	pub(crate) fn get_argument(
+		&self,
+		on: TypeId,
+		info: &impl InformationChain,
+		types: &TypeStore,
+	) -> Option<Vec<TypeId>> {
+		match self {
+			GenericChainLink::Link { parent, value } => value
+				.get_argument_as_list(on, info, types)
+				.or_else(|| parent.and_then(|parent| parent.get_argument(on, info, types))),
+			GenericChainLink::FunctionRoot { parent, call_site_type_arguments, type_arguments } => {
+				parent
+					.and_then(|parent| parent.get_argument_as_list(on, info, types))
+					.or_else(|| {
+						call_site_type_arguments
+							.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
+					})
+					.or_else(|| type_arguments.get(&on).map(|a| vec![*a]))
+			}
 		}
 	}
 
+	pub(crate) fn append_to_link(
+		parent: GenericChainParent<'a>,
+		value: &'a StructureGenericArguments,
+	) -> GenericChainLink<'a> {
+		GenericChainLink::Link { parent, value }
+	}
+
+	#[allow(clippy::unnecessary_wraps)]
 	pub(crate) fn append(
-		parent: Option<&'a GenericChain>,
+		parent: GenericChainParent<'a>,
 		value: &'a StructureGenericArguments,
 	) -> GenericChain<'a> {
-		Self::append_ref(parent, StructureGenericArgumentsRef::from_owned(value))
+		Some(GenericChainLink::append_to_link(parent, value))
 	}
 
-	pub(crate) fn append_ref(
-		parent: Option<&'a GenericChain>,
-		value: StructureGenericArgumentsRef<'a>,
-	) -> GenericChain<'a> {
-		GenericChain { parent, value }
-	}
-
-	pub(crate) fn get_single_arg(&self, key: TypeId) -> Option<TypeId> {
-		if let Some((t, _pos)) = self.value.type_restrictions.get(&key) {
-			Some(*t)
-		} else {
-			self.parent.and_then(|parent| parent.get_single_arg(key))
+	/// Does not do 'lookup generics'. Which may be fine
+	///
+	/// - (swaps `get_argument_as_list` with `get_structure_restriction`)
+	pub(crate) fn get_single_argument(&self, on: TypeId) -> Option<TypeId> {
+		match self {
+			GenericChainLink::Link { parent, value } => value
+				.get_structure_restriction(on)
+				.or_else(|| parent.and_then(|parent| parent.get_single_argument(on))),
+			GenericChainLink::FunctionRoot { parent, call_site_type_arguments, type_arguments } => {
+				parent
+					.and_then(|parent| parent.get_structure_restriction(on))
+					.or_else(|| {
+						call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
+					})
+					.or_else(|| type_arguments.get(&on).copied())
+			}
 		}
 	}
 }
@@ -493,7 +557,7 @@ pub enum PropertyError {
 
 /// TODO temp fix for printing
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
-	if let Type::RootPolyType(PolyNature::Generic { .. }) = types.get_type_by_id(on) {
+	if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) = types.get_type_by_id(on) {
 		true
 	} else if let Type::Constructor(Constructor::Property { on, under, result: _, bind_this: _ }) =
 		types.get_type_by_id(on)
@@ -510,19 +574,22 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 /// **Also looks at possibly mutated things
 pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
-		Type::RootPolyType(nature) => {
-			let based_on = match nature {
+		Type::RootPolyType(nature) => Some(
+			*(match nature {
 				PolyNature::Parameter { fixed_to } => fixed_to,
-				PolyNature::Generic { name: _, eager_fixed } => eager_fixed,
+				PolyNature::FunctionGeneric { name: _, eager_fixed } => eager_fixed,
 				PolyNature::Open(ty) => ty,
 				PolyNature::FreeVariable { reference: _, based_on } => based_on,
 				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
-			};
-
-			// TODO unsure
-
-			Some(*based_on)
-		}
+				PolyNature::StructureGeneric { constrained, .. } => {
+					return if *constrained {
+						todo!("get from TypeStore or ???")
+					} else {
+						Some(TypeId::ANY_TYPE)
+					}
+				}
+			}),
+		),
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
 				if let MathematicalAndBitwise::Add = operator {
@@ -559,7 +626,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// 	Some(*constraint)
 				// }
 			}
-			Constructor::Image { on: _, with: _, result } => Some(result),
+			Constructor::Awaited { on: _, result }
+			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
 				crate::utils::notify!("Here, result of a property get");
 				Some(result)
@@ -599,17 +667,16 @@ fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 /// TODO T on `Array`, U, V on `Map` etc. Works around not having `&mut TypeStore` and mutations in-between
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum LookUpGeneric {
-	NumberPropertyOf(TypeId),
-	// Property(Box<Self>, PropertyKey<'static>),
+	NumberPropertyOfSelf, // Property(Box<Self>, PropertyKey<'static>),
 }
 
 impl LookUpGeneric {
 	#[allow(unreachable_patterns)]
-	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain) -> Vec<TypeId> {
+	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain, on: TypeId) -> Vec<TypeId> {
 		match self {
-			LookUpGeneric::NumberPropertyOf(t) => {
+			LookUpGeneric::NumberPropertyOfSelf => {
 				info.get_chain_of_info()
-					.filter_map(|info| info.current_properties.get(t).map(|v| v.iter()))
+					.filter_map(|info| info.current_properties.get(&on).map(|v| v.iter()))
 					.flatten()
 					.filter_map(|(_publicity, key, value)| {
 						// TODO filter more
@@ -670,4 +737,28 @@ impl TypeCombinable for TypeId {
 pub enum Confirmation {
 	HasProperty { on: (), property: () },
 	IsType { on: (), ty: () },
+}
+
+pub(crate) fn get_structure_arguments_based_on_object_constraint<C: InformationChain>(
+	object: TypeId,
+	info_chain: &C,
+	types: &TypeStore,
+) -> Option<StructureGenericArguments> {
+	if let Some(object_constraint) =
+		info_chain.get_chain_of_info().find_map(|c| c.object_constraints.get(&object).copied())
+	{
+		let ty = types.get_type_by_id(object_constraint);
+		if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			arguments,
+			..
+		})) = ty
+		{
+			Some(arguments.clone())
+		} else {
+			crate::utils::notify!("Generics might be missed here {:?}", ty);
+			None
+		}
+	} else {
+		None
+	}
 }

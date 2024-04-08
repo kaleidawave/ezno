@@ -25,8 +25,6 @@ fn file_system_resolver(path: &Path) -> Option<Vec<u8>> {
 	// Cheaty
 	if path.to_str() == Some("BLANK") {
 		Some(Vec::new())
-	} else if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-		Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
 	} else {
 		match fs::read_to_string(path) {
 			Ok(source) => Some(source.into()),
