@@ -648,6 +648,16 @@ callToUpperCase("hi") satisfies "HEY";
 
 - Expected "HEY", found "HI"
 
+#### String internal `this` unbinding error
+
+```ts
+const { toUpperCase } = "hi";
+
+toUpperCase();
+```
+
+- The 'this' context of the function is expected to be string, found undefined
+
 #### Calling new on a function
 
 ```ts
@@ -1661,12 +1671,17 @@ try {
 #### Unbinding the `this` context of a function
 
 ```ts
-const { toUpperCase } = "hi";
+const { a } = {
+  b: 3,
+  a(this: { b: number }) {
+    return this?.b;
+  },
+};
 
-toUpperCase();
+a();
 ```
 
-- The 'this' context of the function is expected to be string, found undefined
+- The 'this' context of the function is expected to be { b: number }, found undefined
 
 ### Async and `Promise`s
 
@@ -1702,8 +1717,7 @@ x.value satisfies string
 
 - Expected string, found 4
 
-
-#### Class `this` binding
+#### Class `this` unbinding
 
 ```ts
 class X {
