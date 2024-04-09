@@ -1668,20 +1668,26 @@ try {
 
 - Expected string, found 3
 
-#### Unbinding the `this` context of a function
+#### Object destructuring assignment
 
 ```ts
-const { a } = {
-  b: 3,
-  a(this: { b: number }) {
-    return this?.b;
-  },
-};
+const o = { a: 1, b: { c: 3 } };
 
-a();
+let a, b, c;
+({
+  c = o.a++,
+  b: { c: b = 7 },
+  a,
+} = o);
+
+a satisfies string;
+b satisfies boolean;
+c satisfies 3;
 ```
 
-- The 'this' context of the function is expected to be { b: number }, found undefined
+- Expected string, found 2
+- Expected boolean, found 3
+- Expected 3, found 1
 
 ### Async and `Promise`s
 
