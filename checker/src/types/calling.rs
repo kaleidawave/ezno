@@ -55,7 +55,7 @@ struct FunctionLike {
 	pub(crate) function: FunctionId,
 	/// For generic calls
 	pub(crate) from: Option<TypeId>,
-	/// From, maybe ignored if [CalledWithNew] overrides
+	/// From, maybe ignored if [`CalledWithNew`] overrides
 	pub(crate) this_value: ThisValue,
 }
 
@@ -721,10 +721,10 @@ impl FunctionType {
 
 		let mut type_arguments = FunctionTypeArguments {
 			local_arguments,
-			closure_ids: if let Some(StructureGenericArguments::Closure(cs)) = structure_generics {
-				cs
-			} else {
-				Default::default()
+			#[allow(clippy::manual_unwrap_or_default)]
+			closure_ids: match structure_generics {
+				Some(StructureGenericArguments::Closure(cs)) => cs,
+				_ => Vec::new(),
 			},
 			call_site,
 		};

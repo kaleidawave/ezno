@@ -71,7 +71,7 @@ pub enum Event {
 		new: PropertyValue,
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
-		/// see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields
+		/// see <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields>
 		initialization: bool,
 		publicity: Publicity,
 		position: Option<SpanWithSource>,
@@ -107,7 +107,7 @@ pub enum Event {
 	/// - Creating objects with prototypes:
 	///     - Arrays
 	///     - Map & Sets
-	///     - HTMLElement and derivatives
+	///     - `HTMLElement` and derivatives
 	///
 	/// ```typescript
 	/// function x() {
@@ -119,7 +119,7 @@ pub enum Event {
 	/// not in externally referenced set or something
 	CreateObject {
 		prototype: PrototypeArgument,
-		/// This is the id referencing a [Type::AliasTo] that is created
+		/// This is the id referencing a [`Type::AliasTo`] that is created
 		///
 		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,

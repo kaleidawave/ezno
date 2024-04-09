@@ -110,7 +110,7 @@ pub struct ParseOptions {
 	pub decorators: bool,
 	/// Skip **all** comments from the AST
 	pub comments: Comments,
-	/// See [crate::extensions::is_expression::IsExpression]
+	/// See [`crate::extensions::is_expression::IsExpression`]
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
 	pub custom_function_headers: bool,

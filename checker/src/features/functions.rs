@@ -371,7 +371,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 	},
 	Constructor {
 		prototype: TypeId,
-		/// Is this is_some then can use `super()`
+		/// Is this [`Option::is_some`] then can use `super()`
 		super_type: Option<TypeId>,
 		properties: ClassPropertiesToRegister<'a, A>,
 	},

@@ -168,7 +168,7 @@ pub struct Context<T: ContextType> {
 	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
 	pub(crate) bases: bases::Bases,
 
-	/// TODO replace with info.value_of_this
+	/// TODO replace with `info.value_of_this`
 	pub(crate) can_reference_this: CanReferenceThis,
 
 	/// When a objects `TypeId` is in here getting a property returns a constructor rather than

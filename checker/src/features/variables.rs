@@ -19,7 +19,7 @@ pub enum VariableOrImport {
 		/// Whether can be reassigned and what to
 		mutability: VariableMutability,
 		/// Location where variable is defined **ALSO UNIQUELY IDENTIFIES THE VARIABLE** as can
-		/// be turned into a [VariableId]
+		/// be turned into a [`VariableId`]
 		declared_at: SpanWithSource,
 		context: ContextLocation,
 	},

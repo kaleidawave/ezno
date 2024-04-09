@@ -60,7 +60,7 @@ fn synthesise_variable_field_to_reference<T: crate::ReadFromFS>(
 }
 
 fn synthesise_object_to_reference<T: crate::ReadFromFS>(
-	items: &Vec<parser::WithComment<parser::ObjectDestructuringField>>,
+	items: &[parser::WithComment<parser::ObjectDestructuringField>],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -70,7 +70,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 			.map(|item| match item.get_ast_ref() {
 				parser::ObjectDestructuringField::Name(name, default_value, position) => {
 					AssignableObjectDestructuringField::Mapped {
-						on: synthesise_object_property_key(name, &environment),
+						on: synthesise_object_property_key(name, environment),
 						name: synthesise_object_shorthand_assignable(
 							name,
 							environment,
@@ -111,7 +111,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 }
 
 fn synthesise_array_to_reference<T: crate::ReadFromFS>(
-	items: &Vec<parser::WithComment<parser::ArrayDestructuringField>>,
+	items: &[parser::WithComment<parser::ArrayDestructuringField>],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {

@@ -28,7 +28,7 @@ use super::{
 /// Holds all the types. Eventually may be split across modules
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
 pub struct TypeStore {
-	/// Contains all of the types. Indexed by [TypeId]
+	/// Contains all of the types. Indexed by [`TypeId`]
 	types: Vec<Type>,
 
 	/// Some types are prototypes but have generic parameters but

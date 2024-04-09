@@ -423,14 +423,13 @@ impl<'a> Environment<'a> {
 	}
 
 	fn assign_to_reference_assign_handle_errors<
-		'b,
 		T: crate::ReadFromFS,
 		A: crate::ASTImplementation,
 	>(
 		&mut self,
 		reference: Reference,
 		rhs: TypeId,
-		checking_data: &mut CheckingData<'b, T, A>,
+		checking_data: &mut CheckingData<T, A>,
 		assignment_span: source_map::BaseSpan<()>,
 	) -> TypeId {
 		let result = self.set_reference(reference, rhs, checking_data);
@@ -451,11 +450,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	fn assign_to_assign_only_handle_errors<
-		'b,
-		T: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-	>(
+	fn assign_to_assign_only_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable<A>,
 		rhs: TypeId,
@@ -487,7 +482,6 @@ impl<'a> Environment<'a> {
 	}
 
 	fn assign_to_object_destructure_handle_errors<
-		'b,
 		T: crate::ReadFromFS,
 		A: crate::ASTImplementation,
 	>(
@@ -495,7 +489,7 @@ impl<'a> Environment<'a> {
 		assignments: Vec<AssignableObjectDestructuringField<A>>,
 		rhs: TypeId,
 		assignment_span: Span,
-		checking_data: &mut CheckingData<'b, T, A>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		for assignment in assignments {
 			match assignment {
@@ -563,16 +557,16 @@ impl<'a> Environment<'a> {
 		rhs
 	}
 
+	#[allow(clippy::needless_pass_by_value)]
 	fn assign_to_array_destructure_handle_errors<
-		'b,
 		T: crate::ReadFromFS,
 		A: crate::ASTImplementation,
 	>(
 		&mut self,
-		assignments: Vec<AssignableArrayDestructuringField<A>>,
-		rhs: TypeId,
+		_assignments: Vec<AssignableArrayDestructuringField<A>>,
+		_rhs: TypeId,
 		assignment_span: Span,
-		checking_data: &mut CheckingData<'b, T, A>,
+		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		checking_data.raise_unimplemented_error(
 			"destructuring array (needs iterator)",

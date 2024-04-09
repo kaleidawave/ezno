@@ -91,33 +91,33 @@ use crate::{ParseError, Quoted};
 pub enum TSXToken {
     Identifier(String),
     Keyword(TSXKeyword),
-    NumberLiteral(String), 
+    NumberLiteral(String),
     StringLiteral(String, Quoted),
     MultiLineComment(String), Comment(String),
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
     TemplateLiteralExpressionStart, TemplateLiteralExpressionEnd,
-    Comma, SemiColon, Colon, Dot, 
+    Comma, SemiColon, Colon, Dot,
     /// @
     At,
-    Spread, Assign, 
+    Spread, Assign,
     /// `=>`
     Arrow,
-    /// `(` 
-    OpenParentheses, 
-    /// `)` 
-    CloseParentheses, 
-    /// `{` 
-    OpenBrace, 
-    /// `}` 
-    CloseBrace, 
-    /// `[` 
-    OpenBracket, 
-    /// `]` 
-    CloseBracket, 
-    /// `<` 
-    OpenChevron, 
-    /// `>` 
+    /// `(`
+    OpenParentheses,
+    /// `)`
+    CloseParentheses,
+    /// `{`
+    OpenBrace,
+    /// `}`
+    CloseBrace,
+    /// `[`
+    OpenBracket,
+    /// `]`
+    CloseBracket,
+    /// `<`
+    OpenChevron,
+    /// `>`
     CloseChevron,
     Add, Subtract, Multiply, Divide,
     QuestionMark, Exponent, Modulo,
@@ -132,19 +132,19 @@ pub enum TSXToken {
     Equal, NotEqual, StrictEqual, StrictNotEqual,
     GreaterThanEqual, LessThanEqual,
     OptionalChain, OptionalCall, OptionalIndex, NullishCoalescing, NullishCoalescingAssign,
-    /// `?:` 
-    OptionalMember, 
-    /// '!:` 
-    NonOptionalMember, 
+    /// `?:`
+    OptionalMember,
+    /// `!:`
+    NonOptionalMember,
     /// For scripts thing
     HashTag,
     // JSX Tokens. Some like JSXComment are non standard
-    JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd, 
-    JSXClosingTagStart, 
-    /// This also covers the end of a token, thus no 'TSXToken::JSXClosingTagEnd'
-    JSXClosingTagName(String), 
+    JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd,
+    JSXClosingTagStart,
+    /// This also covers the end of a token, thus no `TSXToken::JSXClosingTagEnd`
+    JSXClosingTagName(String),
     /// />
-    JSXSelfClosingTag, 
+    JSXSelfClosingTag,
     JSXAttributeKey(String), JSXAttributeAssign, JSXAttributeValue(String),
     JSXContent(String), JSXContentLineBreak,
     /// The start and end of expressions either as a node or a attribute
@@ -307,8 +307,8 @@ pub enum TSXKeyword {
     Async, Await,
     Static,
     Get, Set,
-    Extends, 
-    Null, 
+    Extends,
+    Null,
     True, False,
     // TS special keywords
     Abstract, Implements,
@@ -317,19 +317,19 @@ pub enum TSXKeyword {
     // TS publicity attributes
     Private, Public, Protected,
     // TS Keywords
-    As, Readonly, Satisfies, Declare, Namespace, 
+    As, Readonly, Satisfies, Declare, Namespace,
 	// TS & Ezno
-	Is, 
+	Is,
 	Infer, KeyOf, Unique, Symbol,
 	// TODO unsure
 	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
-    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker, 
+    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker,
     // Type declaration changes
     #[cfg(feature = "extras")] Nominal, #[cfg(feature = "extras")] Performs,
 
     #[cfg(feature = "extras")]
-    /// https://github.com/tc39/proposal-generator-arrow-functions#introduce-new-generator-keyword-for-both-function-and-arrow-function
+    /// <https://github.com/tc39/proposal-generator-arrow-functions#introduce-new-generator-keyword-for-both-function-and-arrow-function>
     Generator,
 
     #[cfg(feature = "extras")]

@@ -18,7 +18,7 @@ use derive_finite_automaton::{
 pub struct LexerOptions {
 	/// Whether to append tokens when lexing. If false will just ignore
 	pub comments: Comments,
-	/// Whether to parse JSX. TypeScripts `<number> 2` breaks the lexer so this can be disabled to allow
+	/// Whether to parse JSX. TypeScript's `<number> 2` breaks the lexer so this can be disabled to allow
 	/// for that syntax
 	pub lex_jsx: bool,
 	/// TODO temp
