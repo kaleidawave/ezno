@@ -1,13 +1,10 @@
-use parser::{Expression, VariableIdentifier, WithComment};
 use source_map::SpanWithSource;
 
-use crate::{
-	context::information::Publicity, synthesis::EznoParser, types::properties::PropertyKey, TypeId,
-};
+use crate::{context::information::Publicity, types::properties::PropertyKey, TypeId};
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
-pub enum Assignable<A: crate::ASTImplementation = EznoParser> {
+pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
 	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
 	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
@@ -30,7 +27,7 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 		position: SpanWithSource,
 	},
 	/// `{ ...x }`
-	Spread(VariableIdentifier, SpanWithSource),
+	Spread(Assignable<A>, SpanWithSource),
 }
 
 pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {

@@ -24,7 +24,7 @@ pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
 	lhs: &LHSOfAssignment,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable {
+) -> Assignable<super::EznoParser> {
 	match lhs {
 		LHSOfAssignment::ObjectDestructuring(items, _) => {
 			synthesise_object_to_reference(items, environment, checking_data)
@@ -42,7 +42,7 @@ fn synthesise_variable_field_to_reference<T: crate::ReadFromFS>(
 	variable_field: &VariableField,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable {
+) -> Assignable<super::EznoParser> {
 	match variable_field {
 		VariableField::Object(items, _) => {
 			synthesise_object_to_reference(items, environment, checking_data)
@@ -63,7 +63,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 	items: &Vec<parser::WithComment<parser::ObjectDestructuringField>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable {
+) -> Assignable<super::EznoParser> {
 	Assignable::ObjectDestructuring(
 		items
 			.iter()
@@ -73,8 +73,8 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 						on: synthesise_object_property_key(name, &environment),
 						name: synthesise_object_shorthand_assignable(
 							name,
-							checking_data,
 							environment,
+							checking_data,
 						),
 						default_value: default_value.clone(),
 						position: position.with_source(environment.get_source()),
@@ -82,7 +82,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 				}
 				parser::ObjectDestructuringField::Spread(name, position) => {
 					AssignableObjectDestructuringField::Spread(
-						name.clone(),
+						synthesise_object_shorthand_assignable(name, environment, checking_data),
 						position.with_source(environment.get_source()),
 					)
 				}
@@ -114,7 +114,7 @@ fn synthesise_array_to_reference<T: crate::ReadFromFS>(
 	items: &Vec<parser::WithComment<parser::ArrayDestructuringField>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable {
+) -> Assignable<super::EznoParser> {
 	Assignable::ArrayDestructuring(
 		items
 			.iter()
@@ -146,9 +146,9 @@ fn synthesise_array_to_reference<T: crate::ReadFromFS>(
 
 fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	name: &parser::VariableIdentifier,
-	_checking_data: &CheckingData<T, super::EznoParser>,
 	environment: &Environment,
-) -> Assignable {
+	_checking_data: &CheckingData<T, super::EznoParser>,
+) -> Assignable<super::EznoParser> {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
 			Reference::Variable(name.clone(), pos.with_source(environment.get_source())),
