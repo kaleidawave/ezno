@@ -626,14 +626,19 @@ impl TypeStore {
 				.map(Logical::Pure)
 				.or_else(|| {
 					let backing_type = cst.get_backing_type_id();
-					self.get_fact_about_type(
-						info_chain,
-						backing_type,
-						on_type_arguments,
-						resolver,
-						data,
-					)
-					.ok()
+
+					if on == backing_type {
+						None
+					} else {
+						self.get_fact_about_type(
+							info_chain,
+							backing_type,
+							on_type_arguments,
+							resolver,
+							data,
+						)
+						.ok()
+					}
 				})
 				.ok_or(crate::context::Missing::None),
 			Type::SpecialObject(_) => todo!(),
