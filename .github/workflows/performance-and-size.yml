@@ -46,10 +46,6 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - name: Download files
-        run: |
-          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-
       - name: Run checker performance
         shell: bash
         run: |
@@ -105,6 +101,10 @@ jobs:
           echo "::group::Comparing printing of diagnostics"
           hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
           echo "::endgroup::"
+      
+      - name: Download parser files
+        run: |
+          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
 
       - name: Run parser, minfier/stringer performance
         shell: bash

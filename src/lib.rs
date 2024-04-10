@@ -1,7 +1,7 @@
 mod ast_explorer;
 mod build;
 mod check;
-mod error_handling;
+mod reporting;
 mod repl;
 
 pub(crate) mod utilities;

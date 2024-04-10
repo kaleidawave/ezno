@@ -38,7 +38,7 @@ pub(crate) fn cli_input_resolver(prompt: &str) -> String {
 	input
 }
 
-fn main() {
+fn main() -> std::process::ExitCode {
 	fn read_from_file(path: &std::path::Path) -> Option<String> {
 		std::fs::read_to_string(path).ok()
 	}
@@ -50,5 +50,5 @@ fn main() {
 	let arguments = std::env::args().skip(1).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
-	run_cli(&arguments, &read_from_file, write_to_file, |p| Some(cli_input_resolver(p)));
+	run_cli(&arguments, &read_from_file, write_to_file, |p| Some(cli_input_resolver(p)))
 }

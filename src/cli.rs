@@ -11,7 +11,7 @@ use crate::{
 	build::{build, BuildOutput, FailedBuildOutput},
 	build::{BuildConfig, EznoParsePostCheckVisitors},
 	check::check,
-	error_handling::emit_ezno_diagnostic,
+	reporting::emit_diagnostics,
 	utilities::print_to_cli,
 };
 use argh::FromArgs;
@@ -157,18 +157,19 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 	read_file: &T,
 	write_file: U,
 	cli_input_resolver: V,
-) {
+) -> std::process::ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
 			print_to_cli(format_args!("{}", err.output));
-			return;
+			return std::process::ExitCode::FAILURE;
 		}
 	};
 
 	match command {
 		CompilerSubCommand::Info(_) => {
 			crate::utilities::print_info();
+			std::process::ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file, timings, count_diagnostics } =
@@ -189,17 +190,16 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			};
 
 			if diagnostics.has_error() {
-				let diagnostics = diagnostics.into_iter();
 				if count_diagnostics {
-					let count = diagnostics.count();
-					print_to_cli(format_args!("Found {count} type errors and warnings 😬",))
+					let count = diagnostics.into_iter().count();
+					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &module_contents).unwrap();
-					}
+					emit_diagnostics(diagnostics, &module_contents).unwrap();
 				}
+				std::process::ExitCode::FAILURE
 			} else {
-				print_to_cli(format_args!("No type errors found 🎉"))
+				print_to_cli(format_args!("No type errors found 🎉"));
+				std::process::ExitCode::SUCCESS
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
@@ -235,21 +235,27 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-					}
-
-					print_to_cli(format_args!("Project built successfully 🎉"))
+					emit_diagnostics(diagnostics, &fs).unwrap();
+					print_to_cli(format_args!("Project built successfully 🎉"));
+					std::process::ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-					}
+					emit_diagnostics(diagnostics, &fs).unwrap();
+					std::process::ExitCode::FAILURE
 				}
 			}
 		}
-		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(read_file, cli_input_resolver),
-		CompilerSubCommand::Repl(argument) => crate::repl::run_repl(cli_input_resolver, argument),
+		// 	let _root_ctx = checker::root_context_from_bytes(file);
+		CompilerSubCommand::ASTExplorer(mut repl) => {
+			repl.run(read_file, cli_input_resolver);
+			// TODO not always true
+			std::process::ExitCode::SUCCESS
+		},
+		CompilerSubCommand::Repl(argument) => {
+			crate::repl::run_repl(cli_input_resolver, argument);
+			// TODO not always true
+			std::process::ExitCode::SUCCESS
+		},
 		// CompilerSubCommand::Run(run_arguments) => {
 		// 	let build_arguments = BuildArguments {
 		// 		input: run_arguments.input,
@@ -280,11 +286,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		// 	)
 		// 	.unwrap();
 
-		// 	std::fs::write(&output, &file).unwrap();
-		// 	// println!("Wrote binary context out to {}", output.display());
-
 		// 	let _root_ctx = checker::root_context_from_bytes(file);
-		// 	println!("Registered {} types", _root_ctx.types.len());
+		// 	println!("Registered {} types", _root_ctx.types.len();
 		// }
 	}
 }
