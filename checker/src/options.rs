@@ -16,7 +16,7 @@ pub struct TypeCheckOptions {
 	/// Given a `function x`, `x = 2` is not possible
 	pub constant_function_declarations: bool,
 
-	/// Whether auto casts can happen. aka `{} + 2` is allowed using Object[ToPrimitiveDefault]
+	/// Whether auto casts can happen. aka `{} + 2` is allowed using the Object's primitive default
 	/// TODO maybe levels
 	pub strict_casts: bool,
 

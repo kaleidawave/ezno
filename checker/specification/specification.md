@@ -648,6 +648,16 @@ callToUpperCase("hi") satisfies "HEY";
 
 - Expected "HEY", found "HI"
 
+#### String internal `this` unbinding error
+
+```ts
+const { toUpperCase } = "hi";
+
+toUpperCase();
+```
+
+- The 'this' context of the function is expected to be string, found undefined
+
 #### Calling new on a function
 
 ```ts
@@ -739,7 +749,7 @@ doThing(6, 1) satisfies 6;
 let a: number = 0
 function func() {
 	a = 4;
-	// Important that subsequent reads use the 
+	// Important that subsequent reads use the
 	// new value, not the same free variable
 	a satisfies 4;
 }
@@ -1569,7 +1579,7 @@ interface X {
 	interface X {
 		c: number
 	}
-	
+
 	const x: X = { a: "field", b: false, c: false }
 	const y: X = { a: "field", b: false, c: 2 }
 }
@@ -1658,6 +1668,27 @@ try {
 
 - Expected string, found 3
 
+#### Object destructuring assignment
+
+```ts
+const o = { a: 1, b: { c: 3 } };
+
+let a, b, c;
+({
+  c = o.a++,
+  b: { c: b = 7 },
+  a,
+} = o);
+
+a satisfies string;
+b satisfies boolean;
+c satisfies 3;
+```
+
+- Expected string, found 2
+- Expected boolean, found 3
+- Expected 3, found 1
+
 ### Async and `Promise`s
 
 > Position of await is not checked (here is fine because top level await)
@@ -1691,6 +1722,21 @@ x.value satisfies string
 ```
 
 - Expected string, found 4
+
+#### Class `this` unbinding
+
+```ts
+class X {
+    method() {
+        return this;
+    }
+}
+
+const { method } = new X();
+method();
+```
+
+- The 'this' context of the function is expected to be X, found undefined
 
 #### Property keys
 

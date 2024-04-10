@@ -429,8 +429,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
-			let lhs: Assignable =
-				synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
+			let lhs = synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
 
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
@@ -441,7 +440,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 		}
 		Expression::BinaryAssignmentOperation { lhs, operator, rhs, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
+			let lhs = Assignable::Reference(synthesise_access_to_reference(
 				lhs,
 				environment,
 				checking_data,
@@ -456,7 +455,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 		}
 		Expression::UnaryPrefixAssignmentOperation { operator, operand, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
+			let lhs = Assignable::Reference(synthesise_access_to_reference(
 				operand,
 				environment,
 				checking_data,
@@ -486,7 +485,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::UnaryPostfixAssignmentOperation { operand, operator, position } => {
-			let lhs: Assignable = Assignable::Reference(synthesise_access_to_reference(
+			let lhs = Assignable::Reference(synthesise_access_to_reference(
 				operand,
 				environment,
 				checking_data,
@@ -549,7 +548,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				publicity,
 				&property,
 				checking_data,
-				*position,
+				position.with_source(environment.get_source()),
+				true,
 			);
 
 			match result {
@@ -573,7 +573,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Publicity::Public,
 				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
-				*position,
+				position.with_source(environment.get_source()),
+				true,
 			);
 
 			match result {

@@ -41,7 +41,7 @@ pub struct LocalInformation {
 
 	/// Object type (LHS), must always be RHS
 	///
-	/// *not quite the best place, but used in InformationChain*
+	/// *not quite the best place, but used in [`InformationChain`]*
 	pub(crate) object_constraints: HashMap<TypeId, TypeId>,
 
 	/// For super calls etc
@@ -237,7 +237,7 @@ pub(crate) fn get_property_unbound(
 	// 	under @ PropertyKey::String(_) => under,
 	// };
 
-	types.get_fact_about_type(info, on, None, &get_property, (publicity, &under))
+	types.get_fact_about_type(info, on, None, &get_property, (publicity, under))
 }
 
 fn get_property_under(

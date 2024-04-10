@@ -55,7 +55,7 @@ struct FunctionLike {
 	pub(crate) function: FunctionId,
 	/// For generic calls
 	pub(crate) from: Option<TypeId>,
-	/// From, maybe ignored if [CalledWithNew] overrides
+	/// From, maybe ignored if [`CalledWithNew`] overrides
 	pub(crate) this_value: ThisValue,
 }
 
@@ -270,18 +270,12 @@ fn get_logical_callable_from_type(
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
 			})
 		}
-		Type::Constructor(Constructor::Property { on, under: _, result, bind_this: true }) => {
-			// bind_this from #98
-			// Bind does not happen for theses calls, so done here *conditionally on `bind_this`*
-
+		Type::Constructor(Constructor::Property { on, under: _, result, bind_this }) => {
 			crate::utils::notify!("Passing {:?}", on);
 
-			let result = get_logical_callable_from_type(
-				*result,
-				Some(ThisValue::Passed(*on)),
-				Some(ty),
-				types,
-			)?;
+			let this_value = if *bind_this { ThisValue::Passed(*on) } else { ThisValue::UseParent };
+			let result =
+				get_logical_callable_from_type(*result, Some(this_value), Some(ty), types)?;
 
 			if let Some(antecedent) = get_constraint(*on, types).and_then(|c| {
 				if let Type::Constructor(Constructor::StructureGenerics(generic)) =
@@ -524,6 +518,11 @@ pub enum FunctionCallingError {
 		/// Should be set
 		call_site: Option<SpanWithSource>,
 	},
+	MismatchedThis {
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+		call_site: SpanWithSource,
+	},
 }
 
 pub struct InfoDiagnostic(pub String);
@@ -705,6 +704,7 @@ impl FunctionType {
 			types,
 			&mut errors,
 			call_site,
+			behavior,
 		);
 
 		let local_arguments = self.assign_arguments_to_parameters::<E>(
@@ -721,10 +721,10 @@ impl FunctionType {
 
 		let mut type_arguments = FunctionTypeArguments {
 			local_arguments,
-			closure_ids: if let Some(StructureGenericArguments::Closure(cs)) = structure_generics {
-				cs
-			} else {
-				Default::default()
+			#[allow(clippy::manual_unwrap_or_default)]
+			closure_ids: match structure_generics {
+				Some(StructureGenericArguments::Closure(cs)) => cs,
+				_ => Vec::new(),
 			},
 			call_site,
 		};
@@ -920,7 +920,7 @@ impl FunctionType {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn set_this_for_behavior(
+	fn set_this_for_behavior<E: CallCheckingBehavior>(
 		&self,
 		called_with_new: CalledWithNew,
 		this_value: ThisValue,
@@ -929,6 +929,7 @@ impl FunctionType {
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
 		call_site: source_map::BaseSpan<SourceId>,
+		behavior: &E,
 	) {
 		match self.behavior {
 			FunctionBehavior::ArrowFunction { .. } => {}
@@ -942,6 +943,44 @@ impl FunctionType {
 					);
 					TypeId::UNDEFINED_TYPE
 				};
+
+				let base_type = get_constraint(free_this_id, types).unwrap_or(free_this_id);
+
+				let mut basic_subtyping = BasicEquality {
+					add_property_restrictions: false,
+					position: call_site,
+					object_constraints: Default::default(),
+					allow_errors: true,
+				};
+
+				let type_is_subtype = type_is_subtype(
+					base_type,
+					value_of_this,
+					&mut basic_subtyping,
+					environment,
+					types,
+				);
+
+				match type_is_subtype {
+					SubTypeResult::IsSubType => {}
+					SubTypeResult::IsNotSubType(reason) => {
+						errors.errors.push(FunctionCallingError::MismatchedThis {
+							expected: TypeStringRepresentation::from_type_id(
+								free_this_id,
+								environment,
+								types,
+								behavior.debug_types(),
+							),
+							found: TypeStringRepresentation::from_type_id(
+								value_of_this,
+								environment,
+								types,
+								behavior.debug_types(),
+							),
+							call_site,
+						});
+					}
+				}
 
 				crate::utils::notify!(
 					"free this id {:?} & value of this {:?}",

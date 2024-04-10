@@ -189,7 +189,7 @@ pub struct SynthesisedParameter {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct SynthesisedRestParameter {
 	pub name: String,
-	/// This is the item type, aka the `T`` of `Array<T>`
+	/// This is the item type, aka the `T` of `Array<T>`
 	pub item_type: TypeId,
 	/// This is the generic type (to substitute into)
 	pub ty: TypeId,

@@ -4,10 +4,10 @@ use crate::{context::information::Publicity, types::properties::PropertyKey, Typ
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
-pub enum Assignable {
+pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<(PropertyKey<'static>, Assignable)>),
-	ArrayDestructuring(Vec<Option<Assignable>>),
+	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
+	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
 }
 
 // TODO derive copy, when span derives copy
@@ -16,6 +16,25 @@ pub enum Assignable {
 pub enum Reference {
 	Variable(String, SpanWithSource),
 	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
+}
+
+pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
+	/// `{ x: y }`
+	Mapped {
+		on: PropertyKey<'static>,
+		name: Assignable<A>,
+		default_value: Option<Box<A::Expression<'static>>>,
+		position: SpanWithSource,
+	},
+	/// `{ ...x }`
+	Spread(Assignable<A>, SpanWithSource),
+}
+
+pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
+	Spread(Assignable<A>, SpanWithSource),
+	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
+	Comment { content: String, is_multiline: bool, position: SpanWithSource },
+	None,
 }
 
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number

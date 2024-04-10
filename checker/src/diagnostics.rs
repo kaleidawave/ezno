@@ -459,7 +459,7 @@ mod defined_errors_and_warnings {
 						if let Some((restriction_pos, restriction)) = restriction {
 							Diagnostic::PositionWithAdditionalLabels {
 								reason: format!(
-									"Argument of type {argument_type} is not assignable to parameter of type {restriction}" 
+									"Argument of type {argument_type} is not assignable to parameter of type {restriction}"
 								),
 								position: argument_position,
 								labels: vec![(
@@ -558,6 +558,13 @@ mod defined_errors_and_warnings {
 							kind,
 						}
 					}
+					FunctionCallingError::MismatchedThis { call_site, expected, found } => Diagnostic::Position {
+						reason: format!(
+							"The 'this' context of the function is expected to be {expected}, found {found}"
+						),
+						position: call_site,
+						kind,
+					},
 				},
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {

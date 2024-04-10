@@ -709,6 +709,31 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
+			Type::Object(..) => subtype_properties(
+				base_type,
+				base_structure_arguments,
+				ty,
+				ty_structure_arguments,
+				behavior,
+				environment,
+				types,
+				mode,
+				already_checked,
+			),
+			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				on,
+				arguments,
+			})) => type_is_subtype_with_generics(
+				base_type,
+				base_structure_arguments,
+				*on,
+				GenericChainLink::append(ty_structure_arguments.as_ref(), arguments),
+				behavior,
+				environment,
+				types,
+				mode,
+				already_checked,
+			),
 			_ => SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch),
 		},
 		Type::Interface { nominal: base_type_nominal, .. } => {
@@ -979,6 +1004,14 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 	mode: SubTypingMode,
 	already_checked: &mut AlreadyChecked,
 ) -> SubTypeResult {
+	// TODO (#128): This is a compromise where only boolean and number types are treated as nominal
+	match base_type {
+		TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE if base_type != ty => {
+			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+		}
+		_ => {}
+	}
+
 	let mode = mode.one_deeper();
 
 	let mut property_errors = Vec::new();
@@ -991,10 +1024,16 @@ fn subtype_properties<'a, T: SubTypeBehavior<'a>>(
 		crate::utils::notify!("key {:?} with {:?}", key, base_type_arguments);
 
 		let key = match key {
-			PropertyKey::Type(ty) => PropertyKey::from_type(
-				base_type_arguments.unwrap().get_single_argument(*ty).unwrap_or(*ty),
-				types,
-			),
+			PropertyKey::Type(ty) => {
+				if let Some(base_type_arguments) = base_type_arguments {
+					PropertyKey::from_type(
+						base_type_arguments.get_single_argument(*ty).unwrap_or(*ty),
+						types,
+					)
+				} else {
+					key.clone()
+				}
+			}
 			PropertyKey::String(_) => key.clone(),
 		};
 
@@ -1088,7 +1127,36 @@ fn check_lhs_property_is_super_type_of_rhs<'a, T: SubTypeBehavior<'a>>(
 				Err(..) => Err(PropertyError::Missing),
 			}
 		}
-		PropertyValue::Getter(_) => todo!(),
+		PropertyValue::Getter(getter) => {
+			let rhs_property = get_property_unbound(ty, publicity, key, types, environment);
+			crate::utils::notify!("looking for {:?} found {:?}", key, rhs_property);
+
+			match rhs_property {
+				Ok(rhs_property) => {
+					let res = check_logical_property(
+						getter.return_type,
+						base_type_arguments,
+						rhs_property,
+						right_type_arguments,
+						behavior,
+						environment,
+						types,
+						mode,
+						already_checked,
+					);
+					match res {
+						SubTypeResult::IsSubType => Ok(()),
+						SubTypeResult::IsNotSubType(err) => Err(PropertyError::Invalid {
+							expected: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							mismatch: err,
+						}),
+					}
+				}
+				// TODO
+				Err(..) => Err(PropertyError::Missing),
+			}
+		}
 		PropertyValue::Setter(_) => todo!(),
 		PropertyValue::Deleted => {
 			// TODO WIP
