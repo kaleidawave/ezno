@@ -1,8 +1,5 @@
 use std::fmt::Arguments;
 
-const SPONSORS_PATH: &str = "https://github.com/sponsors/kaleidawave";
-const SPONSORS: Option<&'static str> = option_env!("SPONSORS");
-
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
 		print_to_cli(format_args!(
@@ -19,12 +16,18 @@ pub(crate) fn print_info() {
 		env!("CARGO_PKG_REPOSITORY"),
 		env!("CARGO_PKG_LICENSE")
 	));
-	if let Some(sponsors) = SPONSORS {
-		print_to_cli(format_args!("Supported by: {sponsors}. Join them @ {SPONSORS_PATH}"));
-	} else {
-		print_to_cli(format_args!("Support the project @ {SPONSORS_PATH}"));
-	}
 	print_to_cli(format_args!("For help run --help"));
+	if let (Some(sponsors), Some(contributors)) =
+		(option_env!("SPONSORS"), option_env!("CONTRIBUTORS"))
+	{
+		print_to_cli(format_args!("---"));
+		print_to_cli(format_args!("With thanks to"));
+		print_to_cli(format_args!("Contributors: {contributors}"));
+		print_to_cli(format_args!(
+			"Supporters (https://github.com/sponsors/kaleidawave): {sponsors}"
+		));
+		print_to_cli(format_args!("and all the believers ✨"));
+	}
 }
 
 #[cfg(target_family = "wasm")]

@@ -23,7 +23,8 @@ jobs:
     outputs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
       new-ezno-version-name: ${{ steps.get-version.outputs.new-ezno-version-name }}
-      sponsors: ${{ steps.get-sponsors.outputs.sponsors }}
+      SPONSORS: ${{ steps.get-data.outputs.SPONSORS }}
+      CONTRIBUTORS: ${{ steps.get-data.outputs.CONTRIBUTORS }}
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +56,7 @@ jobs:
             echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - id: get-sponsors
+      - id: get-data
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
@@ -71,7 +72,24 @@ jobs:
             }
           }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
           
-          echo "sponsors=$SPONSORS" >> $GITHUB_OUTPUT
+          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
+
+          CONTRIBUTORS=$(gh api graphql -f query='{
+            repository(owner: "kaleidawave", name: "ezno") {
+              pullRequests(first: 100, states: 'MERGED') {
+                edges {
+                  node {
+                    author {
+                      login
+                    }
+                  }
+                }
+              }
+            }
+          }' -q '.data.repository.pullRequests.edges | map(.node.author.login) | unique | join(", ")')
+
+          echo "CONTRIBUTORS=$CONTRIBUTORS"
+
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,7 +121,8 @@ jobs:
       - name: Build binary
         run: cargo build --release
         env:
-          SPONSORS: ${{ needs.get-build-info.outputs.sponsors }}
+          SPONSORS: ${{ needs.get-build-info.outputs.SPONSORS }}
+          CONTRIBUTORS: ${{ needs.get-build-info.outputs.CONTRIBUTORS }}
 
       - name: Rename and move release assets
         run: |

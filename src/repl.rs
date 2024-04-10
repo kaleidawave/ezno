@@ -5,7 +5,7 @@ use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode};
 use parser::{Expression, Module, Statement};
 
-use crate::error_handling::emit_ezno_diagnostic;
+use crate::reporting::emit_diagnostics;
 use crate::utilities::print_to_cli;
 
 /// Run project repl using deno. (`deno` command must be in path)
@@ -50,9 +50,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 	let mut state = match state {
 		Ok(state) => state,
 		Err((diagnostics, fs)) => {
-			for diagnostic in diagnostics {
-				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-			}
+			emit_diagnostics(diagnostics, &fs).unwrap();
 			return;
 		}
 	};
@@ -91,7 +89,8 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_ezno_diagnostic((err, source).into(), state.get_fs_ref()).unwrap();
+				emit_diagnostics(std::iter::once((err, source).into()), state.get_fs_ref())
+					.unwrap();
 				continue;
 			}
 		};
@@ -112,17 +111,13 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 
 		match result {
 			Ok((last_ty, diagnostics)) => {
-				for diagnostic in diagnostics {
-					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
-				}
+				emit_diagnostics(diagnostics, state.get_fs_ref()).unwrap();
 				if let Some(last_ty) = last_ty {
 					println!("{last_ty}");
 				}
 			}
 			Err(diagnostics) => {
-				for diagnostic in diagnostics {
-					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
-				}
+				emit_diagnostics(diagnostics, state.get_fs_ref()).unwrap();
 			}
 		}
 	}

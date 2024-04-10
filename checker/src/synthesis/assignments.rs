@@ -159,10 +159,10 @@ fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 
 fn synthesise_object_property_key(
 	name: &parser::VariableIdentifier,
-	environment: &Environment,
+	_environment: &Environment,
 ) -> PropertyKey<'static> {
 	match name {
-		parser::VariableIdentifier::Standard(name, pos) => {
+		parser::VariableIdentifier::Standard(name, _pos) => {
 			PropertyKey::String(Cow::Owned(name.to_owned()))
 		}
 		parser::VariableIdentifier::Marker(..) => todo!(),

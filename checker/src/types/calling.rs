@@ -963,7 +963,7 @@ impl FunctionType {
 
 				match type_is_subtype {
 					SubTypeResult::IsSubType => {}
-					SubTypeResult::IsNotSubType(reason) => {
+					SubTypeResult::IsNotSubType(_reason) => {
 						errors.errors.push(FunctionCallingError::MismatchedThis {
 							expected: TypeStringRepresentation::from_type_id(
 								free_this_id,

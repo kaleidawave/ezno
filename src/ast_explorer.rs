@@ -8,7 +8,7 @@ use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
 use crate::{
-	error_handling::emit_ezno_diagnostic,
+	reporting::emit_diagnostics,
 	utilities::{print_to_cli, print_to_cli_without_newline},
 };
 
@@ -136,7 +136,9 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
+					Err(err) => {
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+					}
 				}
 			}
 			ExplorerSubCommand::FullAST(cfg) => {
@@ -156,7 +158,9 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
+					Err(err) => {
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+					}
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -173,7 +177,9 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
-					Err(err) => emit_ezno_diagnostic((err, source_id).into(), &fs).unwrap(),
+					Err(err) => {
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+					}
 				}
 			}
 			ExplorerSubCommand::Lexer(_) => {

@@ -11,15 +11,7 @@ use crate::{
 use map_vec::Map as SmallMap;
 use source_map::{Nullable, SpanWithSource};
 
-use std::{fmt::Debug, iter::FromIterator};
-
-use super::{GenericStructureTypeArgument, GenericStructureTypeArguments};
-
-impl FromIterator<GenericStructureTypeArgument> for GenericStructureTypeArguments {
-	fn from_iter<I: IntoIterator<Item = GenericStructureTypeArgument>>(iter: I) -> Self {
-		Self(iter.into_iter().collect())
-	}
-}
+use std::fmt::Debug;
 
 /// For when a function is called
 #[derive(Debug)]

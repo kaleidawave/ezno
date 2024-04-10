@@ -1,15 +1,7 @@
-use super::generic_type_arguments::FunctionTypeArguments;
 use crate::TypeId;
 
-/// A instance of a generic typed object
-#[derive(Clone, Debug)]
-pub struct GenericStructure {
-	pub generic_type: TypeId,
-	pub arguments: GenericStructureTypeArguments,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct GenericStructureTypeArguments(pub(crate) Vec<GenericStructureTypeArgument>);
+// #[derive(Clone, Debug, Default)]
+// pub struct GenericStructureTypeArguments(pub(crate) Vec<GenericStructureTypeArgument>);
 
 #[derive(Clone, Debug)]
 pub enum GenericStructureArgumentValue {
@@ -41,16 +33,16 @@ pub struct GenericStructureTypeArgument {
 	// pub(crate) constraint: Option<Box<Type>>,
 }
 
-impl From<GenericStructureTypeArguments> for FunctionTypeArguments {
-	fn from(_instance_of_generics_arguments: GenericStructureTypeArguments) -> Self {
-		todo!()
-		// TypeArguments {
-		// 	structure_arguments: todo!(),
-		// 	local_arguments: todo!(),
-		// 	environment: todo!(),
-		// }
-		//     Cow::Owned(
-		//     instance_of_generics_arguments.into(),
-		// ))
-	}
-}
+// impl From<GenericStructureTypeArguments> for FunctionTypeArguments {
+// 	fn from(_instance_of_generics_arguments: GenericStructureTypeArguments) -> Self {
+// 		todo!()
+// 		// TypeArguments {
+// 		// 	structure_arguments: todo!(),
+// 		// 	local_arguments: todo!(),
+// 		// 	environment: todo!(),
+// 		// }
+// 		//     Cow::Owned(
+// 		//     instance_of_generics_arguments.into(),
+// 		// ))
+// 	}
+// }

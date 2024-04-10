@@ -4,6 +4,7 @@ use std::{
 	env, fs,
 	path::{Path, PathBuf},
 	process::Command,
+	process::ExitCode,
 	time::Instant,
 };
 
@@ -11,7 +12,7 @@ use crate::{
 	build::{build, BuildOutput, FailedBuildOutput},
 	build::{BuildConfig, EznoParsePostCheckVisitors},
 	check::check,
-	error_handling::emit_ezno_diagnostic,
+	reporting::emit_diagnostics,
 	utilities::print_to_cli,
 };
 use argh::FromArgs;
@@ -54,6 +55,7 @@ pub(crate) struct ExperimentalArguments {
 #[argh(subcommand)]
 pub(crate) enum ExperimentalSubcommand {
 	Build(BuildArguments),
+	Format(FormatArguments),
 }
 
 /// Build project
@@ -123,6 +125,15 @@ pub(crate) struct CheckArguments {
 	pub count_diagnostics: bool,
 }
 
+/// Formats file in-place
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "format")]
+pub(crate) struct FormatArguments {
+	/// path to input file
+	#[argh(positional)]
+	pub path: PathBuf,
+}
+
 // /// Run project using Deno
 // #[derive(FromArgs, PartialEq, Debug)]
 // #[argh(subcommand, name = "run")]
@@ -157,18 +168,19 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 	read_file: &T,
 	write_file: U,
 	cli_input_resolver: V,
-) {
+) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
 			print_to_cli(format_args!("{}", err.output));
-			return;
+			return ExitCode::FAILURE;
 		}
 	};
 
 	match command {
 		CompilerSubCommand::Info(_) => {
 			crate::utilities::print_info();
+			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file, timings, count_diagnostics } =
@@ -189,17 +201,16 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			};
 
 			if diagnostics.has_error() {
-				let diagnostics = diagnostics.into_iter();
 				if count_diagnostics {
-					let count = diagnostics.count();
-					print_to_cli(format_args!("Found {count} type errors and warnings 😬",))
+					let count = diagnostics.into_iter().count();
+					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &module_contents).unwrap();
-					}
+					emit_diagnostics(diagnostics, &module_contents).unwrap();
 				}
+				ExitCode::FAILURE
 			} else {
-				print_to_cli(format_args!("No type errors found 🎉"))
+				print_to_cli(format_args!("No type errors found 🎉"));
+				ExitCode::SUCCESS
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
@@ -235,56 +246,86 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-					}
-
-					print_to_cli(format_args!("Project built successfully 🎉"))
+					emit_diagnostics(diagnostics, &fs).unwrap();
+					print_to_cli(format_args!("Project built successfully 🎉"));
+					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					for diagnostic in diagnostics {
-						emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-					}
+					emit_diagnostics(diagnostics, &fs).unwrap();
+					ExitCode::FAILURE
 				}
 			}
 		}
-		CompilerSubCommand::ASTExplorer(mut repl) => repl.run(read_file, cli_input_resolver),
-		CompilerSubCommand::Repl(argument) => crate::repl::run_repl(cli_input_resolver, argument),
-		// CompilerSubCommand::Run(run_arguments) => {
-		// 	let build_arguments = BuildArguments {
-		// 		input: run_arguments.input,
-		// 		output: Some(run_arguments.output.clone()),
-		// 		minify: true,
-		// 		no_comments: true,
-		// 		source_maps: false,
-		// 		watch: false,
-		// 		timings: false,
-		// 	};
-		// 	let output = build(build_arguments);
+		CompilerSubCommand::Experimental(ExperimentalArguments {
+			nested: ExperimentalSubcommand::Format(FormatArguments { path }),
+		}) => {
+			use parser::{source_map::FileSystem, ASTNode, Module, ToStringOptions};
 
-		// 	if output.is_ok() {
-		// 		Command::new("deno")
-		// 			.args(["run", "--allow-all", run_arguments.output.to_str().unwrap()])
-		// 			.spawn()
-		// 			.unwrap()
-		// 			.wait()
-		// 			.unwrap();
-		// 	}
-		// }
-		// #[cfg(debug_assertions)]
-		// CompilerSubCommand::Pack(Pack { input, output }) => {
-		// 	let file = checker::definition_file_to_buffer(
-		// 		&file_system_resolver,
-		// 		&env::current_dir().unwrap(),
-		// 		&input,
-		// 	)
-		// 	.unwrap();
+			let input = match fs::read_to_string(&path) {
+				Ok(string) => string,
+				Err(err) => {
+					print_to_cli(format_args!("{err:?}"));
+					return ExitCode::FAILURE;
+				}
+			};
+			let mut files =
+				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
+			let source_id = files.new_source_id(path.clone(), input.clone());
+			let res = Module::from_string(input, Default::default());
+			match res {
+				Ok(module) => {
+					let options =
+						ToStringOptions { trailing_semicolon: true, ..Default::default() };
+					let _ = fs::write(path, &module.to_string(&options));
+					ExitCode::SUCCESS
+				}
+				Err(err) => {
+					emit_diagnostics(std::iter::once((err, source_id).into()), &files).unwrap();
+					ExitCode::FAILURE
+				}
+			}
+		}
+		CompilerSubCommand::ASTExplorer(mut repl) => {
+			repl.run(read_file, cli_input_resolver);
+			// TODO not always true
+			ExitCode::SUCCESS
+		}
+		CompilerSubCommand::Repl(argument) => {
+			crate::repl::run_repl(cli_input_resolver, argument);
+			// TODO not always true
+			ExitCode::SUCCESS
+		} // CompilerSubCommand::Run(run_arguments) => {
+		  // 	let build_arguments = BuildArguments {
+		  // 		input: run_arguments.input,
+		  // 		output: Some(run_arguments.output.clone()),
+		  // 		minify: true,
+		  // 		no_comments: true,
+		  // 		source_maps: false,
+		  // 		watch: false,
+		  // 		timings: false,
+		  // 	};
+		  // 	let output = build(build_arguments);
 
-		// 	std::fs::write(&output, &file).unwrap();
-		// 	// println!("Wrote binary context out to {}", output.display());
+		  // 	if output.is_ok() {
+		  // 		Command::new("deno")
+		  // 			.args(["run", "--allow-all", run_arguments.output.to_str().unwrap()])
+		  // 			.spawn()
+		  // 			.unwrap()
+		  // 			.wait()
+		  // 			.unwrap();
+		  // 	}
+		  // }
+		  // #[cfg(debug_assertions)]
+		  // CompilerSubCommand::Pack(Pack { input, output }) => {
+		  // 	let file = checker::definition_file_to_buffer(
+		  // 		&file_system_resolver,
+		  // 		&env::current_dir().unwrap(),
+		  // 		&input,
+		  // 	)
+		  // 	.unwrap();
 
-		// 	let _root_ctx = checker::root_context_from_bytes(file);
-		// 	println!("Registered {} types", _root_ctx.types.len());
-		// }
+		  // 	let _root_ctx = checker::root_context_from_bytes(file);
+		  // 	println!("Registered {} types", _root_ctx.types.len();
+		  // }
 	}
 }
