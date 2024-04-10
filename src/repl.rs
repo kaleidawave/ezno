@@ -89,7 +89,8 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_diagnostics(std::iter::once((err, source).into()), state.get_fs_ref()).unwrap();
+				emit_diagnostics(std::iter::once((err, source).into()), state.get_fs_ref())
+					.unwrap();
 				continue;
 			}
 		};

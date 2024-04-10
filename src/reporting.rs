@@ -14,7 +14,9 @@ fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	}
 }
 
-fn checker_diagnostic_to_codespan_diagnostic(diagnostic: checker::Diagnostic) -> Diagnostic<SourceId> {
+fn checker_diagnostic_to_codespan_diagnostic(
+	diagnostic: checker::Diagnostic,
+) -> Diagnostic<SourceId> {
 	match diagnostic {
 		checker::Diagnostic::Global { reason, kind } => Diagnostic {
 			severity: ezno_diagnostic_to_severity(&kind),
@@ -51,32 +53,31 @@ fn checker_diagnostic_to_codespan_diagnostic(diagnostic: checker::Diagnostic) ->
 }
 
 pub(crate) fn emit_diagnostics(
-	diagnostics: impl IntoIterator<Item=checker::Diagnostic>,
+	diagnostics: impl IntoIterator<Item = checker::Diagnostic>,
 	fs: &impl FileSystem,
 ) -> Result<(), codespan_reporting::files::Error> {
 	use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-	
+
 	// TODO custom here
 	let config = Config::default();
-	
+
 	#[cfg(target_family = "wasm")]
-	{
-		
-	}
+	{}
 
 	#[cfg(not(target_family = "wasm"))]
 	let mut writer = StandardStream::stderr(ColorChoice::Auto);
 
 	let files = fs.into_code_span_store();
-	
+
 	for diagnostic in diagnostics {
 		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic);
-		
+
 		#[cfg(target_family = "wasm")]
 		{
-			let mut buffer = Buffer::ansi();
+			let mut buffer = codespan_reporting::term::termcolor::Buffer::ansi();
 			emit(&mut buffer, &config, &files, &diagnostic)?;
-			let output = String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
+			let output =
+				String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
 			print_to_cli(format_args!("{output}"));
 		}
 

@@ -250,44 +250,43 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			repl.run(read_file, cli_input_resolver);
 			// TODO not always true
 			std::process::ExitCode::SUCCESS
-		},
+		}
 		CompilerSubCommand::Repl(argument) => {
 			crate::repl::run_repl(cli_input_resolver, argument);
 			// TODO not always true
 			std::process::ExitCode::SUCCESS
-		},
-		// CompilerSubCommand::Run(run_arguments) => {
-		// 	let build_arguments = BuildArguments {
-		// 		input: run_arguments.input,
-		// 		output: Some(run_arguments.output.clone()),
-		// 		minify: true,
-		// 		no_comments: true,
-		// 		source_maps: false,
-		// 		watch: false,
-		// 		timings: false,
-		// 	};
-		// 	let output = build(build_arguments);
+		} // CompilerSubCommand::Run(run_arguments) => {
+		  // 	let build_arguments = BuildArguments {
+		  // 		input: run_arguments.input,
+		  // 		output: Some(run_arguments.output.clone()),
+		  // 		minify: true,
+		  // 		no_comments: true,
+		  // 		source_maps: false,
+		  // 		watch: false,
+		  // 		timings: false,
+		  // 	};
+		  // 	let output = build(build_arguments);
 
-		// 	if output.is_ok() {
-		// 		Command::new("deno")
-		// 			.args(["run", "--allow-all", run_arguments.output.to_str().unwrap()])
-		// 			.spawn()
-		// 			.unwrap()
-		// 			.wait()
-		// 			.unwrap();
-		// 	}
-		// }
-		// #[cfg(debug_assertions)]
-		// CompilerSubCommand::Pack(Pack { input, output }) => {
-		// 	let file = checker::definition_file_to_buffer(
-		// 		&file_system_resolver,
-		// 		&env::current_dir().unwrap(),
-		// 		&input,
-		// 	)
-		// 	.unwrap();
+		  // 	if output.is_ok() {
+		  // 		Command::new("deno")
+		  // 			.args(["run", "--allow-all", run_arguments.output.to_str().unwrap()])
+		  // 			.spawn()
+		  // 			.unwrap()
+		  // 			.wait()
+		  // 			.unwrap();
+		  // 	}
+		  // }
+		  // #[cfg(debug_assertions)]
+		  // CompilerSubCommand::Pack(Pack { input, output }) => {
+		  // 	let file = checker::definition_file_to_buffer(
+		  // 		&file_system_resolver,
+		  // 		&env::current_dir().unwrap(),
+		  // 		&input,
+		  // 	)
+		  // 	.unwrap();
 
-		// 	let _root_ctx = checker::root_context_from_bytes(file);
-		// 	println!("Registered {} types", _root_ctx.types.len();
-		// }
+		  // 	let _root_ctx = checker::root_context_from_bytes(file);
+		  // 	println!("Registered {} types", _root_ctx.types.len();
+		  // }
 	}
 }

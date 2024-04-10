@@ -17,11 +17,15 @@ pub(crate) fn print_info() {
 		env!("CARGO_PKG_LICENSE")
 	));
 	print_to_cli(format_args!("For help run --help"));
-	if let (Some(sponsors), Some(contributors)) = (option_env!("SPONSORS"), option_env!("CONTRIBUTORS")) {
+	if let (Some(sponsors), Some(contributors)) =
+		(option_env!("SPONSORS"), option_env!("CONTRIBUTORS"))
+	{
 		print_to_cli(format_args!("---"));
 		print_to_cli(format_args!("With thanks to"));
 		print_to_cli(format_args!("Contributors: {contributors}"));
-		print_to_cli(format_args!("Supporters (https://github.com/sponsors/kaleidawave): {sponsors}"));
+		print_to_cli(format_args!(
+			"Supporters (https://github.com/sponsors/kaleidawave): {sponsors}"
+		));
 		print_to_cli(format_args!("and all the believers ✨"));
 	}
 }
