@@ -4,6 +4,7 @@ use std::{
 	env, fs,
 	path::{Path, PathBuf},
 	process::Command,
+	process::ExitCode,
 	time::Instant,
 };
 
@@ -54,6 +55,7 @@ pub(crate) struct ExperimentalArguments {
 #[argh(subcommand)]
 pub(crate) enum ExperimentalSubcommand {
 	Build(BuildArguments),
+	Format(FormatArguments),
 }
 
 /// Build project
@@ -123,6 +125,15 @@ pub(crate) struct CheckArguments {
 	pub count_diagnostics: bool,
 }
 
+/// Formats file in-place
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "format")]
+pub(crate) struct FormatArguments {
+	/// path to input file
+	#[argh(positional)]
+	pub path: PathBuf,
+}
+
 // /// Run project using Deno
 // #[derive(FromArgs, PartialEq, Debug)]
 // #[argh(subcommand, name = "run")]
@@ -157,19 +168,19 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 	read_file: &T,
 	write_file: U,
 	cli_input_resolver: V,
-) -> std::process::ExitCode {
+) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
 			print_to_cli(format_args!("{}", err.output));
-			return std::process::ExitCode::FAILURE;
+			return ExitCode::FAILURE;
 		}
 	};
 
 	match command {
 		CompilerSubCommand::Info(_) => {
 			crate::utilities::print_info();
-			std::process::ExitCode::SUCCESS
+			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments { input, watch: _, definition_file, timings, count_diagnostics } =
@@ -196,10 +207,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				} else {
 					emit_diagnostics(diagnostics, &module_contents).unwrap();
 				}
-				std::process::ExitCode::FAILURE
+				ExitCode::FAILURE
 			} else {
 				print_to_cli(format_args!("No type errors found 🎉"));
-				std::process::ExitCode::SUCCESS
+				ExitCode::SUCCESS
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
@@ -237,24 +248,52 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					}
 					emit_diagnostics(diagnostics, &fs).unwrap();
 					print_to_cli(format_args!("Project built successfully 🎉"));
-					std::process::ExitCode::SUCCESS
+					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
 					emit_diagnostics(diagnostics, &fs).unwrap();
-					std::process::ExitCode::FAILURE
+					ExitCode::FAILURE
 				}
 			}
 		}
-		// 	let _root_ctx = checker::root_context_from_bytes(file);
+		CompilerSubCommand::Experimental(ExperimentalArguments {
+			nested: ExperimentalSubcommand::Format(FormatArguments { path }),
+		}) => {
+			use parser::{source_map::FileSystem, ASTNode, Module, ToStringOptions};
+
+			let input = match fs::read_to_string(&path) {
+				Ok(string) => string,
+				Err(err) => {
+					print_to_cli(format_args!("{err:?}"));
+					return ExitCode::FAILURE;
+				}
+			};
+			let mut files =
+				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
+			let source_id = files.new_source_id(path.clone(), input.clone());
+			let res = Module::from_string(input, Default::default());
+			match res {
+				Ok(module) => {
+					let options =
+						ToStringOptions { trailing_semicolon: true, ..Default::default() };
+					let _ = fs::write(path, &module.to_string(&options));
+					ExitCode::SUCCESS
+				}
+				Err(err) => {
+					emit_diagnostics(std::iter::once((err, source_id).into()), &files).unwrap();
+					ExitCode::FAILURE
+				}
+			}
+		}
 		CompilerSubCommand::ASTExplorer(mut repl) => {
 			repl.run(read_file, cli_input_resolver);
 			// TODO not always true
-			std::process::ExitCode::SUCCESS
+			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Repl(argument) => {
 			crate::repl::run_repl(cli_input_resolver, argument);
 			// TODO not always true
-			std::process::ExitCode::SUCCESS
+			ExitCode::SUCCESS
 		} // CompilerSubCommand::Run(run_arguments) => {
 		  // 	let build_arguments = BuildArguments {
 		  // 		input: run_arguments.input,

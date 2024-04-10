@@ -78,7 +78,7 @@ pub(crate) fn emit_diagnostics(
 			emit(&mut buffer, &config, &files, &diagnostic)?;
 			let output =
 				String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
-			print_to_cli(format_args!("{output}"));
+			crate::utilities::print_to_cli(format_args!("{output}"));
 		}
 
 		#[cfg(not(target_family = "wasm"))]
