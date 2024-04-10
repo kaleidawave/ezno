@@ -90,7 +90,7 @@ jobs:
             }
           }' -q '.data.repository.pullRequests.edges | map(.node.author.login) | unique | join(", ")')
 
-          echo "CONTRIBUTORS=$CONTRIBUTORS"
+          echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
 
         shell: bash
         env:
