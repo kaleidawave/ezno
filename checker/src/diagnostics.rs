@@ -655,7 +655,8 @@ mod defined_errors_and_warnings {
 					at,
 				} => Diagnostic::Position {
 					reason: format!(
-						"Cannot catch {found} because the function throws {expected}",
+                         "Cannot catch type {found} because the try block throws {expected}",
+
 					),
 					position: at,
 					kind,

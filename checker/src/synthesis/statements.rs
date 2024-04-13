@@ -325,7 +325,7 @@ fn check_catch_type<T>(
 
 		let at = catch_annotation.get_position().with_source(environment.get_source());
 
-		checking_data.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
+		checking_data.diagnostics_container.add_error(TypeCheckError::CatchTypeDoesNotMatch {
 			at,
 			expected,
 			found,

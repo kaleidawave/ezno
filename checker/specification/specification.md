@@ -1668,7 +1668,7 @@ try {
 
 - Expected string, found 3
 
-#### Catch annotations
+#### Catch annotation
 
 ```ts
 try {
@@ -1678,7 +1678,7 @@ try {
 }
 ```
 
-- Expected 3, found string
+- Cannot catch type string because the try block throws 3
 
 #### Object destructuring assignment
 
