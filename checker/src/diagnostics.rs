@@ -351,6 +351,11 @@ mod defined_errors_and_warnings {
 			name: &'a str,
 			position: SpanWithSource,
 		},
+		InvalidDefaultParameter {
+			at: SpanWithSource,
+			expected: TypeStringRepresentation,
+			found: TypeStringRepresentation,
+		},
 		/// TODO temp, needs more info
 		FunctionDoesNotMeetConstraint {
 			function_constraint: TypeStringRepresentation,
@@ -643,6 +648,17 @@ mod defined_errors_and_warnings {
 					position: returned_position,
 					kind,
 				},
+                TypeCheckError::InvalidDefaultParameter {
+					expected,
+                    found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+						"Cannot use a default value of type {found} for parameter of type {expected}",
+					),
+					position: at,
+					kind,
+				},
 				TypeCheckError::TypeHasNoGenericParameters(name, position) => {
 					Diagnostic::Position {
 						reason: format!("Type '{name}' has no generic parameters",),
@@ -650,6 +666,7 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
