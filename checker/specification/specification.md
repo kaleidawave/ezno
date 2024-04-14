@@ -1668,6 +1668,18 @@ try {
 
 - Expected string, found 3
 
+#### Catch annotation
+
+```ts
+try {
+	throw 3
+} catch (err: string) {
+    console.log(err)
+}
+```
+
+- Cannot catch type string because the try block throws 3
+
 #### Object destructuring assignment
 
 ```ts

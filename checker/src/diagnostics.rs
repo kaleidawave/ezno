@@ -343,6 +343,12 @@ mod defined_errors_and_warnings {
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
 		},
+		// catch type is not compatible with thrown type
+		CatchTypeDoesNotMatch {
+			at: SpanWithSource,
+			expected: TypeStringRepresentation,
+			found: TypeStringRepresentation,
+		},
 		Unsupported {
 			thing: &'static str,
 			at: SpanWithSource,
@@ -643,6 +649,18 @@ mod defined_errors_and_warnings {
 					position: returned_position,
 					kind,
 				},
+                TypeCheckError::CatchTypeDoesNotMatch {
+					expected,
+					found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+                         "Cannot catch type {found} because the try block throws {expected}",
+
+					),
+					position: at,
+					kind,
+				},
 				TypeCheckError::TypeHasNoGenericParameters(name, position) => {
 					Diagnostic::Position {
 						reason: format!("Type '{name}' has no generic parameters",),
@@ -650,6 +668,7 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
+
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
