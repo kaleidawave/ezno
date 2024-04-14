@@ -315,7 +315,7 @@ function func(a: number) {
 
 - Expected string, found number
 
-#### Default parameter value
+#### Default parameter value type check
 
 ```ts
 function outer(a: number) {

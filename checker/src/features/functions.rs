@@ -3,7 +3,6 @@ use std::{
 	collections::{hash_map::Entry, HashMap},
 };
 
-use parser::ASTNode;
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
@@ -188,10 +187,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 	expression: &'a A::Expression<'a>,
-) -> TypeId
-where
-	A::Expression<'a>: ASTNode,
-{
+) -> TypeId {
 	let (value, out, ..) = environment.new_lexical_environment_fold_into_parent(
 		Scope::DefaultFunctionParameter {},
 		checking_data,
@@ -220,7 +216,7 @@ where
 
 		let found =
 			TypeStringRepresentation::from_type_id(value, environment, &checking_data.types, false);
-		let at = ASTNode::get_position(expression).with_source(environment.get_source());
+		let at = A::expression_position(expression).with_source(environment.get_source());
 
 		checking_data.diagnostics_container.add_error(TypeCheckError::InvalidDefaultParameter {
 			at,
