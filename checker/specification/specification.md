@@ -315,6 +315,17 @@ function func(a: number) {
 
 - Expected string, found number
 
+#### Default parameter value type check
+
+```ts
+function outer(a: number) {
+    function inner(b: string = Math.floor(a)) {
+    }
+}
+```
+
+- Cannot use a default value of type number for parameter of type string
+
 #### (simple) return type checking
 
 ```ts

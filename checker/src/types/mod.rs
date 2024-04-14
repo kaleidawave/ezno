@@ -387,6 +387,17 @@ pub struct BasicEquality {
 	pub allow_errors: bool,
 }
 
+impl Default for BasicEquality {
+	fn default() -> Self {
+		Self {
+			add_property_restrictions: false,
+			position: source_map::Nullable::NULL,
+			object_constraints: Default::default(),
+			allow_errors: false,
+		}
+	}
+}
+
 /// For subtyping
 
 pub trait SubTypeBehavior<'a> {

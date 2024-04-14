@@ -12,7 +12,9 @@ use crate::{
 		information::{merge_info, LocalInformation},
 		CanReferenceThis, ContextType, Syntax,
 	},
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::RootReference,
+	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
 	types::{
 		self,
 		classes::ClassValue,
@@ -193,6 +195,35 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 			A::synthesise_expression(expression, parameter_constraint, environment, checking_data)
 		},
 	);
+
+	let mut basic_equality = BasicEquality::default();
+
+	let result = type_is_subtype(
+		parameter_constraint,
+		value,
+		&mut basic_equality,
+		environment,
+		&checking_data.types,
+	);
+
+	if let SubTypeResult::IsNotSubType(_) = result {
+		let expected = TypeStringRepresentation::from_type_id(
+			parameter_ty,
+			environment,
+			&checking_data.types,
+			false,
+		);
+
+		let found =
+			TypeStringRepresentation::from_type_id(value, environment, &checking_data.types, false);
+		let at = A::expression_position(expression).with_source(environment.get_source());
+
+		checking_data.diagnostics_container.add_error(TypeCheckError::InvalidDefaultParameter {
+			at,
+			expected,
+			found,
+		});
+	}
 
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
 	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(

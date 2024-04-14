@@ -357,6 +357,11 @@ mod defined_errors_and_warnings {
 			name: &'a str,
 			position: SpanWithSource,
 		},
+		InvalidDefaultParameter {
+			at: SpanWithSource,
+			expected: TypeStringRepresentation,
+			found: TypeStringRepresentation,
+		},
 		/// TODO temp, needs more info
 		FunctionDoesNotMeetConstraint {
 			function_constraint: TypeStringRepresentation,
@@ -649,14 +654,24 @@ mod defined_errors_and_warnings {
 					position: returned_position,
 					kind,
 				},
-                TypeCheckError::CatchTypeDoesNotMatch {
+        TypeCheckError::InvalidDefaultParameter {
+					expected,
+          found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+						"Cannot use a default value of type {found} for parameter of type {expected}",
+          ),
+					position: at,
+					kind,
+				},
+        TypeCheckError::CatchTypeDoesNotMatch {
 					expected,
 					found,
 					at,
 				} => Diagnostic::Position {
 					reason: format!(
-                         "Cannot catch type {found} because the try block throws {expected}",
-
+             "Cannot catch type {found} because the try block throws {expected}",
 					),
 					position: at,
 					kind,
