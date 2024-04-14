@@ -343,6 +343,12 @@ mod defined_errors_and_warnings {
 			expected: TypeStringRepresentation,
 			found: TypeStringRepresentation,
 		},
+		// catch type is not compatible with thrown type
+		CatchTypeDoesNotMatch {
+			at: SpanWithSource,
+			expected: TypeStringRepresentation,
+			found: TypeStringRepresentation,
+		},
 		Unsupported {
 			thing: &'static str,
 			at: SpanWithSource,
@@ -648,13 +654,24 @@ mod defined_errors_and_warnings {
 					position: returned_position,
 					kind,
 				},
-                TypeCheckError::InvalidDefaultParameter {
+        TypeCheckError::InvalidDefaultParameter {
 					expected,
-                    found,
+          found,
 					at,
 				} => Diagnostic::Position {
 					reason: format!(
 						"Cannot use a default value of type {found} for parameter of type {expected}",
+          ),
+					position: at,
+					kind,
+				},
+        TypeCheckError::CatchTypeDoesNotMatch {
+					expected,
+					found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+             "Cannot catch type {found} because the try block throws {expected}",
 					),
 					position: at,
 					kind,

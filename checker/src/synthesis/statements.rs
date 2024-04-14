@@ -6,13 +6,16 @@ use super::{
 };
 use crate::{
 	context::{Scope, VariableRegisterArguments},
-	diagnostics::TypeCheckError,
+	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::iteration::{synthesise_iteration, IterationBehavior},
+	subtyping::{type_is_subtype, BasicEquality},
 	synthesis::EznoParser,
 	CheckingData, Environment, TypeId,
 };
 
-use parser::{expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement};
+use parser::{
+	expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement, TypeAnnotation,
+};
 use std::collections::HashMap;
 
 pub type ExportedItems = HashMap<String, crate::features::variables::VariableOrImport>;
@@ -237,11 +240,22 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					checking_data,
 					|environment, checking_data| {
 						if let Some((clause, ty_annotation)) = &stmt.exception_var {
-							let catch_variable_type = ty_annotation.as_ref().map(|annotation| {
-								synthesise_type_annotation(annotation, environment, checking_data)
-							});
-
-							// TODO subtype thrown here with catch_variable_type
+							let mut catch_variable_type = None;
+							if let Some(ty_annotation) = ty_annotation {
+								let catch_type_id = synthesise_type_annotation(
+									ty_annotation,
+									environment,
+									checking_data,
+								);
+								check_catch_type(
+									ty_annotation,
+									catch_type_id,
+									thrown_type,
+									environment,
+									checking_data,
+								);
+								catch_variable_type = Some(catch_type_id);
+							}
 
 							register_variable(
 								clause.get_ast_ref(),
@@ -271,6 +285,51 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		| Statement::MultiLineComment(..)
 		| Statement::Debugger(_)
 		| Statement::Empty(_) => {}
+	}
+}
+
+fn check_catch_type<T>(
+	catch_annotation: &TypeAnnotation,
+	catch_type: TypeId,
+	thrown_type: TypeId,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) {
+	let mut basic_equality = BasicEquality {
+		add_property_restrictions: false,
+		position: source_map::Nullable::NULL,
+		object_constraints: Default::default(),
+		allow_errors: false,
+	};
+	let result = type_is_subtype(
+		catch_type,
+		thrown_type,
+		&mut basic_equality,
+		environment,
+		&checking_data.types,
+	);
+
+	if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+		let expected = TypeStringRepresentation::from_type_id(
+			thrown_type,
+			environment,
+			&checking_data.types,
+			false,
+		);
+		let found = TypeStringRepresentation::from_type_id(
+			catch_type,
+			environment,
+			&checking_data.types,
+			false,
+		);
+
+		let at = catch_annotation.get_position().with_source(environment.get_source());
+
+		checking_data.diagnostics_container.add_error(TypeCheckError::CatchTypeDoesNotMatch {
+			at,
+			expected,
+			found,
+		});
 	}
 }
 
