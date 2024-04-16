@@ -71,7 +71,7 @@ impl WASMCheckOutput {
 	}
 
 	pub fn get_module_ast(&self, path: &str) -> JsValue {
-		self.0.get_module(path).map_or(JsValue::NULL, |m| serde_wasm_bindgen::to_value(m))
+		self.0.get_module(path).map_or(JsValue::NULL, |m| serde_wasm_bindgen::to_value(m).expect("cannot turn Module into `JsValue`"))
 	}
 }
 

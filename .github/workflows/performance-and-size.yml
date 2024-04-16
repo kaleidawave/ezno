@@ -49,11 +49,8 @@ jobs:
       - name: Run checker performance
         shell: bash
         run: |
-          echo "::info::Found specification"
-
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
-
           echo "::info::Finished file generation"
 
           echo "<details>
@@ -87,7 +84,7 @@ jobs:
           echo "### Checking
           \`\`\`shell
           $(hyperfine -i './target/release/ezno check demo.ts')
-          \`\`\``" >> $GITHUB_STEP_SUMMARY
+          \`\`\`" >> $GITHUB_STEP_SUMMARY
 
           echo "::group::Comparing printing of diagnostics"
           hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
