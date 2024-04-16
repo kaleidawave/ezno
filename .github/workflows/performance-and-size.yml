@@ -62,8 +62,7 @@ jobs:
           \`\`\`ts
           " >> $GITHUB_STEP_SUMMARY
 
-          lines=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
-          echo "// $lines lines of TypeScript" >> $GITHUB_STEP_SUMMARY
+          echo "// $(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code") lines of TypeScript" >> $GITHUB_STEP_SUMMARY
           cat ./demo.ts >> $GITHUB_STEP_SUMMARY
 
           echo "\`\`\`
@@ -86,19 +85,13 @@ jobs:
           " >> $GITHUB_STEP_SUMMARY
           
           echo "### Checking
-          \`\`\`shell" >> $GITHUB_STEP_SUMMARY
-
-          hyperfine -i './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
-
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          \`\`\`shell
+          $(hyperfine -i './target/release/ezno check demo.ts')
+          \`\`\``" >> $GITHUB_STEP_SUMMARY
 
           echo "::group::Comparing printing of diagnostics"
           hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
           echo "::endgroup::"
-      
-      - name: Download parser files
-        run: |
-          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
 
       - name: Run parser, minfier/stringer performance
         shell: bash

@@ -4,7 +4,7 @@ use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	term::{emit, Config},
 };
-use parser::{source_map::FileSystem, SourceId};
+use parser::{source_map::{MapFileStore, PathMap}, SourceId};
 
 fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
@@ -52,9 +52,9 @@ fn checker_diagnostic_to_codespan_diagnostic(
 	}
 }
 
-pub(crate) fn emit_diagnostics(
+pub(crate) fn emit_diagnostics<T: PathMap>(
 	diagnostics: impl IntoIterator<Item = checker::Diagnostic>,
-	fs: &impl FileSystem,
+	fs: &MapFileStore<T>,
 ) -> Result<(), codespan_reporting::files::Error> {
 	use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
@@ -68,6 +68,7 @@ pub(crate) fn emit_diagnostics(
 	let mut writer = StandardStream::stderr(ColorChoice::Auto);
 
 	let files = fs.into_code_span_store();
+	// parser::source_map::CodeSpanStore(fs);
 
 	for diagnostic in diagnostics {
 		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic);

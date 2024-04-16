@@ -10,7 +10,7 @@ use crate::{
 	features::{functions::ThisValue, objects::SpecialObjects},
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
-		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, substitute,
+		get_constraint, generics::generic_type_arguments::StructureGenericArguments, substitute,
 		FunctionType, GenericChain, GenericChainLink, ObjectNature, StructureGenerics,
 	},
 	Constant, Environment, TypeId,

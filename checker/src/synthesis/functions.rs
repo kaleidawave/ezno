@@ -17,7 +17,7 @@ use crate::{
 		functions::{
 			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
 		},
-		poly_types::GenericTypeParameters,
+		generics::GenericTypeParameters,
 		Constructor, StructureGenerics, Type, TypeId,
 	},
 	CheckingData, Environment, FunctionId,

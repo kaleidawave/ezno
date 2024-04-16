@@ -59,18 +59,20 @@ features = ["extras"]
 package = "ezno-parser"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen = "=0.2.89"
+wasm-bindgen = "0.2"
 wasm-bindgen-derive = "0.2.1"
 serde-wasm-bindgen = "0.6.3"
 console_error_panic_hook = "0.1.7"
 js-sys = "0.3"
 tsify = "0.4.5"
 
-
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 multiline-term-input = "0.1.0"
 notify = "6.1.0"
 
+# TODO temp
+[patch.crates-io]
+source-map = { git = 'https://github.com/kaleidawave/source-map.git', branch = 'codespan-use-str' }
 
 [workspace.lints.clippy]
 all = "deny"

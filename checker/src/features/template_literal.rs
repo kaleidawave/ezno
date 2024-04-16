@@ -90,6 +90,22 @@ where
 				}
 			}
 		}
+		
+		{
+			// TODO spread
+			let length = checking_data.types.new_constant_type(Constant::Number(
+				(static_part_count as f64).try_into().unwrap(),
+			));
+
+			// TODO: Should there be a position here?
+			static_parts.append(
+				environment,
+				crate::context::information::Publicity::Public,
+				crate::types::properties::PropertyKey::String("length".into()),
+				crate::types::properties::PropertyValue::Value(length),
+				None,
+			);
+		}
 
 		arguments.insert(
 			0,

@@ -19,7 +19,7 @@ use crate::{
 		self,
 		classes::ClassValue,
 		functions::SynthesisedParameters,
-		poly_types::GenericTypeParameters,
+		generics::GenericTypeParameters,
 		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
@@ -829,7 +829,7 @@ where
 						let get_value_of_variable = get_value_of_variable(
 							&function_environment,
 							*on,
-							None::<&crate::types::poly_types::FunctionTypeArguments>,
+							None::<&crate::types::generics::FunctionTypeArguments>,
 						);
 						let ty = if let Some(value) = get_value_of_variable {
 							value

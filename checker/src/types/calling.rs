@@ -27,7 +27,7 @@ use crate::{
 
 use super::{
 	get_constraint, is_type_constant,
-	poly_types::{
+	generics::{
 		contributions::Contributions, generic_type_arguments::StructureGenericArguments,
 		FunctionTypeArguments,
 	},

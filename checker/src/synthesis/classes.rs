@@ -581,7 +581,43 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 		})
 		.collect();
 
-	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|_rest_parameter| todo!());
+	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|rest_parameter| {
+		use crate::types::{StructureGenerics, SynthesisedRestParameter, Constructor};
+		let parameter_constraint =
+			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
+				synthesise_type_annotation(annotation, environment, checking_data)
+			});
+
+		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
+			TypeId::ERROR_TYPE
+		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			on: TypeId::ARRAY_TYPE,
+			arguments,
+		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		{
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
+		} else {
+			crate::utils::notify!("rest parameter should be array error");
+			// checking_data.diagnostics_container.add_error(
+			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
+			// );
+			TypeId::ERROR_TYPE
+		};
+		
+		let name = variable_field_to_string(&rest_parameter.name);
+		
+		SynthesisedRestParameter {
+			item_type,
+			// This will be verridden when actual synthesis
+			ty: parameter_constraint,
+			name,
+			position: rest_parameter.position.with_source(environment.get_source()),
+		}
+	});
 
 	let return_type = method.return_type.as_ref().map(|annotation| {
 		ReturnType(

@@ -1,3 +1,5 @@
+use iterator_endiate::EndiateIteratorExt;
+
 use crate::{
 	context::{get_on_ctx, information::InformationChain},
 	// subtyping::check_satisfies,
@@ -37,7 +39,7 @@ pub(crate) type CallSiteTypeArguments = TypeRestrictions;
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
-	_call_site_type_args: Option<&CallSiteTypeArguments>,
+	call_site_type_args: Option<&CallSiteTypeArguments>,
 	arguments: &[SynthesisedArgument],
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
@@ -114,22 +116,43 @@ pub(crate) fn call_constant_function(
 			}
 		}
 		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
-			let ty = arguments
-				.first()
-				.ok_or(ConstantFunctionError::BadCall)?
-				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::BadCall)?;
+			fn to_string(
+				print: bool,
+				debug: bool,
+				ty: TypeId,
+				types: &TypeStore,
+				environment: &Environment,
+			) -> String {
+				let print = print.then(|| print_type(ty, types, environment, false));
+				let debug = debug.then(|| print_type(ty, types, environment, true));
 
-			let print = id.contains("print").then(|| print_type(ty, types, environment, false));
-			let debug = id.contains("debug").then(|| print_type(ty, types, environment, true));
+				match (print, debug) {
+					(Some(print), Some(debug)) => format!("{print} / {debug}"),
+					(None, Some(out)) | (Some(out), None) => out,
+					(None, None) => unreachable!(),
+				}
+			}
 
-			let result = match (print, debug) {
-				(Some(print), Some(debug)) => format!("Type is: {print} / {debug}"),
-				(None, Some(out)) | (Some(out), None) => format!("Type is: {out}"),
-				(None, None) => unreachable!(),
-			};
+			let print = id.contains("print");
+			let debug = id.contains("debug");
 
-			Ok(ConstantOutput::Diagnostic(result))
+			if let Some(arg) = call_site_type_args {
+				let (arg, _pos) = arg.values().next().unwrap();
+				let mut buf = String::from("Types: ");
+				buf.push_str(&to_string(print, debug, *arg, types, environment));
+				Ok(ConstantOutput::Diagnostic(buf))
+			} else {
+				let mut buf = String::from("Types: ");
+				for (not_at_end, arg) in arguments.iter().nendiate() {
+					// crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
+					let arg = arg.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
+					buf.push_str(&to_string(print, debug, arg, types, environment));
+					if not_at_end {
+						buf.push_str(", ");
+					}
+				}
+				Ok(ConstantOutput::Diagnostic(buf))
+			}
 		}
 		"print_environment_state" => Ok(ConstantOutput::Diagnostic(format!(
 			"EnvState is: {:?}",

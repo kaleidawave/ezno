@@ -37,7 +37,7 @@ use types::{printing::print_type, TypeStore};
 pub use context::{GeneralContext, Logical, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
-pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
+pub use types::{calling::call_type_handle_errors, generics::GenericTypeParameters, subtyping};
 
 pub use type_mappings::*;
 pub use types::{properties::PropertyValue, Constant, Type, TypeId};
@@ -411,6 +411,15 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 					debug,
 				)
 			})
+	}
+
+	#[must_use]
+	pub fn get_module(&self, path: &str) -> Option<&A::OwnedModule> {
+		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
+		Some(&self.modules
+			.get(&source_id)
+			.expect("no module")
+			.content)
 	}
 }
 

@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-const DEFAULT_FILE_PATH: &str = "main.ts";
+const DEFAULT_FILE_PATH: &str = "main.tsx";
 
 fn markdown_lines_append_test_to_rust(
 	mut lines: std::iter::Enumerate<std::str::Lines<'_>>,
@@ -64,7 +64,8 @@ fn markdown_lines_append_test_to_rust(
 			let mut blocks = Vec::new();
 			let mut current_filename = None;
 			for (_, line) in lines.by_ref() {
-				if line == "```ts" {
+				// Also handles TSX
+				if line.starts_with("```ts") {
 					break;
 				}
 			}
@@ -133,7 +134,7 @@ fn markdown_lines_append_test_to_rust(
 
 fn heading_to_rust_identifier(heading: &str) -> String {
 	heading
-		.replace([' ', '-', '/', '&'], "_")
+		.replace([' ', '-', '/', '&', '.', '+'], "_")
 		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
 		.to_lowercase()
 }

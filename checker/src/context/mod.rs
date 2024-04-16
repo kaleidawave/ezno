@@ -28,7 +28,7 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments, FunctionType, PolyNature,
+		generics::generic_type_arguments::StructureGenericArguments, FunctionType, PolyNature,
 		Type, TypeId, TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
@@ -674,7 +674,7 @@ impl<T: ContextType> Context<T> {
 		constraint_type: Option<TypeId>,
 		default_type: Option<TypeId>,
 		types: &mut TypeStore,
-	) -> crate::types::poly_types::GenericTypeParameter {
+	) -> crate::types::generics::GenericTypeParameter {
 		let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
 			name: name.to_owned(),
 			// TODO this is fixed!!
@@ -684,7 +684,7 @@ impl<T: ContextType> Context<T> {
 		let ty = types.register_type(ty);
 		self.named_types.insert(name.to_owned(), ty);
 
-		crate::types::poly_types::GenericTypeParameter {
+		crate::types::generics::GenericTypeParameter {
 			name: name.to_owned(),
 			id: ty,
 			default: default_type,

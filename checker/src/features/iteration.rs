@@ -11,7 +11,7 @@ use crate::{
 	},
 	features::operations::CanonicalEqualityAndInequality,
 	types::{
-		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
+		generics::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
 	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
@@ -590,7 +590,7 @@ fn evaluate_unknown_iteration_for_loop(
 							let value_before_iterations = get_value_of_variable(
 								top_environment,
 								variable_id,
-								None::<&crate::types::poly_types::FunctionTypeArguments>,
+								None::<&crate::types::generics::FunctionTypeArguments>,
 							)
 							.unwrap();
 

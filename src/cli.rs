@@ -209,6 +209,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				}
 				ExitCode::FAILURE
 			} else {
+				// May be warnings or information here
+				emit_diagnostics(diagnostics, &module_contents).unwrap();
 				print_to_cli(format_args!("No type errors found 🎉"));
 				ExitCode::SUCCESS
 			}

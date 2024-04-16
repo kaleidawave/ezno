@@ -32,7 +32,7 @@ jobs:
                 linesOfRustCode=$(scc -c --no-cocomo -f json -i rs "$cratePath" | jq '.[] | .Code');
             fi
         
-            echo "\`$name\` has $linesOfRustCode lines of code" # >> $GITHUB_STEP_SUMMARY;
+            echo "\`$name\` has $linesOfRustCode lines of code" >> $GITHUB_STEP_SUMMARY;
 
             curl \
               --header "Content-Type: application/json" \

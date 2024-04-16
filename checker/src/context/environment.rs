@@ -953,7 +953,7 @@ impl<'a> Environment<'a> {
 						let current_value = get_value_of_variable(
 							self,
 							og_var.get_id(),
-							None::<&crate::types::poly_types::FunctionTypeArguments>,
+							None::<&crate::types::generics::FunctionTypeArguments>,
 						);
 
 						if let Some(current_value) = current_value {
@@ -1063,7 +1063,7 @@ impl<'a> Environment<'a> {
 				let current_value = get_value_of_variable(
 					self,
 					of,
-					None::<&crate::types::poly_types::FunctionTypeArguments>,
+					None::<&crate::types::generics::FunctionTypeArguments>,
 				)
 				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
@@ -1072,7 +1072,7 @@ impl<'a> Environment<'a> {
 			let current_value = get_value_of_variable(
 				self,
 				og_var.get_id(),
-				None::<&crate::types::poly_types::FunctionTypeArguments>,
+				None::<&crate::types::generics::FunctionTypeArguments>,
 			);
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))

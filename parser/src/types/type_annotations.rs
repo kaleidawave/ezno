@@ -137,13 +137,20 @@ impl ASTNode for AnnotationWithBinder {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		if let AnnotationWithBinder::Annotated { name, .. } = self {
+			buf.push_str(name);
+			buf.push_str(": ");
+		}
+		self.get_inner_ref().to_string_from_buffer(buf, options, local);
+	}
+}
+
+impl AnnotationWithBinder {
+	pub fn get_inner_ref(&self) -> &TypeAnnotation {
 		match self {
-			AnnotationWithBinder::Annotated { name, ty, position: _ } => {
-				buf.push_str(name);
-				buf.push_str(": ");
-				ty.to_string_from_buffer(buf, options, local);
+			AnnotationWithBinder::Annotated { ty, .. } | AnnotationWithBinder::NoAnnotation(ty) => {
+				ty
 			}
-			AnnotationWithBinder::NoAnnotation(ty) => ty.to_string_from_buffer(buf, options, local),
 		}
 	}
 }

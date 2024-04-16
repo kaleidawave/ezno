@@ -22,13 +22,15 @@ Now in the `ezno` directory, `cargo run` should show the CLI.
 
 ## Development
 
-If you don't want to run the whole Ezno CLI. You can run just the checker with
+You can run just the checker with
 
 ```shell
 cargo run -p ezno-checker --example run path/to/file.ts
 ```
 
-Note you can skip the cache with the additional `--no-cache` option (re-reads base `.d.ts` file)
+> [!TIP]
+> This can be faster as doesn't have recompile the CLI options and things. (although the errors don't contain the nice source annotations)
+> Note you can skip the cache with the additional `--no-cache` option (re-reads base `.d.ts` file)
 
 If you want to check all the checker tests
 

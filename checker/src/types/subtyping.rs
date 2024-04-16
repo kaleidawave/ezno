@@ -9,7 +9,7 @@ use crate::{
 	},
 	features::objects::SpecialObjects,
 	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments, printing::print_type,
+		generics::generic_type_arguments::StructureGenericArguments, printing::print_type,
 		GenericChainLink, TypeStore,
 	},
 	PropertyValue, TypeId,
@@ -544,12 +544,10 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 						}
 						SubTypeResult::IsSubType
 					} else {
-						crate::utils::notify!("Here");
-						SubTypeResult::IsSubType
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
-					crate::utils::notify!("Here");
-					SubTypeResult::IsSubType
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				};
 			}
 

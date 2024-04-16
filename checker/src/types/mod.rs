@@ -3,7 +3,7 @@ pub mod casts;
 pub mod classes;
 pub mod functions;
 pub mod others;
-pub mod poly_types;
+pub mod generics;
 pub mod printing;
 pub mod properties;
 pub mod store;
@@ -12,7 +12,7 @@ mod terms;
 
 use derive_debug_extras::DebugExtras;
 
-pub(crate) use poly_types::substitution::*;
+pub(crate) use generics::substitution::*;
 
 pub(crate) use casts::*;
 use source_map::SpanWithSource;
@@ -26,14 +26,14 @@ use crate::{
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	types::poly_types::contributions::Contributions,
+	types::generics::contributions::Contributions,
 	Decidable, Environment, FunctionId, SmallMap,
 };
 
 pub use self::functions::*;
 
 use self::{
-	poly_types::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
+	generics::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
 };
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);

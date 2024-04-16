@@ -35,7 +35,7 @@ use crate::{
 	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments,
+		generics::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		Constant, Constructor, StructureGenerics, Type, TypeId,
 	},

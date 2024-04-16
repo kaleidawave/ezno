@@ -38,7 +38,7 @@ impl ASTNode for TryCatchStatement {
 
 		// Optional `catch` clause
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Catch), _)) = reader.peek() {
-			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Else);
+			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
 
 			// Optional exception variable field `catch (e)`
 			if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
