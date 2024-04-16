@@ -582,7 +582,7 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 		.collect();
 
 	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|rest_parameter| {
-		use crate::types::{StructureGenerics, SynthesisedRestParameter, Constructor};
+		use crate::types::{Constructor, StructureGenerics, SynthesisedRestParameter};
 		let parameter_constraint =
 			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
 				synthesise_type_annotation(annotation, environment, checking_data)
@@ -607,9 +607,9 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 			// );
 			TypeId::ERROR_TYPE
 		};
-		
+
 		let name = variable_field_to_string(&rest_parameter.name);
-		
+
 		SynthesisedRestParameter {
 			item_type,
 			// This will be verridden when actual synthesis

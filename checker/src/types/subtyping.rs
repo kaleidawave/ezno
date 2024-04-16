@@ -525,7 +525,7 @@ pub(crate) fn type_is_subtype_with_generics<'a, T: SubTypeBehavior<'a>>(
 					crate::utils::notify!("prototype is {:?}", prototype);
 
 					if prototype.is_some_and(|prototype| prototype == on) {
-						for (argument, lookup) in lookup.iter() {
+						for (argument, lookup) in lookup {
 							// TODO no vec
 							let backing_type =
 								arguments.get_structure_restriction(*argument).unwrap();

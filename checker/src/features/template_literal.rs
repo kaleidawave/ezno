@@ -90,11 +90,11 @@ where
 				}
 			}
 		}
-		
+
 		{
 			// TODO spread
 			let length = checking_data.types.new_constant_type(Constant::Number(
-				(static_part_count as f64).try_into().unwrap(),
+				f64::from(static_part_count).try_into().unwrap(),
 			));
 
 			// TODO: Should there be a position here?

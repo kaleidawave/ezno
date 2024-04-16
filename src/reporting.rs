@@ -4,7 +4,10 @@ use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	term::{emit, Config},
 };
-use parser::{source_map::{MapFileStore, PathMap}, SourceId};
+use parser::{
+	source_map::{MapFileStore, PathMap},
+	SourceId,
+};
 
 fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {

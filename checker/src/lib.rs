@@ -416,10 +416,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_module(&self, path: &str) -> Option<&A::OwnedModule> {
 		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
-		Some(&self.modules
-			.get(&source_id)
-			.expect("no module")
-			.content)
+		Some(&self.modules.get(&source_id).expect("no module").content)
 	}
 }
 

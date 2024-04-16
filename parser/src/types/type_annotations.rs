@@ -146,6 +146,7 @@ impl ASTNode for AnnotationWithBinder {
 }
 
 impl AnnotationWithBinder {
+	#[must_use]
 	pub fn get_inner_ref(&self) -> &TypeAnnotation {
 		match self {
 			AnnotationWithBinder::Annotated { ty, .. } | AnnotationWithBinder::NoAnnotation(ty) => {

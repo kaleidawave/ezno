@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-	get_constraint, generics::generic_type_arguments::StructureGenericArguments,
+	generics::generic_type_arguments::StructureGenericArguments, get_constraint,
 	properties::PropertyKey, Constructor, LookUpGeneric, LookUpGenericMap, StructureGenerics,
 	TypeRelationOperator,
 };

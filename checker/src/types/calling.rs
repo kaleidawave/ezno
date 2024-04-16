@@ -26,11 +26,11 @@ use crate::{
 };
 
 use super::{
-	get_constraint, is_type_constant,
 	generics::{
 		contributions::Contributions, generic_type_arguments::StructureGenericArguments,
 		FunctionTypeArguments,
 	},
+	get_constraint, is_type_constant,
 	properties::PropertyKey,
 	Constructor, GenericChain, PolyNature, TypeArguments, TypeRestrictions, TypeStore,
 };

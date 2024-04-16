@@ -13,7 +13,7 @@ use crate::{
 	events::{Event, FinalEvent},
 	features::{functions::ThisValue, objects::SpecialObjects},
 	types::{
-		get_constraint, generics::generic_type_arguments::StructureGenericArguments, Constructor,
+		generics::generic_type_arguments::StructureGenericArguments, get_constraint, Constructor,
 		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
 	},
 	Constant, PropertyValue,
@@ -190,7 +190,7 @@ fn print_type_into_buf<C: InformationChain>(
 								}
 							}
 							buf.push('>');
-						},
+						}
 						StructureGenericArguments::Closure(closures) => {
 							write!(buf, "<Closures {closures:?}>").unwrap();
 						}

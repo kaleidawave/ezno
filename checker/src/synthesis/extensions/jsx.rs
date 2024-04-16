@@ -157,12 +157,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			// TODO spread ??
 			count += 1;
 		}
-		
+
 		{
 			// TODO spread
-			let length = checking_data.types.new_constant_type(Constant::Number(
-				(count as f64).try_into().unwrap(),
-			));
+			let length = checking_data
+				.types
+				.new_constant_type(Constant::Number(f64::from(count).try_into().unwrap()));
 
 			// TODO: Should there be a position here?
 			synthesised_child_nodes.append(

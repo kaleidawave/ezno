@@ -65,13 +65,13 @@ impl WASMCheckOutput {
 	pub fn get_type_at_position(&self, path: &str, pos: u32) -> Option<String> {
 		self.0.get_type_at_position(path, pos, false)
 	}
-	
+
 	pub fn get_type_at_position_debug(&self, path: &str, pos: u32) -> Option<String> {
 		self.0.get_type_at_position(path, pos, true)
 	}
-	
-	pub fn get_module_ast(&self, path: &str) -> Option<JsValue> {
-		self.0.get_module(path).map(|m| serde_wasm_bindgen::to_value(m))
+
+	pub fn get_module_ast(&self, path: &str) -> JsValue {
+		self.0.get_module(path).map_or(JsValue::NULL, |m| serde_wasm_bindgen::to_value(m))
 	}
 }
 

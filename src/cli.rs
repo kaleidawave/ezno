@@ -278,7 +278,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				Ok(module) => {
 					let options =
 						ToStringOptions { trailing_semicolon: true, ..Default::default() };
-					let _ = fs::write(path, &module.to_string(&options));
+					let _ = fs::write(path, module.to_string(&options));
 					ExitCode::SUCCESS
 				}
 				Err(err) => {

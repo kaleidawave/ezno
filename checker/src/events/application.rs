@@ -15,8 +15,8 @@ use crate::{
 	types::{
 		calling::FunctionCallingError,
 		functions::SynthesisedArgument,
-		get_constraint, is_type_truthy_falsy,
 		generics::FunctionTypeArguments,
+		get_constraint, is_type_truthy_falsy,
 		printing::print_type,
 		properties::{get_property, set_property, PropertyKey, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,

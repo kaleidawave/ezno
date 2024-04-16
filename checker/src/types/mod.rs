@@ -2,8 +2,8 @@ pub mod calling;
 pub mod casts;
 pub mod classes;
 pub mod functions;
-pub mod others;
 pub mod generics;
+pub mod others;
 pub mod printing;
 pub mod properties;
 pub mod store;
@@ -32,9 +32,7 @@ use crate::{
 
 pub use self::functions::*;
 
-use self::{
-	generics::generic_type_arguments::StructureGenericArguments, properties::PropertyKey,
-};
+use self::{generics::generic_type_arguments::StructureGenericArguments, properties::PropertyKey};
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
 
