@@ -527,7 +527,7 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
-	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
+	let offset = Some(position.end - 1 - possible_declaration.len() as u32);
 
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);

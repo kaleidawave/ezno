@@ -12,7 +12,7 @@ use crate::{
 	utilities::{print_to_cli, print_to_cli_without_newline},
 };
 
-/// Repl for testing out AST
+/// REPL for printing out AST from user input
 #[derive(FromArgs, Debug)]
 #[argh(subcommand, name = "ast-explorer")]
 pub(crate) struct ExplorerArguments {
@@ -137,7 +137,8 @@ impl ExplorerSubCommand {
 					}
 					// TODO temp
 					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
+							.unwrap()
 					}
 				}
 			}
@@ -159,7 +160,8 @@ impl ExplorerSubCommand {
 					}
 					// TODO temp
 					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
+							.unwrap()
 					}
 				}
 			}
@@ -178,7 +180,8 @@ impl ExplorerSubCommand {
 						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
 					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs).unwrap()
+						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
+							.unwrap()
 					}
 				}
 			}

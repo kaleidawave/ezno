@@ -721,7 +721,6 @@ impl FunctionType {
 
 		let mut type_arguments = FunctionTypeArguments {
 			local_arguments,
-			#[allow(clippy::manual_unwrap_or_default)]
 			closure_ids: match structure_generics {
 				Some(StructureGenericArguments::Closure(cs)) => cs,
 				_ => Vec::new(),

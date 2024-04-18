@@ -18,7 +18,7 @@ use crate::{
 use argh::FromArgs;
 use checker::CheckOutput;
 
-/// Ezno Compiler
+/// The Ezno Type-checker & compiler
 #[derive(FromArgs, Debug)]
 struct TopLevel {
 	#[argh(subcommand)]
@@ -58,8 +58,8 @@ pub(crate) enum ExperimentalSubcommand {
 	Format(FormatArguments),
 }
 
+// TODO definition file as list
 /// Build project
-/// TODO definition file as list
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "build")]
 // TODO: Can be refactored with bit to reduce memory
@@ -84,7 +84,9 @@ pub(crate) struct BuildArguments {
 	/// build source maps
 	#[argh(switch)]
 	pub source_maps: bool,
-
+	/// compact diagnostics
+	#[argh(switch)]
+	pub compact_diagnostics: bool,
 	/// enable non standard syntax
 	#[argh(switch)]
 	pub non_standard_syntax: bool,
@@ -123,6 +125,9 @@ pub(crate) struct CheckArguments {
 	/// whether to print all diagnostics
 	#[argh(switch)]
 	pub count_diagnostics: bool,
+	/// compact diagnostics
+	#[argh(switch)]
+	pub compact_diagnostics: bool,
 }
 
 /// Formats file in-place
@@ -183,8 +188,14 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Check(check_arguments) => {
-			let CheckArguments { input, watch: _, definition_file, timings, count_diagnostics } =
-				check_arguments;
+			let CheckArguments {
+				input,
+				watch: _,
+				definition_file,
+				timings,
+				count_diagnostics,
+				compact_diagnostics,
+			} = check_arguments;
 			let entry_points = vec![input];
 
 			#[cfg(not(target_family = "wasm"))]
@@ -205,12 +216,12 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					let count = diagnostics.into_iter().count();
 					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
-					emit_diagnostics(diagnostics, &module_contents).unwrap();
+					emit_diagnostics(diagnostics, &module_contents, compact_diagnostics).unwrap();
 				}
 				ExitCode::FAILURE
 			} else {
 				// May be warnings or information here
-				emit_diagnostics(diagnostics, &module_contents).unwrap();
+				emit_diagnostics(diagnostics, &module_contents, compact_diagnostics).unwrap();
 				print_to_cli(format_args!("No type errors found 🎉"));
 				ExitCode::SUCCESS
 			}
@@ -243,17 +254,19 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				Some(default_builders),
 			);
 
+			let compact_diagnostics = build_config.compact_diagnostics;
+
 			match output {
 				Ok(BuildOutput { diagnostics, fs, outputs }) => {
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					emit_diagnostics(diagnostics, &fs).unwrap();
+					emit_diagnostics(diagnostics, &fs, compact_diagnostics).unwrap();
 					print_to_cli(format_args!("Project built successfully 🎉"));
 					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					emit_diagnostics(diagnostics, &fs).unwrap();
+					emit_diagnostics(diagnostics, &fs, compact_diagnostics).unwrap();
 					ExitCode::FAILURE
 				}
 			}
@@ -278,11 +291,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				Ok(module) => {
 					let options =
 						ToStringOptions { trailing_semicolon: true, ..Default::default() };
-					let _ = fs::write(path, module.to_string(&options));
+					let _ = fs::write(path.clone(), module.to_string(&options));
+					print_to_cli(format_args!("Formatted {} 🎉", path.display()));
 					ExitCode::SUCCESS
 				}
 				Err(err) => {
-					emit_diagnostics(std::iter::once((err, source_id).into()), &files).unwrap();
+					emit_diagnostics(std::iter::once((err, source_id).into()), &files, false)
+						.unwrap();
 					ExitCode::FAILURE
 				}
 			}

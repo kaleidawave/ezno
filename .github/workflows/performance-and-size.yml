@@ -87,7 +87,7 @@ jobs:
           \`\`\`" >> $GITHUB_STEP_SUMMARY
 
           echo "::group::Comparing printing of diagnostics"
-          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --count-diagnostics'
+          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --compact-diagnostics' './target/release/ezno check demo.ts --count-diagnostics'
           echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance

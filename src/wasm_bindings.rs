@@ -48,8 +48,8 @@ pub fn experimental_build_wasm(
 const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMCheckOutput {
 	readonly diagnostics: DiagnosticsContainer,
-	get_type_at_position(path: string, pos: number) -> string;
-	get_type_at_position_debug(path: string, pos: number) -> string;
+	get_type_at_position(path: string, pos: number): string;
+	get_type_at_position_debug(path: string, pos: number): string;
 }
 "###;
 #[wasm_bindgen]
@@ -71,7 +71,9 @@ impl WASMCheckOutput {
 	}
 
 	pub fn get_module_ast(&self, path: &str) -> JsValue {
-		self.0.get_module(path).map_or(JsValue::NULL, |m| serde_wasm_bindgen::to_value(m).expect("cannot turn Module into `JsValue`"))
+		self.0.get_module(path).map_or(JsValue::NULL, |m| {
+			serde_wasm_bindgen::to_value(m).expect("cannot turn Module into `JsValue`")
+		})
 	}
 }
 
