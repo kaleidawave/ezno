@@ -2020,11 +2020,11 @@ const a: Y = 2;
 type X = string;
 {
 	type X = number;
-	const a: X = 3;
+	const a: X = "hello world";
 }
 ```
 
-- Type 3 is not assignable to type X
+- Type "hello world" is not assignable to type X
 
 #### Type has no generics
 
