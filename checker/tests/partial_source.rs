@@ -4,15 +4,19 @@ fn type_mappings() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
 	use std::collections::HashSet;
 
-	let text = "const x: number = 2;
-function y() { return x }
-y()";
+	// Below source has several issues
+	let text = "let x: 2 = 5 + ;
+	const y = 
+	const z = 2;
+	function func(a: ) { }
+	
+	func(b)";
 
 	let definition_file = ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into();
 	let type_definition_files = HashSet::from_iter([definition_file]);
 
-	// `store_expression_type_mappings` important
-	let options = TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
+	// `lsp_mode` <=> partial syntax
+	let options = TypeCheckOptions { lsp_mode: true, ..Default::default() };
 
 	let root = "index.ts";
 
@@ -25,12 +29,7 @@ y()";
 		None,
 	);
 
-	let types_at_positions = IntoIterator::into_iter([43, 47, 48])
-		.map(|idx| result.get_type_at_position(root, idx, false))
-		.collect::<Vec<_>>();
-
-	assert_eq!(
-		types_at_positions,
-		vec![Some("number".to_owned()), Some("() => number".to_owned()), Some("2".to_owned())]
-	);
+	let diagnostics: Vec<_> = result.diagnostics.into_iter().collect();
+	assert_eq!(diagnostics.len(), 1);
+	assert_eq!(diagnostics.first().unwrap().reason(), "Could not find variable 'b' in scope");
 }

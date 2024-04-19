@@ -94,7 +94,7 @@ const a = 2
 }
 ```
 
-- Expected 2 found 3
+- Expected 2, found 3
 
 #### Unintialised variables are undefined
 
@@ -2011,6 +2011,20 @@ const a: Y = 2;
 ```
 
 - Cannot find type Y
+
+#### Type shadowing
+
+> TODO maybe should test loops, functions, function parameters etc...
+
+```ts
+type X = string;
+{
+	type X = number;
+	const a: X = 3;
+}
+```
+
+- Type 3 is not assignable to type X
 
 #### Type has no generics
 
