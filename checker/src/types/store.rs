@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-	get_constraint, poly_types::generic_type_arguments::StructureGenericArguments,
+	generics::generic_type_arguments::StructureGenericArguments, get_constraint,
 	properties::PropertyKey, Constructor, LookUpGeneric, LookUpGenericMap, StructureGenerics,
 	TypeRelationOperator,
 };
@@ -237,7 +237,7 @@ impl TypeStore {
 	/// From something like: let a: number => string. Rather than a actual function
 	pub fn new_function_type_annotation(
 		&mut self,
-		type_parameters: Option<super::poly_types::GenericTypeParameters>,
+		type_parameters: Option<super::generics::GenericTypeParameters>,
 		parameters: crate::types::functions::SynthesisedParameters,
 		return_type: TypeId,
 		declared_at: &source_map::SpanWithSource,
@@ -531,7 +531,7 @@ impl TypeStore {
 				} else if prototype
 					.is_some_and(|prototype| self.lookup_generic_map.contains_key(&prototype))
 				{
-					crate::utils::notify!("Registering lookup");
+					crate::utilities::notify!("Registering lookup");
 					Some(StructureGenericArguments::LookUp { on })
 				} else {
 					None
@@ -714,7 +714,7 @@ impl TypeStore {
 				Logical::Implies { .. } => todo!(),
 			}
 		} else {
-			crate::utils::notify!("Error: no index on type annotation");
+			crate::utilities::notify!("Error: no index on type annotation");
 			TypeId::ERROR_TYPE
 		}
 	}

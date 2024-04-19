@@ -6,7 +6,7 @@ use crate::{
 		variables::VariableOrImport,
 	},
 	types::TypeId,
-	CheckingData, GeneralContext,
+	CheckingData, Environment, GeneralContext,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator, mem};
@@ -47,6 +47,13 @@ impl RootContext {
 		self.variables.extend(other.variables);
 		todo!()
 		// self.tys.extend(other.tys.into_iter());
+	}
+
+	/// **For testing only**
+	#[must_use]
+	#[allow(clippy::needless_lifetimes)]
+	pub fn new_testing_context<'a>(&'a self) -> Environment<'a> {
+		self.new_lexical_environment(crate::Scope::Block {})
 	}
 
 	#[must_use]
@@ -152,7 +159,7 @@ impl RootContext {
 		// 	let ty = Type::deserialize(&mut bytes, backing_source);
 		// 	ctx.new_type(ty);
 		// }
-		// crate::utils::notify!("Registered {:?} types", count);
+		// crate::utilities::notify!("Registered {:?} types", count);
 
 		// ctx.variables = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// // TODO terrible

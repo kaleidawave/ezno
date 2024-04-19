@@ -15,8 +15,8 @@ use crate::{
 	types::{
 		calling::FunctionCallingError,
 		functions::SynthesisedArgument,
+		generics::FunctionTypeArguments,
 		get_constraint, is_type_truthy_falsy,
-		poly_types::FunctionTypeArguments,
 		printing::print_type,
 		properties::{get_property, set_property, PropertyKey, PropertyValue},
 		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
@@ -85,7 +85,7 @@ pub(crate) fn apply_event(
 			// let was = on;
 			let on = substitute(on, type_arguments, environment, types);
 
-			// crate::utils::notify!("was {:?} now {:?}", was, on);
+			// crate::utilities::notify!("was {:?} now {:?}", was, on);
 
 			let under = match under {
 				PropertyKey::Type(under) => {
@@ -119,7 +119,7 @@ pub(crate) fn apply_event(
 		Event::Setter { on, under, new, initialization, publicity, position } => {
 			// let was = on;
 			let on = substitute(on, type_arguments, environment, types);
-			// crate::utils::notify!("was {:?} now {:?}", was, on);
+			// crate::utilities::notify!("was {:?} now {:?}", was, on);
 
 			let under = match under {
 				PropertyKey::Type(under) => {
@@ -148,7 +148,7 @@ pub(crate) fn apply_event(
 
 			let _gc = environment.as_general_context();
 
-			// crate::utils::notify!(
+			// crate::utilities::notify!(
 			// 	"[Event::Setter] {}[{}] = {}",
 			// 	crate::types::printing::print_type(on, types, &gc, true),
 			// 	crate::types::printing::print_type(under, types, &gc, true),
@@ -223,7 +223,7 @@ pub(crate) fn apply_event(
 		} => {
 			let on = substitute(on, type_arguments, environment, types);
 
-			// crate::utils::notify!("was {:?} now {:?}", was, on);
+			// crate::utilities::notify!("was {:?} now {:?}", was, on);
 
 			let with = with
 				.iter()
@@ -260,7 +260,9 @@ pub(crate) fn apply_event(
 							}
 						}
 						Err(mut calling_errors) => {
-							crate::utils::notify!("inference and or checking failed at function");
+							crate::utilities::notify!(
+								"inference and or checking failed at function"
+							);
 							errors.errors.append(&mut calling_errors);
 							if let Some(reflects_dependency) = reflects_dependency {
 								type_arguments.set_id_from_event_application(
@@ -303,7 +305,7 @@ pub(crate) fn apply_event(
 			let condition = substitute(condition, type_arguments, environment, types);
 
 			let fixed_result = is_type_truthy_falsy(condition, types);
-			// crate::utils::notify!("Condition {:?} {:?}", types.get_type_by_id(condition), result);
+			// crate::utilities::notify!("Condition {:?} {:?}", types.get_type_by_id(condition), result);
 
 			match fixed_result {
 				Decidable::Known(result) => {
@@ -394,7 +396,7 @@ pub(crate) fn apply_event(
 						if let (ApplicationResult::Interrupt(_), ApplicationResult::Completed) =
 							(&*truthy, &*otherwise)
 						{
-							crate::utils::notify!("Here left interrupt, right completed");
+							crate::utilities::notify!("Here left interrupt, right completed");
 
 							// Evaluate the rest of the events conditionally
 							while let Some(event) = rest_of_events.next() {
@@ -421,7 +423,7 @@ pub(crate) fn apply_event(
 								}
 							}
 
-							crate::utils::notify!("Rest of events did not exit");
+							crate::utilities::notify!("Rest of events did not exit");
 							if let ApplicationResult::Interrupt(i) = *truthy {
 								truthy_info.events.push(i.into());
 							}
@@ -432,7 +434,7 @@ pub(crate) fn apply_event(
 
 							ApplicationResult::Conditionally { on, truthy, otherwise }
 						} else {
-							crate::utils::notify!("TODO here in unknown conditional");
+							crate::utilities::notify!("TODO here in unknown conditional");
 
 							if let ApplicationResult::Interrupt(i) = *truthy {
 								truthy_info.events.push(i.into());
@@ -547,7 +549,7 @@ pub(crate) fn apply_event(
 			// let new_object_id_with_curried_arguments =
 			// 	curry_arguments(type_arguments, types, new_object_id);
 
-			// crate::utils::notify!(
+			// crate::utilities::notify!(
 			// 	"Setting {:?} to {:?}",
 			// 	referenced_in_scope_as,
 			// 	new_object_id_with_curried_arguments
@@ -611,7 +613,7 @@ pub(crate) fn apply_event_unknown(
 				(reflects_dependency, reference)
 			{
 				// TODO this is okay for loops, not sure about other cases of this function
-				crate::utils::notify!("Setting loop variable here {:?}", reflects_dependency);
+				crate::utilities::notify!("Setting loop variable here {:?}", reflects_dependency);
 				target
 					.get_latest_info(environment)
 					.variable_current_value
@@ -619,10 +621,10 @@ pub(crate) fn apply_event_unknown(
 			}
 		}
 		Event::Getter { .. } => {
-			crate::utils::notify!("Run getters");
+			crate::utilities::notify!("Run getters");
 		}
 		Event::SetsVariable(_variable, _value, _) => {
-			crate::utils::notify!("Here");
+			crate::utilities::notify!("Here");
 			// let new_value = get_constraint(value, types)
 			// 	.map(|value| {
 			// 		types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)))
@@ -657,7 +659,7 @@ pub(crate) fn apply_event_unknown(
 			environment.info.register_property(on, publicity, under, new_value, false, position);
 		}
 		Event::CallsType { .. } => {
-			crate::utils::notify!("TODO ?");
+			crate::utilities::notify!("TODO ?");
 		}
 		Event::Conditionally { true_events, else_events, .. } => {
 			// TODO think this is correct...?

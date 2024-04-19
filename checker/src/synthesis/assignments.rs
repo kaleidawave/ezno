@@ -54,7 +54,9 @@ fn synthesise_variable_field_to_reference<T: crate::ReadFromFS>(
 			VariableIdentifier::Standard(name, position) => {
 				Reference::Variable(name.clone(), position.with_source(environment.get_source()))
 			}
-			VariableIdentifier::Marker(_, _) => todo!(),
+			VariableIdentifier::Marker(_, position) => Reference::new_empty_variable_reference(
+				position.with_source(environment.get_source()),
+			),
 		}),
 	}
 }
@@ -149,12 +151,14 @@ fn synthesise_object_shorthand_assignable<T: crate::ReadFromFS>(
 	environment: &Environment,
 	_checking_data: &CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
-	match name {
-		parser::VariableIdentifier::Standard(name, pos) => Assignable::Reference(
-			Reference::Variable(name.clone(), pos.with_source(environment.get_source())),
-		),
-		parser::VariableIdentifier::Marker(..) => todo!(),
-	}
+	Assignable::Reference(match name {
+		parser::VariableIdentifier::Standard(name, position) => {
+			Reference::Variable(name.clone(), position.with_source(environment.get_source()))
+		}
+		parser::VariableIdentifier::Marker(_, position) => {
+			Reference::new_empty_variable_reference(position.with_source(environment.get_source()))
+		}
+	})
 }
 
 fn synthesise_object_property_key(
@@ -165,7 +169,7 @@ fn synthesise_object_property_key(
 		parser::VariableIdentifier::Standard(name, _pos) => {
 			PropertyKey::String(Cow::Owned(name.to_owned()))
 		}
-		parser::VariableIdentifier::Marker(..) => todo!(),
+		parser::VariableIdentifier::Marker(..) => PropertyKey::new_empty_property_key(),
 	}
 }
 
@@ -187,14 +191,17 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 						if *is_private { Publicity::Private } else { Publicity::Public };
 					Reference::Property {
 						on: parent_ty,
-						with: crate::types::properties::PropertyKey::String(Cow::Owned(
-							property.clone(),
-						)),
+						with: PropertyKey::String(Cow::Owned(property.clone())),
 						span: position.with_source(environment.get_source()),
 						publicity,
 					}
 				}
-				parser::PropertyReference::Marker(_) => todo!(),
+				parser::PropertyReference::Marker(_) => Reference::Property {
+					on: parent_ty,
+					with: PropertyKey::new_empty_property_key(),
+					span: position.with_source(environment.get_source()),
+					publicity: Publicity::Public,
+				},
 			}
 		}
 		VariableOrPropertyAccess::Index { indexee, indexer, position } => {
@@ -208,10 +215,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			);
 			Reference::Property {
 				on: parent_ty,
-				with: crate::types::properties::PropertyKey::from_type(
-					key_ty,
-					&checking_data.types,
-				),
+				with: PropertyKey::from_type(key_ty, &checking_data.types),
 				span: position.with_source(environment.get_source()),
 				publicity: crate::context::information::Publicity::Public,
 			}

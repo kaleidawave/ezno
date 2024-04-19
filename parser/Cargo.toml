@@ -65,7 +65,7 @@ tokenizer-lib = { version = "1.5.1", features = [
   "sized-tokens",
 ], default_features = false }
 tsify = "0.4.5"
-wasm-bindgen = "=0.2.89"
+wasm-bindgen = "0.2"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokenizer-lib = { version = "1.5.1", features = [

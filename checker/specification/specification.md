@@ -82,6 +82,20 @@ const a = 3;
 
 - Cannot redeclare variable 'a'
 
+#### Variable shadowing
+
+> TODO maybe should test loops, functions, function parameters etc...
+
+```ts
+const a = 2
+{
+	const a = 3;
+	a satisfies 2;
+}
+```
+
+- Expected 2, found 3
+
 #### Unintialised variables are undefined
 
 > Might be a usage warning at some point
@@ -317,6 +331,8 @@ function func(a: number) {
 
 #### Default parameter value type check
 
+> Thanks to #132
+
 ```ts
 function outer(a: number) {
     function inner(b: string = Math.floor(a)) {
@@ -470,10 +486,12 @@ function alterParameter(a: number, b: { prop: string }) {
 - Type \"hi\" is not assignable to type number
 - Type 3 does not meet property constraint string
 
-#### Type of rest parameter
+#### Variadic function parameter type
+
+> aka rest parameter type
 
 ```ts
-function myRestFunction(...r: string[]) {
+function variadic(...r: string[]) {
 	r satisfies boolean;
 }
 ```
@@ -661,6 +679,8 @@ callToUpperCase("hi") satisfies "HEY";
 
 #### String internal `this` unbinding error
 
+> Thanks to `this` checking in #127
+
 ```ts
 const { toUpperCase } = "hi";
 
@@ -722,6 +742,34 @@ b satisfies 1;
 
 - Expected 1, found 2
 
+#### Optional parameter type
+
+> Effectively optional parameter with the default value being undefined
+
+```ts
+function optionally(p?: number) {
+  p satisfies string;
+}
+```
+
+- Expected string, found number | undefined
+
+#### Calling optional parameter type
+
+```ts
+function optionally(p?: number) {
+  return p
+}
+
+// Fine
+optionally() satisfies undefined;
+optionally(5) satisfies 5;
+
+optionally("hello world");
+```
+
+- Argument of type "hello world" is not assignable to parameter of type number | undefined
+
 #### Tagged template literal
 
 ```ts
@@ -736,8 +784,6 @@ myTag`${name}Hello ` satisfies "Hi Ben"
 - Expected "Hi Ben", found "Hello Ben"
 
 #### Default parameter side effect on parameter
-
-> I don't think this works because of fact combining
 
 ```ts
 function doThing(a, b = (a += 2)) {
@@ -1681,6 +1727,8 @@ try {
 
 #### Catch annotation
 
+> Thanks to #131
+
 ```ts
 try {
 	throw 3
@@ -1692,6 +1740,8 @@ try {
 - Cannot catch type string because the try block throws 3
 
 #### Object destructuring assignment
+
+> Added in #127
 
 ```ts
 const o = { a: 1, b: { c: 3 } };
@@ -1747,6 +1797,8 @@ x.value satisfies string
 - Expected string, found 4
 
 #### Class `this` unbinding
+
+> Thanks to `this` checking added in #127
 
 ```ts
 class X {
@@ -1959,6 +2011,20 @@ const a: Y = 2;
 ```
 
 - Cannot find type Y
+
+#### Type shadowing
+
+> TODO maybe should test loops, functions, function parameters etc...
+
+```ts
+type X = string;
+{
+	type X = number;
+	const a: X = "hello world";
+}
+```
+
+- Type "hello world" is not assignable to type X
 
 #### Type has no generics
 
@@ -2275,11 +2341,13 @@ const my_wrapped: Wrapper<number> = { internal: "hi" }
 #### Array property checking
 
 ```ts
-const numbers1: Array<number> = [1, 2, "3"]
-const numbers2: Array<string> = ["hi", "3"]
+const numbers1: Array<number> = [1, 2, "3"],
+      numbers2: Array<string> = ["hi", "3"],
+      numbers3: Array<string> = 4;
 ```
 
 - Type [1, 2, "3"] is not assignable to type Array\<number>
+- Type 4 is not assignable to type Array\<string>
 
 #### Generic type argument parameter
 
@@ -2787,6 +2855,18 @@ export const mean_gravity = 9.806;
 ### Extras
 
 > This contains new features. Most are WIP
+
+#### JSX type
+
+```tsx
+function JSXH(tag_name: string, attributes: any, children: any) {
+  return { tag_name, attributes, children }
+}
+
+const x = <h1 title="Example text">Hello World</h1> satisfies string;
+```
+
+- Expected string, found { tag_name: "h1", attributes: { title: "Example text" }, children: ["Hello World"] }
 
 #### Comments as type annotations
 

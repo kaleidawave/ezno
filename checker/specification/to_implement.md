@@ -465,18 +465,6 @@ delete global.b;
 
 - Cannot delete property "b" off { a?: string, b: string }
 
-#### Try-catch variable restriction
-
-```ts
-try {
-	throw 2;
-} catch (e: string) {
-	// ...
-}
-```
-
-- Thrown type 2, not assignable to catch variable of string
-
 #### `instanceof` expression
 
 ```ts
@@ -663,32 +651,6 @@ call(call)
 ```
 
 - TODO hopefully doesn't blow up
-
-### Function checking
-
-#### Default parameter type check
-
-```ts
-function doThing(b: number = "hello") {
-	return a
-}
-```
-
-- Default value "hello" is not assignable to parameter of type number
-
-### Statements
-
-#### Try catch variable
-
-```ts
-try {
-	throw 5
-} catch (exception: string) {
-
-}
-```
-
-- Catch variable cannot be string as 5 thrown in try block
 
 #### Array destructuring
 

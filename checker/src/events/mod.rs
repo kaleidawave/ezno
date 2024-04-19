@@ -214,7 +214,7 @@ impl ApplicationResult {
 		match self {
 			ApplicationResult::Completed => *self = result.into(),
 			ApplicationResult::Interrupt(_) => {
-				crate::utils::notify!("Should be unreachable, result already failed");
+				crate::utilities::notify!("Should be unreachable, result already failed");
 			}
 			ApplicationResult::Conditionally { on: _, truthy, otherwise } => {
 				if truthy.is_it_so_over() {

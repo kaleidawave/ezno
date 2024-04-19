@@ -193,24 +193,6 @@ where
 	}
 }
 
-impl<V> BinarySerializable for indexmap::IndexSet<V>
-where
-	V: BinarySerializable + std::hash::Hash + std::cmp::Eq,
-{
-	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
-
-		for v in self {
-			v.serialize(buf);
-		}
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| V::deserialize(iter, source)).collect()
-	}
-}
-
 impl BinarySerializable for SpanWithSource {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		self.start.serialize(buf);

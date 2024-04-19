@@ -66,29 +66,20 @@ jobs:
                 edges {
                   node {
                     sponsor {
-                      login
+                      name
                     }
                   }
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
           
           echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
 
-          CONTRIBUTORS=$(gh api graphql -f query='{
-            repository(owner: "kaleidawave", name: "ezno") {
-              pullRequests(first: 100, states: 'MERGED') {
-                edges {
-                  node {
-                    author {
-                      login
-                    }
-                  }
-                }
-              }
-            }
-          }' -q '.data.repository.pullRequests.edges | map(.node.author.login) | unique | join(", ")')
+          CONTRIBUTORS=$(
+            gh pr list --search "-author:@me" --state merged --json author 
+            | jq 'map(.author.name) | unique | join(",")'
+          )
 
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
 

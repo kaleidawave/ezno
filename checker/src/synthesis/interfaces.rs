@@ -273,7 +273,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					// TODO WIP
 					let to = match rule {
 						parser::types::interface::TypeRule::In => {
-							crate::utils::notify!("TODO");
+							crate::utilities::notify!("TODO");
 							TypeId::ANY_TYPE
 						}
 						parser::types::interface::TypeRule::InKeyOf => todo!(),

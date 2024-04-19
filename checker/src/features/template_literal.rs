@@ -48,7 +48,7 @@ where
 					let value = cast_as_string(cst, checking_data.options.strict_casts).unwrap();
 					checking_data.types.new_constant_type(Constant::String(value))
 				} else {
-					crate::utils::notify!("Need to cast to string...");
+					crate::utilities::notify!("Need to cast to string...");
 					value
 				}
 			}
@@ -89,6 +89,22 @@ where
 					});
 				}
 			}
+		}
+
+		{
+			// TODO spread
+			let length = checking_data.types.new_constant_type(Constant::Number(
+				f64::from(static_part_count).try_into().unwrap(),
+			));
+
+			// TODO: Should there be a position here?
+			static_parts.append(
+				environment,
+				crate::context::information::Publicity::Public,
+				crate::types::properties::PropertyKey::String("length".into()),
+				crate::types::properties::PropertyValue::Value(length),
+				None,
+			);
 		}
 
 		arguments.insert(
@@ -139,7 +155,7 @@ where
 				match result {
 					Ok(result) => acc = result,
 					Err(()) => {
-						crate::utils::notify!("Invalid template literal concatenation");
+						crate::utilities::notify!("Invalid template literal concatenation");
 					}
 				}
 			}
@@ -173,12 +189,12 @@ pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStor
 			match result {
 				Ok(result) => acc = result,
 				Err(()) => {
-					// crate::utils::notify!(
+					// crate::utilities::notify!(
 					// 	"acc is {:?}, other is {:?}",
 					// 	types.get_type_by_id(acc),
 					// 	types.get_type_by_id(other)
 					// );
-					crate::utils::notify!("Invalid type template literal concatenation");
+					crate::utilities::notify!("Invalid type template literal concatenation");
 				}
 			}
 		}

@@ -139,6 +139,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			.filter(|p| !matches!(p, JSXNode::LineBreak | JSXNode::Comment(..)))
 			.enumerate();
 
+		let mut count = 0;
 		for (idx, child) in children_iterator {
 			// TODO idx bad! and should override item
 			let property = PropertyKey::from_usize(idx);
@@ -151,6 +152,25 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				property,
 				crate::PropertyValue::Value(child),
 				Some(child_position),
+			);
+
+			// TODO spread ??
+			count += 1;
+		}
+
+		{
+			// TODO spread
+			let length = checking_data
+				.types
+				.new_constant_type(Constant::Number(f64::from(count).try_into().unwrap()));
+
+			// TODO: Should there be a position here?
+			synthesised_child_nodes.append(
+				environment,
+				crate::context::information::Publicity::Public,
+				crate::types::properties::PropertyKey::String("length".into()),
+				crate::types::properties::PropertyValue::Value(length),
+				None,
 			);
 		}
 
@@ -304,7 +324,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			}
 	// 			// 		}
 	// 			// 	} else {
-	// 			// 		crate::utils::notify!("TODO additional property");
+	// 			// 		crate::utilities::notify!("TODO additional property");
 	// 			// 	}
 	// 			// }
 
@@ -358,7 +378,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 		}
 	// 		Err(_) => {
 	// 			// TODO deferred custom elements...?
-	// 			crate::utils::notify!("add error");
+	// 			crate::utilities::notify!("add error");
 	// 			// checking_data.add_error(TypeCheckErrors::from(err), element.get_position().into());
 	// 			// return Ok(Instance::new_error_instance());
 	// 			TypeId::ERROR_TYPE
@@ -378,7 +398,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 			match &**expression {
 				parser::ast::FunctionArgument::Spread(_, _) => todo!(),
 				parser::ast::FunctionArgument::Standard(expression) => {
-					crate::utils::notify!("Cast JSX interpolated value?");
+					crate::utilities::notify!("Cast JSX interpolated value?");
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
 				}
 				parser::ast::FunctionArgument::Comment { .. } => {

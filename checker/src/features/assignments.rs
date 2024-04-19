@@ -62,4 +62,19 @@ impl Reference {
 			Reference::Variable(_, span) | Reference::Property { span, .. } => *span,
 		}
 	}
+
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		match self {
+			Reference::Variable(name, _) => name.is_empty(),
+			Reference::Property { with, .. } => {
+				matches!(with, PropertyKey::String(n) if n.is_empty())
+			}
+		}
+	}
+
+	#[must_use]
+	pub fn new_empty_variable_reference(position: SpanWithSource) -> Self {
+		Self::Variable(String::new(), position)
+	}
 }

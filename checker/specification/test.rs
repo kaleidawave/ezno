@@ -53,7 +53,7 @@ fn check_errors(
 
 	// let result = panic::catch_unwind(|| {
 	let result = checker::check_project::<_, EznoParser>(
-		vec![PathBuf::from("main.ts")],
+		vec![PathBuf::from("main.tsx")],
 		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
 		|path: &Path| -> Option<Vec<u8>> {
 			if code.len() == 1 {
@@ -69,6 +69,7 @@ fn check_errors(
 		},
 		type_check_options,
 		(),
+		None,
 	);
 	// });
 

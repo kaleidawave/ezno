@@ -39,7 +39,9 @@ pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>
 				&mut checking_data.diagnostics_container,
 			);
 		}
-		parser::VariableIdentifier::Marker(..) => todo!(),
+		parser::VariableIdentifier::Marker(..) => {
+			crate::utilities::notify!("Skipping registering variable identifier that is Marker");
+		}
 	}
 }
 
@@ -273,9 +275,9 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 
 						let key_ty = match name {
 							VariableIdentifier::Standard(name, _) => {
-								crate::types::properties::PropertyKey::String(Cow::Borrowed(name))
+								PropertyKey::String(Cow::Borrowed(name))
 							}
-							VariableIdentifier::Marker(..) => todo!(),
+							VariableIdentifier::Marker(..) => PropertyKey::new_empty_property_key(),
 						};
 
 						// TODO if LHS = undefined ...? conditional

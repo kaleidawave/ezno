@@ -22,9 +22,8 @@ jobs:
 
     outputs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
-      new-ezno-version-name: ${{ steps.get-version.outputs.new-ezno-version-name }}
-      SPONSORS: ${{ steps.get-data.outputs.SPONSORS }}
-      CONTRIBUTORS: ${{ steps.get-data.outputs.CONTRIBUTORS }}
+      SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
+      CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +36,7 @@ jobs:
           if [ ${{ inputs.ezno-version }} = 'latest' ]; then
             echo "::group::Ezno tags"
             git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*'
-            echo "::endgroup"
+            echo "::endgroup::"
 
             TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
             echo "Building GH release for ${TAG:13}"
@@ -45,7 +44,6 @@ jobs:
 
             # Replace '.' with '-'
             NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
-            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           else
             VERSION="${{ inputs.ezno-version }}"
             echo "Building GH release for ${VERSION}"
@@ -53,10 +51,9 @@ jobs:
 
             # Replace '.' with '-'
             NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
-            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - id: get-data
+      - id: get-sponsors-and-contributors
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
@@ -64,29 +61,20 @@ jobs:
                 edges {
                   node {
                     sponsor {
-                      login
+                      name
                     }
                   }
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
           
           echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
 
-          CONTRIBUTORS=$(gh api graphql -f query='{
-            repository(owner: "kaleidawave", name: "ezno") {
-              pullRequests(first: 100, states: 'MERGED') {
-                edges {
-                  node {
-                    author {
-                      login
-                    }
-                  }
-                }
-              }
-            }
-          }' -q '.data.repository.pullRequests.edges | map(.node.author.login) | unique | join(", ")')
+          CONTRIBUTORS=$(
+            gh pr list --search "-author:@me" --state merged --json author 
+            | jq 'map(.author.name) | unique | join(",")'
+          )
 
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
 
@@ -127,7 +115,7 @@ jobs:
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version-name }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
+          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
 
       - uses: actions/upload-artifact@v4
         with:

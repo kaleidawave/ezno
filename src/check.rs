@@ -19,5 +19,5 @@ pub fn check<T: crate::ReadFromFS>(
 	let read_from_fs =
 		|path: &Path| read_from_filesystem.get_content_at_path(path).map(String::into_bytes);
 
-	checker::check_project(entry_points, definitions, read_from_fs, type_check_options, ())
+	checker::check_project(entry_points, definitions, read_from_fs, type_check_options, (), None)
 }

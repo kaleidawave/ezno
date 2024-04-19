@@ -743,7 +743,7 @@ impl<'a> Environment<'a> {
 				}
 			}
 		} else {
-			crate::utils::notify!("Could say it is on the window here");
+			crate::utilities::notify!("Could say it is on the window here");
 			Err(AssignmentError::VariableNotFound {
 				variable: variable_name.to_owned(),
 				assignment_position,
@@ -953,7 +953,7 @@ impl<'a> Environment<'a> {
 						let current_value = get_value_of_variable(
 							self,
 							og_var.get_id(),
-							None::<&crate::types::poly_types::FunctionTypeArguments>,
+							None::<&crate::types::generics::FunctionTypeArguments>,
 						);
 
 						if let Some(current_value) = current_value {
@@ -963,7 +963,7 @@ impl<'a> Environment<'a> {
 							if matches!(ty, Type::SpecialObject(SpecialObjects::Function(..))) {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-								crate::utils::notify!(
+								crate::utilities::notify!(
 									"Open poly type '{}' treated as immutable free variable",
 									name
 								);
@@ -972,9 +972,9 @@ impl<'a> Environment<'a> {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
-							crate::utils::notify!("Free variable!");
+							crate::utilities::notify!("Free variable!");
 						} else {
-							crate::utils::notify!("No current value");
+							crate::utilities::notify!("No current value");
 						}
 					}
 
@@ -982,7 +982,7 @@ impl<'a> Environment<'a> {
 					if let Some(constraint) = constraint {
 						*constraint
 					} else {
-						crate::utils::notify!("TODO record that parent variable is `any` here");
+						crate::utilities::notify!("TODO record that parent variable is `any` here");
 						TypeId::ANY_TYPE
 					}
 				}
@@ -1004,7 +1004,7 @@ impl<'a> Environment<'a> {
 					if let Some(constraint) = reassignment_constraint {
 						constraint
 					} else {
-						crate::utils::notify!("TODO record that parent variable is `any` here");
+						crate::utilities::notify!("TODO record that parent variable is `any` here");
 						TypeId::ANY_TYPE
 					}
 				}
@@ -1063,7 +1063,7 @@ impl<'a> Environment<'a> {
 				let current_value = get_value_of_variable(
 					self,
 					of,
-					None::<&crate::types::poly_types::FunctionTypeArguments>,
+					None::<&crate::types::generics::FunctionTypeArguments>,
 				)
 				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
@@ -1072,7 +1072,7 @@ impl<'a> Environment<'a> {
 			let current_value = get_value_of_variable(
 				self,
 				og_var.get_id(),
-				None::<&crate::types::poly_types::FunctionTypeArguments>,
+				None::<&crate::types::generics::FunctionTypeArguments>,
 			);
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))

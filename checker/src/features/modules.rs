@@ -6,7 +6,7 @@ use crate::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
 	},
-	get_source, CheckingData, Environment, Scope, Type, TypeId, TypeMappings, VariableId,
+	get_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings, VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -35,6 +35,19 @@ pub struct SynthesisedModule<M> {
 	/// TODO ...
 	pub info: LocalInformation,
 	pub mappings: TypeMappings,
+}
+
+impl<M> SynthesisedModule<M> {
+	pub fn get_instance_at_position(&self, pos: u32) -> Option<&Instance> {
+		self.mappings.expressions_to_instances.get(pos)
+	}
+
+	pub fn get_instance_at_position_with_span(
+		&self,
+		pos: u32,
+	) -> Option<(&Instance, std::ops::Range<u32>)> {
+		self.mappings.expressions_to_instances.get_with_range(pos)
+	}
 }
 
 /// TODO tidy
@@ -248,7 +261,7 @@ pub fn import_items<
 					&mut checking_data.diagnostics_container,
 				);
 			} else {
-				crate::utils::notify!("TODO :?");
+				crate::utilities::notify!("TODO :?");
 				environment.register_variable_handle_error(
 					under,
 					VariableRegisterArguments {
@@ -380,14 +393,14 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			result
 		}
 	} else {
-		crate::utils::notify!("Here {}", to_import);
+		crate::utilities::notify!("Here {}", to_import);
 		let result = get_package_from_node_modules(
 			to_import,
 			&checking_data.modules.current_working_directory,
 			checking_data.modules.file_reader,
 		);
 		if let Ok((path, definition_file)) = result {
-			crate::utils::notify!("Reading path from package {}", path.display());
+			crate::utilities::notify!("Reading path from package {}", path.display());
 			get_module(&path, definition_file.as_deref(), environment, checking_data)
 		} else {
 			None

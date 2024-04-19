@@ -35,7 +35,7 @@ use crate::{
 	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments,
+		generics::generic_type_arguments::StructureGenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		Constant, Constructor, StructureGenerics, Type, TypeId,
 	},
@@ -170,7 +170,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let inner_type = checking_data.types.get_type_by_id(inner_type_id);
 
-			// crate::utils::notify!("{:?}", inner_type);
+			// crate::utilities::notify!("{:?}", inner_type);
 
 			if let Some(parameters) = inner_type.get_parameters() {
 				let is_flattenable_alias = if let Type::AliasTo { to, .. } = inner_type {
@@ -462,12 +462,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.register_type(ty)
 		}
 		TypeAnnotation::Marker(_, _) => {
-			crate::utils::notify!("Dump available object types in environment to somewhere..?");
+			crate::utilities::notify!("Dump available object types in environment to somewhere..?");
 			TypeId::ANY_TYPE
 		}
 		// TODO these are all work in progress
 		TypeAnnotation::Decorated(decorator, inner, _) => {
-			crate::utils::notify!("Unknown decorator skipping {:#?}", decorator.name);
+			crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(parts, _) => {
@@ -527,7 +527,7 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
-	let offset = Some(position.end - 2 - possible_declaration.len() as u32);
+	let offset = Some(position.end - 1 - possible_declaration.len() as u32);
 
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
@@ -543,7 +543,7 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 			annotation.get_position().with_source(source),
 		))
 	} else {
-		crate::utils::notify!("Failed comment as type annotation");
+		crate::utilities::notify!("Failed comment as type annotation");
 		// TODO warning
 		None
 	}
@@ -567,7 +567,7 @@ pub(crate) fn get_annotation_from_declaration<
 	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =
 		&declaration.name
 	{
-		crate::utils::notify!("Here {:?}", possible_declaration);
+		crate::utilities::notify!("Here {:?}", possible_declaration);
 		comment_as_type_annotation(
 			possible_declaration,
 			&position.with_source(environment.get_source()),

@@ -95,7 +95,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
 				v.try_into().unwrap()
 			} else {
-				crate::utils::notify!("TODO big int");
+				crate::utilities::notify!("TODO big int");
 				return TypeId::ERROR_TYPE;
 			};
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
@@ -131,7 +131,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								position.with_source(environment.get_source()),
 							);
 						}
-						crate::utils::notify!("Skipping spread");
+						crate::utilities::notify!("Skipping spread");
 						(
 							PropertyKey::from_usize(match idx {
 								Decidable::Known(idx) => *idx,
@@ -384,7 +384,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									return if result { TypeId::TRUE } else { TypeId::FALSE };
 								}
 								parser::PropertyReference::Marker(_) => {
-									crate::utils::notify!("Deleting property marker found");
+									crate::utilities::notify!("Deleting property marker found");
 									return TypeId::ERROR_TYPE;
 								}
 							}
@@ -408,7 +408,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							return if result { TypeId::TRUE } else { TypeId::FALSE };
 						}
 						_ => {
-							crate::utils::notify!("Deleting non property raise warning");
+							crate::utilities::notify!("Deleting non property raise warning");
 							let _operand_type = synthesise_expression(
 								operand,
 								environment,
@@ -535,7 +535,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					PropertyKey::String(Cow::Borrowed(property.as_str()))
 				}
 				parser::PropertyReference::Marker(_) => {
-					crate::utils::notify!("Property marker found. TODO union of properties");
+					crate::utilities::notify!("Property marker found. TODO union of properties");
 					return TypeId::ERROR_TYPE;
 				}
 			};
@@ -612,7 +612,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								.push(*position, special);
 						}
 
-						crate::utils::notify!("TODO unlock reference to `this`");
+						crate::utilities::notify!("TODO unlock reference to `this`");
 
 						Instance::RValue(result)
 						// let crate::ConstructorInformation {
@@ -665,7 +665,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					SuperReference::Index { indexer: _ } => todo!(),
 				}
 			} else {
-				crate::utils::notify!("TODO error");
+				crate::utilities::notify!("TODO error");
 				Instance::RValue(TypeId::ERROR_TYPE)
 			}
 		}
@@ -759,7 +759,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
 		}
 		Expression::Marker { marker_id: _, position: _ } => {
-			crate::utils::notify!("Marker expression found");
+			crate::utilities::notify!("Marker expression found");
 			return TypeId::ERROR_TYPE;
 		}
 		Expression::SpecialOperators(operator, position) => match operator {

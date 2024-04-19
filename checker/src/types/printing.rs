@@ -13,7 +13,7 @@ use crate::{
 	events::{Event, FinalEvent},
 	features::{functions::ThisValue, objects::SpecialObjects},
 	types::{
-		get_constraint, poly_types::generic_type_arguments::StructureGenericArguments, Constructor,
+		generics::generic_type_arguments::StructureGenericArguments, get_constraint, Constructor,
 		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
 	},
 	Constant, PropertyValue,
@@ -173,7 +173,31 @@ fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "SG({:?})(", ty.0).unwrap();
 					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 					buf.push(')');
-					write!(buf, "<{arguments:?}>").unwrap();
+					match arguments {
+						StructureGenericArguments::ExplicitRestrictions(type_restrictions) => {
+							buf.push('<');
+							let nendiate = type_restrictions.iter().nendiate();
+							for (not_at_end, (from, (arg, _))) in nendiate {
+								print_type_into_buf(
+									*from, buf, cycles, args, types, info_chain, debug,
+								);
+								buf.push_str(" = ");
+								print_type_into_buf(
+									*arg, buf, cycles, args, types, info_chain, debug,
+								);
+								if not_at_end {
+									buf.push_str(", ");
+								}
+							}
+							buf.push('>');
+						}
+						StructureGenericArguments::Closure(closures) => {
+							write!(buf, "<Closures {closures:?}>").unwrap();
+						}
+						StructureGenericArguments::LookUp { on } => {
+							write!(buf, "<Lookup {on:?}>").unwrap();
+						}
+					}
 				} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
 					types.get_type_by_id(*on)
 				{
@@ -184,7 +208,6 @@ fn print_type_into_buf<C: InformationChain>(
 							buf.push('<');
 							let nendiate = type_restrictions.values().nendiate();
 							for (not_at_end, (arg, _)) in nendiate {
-								crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
 								print_type_into_buf(
 									*arg, buf, cycles, args, types, info_chain, debug,
 								);
@@ -445,12 +468,12 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 			} else {
 				if let Some(prototype) = prototype {
-					// crate::utils::notify!("P during print {:?}", prototype);
+					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info_chain, debug);
 					buf.push_str("] ");
 				} else {
-					// crate::utils::notify!("no P on {:?} during print", id);
+					// crate::utilities::notify!("no P on {:?} during print", id);
 				}
 				buf.push_str("{ ");
 				let properties = get_properties_on_type(ty, types, info_chain);

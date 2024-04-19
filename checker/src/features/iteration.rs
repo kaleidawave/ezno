@@ -11,7 +11,7 @@ use crate::{
 	},
 	features::operations::CanonicalEqualityAndInequality,
 	types::{
-		poly_types::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
+		generics::{generic_type_arguments::TypeArgumentStore, FunctionTypeArguments},
 		substitute, Constructor, ObjectNature, PolyNature, TypeStore,
 	},
 	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
@@ -70,7 +70,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 					loop_body(environment, checking_data);
 
-					// crate::utils::notify!("Loop does {:#?}", environment.info.events);
+					// crate::utilities::notify!("Loop does {:#?}", environment.info.events);
 
 					condition
 				},
@@ -108,7 +108,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			);
 
 			if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
-				crate::utils::notify!("Loop returned {:?}", early_return);
+				crate::utilities::notify!("Loop returned {:?}", early_return);
 				environment.info.events.push(Event::FinalEvent(early_return));
 			}
 
@@ -416,8 +416,8 @@ pub(crate) fn run_iteration_block(
 			// 		top_environment,
 			// 		true,
 			// 	);
-			// 	crate::utils::notify!("events in iteration = {}", buf);
-			// 	// crate::utils::notify!("Iteration events: {:#?}", events);
+			// 	crate::utilities::notify!("events in iteration = {}", buf);
+			// 	// crate::utilities::notify!("Iteration events: {:#?}", events);
 			// }
 
 			let non_exorbitant_amount_of_iterations = under
@@ -430,7 +430,7 @@ pub(crate) fn run_iteration_block(
 					iterations += 1;
 				}
 
-				// crate::utils::notify!(
+				// crate::utilities::notify!(
 				// 	"Evaluating a constant amount of iterations {:?}",
 				// 	iterations
 				// );
@@ -467,7 +467,7 @@ pub(crate) fn run_iteration_block(
 								})
 							}
 							FinalEvent::Break { carry, position } => {
-								crate::utils::notify!("Here {}", carry);
+								crate::utilities::notify!("Here {}", carry);
 								return ApplicationResult::Interrupt(FinalEvent::Break {
 									carry: carry - 1,
 									position,
@@ -498,7 +498,7 @@ pub(crate) fn run_iteration_block(
 				for (_publicity, property, _value) in
 					get_properties_on_type(on, types, top_environment)
 				{
-					crate::utils::notify!("Property: {:?}", property);
+					crate::utilities::notify!("Property: {:?}", property);
 
 					let property_key_as_type = match property {
 						crate::types::properties::PropertyKey::String(str) => {
@@ -590,11 +590,11 @@ fn evaluate_unknown_iteration_for_loop(
 							let value_before_iterations = get_value_of_variable(
 								top_environment,
 								variable_id,
-								None::<&crate::types::poly_types::FunctionTypeArguments>,
+								None::<&crate::types::generics::FunctionTypeArguments>,
 							)
 							.unwrap();
 
-							// crate::utils::notify!(
+							// crate::utilities::notify!(
 							// 	"setting '{}' to have initial type {}",
 							// 	top_environment.get_variable_name(*variable_id),
 							// 	crate::types::printing::print_type(
@@ -610,7 +610,7 @@ fn evaluate_unknown_iteration_for_loop(
 							// top_environment.info.variable_current_value.insert(variable_id, *free_variable_id);
 						}
 						RootReference::This => {
-							crate::utils::notify!("Loop uses `this`");
+							crate::utilities::notify!("Loop uses `this`");
 							todo!()
 						}
 					}
@@ -672,7 +672,7 @@ fn evaluate_single_loop_iteration(
 
 	if !errors.errors.is_empty() {
 		// unreachable!("errors when calling loop")
-		crate::utils::notify!("errors when calling loop");
+		crate::utilities::notify!("errors when calling loop");
 	}
 
 	final_event
@@ -729,7 +729,7 @@ impl LoopStructure {
 		) = values
 		{
 			let iterations = (roof - start) / increments_by;
-			// crate::utils::notify!(
+			// crate::utilities::notify!(
 			// 	"Evaluating iteration: start={}, end={}, increment={}, iterations={}",
 			// 	start,
 			// 	end,
@@ -738,7 +738,7 @@ impl LoopStructure {
 			// );
 			Ok(iterations.ceil() as usize)
 		} else {
-			// crate::utils::notify!("Iterations was {:?}", values);
+			// crate::utilities::notify!("Iterations was {:?}", values);
 			Err(self)
 		}
 	}
@@ -753,7 +753,7 @@ fn calculate_result_of_loop(
 ) -> Result<LoopStructure, ()> {
 	let condition_ty = types.get_type_by_id(condition);
 
-	crate::utils::notify!("condition is {:?}", condition_ty);
+	crate::utilities::notify!("condition is {:?}", condition_ty);
 
 	// TODO some other cases
 	// - and for less than equal
@@ -783,16 +783,16 @@ fn calculate_result_of_loop(
 					let changed = if let Some((_start, _end)) =
 						loop_variables.as_ref().and_then(|vs| vs.get(roof_id).copied())
 					{
-						crate::utils::notify!("Found loop variables");
+						crate::utilities::notify!("Found loop variables");
 						false
 					} else if let Some(inside) = inside_loop.variable_values.get(roof_id) {
-						crate::utils::notify!(
+						crate::utilities::notify!(
 							"Found loop here {:?}",
 							types.get_type_by_id(*inside)
 						);
 						false
 					} else {
-						crate::utils::notify!("Here, roof not changed");
+						crate::utilities::notify!("Here, roof not changed");
 						true
 					};
 
@@ -805,7 +805,7 @@ fn calculate_result_of_loop(
 							*parent_environment.info.variable_current_value.get(roof_id).unwrap()
 						}
 					} else {
-						crate::utils::notify!("Roof changed in loop");
+						crate::utilities::notify!("Roof changed in loop");
 						return Err(());
 					}
 				} else if let Type::Constant(_) = roof_ty {
@@ -825,7 +825,7 @@ fn calculate_result_of_loop(
 					},
 				);
 
-				// crate::utils::notify!(
+				// crate::utilities::notify!(
 				// 	"incremented is {:?}",
 				// 	value_after_running_expressions_in_loop
 				// );
@@ -863,10 +863,10 @@ fn calculate_result_of_loop(
 					return Ok(LoopStructure { start, roof, increment_by: *increments_by });
 				}
 			} else {
-				crate::utils::notify!("{:?} has no max", roof);
+				crate::utilities::notify!("{:?} has no max", roof);
 			}
 		} else {
-			crate::utils::notify!("LHS {:?} is not free variable ", reference_ty);
+			crate::utilities::notify!("LHS {:?} is not free variable ", reference_ty);
 		}
 	}
 	Err(())

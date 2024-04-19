@@ -47,7 +47,9 @@ pub fn experimental_build_wasm(
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMCheckOutput {
-	readonly diagnostics: DiagnosticsContainer
+	readonly diagnostics: DiagnosticsContainer,
+	get_type_at_position(path: string, pos: number): string;
+	get_type_at_position_debug(path: string, pos: number): string;
 }
 "###;
 #[wasm_bindgen]
@@ -60,8 +62,18 @@ impl WASMCheckOutput {
 		serde_wasm_bindgen::to_value(&self.0.diagnostics).unwrap()
 	}
 
-	pub fn get_type_at_position(&self, path: &str, pos: u32) -> String {
-		self.0.get_type_at_position(path, pos, false).unwrap_or_default()
+	pub fn get_type_at_position(&self, path: &str, pos: u32) -> Option<String> {
+		self.0.get_type_at_position(path, pos, false)
+	}
+
+	pub fn get_type_at_position_debug(&self, path: &str, pos: u32) -> Option<String> {
+		self.0.get_type_at_position(path, pos, true)
+	}
+
+	pub fn get_module_ast(&self, path: &str) -> JsValue {
+		self.0.get_module(path).map_or(JsValue::NULL, |m| {
+			serde_wasm_bindgen::to_value(m).expect("cannot turn Module into `JsValue`")
+		})
 	}
 }
 
@@ -109,6 +121,7 @@ pub fn check_wasm_with_options(
 	};
 	WASMCheckOutput(crate::check::check(vec![entry_path.into()], &fs_resolver, None, options))
 }
+
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_RUN_CLI: &str = r#"
 export function run_cli(

@@ -4,6 +4,7 @@ use std::ops::Range;
 
 #[derive(Debug)]
 pub struct RangeMap<T> {
+	/// First u32 is the start, the second second pairing is the end
 	entries: BTreeMap<u32, Vec<(u32, T)>>,
 }
 
@@ -31,11 +32,34 @@ impl<T> RangeMap<T> {
 	/// Get the top level entry at some point
 	#[must_use]
 	pub fn get(&self, point: u32) -> Option<&T> {
+		self.get_with_range(point).map(|(res, _)| res)
+	}
+
+	#[must_use]
+	pub fn get_with_range(&self, point: u32) -> Option<(&T, Range<u32>)> {
 		self.entries
 			.range(0..=point)
 			// very important to reverse
 			.rev()
-			.find_map(|(_, v)| v.iter().find_map(|(e, v)| (*e > point).then_some(v)))
+			.find_map(|(s, v)| v.iter().find_map(|(e, v)| (*e > point).then_some((v, (*s..*e)))))
+	}
+
+	/// TODO into custom iterator
+	pub fn get_many(&self, point: u32, cb: impl for<'a> Fn(&'a T)) {
+		let rev = &mut self
+			.entries
+			.range(0..=point)
+			// very important to reverse
+			.rev();
+
+		for (start, values) in rev {
+			debug_assert!(*start <= point);
+			for (end, value) in values {
+				if point <= *end {
+					cb(value);
+				}
+			}
+		}
 	}
 
 	/// Get at an exact range

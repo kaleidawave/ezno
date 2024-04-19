@@ -88,6 +88,22 @@ declare class Array<T> {
         return false
     }
 
+    // fill(value: T, start: number = 0, end = this.length): this {
+    //     // TODO
+    //     return this
+    // }
+
+    // reduce<U>(cb: (acc: U, t: T, i?: number) => U, initial?: U): U {
+    //     const { length } = this;
+    //     let acc = initial ?? this[0];
+    //     let i: number = typeof initial === "undefined" ? 1 : 0;;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         acc = cb(acc, value, i++);
+    //     }
+    //     return acc;
+    // }
+
     // includes(searchElement: T, fromIndex?: number): boolean {
     //     const { length } = this;
     //     // TODO this is currently broken
@@ -165,8 +181,65 @@ interface Response {
 }
 
 declare class Console {
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/assert_static) */
     @InputOutput
-    log(msg: any): void;
+    assert(condition?: boolean, ...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/clear_static) */
+    @InputOutput
+    clear(): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/count_static) */
+    @InputOutput
+    count(label?: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/countReset_static) */
+    @InputOutput
+    countReset(label?: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/debug_static) */
+    @InputOutput
+    debug(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/dir_static) */
+    @InputOutput
+    dir(item?: any, options?: any): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/dirxml_static) */
+    @InputOutput
+    dirxml(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/error_static) */
+    @InputOutput
+    error(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/group_static) */
+    @InputOutput
+    group(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/groupCollapsed_static) */
+    @InputOutput
+    groupCollapsed(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/groupEnd_static) */
+    @InputOutput
+    groupEnd(): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/info_static) */
+    @InputOutput
+    info(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/log_static) */
+    @InputOutput
+    log(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/table_static) */
+    @InputOutput
+    table(tabularData?: any, properties?: string[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/time_static) */
+    @InputOutput
+    time(label?: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/timeEnd_static) */
+    @InputOutput
+    timeEnd(label?: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/timeLog_static) */
+    @InputOutput
+    timeLog(label?: string, ...data: any[]): void;
+    @InputOutput
+    timeStamp(label?: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/trace_static) */
+    @InputOutput
+    trace(...data: any[]): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/console/warn_static) */
+    @InputOutput
+    warn(...data: any[]): void;
 }
 
 declare const console: Console;
@@ -195,18 +268,43 @@ declare class Object {
     @Constant
     static getPrototypeOf(on: object): object | null;
 
-    // create(prototype: object): object performs {
+    // static create(prototype: object): object {
     //     const n = {};
     //     Object.setProtoTypeOf(n, prototype);
     //     return n
     // }
 
-    // keys(on: object): Array<string> performs {
-    //     const array = [];
+    // static keys(on: object): Array<string> {
+    //     const keys = [];
     //     for (const key in on) {
-    //         array.push(key);
+    //         keys.push(key);
     //     }
-    //     return array
+    //     return keys
+    // }
+
+    // static values(on: object): Array<string> {
+    //     const keys = [];
+    //     for (const key in on) {
+    //         keys.push(on[key]);
+    //     }
+    //     return keys
+    // }
+
+    // static entries(on: object): Array<[string, any]> {
+    //     const keys = [];
+    //     for (const key in on) {
+    //         keys.push([key, on[key]]);
+    //     }
+    //     return keys
+    // }
+
+    // static fromEntries(iterator: any): object {
+    //     const obj = {};
+    //     for (const item of iterator) {
+    //         const { 0: key, 1: value } = item;
+    //         obj[key] = value;
+    //     }
+    //     return obj
     // }
 }
 
@@ -234,13 +332,13 @@ declare const document: Document;
 
 // ↓↓ Ezno testing functions ↓↓
 @Constant
-declare function print_type(t: any): void;
+declare function print_type<T>(...args: Array<T>): void;
 @Constant
-declare function debug_type(t: any): void;
+declare function debug_type<T>(...args: Array<T>): void;
+@Constant
+declare function print_and_debug_type<T>(...args: Array<T>): void;
 @Constant
 declare function print_constraint(t: any): void;
-@Constant
-declare function print_and_debug_type(t: any): void;
 @Constant
 declare function debug_type_rust(t: any): void;
 @Constant

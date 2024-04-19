@@ -65,7 +65,7 @@ pub(super) fn synthesise_class_declaration<
 		existing_id
 	} else {
 		// For classes in expression position
-		crate::utils::notify!("TODO class expression parameters");
+		crate::utilities::notify!("TODO class expression parameters");
 		checking_data.types.register_type(Type::Class { name: name.clone(), parameters: None })
 	};
 
@@ -315,7 +315,7 @@ pub(super) fn synthesise_class_declaration<
 						if let Some(ref type_annotation) = property.type_annotation {
 							synthesise_type_annotation(type_annotation, environment, checking_data)
 						} else {
-							crate::utils::notify!("Declare without type annotation");
+							crate::utilities::notify!("Declare without type annotation");
 							TypeId::ERROR_TYPE
 						}
 					} else {
@@ -362,7 +362,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 ) {
 	{
 		const CLASS_VARIABLE_CONSTANT: bool = true;
-		crate::utils::notify!("registering {:?}", class.name.identifier);
+		crate::utilities::notify!("registering {:?}", class.name.identifier);
 
 		register_variable_identifier(
 			&class.name.identifier,
@@ -386,7 +386,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	if let Some(ref extends) = class.extends {
 		let extends = get_extends_as_simple_type(extends, environment, checking_data);
 
-		crate::utils::notify!("Hoisting class with extends {:?}", extends);
+		crate::utilities::notify!("Hoisting class with extends {:?}", extends);
 		if let Some(ty) = extends {
 			environment.info.prototypes.insert(class_type, ty);
 		}
@@ -525,7 +525,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				is_readonly: _,
 				position: _,
 			} => {
-				crate::utils::notify!("Warn if not declare");
+				crate::utilities::notify!("Warn if not declare");
 				// TODO think this is okay
 				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 				let value = synthesise_type_annotation(return_type, environment, checking_data);
@@ -581,7 +581,43 @@ fn synthesise_shape<T: crate::ReadFromFS>(
 		})
 		.collect();
 
-	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|_rest_parameter| todo!());
+	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|rest_parameter| {
+		use crate::types::{Constructor, StructureGenerics, SynthesisedRestParameter};
+		let parameter_constraint =
+			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
+				synthesise_type_annotation(annotation, environment, checking_data)
+			});
+
+		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
+			TypeId::ERROR_TYPE
+		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			on: TypeId::ARRAY_TYPE,
+			arguments,
+		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		{
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
+		} else {
+			crate::utilities::notify!("rest parameter should be array error");
+			// checking_data.diagnostics_container.add_error(
+			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
+			// );
+			TypeId::ERROR_TYPE
+		};
+
+		let name = variable_field_to_string(&rest_parameter.name);
+
+		SynthesisedRestParameter {
+			item_type,
+			// This will be verridden when actual synthesis
+			ty: parameter_constraint,
+			name,
+			position: rest_parameter.position.with_source(environment.get_source()),
+		}
+	});
 
 	let return_type = method.return_type.as_ref().map(|annotation| {
 		ReturnType(

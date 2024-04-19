@@ -19,7 +19,7 @@ use crate::{
 		self,
 		classes::ClassValue,
 		functions::SynthesisedParameters,
-		poly_types::GenericTypeParameters,
+		generics::GenericTypeParameters,
 		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
@@ -495,7 +495,7 @@ where
 			}
 		}
 		FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
-			// crate::utils::notify!(
+			// crate::utilities::notify!(
 			// 	"expecting {}",
 			// 	types::printing::print_type(
 			// 		expecting,
@@ -513,7 +513,7 @@ where
 			if let Some((or, _)) =
 				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
 			{
-				crate::utils::notify!(
+				crate::utilities::notify!(
 					"First expected parameter {:?}",
 					print_type(or, &checking_data.types, base_environment, true)
 				);
@@ -754,7 +754,7 @@ where
 					type_of_super: _,
 					ref mut this_object_type,
 				} => {
-					crate::utils::notify!("Setting 'this' type here");
+					crate::utilities::notify!("Setting 'this' type here");
 					if let Some((prototype, properties)) = constructor {
 						let new_this_object_type = types::create_this_before_function_synthesis(
 							&mut checking_data.types,
@@ -777,7 +777,7 @@ where
 						if let FunctionBehavior::Constructor { ref mut this_object_type, .. } =
 							behavior
 						{
-							crate::utils::notify!("Set this object type");
+							crate::utilities::notify!("Set this object type");
 							*this_object_type = new_this_object_type;
 						} else {
 							unreachable!()
@@ -829,7 +829,7 @@ where
 						let get_value_of_variable = get_value_of_variable(
 							&function_environment,
 							*on,
-							None::<&crate::types::poly_types::FunctionTypeArguments>,
+							None::<&crate::types::generics::FunctionTypeArguments>,
 						);
 						let ty = if let Some(value) = get_value_of_variable {
 							value
@@ -867,7 +867,7 @@ where
 			return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |ReturnType(ty, _)| ty)
 		};
 
-		// crate::utils::notify!(
+		// crate::utilities::notify!(
 		// 	"closes_over {:?}, free_variable {:?}, in {:?}",
 		// 	closes_over,
 		// 	free_variables,
@@ -906,7 +906,7 @@ where
 						.parents_iter()
 						.any(|c| get_on_ctx!(&c.variable_names).contains_key(id));
 
-					crate::utils::notify!("v-id {:?} con {:?}", id, contains);
+					crate::utilities::notify!("v-id {:?} con {:?}", id, contains);
 					contains
 				}
 				RootReference::This => !behavior.can_be_bound(),

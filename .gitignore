@@ -9,3 +9,4 @@ build
 node_modules
 /TODO.txt
 checker/specification/Cargo.lock
+checker/definitions/es5.d.ts
