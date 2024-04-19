@@ -72,14 +72,13 @@ jobs:
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(", ")' | fold -sw 60)
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
           
           echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
 
           CONTRIBUTORS=$(
             gh pr list --search "-author:@me" --state merged --json author 
-            | jq 'map(.author.name) | unique | join(", ")'
-            | fold -sw 60
+            | jq 'map(.author.name) | unique | join(",")'
           )
 
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT

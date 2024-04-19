@@ -69,7 +69,7 @@ cargo run -p ezno-parser --example lex path/to/file.ts
 
 ### The `notify!` macro
 
-The checker crate has the `crate::utils::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
+The checker crate has the `crate::utilities::notify!` macro, which can be used to trace information when the `EZNO_DEBUG` environment variable is set.
 
 ## *Rules* for contributions
 

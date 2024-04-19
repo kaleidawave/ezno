@@ -183,7 +183,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
 				if !function.on.name.declare {
-					crate::utils::notify!("TODO warning");
+					crate::utilities::notify!("TODO warning");
 				}
 
 				let variable_id = crate::VariableId(

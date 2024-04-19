@@ -141,7 +141,7 @@ impl StructureGenericArguments {
 	#[must_use]
 	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
 		if let StructureGenericArguments::ExplicitRestrictions(type_restrictions) = self {
-			crate::utils::notify!("under={:?}", under);
+			crate::utilities::notify!("under={:?}", under);
 			type_restrictions.get(&under).map(|(l, _)| *l)
 		} else {
 			None
@@ -170,7 +170,7 @@ impl StructureGenericArguments {
 					.get(&prototype)
 					.and_then(|lookup| lookup.get(&under))?;
 
-				crate::utils::notify!("Hopefully here {:?}", prototype);
+				crate::utilities::notify!("Hopefully here {:?}", prototype);
 				let res = lookup.calculate_lookup(info, *on);
 				Some(res)
 			}
@@ -192,7 +192,7 @@ impl TypeArgumentStore for StructureGenericArguments {
 			let lookup =
 				types.lookup_generic_map.get(&prototype).and_then(|lookup| lookup.get(&under))?;
 
-			crate::utils::notify!("Hopefully here {:?}", prototype);
+			crate::utilities::notify!("Hopefully here {:?}", prototype);
 			let res = lookup.calculate_lookup(info, *on);
 			let mut iter = res.into_iter();
 			let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);

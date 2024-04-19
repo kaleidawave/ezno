@@ -85,8 +85,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "codespan-reporting"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
+source = "git+https://github.com/kaleidawave/codespan.git?branch=static-dispatch-writecolor#ba6851bbcac82f85e0d103bfffa89142cc66fac5"
 dependencies = [
  "termcolor",
  "unicode-width",
@@ -729,7 +728,7 @@ checksum = "837c5f8866aeabd3ac8addcf50ef1e2779fe8c2a8d74bdd97102bdfe5605c629"
 [[package]]
 name = "source-map"
 version = "0.14.10"
-source = "git+https://github.com/kaleidawave/source-map.git?branch=codespan-use-str#06a38f9d08eca153a79dad8687956b32d4ddb15e"
+source = "git+https://github.com/kaleidawave/source-map.git?branch=codespan-use-str#925c001af4c1ae901f710df57ddbaff7a84f20f5"
 dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",

@@ -101,7 +101,7 @@ impl FunctionType {
 				}
 
 				if let Some(extends) = extends {
-					crate::utils::notify!("Here extends");
+					crate::utilities::notify!("Here extends");
 					let called_with_new =
 						super::calling::CalledWithNew::SpecialSuperCall { this_type: on };
 
@@ -153,7 +153,7 @@ pub(crate) fn create_this_before_function_synthesis(
 ) -> TypeId {
 	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
-	// crate::utils::notify!("Registered 'this' in constructor as {:?}", ty);
+	// crate::utilities::notify!("Registered 'this' in constructor as {:?}", ty);
 
 	let value = Event::CreateObject {
 		referenced_in_scope_as: ty,

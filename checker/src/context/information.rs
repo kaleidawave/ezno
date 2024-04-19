@@ -61,7 +61,7 @@ impl LocalInformation {
 		register_setter_event: bool,
 		position: Option<SpanWithSource>,
 	) {
-		// crate::utils::notify!("Registering {:?} {:?} {:?}", on, under, to);
+		// crate::utilities::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
 		if register_setter_event {
 			self.events.push(Event::Setter {
@@ -94,7 +94,7 @@ impl LocalInformation {
 		is_function_this: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-		// crate::utils::notify!("New object created under {:?}", ty);
+		// crate::utilities::notify!("New object created under {:?}", ty);
 
 		if let Some(prototype) = prototype {
 			self.prototypes.insert(ty, prototype);
@@ -287,9 +287,9 @@ fn key_matches(
 	} else {
 		match want_key {
 			PropertyKey::Type(want) => {
-				crate::utils::notify!("want {:?} key {:?}", want, key);
+				crate::utilities::notify!("want {:?} key {:?}", want, key);
 				let want = get_constraint(*want, types).unwrap_or(*want);
-				crate::utils::notify!("want {:?} key {:?}", want, key);
+				crate::utilities::notify!("want {:?} key {:?}", want, key);
 				key == want
 			}
 			PropertyKey::String(s) => {
@@ -330,7 +330,7 @@ pub fn merge_info(
 
 	// TODO don't need to do above some scope
 	for (var, true_value) in truthy.variable_current_value {
-		crate::utils::notify!("{:?} {:?}", var, true_value);
+		crate::utilities::notify!("{:?} {:?}", var, true_value);
 		// TODO don't get value above certain scope...
 		let falsy_value = falsy
 			.as_mut()

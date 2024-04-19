@@ -51,6 +51,7 @@ impl RootContext {
 
 	/// **For testing only**
 	#[must_use]
+	#[allow(clippy::needless_lifetimes)]
 	pub fn new_testing_context<'a>(&'a self) -> Environment<'a> {
 		self.new_lexical_environment(crate::Scope::Block {})
 	}
@@ -158,7 +159,7 @@ impl RootContext {
 		// 	let ty = Type::deserialize(&mut bytes, backing_source);
 		// 	ctx.new_type(ty);
 		// }
-		// crate::utils::notify!("Registered {:?} types", count);
+		// crate::utilities::notify!("Registered {:?} types", count);
 
 		// ctx.variables = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// // TODO terrible

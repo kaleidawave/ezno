@@ -48,7 +48,7 @@ where
 					let value = cast_as_string(cst, checking_data.options.strict_casts).unwrap();
 					checking_data.types.new_constant_type(Constant::String(value))
 				} else {
-					crate::utils::notify!("Need to cast to string...");
+					crate::utilities::notify!("Need to cast to string...");
 					value
 				}
 			}
@@ -155,7 +155,7 @@ where
 				match result {
 					Ok(result) => acc = result,
 					Err(()) => {
-						crate::utils::notify!("Invalid template literal concatenation");
+						crate::utilities::notify!("Invalid template literal concatenation");
 					}
 				}
 			}
@@ -189,12 +189,12 @@ pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStor
 			match result {
 				Ok(result) => acc = result,
 				Err(()) => {
-					// crate::utils::notify!(
+					// crate::utilities::notify!(
 					// 	"acc is {:?}, other is {:?}",
 					// 	types.get_type_by_id(acc),
 					// 	types.get_type_by_id(other)
 					// );
-					crate::utils::notify!("Invalid type template literal concatenation");
+					crate::utilities::notify!("Invalid type template literal concatenation");
 				}
 			}
 		}

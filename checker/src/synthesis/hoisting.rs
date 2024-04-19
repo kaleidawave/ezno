@@ -234,7 +234,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(stmt) = stmt {
 					for declaration in &stmt.declarations {
-						crate::utils::notify!("declaration.name {:?}", declaration.name);
+						crate::utilities::notify!("declaration.name {:?}", declaration.name);
 						let constraint = get_annotation_from_declaration(
 							declaration,
 							environment,
@@ -315,7 +315,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 
 						if constraint.is_none() {
-							crate::utils::notify!("constraint with no type?");
+							crate::utilities::notify!("constraint with no type?");
 						}
 
 						let value = constraint.unwrap_or(TypeId::ANY_TYPE);
@@ -391,7 +391,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							Exportable::TypeAlias(_) | Exportable::ImportAll { .. } => {}
 							// TODO
 							Exportable::Parts(..) | Exportable::ImportParts { .. } => {
-								crate::utils::notify!("TODO");
+								crate::utilities::notify!("TODO");
 							}
 						}
 					}
@@ -562,7 +562,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			position: _,
 		} => {
 			for declaration in declarations {
-				crate::utils::notify!("TODO constraint needed to be set for free variable!!!");
+				crate::utilities::notify!("TODO constraint needed to be set for free variable!!!");
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 

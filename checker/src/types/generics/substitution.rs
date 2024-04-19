@@ -37,7 +37,7 @@ pub(crate) fn substitute(
 		}
 		// This works for both objects and `AnonymousTypeAnnotation`s
 		Type::Object(ObjectNature::RealDeal | ObjectNature::AnonymousTypeAnnotation) => {
-			crate::utils::notify!("Here!!!");
+			crate::utilities::notify!("Here!!!");
 			arguments.curry_arguments(types, id)
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
@@ -82,12 +82,12 @@ pub(crate) fn substitute(
 			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
 				nature
 			{
-				crate::utils::notify!("Could not find argument for explicit generic");
+				crate::utilities::notify!("Could not find argument for explicit generic");
 				id
 			} else {
 				// Other root poly types cases handled by the early return
 				let on = crate::types::printing::print_type(id, types, environment, true);
-				crate::utils::notify!("Could not find argument for {}", on);
+				crate::utilities::notify!("Could not find argument for {}", on);
 				TypeId::ERROR_TYPE
 			}
 		}
@@ -129,7 +129,7 @@ pub(crate) fn substitute(
 			} => {
 				let condition = substitute(condition, arguments, environment, types);
 
-				// crate::utils::notify!(
+				// crate::utilities::notify!(
 				// 	"after on={} true={} false={}",
 				// 	crate::types::printing::print_type(
 				// 		condition,
@@ -158,7 +158,7 @@ pub(crate) fn substitute(
 						substitute(otherwise_result, arguments, environment, types)
 					}
 				} else {
-					crate::utils::notify!("{:?} is undecidable", condition);
+					crate::utilities::notify!("{:?} is undecidable", condition);
 					let truthy_result = substitute(truthy_result, arguments, environment, types);
 					let otherwise_result =
 						substitute(otherwise_result, arguments, environment, types);
@@ -183,7 +183,7 @@ pub(crate) fn substitute(
 				{
 					// Try get the constant
 					if under.as_number(types).is_some() {
-						crate::utils::notify!("Temp array index property get");
+						crate::utilities::notify!("Temp array index property get");
 						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
 					} else {
@@ -195,7 +195,7 @@ pub(crate) fn substitute(
 							environment,
 							types,
 						);
-						crate::utils::notify!(
+						crate::utilities::notify!(
 							"Specialising the constraint {:?} to {:?} using {:?} (which is strange)",
 							result,
 							new_result,
@@ -223,7 +223,7 @@ pub(crate) fn substitute(
 
 				// let on = substitute(on, arguments, environment);
 
-				// crate::utils::notify!("Substituted {}", environment.debug_type(on));
+				// crate::utilities::notify!("Substituted {}", environment.debug_type(on));
 
 				// let func_arguments = with
 				// 	.into_iter()
@@ -239,7 +239,7 @@ pub(crate) fn substitute(
 				// 	call_type(on, func_arguments, None, None, environment, checking_data)
 				// 		.expect("Inferred constraints and checking failed");
 
-				// crate::utils::notify!("TODO getting a property not substituted during calling");
+				// crate::utilities::notify!("TODO getting a property not substituted during calling");
 
 				// let on = substitute(on, arguments, environment, checking_data);
 				// let property = substitute(property, arguments, environment, checking_data);
@@ -276,7 +276,7 @@ pub(crate) fn substitute(
 			// Constructor::PrototypeOf(prototype) => {
 			// 	let prototype = substitute(prototype, arguments, environment, types);
 			// 	if let Type::AliasTo { to, .. } = types.get_type_by_id(prototype) {
-			// 		crate::utils::notify!(
+			// 		crate::utilities::notify!(
 			// 			"TODO temp might have to do more here when specialising a prototype"
 			// 		);
 			// 		*to
@@ -312,7 +312,7 @@ pub(crate) fn substitute(
 					let extends = substitute(extends, arguments, environment, types);
 
 					let does_extend = get_larger_type(ty, types) == extends;
-					crate::utils::notify!("Extends result {:?}", does_extend);
+					crate::utilities::notify!("Extends result {:?}", does_extend);
 					if does_extend {
 						TypeId::TRUE
 					} else {
@@ -332,7 +332,7 @@ pub(crate) fn substitute(
 					// 	types,
 					// );
 
-					// crate::utils::notify!(
+					// crate::utilities::notify!(
 					// 	"Extends result {:?} extends={}, ty={},",
 					// 	result,
 					// 	types.debug_type(extends),

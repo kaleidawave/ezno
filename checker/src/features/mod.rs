@@ -57,7 +57,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
 			types.new_constant_type(crate::Constant::String("object".to_owned()))
 		} else {
-			crate::utils::notify!("Cannot `typeof {:?}`", on);
+			crate::utilities::notify!("Cannot `typeof {:?}`", on);
 			TypeId::ERROR_TYPE
 		}
 	}
@@ -109,12 +109,12 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		// TODO mark type as awaited
 		let inner_type = get_promise_value(constraint, &checking_data.types);
 		if let Some(result) = inner_type {
-			crate::utils::notify!("Queue await effect");
+			crate::utilities::notify!("Queue await effect");
 			checking_data
 				.types
 				.register_type(Type::Constructor(crate::types::Constructor::Awaited { on, result }))
 		} else {
-			crate::utils::notify!(
+			crate::utilities::notify!(
 				"Await on {:?}, got {:?}",
 				checking_data.types.get_type_by_id(on),
 				checking_data.types.get_type_by_id(constraint)

@@ -306,7 +306,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							| Type::Interface { .. }
 							| Type::And(_, _)
 							| Type::Or(_, _) => {
-								crate::utils::notify!(
+								crate::utilities::notify!(
 								    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
 								    property, ty
 							    );
@@ -435,7 +435,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							let result = if let Some(arguments) = arguments {
 								substitute(value, &mut arguments.clone(), environment, types)
 							} else {
-								crate::utils::notify!("Here, getting property on {:?}", t);
+								crate::utilities::notify!("Here, getting property on {:?}", t);
 								value
 							};
 
@@ -464,9 +464,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					},
 					PropertyValue::Getter(getter) => {
 						// if is_open_poly {
-						// 	crate::utils::notify!("TODO evaluate getter...");
+						// 	crate::utilities::notify!("TODO evaluate getter...");
 						// } else {
-						// 	crate::utils::notify!("TODO don't evaluate getter");
+						// 	crate::utilities::notify!("TODO don't evaluate getter");
 						// }
 						// TODO : getter.return_type
 						types.register_type(Type::Constructor(Constructor::Property {
@@ -494,7 +494,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 				// let right =
 				// 	resolve_logical_with_poly(*right, on, under, arguments, environment, types);
 
-				// crate::utils::notify!("lr = {:?}", (left, right));
+				// crate::utilities::notify!("lr = {:?}", (left, right));
 
 				// TODO lots of information (and inference) lost here
 				if let (Ok(lhs), Ok(rhs)) = (*left, *right) {
@@ -518,7 +518,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					)?;
 					Some(types.new_conditional_type(based_on, lhs, rhs))
 				} else {
-					crate::utils::notify!("TODO emit some diagnostic about missing");
+					crate::utilities::notify!("TODO emit some diagnostic about missing");
 					None
 				}
 			}
@@ -542,7 +542,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 	let fact = get_property_unbound(on, publicity, &under, types, top_environment).ok()?;
 
-	// crate::utils::notify!("unbound is is {:?}", fact);
+	// crate::utilities::notify!("unbound is is {:?}", fact);
 
 	let value = resolve_logical_with_poly(
 		fact,
@@ -589,9 +589,9 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		let property_constraint =
 			get_property_unbound(constraint, publicity, under, types, environment);
 
-		// crate::utils::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
+		// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
-		// crate::utils::notify!(
+		// crate::utilities::notify!(
 		// 	"Re-assignment constraint {}, prop={} {:?}",
 		// 	print_type(constraint, types, environment, true),
 		// 	print_type(under, types, environment, true),
@@ -647,7 +647,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		}
 	}
 
-	// crate::utils::notify!(
+	// crate::utilities::notify!(
 	// 	"setting {:?} {:?} {:?}",
 	// 	crate::types::printing::print_type(types, on, environment, true),
 	// 	crate::types::printing::print_type(types, under, environment, true),
@@ -656,7 +656,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	let current_property = get_property_unbound(on, publicity, under, types, environment);
 
-	// crate::utils::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
+	// crate::utilities::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
 	// Cascade if it is a union (unsure tho)
 	if let Type::Constructor(Constructor::ConditionalResult {
@@ -704,7 +704,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			),
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: _implies_on, antecedent: _ } => {
-				crate::utils::notify!("Check that `implies_on` could be a setter here");
+				crate::utilities::notify!("Check that `implies_on` could be a setter here");
 				let info = behavior.get_latest_info(environment);
 				info.current_properties.entry(on).or_default().push((
 					publicity,

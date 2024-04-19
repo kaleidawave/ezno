@@ -202,7 +202,7 @@ impl<T: ContextType> Context<T> {
 		boundary: Boundary,
 		new_constraint: TypeId,
 	) {
-		crate::utils::notify!("Modifying #{} to have new base #{}", on.0, new_constraint.0);
+		crate::utilities::notify!("Modifying #{} to have new base #{}", on.0, new_constraint.0);
 
 		self.bases.mutable_bases.insert(on, (boundary, new_constraint));
 	}
@@ -267,8 +267,8 @@ impl<T: ContextType> Context<T> {
 		const INDENT: &str = "\t";
 
 		let collect = self.parents_iter().collect::<Vec<_>>();
-		// crate::utils::notify!("Debugging found {} contexts", collect.len());
-		// crate::utils::notify!("{:?}", self.info.variable_current_value);
+		// crate::utilities::notify!("Debugging found {} contexts", collect.len());
+		// crate::utilities::notify!("{:?}", self.info.variable_current_value);
 
 		let enumerate = collect.into_iter().rev().enumerate();
 		let mut buf = String::new();
@@ -360,7 +360,7 @@ impl<T: ContextType> Context<T> {
 		&self,
 		variable_name: &str,
 	) -> Option<(bool, Option<Boundary>, &VariableOrImport)> {
-		// crate::utils::notify!(
+		// crate::utilities::notify!(
 		// 	"Looking for {:?}, self.variables = {:?}",
 		// 	variable_name,
 		// 	self.variables.keys().collect::<Vec<_>>()
@@ -489,7 +489,7 @@ impl<T: ContextType> Context<T> {
 			|env, cd| {
 				func(env, cd);
 
-				crate::utils::notify!("TODO also get possible impure functions");
+				crate::utilities::notify!("TODO also get possible impure functions");
 
 				env.context_type.state.throw_type(&mut cd.types)
 			},
@@ -884,7 +884,7 @@ impl<T: ContextType> Context<T> {
 		if let Some(_closed_over_references) =
 			self.context_type.as_syntax().map(|s| &s.closed_over_references)
 		{
-			// crate::utils::notify!(
+			// crate::utilities::notify!(
 			// 	"is {:?} closed over {:?}",
 			// 	id,
 			// 	closed_over_references.get(&RootReference::Variable(id))
@@ -952,7 +952,9 @@ impl<T: ContextType> Context<T> {
 						_ => None,
 					}
 				} else {
-					crate::utils::notify!("TODO get root this type, returning ERROR_TYPE for now");
+					crate::utilities::notify!(
+						"TODO get root this type, returning ERROR_TYPE for now"
+					);
 					Some(TypeId::ERROR_TYPE)
 				}
 			})
@@ -1130,7 +1132,7 @@ pub(crate) fn get_value_of_variable(
 	for fact in info.get_chain_of_info() {
 		let res = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
-				crate::utils::notify!("Looking in {:?} for {:?}", closure, on);
+				crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
 			})
 		} else {

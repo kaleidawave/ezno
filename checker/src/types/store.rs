@@ -531,7 +531,7 @@ impl TypeStore {
 				} else if prototype
 					.is_some_and(|prototype| self.lookup_generic_map.contains_key(&prototype))
 				{
-					crate::utils::notify!("Registering lookup");
+					crate::utilities::notify!("Registering lookup");
 					Some(StructureGenericArguments::LookUp { on })
 				} else {
 					None
@@ -714,7 +714,7 @@ impl TypeStore {
 				Logical::Implies { .. } => todo!(),
 			}
 		} else {
-			crate::utils::notify!("Error: no index on type annotation");
+			crate::utilities::notify!("Error: no index on type annotation");
 			TypeId::ERROR_TYPE
 		}
 	}

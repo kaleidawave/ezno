@@ -45,7 +45,7 @@ pub(crate) fn call_constant_function(
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
-	// crate::utils::notify!("Calling constant function {} with {:?}", name, arguments);
+	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
 	match id {
 		// Single parameter number functions
@@ -144,7 +144,7 @@ pub(crate) fn call_constant_function(
 			} else {
 				let mut buf = String::from("Types: ");
 				for (not_at_end, arg) in arguments.iter().nendiate() {
-					// crate::utils::notify!("at end {:?} {:?}", not_at_end, arg);
+					// crate::utilities::notify!("at end {:?} {:?}", not_at_end, arg);
 					let arg = arg.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
 					buf.push_str(&to_string(print, debug, arg, types, environment));
 					if not_at_end {
@@ -274,7 +274,7 @@ pub(crate) fn call_constant_function(
 		}
 		"getPrototypeOf" => {
 			if let Some(first) = arguments.first() {
-				crate::utils::notify!("TODO walk up chain");
+				crate::utilities::notify!("TODO walk up chain");
 				let prototype = environment
 					.info
 					.prototypes

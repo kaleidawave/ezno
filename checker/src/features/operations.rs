@@ -212,7 +212,7 @@ pub fn evaluate_equality_inequality_operation(
 ) -> Result<TypeId, ()> {
 	match operator {
 		EqualityAndInequality::StrictEqual => {
-			// crate::utils::notify!("{:?} === {:?}", lhs, rhs);
+			// crate::utilities::notify!("{:?} === {:?}", lhs, rhs);
 
 			let is_dependent = types.get_type_by_id(lhs).is_dependent()
 				|| types.get_type_by_id(rhs).is_dependent();
@@ -278,7 +278,7 @@ pub fn evaluate_equality_inequality_operation(
 						Type::Constant(Constant::Number(lt)),
 					) = (types.get_type_by_id(*op_rhs), operator, types.get_type_by_id(rhs))
 					{
-						crate::utils::notify!("Shifted LT");
+						crate::utilities::notify!("Shifted LT");
 						lhs = *op_lhs;
 						rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
 					}
@@ -340,7 +340,7 @@ pub fn evaluate_equality_inequality_operation(
 			)
 		}
 		EqualityAndInequality::Equal => {
-			crate::utils::notify!("TODO equal operator");
+			crate::utilities::notify!("TODO equal operator");
 			Err(())
 		}
 		EqualityAndInequality::NotEqual => {
@@ -518,7 +518,7 @@ fn attempt_constant_equality(
 			// TODO does this work?
 			return attempt_constant_equality(*on_lhs, *on_rhs, types);
 		} else {
-			crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
+			crate::utilities::notify!("{:?} === {:?} is apparently false", lhs, rhs);
 			return Err(());
 		}
 	};

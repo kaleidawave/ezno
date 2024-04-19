@@ -468,12 +468,12 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 			} else {
 				if let Some(prototype) = prototype {
-					// crate::utils::notify!("P during print {:?}", prototype);
+					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info_chain, debug);
 					buf.push_str("] ");
 				} else {
-					// crate::utils::notify!("no P on {:?} during print", id);
+					// crate::utilities::notify!("no P on {:?} during print", id);
 				}
 				buf.push_str("{ ");
 				let properties = get_properties_on_type(ty, types, info_chain);

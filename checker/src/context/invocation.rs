@@ -152,7 +152,7 @@ impl InvocationContext {
 		let depth =
 			self.0.iter().filter(|p| matches!(p, InvocationKind::LoopIteration)).count() as u8;
 		// TODO can this every go > 1
-		crate::utils::notify!("Iteration depth {}", depth);
+		crate::utilities::notify!("Iteration depth {}", depth);
 		depth
 	}
 

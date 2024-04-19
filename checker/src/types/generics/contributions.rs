@@ -76,7 +76,7 @@ impl<'a> Contributions<'a> {
 
 		// TODO staging_contravariant
 		if let Some(constraint) = self.get_standard_restriction(under) {
-			crate::utils::notify!("Constraint is {:?}", constraint);
+			crate::utilities::notify!("Constraint is {:?}", constraint);
 			type_is_subtype_with_generics(
 				constraint,
 				GenericChain::None,
@@ -91,7 +91,7 @@ impl<'a> Contributions<'a> {
 		} else {
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
-			crate::utils::notify!("Here, constraint={:?}", constraint);
+			crate::utilities::notify!("Here, constraint={:?}", constraint);
 			type_is_subtype_with_generics(
 				constraint,
 				GenericChain::None,
@@ -118,7 +118,7 @@ impl<'a> Contributions<'a> {
 		// {
 		// 	let lhs = crate::types::printing::print_type(on, types, environment, true);
 		// 	let rhs = crate::types::printing::print_type(argument, types, environment, true);
-		// 	crate::utils::notify!("Here on=({}) :< arg=({})", lhs, rhs);
+		// 	crate::utilities::notify!("Here on=({}) :< arg=({})", lhs, rhs);
 		// }
 
 		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_covariant(
@@ -147,8 +147,8 @@ impl<'a> Contributions<'a> {
 		types: &TypeStore,
 		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
-		crate::utils::notify!("TODO assert it meets existing_covariant and staging_covariant");
-		crate::utils::notify!("TODO add to staging_covariant");
+		crate::utilities::notify!("TODO assert it meets existing_covariant and staging_covariant");
+		crate::utilities::notify!("TODO add to staging_covariant");
 
 		if let Some(under) = self.get_standard_restriction(on) {
 			type_is_subtype_with_generics(
@@ -170,7 +170,7 @@ impl<'a> Contributions<'a> {
 
 impl<'a> SubTypeBehavior<'a> for Contributions<'a> {
 	fn add_object_mutation_constraint(&mut self, _on: TypeId, _constraint: TypeId) {
-		crate::utils::notify!("TODO");
+		crate::utilities::notify!("TODO");
 	}
 
 	fn add_function_restriction(

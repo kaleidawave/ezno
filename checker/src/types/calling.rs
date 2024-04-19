@@ -75,7 +75,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 
 	match callable {
 		Ok(callable) => {
-			// crate::utils::notify!("{:?}", callable);
+			// crate::utilities::notify!("{:?}", callable);
 
 			// Fix as `.map` doesn't get this passed down
 			let structure_generics = if let Logical::Pure(FunctionLike {
@@ -89,7 +89,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 						environment,
 						&checking_data.types,
 					) {
-						crate::utils::notify!("Here :)");
+						crate::utilities::notify!("Here :)");
 						Some(args)
 					} else {
 						let prototype = environment
@@ -100,7 +100,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 						if prototype.is_some_and(|prototype| {
 							checking_data.types.lookup_generic_map.contains_key(&prototype)
 						}) {
-							crate::utils::notify!("Registering lookup for calling");
+							crate::utilities::notify!("Registering lookup for calling");
 
 							Some(StructureGenericArguments::LookUp { on: this_passed })
 						} else {
@@ -217,7 +217,7 @@ fn get_logical_callable_from_type(
 
 	let le_ty = types.get_type_by_id(ty);
 
-	// crate::utils::notify!("ty1={:?} ({:?})", le_ty, ty);
+	// crate::utilities::notify!("ty1={:?} ({:?})", le_ty, ty);
 
 	match le_ty {
 		Type::Class { .. } | Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => {
@@ -266,12 +266,12 @@ fn get_logical_callable_from_type(
 		},
 		Type::Constructor(Constructor::StructureGenerics(generic)) => {
 			get_logical_callable_from_type(generic.on, on, from, types).map(|res| {
-				crate::utils::notify!("Calling found {:?}", generic.arguments);
+				crate::utilities::notify!("Calling found {:?}", generic.arguments);
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
 			})
 		}
 		Type::Constructor(Constructor::Property { on, under: _, result, bind_this }) => {
-			crate::utils::notify!("Passing {:?}", on);
+			crate::utilities::notify!("Passing {:?}", on);
 
 			let this_value = if *bind_this { ThisValue::Passed(*on) } else { ThisValue::UseParent };
 			let result =
@@ -293,7 +293,7 @@ fn get_logical_callable_from_type(
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => {
 			let constraint = get_constraint(ty, types).unwrap();
-			crate::utils::notify!("Calling constructor / root poly type! {:?}", constraint);
+			crate::utilities::notify!("Calling constructor / root poly type! {:?}", constraint);
 			get_logical_callable_from_type(constraint, on, Some(ty), types)
 		}
 	}
@@ -450,22 +450,22 @@ fn find_possible_mutations(
 			| Type::Object(ObjectNature::AnonymousTypeAnnotation)
 			| Type::FunctionReference(_)
 			| Type::Or(_, _) => {
-				crate::utils::notify!("Unreachable");
+				crate::utilities::notify!("Unreachable");
 			}
 			Type::Constant(_) => {}
 			Type::RootPolyType(_) | Type::Constructor(_) => {
 				// All dependent anyway
-				crate::utils::notify!("TODO if any properties set etc");
+				crate::utilities::notify!("TODO if any properties set etc");
 			}
 			Type::SpecialObject(SpecialObjects::Function(_, _)) => {
-				crate::utils::notify!("TODO record that function could be called");
+				crate::utilities::notify!("TODO record that function could be called");
 			}
 			Type::Object(ObjectNature::RealDeal) => {
 				top_environment.possibly_mutated_objects.insert(argument.value);
-				crate::utils::notify!("TODO record methods could be called here as well");
+				crate::utilities::notify!("TODO record methods could be called here as well");
 			}
 			Type::SpecialObject(_) => {
-				crate::utils::notify!("TODO record stuff if mutable");
+				crate::utilities::notify!("TODO record stuff if mutable");
 			}
 		}
 	}
@@ -571,7 +571,7 @@ impl FunctionType {
 	) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
 		// TODO check that parameters vary
 		if behavior.in_recursive_cycle(self.id) {
-			crate::utils::notify!("Encountered recursion");
+			crate::utilities::notify!("Encountered recursion");
 			return Ok(FunctionCallResult {
 				called: Some(self.id),
 				returned_type: TypeId::ERROR_TYPE,
@@ -639,7 +639,7 @@ impl FunctionType {
 						});
 					}
 					Ok(ConstantOutput::Diagnostic(diagnostic)) => {
-						// crate::utils::notify!("Here, constant output");
+						// crate::utilities::notify!("Here, constant output");
 						return Ok(FunctionCallResult {
 							returned_type: TypeId::UNDEFINED_TYPE,
 							warnings: vec![InfoDiagnostic(diagnostic)],
@@ -654,7 +654,7 @@ impl FunctionType {
 						return Err(vec![item]);
 					}
 					Err(ConstantFunctionError::BadCall) => {
-						crate::utils::notify!(
+						crate::utilities::notify!(
 							"Constant function calling failed, non constant params"
 						);
 					}
@@ -676,7 +676,7 @@ impl FunctionType {
 				);
 
 				if let Err(ref _err) = call {
-					crate::utils::notify!("Calling function with dependent argument failed");
+					crate::utilities::notify!("Calling function with dependent argument failed");
 				}
 
 				let result = call?.returned_type;
@@ -779,13 +779,13 @@ impl FunctionType {
 		} else {
 			type_arguments.local_arguments.remove(&TypeId::NEW_TARGET_ARG);
 
-			crate::utils::notify!("Substituting return type (no return) {:?}", type_arguments);
+			crate::utilities::notify!("Substituting return type (no return) {:?}", type_arguments);
 
 			substitute(self.return_type, &mut type_arguments, environment, types)
 		};
 
 		if !errors.errors.is_empty() {
-			crate::utils::notify!("Got {} application errors", errors.errors.len());
+			crate::utilities::notify!("Got {} application errors", errors.errors.len());
 			return Err(errors.errors);
 		}
 
@@ -809,7 +809,7 @@ impl FunctionType {
 					});
 				}
 				FunctionBehavior::Constructor { non_super_prototype: _, this_object_type } => {
-					crate::utils::notify!("Registered this {:?}", this_object_type);
+					crate::utilities::notify!("Registered this {:?}", this_object_type);
 					let new_instance_type = type_arguments
 						.local_arguments
 						.remove(&this_object_type)
@@ -900,7 +900,7 @@ impl FunctionType {
 		}
 
 		if let Some(closure_id) = this_closure_id {
-			crate::utils::notify!("Setting closure variables");
+			crate::utilities::notify!("Setting closure variables");
 
 			// Set closed over values
 			// TODO `this`
@@ -911,7 +911,7 @@ impl FunctionType {
 					.closure_current_values
 					.insert((closure_id, RootReference::Variable(*variable)), value);
 
-				crate::utils::notify!("in {:?} set {:?} to {:?}", closure_id, variable, value);
+				crate::utilities::notify!("in {:?} set {:?} to {:?}", closure_id, variable, value);
 			});
 		}
 
@@ -937,7 +937,7 @@ impl FunctionType {
 				let value_of_this = if let Some(value) = this_value.get_passed() {
 					value
 				} else {
-					crate::utils::notify!(
+					crate::utilities::notify!(
 						"method has no 'this' passed :?. Passing `undefined` here"
 					);
 					TypeId::UNDEFINED_TYPE
@@ -981,7 +981,7 @@ impl FunctionType {
 					}
 				}
 
-				crate::utils::notify!(
+				crate::utilities::notify!(
 					"free this id {:?} & value of this {:?}",
 					free_this_id,
 					value_of_this
@@ -992,7 +992,7 @@ impl FunctionType {
 			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
 				match called_with_new {
 					CalledWithNew::New { on: _ } => {
-						crate::utils::notify!("TODO set prototype");
+						crate::utilities::notify!("TODO set prototype");
 						// if let Some(prototype) = non_super_prototype {
 						// let this_ty = environment.create_this(prototype, types);
 						let value_of_this =
@@ -1012,7 +1012,7 @@ impl FunctionType {
 				}
 			}
 			FunctionBehavior::Constructor { non_super_prototype: _, this_object_type } => {
-				crate::utils::notify!("Here {:?}", called_with_new);
+				crate::utilities::notify!("Here {:?}", called_with_new);
 				match called_with_new {
 					CalledWithNew::None => {
 						errors
@@ -1023,7 +1023,7 @@ impl FunctionType {
 						// TODO is this okay?
 					}
 					CalledWithNew::SpecialSuperCall { this_type } => {
-						crate::utils::notify!(
+						crate::utilities::notify!(
 							"Setting this_object {:?} to {:?}",
 							this_object_type,
 							this_type
@@ -1038,7 +1038,7 @@ impl FunctionType {
 			let new_target_value = match called_with_new {
 				CalledWithNew::New { on } => on,
 				CalledWithNew::SpecialSuperCall { .. } => {
-					crate::utils::notify!("Get this type for super new.target");
+					crate::utilities::notify!("Get this type for super new.target");
 					TypeId::ERROR_TYPE
 					// let ty = this_value.0;
 					// let on = crate::types::printing::print_type(
@@ -1047,7 +1047,7 @@ impl FunctionType {
 					// 	environment,
 					// 	true,
 					// );
-					// crate::utils::notify!("This argument {}", on);
+					// crate::utilities::notify!("This argument {}", on);
 					// ty
 				}
 				// In spec, not `new` -> `new.target === undefined`
@@ -1079,7 +1079,7 @@ impl FunctionType {
 
 			if let Some(SynthesisedArgument { spread, value, position }) = argument {
 				if *spread {
-					crate::utils::notify!("TODO spread arguments");
+					crate::utilities::notify!("TODO spread arguments");
 				}
 
 				if E::CHECK_PARAMETERS {
@@ -1100,7 +1100,7 @@ impl FunctionType {
 							type_arguments: &type_arguments,
 						});
 
-						// crate::utils::notify!("Type arguments are {:?}", type_arguments);
+						// crate::utilities::notify!("Type arguments are {:?}", type_arguments);
 
 						errors.errors.push(FunctionCallingError::InvalidArgumentType {
 							parameter_type: TypeStringRepresentation::from_type_id_with_generics(
@@ -1268,7 +1268,7 @@ fn check_parameter_type(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> SubTypeResult {
-	crate::utils::notify!("Value is {:?}, parent generics {:?}", value, parent_generics);
+	crate::utilities::notify!("Value is {:?}, parent generics {:?}", value, parent_generics);
 
 	// TODO properties
 	let mut contributions = Contributions {
@@ -1299,7 +1299,7 @@ fn check_parameter_type(
 	let Contributions { staging_covariant, staging_contravariant, .. } = contributions;
 
 	for (_res, _pos) in staging_contravariant {
-		crate::utils::notify!("TODO merge? pick highest?");
+		crate::utilities::notify!("TODO merge? pick highest?");
 	}
 
 	// TODO WIP
@@ -1340,7 +1340,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 		types: &crate::types::TypeStore,
 		environment: &mut Environment,
 	) -> TypeRestrictions {
-		crate::utils::notify!("call_site_type_arguments {:?}", call_site_type_arguments);
+		crate::utilities::notify!("call_site_type_arguments {:?}", call_site_type_arguments);
 
 		type_parameters
 			.0
@@ -1369,7 +1369,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 					}
 				} else {
 					todo!();
-					// crate::utils::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
+					// crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
 				};
 
 				(param.id, (ty, position))
@@ -1404,7 +1404,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 					let expected_type = parameters.get_parameter_type_at_index(idx).map_or(
 						TypeId::ANY_TYPE,
 						|(parameter_type, _)| {
-							crate::utils::notify!("Here {:?}", parameter_type);
+							crate::utilities::notify!("Here {:?}", parameter_type);
 
 							let ty = checking_data.types.get_type_by_id(parameter_type);
 							let parameter_type = if let Type::RootPolyType(
@@ -1413,7 +1413,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 							{
 								*fixed_to
 							} else {
-								crate::utils::notify!(
+								crate::utilities::notify!(
 									"Parameter is not `PolyNature::Parameter`? {:?}",
 									ty
 								);
@@ -1442,7 +1442,11 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 										),
 									};
 
-								crate::utils::notify!("{:?} with {:?}", parameter_type, arguments);
+								crate::utilities::notify!(
+									"{:?} with {:?}",
+									parameter_type,
+									arguments
+								);
 
 								checking_data.types.register_type(Type::Constructor(
 									Constructor::StructureGenerics(StructureGenerics {
@@ -1451,7 +1455,7 @@ fn synthesise_arguments_for_parameter<T: ReadFromFS, A: crate::ASTImplementation
 									}),
 								))
 							} else {
-								crate::utils::notify!("No generics");
+								crate::utilities::notify!("No generics");
 								parameter_type
 							}
 						},

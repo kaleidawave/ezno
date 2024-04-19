@@ -10,7 +10,7 @@ pub mod range_map;
 mod serialization;
 mod type_mappings;
 pub mod types;
-mod utils;
+mod utilities;
 
 pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
 pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
@@ -32,7 +32,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use types::{printing::print_type, TypeStore};
+use types::TypeStore;
 
 pub use context::{GeneralContext, Logical, RootContext};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
@@ -61,23 +61,6 @@ where
 }
 
 pub use source_map::{self, SourceId, Span};
-
-use crate::features::modules::CouldNotOpenFile;
-
-/// Contains all the modules and mappings for import statements
-///
-/// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
-pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
-	pub(crate) file_reader: &'a FileReader,
-	pub(crate) parser_requirements: AST::ParserRequirements,
-	pub(crate) current_working_directory: PathBuf,
-	/// Contains the text content of files (for source maps and diagnostics)
-	pub(crate) files: MapFileStore<WithPathMap>,
-	/// To catch cyclic imports
-	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
-	/// The result of checking. Includes exported variables and info
-	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
-}
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -180,6 +163,23 @@ pub trait ASTImplementation: Sized {
 	);
 }
 
+use crate::features::modules::CouldNotOpenFile;
+
+/// Contains all the modules and mappings for import statements
+///
+/// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
+pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
+	pub(crate) file_reader: &'a FileReader,
+	pub(crate) parser_requirements: AST::ParserRequirements,
+	pub(crate) current_working_directory: PathBuf,
+	/// Contains the text content of files (for source maps and diagnostics)
+	pub(crate) files: MapFileStore<WithPathMap>,
+	/// To catch cyclic imports
+	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
+	/// The result of checking. Includes exported variables and info
+	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
+}
+
 impl<'a, T, A> ModuleData<'a, T, A>
 where
 	T: crate::ReadFromFS,
@@ -208,7 +208,16 @@ where
 			return self.file_reader.read_file(path).map(|s| File::Binary(s.clone()));
 		}
 
-		if let Some(source) = self.files.get_source_at_path(path) {
+		let get_source_at_path = self.files.get_source_at_path(path);
+
+		// eprintln!(
+		// 	"Found {:?} {:?} {:?}",
+		// 	get_source_at_path,
+		// 	path.display(),
+		// 	self.files.get_paths()
+		// );
+
+		if let Some(source) = get_source_at_path {
 			Some(File::Source(source, self.files.get_file_content(source)))
 		} else {
 			// Load into system
@@ -397,20 +406,16 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
 		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
-		self.modules
-			.get(&source_id)
-			.expect("no module")
-			.mappings
-			.expressions_to_instances
-			.get(pos)
-			.map(|instance| {
-				print_type(
+		self.modules.get(&source_id).expect("no module").get_instance_at_position(pos).map(
+			|instance| {
+				crate::types::printing::print_type(
 					instance.get_value_on_ref(),
 					&self.types,
 					&self.top_level_information,
 					debug,
 				)
-			})
+			},
+		)
 	}
 
 	#[must_use]
@@ -427,13 +432,14 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	resolver: T,
 	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
+	existing_files: Option<MapFileStore<WithPathMap>>,
 ) -> CheckOutput<A> {
 	let mut checking_data =
-		CheckingData::<T, A>::new(options, &resolver, None, parser_requirements);
+		CheckingData::<T, A>::new(options, &resolver, existing_files, parser_requirements);
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
-	crate::utils::notify!("--- Reading definition files from {:?} ---", type_definition_files);
+	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 	if checking_data.diagnostics_container.has_error() {
@@ -446,7 +452,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		};
 	}
 
-	crate::utils::notify!("--- Finished definition file ---");
+	crate::utilities::notify!("--- Finished definition file ---");
 
 	for point in &entry_points {
 		let entry_content = checking_data.modules.file_reader.read_file(point);
@@ -551,7 +557,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 
 		match file {
 			File::Binary(mut content) => {
-				crate::utils::notify!("Using cache :)");
+				crate::utilities::notify!("Using cache :)");
 				assert_eq!(length, 1, "only a single cache is current supported");
 
 				let vec = content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]

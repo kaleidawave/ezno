@@ -609,8 +609,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 					} else if let (TypeId::STRING_TYPE, _) | (_, TypeId::STRING_TYPE) = (lhs, rhs) {
 						Some(TypeId::STRING_TYPE)
 					} else {
-						crate::utils::notify!("lhs = {:?}", types.get_type_by_id(lhs));
-						crate::utils::notify!("TODO use existing conditional");
+						crate::utilities::notify!("lhs = {:?}", types.get_type_by_id(lhs));
+						crate::utilities::notify!("TODO use existing conditional");
 						Some(TypeId::NUMBER_TYPE)
 					}
 				} else {
@@ -637,7 +637,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
-				crate::utils::notify!("Here, result of a property get");
+				crate::utilities::notify!("Here, result of a property get");
 				Some(result)
 			}
 			Constructor::ConditionalResult { result_union, .. } => {
@@ -655,7 +655,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::StructureGenerics { .. } => None,
 		},
 		Type::Object(ObjectNature::RealDeal) => {
-			// crate::utils::notify!("Might be missing some mutations that are possible here");
+			// crate::utilities::notify!("Might be missing some mutations that are possible here");
 			None
 		}
 		_ => None,
@@ -763,7 +763,7 @@ pub(crate) fn get_structure_arguments_based_on_object_constraint<C: InformationC
 		{
 			Some(arguments.clone())
 		} else {
-			crate::utils::notify!("Generics might be missed here {:?}", ty);
+			crate::utilities::notify!("Generics might be missed here {:?}", ty);
 			None
 		}
 	} else {

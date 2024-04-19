@@ -64,7 +64,7 @@ where
 		if let Some(parser::functions::ThisParameter { constraint, .. }) =
 			self.parameters.leading.get_this_parameter()
 		{
-			crate::utils::notify!("Synthesising this restriction");
+			crate::utilities::notify!("Synthesising this restriction");
 			Some(synthesise_type_annotation(constraint, environment, checking_data))
 		} else {
 			None
@@ -293,7 +293,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				unreachable!()
 			}
 		} else {
-			crate::utils::notify!("rest parameter should be array error");
+			crate::utilities::notify!("rest parameter should be array error");
 			// checking_data.diagnostics_container.add_error(
 			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 			// );
@@ -447,7 +447,7 @@ fn synthesise_function_parameters<
 				unreachable!()
 			}
 		} else {
-			crate::utils::notify!("rest parameter should be array error");
+			crate::utilities::notify!("rest parameter should be array error");
 			// checking_data.diagnostics_container.add_error(
 			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 			// );

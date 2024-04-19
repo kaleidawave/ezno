@@ -25,7 +25,7 @@ impl Bases {
 				self.mutable_bases.insert(ty, (ctx_ceil, base)).is_some()
 			};
 			if existing {
-				crate::utils::notify!("Found existing constraint, should be safe to override");
+				crate::utilities::notify!("Found existing constraint, should be safe to override");
 			}
 		}
 	}

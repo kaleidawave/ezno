@@ -276,10 +276,10 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		// TODO do these higher up in the block. To set relevant information
 		Statement::Comment(s, _) if s.starts_with("@ts") => {
-			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
 		}
 		Statement::MultiLineComment(s, _) if s.starts_with('*') => {
-			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
 		}
 		Statement::Comment(..)
 		| Statement::MultiLineComment(..)

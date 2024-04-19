@@ -1,8 +1,10 @@
-use std::iter;
-
 use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
-	term::{emit, Config, DisplayStyle},
+	term::{
+		emit,
+		termcolor::{ColorChoice, StandardStream},
+		Config, DisplayStyle,
+	},
 };
 use parser::{
 	source_map::{MapFileStore, PathMap},
@@ -50,31 +52,32 @@ fn checker_diagnostic_to_codespan_diagnostic(
 			}
 		}
 		checker::Diagnostic::PositionWithAdditionalLabels { reason, position, labels, kind } => {
-			let (labels, notes) =
-				labels.into_iter().partition::<Vec<_>, _>(|(_, value)| value.is_some());
-
-			let (message, labels) = if compact {
-				(reason, Vec::new())
-			} else {
-				let main =
-					iter::once(Label::primary(position.source, position).with_message(reason));
-
-				let with_additional = main
-					.chain(labels.into_iter().map(|(message, position)| {
-						let position = position.unwrap();
-						Label::secondary(position.source, position).with_message(message)
-					}))
-					.collect();
-
-				(String::new(), with_additional)
-			};
-			Diagnostic {
+			let mut diagnostic = Diagnostic {
 				severity: ezno_diagnostic_to_severity(&kind),
 				code: None,
-				message,
-				labels,
-				notes: notes.into_iter().map(|(message, _)| message).collect(),
+				message: String::new(),
+				labels: Vec::new(),
+				notes: Vec::new(),
+			};
+
+			if compact {
+				diagnostic.message = reason;
+			} else {
+				let main_label = Label::primary(position.source, position).with_message(reason);
+				diagnostic.labels.push(main_label);
+
+				for (message, position) in labels {
+					if let Some(position) = position {
+						diagnostic.labels.push(
+							Label::secondary(position.source, position).with_message(message),
+						);
+					} else {
+						diagnostic.notes.push(message)
+					}
+				}
 			}
+
+			diagnostic
 		}
 	}
 }
@@ -84,8 +87,6 @@ pub(crate) fn emit_diagnostics<T: PathMap>(
 	fs: &MapFileStore<T>,
 	compact: bool,
 ) -> Result<(), codespan_reporting::files::Error> {
-	use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-
 	// TODO custom here
 	let config = Config {
 		display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },

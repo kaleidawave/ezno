@@ -28,10 +28,25 @@ pub(crate) fn print_info() {
 
 		print_to_cli(format_args!("\n---\n"));
 		print_to_cli_with_break(format_args!("With thanks to"));
-		print_to_cli_with_break(format_args!("Contributors:\n\t{contributors}"));
-		print_to_cli_with_break(format_args!("Sponsors ({SPONSORS_URL}):\n\t{sponsors}"));
+		print_to_cli(format_args!("Contributors:"));
+		wrap_with_ident(contributors);
+		print_to_cli(format_args!("Sponsors ({SPONSORS_URL}):"));
+		wrap_with_ident(sponsors);
 		print_to_cli(format_args!("and all the believers ✨"));
 	}
+}
+
+fn wrap_with_ident(input: &str) {
+	let mut buf = String::new();
+	for part in input.split(',') {
+		buf.push_str(part);
+		buf.push_str(", ");
+		if buf.len() > 20 {
+			print_to_cli(format_args!("\t{buf}"));
+			buf.clear();
+		}
+	}
+	print_to_cli_with_break(format_args!("\t{buf}"));
 }
 
 /// Adds and extra new line afterwards
