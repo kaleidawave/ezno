@@ -82,6 +82,20 @@ const a = 3;
 
 - Cannot redeclare variable 'a'
 
+#### Variable shadowing
+
+> TODO maybe should test loops, functions, function parameters etc...
+
+```ts
+const a = 2
+{
+	const a = 3;
+	a satisfies 2;
+}
+```
+
+- Expected 2 found 3
+
 #### Unintialised variables are undefined
 
 > Might be a usage warning at some point
@@ -755,7 +769,6 @@ optionally("hello world");
 ```
 
 - Argument of type "hello world" is not assignable to parameter of type number | undefined
-
 
 #### Tagged template literal
 

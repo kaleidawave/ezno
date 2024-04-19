@@ -69,6 +69,7 @@ fn check_errors(
 		},
 		type_check_options,
 		(),
+		None,
 	);
 	// });
 

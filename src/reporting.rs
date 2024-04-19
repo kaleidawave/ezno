@@ -7,7 +7,7 @@ use codespan_reporting::{
 	},
 };
 use parser::{
-	source_map::{MapFileStore, PathMap},
+	source_map::{FileSystem, MapFileStore, PathMap},
 	SourceId,
 };
 
@@ -100,7 +100,6 @@ pub(crate) fn emit_diagnostics<T: PathMap>(
 	let mut writer = StandardStream::stderr(ColorChoice::Auto);
 
 	let files = fs.into_code_span_store();
-	// parser::source_map::CodeSpanStore(fs);
 
 	for diagnostic in diagnostics {
 		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic, compact);

@@ -45,7 +45,6 @@ impl<T> RangeMap<T> {
 	}
 
 	/// TODO into custom iterator
-	#[must_use]
 	pub fn get_many(&self, point: u32, cb: impl for<'a> Fn(&'a T)) {
 		let rev = &mut self
 			.entries
@@ -57,7 +56,7 @@ impl<T> RangeMap<T> {
 			debug_assert!(*start <= point);
 			for (end, value) in values {
 				if point <= *end {
-					cb(value)
+					cb(value);
 				}
 			}
 		}

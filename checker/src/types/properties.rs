@@ -105,6 +105,10 @@ impl<'a> PropertyKey<'a> {
 			}
 		}
 	}
+
+	pub(crate) fn new_empty_property_key() -> Self {
+		PropertyKey::String(Cow::Borrowed(""))
+	}
 }
 
 static NUMBERS: &str = "0123456789";

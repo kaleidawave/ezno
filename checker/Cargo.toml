@@ -47,7 +47,8 @@ simple-json-parser = "0.0.2"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 tsify = "0.4.5"
-wasm-bindgen = "0.2"
+# TODO needs unfixed change in source-map
+wasm-bindgen = "=0.2.89"
 
 
 [dependencies.parser]
