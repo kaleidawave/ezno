@@ -153,6 +153,7 @@ my_obj.a = "hello world"
 const my_obj: { b: 3 } = { a: 2 }
 ```
 
+- Excess property a was provided, but is not a property of type { b: 3 }
 - Type { a: 2 } is not assignable to type { b: 3 }
 
 #### Getters
@@ -2111,6 +2112,7 @@ function getA<T extends { a: string }>(p: T) {
 getA({ p: 2 })
 ```
 
+- Excess property p was provided, but is not a property of type T
 - Argument of type { p: 2 } is not assignable to parameter of type T
 
 > I think reasons contains more information
@@ -2479,6 +2481,7 @@ const x: Record2<"test", boolean> = { no: false },
       z: Record2<"test", boolean> = { test: false };
 ```
 
+- Excess property no was provided, but is not a property of type { [\"test\"]: boolean }
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 
