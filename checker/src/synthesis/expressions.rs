@@ -11,7 +11,7 @@ use parser::{
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	ASTNode, Expression,
+	ASTNode, Expression, ToStringOptions,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 		information::{get_properties_on_type, get_property_unbound},
 		Logical,
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
 		self, await_expression,
 		functions::{
@@ -31,7 +31,7 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
-		properties::PropertyKey,
+		properties::{get_property, PropertyKey},
 	},
 	Decidable,
 };
@@ -1048,13 +1048,44 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Some(member_position),
 				);
 			}
-			ObjectLiteralMember::Property { key, value, .. } => {
+			ObjectLiteralMember::Property { key: k, value, position, .. } => {
 				let key = parser_property_key_to_checker_property_key(
-					key.get_ast_ref(),
+					k.get_ast_ref(),
 					environment,
 					checking_data,
 					true,
 				);
+
+				let position_with_source = position.with_source(environment.get_source());
+
+				let maybe_property_expecting = environment.get_property(
+					expected,
+					Publicity::Public,
+					&key,
+					&mut checking_data.types,
+					None,
+					position_with_source,
+					&checking_data.options,
+					false,
+				);
+
+				if expected != TypeId::ANY_TYPE
+					&& expected != TypeId::OBJECT_TYPE
+					&& maybe_property_expecting.is_none()
+				{
+					checking_data.diagnostics_container.add_warning(
+						TypeCheckWarning::ExcessProperty {
+							position: position_with_source,
+							expected_type: TypeStringRepresentation::from_type_id(
+								expected,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							excess_property_name: k.to_string(&ToStringOptions::default()),
+						},
+					)
+				}
 
 				// TODO needs improvement
 				let property_expecting = get_property_unbound(

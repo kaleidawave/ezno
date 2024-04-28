@@ -211,6 +211,40 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
+#### Spreading Inline Object Literal
+
+```ts
+type MyObject = { foo: number; bar?: number };
+
+const b: MyObject = {
+  foo: 1,
+  ...{
+    bar: 2,
+    invalid: 3,
+  },
+};
+```
+
+- Excess property invalid was provided, but is not a property of type MyObject
+
+#### Spreading Inline Object Literal on Conditional
+
+```ts
+type MyObject = { foo: number; bar?: number };
+const condition = true;
+
+const b: MyObject = {
+  foo: 1,
+  ...(condition ? {
+    bar: 2,
+    invalid: 3,
+  } : {}),
+};
+```
+
+- Expression is always true
+- Excess property invalid was provided, but is not a property of type MyObject
+
 ### Constant evaluation
 
 #### Arithmetic
