@@ -12,6 +12,7 @@ use crate::{
 	types::{
 		generics::generic_type_arguments::StructureGenericArguments, get_constraint, substitute,
 		FunctionType, GenericChain, GenericChainLink, ObjectNature, StructureGenerics,
+		SynthesisedArgument,
 	},
 	Constant, Environment, TypeId,
 };
@@ -23,6 +24,7 @@ use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 pub enum PropertyKind {
 	Direct,
 	Getter,
+	Setter,
 	/// TODO unsure
 	Generic,
 }
@@ -704,6 +706,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				publicity,
 				under,
 				new,
+				types,
 				setter_position,
 			),
 			Logical::Or { .. } => todo!(),
@@ -750,6 +753,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 	publicity: Publicity,
 	under: &PropertyKey<'_>,
 	new: PropertyValue,
+	types: &mut TypeStore,
 	setter_position: Option<SpanWithSource>,
 ) {
 	match og {
@@ -770,8 +774,32 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 			});
 		}
 		PropertyValue::Getter(_) => todo!(),
-		PropertyValue::Setter(_setter) => {
-			todo!()
+		PropertyValue::Setter(setter) => {
+			// TODO: FunctionType.Call requires a SpanWithSource but here we have an
+			// Option<SpanWithSource>. However, updating this function to require a SpanWithSource
+			// would mean fairly broad changes.
+			let some_setter_position = setter_position.expect("Setter position is required!");
+			let arg = SynthesisedArgument {
+				position: some_setter_position,
+				spread: false,
+				value: match new {
+					PropertyValue::Value(type_id) => type_id,
+					_ => todo!(),
+				},
+			};
+			let _ = setter.call(
+				CalledWithNew::None,
+				ThisValue::Passed(on),
+				some_setter_position,
+				&[arg],
+				None,
+				// TODO structure generics
+				None,
+				environment,
+				behavior,
+				types,
+				false,
+			);
 		}
 		PropertyValue::Dependent { .. } => todo!(),
 	}

@@ -2894,3 +2894,37 @@ register(document.title)
 ```
 
 - Argument of type string is not assignable to parameter of type Literal\<string\>
+
+### Setters
+
+#### Setters invocation invalid assignment
+
+```ts
+let a = 2;
+const obj = {
+   set value(v) {
+       a = v;
+   }
+}
+
+let b: 80 = (obj.value = "some value");
+let c: 80 = a;
+```
+
+- Type "some value" is not assignable to type 80
+- Type "some value" is not assignable to type 80
+
+#### Setters
+
+```ts
+let a = 2;
+const obj = {
+   set value(v) {
+       a = v;
+   }
+}
+
+let b: 80 = (obj.value = 80);
+let c: 80 = a;
+```
+
