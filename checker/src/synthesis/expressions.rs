@@ -1084,7 +1084,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							),
 							excess_property_name: k.to_string(&ToStringOptions::default()),
 						},
-					)
+					);
 				}
 
 				// TODO needs improvement
