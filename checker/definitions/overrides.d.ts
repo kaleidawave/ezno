@@ -2,11 +2,12 @@
 declare function debug_type_independent(t: any): void;
 
 declare class ImportEnv {
-    [s: string]: string | undefined;
+  [key: string]: string | undefined;
 }
 
 declare class ImportMeta {
-  env: ImportEnv;
+  @Constant
+  static env: ImportEnv;
 }
 
 declare class Array<T> {

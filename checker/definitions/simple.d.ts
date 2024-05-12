@@ -22,6 +22,15 @@ declare function compile_type_to_object<T>(): any performs const compile_type_to
 
 // declare var undefined: undefined;
 
+interface ImportEnv {
+  [key: string]: string | undefined;
+}
+
+interface ImportMeta {
+  @Constant
+  static env: ImportEnv;
+}
+
 interface nominal Array<T> {
     [index: number]: T | undefined;
     
