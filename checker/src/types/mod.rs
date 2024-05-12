@@ -98,6 +98,8 @@ impl TypeId {
 	pub const READONLY_RESTRICTION: Self = Self(25);
 
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 26;
+
+	pub const IMPORT_META: Self = Self(27);
 }
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]

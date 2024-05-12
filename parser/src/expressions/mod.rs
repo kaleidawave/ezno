@@ -115,6 +115,7 @@ pub enum Expression {
 	SuperExpression(SuperReference, Span),
 	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
 	NewTarget(Span),
+	ImportMeta(Span),
 	DynamicImport {
 		path: Box<Expression>,
 		options: Option<Box<Expression>>,
@@ -287,25 +288,44 @@ impl Expression {
 			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => {
 				Expression::ThisReference(t.get_span())
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
-				let _ = reader.expect_next(TSXToken::OpenParentheses)?;
-				let path = Expression::from_reader(reader, state, options)?;
-				if let Expression::StringLiteral(path, ..) = &path {
-					state.constant_imports.push(path.clone());
+			t @ Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
+				let token = reader.next();
+				if let Some(Token(TSXToken::Dot, _)) = token {
+					reader.expect_next(TSXToken::Identifier("meta".into()))?;
+					Expression::ImportMeta(t.get_span())
+				} else if let Some(Token(TSXToken::OpenParentheses, _)) = token {
+					let path = Expression::from_reader(reader, state, options)?;
+					if let Expression::StringLiteral(path, ..) = &path {
+						state.constant_imports.push(path.clone());
+					} else {
+						return Err(ParseError::new(
+							ParseErrors::ExpectedStringLiteral {
+								// TODO use something more specific
+								found: TSXToken::EOS,
+							},
+							path.get_position(),
+						));
+					}
+
+					let options =
+						if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
+							Some(Box::new(Expression::from_reader(reader, state, options)?))
+						} else {
+							None
+						};
+					let end = reader.expect_next(TSXToken::CloseParentheses)?;
+					Expression::DynamicImport {
+						path: Box::new(path),
+						options,
+						position: start.union(end.get_end_after(1)),
+					}
+				} else if let Some(token) = token {
+					return throw_unexpected_token_with_token(
+						token,
+						&[TSXToken::Dot, TSXToken::OpenParentheses],
+					);
 				} else {
-					// TODO warning dynamic
-				}
-				let options = if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some()
-				{
-					Some(Box::new(Expression::from_reader(reader, state, options)?))
-				} else {
-					None
-				};
-				let end = reader.expect_next(TSXToken::OpenParentheses)?;
-				Expression::DynamicImport {
-					path: Box::new(path),
-					options,
-					position: start.union(end.get_end_after(1)),
+					return Err(ParseError::new(ParseErrors::LexingFailed, t.get_span()));
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Super), _) => {
@@ -1210,6 +1230,7 @@ impl Expression {
 			| Self::SuperExpression(..)
 			| Self::NewTarget(..)
 			| Self::ClassExpression(..)
+			| Self::ImportMeta(..)
 			| Self::DynamicImport { .. }
 			| Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 			Self::BinaryOperation { operator, .. } => operator.precedence(),
@@ -1491,6 +1512,9 @@ impl Expression {
 			}
 			Self::NewTarget(..) => {
 				buf.push_str("new.target");
+			}
+			Self::ImportMeta(..) => {
+				buf.push_str("import.meta");
 			}
 			Self::DynamicImport { path, .. } => {
 				buf.push_str("import(");

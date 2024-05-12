@@ -1,6 +1,14 @@
 @Constant
 declare function debug_type_independent(t: any): void;
 
+declare class ImportEnv {
+    [s: string]: string | undefined;
+}
+
+declare class ImportMeta {
+  env: ImportEnv;
+}
+
 declare class Array<T> {
     [index: number]: T | undefined;
 
