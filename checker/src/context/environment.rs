@@ -863,7 +863,9 @@ impl<'a> Environment<'a> {
 			Ok(match kind {
 				PropertyKind::Getter => Instance::GValue(result),
 				// TODO instance.property...?
-				PropertyKind::Generic | PropertyKind::Direct => Instance::RValue(result),
+				PropertyKind::Generic | PropertyKind::Direct | PropertyKind::Setter => {
+					Instance::RValue(result)
+				}
 			})
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
