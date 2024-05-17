@@ -21,6 +21,7 @@ use source_map::SpanWithSource;
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
+#[derive(PartialEq)]
 pub enum PropertyKind {
 	Direct,
 	Getter,
@@ -376,10 +377,39 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					}
 					PropertyValue::Setter(_) => todo!(),
 					PropertyValue::Deleted => None,
-					PropertyValue::Dependent { .. } => todo!(),
+					PropertyValue::Dependent { on, truthy: _, otherwise: _ } => {
+						// TODO: why does this work?
+						Some((PropertyKind::Direct, on))
+					}
 				}
 			}
-			Logical::Or { .. } => todo!(),
+			Logical::Or { left, right, based_on } => left
+				.map(|l| {
+					resolve_property_on_logical(
+						l,
+						based_on,
+						None,
+						environment,
+						types,
+						behavior,
+						bind_this,
+					)
+				})
+				.or_else(|_| {
+					right.map(|r| {
+						resolve_property_on_logical(
+							r,
+							based_on,
+							None,
+							environment,
+							types,
+							behavior,
+							bind_this,
+						)
+					})
+				})
+				.ok()
+				.flatten(),
 			Logical::Implies { on: log_on, antecedent } => resolve_property_on_logical(
 				*log_on,
 				on,
