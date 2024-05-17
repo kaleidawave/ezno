@@ -20,7 +20,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 		type_annotations: false,
 		..Default::default()
 	};
-	let Ok(module) = Module::from_string(input.to_owned(), parse_options) else {
+	let Ok(module1) = Module::from_string(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};
 

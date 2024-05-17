@@ -264,7 +264,7 @@ impl TypeStore {
 		false_result: TypeId,
 	) -> TypeId {
 		let on = self.register_type(Type::Constructor(super::Constructor::TypeRelationOperator(
-			TypeRelationOperator::Extends { ty: check_type, extends },
+			TypeRelationOperator::Extends { item: check_type, extends },
 		)));
 		self.new_conditional_type(on, true_result, false_result)
 	}

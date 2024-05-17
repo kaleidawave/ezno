@@ -2424,13 +2424,13 @@ function add() {
 #### Generic condition
 
 ```ts
-declare function isNumber<T>(t: T): T extends number ? true : false;
+declare function isNumber<T>(t: T): T extends number ? "yeess" : "nno";
 
-isNumber(5) satisfies true;
+isNumber(5) satisfies "yeess";
 isNumber("5") satisfies number;
 ```
 
-- Expected number, found false
+- Expected number, found "noo"
 
 #### More accurate generic
 
@@ -2977,4 +2977,3 @@ const obj = {
 let b: 80 = (obj.value = 80);
 let c: 80 = a;
 ```
-

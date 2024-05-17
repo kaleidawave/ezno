@@ -338,7 +338,7 @@ pub enum TypeOperator {
 /// TODO instance of?
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeRelationOperator {
-	Extends { ty: TypeId, extends: TypeId },
+	Extends { item: TypeId, extends: TypeId },
 }
 
 pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> TypeId {

@@ -492,7 +492,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let item = synthesise_type_annotation(item, environment, checking_data);
 			let extends = synthesise_type_annotation(extends, environment, checking_data);
 			let ty = Type::Constructor(Constructor::TypeRelationOperator(
-				crate::types::TypeRelationOperator::Extends { ty: item, extends },
+				crate::types::TypeRelationOperator::Extends { item, extends },
 			));
 			checking_data.types.register_type(ty)
 		}

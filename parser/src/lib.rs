@@ -1069,28 +1069,32 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 pub(crate) fn expect_semi_colon(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	line_starts: &source_map::LineStarts,
-	prev: u32,
+	statement_end: u32,
 	record_new_lines: bool,
 ) -> ParseResult<usize> {
 	if let Some(token) = reader.peek() {
 		let Token(kind, start) = token;
-		// eprintln!("{:?} {:?} {:?}", prev, next, line_starts);
+
 		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
-			Ok(0)
+			Ok(line_starts.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1))
 		} else if let TSXToken::SemiColon = kind {
-			reader.next();
-			let next = reader.peek().unwrap().1 .0;
+			reader.next().unwrap();
+			let Token(kind, next) = reader.peek().unwrap();
 			if record_new_lines {
-				Ok(line_starts
-					.byte_indexes_crosses_lines(prev as usize, next as usize)
-					.checked_sub(1)
-					.unwrap_or_default())
+				let byte_indexes_crosses_lines =
+					line_starts.byte_indexes_crosses_lines(statement_end as usize, next.0 as usize);
+				// TODO WIP
+				if let TSXToken::EOS = kind {
+					Ok(byte_indexes_crosses_lines)
+				} else {
+					Ok(byte_indexes_crosses_lines.saturating_sub(1))
+				}
 			} else {
 				Ok(0)
 			}
 		} else {
-			let line_difference =
-				line_starts.byte_indexes_crosses_lines(prev as usize, start.0 as usize);
+			let line_difference = line_starts
+				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
 			if line_difference == 0 {
 				throw_unexpected_token(reader, &[TSXToken::SemiColon])
 			} else {

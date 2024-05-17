@@ -378,29 +378,26 @@ pub(crate) fn parse_statements_and_declarations(
 		let requires_semi_colon = item.requires_semi_colon();
 		let end = item.get_position().end;
 
-		let blank_lines_between = if requires_semi_colon {
+		let blank_lines_after_statement = if requires_semi_colon {
 			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
 		} else if options.retain_blank_lines {
 			// + 1 fixes issue where end can be > the next?
-			state
-				.line_starts
-				.byte_indexes_crosses_lines(end as usize, reader.peek().unwrap().1 .0 as usize + 1)
-				.saturating_sub(1)
+			let next = reader.peek().unwrap().1 .0 as usize + 1;
+			state.line_starts.byte_indexes_crosses_lines(end as usize, next).saturating_sub(1)
 		} else {
 			0
 		};
-		if items.is_empty() {
-			// Don't add leading semi-colons
-			if !matches!(item, StatementOrDeclaration::Statement(Statement::Empty(..))) {
-				items.push(item);
-			}
-		} else {
-			items.push(item);
-			for _ in 0..blank_lines_between {
-				// TODO span
-				let span = Span { start: end, end, source: () };
-				items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
-			}
+
+		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
+			(items.is_empty(), &item)
+		{
+			continue;
+		}
+		items.push(item);
+		for _ in 0..blank_lines_after_statement {
+			// TODO span
+			let span = Span { start: end, end, source: () };
+			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
 		}
 	}
 	Ok(items)

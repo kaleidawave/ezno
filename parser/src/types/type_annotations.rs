@@ -707,7 +707,6 @@ impl TypeAnnotation {
 			}
 		}
 
-		// Extends, Is, Intersections & Unions or implicit function literals
 		match reader.peek() {
 			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
 				reader.next();
@@ -720,11 +719,11 @@ impl TypeAnnotation {
 				)?;
 				// TODO local
 				let position = reference.get_position().union(extends_type.get_position());
-				Ok(TypeAnnotation::Extends {
+				reference = TypeAnnotation::Extends {
 					item: Box::new(reference),
 					extends: Box::new(extends_type),
 					position,
-				})
+				};
 			}
 			Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) => {
 				reader.next();
@@ -738,12 +737,17 @@ impl TypeAnnotation {
 				// TODO local
 				let position = reference.get_position().union(is_type.get_position());
 
-				Ok(TypeAnnotation::Is {
+				reference = TypeAnnotation::Is {
 					item: Box::new(reference),
 					is: Box::new(is_type),
 					position,
-				})
+				};
 			}
+			_ => {}
+		}
+
+		// Extends, Is, Intersections & Unions or implicit function literals
+		match reader.peek() {
 			Some(Token(TSXToken::BitwiseOr, _)) => {
 				if matches!(parent_kind, Some(TypeOperatorKind::Query | TypeOperatorKind::Function))
 				{
@@ -829,6 +833,9 @@ impl TypeAnnotation {
 				})
 			}
 			Some(Token(TSXToken::QuestionMark, _)) => {
+				if let Some(TypeOperatorKind::Query) = parent_kind {
+					return Ok(reference);
+				}
 				reader.next();
 				let lhs = TypeAnnotation::from_reader(reader, state, options)?;
 				reader.expect_next(TSXToken::Colon)?;
