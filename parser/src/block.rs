@@ -104,7 +104,9 @@ impl ASTNode for StatementOrDeclaration {
 				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Marker(_, _) => {
-				panic!()
+				if !options.expect_markers {
+					panic!("Unexpected marker in AST")
+				}
 			}
 		}
 	}
@@ -244,7 +246,7 @@ impl Visitable for Block {
 }
 
 /// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
+#[derive(Debug, Clone, PartialEq, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
@@ -321,7 +323,12 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					expect_semi_colon(reader, &state.line_starts, stmt.get_position().end)?;
+					let _ = expect_semi_colon(
+						reader,
+						&state.line_starts,
+						stmt.get_position().end,
+						false,
+					)?;
 				}
 				Box::new(stmt).into()
 			}
@@ -370,11 +377,25 @@ pub(crate) fn parse_statements_and_declarations(
 		}
 
 		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
-		if value.requires_semi_colon() {
-			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
-		}
-		// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
+		let requires_semi_colon = value.requires_semi_colon();
+		let end = value.get_position().end;
 		items.push(value);
+		let blank_lines_between = if requires_semi_colon {
+			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
+		} else if options.retain_blank_lines {
+			state
+				.line_starts
+				.byte_indexes_crosses_lines(end as usize, reader.peek().unwrap().1 .0 as usize)
+				.checked_sub(1)
+				.unwrap_or_default()
+		} else {
+			0
+		};
+		for _ in 0..blank_lines_between {
+			// TODO span
+			let span = Span { start: end, end, source: () };
+			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)))
+		}
 	}
 	Ok(items)
 }

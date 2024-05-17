@@ -12,7 +12,7 @@ use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
 	pub is_declare: bool,
@@ -158,7 +158,7 @@ impl ASTNode for InterfaceDeclaration {
 
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum InterfaceMember {
 	Method {

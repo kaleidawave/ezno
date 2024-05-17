@@ -70,6 +70,17 @@ tsify = "0.4.5"
 multiline-term-input = "0.1.0"
 notify = "6.1.0"
 
+# TODO temporary testing, doesn't change API (or break anything)
+[patch.crates-io]
+source-map = { git = 'https://github.com/kaleidawave/source-map.git', branch = 'codespan-use-str' }
+codespan-reporting = { git = 'https://github.com/kaleidawave/codespan.git', branch = 'static-dispatch-writecolor' }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+debug = false
 
 [workspace.lints.clippy]
 all = "deny"

@@ -20,49 +20,65 @@ use super::{
 	expressions::synthesise_multiple_expression, parser_property_key_to_checker_property_key,
 };
 
-pub(super) fn synthesise_lhs_of_assignment_to_reference<T: crate::ReadFromFS>(
-	lhs: &LHSOfAssignment,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable<super::EznoParser> {
-	match lhs {
-		LHSOfAssignment::ObjectDestructuring(items, _) => {
-			synthesise_object_to_reference(items, environment, checking_data)
-		}
-		LHSOfAssignment::ArrayDestructuring(items, _) => {
-			synthesise_array_to_reference(items, environment, checking_data)
-		}
-		LHSOfAssignment::VariableOrPropertyAccess(access) => Assignable::Reference(
-			synthesise_access_to_reference(access, environment, checking_data),
-		),
-	}
+pub(super) trait SynthesiseToAssignable {
+	fn synthesise_to_assignable<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) -> Assignable<super::EznoParser>;
 }
 
-fn synthesise_variable_field_to_reference<T: crate::ReadFromFS>(
-	variable_field: &VariableField,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Assignable<super::EznoParser> {
-	match variable_field {
-		VariableField::Object(items, _) => {
-			synthesise_object_to_reference(items, environment, checking_data)
-		}
-		VariableField::Array(items, _) => {
-			synthesise_array_to_reference(items, environment, checking_data)
-		}
-		VariableField::Name(ident) => Assignable::Reference(match ident {
-			VariableIdentifier::Standard(name, position) => {
-				Reference::Variable(name.clone(), position.with_source(environment.get_source()))
+impl SynthesiseToAssignable for LHSOfAssignment {
+	fn synthesise_to_assignable<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) -> Assignable<super::EznoParser> {
+		match self {
+			LHSOfAssignment::ObjectDestructuring(items, _) => {
+				synthesise_object_to_reference(items, environment, checking_data)
 			}
-			VariableIdentifier::Marker(_, position) => Reference::new_empty_variable_reference(
-				position.with_source(environment.get_source()),
+			LHSOfAssignment::ArrayDestructuring(items, _) => {
+				synthesise_array_to_reference(items, environment, checking_data)
+			}
+			LHSOfAssignment::VariableOrPropertyAccess(access) => Assignable::Reference(
+				synthesise_access_to_reference(access, environment, checking_data),
 			),
-		}),
+		}
 	}
 }
 
-fn synthesise_object_to_reference<T: crate::ReadFromFS>(
-	items: &[parser::WithComment<parser::ObjectDestructuringField>],
+impl SynthesiseToAssignable for VariableField {
+	fn synthesise_to_assignable<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) -> Assignable<super::EznoParser> {
+		match self {
+			VariableField::Object(items, _) => {
+				synthesise_object_to_reference(items, environment, checking_data)
+			}
+			VariableField::Array(items, _) => {
+				synthesise_array_to_reference(items, environment, checking_data)
+			}
+			VariableField::Name(ident) => Assignable::Reference(match ident {
+				VariableIdentifier::Standard(name, position) => Reference::Variable(
+					name.clone(),
+					position.with_source(environment.get_source()),
+				),
+				VariableIdentifier::Marker(_, position) => Reference::new_empty_variable_reference(
+					position.with_source(environment.get_source()),
+				),
+			}),
+		}
+	}
+}
+
+fn synthesise_object_to_reference<
+	T: crate::ReadFromFS,
+	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
+>(
+	items: &[parser::WithComment<parser::ObjectDestructuringField<U>>],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -70,7 +86,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 		items
 			.iter()
 			.map(|item| match item.get_ast_ref() {
-				parser::ObjectDestructuringField::Name(name, default_value, position) => {
+				parser::ObjectDestructuringField::Name(name, _, default_value, position) => {
 					AssignableObjectDestructuringField::Mapped {
 						on: synthesise_object_property_key(name, environment),
 						name: synthesise_object_shorthand_assignable(
@@ -84,11 +100,21 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 				}
 				parser::ObjectDestructuringField::Spread(name, position) => {
 					AssignableObjectDestructuringField::Spread(
-						synthesise_object_shorthand_assignable(name, environment, checking_data),
+						SynthesiseToAssignable::synthesise_to_assignable(
+							name,
+							environment,
+							checking_data,
+						),
 						position.with_source(environment.get_source()),
 					)
 				}
-				parser::ObjectDestructuringField::Map { from, name, default_value, position } => {
+				parser::ObjectDestructuringField::Map {
+					from,
+					annotation: _,
+					name,
+					default_value,
+					position,
+				} => {
 					let on = parser_property_key_to_checker_property_key(
 						from,
 						environment,
@@ -98,7 +124,7 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 
 					AssignableObjectDestructuringField::Mapped {
 						on,
-						name: synthesise_variable_field_to_reference(
+						name: SynthesiseToAssignable::synthesise_to_assignable(
 							name.get_ast_ref(),
 							environment,
 							checking_data,
@@ -112,8 +138,11 @@ fn synthesise_object_to_reference<T: crate::ReadFromFS>(
 	)
 }
 
-fn synthesise_array_to_reference<T: crate::ReadFromFS>(
-	items: &[parser::WithComment<parser::ArrayDestructuringField>],
+fn synthesise_array_to_reference<
+	T: crate::ReadFromFS,
+	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
+>(
+	items: &[parser::WithComment<parser::ArrayDestructuringField<U>>],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -123,13 +152,21 @@ fn synthesise_array_to_reference<T: crate::ReadFromFS>(
 			.map(|item| match item.get_ast_ref() {
 				parser::ArrayDestructuringField::Spread(name, position) => {
 					AssignableArrayDestructuringField::Spread(
-						synthesise_variable_field_to_reference(name, environment, checking_data),
+						SynthesiseToAssignable::synthesise_to_assignable(
+							name,
+							environment,
+							checking_data,
+						),
 						position.with_source(environment.get_source()),
 					)
 				}
-				parser::ArrayDestructuringField::Name(name, default_value) => {
+				parser::ArrayDestructuringField::Name(name, _, default_value) => {
 					AssignableArrayDestructuringField::Name(
-						synthesise_variable_field_to_reference(name, environment, checking_data),
+						SynthesiseToAssignable::synthesise_to_assignable(
+							name,
+							environment,
+							checking_data,
+						),
 						default_value.clone(),
 					)
 				}
@@ -170,6 +207,16 @@ fn synthesise_object_property_key(
 			PropertyKey::String(Cow::Owned(name.to_owned()))
 		}
 		parser::VariableIdentifier::Marker(..) => PropertyKey::new_empty_property_key(),
+	}
+}
+
+impl SynthesiseToAssignable for VariableOrPropertyAccess {
+	fn synthesise_to_assignable<T: crate::ReadFromFS>(
+		&self,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+	) -> Assignable<super::EznoParser> {
+		Assignable::Reference(synthesise_access_to_reference(self, environment, checking_data))
 	}
 }
 

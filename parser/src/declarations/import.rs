@@ -14,7 +14,7 @@ use visitable_derive::Visitable;
 use super::ImportLocation;
 
 /// Side effects is represented under the Parts variant where the vector is empty
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportPart>>),
@@ -22,7 +22,7 @@ pub enum ImportedItems {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
@@ -39,7 +39,7 @@ pub struct ImportDeclaration {
 }
 
 /// TODO `default` should have its own variant?
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
@@ -301,7 +301,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ImportPart {
 	Name(VariableIdentifier),

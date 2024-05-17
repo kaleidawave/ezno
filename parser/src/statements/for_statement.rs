@@ -11,7 +11,7 @@ use super::{
 };
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ForLoopStatement {
 	pub condition: ForLoopCondition,
@@ -66,7 +66,7 @@ impl ASTNode for ForLoopStatement {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitializer {
 	VariableDeclaration(VariableDeclaration),
@@ -74,7 +74,7 @@ pub enum ForLoopStatementInitializer {
 	Expression(MultipleExpression),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {

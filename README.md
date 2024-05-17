@@ -7,7 +7,6 @@ A JavaScript compiler and TypeScript checker written in Rust with a focus on sta
 
 What Ezno is
 - A type checker for JavaScript usable through a CLI ([with a LSP also in the works](https://github.com/kaleidawave/ezno/issues/22))
-- [A high level library](https://docs.rs/ezno-checker/latest/ezno_checker/) that allows [type checking to be added to other tools!](https://github.com/web-infra-dev/oxc/tree/main/crates/oxc_type_synthesis)
 - Checks programs with guaranteed type safety (no runtime [`TypeError`s](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError)) (**as long as definitions are sound**)
 - Types aimed at soundness and tracing for better static analysis
 - A *imperative* type system that tracks and evaluates the side effects of functions and control flow structures. It is similar to an interpreter, but acts with types instead of *values* and does not run IO side effects etc

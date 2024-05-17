@@ -350,8 +350,9 @@ pub fn lex_script(
 							// Note not = as don't want to include chr
 							let num_slice = &script[start..idx];
 							if num_slice.trim_end() == "."
-								|| num_slice
-									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+								|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+								|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+									&& num_slice.ends_with(['e', 'E', 'b', 'B']))
 							{
 								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 							}

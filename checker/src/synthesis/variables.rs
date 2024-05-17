@@ -74,7 +74,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							argument,
 						);
 					}
-					ArrayDestructuringField::Name(name, _initial_value) => {
+					ArrayDestructuringField::Name(name, _, _initial_value) => {
 						// TODO account for spread in `idx`
 						let key = PropertyKey::from_usize(idx);
 						let argument = get_new_register_argument_under(
@@ -114,7 +114,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						);
 					}
 					ObjectDestructuringField::Spread(variable, _) => {
-						register_variable_identifier(
+						register_variable(
 							variable,
 							environment,
 							checking_data,
@@ -130,6 +130,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						from,
 						name,
 						default_value: _default_value,
+						annotation: _,
 						position,
 					} => {
 						let key = parser_property_key_to_checker_property_key(
@@ -269,7 +270,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			for item in items {
 				match item.get_ast_ref() {
 					ObjectDestructuringField::Spread(_, _) => todo!(),
-					ObjectDestructuringField::Name(name, default_value, _) => {
+					ObjectDestructuringField::Name(name, _, default_value, _) => {
 						let position = name.get_position().with_source(environment.get_source());
 						let id = crate::VariableId(environment.get_source(), position.start);
 
@@ -337,7 +338,13 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 
 						environment.register_initial_variable_declaration_value(id, value);
 					}
-					ObjectDestructuringField::Map { from, name, default_value, position } => {
+					ObjectDestructuringField::Map {
+						from,
+						name,
+						default_value,
+						annotation: _,
+						position,
+					} => {
 						let key_ty = super::parser_property_key_to_checker_property_key(
 							from,
 							environment,

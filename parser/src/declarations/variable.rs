@@ -120,7 +120,7 @@ impl DeclarationExpression for crate::Expression {
 
 /// Represents a name =
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
@@ -170,11 +170,20 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let available_space =
-			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
+		let available_space = u32::from(options.max_line_length)
+			.checked_sub(buf.characters_on_current_line())
+			.unwrap_or(0);
+
+		// TODO split between declarations?
 
 		if let Some(e) = TExpr::as_option_expression_ref(&self.expression) {
-			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
+			let extends_limit = crate::are_nodes_over_length(
+				std::iter::once(e),
+				options,
+				local,
+				Some(available_space),
+				false,
+			);
 			if extends_limit {
 				buf.push_new_line();
 				options.add_indent(local.depth + 1, buf);
@@ -189,7 +198,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
 pub enum VariableDeclaration {
@@ -203,7 +212,7 @@ pub enum VariableDeclaration {
 	},
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,

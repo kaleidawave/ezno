@@ -14,12 +14,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	};
 
 	let display_keywords = args.iter().any(|item| item == "--keywords");
+	let extras = args.iter().any(|item| item == "--extras");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
+
+	let print_ast = args.iter().any(|item| item == "--ast");
+	let render_output = args.iter().any(|item| item == "--render");
+	let pretty = args.iter().any(|item| item == "--pretty");
+
+	// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
+	let double = args.iter().any(|item| item == "--double");
 
 	let now = Instant::now();
 
@@ -32,7 +40,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		partial_syntax,
 		type_annotations,
 		type_definition_module,
-		..ParseOptions::all_features()
+		retain_blank_lines: pretty,
+		custom_function_headers: extras,
+		destructuring_type_annotation: extras,
+		jsx: extras,
+		is_expressions: extras,
+		special_jsx_attributes: extras,
+		extra_operators: extras,
+		..ParseOptions::default()
 	};
 
 	// let parse_options = ParseOptions {
@@ -59,13 +74,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if timings {
 				eprintln!("parsed in: {:?}", now.elapsed());
 			}
-
-			let print_ast = args.iter().any(|item| item == "--ast");
-			let render_output = args.iter().any(|item| item == "--render");
-			let pretty = args.iter().any(|item| item == "--pretty");
-
-			// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
-			let double = args.iter().any(|item| item == "--double");
 
 			if print_ast {
 				println!("{module:#?}");

@@ -22,9 +22,7 @@ use std::convert::TryInto;
 
 use map_vec::Map;
 use parser::{
-	type_annotations::{
-		AnnotationWithBinder, CommonTypes, TupleElementKind, TypeCondition, TypeConditionResult,
-	},
+	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind},
 	ASTNode, TypeAnnotation,
 };
 use source_map::SpanWithSource;
@@ -432,25 +430,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
-			fn synthesise_condition(result: &TypeConditionResult) -> &TypeAnnotation {
-				match result {
-					TypeConditionResult::Reference(reference) => reference,
-					TypeConditionResult::Infer(_infer, _) => todo!(),
-				}
-			}
+			let condition = synthesise_type_annotation(condition, environment, checking_data);
 
-			let condition = synthesise_type_condition(condition, environment, checking_data);
-
-			let truthy_result = synthesise_type_annotation(
-				synthesise_condition(resolve_true),
-				environment,
-				checking_data,
-			);
-			let otherwise_result = synthesise_type_annotation(
-				synthesise_condition(resolve_false),
-				environment,
-				checking_data,
-			);
+			let truthy_result =
+				synthesise_type_annotation(resolve_true, environment, checking_data);
+			let otherwise_result =
+				synthesise_type_annotation(resolve_false, environment, checking_data);
 
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
@@ -490,6 +475,10 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			synthesize_template_literal_type(parts, &mut checking_data.types)
 		}
 		TypeAnnotation::Symbol { .. } => todo!(),
+		TypeAnnotation::TypeOf(_, _) => todo!(),
+		TypeAnnotation::Infer(_, _) => todo!(),
+		TypeAnnotation::Extends { .. } => todo!(),
+		TypeAnnotation::Is { .. } => todo!(),
 	};
 
 	checking_data
@@ -498,25 +487,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		.push(annotation.get_position().with_source(environment.get_source()), ty);
 
 	ty
-}
-
-fn synthesise_type_condition<T: crate::ReadFromFS>(
-	condition: &TypeCondition,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> TypeId {
-	match condition {
-		TypeCondition::Extends { ty, extends, position: _ } => {
-			let item = synthesise_type_annotation(ty, environment, checking_data);
-			let extends = synthesise_type_annotation(extends, environment, checking_data);
-			let ty = Type::Constructor(Constructor::TypeRelationOperator(
-				crate::types::TypeRelationOperator::Extends { ty: item, extends },
-			));
-			checking_data.types.register_type(ty)
-		}
-		// TODO requires a kind of strict instance of ???
-		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),
-	}
 }
 
 /// Comment as type annotation

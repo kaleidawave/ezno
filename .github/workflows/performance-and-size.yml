@@ -53,31 +53,30 @@ jobs:
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
           echo "::info::Finished file generation"
 
+          LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
+
           echo "<details>
           <summary>Input</summary>
 
           \`\`\`ts
-          " >> $GITHUB_STEP_SUMMARY
-
-          echo "// $(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code") lines of TypeScript" >> $GITHUB_STEP_SUMMARY
-          cat ./demo.ts >> $GITHUB_STEP_SUMMARY
-
-          echo "\`\`\`
+          // $LINES_OF_CODE lines of TypeScript generated from specification.md
+          $(cat ./demo.ts)
+          \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
           echo "::info::Wrote code to summary"
+          
+          # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
+          NO_COLOR=1
+          OUT=$((./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY) || true)
 
           echo "<details>
           <summary>Diagnostics</summary>
           
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
-          
-          # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
-          NO_COLOR=1
-          (./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY) || true
-
-          echo "\`\`\`
+          \`\`\`
+          $OUT
+          \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
           
@@ -101,6 +100,8 @@ jobs:
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
             "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )
+
+          // TODO hyperfine
 
           for url in "${strings[@]}"; do
               curl -sS $url > input.js

@@ -17,6 +17,7 @@ use crate::{
 };
 use argh::FromArgs;
 use checker::CheckOutput;
+use parser::ParseOptions;
 
 /// The Ezno Type-checker & compiler
 #[derive(FromArgs, Debug)]
@@ -286,7 +287,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let mut files =
 				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 			let source_id = files.new_source_id(path.clone(), input.clone());
-			let res = Module::from_string(input, Default::default());
+			let res = Module::from_string(
+				input,
+				ParseOptions { retain_blank_lines: true, ..Default::default() },
+			);
 			match res {
 				Ok(module) => {
 					let options =

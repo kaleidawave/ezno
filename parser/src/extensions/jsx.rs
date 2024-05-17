@@ -6,7 +6,7 @@ use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum JSXRoot {
 	Element(JSXElement),
@@ -14,7 +14,7 @@ pub enum JSXRoot {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
@@ -24,7 +24,7 @@ pub struct JSXElement {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXElementChildren {
 	Children(Vec<JSXNode>),
@@ -81,7 +81,7 @@ impl ASTNode for JSXElement {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXFragment {
 	pub children: Vec<JSXNode>,
@@ -222,7 +222,7 @@ impl JSXRoot {
 }
 
 // TODO can `JSXFragment` appear here?
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
 	Element(JSXElement),
@@ -305,7 +305,7 @@ impl ASTNode for JSXNode {
 }
 
 /// TODO spread attributes and boolean attributes
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXAttribute {
 	Static(String, String, Span),

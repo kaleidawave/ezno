@@ -87,15 +87,17 @@ impl ASTNode for Statement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		// Labeled statements
 		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
 			if statement.requires_semi_colon() {
-				crate::expect_semi_colon(
+				let _ = crate::expect_semi_colon(
 					reader,
 					&state.line_starts,
 					statement.get_position().start,
+					false,
 				)?;
 			}
 			// TODO statement.can_be_labelled()
@@ -214,9 +216,7 @@ impl ASTNode for Statement {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Statement::Empty(..) => {
-				buf.push(';');
-			}
+			Statement::Empty(..) => {}
 			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
@@ -239,7 +239,19 @@ impl ASTNode for Statement {
 			Statement::MultiLineComment(comment, _) => {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
-					buf.push_str_contains_new_line(comment.as_str());
+					if options.pretty {
+						let mut done = false;
+						for line in comment.lines() {
+							if done {
+								buf.push_new_line();
+							}
+							options.add_indent(local.depth, buf);
+							buf.push_str(line.trim_start());
+							done = true;
+						}
+					} else {
+						buf.push_str_contains_new_line(comment.as_str());
+					}
 					buf.push_str("*/");
 				}
 			}
@@ -305,7 +317,7 @@ impl Statement {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VarVariableStatement {
 	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,

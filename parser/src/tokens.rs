@@ -290,7 +290,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 impl Eq for TSXToken {}
 
-#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, Clone, Copy)]
+#[derive(Debug, PartialEq, EnumVariantsStrings, Clone, Copy)]
 #[enum_variants_strings_transform(transform = "lower_case")]
 #[rustfmt::skip]
 pub enum TSXKeyword {

@@ -17,7 +17,7 @@ use crate::{
 use super::MultipleExpression;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 pub enum VariableOrPropertyAccess {
@@ -180,13 +180,12 @@ impl VariableOrPropertyAccess {
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
-	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField>>, Span),
-	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField>>, Span),
+	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<Self>>>, Span),
+	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<Self>>>, Span),
 }
 
-impl LHSOfAssignment {
-	#[must_use]
-	pub fn get_position(&self) -> Span {
+impl ASTNode for LHSOfAssignment {
+	fn get_position(&self) -> Span {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(_, pos)
 			| LHSOfAssignment::ArrayDestructuring(_, pos) => *pos,
@@ -196,7 +195,15 @@ impl LHSOfAssignment {
 		}
 	}
 
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &crate::ParseOptions,
+	) -> ParseResult<Self> {
+		Expression::from_reader(reader, state, options).and_then(TryInto::try_into)
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
@@ -252,32 +259,15 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						Some(FunctionArgument::Spread(expression, span)) => {
 							let lhs: LHSOfAssignment = expression.try_into()?;
-							let lhs: crate::VariableField = lhs_to_variable_field(lhs)?;
 							WithComment::None(ArrayDestructuringField::Spread(lhs, span))
 						}
 						Some(FunctionArgument::Standard(expression)) => {
 							WithComment::None(match expression {
 								Expression::Assignment { lhs, rhs, position: _ } => {
-									let lhs: crate::VariableField = lhs_to_variable_field(lhs)?;
-									ArrayDestructuringField::Name(lhs, Some(rhs))
+									ArrayDestructuringField::Name(lhs, (), Some(rhs))
 								}
-								Expression::ArrayLiteral(..) | Expression::ObjectLiteral(..) => {
-									let lhs: LHSOfAssignment = expression.try_into()?;
-									let lhs: crate::VariableField = lhs_to_variable_field(lhs)?;
-									ArrayDestructuringField::Name(lhs, None)
-								}
-								Expression::VariableReference(reference, pos) => {
-									let name = crate::VariableIdentifier::Standard(reference, pos);
-									ArrayDestructuringField::Name(
-										crate::VariableField::Name(name),
-										None,
-									)
-								}
-								_ => {
-									return Err(ParseError::new(
-										crate::ParseErrors::InvalidLHSAssignment,
-										expression.get_position(),
-									))
+								expression => {
+									ArrayDestructuringField::Name(expression.try_into()?, (), None)
 								}
 							})
 						}
@@ -290,11 +280,11 @@ impl TryFrom<Expression> for LHSOfAssignment {
 			Expression::ObjectLiteral(inner) => {
 				let mut members = Vec::with_capacity(inner.members.len());
 				for member in inner.members {
-					let new_member: ObjectDestructuringField = match member {
+					let new_member: ObjectDestructuringField<LHSOfAssignment> = match member {
 						ObjectLiteralMember::Spread(expression, _) => {
 							if let Expression::VariableReference(reference, pos) = expression {
 								ObjectDestructuringField::Spread(
-									crate::VariableIdentifier::Standard(reference, pos),
+									VariableOrPropertyAccess::Variable(reference, pos).into(),
 									pos,
 								)
 							} else {
@@ -307,6 +297,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						ObjectLiteralMember::Shorthand(name, pos) => {
 							ObjectDestructuringField::Name(
 								crate::VariableIdentifier::Standard(name, pos),
+								(),
 								None,
 								pos,
 							)
@@ -316,6 +307,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								if let PropertyKey::Ident(name, pos, _) = key.get_ast() {
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
+										(),
 										Some(Box::new(value)),
 										pos,
 									)
@@ -329,16 +321,14 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								let (name, default_value) =
 									if let Expression::Assignment { lhs, rhs, position: _ } = value
 									{
-										let lhs: crate::VariableField = lhs_to_variable_field(lhs)?;
 										(lhs, Some(rhs))
 									} else {
-										let lhs: LHSOfAssignment = value.try_into()?;
-										let lhs: crate::VariableField = lhs_to_variable_field(lhs)?;
-										(lhs, None)
+										(value.try_into()?, None)
 									};
 
 								ObjectDestructuringField::Map {
 									from: key.get_ast(),
+									annotation: (),
 									name: WithComment::None(name),
 									default_value,
 									position,
@@ -358,24 +348,6 @@ impl TryFrom<Expression> for LHSOfAssignment {
 			}
 			expression => VariableOrPropertyAccess::try_from(expression)
 				.map(LHSOfAssignment::VariableOrPropertyAccess),
-		}
-	}
-}
-
-fn lhs_to_variable_field(lhs: LHSOfAssignment) -> Result<crate::VariableField, ParseError> {
-	match lhs {
-		LHSOfAssignment::VariableOrPropertyAccess(VariableOrPropertyAccess::Variable(
-			name,
-			pos,
-		)) => Ok(crate::VariableField::Name(crate::VariableIdentifier::Standard(name, pos))),
-		LHSOfAssignment::ArrayDestructuring(fields, pos) => {
-			Ok(crate::VariableField::Array(fields, pos))
-		}
-		LHSOfAssignment::ObjectDestructuring(fields, pos) => {
-			Ok(crate::VariableField::Object(fields, pos))
-		}
-		LHSOfAssignment::VariableOrPropertyAccess(a) => {
-			Err(ParseError::new(crate::ParseErrors::InvalidLHSAssignment, a.get_position()))
 		}
 	}
 }

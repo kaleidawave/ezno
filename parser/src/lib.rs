@@ -122,6 +122,12 @@ pub struct ParseOptions {
 	pub record_keyword_positions: bool,
 	/// For the generator
 	pub interpolation_points: bool,
+	/// Extra
+	pub destructuring_type_annotation: bool,
+	/// Extra
+	pub extra_operators: bool,
+	/// For formatting
+	pub retain_blank_lines: bool,
 	/// For LSP
 	pub partial_syntax: bool,
 }
@@ -152,6 +158,9 @@ impl ParseOptions {
 			// Only used in the AST-generator
 			interpolation_points: false,
 			partial_syntax: true,
+			destructuring_type_annotation: true,
+			extra_operators: true,
+			retain_blank_lines: true,
 		}
 	}
 }
@@ -173,6 +182,9 @@ impl Default for ParseOptions {
 			record_keyword_positions: false,
 			interpolation_points: false,
 			partial_syntax: false,
+			destructuring_type_annotation: false,
+			extra_operators: false,
+			retain_blank_lines: false,
 		}
 	}
 }
@@ -317,7 +329,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		options: &crate::ParseOptions,
 	) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -763,8 +775,12 @@ impl std::ops::Neg for NumberRepresentation {
 				NumberRepresentation::Octal { sign: sign.neg(), value }
 			}
 			NumberRepresentation::Number(n) => NumberRepresentation::Number(n.neg()),
-			NumberRepresentation::Exponential { .. } => todo!(),
-			NumberRepresentation::BigInt(_, _) => todo!(),
+			NumberRepresentation::Exponential { sign, value, exponent } => {
+				NumberRepresentation::Exponential { sign: sign.neg(), value, exponent }
+			}
+			NumberRepresentation::BigInt(sign, value) => {
+				NumberRepresentation::BigInt(sign.neg(), value)
+			}
 		}
 	}
 }
@@ -797,7 +813,7 @@ impl NumberRepresentation {
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
 pub trait ExpressionOrStatementPosition:
-	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
+	Clone + std::fmt::Debug + Sync + Send + PartialEq + 'static
 {
 	type FunctionBody: ASTNode;
 
@@ -824,7 +840,7 @@ pub trait ExpressionOrStatementPosition:
 	fn is_declare(&self) -> bool;
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[apply(derive_ASTNode)]
 pub struct StatementPosition {
 	pub identifier: VariableIdentifier,
@@ -860,7 +876,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
@@ -1048,25 +1064,41 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 }
 
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+///
+/// Also returns the line difference
 pub(crate) fn expect_semi_colon(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	line_starts: &source_map::LineStarts,
 	prev: u32,
-) -> ParseResult<()> {
+	record_new_lines: bool,
+) -> ParseResult<usize> {
 	if let Some(token) = reader.peek() {
 		let Token(kind, start) = token;
 		// eprintln!("{:?} {:?} {:?}", prev, next, line_starts);
 		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
-			Ok(())
-		} else if !matches!(kind, TSXToken::SemiColon)
-			&& line_starts.byte_indexes_on_different_lines(prev as usize, start.0 as usize)
-		{
-			Ok(())
+			Ok(0)
+		} else if let TSXToken::SemiColon = kind {
+			reader.next();
+			let next = reader.peek().unwrap().1 .0;
+			if record_new_lines {
+				Ok(line_starts
+					.byte_indexes_crosses_lines(prev as usize, next as usize)
+					.checked_sub(1)
+					.unwrap_or_default())
+			} else {
+				Ok(0)
+			}
 		} else {
-			reader.expect_next(TSXToken::SemiColon).map(|_| ()).map_err(Into::into)
+			let line_difference =
+				line_starts.byte_indexes_crosses_lines(prev as usize, start.0 as usize);
+			if line_difference == 0 {
+				throw_unexpected_token(reader, &[TSXToken::SemiColon])
+			} else {
+				Ok(line_difference - 1)
+			}
 		}
 	} else {
-		Ok(())
+		Ok(0)
 	}
 }
 
@@ -1114,29 +1146,37 @@ impl VariableKeyword {
 ///
 /// Conditionally computes the node length
 /// Does nothing under pretty == false or no max line length
-pub fn is_node_over_length<T: ASTNode>(
-	e: &T,
+pub fn are_nodes_over_length<'a, T: ASTNode>(
+	nodes: impl Iterator<Item = &'a T>,
 	options: &ToStringOptions,
 	local: crate::LocalToStringInformation,
 	// None = 'no space'
 	available_space: Option<u32>,
+	// Whether just to consider the amount on the line or the entire object
+	total: bool,
 ) -> bool {
-	use source_map::ToString;
-
 	if options.enforce_limit_length_limit() {
-		if available_space.is_none() {
-			return true;
-		}
+		let room = available_space.map_or(options.max_line_length as usize, |s| s as usize);
 		let mut buf = source_map::StringWithOptionalSourceMap {
 			source: String::new(),
 			source_map: None,
-			quit_after: available_space.map(|s| s as usize),
+			quit_after: Some(room),
 			since_new_line: 0,
 		};
-		e.to_string_from_buffer(&mut buf, options, local);
+		for node in nodes {
+			node.to_string_from_buffer(&mut buf, options, local);
 
-		// If is halted, then went over
-		buf.should_halt()
+			let length = if total {
+				buf.source.len()
+			} else {
+				buf.source.find("\n").unwrap_or(buf.source.len())
+			};
+			let is_over = length > room;
+			if is_over {
+				return is_over;
+			}
+		}
+		false
 	} else {
 		false
 	}
