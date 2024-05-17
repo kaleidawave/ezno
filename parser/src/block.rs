@@ -374,10 +374,10 @@ pub(crate) fn parse_statements_and_declarations(
 			break;
 		}
 
-		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
-		let requires_semi_colon = value.requires_semi_colon();
-		let end = value.get_position().end;
-		items.push(value);
+		let item = StatementOrDeclaration::from_reader(reader, state, options)?;
+		let requires_semi_colon = item.requires_semi_colon();
+		let end = item.get_position().end;
+
 		let blank_lines_between = if requires_semi_colon {
 			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
 		} else if options.retain_blank_lines {
@@ -389,10 +389,18 @@ pub(crate) fn parse_statements_and_declarations(
 		} else {
 			0
 		};
-		for _ in 0..blank_lines_between {
-			// TODO span
-			let span = Span { start: end, end, source: () };
-			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+		if items.is_empty() {
+			// Don't add leading semi-colons
+			if !matches!(item, StatementOrDeclaration::Statement(Statement::Empty(..))) {
+				items.push(item);
+			}
+		} else {
+			items.push(item);
+			for _ in 0..blank_lines_between {
+				// TODO span
+				let span = Span { start: end, end, source: () };
+				items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+			}
 		}
 	}
 	Ok(items)

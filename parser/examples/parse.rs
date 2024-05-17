@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} bytes", source.len());
-	let result = Module::from_string_with_options(source, parse_options, None);
+	let result = Module::from_string_with_options(source.clone(), parse_options, None);
 
 	match result {
 		Ok((module, state)) => {
@@ -121,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								eprintln!("re-parse was equal ✅");
 								Ok(())
 							} else {
-								eprintln!("{output:?} != {output2:?}");
+								eprintln!("{output:?} != {output2:?} (original = {source:?})");
 								eprintln!("initial   {:?}", module);
 								eprintln!("re-parsed {:?}", module2);
 								Err(Box::<dyn std::error::Error>::from("not equal"))

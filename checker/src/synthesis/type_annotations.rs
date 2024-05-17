@@ -474,17 +474,56 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			synthesize_template_literal_type(parts, &mut checking_data.types)
 		}
-		TypeAnnotation::Symbol { .. } => todo!(),
-		TypeAnnotation::TypeOf(_, _) => todo!(),
-		TypeAnnotation::Infer(_, _) => todo!(),
-		TypeAnnotation::Extends { .. } => todo!(),
-		TypeAnnotation::Is { .. } => todo!(),
+		TypeAnnotation::TypeOf(_item, position) => {
+			checking_data.raise_unimplemented_error(
+				"typeof annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::Infer(_name, position) => {
+			checking_data.raise_unimplemented_error(
+				"infer annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::Extends { item, extends, position: _ } => {
+			let item = synthesise_type_annotation(item, environment, checking_data);
+			let extends = synthesise_type_annotation(extends, environment, checking_data);
+			let ty = Type::Constructor(Constructor::TypeRelationOperator(
+				crate::types::TypeRelationOperator::Extends { ty: item, extends },
+			));
+			checking_data.types.register_type(ty)
+		}
+		TypeAnnotation::Is { item, is, position } => {
+			let _item = synthesise_type_annotation(item, environment, checking_data);
+			let _is = synthesise_type_annotation(is, environment, checking_data);
+			checking_data.raise_unimplemented_error(
+				"is annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+			// let ty = Type::Constructor(Constructor::TypeRelationOperator(
+			// 	crate::types::TypeRelationOperator::E { ty: item, is },
+			// ));
+			// checking_data.types.register_type(ty)
+		}
+		TypeAnnotation::Symbol { position, .. } => {
+			checking_data.raise_unimplemented_error(
+				"symbol annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 	};
 
-	checking_data
-		.local_type_mappings
-		.types_to_types
-		.push(annotation.get_position().with_source(environment.get_source()), ty);
+	if checking_data.options.store_expression_type_mappings {
+		checking_data
+			.local_type_mappings
+			.types_to_types
+			.push(annotation.get_position().with_source(environment.get_source()), ty);
+	}
 
 	ty
 }
