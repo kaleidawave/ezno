@@ -34,7 +34,7 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	let output2 = module2.to_string(&to_string_options);
 
-	assert_eq!(output1, output2, "outputs different for {module1:?} vs {module2:?} for {data:?}");
+	assert_eq!(output1, output2, "outputs different for {module1:?} vs {module2:?} for {input:?}");
 
 	Corpus::Keep
 }

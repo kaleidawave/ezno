@@ -1076,7 +1076,9 @@ pub(crate) fn expect_semi_colon(
 		let Token(kind, start) = token;
 
 		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
-			Ok(line_starts.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1))
+			Ok(line_starts
+				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
+				.saturating_sub(1))
 		} else if let TSXToken::SemiColon = kind {
 			reader.next().unwrap();
 			let Token(kind, next) = reader.peek().unwrap();
