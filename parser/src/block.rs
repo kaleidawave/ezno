@@ -104,9 +104,7 @@ impl ASTNode for StatementOrDeclaration {
 				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Marker(_, _) => {
-				if !options.expect_markers {
-					panic!("Unexpected marker in AST")
-				}
+				assert!(options.expect_markers, "Unexpected marker in AST");
 			}
 		}
 	}
@@ -383,18 +381,18 @@ pub(crate) fn parse_statements_and_declarations(
 		let blank_lines_between = if requires_semi_colon {
 			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
 		} else if options.retain_blank_lines {
+			// + 1 fixes issue where end can be > the next?
 			state
 				.line_starts
-				.byte_indexes_crosses_lines(end as usize, reader.peek().unwrap().1 .0 as usize)
-				.checked_sub(1)
-				.unwrap_or_default()
+				.byte_indexes_crosses_lines(end as usize, reader.peek().unwrap().1 .0 as usize + 1)
+				.saturating_sub(1)
 		} else {
 			0
 		};
 		for _ in 0..blank_lines_between {
 			// TODO span
 			let span = Span { start: end, end, source: () };
-			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)))
+			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
 		}
 	}
 	Ok(items)

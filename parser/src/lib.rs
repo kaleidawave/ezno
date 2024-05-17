@@ -1169,7 +1169,7 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 			let length = if total {
 				buf.source.len()
 			} else {
-				buf.source.find("\n").unwrap_or(buf.source.len())
+				buf.source.find('\n').unwrap_or(buf.source.len())
 			};
 			let is_over = length > room;
 			if is_over {

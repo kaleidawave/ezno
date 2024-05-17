@@ -170,9 +170,8 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let available_space = u32::from(options.max_line_length)
-			.checked_sub(buf.characters_on_current_line())
-			.unwrap_or(0);
+		let available_space =
+			u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line());
 
 		// TODO split between declarations?
 

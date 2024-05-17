@@ -622,7 +622,7 @@ impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignm
 }
 
 #[cfg(not(feature = "extras"))]
-fn is_destructuring_into_marker(t: &TSXToken) -> bool {
+fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
 	matches!(t, TSXToken::Colon)
 }
 

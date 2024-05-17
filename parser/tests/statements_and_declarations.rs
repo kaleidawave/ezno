@@ -280,11 +280,11 @@ let a, b, a1, b1, c, d, rest, pop, push;
 ({ a: a1, b: b1 } = obj);
 ({ a: a1 = aDefault, b = bDefault } = obj);
 ({ a, b, ...rest } = obj);
-({ a: a1, b: b1, ...rest } = obj)
+({ a: a1, b: b1, ...rest } = obj);
 // Also
 [a.b, b[1], ...c.d] = array;
-    "
-	.trim();
+({ a, ...{ b: c } } = object)"
+		.trim();
 
 	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 

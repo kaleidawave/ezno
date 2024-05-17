@@ -32,6 +32,7 @@ pub enum BinaryOperator {
 }
 
 impl BinaryOperator {
+	#[must_use]
 	pub fn is_non_standard(&self) -> bool {
 		matches!(self, BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose)
 	}

@@ -281,18 +281,8 @@ impl TryFrom<Expression> for LHSOfAssignment {
 				let mut members = Vec::with_capacity(inner.members.len());
 				for member in inner.members {
 					let new_member: ObjectDestructuringField<LHSOfAssignment> = match member {
-						ObjectLiteralMember::Spread(expression, _) => {
-							if let Expression::VariableReference(reference, pos) = expression {
-								ObjectDestructuringField::Spread(
-									VariableOrPropertyAccess::Variable(reference, pos).into(),
-									pos,
-								)
-							} else {
-								return Err(ParseError::new(
-									crate::ParseErrors::InvalidLHSAssignment,
-									expression.get_position(),
-								));
-							}
+						ObjectLiteralMember::Spread(expression, pos) => {
+							ObjectDestructuringField::Spread(expression.try_into()?, pos)
 						}
 						ObjectLiteralMember::Shorthand(name, pos) => {
 							ObjectDestructuringField::Name(
