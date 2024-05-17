@@ -180,8 +180,14 @@ impl VariableOrPropertyAccess {
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
-	ArrayDestructuring(#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<Self>>>, Span),
-	ObjectDestructuring(#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<Self>>>, Span),
+	ArrayDestructuring(
+		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
+		Span,
+	),
+	ObjectDestructuring(
+		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
+		Span,
+	),
 }
 
 impl ASTNode for LHSOfAssignment {

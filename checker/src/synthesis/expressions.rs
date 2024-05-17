@@ -19,7 +19,7 @@ use crate::{
 		information::{get_properties_on_type, get_property_unbound},
 		Logical,
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
 		self, await_expression,
 		functions::{
@@ -30,6 +30,7 @@ use crate::{
 	},
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
+		printing::print_property_key,
 		properties::PropertyKey,
 	},
 	Decidable,
@@ -1045,7 +1046,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Some(member_position),
 				);
 			}
-			ObjectLiteralMember::Property { key, value, .. } => {
+			ObjectLiteralMember::Property { key, value, position, .. } => {
 				let key = parser_property_key_to_checker_property_key(
 					key.get_ast_ref(),
 					environment,
@@ -1053,17 +1054,46 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					true,
 				);
 
-				// TODO needs improvement
-				let property_expecting = get_property_unbound(
+				let position_with_source = position.with_source(environment.get_source());
+
+				let maybe_property_expecting = get_property_unbound(
 					expected,
 					Publicity::Public,
 					&key,
 					&checking_data.types,
 					environment,
-				)
-				.ok()
-				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
-				.unwrap_or(TypeId::ANY_TYPE);
+				);
+
+				if expected != TypeId::ANY_TYPE
+					&& expected != TypeId::OBJECT_TYPE
+					&& maybe_property_expecting.is_err()
+				{
+					checking_data.diagnostics_container.add_warning(
+						TypeCheckWarning::ExcessProperty {
+							position: position_with_source,
+							expected_type: TypeStringRepresentation::from_type_id(
+								expected,
+								environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							excess_property_name: print_property_key(
+								&key,
+								&checking_data.types,
+								environment,
+								false,
+							),
+						},
+					);
+				}
+
+				// TODO needs improvement
+				let property_expecting = maybe_property_expecting
+					.ok()
+					.and_then(
+						|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None },
+					)
+					.unwrap_or(TypeId::ANY_TYPE);
 
 				let value =
 					synthesise_expression(value, environment, checking_data, property_expecting);

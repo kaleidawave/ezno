@@ -367,7 +367,7 @@ impl ASTNode for VarVariableStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("var ");
-		declarations_to_string(&self.declarations, buf, options, local);
+		declarations_to_string(&self.declarations, buf, options, local, false);
 	}
 }
 

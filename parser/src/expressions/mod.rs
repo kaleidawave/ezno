@@ -1683,20 +1683,42 @@ impl Expression {
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					[condition, truthy_result, falsy_result].iter().map(AsRef::as_ref),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
 				condition.to_string_using_precedence(
 					buf,
 					options,
 					local,
 					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE),
 				);
-				buf.push_str(if options.pretty { " ? " } else { "?" });
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str("? ");
+				} else {
+					buf.push_str(if options.pretty { " ? " } else { "?" });
+				}
 				truthy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
 					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
-				buf.push_str(if options.pretty { " : " } else { ":" });
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str(": ");
+				} else {
+					buf.push_str(if options.pretty { " : " } else { ":" });
+				}
 				falsy_result.to_string_using_precedence(
 					buf,
 					options,

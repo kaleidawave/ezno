@@ -45,6 +45,7 @@ impl ASTNode for DeclareVariableDeclaration {
 				buf,
 				options,
 				local,
+				false,
 			);
 		}
 	}

@@ -89,10 +89,10 @@ pub enum VariableField {
 	Name(VariableIdentifier),
 	/// `[x, y, z]`
 	/// TODO spread last
-	Array(Vec<WithComment<ArrayDestructuringField<Self>>>, Span),
+	Array(Vec<WithComment<ArrayDestructuringField<VariableField>>>, Span),
 	/// `{ x, y: z }`.
 	/// TODO spread last
-	Object(Vec<WithComment<ObjectDestructuringField<Self>>>, Span),
+	Object(Vec<WithComment<ObjectDestructuringField<VariableField>>>, Span),
 }
 
 impl ASTNode for VariableField {

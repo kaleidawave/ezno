@@ -170,24 +170,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let available_space =
-			u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line());
 
-		// TODO split between declarations?
-
-		if let Some(e) = TExpr::as_option_expression_ref(&self.expression) {
-			let extends_limit = crate::are_nodes_over_length(
-				std::iter::once(e),
-				options,
-				local,
-				Some(available_space),
-				false,
-			);
-			if extends_limit {
-				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
-			}
-		}
 		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
@@ -316,14 +299,34 @@ impl ASTNode for VariableDeclaration {
 					return;
 				}
 				buf.push_str("let ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				if declarations.is_empty() {
 					return;
 				}
 				buf.push_str("const ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 		}
 	}
@@ -348,12 +351,18 @@ pub(crate) fn declarations_to_string<
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
+	separate_lines: bool,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
 		declaration.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
-			options.push_gap_optionally(buf);
+			if separate_lines {
+				buf.push_new_line();
+				options.add_indent(local.depth + 1, buf);
+			} else {
+				options.push_gap_optionally(buf);
+			}
 		}
 	}
 }

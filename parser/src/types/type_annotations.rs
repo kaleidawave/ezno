@@ -77,19 +77,19 @@ pub enum TypeAnnotation {
 	TypeOf(Box<LHSOfAssignment>, Span),
 	Infer(String, Span),
 	Extends {
-		item: Box<Self>,
-		extends: Box<Self>,
+		item: Box<TypeAnnotation>,
+		extends: Box<TypeAnnotation>,
 		position: Span,
 	},
 	Is {
-		item: Box<Self>,
-		is: Box<Self>,
+		item: Box<TypeAnnotation>,
+		is: Box<TypeAnnotation>,
 		position: Span,
 	},
 	Conditional {
-		condition: Box<Self>,
-		resolve_true: Box<Self>,
-		resolve_false: Box<Self>,
+		condition: Box<TypeAnnotation>,
+		resolve_true: Box<TypeAnnotation>,
+		resolve_false: Box<TypeAnnotation>,
 		position: Span,
 	},
 	Symbol {
