@@ -150,11 +150,10 @@ my_obj.a = "hello world"
 #### Objects checks
 
 ```ts
-const my_obj: { b: 3 } = { a: 2 }
+const my_obj: { b: 3 } = { b: 4 }
 ```
 
-- Excess property a was provided, but is not a property of type { b: 3 }
-- Type { a: 2 } is not assignable to type { b: 3 }
+- Type { b: 4 } is not assignable to type { b: 3 }
 
 #### Getters
 
@@ -212,7 +211,29 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
-#### Spreading Inline Object Literal
+#### Excess property at declaration
+
+```ts
+interface MyObject { property: string }
+
+const a: MyObject = { property: "hello", another: 2 }
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property at argument
+
+```ts
+interface MyObject { property: string }
+
+function process(param: MyObject) {}
+
+process({ property: "hello", another: 2 })
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property checks through spread and condition
 
 ```ts
 type MyObject = { foo: number; bar?: number };
@@ -224,27 +245,20 @@ const b: MyObject = {
     invalid: 3,
   },
 };
-```
 
-- Excess property invalid was provided, but is not a property of type MyObject
+declare let condition: boolean;
 
-#### Spreading Inline Object Literal on Conditional
-
-```ts
-type MyObject = { foo: number; bar?: number };
-const condition = true;
-
-const b: MyObject = {
+const c: MyObject = {
   foo: 1,
   ...(condition ? {
     bar: 2,
-    invalid: 3,
+    non_existent: 3,
   } : {}),
 };
 ```
 
-- Expression is always true
-- Excess property invalid was provided, but is not a property of type MyObject
+- Excess property 'invalid' was provided, but is not a property of MyObject
+- Excess property 'non_existent' was provided, but is not a property of MyObject
 
 ### Constant evaluation
 
@@ -2109,11 +2123,10 @@ function getA<T extends { a: string }>(p: T) {
 	return p.a
 }
 
-getA({ p: 2 })
+getA({ a: 2 })
 ```
 
-- Excess property p was provided, but is not a property of type T
-- Argument of type { p: 2 } is not assignable to parameter of type T
+- Argument of type { a: 2 } is not assignable to parameter of type T
 
 > I think reasons contains more information
 
@@ -2481,7 +2494,7 @@ const x: Record2<"test", boolean> = { no: false },
       z: Record2<"test", boolean> = { test: false };
 ```
 
-- Excess property no was provided, but is not a property of type { [\"test\"]: boolean }
+- Excess property 'no' was provided, but is not a property of { [\"test\"]: boolean }
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 

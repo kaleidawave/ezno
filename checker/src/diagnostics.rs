@@ -920,7 +920,7 @@ mod defined_errors_and_warnings {
 					position,
 					expected_type,
 					excess_property_name,
-				} => Diagnostic::Position { reason: format!("Excess property {excess_property_name} was provided, but is not a property of type {expected_type}"), position, kind },
+				} => Diagnostic::Position { reason: format!("Excess property '{excess_property_name}' was provided, but is not a property of {expected_type}"), position, kind },
 				TypeCheckWarning::IgnoringAsExpression(position) => Diagnostic::Position {
 					reason: "'as' expressions are ignore by the checker".to_owned(),
 					position,

@@ -31,7 +31,7 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
-		properties::{get_property, PropertyKey},
+		properties::PropertyKey,
 	},
 	Decidable,
 };
