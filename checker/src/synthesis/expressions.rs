@@ -859,7 +859,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 			SpecialOperators::NonNullAssertion(_) => todo!(),
 		},
-		Expression::ImportMeta(_) => Instance::RValue(TypeId::IMPORT_META),
+		Expression::ImportMeta(_) => Instance::RValue(checking_data.types.new_open_type(TypeId::IMPORT_META)),
 		Expression::DynamicImport { position, .. } => {
 			checking_data.raise_unimplemented_error(
 				"dynamic import",

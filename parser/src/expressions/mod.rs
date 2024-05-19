@@ -291,20 +291,12 @@ impl Expression {
 			t @ Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
 				let token = reader.next();
 				if let Some(Token(TSXToken::Dot, _)) = token {
-					reader.expect_next(TSXToken::Identifier("meta".into()))?;
-					Expression::ImportMeta(t.get_span())
+					let meta_start = reader.expect_next(TSXToken::Identifier("meta".into()))?;
+					Expression::ImportMeta(start.union(meta_start.get_end_after("meta".len())))
 				} else if let Some(Token(TSXToken::OpenParentheses, _)) = token {
 					let path = Expression::from_reader(reader, state, options)?;
 					if let Expression::StringLiteral(path, ..) = &path {
 						state.constant_imports.push(path.clone());
-					} else {
-						return Err(ParseError::new(
-							ParseErrors::ExpectedStringLiteral {
-								// TODO use something more specific
-								found: TSXToken::EOS,
-							},
-							path.get_position(),
-						));
 					}
 
 					let options =

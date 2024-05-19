@@ -27,8 +27,7 @@ interface ImportEnv {
 }
 
 interface ImportMeta {
-  @Constant
-  static env: ImportEnv;
+  env: ImportEnv;
 }
 
 interface nominal Array<T> {

@@ -6,8 +6,9 @@ declare class ImportEnv {
 }
 
 declare class ImportMeta {
-  @Constant
   static env: ImportEnv;
+  static url: string;
+  static resolve(url: string): string;
 }
 
 declare class Array<T> {

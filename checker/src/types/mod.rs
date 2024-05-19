@@ -97,7 +97,7 @@ impl TypeId {
 	pub const LITERAL_RESTRICTION: Self = Self(24);
 	pub const READONLY_RESTRICTION: Self = Self(25);
 
-	pub const IMPORT_META: Self = Self(27);
+	pub const IMPORT_META: Self = Self(26);
 
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 27;
 }
