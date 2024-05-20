@@ -67,15 +67,11 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
-          # Printing diagnostics, so turn colors off for GH Summary (also affects printing perf I think)
-          NO_COLOR=1
-          OUT=$((./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY) || true)
-
           echo "<details>
           <summary>Diagnostics</summary>
           
           \`\`\`
-          $OUT
+          $(./target/release/ezno check demo.ts --timings || true)
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY

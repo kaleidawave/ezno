@@ -22,12 +22,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 
-	let print_ast = args.iter().any(|item| item == "--ast");
-	let render_output = args.iter().any(|item| item == "--render");
-	let pretty = args.iter().any(|item| item == "--pretty");
-
 	// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
 	let double = args.iter().any(|item| item == "--double");
+
+	let print_ast = args.iter().any(|item| item == "--ast");
+
+	// double => pretty and render thus `|| double`
+	let render_output = args.iter().any(|item| item == "--render") || double;
+	let pretty = args.iter().any(|item| item == "--pretty") || double;
 
 	let now = Instant::now();
 
@@ -54,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// 	stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 	// 	jsx: false,
 	// 	type_annotations: false,
+	// 	retain_blank_lines: true,
 	// 	..Default::default()
 	// };
 
@@ -62,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source = std::fs::read_to_string(path.clone())?;
 
 	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	// let source = "const [,,/* hi */] = []".to_string();
+	// let source = "44;;".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
 

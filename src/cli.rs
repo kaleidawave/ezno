@@ -19,7 +19,7 @@ use argh::FromArgs;
 use checker::CheckOutput;
 use parser::ParseOptions;
 
-/// The Ezno Type-checker & compiler
+/// The Ezno type-checker & compiler
 #[derive(FromArgs, Debug)]
 struct TopLevel {
 	#[argh(subcommand)]
@@ -197,6 +197,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				count_diagnostics,
 				compact_diagnostics,
 			} = check_arguments;
+
 			let entry_points = vec![input];
 
 			#[cfg(not(target_family = "wasm"))]

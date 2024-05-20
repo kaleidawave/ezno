@@ -1080,11 +1080,12 @@ pub(crate) fn expect_semi_colon(
 				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
 				.saturating_sub(1))
 		} else if let TSXToken::SemiColon = kind {
-			reader.next().unwrap();
+			let Token(_, semicolon_end) = reader.next().unwrap();
 			let Token(kind, next) = reader.peek().unwrap();
 			if record_new_lines {
-				let byte_indexes_crosses_lines =
-					line_starts.byte_indexes_crosses_lines(statement_end as usize, next.0 as usize);
+				let byte_indexes_crosses_lines = line_starts
+					.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
+
 				// TODO WIP
 				if let TSXToken::EOS = kind {
 					Ok(byte_indexes_crosses_lines)

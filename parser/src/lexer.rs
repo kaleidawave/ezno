@@ -873,7 +873,6 @@ pub fn lex_script(
 								if !source.is_empty() {
 									push_token!(TSXToken::JSXContent(source.to_owned()));
 								}
-								dbg!("here");
 								start = end;
 								push_token!(TSXToken::JSXClosingTagStart);
 								start = idx + '/'.len_utf8();
