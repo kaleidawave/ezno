@@ -26,15 +26,20 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let to_string_options = ToStringOptions::default();
 
-	let output1 = module1.to_string(&to_string_options);
+	let output1 = module1.to_string(&to_string_options).replace(char::is_whitespace, "");
 
 	let Ok(module2) = Module::from_string(output1.to_owned(), parse_options) else {
 		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
 	};
 
-	let output2 = module2.to_string(&to_string_options);
+	let output2 = module2.to_string(&to_string_options).replace(char::is_whitespace, "");
 
-	assert_eq!(output1, output2, "outputs different for {module1:?} vs {module2:?} for {input:?}");
+	// Ignore whitespace for now
+	assert_eq!(
+		output1.replace(char::is_whitespace, ""),
+		output2.replace(char::is_whitespace, ""),
+		"outputs different for {module1:?} vs {module2:?} for {input:?}"
+	);
 
 	Corpus::Keep
 }

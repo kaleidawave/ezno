@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
 	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	ParseOptions, Statement, TSXKeyword, VariableField, VariableKeyword, WithComment,
+	ParseOptions, TSXKeyword, VariableField, VariableKeyword, WithComment,
 };
 use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
@@ -62,12 +62,6 @@ impl ASTNode for ForLoopStatement {
 		options.push_gap_optionally(buf);
 		self.condition.to_string_from_buffer(buf, options, local);
 		options.push_gap_optionally(buf);
-		if let BlockOrSingleStatement::SingleStatement(ref statement) = self.inner {
-			if let Statement::Empty(..) = &**statement {
-				buf.push(';');
-				return;
-			}
-		}
 		self.inner.to_string_from_buffer(buf, options, local.next_level());
 	}
 }

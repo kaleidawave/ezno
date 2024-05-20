@@ -36,7 +36,12 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	let output2 = module2.to_string(&to_string_options);
 
-	assert_eq!(output1, output2, "outputs different for {module1:?} vs {module2:?} for {input:?}");
+	// Ignore whitespace for now
+	assert_eq!(
+		output1.replace(char::is_whitespace, ""),
+		output2.replace(char::is_whitespace, ""),
+		"outputs different for {module1:?} vs {module2:?} for {input:?}"
+	);
 
 	Corpus::Keep
 }

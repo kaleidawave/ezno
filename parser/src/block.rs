@@ -346,14 +346,16 @@ impl ASTNode for BlockOrSingleStatement {
 			BlockOrSingleStatement::Braced(block) => {
 				block.to_string_from_buffer(buf, options, local);
 			}
-			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if options.pretty && !options.single_statement_on_new_line {
+			BlockOrSingleStatement::SingleStatement(statement) => {
+				if let Statement::Empty(..) = &**statement {
+					buf.push(';');
+				} else if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.push_gap_optionally(buf);
-					stmt.to_string_from_buffer(buf, options, local.next_level());
+					statement.to_string_from_buffer(buf, options, local.next_level());
 				} else {
-					stmt.to_string_from_buffer(buf, options, local);
-					if stmt.requires_semi_colon() {
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
 						buf.push(';');
 					}
 				}
