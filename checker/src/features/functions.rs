@@ -228,7 +228,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
 	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(
 		Constructor::TypeRelationOperator(types::TypeRelationOperator::Extends {
-			ty: parameter_ty,
+			item: parameter_ty,
 			extends: TypeId::UNDEFINED_TYPE,
 		}),
 	));

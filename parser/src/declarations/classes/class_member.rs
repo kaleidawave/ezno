@@ -21,7 +21,7 @@ use visitable_derive::Visitable;
 pub type IsStatic = bool;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
@@ -46,10 +46,11 @@ pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
+	pub is_optional: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub value: Option<Box<Expression>>,
@@ -138,13 +139,15 @@ impl ASTNode for ClassMember {
 				if !header.is_no_modifiers() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
-				let member_type: Option<TypeAnnotation> = if let TSXToken::Colon = token {
-					reader.next();
-					let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-					Some(type_annotation)
-				} else {
-					None
-				};
+				let (member_type, is_optional) =
+					if let TSXToken::Colon | TSXToken::OptionalMember = token {
+						let is_optional = matches!(token, TSXToken::OptionalMember);
+						reader.next();
+						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+						(Some(type_annotation), is_optional)
+					} else {
+						(None, false)
+					};
 				let member_expression: Option<Expression> =
 					if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
 						reader.next();
@@ -157,6 +160,7 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						is_readonly: readonly_position.is_some(),
+						is_optional,
 						position: key.get_position(),
 						key,
 						type_annotation: member_type,
@@ -177,7 +181,14 @@ impl ASTNode for ClassMember {
 		match self {
 			Self::Property(
 				is_static,
-				ClassProperty { is_readonly, key, type_annotation, value, position: _ },
+				ClassProperty {
+					is_readonly,
+					is_optional: _,
+					key,
+					type_annotation,
+					value,
+					position: _,
+				},
 			) => {
 				if *is_static {
 					buf.push_str("static ");

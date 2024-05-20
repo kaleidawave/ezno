@@ -29,6 +29,7 @@ pub enum ParseErrors<'a> {
 	CannotUseLeadingParameterHere,
 	ExpectedIdentifier,
 	ExpectedNumberLiteral,
+	NonStandardSyntaxUsedWithoutEnabled,
 }
 
 #[allow(missing_docs)]
@@ -136,6 +137,9 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
 				write!(f, "Expected </{expected}> found </{found}>")
+			}
+			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
+				write!(f, "Cannot use this syntax without flag enabled")
 			}
 			ParseErrors::ExpectedStringLiteral { found } => {
 				write!(f, "Expected string literal, found {found:?}")

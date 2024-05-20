@@ -6,7 +6,7 @@ use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,

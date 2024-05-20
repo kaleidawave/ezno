@@ -7,7 +7,7 @@ use crate::{
 
 /// A `declare var/let/const` thingy.
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct DeclareVariableDeclaration {
 	pub keyword: VariableKeyword,
@@ -45,6 +45,7 @@ impl ASTNode for DeclareVariableDeclaration {
 				buf,
 				options,
 				local,
+				false,
 			);
 		}
 	}

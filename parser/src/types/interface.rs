@@ -12,7 +12,7 @@ use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
 	pub is_declare: bool,
@@ -158,7 +158,7 @@ impl ASTNode for InterfaceDeclaration {
 
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum InterfaceMember {
 	Method {
@@ -203,7 +203,6 @@ pub enum InterfaceMember {
 		is_readonly: bool,
 		position: Span,
 	},
-	// Does exists on inline object reference
 	Rule {
 		parameter: String,
 		rule: TypeRule,
@@ -592,8 +591,7 @@ impl ASTNode for InterfaceMember {
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
-					buf.push(':');
-					options.push_gap_optionally(buf);
+					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -605,14 +603,38 @@ impl ASTNode for InterfaceMember {
 				buf.push_str(name.as_str());
 				buf.push(':');
 				indexer_type.to_string_from_buffer(buf, options, local);
-				buf.push(']');
-				buf.push(':');
-				options.push_gap_optionally(buf);
+				buf.push_str("]: ");
 				return_type.to_string_from_buffer(buf, options, local);
 			}
 			InterfaceMember::Constructor { .. } => todo!(),
 			InterfaceMember::Caller { .. } => todo!(),
-			InterfaceMember::Rule { .. } => todo!(),
+			InterfaceMember::Rule {
+				is_readonly,
+				matching_type,
+				optionality,
+				output_type,
+				parameter,
+				rule,
+				position: _,
+			} => {
+				if *is_readonly {
+					buf.push_str("readonly ");
+				}
+				buf.push('[');
+				buf.push_str(parameter.as_str());
+				buf.push_str(match rule {
+					TypeRule::In => " in ",
+					TypeRule::InKeyOf => " in keyof ",
+				});
+				matching_type.to_string_from_buffer(buf, options, local);
+				buf.push(']');
+				buf.push_str(match optionality {
+					Optionality::Default => ": ",
+					Optionality::Optional => "?:",
+					Optionality::Required => "-?:",
+				});
+				output_type.to_string_from_buffer(buf, options, local);
+			}
 			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
 		}
 	}

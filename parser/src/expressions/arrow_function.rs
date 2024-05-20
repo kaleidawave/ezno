@@ -206,7 +206,7 @@ impl ArrowFunction {
 }
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),

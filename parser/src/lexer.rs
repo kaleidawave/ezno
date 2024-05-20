@@ -177,16 +177,9 @@ pub fn lex_script(
 	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
 	let mut expect_expression = true;
 
-	/// Returns a span at the current end position. Used for throwing errors
-	macro_rules! current_position {
-		() => {
-			TokenStart::new(start as u32 + offset)
-		};
-	}
-
 	macro_rules! return_err {
 		($err:expr) => {{
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return Err((
 				$err,
 				Span {
@@ -350,8 +343,9 @@ pub fn lex_script(
 							// Note not = as don't want to include chr
 							let num_slice = &script[start..idx];
 							if num_slice.trim_end() == "."
-								|| num_slice
-									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+								|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+								|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+									&& num_slice.ends_with(['e', 'E', 'b', 'B']))
 							{
 								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 							}
@@ -879,7 +873,6 @@ pub fn lex_script(
 								if !source.is_empty() {
 									push_token!(TSXToken::JSXContent(source.to_owned()));
 								}
-								dbg!("here");
 								start = end;
 								push_token!(TSXToken::JSXClosingTagStart);
 								start = idx + '/'.len_utf8();
@@ -1075,7 +1068,7 @@ pub fn lex_script(
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
 				GetNextResult::InvalidCharacter(err) => {
-					sender.push(Token(TSXToken::EOS, current_position!()));
+					sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 					return_err!(LexingErrors::UnexpectedCharacter(err));
 				}
 			}
@@ -1087,11 +1080,11 @@ pub fn lex_script(
 			));
 		}
 		LexingState::String { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		LexingState::MultiLineComment { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
 		// This is okay as the state is not cleared until it finds flags.
@@ -1101,24 +1094,24 @@ pub fn lex_script(
 					TSXToken::RegexFlagLiteral(script[start..].to_owned()),
 					TokenStart::new(start as u32 + offset),
 				));
-				sender.push(Token(TSXToken::EOS, current_position!()));
+				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			} else {
-				sender.push(Token(TSXToken::EOS, current_position!()));
+				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 				return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 			}
 		}
 		LexingState::JSXLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToJSXLiteral);
 		}
 		LexingState::TemplateLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}
 	}
 
-	sender.push(Token(TSXToken::EOS, current_position!()));
+	sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 
 	Ok(())
 }

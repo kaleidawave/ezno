@@ -138,22 +138,13 @@ let b: 3 = my_obj.a
 
 - Type 4 is not assignable to type 3
 
-#### Object property constraints
-
-```ts
-const my_obj: { a: number } = { a: 2 }
-my_obj.a = "hello world"
-```
-
-- Type "hello world" does not meet property constraint number
-
 #### Objects checks
 
 ```ts
-const my_obj: { b: 3 } = { a: 2 }
+const my_obj: { b: 3 } = { b: 4 }
 ```
 
-- Type { a: 2 } is not assignable to type { b: 3 }
+- Type { b: 4 } is not assignable to type { b: 3 }
 
 #### Getters
 
@@ -161,17 +152,90 @@ const my_obj: { b: 3 } = { a: 2 }
 let global = 0;
 const object = {
 	// This getter has an impure side effect
-	get getValue() {
+	get value() {
 		return ++global
 	},
 }
 
-object.getValue satisfies string
-object.getValue satisfies boolean
+object.value satisfies string
+object.value satisfies boolean
 ```
 
 - Expected string, found 1
 - Expected boolean, found 2
+
+#### Getter `this`
+
+```ts
+const object = {
+	x: 4,
+	get value(this: { x: number }) {
+		return this.x
+	},
+}
+
+object.value satisfies string
+```
+
+- Expected string, found 4
+
+#### Setter `this`
+
+```ts
+let a = 2;
+const obj = {
+	x: 5,
+	set value(v) {
+		this.x = v;
+	}
+}
+
+obj.value = "some value";
+obj.x satisfies 5;
+```
+
+- Expected 5, found "some value"
+
+#### Setter assignment type
+
+```ts
+const obj = {
+   set value(v: string) { }
+}
+
+obj.value = 5;
+```
+
+- Type 5 does not meet property constraint string
+
+#### Setter side effect
+
+```ts
+let a = 2;
+const obj = {
+	x: 5,
+	set value(v) {
+		a = v;
+	}
+}
+
+obj.value = "some value";
+a satisfies 2;
+```
+
+- Expected 2, found "some value"
+
+#### Setter return
+
+> Returns the RHS not the return type
+> TODO warning in the setter
+
+```ts
+const result = ({ set value(a) { return { a: 3 } }}).value = 5;
+result satisfies string;
+```
+
+- Expected string, found 5
 
 #### Object spread
 
@@ -210,6 +274,72 @@ const b = x.b;
 ```
 
 - No property 'b' on { a: 2 }
+
+### Excess property
+
+> The following work through the same mechanism as forward inference
+> Thanks to pull request: #139
+
+#### Excess property at declaration
+
+```ts
+interface MyObject { property: string }
+
+const a: MyObject = { property: "hello", another: 2 }
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property at argument
+
+```ts
+interface MyObject { property: string }
+
+function process(param: MyObject) {}
+
+process({ property: "hello", another: 2 })
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property at return type
+
+```ts
+interface MyObject { property: string }
+
+function returnNewObject(): MyObject {
+	return { property: "hello", another: 67 }
+}
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property checks through spread and condition
+
+```ts
+type MyObject = { foo: number; bar?: number };
+
+const b: MyObject = {
+  foo: 1,
+  ...{
+    bar: 2,
+    invalid: 3,
+  },
+};
+
+declare let condition: boolean;
+
+const c: MyObject = {
+  foo: 1,
+  ...(condition ? {
+    bar: 2,
+    non_existent: 3,
+  } : {}),
+};
+```
+
+- Excess property 'invalid' was provided, but is not a property of MyObject
+- Excess property 'non_existent' was provided, but is not a property of MyObject
 
 ### Constant evaluation
 
@@ -2088,10 +2218,10 @@ function getA<T extends { a: string }>(p: T) {
 	return p.a
 }
 
-getA({ p: 2 })
+getA({ a: 2 })
 ```
 
-- Argument of type { p: 2 } is not assignable to parameter of type T
+- Argument of type { a: 2 } is not assignable to parameter of type T
 
 > I think reasons contains more information
 
@@ -2389,13 +2519,13 @@ function add() {
 #### Generic condition
 
 ```ts
-declare function isNumber<T>(t: T): T extends number ? true : false;
+declare function isNumber<T>(t: T): T extends number ? "yeess" : "nno";
 
-isNumber(5) satisfies true;
+isNumber(5) satisfies "yeess";
 isNumber("5") satisfies number;
 ```
 
-- Expected number, found false
+- Expected number, found "nno"
 
 #### More accurate generic
 
@@ -2403,6 +2533,7 @@ isNumber("5") satisfies number;
 declare function unwrap<T>(a: T | { item: T }): T;
 
 unwrap({ item: 5 }) satisfies string;
+unwrap(16) satisfies 16;
 ```
 
 - Expected string, found 5
@@ -2459,6 +2590,7 @@ const x: Record2<"test", boolean> = { no: false },
       z: Record2<"test", boolean> = { test: false };
 ```
 
+- Excess property 'no' was provided, but is not a property of { [\"test\"]: boolean }
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 
@@ -2530,6 +2662,15 @@ x.map(a => (a satisfies string, 2))
 ### Object constraint
 
 > Any references to a annotated variable **must** be within its LHS type. These test that it carries down to objects.
+
+#### Object property constraints
+
+```ts
+const my_obj: { a: number } = { a: 2 }
+my_obj.a = "hello world"
+```
+
+- Type "hello world" does not meet property constraint number
 
 #### Nested constraint
 
@@ -2908,3 +3049,21 @@ register(document.title)
 ```
 
 - Argument of type string is not assignable to parameter of type Literal\<string\>
+
+#### Errors carries
+
+> Note only one error raised. This prevents the compiler presenting loads of errors if an origin is invalid
+
+```ts
+const obj = { prop: 2 };
+console.log(obj.a.b.c);
+
+function x() {
+	return y
+}
+
+x().nothing
+```
+
+- Could not find variable 'y' in scope
+- No property 'a' on { prop: 2 }

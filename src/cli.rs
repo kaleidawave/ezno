@@ -17,8 +17,9 @@ use crate::{
 };
 use argh::FromArgs;
 use checker::CheckOutput;
+use parser::ParseOptions;
 
-/// The Ezno Type-checker & compiler
+/// The Ezno type-checker & compiler
 #[derive(FromArgs, Debug)]
 struct TopLevel {
 	#[argh(subcommand)]
@@ -196,6 +197,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				count_diagnostics,
 				compact_diagnostics,
 			} = check_arguments;
+
 			let entry_points = vec![input];
 
 			#[cfg(not(target_family = "wasm"))]
@@ -286,7 +288,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let mut files =
 				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 			let source_id = files.new_source_id(path.clone(), input.clone());
-			let res = Module::from_string(input, Default::default());
+			let res = Module::from_string(
+				input,
+				ParseOptions { retain_blank_lines: true, ..Default::default() },
+			);
 			match res {
 				Ok(module) => {
 					let options =
