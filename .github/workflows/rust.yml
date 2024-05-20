@@ -144,7 +144,7 @@ jobs:
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           deno-version: v1.x
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           node-version: 18
