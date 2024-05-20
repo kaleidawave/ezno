@@ -73,13 +73,13 @@ impl Declaration {
 		options: &ParseOptions,
 	) -> bool {
 		let Some(Token(token, _)) = reader.peek() else { return false };
+
 		let result = matches!(
 			token,
 			TSXToken::Keyword(
 				TSXKeyword::Let
 					| TSXKeyword::Const | TSXKeyword::Function
-					| TSXKeyword::Class | TSXKeyword::Import
-					| TSXKeyword::Export
+					| TSXKeyword::Class | TSXKeyword::Export
 			) | TSXToken::At,
 		);
 
@@ -91,22 +91,45 @@ impl Declaration {
 				let TSXToken::Keyword(token) = *token else { return false };
 				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
 
-				matches!(
-					token,
-					TSXKeyword::Declare | TSXKeyword::Interface
-					if options.type_annotations
-				) || matches!(
-					(token, after),
-					(TSXKeyword::From, TSXToken::StringLiteral(..))
-						| (TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function))
-				) || matches!(
-					(token, after),
-					(TSXKeyword::Async, TSXToken::Keyword(kw)) if options.custom_function_headers && kw.is_special_function_header()
-				)
+				#[allow(clippy::match_same_arms)]
+				match (token, after) {
+					// For dynamic import
+					(
+						TSXKeyword::Import,
+						TSXToken::OpenBrace
+						| TSXToken::Keyword(..)
+						| TSXToken::Identifier(..)
+						| TSXToken::StringLiteral(..)
+						| TSXToken::Multiply,
+					) => true,
+					(TSXKeyword::Declare | TSXKeyword::Interface, _) => options.type_annotations,
+					(TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function)) => true,
+					(TSXKeyword::Async, TSXToken::Keyword(kw)) => {
+						options.custom_function_headers && kw.is_special_function_header()
+					}
+					// Extra
+					(TSXKeyword::From, TSXToken::StringLiteral(..)) => true,
+					(..) => false,
+				}
 			};
 
 		#[cfg(not(feature = "extras"))]
-		return result;
+		return result || {
+			let TSXToken::Keyword(token) = *token else { return false };
+
+			// For dynamic import
+			matches!(token, TSXKeyword::Import)
+				&& matches!(
+					reader.peek_n(1),
+					Some(Token(
+						TSXToken::OpenBrace
+							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
+							| TSXToken::StringLiteral(..)
+							| TSXToken::Multiply,
+						_
+					))
+				)
+		};
 	}
 }
 

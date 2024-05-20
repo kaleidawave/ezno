@@ -796,6 +796,9 @@ impl<T: ContextType> Context<T> {
 					"Boolean" => {
 						return TypeId::BOOLEAN_TYPE;
 					}
+					"ImportMeta" => {
+						return TypeId::IMPORT_META;
+					}
 					_ => {}
 				}
 			}

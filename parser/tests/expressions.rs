@@ -102,6 +102,25 @@ const d = /in a set[=/]/
 	assert_eq!(output, input);
 }
 
+#[test]
+fn import_expression() {
+	let input = r#"
+const a = import("file");
+const b = import("some" + "expression");
+const c = import.meta;
+const d = import.meta.env;
+const helperPath = import.meta.resolve("./lib/helper.js")
+    "#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
 #[cfg(feature = "extras")]
 #[test]
 fn jsx() {

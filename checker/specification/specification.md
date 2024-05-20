@@ -1892,6 +1892,20 @@ c satisfies 3;
 - Expected boolean, found 3
 - Expected 3, found 1
 
+#### `import.meta`
+
+> Unfortunately because of bundling `url` and `resolve` cannot have known results so just `string`.
+
+```ts
+import.meta.url satisfies number;
+import.meta.resolve("./lib/helper.js") satisfies string;
+
+import.meta.env.production satisfies boolean;
+```
+
+- Expected number, found string
+- Expected boolean, found string | undefined
+
 ### Async and `Promise`s
 
 > Position of await is not checked (here is fine because top level await)
