@@ -125,7 +125,7 @@ impl Declaration {
 						TSXToken::OpenBrace
 							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
 							| TSXToken::StringLiteral(..)
-							| TSXToken::Multiply
+							| TSXToken::Multiply,
 						_
 					))
 				)
