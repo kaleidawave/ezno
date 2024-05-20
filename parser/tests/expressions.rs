@@ -103,12 +103,13 @@ const d = /in a set[=/]/
 }
 
 #[test]
-fn imports() {
+fn import_expression() {
 	let input = r#"
 const a = import("file");
 const b = import("some" + "expression");
 const c = import.meta;
-const d = import.meta.env
+const d = import.meta.env;
+const helperPath = import.meta.resolve("./lib/helper.js")
     "#
 	.trim();
 

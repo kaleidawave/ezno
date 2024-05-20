@@ -120,8 +120,7 @@ impl Default for TypeStore {
 				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
-
-			Type::Class { name: "ImportMeta".to_owned(), parameters: None },
+			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
 		];
 
 		// Check that above is correct, TODO eventually a macro

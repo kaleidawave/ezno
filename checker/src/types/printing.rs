@@ -337,11 +337,11 @@ fn print_type_into_buf<C: InformationChain>(
 		Type::Class { name, parameters: _, .. }
 		| Type::Interface { name, parameters: _, .. }
 		| Type::AliasTo { to: _, name, parameters: _ } => {
-			// if debug && ty.0 as usize > TypeId::INTERNAL_TYPE_COUNT {
-			// write!(buf, "(r{} nom={:?}) {name}", ty.0, nominal).unwrap();
-			// } else {
-			buf.push_str(name);
-			// }
+			if debug {
+				write!(buf, "{name}#{}", ty.0).unwrap();
+			} else {
+				buf.push_str(name);
+			}
 
 			// if let (true, Some(parameters)) = (debug, parameters) {
 			// 	buf.push('{');

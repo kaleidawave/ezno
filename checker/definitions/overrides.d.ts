@@ -1,14 +1,14 @@
 @Constant
 declare function debug_type_independent(t: any): void;
 
-declare class ImportEnv {
-  [key: string]: string | undefined;
+interface ImportEnv {
+    [key: string]: string | undefined;
 }
 
-declare class ImportMeta {
-  static env: ImportEnv;
-  static url: string;
-  static resolve(url: string): string;
+interface ImportMeta {
+    env: ImportEnv;
+    url: string;
+    resolve(url: string): string;
 }
 
 declare class Array<T> {
