@@ -7,7 +7,7 @@ use tokenizer_lib::TokenReader;
 /// Represents a generic parameter. Can have default or constraint to extend a type or a key of a type
 ///
 /// TODO is default and extends mut ex
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[apply(derive_ASTNode)]
 pub struct TypeParameter {
 	pub name: String,

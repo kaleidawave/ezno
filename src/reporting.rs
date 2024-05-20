@@ -2,14 +2,12 @@ use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	term::{
 		emit,
-		termcolor::{ColorChoice, StandardStream},
+		termcolor::{BufferedStandardStream, ColorChoice},
 		Config, DisplayStyle,
 	},
 };
-use parser::{
-	source_map::{FileSystem, MapFileStore, PathMap},
-	SourceId,
-};
+
+use checker::source_map::{MapFileStore, PathMap, SourceId};
 
 fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
@@ -93,11 +91,8 @@ pub(crate) fn emit_diagnostics<T: PathMap>(
 		..Config::default()
 	};
 
-	#[cfg(target_family = "wasm")]
-	{}
-
 	#[cfg(not(target_family = "wasm"))]
-	let mut writer = StandardStream::stderr(ColorChoice::Auto);
+	let mut writer = BufferedStandardStream::stderr(ColorChoice::Auto);
 
 	let files = fs.into_code_span_store();
 

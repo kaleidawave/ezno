@@ -104,7 +104,7 @@ impl ASTNode for StatementOrDeclaration {
 				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Marker(_, _) => {
-				panic!()
+				assert!(options.expect_markers, "Unexpected marker in AST");
 			}
 		}
 	}
@@ -244,7 +244,7 @@ impl Visitable for Block {
 }
 
 /// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
+#[derive(Debug, Clone, PartialEq, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
@@ -321,7 +321,12 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					expect_semi_colon(reader, &state.line_starts, stmt.get_position().end)?;
+					let _ = expect_semi_colon(
+						reader,
+						&state.line_starts,
+						stmt.get_position().end,
+						false,
+					)?;
 				}
 				Box::new(stmt).into()
 			}
@@ -341,14 +346,16 @@ impl ASTNode for BlockOrSingleStatement {
 			BlockOrSingleStatement::Braced(block) => {
 				block.to_string_from_buffer(buf, options, local);
 			}
-			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if options.pretty && !options.single_statement_on_new_line {
+			BlockOrSingleStatement::SingleStatement(statement) => {
+				if let Statement::Empty(..) = &**statement {
+					buf.push(';');
+				} else if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.push_gap_optionally(buf);
-					stmt.to_string_from_buffer(buf, options, local.next_level());
+					statement.to_string_from_buffer(buf, options, local.next_level());
 				} else {
-					stmt.to_string_from_buffer(buf, options, local);
-					if stmt.requires_semi_colon() {
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
 						buf.push(';');
 					}
 				}
@@ -369,12 +376,36 @@ pub(crate) fn parse_statements_and_declarations(
 			break;
 		}
 
-		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
-		if value.requires_semi_colon() {
-			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
+		let item = StatementOrDeclaration::from_reader(reader, state, options)?;
+		let requires_semi_colon = item.requires_semi_colon();
+		let end = item.get_position().end;
+
+		let blank_lines_after_statement = if requires_semi_colon {
+			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
+		} else if options.retain_blank_lines {
+			let Token(kind, next) = reader.peek().unwrap();
+			let byte_indexes_crosses_lines =
+				state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
+			if let TSXToken::EOS = kind {
+				byte_indexes_crosses_lines
+			} else {
+				byte_indexes_crosses_lines.saturating_sub(1)
+			}
+		} else {
+			0
+		};
+
+		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
+			(items.is_empty(), &item)
+		{
+			continue;
 		}
-		// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
-		items.push(value);
+		items.push(item);
+		for _ in 0..blank_lines_after_statement {
+			// TODO span
+			let span = Span { start: end, end, source: () };
+			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+		}
 	}
 	Ok(items)
 }

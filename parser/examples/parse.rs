@@ -14,12 +14,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	};
 
 	let display_keywords = args.iter().any(|item| item == "--keywords");
+	let extras = args.iter().any(|item| item == "--extras");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
 	let source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
 	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
+
+	// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
+	let double = args.iter().any(|item| item == "--double");
+
+	let print_ast = args.iter().any(|item| item == "--ast");
+
+	// double => pretty and render thus `|| double`
+	let render_output = args.iter().any(|item| item == "--render") || double;
+	let pretty = args.iter().any(|item| item == "--pretty") || double;
 
 	let now = Instant::now();
 
@@ -32,13 +42,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		partial_syntax,
 		type_annotations,
 		type_definition_module,
-		..ParseOptions::all_features()
+		retain_blank_lines: pretty,
+		custom_function_headers: extras,
+		destructuring_type_annotation: extras,
+		jsx: extras,
+		is_expressions: extras,
+		special_jsx_attributes: extras,
+		extra_operators: extras,
+		..ParseOptions::default()
 	};
 
 	// let parse_options = ParseOptions {
 	// 	stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 	// 	jsx: false,
 	// 	type_annotations: false,
+	// 	retain_blank_lines: true,
 	// 	..Default::default()
 	// };
 
@@ -47,25 +65,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source = std::fs::read_to_string(path.clone())?;
 
 	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	// let source = "const [,,/* hi */] = []".to_string();
+	// let source = "44;;".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} bytes", source.len());
-	let result = Module::from_string_with_options(source, parse_options, None);
+	let result = Module::from_string_with_options(source.clone(), parse_options, None);
 
 	match result {
 		Ok((module, state)) => {
 			if timings {
 				eprintln!("parsed in: {:?}", now.elapsed());
 			}
-
-			let print_ast = args.iter().any(|item| item == "--ast");
-			let render_output = args.iter().any(|item| item == "--render");
-			let pretty = args.iter().any(|item| item == "--pretty");
-
-			// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
-			let double = args.iter().any(|item| item == "--double");
 
 			if print_ast {
 				println!("{module:#?}");
@@ -113,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								eprintln!("re-parse was equal ✅");
 								Ok(())
 							} else {
-								eprintln!("{output:?} != {output2:?}");
+								eprintln!("{output:?} != {output2:?} (original = {source:?})");
 								eprintln!("initial   {:?}", module);
 								eprintln!("re-parsed {:?}", module2);
 								Err(Box::<dyn std::error::Error>::from("not equal"))

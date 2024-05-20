@@ -307,12 +307,18 @@ pub(crate) fn substitute(
 			}
 			Constructor::TypeOperator(..) => todo!(),
 			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { ty, extends } => {
-					let ty = substitute(ty, arguments, environment, types);
+				crate::types::TypeRelationOperator::Extends { item, extends } => {
+					let item = substitute(item, arguments, environment, types);
 					let extends = substitute(extends, arguments, environment, types);
 
-					let does_extend = get_larger_type(ty, types) == extends;
-					crate::utilities::notify!("Extends result {:?}", does_extend);
+					let base = get_larger_type(item, types);
+					let does_extend = base == extends;
+					crate::utilities::notify!(
+						"Extends result {:?} base={:?} extends={:?}",
+						does_extend,
+						crate::types::printing::print_type(base, types, environment, true),
+						crate::types::printing::print_type(extends, types, environment, true)
+					);
 					if does_extend {
 						TypeId::TRUE
 					} else {

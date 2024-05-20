@@ -1,5 +1,5 @@
 use crate::{
-	derive_ASTNode,
+	are_nodes_over_length, derive_ASTNode,
 	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
@@ -16,7 +16,7 @@ use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
@@ -168,16 +168,40 @@ impl ASTNode for ObjectLiteral {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
+		let large = are_nodes_over_length(
+			self.members.iter(),
+			options,
+			local,
+			Some(MAX_INLINE_OBJECT_LITERAL),
+			true,
+		);
+
 		buf.push('{');
-		options.push_gap_optionally(buf);
+
+		let local = if large {
+			local.next_level()
+		} else {
+			options.push_gap_optionally(buf);
+			local
+		};
+
 		for (at_end, member) in self.members.iter().endiate() {
+			if large {
+				buf.push_new_line();
+				options.add_indent(local.depth, buf);
+			}
 			member.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
 				options.push_gap_optionally(buf);
 			}
 		}
-		options.push_gap_optionally(buf);
+		if large {
+			buf.push_new_line();
+		} else {
+			options.push_gap_optionally(buf);
+		}
 		buf.push('}');
 	}
 }

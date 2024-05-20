@@ -12,7 +12,7 @@ use crate::{
 	TSXToken, Visitable,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct Decorator {
 	pub name: Vec<String>,
@@ -108,7 +108,7 @@ impl Decorator {
 
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[derive(Debug, PartialEq, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,

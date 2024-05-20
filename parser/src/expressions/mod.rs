@@ -28,7 +28,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use source_map::Nullable;
-use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -182,7 +182,7 @@ pub enum Expression {
 
 impl Eq for Expression {}
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
@@ -967,6 +967,10 @@ impl Expression {
 					{
 						return Ok(top);
 					}
+
+					let position = top.get_position();
+					let lhs: LHSOfAssignment = top.try_into()?;
+
 					let Token(_assignment, assignment_pos) = reader.next().unwrap();
 					let new_rhs = Self::from_reader_with_precedence(
 						reader,
@@ -975,8 +979,9 @@ impl Expression {
 						parent_precedence,
 						Some(assignment_pos),
 					)?;
-					let position = top.get_position().union(new_rhs.get_position());
-					let lhs = top.try_into()?;
+
+					let position = position.union(new_rhs.get_position());
+
 					top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 				}
 				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
@@ -1143,7 +1148,16 @@ impl Expression {
 						{
 							return Ok(top);
 						}
-						let Token(_, op_pos) = reader.next().unwrap();
+
+						let Token(token, op_pos) = reader.next().unwrap();
+
+						if !options.extra_operators && operator.is_non_standard() {
+							return Err(ParseError::new(
+								ParseErrors::NonStandardSyntaxUsedWithoutEnabled,
+								op_pos.with_length(token.length() as usize),
+							));
+						}
+
 						// Note precedence is already handled
 						let rhs = Self::from_reader_with_precedence(
 							reader,
@@ -1669,20 +1683,42 @@ impl Expression {
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					[condition, truthy_result, falsy_result].iter().map(AsRef::as_ref),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
 				condition.to_string_using_precedence(
 					buf,
 					options,
 					local,
 					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE),
 				);
-				buf.push_str(if options.pretty { " ? " } else { "?" });
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str("? ");
+				} else {
+					buf.push_str(if options.pretty { " ? " } else { "?" });
+				}
 				truthy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
 					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
-				buf.push_str(if options.pretty { " : " } else { ":" });
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str(": ");
+				} else {
+					buf.push_str(if options.pretty { " : " } else { ":" });
+				}
 				falsy_result.to_string_using_precedence(
 					buf,
 					options,
@@ -1748,7 +1784,7 @@ impl ExpressionToStringArgument {
 
 /// Represents expressions under the comma operator
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum MultipleExpression {
 	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
@@ -1985,7 +2021,7 @@ pub enum SpecialOperators {
 
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum TypeOrConst {
 	Type(Box<TypeAnnotation>),
 	Const(Span),
@@ -2000,7 +2036,7 @@ pub enum InExpressionLHS {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum FunctionArgument {
 	Spread(Expression, Span),
 	Standard(Expression),
@@ -2110,7 +2146,7 @@ impl From<Expression> for FunctionArgument {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ArrayElement(pub Option<FunctionArgument>);
 

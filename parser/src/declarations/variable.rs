@@ -120,7 +120,7 @@ impl DeclarationExpression for crate::Expression {
 
 /// Represents a name =
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
@@ -170,16 +170,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let available_space =
-			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
 
-		if let Some(e) = TExpr::as_option_expression_ref(&self.expression) {
-			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
-			if extends_limit {
-				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
-			}
-		}
 		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
@@ -189,7 +180,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
 pub enum VariableDeclaration {
@@ -203,7 +194,7 @@ pub enum VariableDeclaration {
 	},
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,
@@ -308,14 +299,34 @@ impl ASTNode for VariableDeclaration {
 					return;
 				}
 				buf.push_str("let ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				if declarations.is_empty() {
 					return;
 				}
 				buf.push_str("const ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 		}
 	}
@@ -340,12 +351,18 @@ pub(crate) fn declarations_to_string<
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
+	separate_lines: bool,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
 		declaration.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
-			options.push_gap_optionally(buf);
+			if separate_lines {
+				buf.push_new_line();
+				options.add_indent(local.depth + 1, buf);
+			} else {
+				options.push_gap_optionally(buf);
+			}
 		}
 	}
 }

@@ -6,7 +6,7 @@ use visitable_derive::Visitable;
 
 use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression};
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
@@ -86,7 +86,7 @@ impl ASTNode for EnumDeclaration {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum EnumMember {
 	Variant { name: String, value: Option<Expression>, position: Span },

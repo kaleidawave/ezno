@@ -10,9 +10,9 @@ use crate::{
 	features::{functions::ThisValue, objects::SpecialObjects},
 	subtyping::{type_is_subtype_of_property, SubTypeResult},
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments, get_constraint, substitute,
-		FunctionType, GenericChain, GenericChainLink, ObjectNature, StructureGenerics,
-		SynthesisedArgument,
+		calling::FunctionCallingError, generics::generic_type_arguments::StructureGenericArguments,
+		get_constraint, substitute, FunctionType, GenericChain, GenericChainLink, ObjectNature,
+		StructureGenerics, SynthesisedArgument,
 	},
 	Constant, Environment, TypeId,
 };
@@ -728,17 +728,55 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 
 	if let Ok(fact) = current_property {
 		match fact {
-			Logical::Pure(og) => run_setter_on_object(
-				og,
-				behavior,
-				environment,
-				on,
-				publicity,
-				under,
-				new,
-				types,
-				setter_position,
-			),
+			Logical::Pure(og) => {
+				let result = run_setter_on_object(
+					og,
+					behavior,
+					environment,
+					on,
+					publicity,
+					under,
+					new,
+					types,
+					setter_position,
+				);
+				if let Err(result) = result {
+					// TODO temp
+					for error in result {
+						match error {
+							FunctionCallingError::InvalidArgumentType {
+								parameter_type,
+								argument_type: _,
+								argument_position: _,
+								parameter_position: _,
+								restriction: _,
+							} => {
+								return Err(SetPropertyError::DoesNotMeetConstraint {
+									property_constraint: parameter_type,
+									reason: crate::subtyping::NonEqualityReason::Mismatch,
+								})
+							}
+							FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
+							| FunctionCallingError::NoLogicForIdentifier(..)
+							| FunctionCallingError::NotCallable { .. }
+							| FunctionCallingError::ExcessArguments { .. }
+							| FunctionCallingError::MissingArgument { .. } => unreachable!(),
+							FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
+								todo!()
+							}
+							FunctionCallingError::CyclicRecursion(_, _) => todo!(),
+							FunctionCallingError::TDZ { .. } => todo!(),
+							FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
+							FunctionCallingError::UnconditionalThrow { .. } => {
+								todo!()
+							}
+							FunctionCallingError::MismatchedThis { .. } => {
+								todo!()
+							}
+						}
+					}
+				}
+			}
 			Logical::Or { .. } => todo!(),
 			Logical::Implies { on: _implies_on, antecedent: _ } => {
 				crate::utilities::notify!("Check that `implies_on` could be a setter here");
@@ -774,6 +812,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	Ok(None)
 }
 
+/// `Vec<FunctionCallingError>` from calling setter
 #[allow(clippy::too_many_arguments)]
 fn run_setter_on_object<E: CallCheckingBehavior>(
 	og: PropertyValue,
@@ -785,7 +824,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 	new: PropertyValue,
 	types: &mut TypeStore,
 	setter_position: Option<SpanWithSource>,
-) {
+) -> Result<(), Vec<FunctionCallingError>> {
 	match og {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
 			let info = behavior.get_latest_info(environment);
@@ -802,6 +841,8 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				initialization: false,
 				position: setter_position,
 			});
+
+			Ok(())
 		}
 		PropertyValue::Getter(_) => todo!(),
 		PropertyValue::Setter(setter) => {
@@ -817,19 +858,22 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 					_ => todo!(),
 				},
 			};
-			let _ = setter.call(
-				CalledWithNew::None,
-				ThisValue::Passed(on),
-				some_setter_position,
-				&[arg],
-				None,
-				// TODO structure generics
-				None,
-				environment,
-				behavior,
-				types,
-				false,
-			);
+			// Ignore the result
+			setter
+				.call(
+					CalledWithNew::None,
+					ThisValue::Passed(on),
+					some_setter_position,
+					&[arg],
+					None,
+					// TODO structure generics
+					None,
+					environment,
+					behavior,
+					types,
+					false,
+				)
+				.map(|_| ())
 		}
 		PropertyValue::Dependent { .. } => todo!(),
 	}

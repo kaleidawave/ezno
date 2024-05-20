@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct WhileStatement {
 	pub condition: MultipleExpression,
@@ -50,7 +50,7 @@ impl ASTNode for WhileStatement {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct DoWhileStatement {
 	pub condition: MultipleExpression,

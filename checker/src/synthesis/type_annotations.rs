@@ -22,9 +22,7 @@ use std::convert::TryInto;
 
 use map_vec::Map;
 use parser::{
-	type_annotations::{
-		AnnotationWithBinder, CommonTypes, TupleElementKind, TypeCondition, TypeConditionResult,
-	},
+	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind},
 	ASTNode, TypeAnnotation,
 };
 use source_map::SpanWithSource;
@@ -432,25 +430,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
-			fn synthesise_condition(result: &TypeConditionResult) -> &TypeAnnotation {
-				match result {
-					TypeConditionResult::Reference(reference) => reference,
-					TypeConditionResult::Infer(_infer, _) => todo!(),
-				}
-			}
+			let condition = synthesise_type_annotation(condition, environment, checking_data);
 
-			let condition = synthesise_type_condition(condition, environment, checking_data);
-
-			let truthy_result = synthesise_type_annotation(
-				synthesise_condition(resolve_true),
-				environment,
-				checking_data,
-			);
-			let otherwise_result = synthesise_type_annotation(
-				synthesise_condition(resolve_false),
-				environment,
-				checking_data,
-			);
+			let truthy_result =
+				synthesise_type_annotation(resolve_true, environment, checking_data);
+			let otherwise_result =
+				synthesise_type_annotation(resolve_false, environment, checking_data);
 
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
@@ -489,34 +474,58 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			synthesize_template_literal_type(parts, &mut checking_data.types)
 		}
-		TypeAnnotation::Symbol { .. } => todo!(),
-	};
-
-	checking_data
-		.local_type_mappings
-		.types_to_types
-		.push(annotation.get_position().with_source(environment.get_source()), ty);
-
-	ty
-}
-
-fn synthesise_type_condition<T: crate::ReadFromFS>(
-	condition: &TypeCondition,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> TypeId {
-	match condition {
-		TypeCondition::Extends { ty, extends, position: _ } => {
-			let item = synthesise_type_annotation(ty, environment, checking_data);
+		TypeAnnotation::TypeOf(_item, position) => {
+			checking_data.raise_unimplemented_error(
+				"typeof annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::Infer(_name, position) => {
+			checking_data.raise_unimplemented_error(
+				"infer annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::Extends { item, extends, position: _ } => {
+			let item = synthesise_type_annotation(item, environment, checking_data);
 			let extends = synthesise_type_annotation(extends, environment, checking_data);
 			let ty = Type::Constructor(Constructor::TypeRelationOperator(
-				crate::types::TypeRelationOperator::Extends { ty: item, extends },
+				crate::types::TypeRelationOperator::Extends { item, extends },
 			));
 			checking_data.types.register_type(ty)
 		}
-		// TODO requires a kind of strict instance of ???
-		TypeCondition::Is { ty: _, is: _, position: _ } => todo!(),
+		TypeAnnotation::Is { item, is, position } => {
+			let _item = synthesise_type_annotation(item, environment, checking_data);
+			let _is = synthesise_type_annotation(is, environment, checking_data);
+			checking_data.raise_unimplemented_error(
+				"is annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+			// let ty = Type::Constructor(Constructor::TypeRelationOperator(
+			// 	crate::types::TypeRelationOperator::E { ty: item, is },
+			// ));
+			// checking_data.types.register_type(ty)
+		}
+		TypeAnnotation::Symbol { position, .. } => {
+			checking_data.raise_unimplemented_error(
+				"symbol annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+	};
+
+	if checking_data.options.store_expression_type_mappings {
+		checking_data
+			.local_type_mappings
+			.types_to_types
+			.push(annotation.get_position().with_source(environment.get_source()), ty);
 	}
+
+	ty
 }
 
 /// Comment as type annotation

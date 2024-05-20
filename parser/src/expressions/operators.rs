@@ -31,6 +31,13 @@ pub enum BinaryOperator {
     Compose
 }
 
+impl BinaryOperator {
+	#[must_use]
+	pub fn is_non_standard(&self) -> bool {
+		matches!(self, BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose)
+	}
+}
+
 /// Straight assignment is not here because LHS can be destructuring
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

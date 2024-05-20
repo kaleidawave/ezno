@@ -15,7 +15,7 @@ use tokenizer_lib::{
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Parameter<V> {
 	#[visit_skip_field]
@@ -66,7 +66,7 @@ impl ParameterVisibility for Option<crate::types::Visibility> {
 	}
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ParameterData {
 	Optional,
@@ -82,7 +82,7 @@ pub type SpreadParameterName = VariableField;
 pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Eq, PartialEq, Visitable)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 pub struct SpreadParameter {
 	pub name: SpreadParameterName,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -90,7 +90,7 @@ pub struct SpreadParameter {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub struct FunctionParameters<L, V> {
 	#[visit_skip_field]
@@ -111,7 +111,7 @@ pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 's
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub struct ThisParameter {
 	pub constraint: TypeAnnotation,
@@ -120,7 +120,7 @@ pub struct ThisParameter {
 
 /// TODO WIP!
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub struct SuperParameter {
 	pub constraint: TypeAnnotation,

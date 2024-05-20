@@ -32,12 +32,12 @@ pub mod bases {
 pub type HeadingAndPosition<T> = (Option<TokenStart>, <T as FunctionBased>::Header);
 
 /// Specialization information for [`FunctionBase`]
-pub trait FunctionBased: Debug + Clone + PartialEq + Eq + Send + Sync {
+pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 	/// Includes a keyword and/or modifiers
-	type Header: Debug + Clone + PartialEq + Eq + Send + Sync;
+	type Header: Debug + Clone + PartialEq + Send + Sync;
 
 	/// A name of the function
-	type Name: Debug + Clone + PartialEq + Eq + Send + Sync;
+	type Name: Debug + Clone + PartialEq + Send + Sync;
 
 	/// For `this` constraint
 	#[cfg(not(feature = "serde-serialize"))]
@@ -287,7 +287,7 @@ where
 }
 
 /// Base for all functions with the `function` keyword
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
@@ -371,14 +371,14 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 }
 
 #[cfg(feature = "extras")]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionLocationModifier {
 	Server,
 	Worker,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
@@ -683,7 +683,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 // #[cfg(feature = "full-typescript")]
 /// None if overloaded (declaration only)
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, PartialEq, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
 // #[cfg(not(feature = "full-typescript"))]

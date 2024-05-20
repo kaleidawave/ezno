@@ -11,7 +11,7 @@ use parser::{
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	ASTNode, Expression, ToStringOptions,
+	ASTNode, Expression,
 };
 
 use crate::{
@@ -28,9 +28,9 @@ use crate::{
 		},
 		variables::VariableWithValue,
 	},
-	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
+		printing::print_property_key,
 		properties::PropertyKey,
 	},
 	Decidable,
@@ -39,7 +39,6 @@ use crate::{
 use crate::{
 	context::information::Publicity,
 	features::{
-		assignments::Assignable,
 		objects::ObjectBuilder,
 		operations::{
 			evaluate_logical_operation_with_expression,
@@ -54,9 +53,10 @@ use crate::{
 };
 
 use super::{
-	assignments::{synthesise_access_to_reference, synthesise_lhs_of_assignment_to_reference},
+	assignments::SynthesiseToAssignable,
 	classes::synthesise_class_declaration,
 	extensions::{is_expression::synthesise_is_expression, jsx::synthesise_jsx_root},
+	parser_property_key_to_checker_property_key,
 	type_annotations::synthesise_type_annotation,
 	EznoParser,
 };
@@ -429,7 +429,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
-			let lhs = synthesise_lhs_of_assignment_to_reference(lhs, environment, checking_data);
+			let lhs =
+				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
@@ -440,11 +441,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 		}
 		Expression::BinaryAssignmentOperation { lhs, operator, rhs, position } => {
-			let lhs = Assignable::Reference(synthesise_access_to_reference(
-				lhs,
-				environment,
-				checking_data,
-			));
+			let lhs =
+				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
 			return environment.assign_to_assignable_handle_errors(
 				lhs,
@@ -455,11 +453,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 		}
 		Expression::UnaryPrefixAssignmentOperation { operator, operand, position } => {
-			let lhs = Assignable::Reference(synthesise_access_to_reference(
+			let lhs = SynthesiseToAssignable::synthesise_to_assignable(
 				operand,
 				environment,
 				checking_data,
-			));
+			);
 
 			match operator {
 				UnaryPrefixAssignmentOperator::Invert => todo!(),
@@ -485,11 +483,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::UnaryPostfixAssignmentOperation { operand, operator, position } => {
-			let lhs = Assignable::Reference(synthesise_access_to_reference(
+			let lhs = SynthesiseToAssignable::synthesise_to_assignable(
 				operand,
 				environment,
 				checking_data,
-			));
+			);
 			match operator {
 				parser::expressions::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
@@ -1048,9 +1046,9 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Some(member_position),
 				);
 			}
-			ObjectLiteralMember::Property { key: k, value, position, .. } => {
+			ObjectLiteralMember::Property { key, value, position, .. } => {
 				let key = parser_property_key_to_checker_property_key(
-					k.get_ast_ref(),
+					key.get_ast_ref(),
 					environment,
 					checking_data,
 					true,
@@ -1058,20 +1056,17 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let position_with_source = position.with_source(environment.get_source());
 
-				let maybe_property_expecting = environment.get_property(
+				let maybe_property_expecting = get_property_unbound(
 					expected,
 					Publicity::Public,
 					&key,
-					&mut checking_data.types,
-					None,
-					position_with_source,
-					&checking_data.options,
-					false,
+					&checking_data.types,
+					environment,
 				);
 
 				if expected != TypeId::ANY_TYPE
 					&& expected != TypeId::OBJECT_TYPE
-					&& maybe_property_expecting.is_none()
+					&& maybe_property_expecting.is_err()
 				{
 					checking_data.diagnostics_container.add_warning(
 						TypeCheckWarning::ExcessProperty {
@@ -1082,22 +1077,23 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							excess_property_name: k.to_string(&ToStringOptions::default()),
+							excess_property_name: print_property_key(
+								&key,
+								&checking_data.types,
+								environment,
+								false,
+							),
 						},
 					);
 				}
 
 				// TODO needs improvement
-				let property_expecting = get_property_unbound(
-					expected,
-					Publicity::Public,
-					&key,
-					&checking_data.types,
-					environment,
-				)
-				.ok()
-				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
-				.unwrap_or(TypeId::ANY_TYPE);
+				let property_expecting = maybe_property_expecting
+					.ok()
+					.and_then(
+						|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None },
+					)
+					.unwrap_or(TypeId::ANY_TYPE);
 
 				let value =
 					synthesise_expression(value, environment, checking_data, property_expecting);

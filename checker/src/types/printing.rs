@@ -258,10 +258,10 @@ fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "TypeOperator = {to:?}").unwrap();
 				}
 				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
-					ty,
+					item,
 					extends,
 				}) => {
-					print_type_into_buf(*ty, buf, cycles, args, types, info_chain, debug);
+					print_type_into_buf(*item, buf, cycles, args, types, info_chain, debug);
 					buf.push_str(" extends ");
 					print_type_into_buf(*extends, buf, cycles, args, types, info_chain, debug);
 				}

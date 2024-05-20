@@ -501,7 +501,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 						buf.push_str("...");
 						buf.push_str(&variable_field_to_string(name));
 					}
-					parser::ArrayDestructuringField::Name(name, _) => {
+					parser::ArrayDestructuringField::Name(name, ..) => {
 						buf.push_str(&variable_field_to_string(name));
 					}
 					parser::ArrayDestructuringField::Comment { .. }
@@ -519,16 +519,14 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 			let mut buf = String::from("{");
 			for (not_at_end, item) in items.iter().nendiate() {
 				match item.get_ast_ref() {
-					parser::ObjectDestructuringField::Name(name, _, _) => {
+					parser::ObjectDestructuringField::Name(name, ..) => {
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
 						}
 					}
 					parser::ObjectDestructuringField::Spread(name, _) => {
 						buf.push_str("...");
-						if let VariableIdentifier::Standard(name, ..) = name {
-							buf.push_str(name);
-						}
+						buf.push_str(&variable_field_to_string(name));
 					}
 					parser::ObjectDestructuringField::Map { from, name, .. } => {
 						match from {

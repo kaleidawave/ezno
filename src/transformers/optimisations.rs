@@ -135,6 +135,7 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 					*is_static,
 					ClassProperty {
 						is_readonly: false,
+						is_optional: false,
 						key: func.name.clone(),
 						type_annotation: None,
 						value: Some(Box::new(Expression::Null(func.position))),
