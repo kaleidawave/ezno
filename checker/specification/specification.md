@@ -138,15 +138,6 @@ let b: 3 = my_obj.a
 
 - Type 4 is not assignable to type 3
 
-#### Object property constraints
-
-```ts
-const my_obj: { a: number } = { a: 2 }
-my_obj.a = "hello world"
-```
-
-- Type "hello world" does not meet property constraint number
-
 #### Objects checks
 
 ```ts
@@ -161,17 +152,90 @@ const my_obj: { b: 3 } = { b: 4 }
 let global = 0;
 const object = {
 	// This getter has an impure side effect
-	get getValue() {
+	get value() {
 		return ++global
 	},
 }
 
-object.getValue satisfies string
-object.getValue satisfies boolean
+object.value satisfies string
+object.value satisfies boolean
 ```
 
 - Expected string, found 1
 - Expected boolean, found 2
+
+#### Getter `this`
+
+```ts
+const object = {
+	x: 4,
+	get value(this: { x: number }) {
+		return this.x
+	},
+}
+
+object.value satisfies string
+```
+
+- Expected string, found 4
+
+#### Setter `this`
+
+```ts
+let a = 2;
+const obj = {
+	x: 5,
+	set value(v) {
+		this.x = v;
+	}
+}
+
+obj.value = "some value";
+obj.x satisfies 5;
+```
+
+- Expected 5, found "some value"
+
+#### Setter assignment type
+
+```ts
+const obj = {
+   set value(v: string) { }
+}
+
+obj.value = 5;
+```
+
+- Type 5 does not meet property constraint string
+
+#### Setter side effect
+
+```ts
+let a = 2;
+const obj = {
+	x: 5,
+	set value(v) {
+		a = v;
+	}
+}
+
+obj.value = "some value";
+a satisfies 2;
+```
+
+- Expected 2, found "some value"
+
+#### Setter return
+
+> Returns the RHS not the return type
+> TODO warning in the setter
+
+```ts
+const result = ({ set value(a) { return { a: 3 } }}).value = 5;
+result satisfies string;
+```
+
+- Expected string, found 5
 
 #### Object spread
 
@@ -211,6 +275,11 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
+### Excess property
+
+> The following work through the same mechanism as forward inference
+> Thanks to pull request: #139
+
 #### Excess property at declaration
 
 ```ts
@@ -229,6 +298,18 @@ interface MyObject { property: string }
 function process(param: MyObject) {}
 
 process({ property: "hello", another: 2 })
+```
+
+- Excess property 'another' was provided, but is not a property of MyObject
+
+#### Excess property at return type
+
+```ts
+interface MyObject { property: string }
+
+function returnNewObject(): MyObject {
+	return { property: "hello", another: 67 }
+}
 ```
 
 - Excess property 'another' was provided, but is not a property of MyObject
@@ -2430,7 +2511,7 @@ isNumber(5) satisfies "yeess";
 isNumber("5") satisfies number;
 ```
 
-- Expected number, found "noo"
+- Expected number, found "nno"
 
 #### More accurate generic
 
@@ -2438,6 +2519,7 @@ isNumber("5") satisfies number;
 declare function unwrap<T>(a: T | { item: T }): T;
 
 unwrap({ item: 5 }) satisfies string;
+unwrap(16) satisfies 16;
 ```
 
 - Expected string, found 5
@@ -2566,6 +2648,15 @@ x.map(a => (a satisfies string, 2))
 ### Object constraint
 
 > Any references to a annotated variable **must** be within its LHS type. These test that it carries down to objects.
+
+#### Object property constraints
+
+```ts
+const my_obj: { a: number } = { a: 2 }
+my_obj.a = "hello world"
+```
+
+- Type "hello world" does not meet property constraint number
 
 #### Nested constraint
 
@@ -2945,35 +3036,20 @@ register(document.title)
 
 - Argument of type string is not assignable to parameter of type Literal\<string\>
 
-### Setters
+#### Errors carries
 
-#### Setters invocation invalid assignment
-
-```ts
-let a = 2;
-const obj = {
-   set value(v) {
-       a = v;
-   }
-}
-
-let b: 80 = (obj.value = "some value");
-let c: 80 = a;
-```
-
-- Type "some value" is not assignable to type 80
-- Type "some value" is not assignable to type 80
-
-#### Setters
+> Note only one error raised. This prevents the compiler presenting loads of errors if an origin is invalid
 
 ```ts
-let a = 2;
-const obj = {
-   set value(v) {
-       a = v;
-   }
+const obj = { prop: 2 };
+console.log(obj.a.b.c);
+
+function x() {
+	return y
 }
 
-let b: 80 = (obj.value = 80);
-let c: 80 = a;
+x().nothing
 ```
+
+- Could not find variable 'y' in scope
+- No property 'a' on { prop: 2 }

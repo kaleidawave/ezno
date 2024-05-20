@@ -281,10 +281,14 @@ impl ASTNode for Statement {
 				buf.push_str(name);
 				buf.push_str(": ");
 
-				// TODO new line?
-				statement.to_string_from_buffer(buf, options, local);
-				if statement.requires_semi_colon() {
+				if let Statement::Empty(..) = &**statement {
 					buf.push(';');
+				} else {
+					// TODO new line?
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 			Statement::Throw(ThrowStatement(thrown_expression, _)) => {
