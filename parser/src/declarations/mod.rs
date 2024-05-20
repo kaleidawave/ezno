@@ -91,6 +91,7 @@ impl Declaration {
 				let TSXToken::Keyword(token) = *token else { return false };
 				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
 
+				#[allow(clippy::match_same_arms)]
 				match (token, after) {
 					// For dynamic import
 					(
@@ -117,19 +118,17 @@ impl Declaration {
 			let TSXToken::Keyword(token) = *token else { return false };
 
 			// For dynamic import
-			matches!(
-				token
-				TSXKeyword::Import,
-			) && matches!(
-				reader.peek_n(1),
-				Some(Token(
-					TSXToken::OpenBrace
-						| TSXToken::Keyword(..) | TSXToken::Identifier(..)
-						| TSXToken::StringLiteral(..),
-						| TSXToken::Multiply
-					_
-				))
-			)
+			matches!(token, TSXKeyword::Import)
+				&& matches!(
+					reader.peek_n(1),
+					Some(Token(
+						TSXToken::OpenBrace
+							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
+							| TSXToken::StringLiteral(..)
+							| TSXToken::Multiply
+						_
+					))
+				)
 		};
 	}
 }
