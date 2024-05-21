@@ -405,8 +405,8 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
-		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
-		self.modules.get(&source_id).expect("no module").get_instance_at_position(pos).map(
+		let source = self.module_contents.get_source_at_path(path.as_ref())?;
+		self.modules.get(&source).expect("no module").get_instance_at_position(pos).map(
 			|instance| {
 				crate::types::printing::print_type(
 					instance.get_value_on_ref(),
@@ -419,9 +419,45 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	}
 
 	#[must_use]
+	pub fn get_type_at_position_with_span(
+		&self,
+		path: &str,
+		pos: u32,
+		debug: bool,
+	) -> Option<(String, SpanWithSource)> {
+		let source = self.module_contents.get_source_at_path(path.as_ref())?;
+		if let Some(module) = self.modules.get(&source) {
+			module.get_instance_at_position_with_span(pos).map(|(instance, range)| {
+				(
+					crate::types::printing::print_type(
+						instance.get_value_on_ref(),
+						&self.types,
+						&self.top_level_information,
+						debug,
+					),
+					SpanWithSource { start: range.start, end: range.end, source },
+				)
+			})
+		} else {
+			eprintln!("no module here???");
+			None
+		}
+	}
+
+	#[must_use]
 	pub fn get_module(&self, path: &str) -> Option<&A::OwnedModule> {
 		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
 		Some(&self.modules.get(&source_id).expect("no module").content)
+	}
+
+	pub fn empty() -> Self {
+		Self {
+			types: Default::default(),
+			module_contents: Default::default(),
+			modules: Default::default(),
+			diagnostics: Default::default(),
+			top_level_information: Default::default(),
+		}
 	}
 }
 
@@ -455,11 +491,21 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	crate::utilities::notify!("--- Finished definition file ---");
 
 	for point in &entry_points {
-		let entry_content = checking_data.modules.file_reader.read_file(point);
+		// eprintln!("Trying to get {point} from {:?}", checking_data.modules.files.get_paths());
+		let entry_content = if let Some(source) =
+			checking_data.modules.files.get_source_at_path(point)
+		{
+			Some((source, checking_data.modules.files.get_file_content(source)))
+		} else if let Some(content) = checking_data.modules.file_reader.read_file(point) {
+			let content = String::from_utf8(content).expect("invalid entry point encoding");
+			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
+			Some((source, content))
+		} else {
+			None
+		};
 
-		if let Some(content) = entry_content {
-			let (source, module) =
-				get_source(&mut checking_data, point, String::from_utf8(content).unwrap());
+		if let Some((source, content)) = entry_content {
+			let module = parse_source(point, source, content, &mut checking_data);
 
 			match module {
 				Ok(module) => {
@@ -474,6 +520,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				file: CouldNotOpenFile(point.clone()),
 				position: None,
 			});
+			continue;
 		}
 	}
 
@@ -495,16 +542,12 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	}
 }
 
-fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	checking_data: &mut CheckingData<T, A>,
+fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	path: &Path,
+	source: SourceId,
 	content: String,
-) -> (
-	SourceId,
-	Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError>,
-) {
-	let source = checking_data.modules.files.new_source_id(path.to_path_buf(), content.clone());
-
+	checking_data: &mut CheckingData<T, A>,
+) -> Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError> {
 	// TODO abstract using similar to import logic
 	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
 
@@ -514,14 +557,12 @@ fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		checking_data.options.lsp_mode,
 	);
 
-	let module = A::module_from_string(
+	A::module_from_string(
 		source,
 		content,
 		parse_options,
 		&mut checking_data.modules.parser_requirements,
-	);
-
-	(source, module)
+	)
 }
 
 const CACHE_MARKER: &[u8] = b"ezno-cache-file";
@@ -566,23 +607,30 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 				let at_end =
 					<u32 as BinarySerializable>::deserialize(&mut vec.into_iter(), SourceId::NULL);
 
-				// Get source and content which is at the end.
-				let mut drain =
-					content.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
-				// Okay as end
-				let (_source_id, path) = <(SourceId, String) as BinarySerializable>::deserialize(
-					&mut drain,
-					SourceId::NULL,
-				);
+				let source_id = {
+					// Get source and content which is at the end.
+					let mut drain = content
+						.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
 
-				// Collect from end
-				let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
+					// Okay as end
+					let (_source_id, path) =
+						<(SourceId, String) as BinarySerializable>::deserialize(
+							&mut drain,
+							SourceId::NULL,
+						);
 
-				// TODO unsafe set here
-				// checking_data.modules.files.update_file(id, content)
-				// todo!();
-				let source_id =
-					checking_data.modules.files.new_source_id(path.into(), source_content);
+					let get_source_at_path =
+						checking_data.modules.files.get_source_at_path(&Path::new(&path));
+
+					if let Some(source_id) = get_source_at_path {
+						eprintln!("reusing source id {source_id:?}");
+						source_id
+					} else {
+						// Collect from end
+						let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
+						checking_data.modules.files.new_source_id(path.into(), source_content)
+					}
+				};
 
 				let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
 

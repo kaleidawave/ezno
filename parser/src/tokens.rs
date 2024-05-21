@@ -301,7 +301,11 @@ pub enum TSXKeyword {
     Case, Yield, Return, Continue, Break,
     Import, Export, Default, From, With,
     In, Of,
-    TypeOf, InstanceOf, Void, Delete, Assert,
+    TypeOf, InstanceOf, Void, Delete, 
+	/// For [import assertions](https://v8.dev/features/import-assertions) lol
+	Assert,
+	/// For [assertion function type annotations](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#assertion-functions) lol
+	Asserts,
     Debugger,
     Try, Catch, Finally, Throw,
     Async, Await,

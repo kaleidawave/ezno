@@ -21,7 +21,7 @@ ezno-parser = ["dep:parser"]
 serde-serialize = ["dep:serde"]
 
 [dependencies]
-source-map = { version = "0.14.10", features = [
+source-map = { version = "0.15", features = [
   "serde-serialize",
   "self-rust-tokenize",
 ] }
@@ -35,7 +35,7 @@ derive-debug-extras = { version = "0.3", features = [
 ] }
 enum-variants-strings = "0.3"
 iterator-endiate = "0.2"
-path-absolutize = { version = "3.0.14", features = ["use_unix_paths_on_wasm"] }
+path-absolutize = { version = "3.0", features = ["use_unix_paths_on_wasm"] }
 either = "1.6"
 levenshtein = "1"
 once_cell = "1.10"

@@ -1,9 +1,9 @@
 use crate::{
-	declarations::ClassDeclaration, derive_ASTNode, errors::parse_lexing_error, functions,
-	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	type_annotations::generic_arguments_from_reader_sub_open_angle, ExpressionPosition,
-	FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors, ParseResult, Quoted,
-	TSXKeyword,
+	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
+	errors::parse_lexing_error, functions, parse_bracketed, throw_unexpected_token_with_token,
+	to_string_bracketed, type_annotations::generic_arguments_from_reader_sub_open_angle,
+	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
+	ParseResult, Quoted, TSXKeyword,
 };
 
 use self::{
@@ -1547,6 +1547,10 @@ impl Expression {
 					buf.push('.');
 				}
 
+				// let add_new_lines = are_nodes_over_length(nodes, options, local, Some(()), true);
+
+				// todo!("by parts");
+
 				match property {
 					PropertyReference::Standard { property, is_private } => {
 						if *is_private {
@@ -1948,19 +1952,13 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
-	let add_new_lines = if options.enforce_limit_length_limit() {
-		let mut acc = 0u16;
-		let available_space = u16::from(options.max_line_length);
-		for node in nodes {
-			acc += crate::get_length_of_node(node, options, local, i32::from(available_space));
-			if acc > available_space {
-				break;
-			}
-		}
-		acc > available_space
-	} else {
-		false
-	};
+	let add_new_lines = are_nodes_over_length(
+		nodes.iter(),
+		options,
+		local,
+		Some((options.max_line_length as u32).saturating_sub(buf.characters_on_current_line())),
+		true,
+	);
 	if add_new_lines {
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);

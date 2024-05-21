@@ -76,6 +76,8 @@ pub enum TypeAnnotation {
 	KeyOf(Box<TypeAnnotation>, Span),
 	TypeOf(Box<LHSOfAssignment>, Span),
 	Infer(String, Span),
+	/// This is technically a special return type in TypeScript but we can make a superset behavior here
+	Asserts(Box<TypeAnnotation>, Span),
 	Extends {
 		item: Box<TypeAnnotation>,
 		extends: Box<TypeAnnotation>,
@@ -350,6 +352,10 @@ impl ASTNode for TypeAnnotation {
 				buf.push_str(" is ");
 				is.to_string_from_buffer(buf, options, local);
 			}
+			Self::Asserts(predicate, _pos) => {
+				buf.push_str("asserts ");
+				predicate.to_string_from_buffer(buf, options, local);
+			}
 		}
 	}
 
@@ -428,6 +434,17 @@ impl TypeAnnotation {
 				let (name, position) = token_as_identifier(token, "infer name")?;
 				let position = start.union(position);
 				Self::Infer(name, position)
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Asserts), start) => {
+				let predicate = TypeAnnotation::from_reader_with_config(
+					reader,
+					state,
+					options,
+					parent_kind,
+					Some(start),
+				)?;
+				let position = start.union(&predicate.get_position());
+				Self::Asserts(Box::new(predicate), position)
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
 				let position = t.get_span();

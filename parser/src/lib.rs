@@ -1189,23 +1189,6 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 	}
 }
 
-fn get_length_of_node<T: ASTNode>(
-	e: &T,
-	options: &ToStringOptions,
-	local: LocalToStringInformation,
-	available_space: i32,
-) -> u16 {
-	// TODO swap under "release" mode
-	let mut buf = source_map::StringWithOptionalSourceMap {
-		source: String::new(),
-		source_map: None,
-		quit_after: Some(available_space as usize),
-		since_new_line: 0,
-	};
-	e.to_string_from_buffer(&mut buf, options, local);
-	buf.source.len() as u16
-}
-
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{

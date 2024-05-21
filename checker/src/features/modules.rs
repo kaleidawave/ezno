@@ -6,7 +6,8 @@ use crate::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
 	},
-	get_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings, VariableId,
+	parse_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings,
+	VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -310,8 +311,12 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			let content = checking_data.modules.file_reader.read_file(full_importer);
 			if let Some(content) = content {
-				let (source, module) =
-					get_source(checking_data, full_importer, String::from_utf8(content).unwrap());
+				let content = String::from_utf8(content).expect("invalid entry point encoding");
+				let source = checking_data
+					.modules
+					.files
+					.new_source_id(full_importer.to_path_buf(), content.clone());
+				let module = parse_source(full_importer, source, content, checking_data);
 
 				match module {
 					Ok(module) => {

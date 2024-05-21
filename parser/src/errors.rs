@@ -30,6 +30,7 @@ pub enum ParseErrors<'a> {
 	ExpectedIdentifier,
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
+	ExpectRule,
 }
 
 #[allow(missing_docs)]
@@ -194,6 +195,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")
+			}
+			ParseErrors::ExpectRule => {
+				write!(f, "'-' must be followed by a readonly rule")
 			}
 		}
 	}
