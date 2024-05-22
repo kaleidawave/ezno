@@ -73,7 +73,13 @@ impl ASTNode for IfStatement {
 				break;
 			}
 		}
-		let position = start.union(inner.get_position());
+		let position = start.union(if let Some(ref t) = trailing_else {
+			t.get_position()
+		} else if let Some(t) = else_conditions.last() {
+			t.get_position()
+		} else {
+			inner.get_position()
+		});
 		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
 	}
 
