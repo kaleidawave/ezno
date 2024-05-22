@@ -1956,7 +1956,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		nodes.iter(),
 		options,
 		local,
-		Some((options.max_line_length as u32).saturating_sub(buf.characters_on_current_line())),
+		Some(u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line())),
 		true,
 	);
 	if add_new_lines {

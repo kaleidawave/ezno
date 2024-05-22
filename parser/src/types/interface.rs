@@ -473,9 +473,10 @@ impl ASTNode for InterfaceMember {
 										return Ok(InterfaceMember::Rule {
 											parameter: name,
 											optionality,
-											is_readonly: match readonly_position.is_some() {
-												true => MappedReadonlyKind::Always,
-												false => MappedReadonlyKind::False,
+											is_readonly: if readonly_position.is_some() {
+												MappedReadonlyKind::Always
+											} else {
+												MappedReadonlyKind::False
 											},
 											matching_type: Box::new(matching_type),
 											rule,

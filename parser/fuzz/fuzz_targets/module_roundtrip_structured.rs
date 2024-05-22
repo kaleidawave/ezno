@@ -38,8 +38,8 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	// Ignore whitespace for now
 	assert_eq!(
-		output1.replace(char::is_whitespace, ""),
-		output2.replace(char::is_whitespace, ""),
+		output1.replace(['\n', ';'], ""),
+		output2.replace(['\n', ';'], ""),
 		"outputs different for {module1:?} vs {module2:?} for {input:?}"
 	);
 

@@ -450,6 +450,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 		Some(&self.modules.get(&source_id).expect("no module").content)
 	}
 
+	#[must_use]
 	pub fn empty() -> Self {
 		Self {
 			types: Default::default(),
@@ -620,7 +621,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 						);
 
 					let get_source_at_path =
-						checking_data.modules.files.get_source_at_path(&Path::new(&path));
+						checking_data.modules.files.get_source_at_path(Path::new(&path));
 
 					if let Some(source_id) = get_source_at_path {
 						eprintln!("reusing source id {source_id:?}");

@@ -34,10 +34,10 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let output2 = module2.to_string(&to_string_options).replace(char::is_whitespace, "");
 
-	// Ignore whitespace for now
+	// Ignore whitespace and semi-colons for now
 	assert_eq!(
-		output1.replace(char::is_whitespace, ""),
-		output2.replace(char::is_whitespace, ""),
+		output1.replace(['\n', ';'], ""),
+		output2.replace(['\n', ';'], ""),
 		"outputs different for {module1:?} vs {module2:?} for {input:?}"
 	);
 

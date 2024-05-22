@@ -318,8 +318,14 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Upgrade(UpgradeArguments {}),
 		}) => match utilities::upgrade_self() {
-			Ok(_) => std::process::ExitCode::SUCCESS,
-			Err(_) => std::process::ExitCode::FAILURE,
+			Ok(name) => {
+				print_to_cli(format_args!("Successfully updated to {name}"));
+				std::process::ExitCode::SUCCESS
+			}
+			Err(err) => {
+				print_to_cli(format_args!("Error: {err}\nCould not upgrade binary. Retry manually from {repository}/releases", repository=env!("CARGO_PKG_REPOSITORY")));
+				std::process::ExitCode::FAILURE
+			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
 			repl.run(read_file, cli_input_resolver);

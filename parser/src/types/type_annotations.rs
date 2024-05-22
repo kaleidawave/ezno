@@ -443,7 +443,7 @@ impl TypeAnnotation {
 					parent_kind,
 					Some(start),
 				)?;
-				let position = start.union(&predicate.get_position());
+				let position = start.union(predicate.get_position());
 				Self::Asserts(Box::new(predicate), position)
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {

@@ -60,6 +60,7 @@ jobs:
 
           \`\`\`ts
           // $LINES_OF_CODE lines of TypeScript generated from specification.md
+          // this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
           $(cat ./demo.ts)
           \`\`\`
           </details>

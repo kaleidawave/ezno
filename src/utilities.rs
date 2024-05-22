@@ -1,59 +1,61 @@
-use std::{
-	fmt::Arguments,
-	path::{Path, PathBuf},
-};
+use std::fmt::Arguments;
 
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
-		print_to_cli_with_break(format_args!(
+		print_to_cli_with_break_after(format_args!(
 			"{}@{} (#{run_id})",
 			env!("CARGO_PKG_NAME"),
 			env!("CARGO_PKG_VERSION")
 		));
 	} else {
-		print_to_cli_with_break(format_args!(
+		print_to_cli_with_break_after(format_args!(
 			"{}@{}",
 			env!("CARGO_PKG_NAME"),
 			env!("CARGO_PKG_VERSION")
 		));
 	}
 	print_to_cli(format_args!("{}", env!("CARGO_PKG_DESCRIPTION")));
-	print_to_cli_with_break(format_args!(
+	print_to_cli_with_break_after(format_args!(
 		"Repository: {}, License: {}",
 		env!("CARGO_PKG_REPOSITORY"),
 		env!("CARGO_PKG_LICENSE")
 	));
-	print_to_cli(format_args!("For help run --help"));
+	print_to_cli_with_break_after(format_args!("For help run --help"));
 	if let (Some(sponsors), Some(contributors)) =
 		(option_env!("SPONSORS"), option_env!("CONTRIBUTORS"))
 	{
 		const SPONSORS_URL: &str = "https://github.com/sponsors/kaleidawave";
 
-		print_to_cli(format_args!("\n---\n"));
-		print_to_cli_with_break(format_args!("With thanks to"));
-		print_to_cli(format_args!("Contributors:"));
+		print_to_cli(format_args!("With thanks to:"));
+		print_to_cli(format_args!(
+			"  Contributors (join them @ https://github.com/kaleidawave/ezno/issues):"
+		));
 		wrap_with_ident(contributors);
-		print_to_cli(format_args!("Sponsors ({SPONSORS_URL}):"));
+		print_to_cli(format_args!("  Sponsors (join them @ {SPONSORS_URL}):"));
 		wrap_with_ident(sponsors);
-		print_to_cli(format_args!("and all the believers ✨"));
+		print_to_cli_with_break_after(format_args!(
+			"  and all the believers in me and the project ✨"
+		));
 	}
 }
 
 fn wrap_with_ident(input: &str) {
+	// Four spaces is stable across terminals (unlike tabs)
+	const INDENT: &str = "    ";
 	let mut buf = String::new();
 	for part in input.split(',') {
 		buf.push_str(part);
 		buf.push_str(", ");
-		if buf.len() > 20 {
-			print_to_cli(format_args!("\t{buf}"));
+		if buf.len() > 30 {
+			print_to_cli(format_args!("{INDENT}{buf}"));
 			buf.clear();
 		}
 	}
-	print_to_cli_with_break(format_args!("\t{buf}"));
+	print_to_cli_with_break_after(format_args!("{INDENT}{buf}"));
 }
 
 /// Adds and extra new line afterwards
-fn print_to_cli_with_break(arguments: Arguments) {
+fn print_to_cli_with_break_after(arguments: Arguments) {
 	print_to_cli(format_args!("{arguments}\n"));
 }
 
@@ -84,76 +86,22 @@ pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
 	io::Write::flush(&mut io::stdout()).unwrap();
 }
 
-trait FileSystem {
-	fn read_directory(&self) -> Vec<String>;
-}
-
-// TODO
-/// - root
-/// - replace read_dir with T above
-/// https://www.malikbrowne.com/blog/a-beginners-guide-glob-patterns/
-pub(crate) fn parse_path_argument(p: &str) -> Vec<PathBuf> {
-	fn append_bases(base: &Path, parts: &mut Vec<PathBuf>) {
-		for entry in std::fs::read_dir(base).unwrap() {
-			let entry = entry.unwrap();
-			if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-				append_bases(&entry.path(), parts)
-			} else {
-				// TODO * etc
-				parts.push(entry.path());
-			}
-		}
-	}
-
-	let mut parts = Vec::<PathBuf>::new();
-	for s in p.split(',') {
-		let buf = PathBuf::from(s);
-		if s.contains("*") {
-			// TODO root
-			let mut current = PathBuf::new();
-			for part in buf.components() {
-				if part.as_os_str() == "**" {
-					let directories = std::fs::read_dir(&current).unwrap();
-					// TODO recursive
-					for directory in directories {
-						let directory = directory.unwrap();
-						append_bases(&directory.path(), &mut parts)
-					}
-				} else {
-					// TODO
-					// else if part.as_os_str().to_str().is_some_and(|s| s.contains('*')) {
-					// 	let directories = std::fs::read_dir(&current).unwrap();
-					// 	for directory in directories {
-					// 		let directory = directory.unwrap();
-					// 		if directory.file_type().is_ok_and(|r#type| r#type.is_file()) {
-					// 			parts.push(current.join(directory.file_name()));
-					// 		}
-					// 	}
-					// 	break;
-					// }
-					current.push(part);
-				}
-			}
-		} else {
-			parts.push(buf);
-		}
-	}
-	parts
-}
-
 // yes i implemented it only using `native_tls`...
 // TODO or(..., debug_assertions)
 #[cfg(not(target_family = "wasm"))]
-pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
+pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	use native_tls::{TlsConnector, TlsStream};
 	use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 	use std::net::TcpStream;
 
-	fn make_request(root: &str, path: &str) -> Result<TlsStream<TcpStream>, std::io::Error> {
+	fn make_request(
+		root: &str,
+		path: &str,
+	) -> Result<TlsStream<TcpStream>, Box<dyn std::error::Error>> {
 		let url = format!("{root}:443");
 		let tcp_stream = TcpStream::connect(url)?;
-		let connector = TlsConnector::new().unwrap();
-		let mut tls_stream = connector.connect(root, tcp_stream).unwrap();
+		let connector = TlsConnector::new()?;
+		let mut tls_stream = connector.connect(root, tcp_stream)?;
 		let request = format!(
 			"GET {path} HTTP/1.1\r\n\
         Host: {root}\r\n\
@@ -167,7 +115,7 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 		Ok(tls_stream)
 	}
 
-	let assert_url = {
+	let (version_name, assert_url) = {
 		let mut stream = make_request("api.github.com", "/repos/kaleidawave/ezno/releases/latest")?;
 
 		let mut response = String::new();
@@ -182,7 +130,7 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 		}
 
 		use simple_json_parser::*;
-		let body = lines.next().expect("No body?");
+		let body = lines.next().ok_or_else(|| "No body on API request")?;
 
 		#[cfg(target_os = "windows")]
 		const EXPECTED_END: &str = "windows.exe";
@@ -190,8 +138,15 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 		const EXPECTED_END: &str = "linux";
 
 		let mut required_binary = None;
+		let mut version_name = None;
+
+		// Name comes before assets so okay here on exit signal
 		let result = parse_with_exit_signal(&body, |keys, value| {
-			if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
+			if let [JSONKey::Slice("name")] = keys {
+				if let RootJSONValue::String(s) = value {
+					version_name = Some(s.to_owned());
+				}
+			} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
 				keys
 			{
 				if let RootJSONValue::String(s) = value {
@@ -205,14 +160,19 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 		});
 
 		if let Err(JSONParseError { at, reason }) = result {
-			eprintln!("{reason:?} @ {at}");
+			return Err(Box::from(format!("JSON parse error: {reason:?} @ {at}")));
 		}
 
-		required_binary.expect("couldn't find binary")
+		(
+			version_name.unwrap_or_default(),
+			required_binary.ok_or_else(|| "could not find binary for platform")?,
+		)
 	};
 
 	let actual_asset_url = {
-		let url = assert_url.strip_prefix("https://github.com").unwrap();
+		let url = assert_url.strip_prefix("https://github.com").ok_or_else(|| {
+			format!("Assert url {assert_url:?} does not start with 'https://github.com'")
+		})?;
 		let response = make_request("github.com", url)?;
 		let mut reader = BufReader::new(response);
 
@@ -222,7 +182,7 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 
 		// Check for successful redirect
 		if !status_line.contains("302 Found") {
-			panic!("error {status_line}")
+			return Err(Box::from(format!("Expected redirect, got {status_line:?}")));
 		}
 
 		let mut location = None;
@@ -238,14 +198,18 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 			}
 		}
 
-		location.expect("no location")
+		location.ok_or_else(|| "no location")?
 	};
 
 	// Finally do download
-	let url =
-		actual_asset_url.strip_prefix("https://objects.githubusercontent.com").unwrap().trim_end();
+	let url = actual_asset_url
+		.strip_prefix("https://objects.githubusercontent.com")
+		.ok_or_else(|| {
+			format!("Assert url {assert_url:?} does not start with 'https://objects.githubusercontent.com'")
+		})?
+		.trim_end();
 
-	let response = make_request("objects.githubusercontent.com", dbg!(url))?;
+	let response = make_request("objects.githubusercontent.com", url)?;
 
 	let mut reader = BufReader::new(response);
 
@@ -255,7 +219,7 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 
 	// Check for successful status code
 	if !status_line.contains("200 OK") {
-		panic!("error {status_line}")
+		return Err(Box::from(format!("Got status {status_line:?}")));
 	}
 
 	// Read and discard headers
@@ -278,10 +242,8 @@ pub(crate) fn upgrade_self() -> Result<(), std::io::Error> {
 	reader.read_to_end(&mut buffer)?;
 	file.write_all(&buffer)?;
 
-	println!("Update downloaded successfully");
-
 	self_replace::self_replace(&new_binary)?;
 	std::fs::remove_file(&new_binary)?;
 
-	Ok(())
+	Ok(version_name)
 }
