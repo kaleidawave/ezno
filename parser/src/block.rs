@@ -383,14 +383,11 @@ pub(crate) fn parse_statements_and_declarations(
 		let blank_lines_after_statement = if requires_semi_colon {
 			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
 		} else if options.retain_blank_lines {
-			let Token(kind, next) = reader.peek().unwrap();
-			let byte_indexes_crosses_lines =
-				state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
-			if let TSXToken::EOS = kind {
-				byte_indexes_crosses_lines
-			} else {
-				byte_indexes_crosses_lines.saturating_sub(1)
-			}
+			let Token(_kind, next) = reader.peek().unwrap();
+			state
+				.line_starts
+				.byte_indexes_crosses_lines(end as usize, next.0 as usize)
+				.saturating_sub(1)
 		} else {
 			0
 		};
