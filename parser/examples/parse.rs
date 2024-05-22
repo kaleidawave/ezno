@@ -65,7 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source = std::fs::read_to_string(path.clone())?;
 
 	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	let source = "if (this) return; else switch (this) {\n}\n\n\n".to_string();
+	// let source = "if (this) return; else switch (this) {\n}\n\n\n".to_string();
+	// let source = ";\n\n".to_string();
 	// let source = "{};;;".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
