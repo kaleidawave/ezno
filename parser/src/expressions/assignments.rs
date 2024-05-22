@@ -337,6 +337,9 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								inner.position,
 							))
 						}
+						ObjectLiteralMember::Comment(..) => {
+							continue;
+						}
 					};
 					members.push(WithComment::None(new_member));
 				}

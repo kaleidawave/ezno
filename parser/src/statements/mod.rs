@@ -61,8 +61,9 @@ pub enum Statement {
 		statement: Box<Statement>,
 	},
 	VarVariable(VarVariableStatement),
-	// TODO position
 	Empty(Span),
+	/// Lol
+	AestheticSemiColon(Span),
 }
 
 #[apply(derive_ASTNode)]
@@ -201,7 +202,9 @@ impl ASTNode for Statement {
 					unreachable!()
 				}
 			}
-			TSXToken::SemiColon => Ok(Statement::Empty(reader.next().unwrap().get_span())),
+			TSXToken::SemiColon => {
+				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
@@ -218,6 +221,7 @@ impl ASTNode for Statement {
 	) {
 		match self {
 			Statement::Empty(..) => {}
+			Statement::AestheticSemiColon(..) => buf.push(';'),
 			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {

@@ -65,7 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source = std::fs::read_to_string(path.clone())?;
 
 	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	// let source = "44;;".to_string();
+	// let source = "switch (this) {\n    case this:\n        ;\n        {\n        }\n}\n".to_string();
+	// let source = "{};;;".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
@@ -84,17 +85,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if source_maps || render_output || double || render_timings {
 				let now = Instant::now();
 
-				let to_string_options = ToStringOptions {
-					expect_markers: true,
-					include_type_annotations: type_annotations,
-					pretty,
-					comments: if pretty { Comments::All } else { Comments::None },
-					// 60 is temp
-					max_line_length: if pretty { 60 } else { u8::MAX },
-					..Default::default()
-				};
+				// let to_string_options = ToStringOptions {
+				// 	expect_markers: true,
+				// 	include_type_annotations: type_annotations,
+				// 	pretty,
+				// 	comments: if pretty { Comments::All } else { Comments::None },
+				// 	// 60 is temp
+				// 	max_line_length: if pretty { 60 } else { u8::MAX },
+				// 	..Default::default()
+				// };
 
-				// let to_string_options = ToStringOptions::default();
+				let to_string_options = ToStringOptions::default();
 
 				let (output, source_map) =
 					module.to_string_with_source_map(&to_string_options, source_id, &fs);

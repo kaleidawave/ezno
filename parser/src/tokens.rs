@@ -376,6 +376,11 @@ impl TSXKeyword {
 
 impl TSXToken {
 	#[must_use]
+	pub fn is_identifier_or_ident(&self) -> bool {
+		matches!(self, TSXToken::Identifier(_) | TSXToken::Keyword(_))
+	}
+
+	#[must_use]
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}

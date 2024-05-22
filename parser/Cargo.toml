@@ -63,7 +63,7 @@ source-map = { version = "0.15", features = [
 tokenizer-lib = { version = "1.6", features = [
   "buffered",
   "sized-tokens",
-], default_features = false }
+], default-features = false }
 tsify = "0.4.5"
 wasm-bindgen = "0.2"
 
@@ -71,7 +71,7 @@ wasm-bindgen = "0.2"
 tokenizer-lib = { version = "1.6", features = [
   "parallel",
   "sized-tokens",
-], default_features = false }
+], default-features = false }
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

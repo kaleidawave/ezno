@@ -241,6 +241,15 @@ impl ASTNode for VariableDeclaration {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
 				let mut declarations = Vec::new();
 				loop {
+					// Some people like to have trailing comments in declarations ?
+					if reader.peek().is_some_and(|t| t.0.is_comment()) {
+						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+							break;
+						}
+						continue;
+					}
+
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
 						reader, state, options,
 					)?;
@@ -270,6 +279,15 @@ impl ASTNode for VariableDeclaration {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
 				let mut declarations = Vec::new();
 				loop {
+					// Some people like to have trailing comments in declarations ?
+					if reader.peek().is_some_and(|t| t.0.is_comment()) {
+						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+							break;
+						}
+						continue;
+					}
+
 					let value =
 						VariableDeclarationItem::<Expression>::from_reader(reader, state, options)?;
 					declarations.push(value);
