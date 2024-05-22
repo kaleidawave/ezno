@@ -71,9 +71,11 @@ impl ASTNode for TypeParameter {
 	) {
 		buf.push_str(&self.name);
 		if let Some(ref extends) = self.extends {
+			buf.push_str(" extends ");
 			extends.to_string_from_buffer(buf, options, local);
 		}
 		if let Some(ref default) = self.default {
+			buf.push_str(" = ");
 			default.to_string_from_buffer(buf, options, local);
 		}
 	}

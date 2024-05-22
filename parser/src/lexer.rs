@@ -528,7 +528,7 @@ pub fn lex_script(
 					continue;
 				}
 				'`' if !*escaped => {
-					if idx > start + 1 {
+					if idx > start {
 						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
 					}
 					start = idx;

@@ -739,7 +739,17 @@ impl ASTNode for InterfaceMember {
 				});
 				output_type.to_string_from_buffer(buf, options, local);
 			}
-			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
+			InterfaceMember::Comment(c, is_multiline, _) => {
+				if *is_multiline {
+					buf.push_str("/*");
+					buf.push_str(c);
+					buf.push_str("*/");
+				} else {
+					buf.push_str("//");
+					buf.push_str(c);
+					buf.push_new_line();
+				}
+			}
 		}
 	}
 
