@@ -291,16 +291,34 @@ pub enum Comments {
 pub struct LocalToStringInformation {
 	under: SourceId,
 	depth: u8,
+	should_try_pretty_print: bool,
 }
 
 impl LocalToStringInformation {
 	pub(crate) fn next_level(self) -> LocalToStringInformation {
-		LocalToStringInformation { under: self.under, depth: self.depth + 1 }
+		LocalToStringInformation {
+			under: self.under,
+			depth: self.depth + 1,
+			should_try_pretty_print: self.should_try_pretty_print,
+		}
 	}
 
 	/// TODO for bundling
 	pub(crate) fn _change_source(self, new: SourceId) -> LocalToStringInformation {
-		LocalToStringInformation { under: new, depth: self.depth }
+		LocalToStringInformation {
+			under: new,
+			depth: self.depth,
+			should_try_pretty_print: self.should_try_pretty_print,
+		}
+	}
+
+	/// Prevents recursion & other excess
+	pub(crate) fn do_not_pretty_print(self) -> LocalToStringInformation {
+		LocalToStringInformation {
+			under: self.under,
+			depth: self.depth,
+			should_try_pretty_print: false,
+		}
 	}
 }
 
@@ -345,7 +363,11 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		self.to_string_from_buffer(
 			&mut buf,
 			options,
-			LocalToStringInformation { under: source_map::Nullable::NULL, depth: 0 },
+			LocalToStringInformation {
+				under: source_map::Nullable::NULL,
+				depth: 0,
+				should_try_pretty_print: true,
+			},
 		);
 		buf.source
 	}
@@ -1047,20 +1069,41 @@ fn receiver_to_tokens(
 /// *`to_strings`* items surrounded in `{`, `[`, `(`, etc. Defaults to `,` as delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
-	brackets: (char, char),
+	(left_bracket, right_bracket): (char, char),
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	buf.push(brackets.0);
+	const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
+	let large =
+		are_nodes_over_length(nodes.iter(), options, local, Some(MAX_INLINE_OBJECT_LITERAL), true);
+
+	buf.push(left_bracket);
+	let local = if large {
+		local.next_level()
+	} else {
+		if left_bracket == '{' {
+			options.push_gap_optionally(buf);
+		}
+		local
+	};
 	for (at_end, node) in nodes.iter().endiate() {
+		if large {
+			buf.push_new_line();
+			options.add_indent(local.depth, buf);
+		}
 		node.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
 			options.push_gap_optionally(buf);
 		}
 	}
-	buf.push(brackets.1);
+	if large {
+		buf.push_new_line();
+	} else if left_bracket == '{' {
+		options.push_gap_optionally(buf);
+	}
+	buf.push(right_bracket);
 }
 
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)

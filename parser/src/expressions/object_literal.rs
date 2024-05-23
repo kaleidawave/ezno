@@ -1,5 +1,5 @@
 use crate::{
-	are_nodes_over_length, derive_ASTNode,
+	derive_ASTNode,
 	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
@@ -10,7 +10,6 @@ use crate::{
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
-use iterator_endiate::EndiateIteratorExt;
 use std::fmt::Debug;
 use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
@@ -172,41 +171,7 @@ impl ASTNode for ObjectLiteral {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
-		let large = are_nodes_over_length(
-			self.members.iter(),
-			options,
-			local,
-			Some(MAX_INLINE_OBJECT_LITERAL),
-			true,
-		);
-
-		buf.push('{');
-
-		let local = if large {
-			local.next_level()
-		} else {
-			options.push_gap_optionally(buf);
-			local
-		};
-
-		for (at_end, member) in self.members.iter().endiate() {
-			if large {
-				buf.push_new_line();
-				options.add_indent(local.depth, buf);
-			}
-			member.to_string_from_buffer(buf, options, local);
-			if !at_end {
-				buf.push(',');
-				options.push_gap_optionally(buf);
-			}
-		}
-		if large {
-			buf.push_new_line();
-		} else {
-			options.push_gap_optionally(buf);
-		}
-		buf.push('}');
+		crate::to_string_bracketed(&self.members, ('{', '}'), buf, options, local);
 	}
 }
 

@@ -27,7 +27,7 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use source_map::Nullable;
+use source_map::{Nullable, ToString};
 use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
@@ -1528,6 +1528,11 @@ impl Expression {
 				buf.push(')');
 			}
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
+				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+					chain_to_string_from_buffer(&self, buf, options, local);
+					return;
+				}
+
 				buf.add_mapping(&position.with_source(local.under));
 
 				// TODO number okay, others don't quite get?
@@ -1546,10 +1551,6 @@ impl Expression {
 				} else {
 					buf.push('.');
 				}
-
-				// let add_new_lines = are_nodes_over_length(nodes, options, local, Some(()), true);
-
-				// todo!("by parts");
 
 				match property {
 					PropertyReference::Standard { property, is_private } => {
@@ -1617,9 +1618,6 @@ impl Expression {
 					}
 				}
 			}
-			Self::ArrayLiteral(values, _) => {
-				to_string_bracketed(values, ('[', ']'), buf, options, local);
-			}
 			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
 			Self::ArrowFunction(arrow_function) => {
 				// `async () => {}` looks like async statement declaration when in declaration
@@ -1640,11 +1638,14 @@ impl Expression {
 					buf.push(')');
 				}
 			}
+			Self::ArrayLiteral(values, _) => {
+				to_string_bracketed(values, ('[', ']'), buf, options, local);
+			}
 			Self::ObjectLiteral(object_literal) => {
 				if local2.on_left {
 					buf.push('(');
 				}
-				object_literal.to_string_from_buffer(buf, options, local);
+				to_string_bracketed(&object_literal.members, ('{', '}'), buf, options, local);
 				if local2.on_left {
 					buf.push(')');
 				}
@@ -2271,6 +2272,122 @@ pub enum SuperReference {
 	Call { arguments: Vec<FunctionArgument> },
 	PropertyAccess { property: String },
 	Index { indexer: Box<Expression> },
+}
+
+pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
+	original: &Expression,
+	buf: &mut T,
+	options: &crate::ToStringOptions,
+	local: crate::LocalToStringInformation,
+) {
+	let mut chain = Vec::new();
+
+	let split_between_lines = if options.enforce_limit_length_limit() {
+		let room =
+			u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line());
+
+		let mut buf = source_map::StringWithOptionalSourceMap {
+			source: String::new(),
+			source_map: None,
+			quit_after: Some(room as usize),
+			since_new_line: 0,
+		};
+		let mut over = false;
+		let mut cur = Some(original);
+		while let Some(node) = cur {
+			chain.push(node);
+			// Just measure the link in change (not the parent)
+			cur = match node {
+				Expression::PropertyAccess { parent, property, .. } => {
+					match property {
+						PropertyReference::Standard { property, .. } => buf.push_str(property),
+						PropertyReference::Marker(_) => {}
+					}
+					Some(&*parent)
+				}
+				Expression::Index { indexer, indexee, .. } => {
+					indexer.to_string_from_buffer(&mut buf, options, local);
+					Some(&*indexee)
+				}
+				Expression::FunctionCall { function, type_arguments, arguments, .. } => {
+					if let (true, Some(type_arguments)) =
+						(options.include_type_annotations, type_arguments)
+					{
+						to_string_bracketed(type_arguments, ('<', '>'), &mut buf, options, local);
+					}
+					arguments_to_string(arguments, &mut buf, options, local);
+					Some(&*function)
+				}
+				expression => {
+					expression.to_string_from_buffer(&mut buf, options, local);
+					None
+				}
+			};
+
+			if buf.should_halt() {
+				over = true;
+				// Continue to build chain
+			}
+		}
+		over
+	} else {
+		false
+	};
+
+	if split_between_lines && !chain.is_empty() {
+		let mut items = chain.into_iter().rev();
+		items.next().unwrap().to_string_from_buffer(buf, options, local);
+
+		for item in items {
+			// Just measure the link in change (not the parent)
+			match item {
+				Expression::PropertyAccess { property, is_optional, .. } => {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					if *is_optional {
+						buf.push_str("?.");
+					} else {
+						buf.push('.');
+					}
+					match property {
+						PropertyReference::Standard { property, is_private } => {
+							if *is_private {
+								buf.push('#');
+							}
+							buf.push_str(property);
+						}
+						PropertyReference::Marker(..) => {
+							assert!(options.expect_markers, "found marker");
+						}
+					}
+				}
+				Expression::Index { indexer, is_optional, .. } => {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					if *is_optional {
+						buf.push_str("?.");
+					}
+					buf.push('[');
+					indexer.to_string_from_buffer(buf, options, local);
+					buf.push(']');
+				}
+				Expression::FunctionCall { type_arguments, arguments, is_optional, .. } => {
+					if *is_optional {
+						buf.push_str("?.");
+					}
+					if let (true, Some(type_arguments)) =
+						(options.include_type_annotations, type_arguments)
+					{
+						to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
+					}
+					arguments_to_string(arguments, buf, options, local);
+				}
+				_ => unreachable!(),
+			}
+		}
+	} else {
+		original.to_string_from_buffer(buf, options, local.do_not_pretty_print())
+	}
 }
 
 #[cfg(test)]

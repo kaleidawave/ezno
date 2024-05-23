@@ -297,7 +297,7 @@ interface MyObject { property: string }
 
 function process(param: MyObject) {}
 
-process({ property: "hello", another: 2 })
+process({ property: "hello", another: 2 });
 ```
 
 - 'another' is not a property of MyObject

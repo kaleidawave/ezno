@@ -22,7 +22,7 @@ use std::convert::TryInto;
 
 use map_vec::Map;
 use parser::{
-	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind},
+	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement},
 	ASTNode, TypeAnnotation,
 };
 use source_map::SpanWithSource;
@@ -372,7 +372,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				&mut environment.info,
 			);
 
-			for (idx, (spread, member)) in members.iter().enumerate() {
+			for (idx, TupleLiteralElement(spread, member, _)) in members.iter().enumerate() {
 				// TODO binder name under data...?
 				match spread {
 					TupleElementKind::Standard => {

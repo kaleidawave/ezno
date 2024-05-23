@@ -211,6 +211,14 @@ where
 		local: crate::LocalToStringInformation,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
+		// TODO parameters don't implement ASTNode
+		// let large = are_nodes_over_length(
+		// 	parameters.iter(),
+		// 	options,
+		// 	local,
+		// 	Some(MAX_INLINE_OBJECT_LITERAL),
+		// 	true,
+		// );
 		buf.push('(');
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()

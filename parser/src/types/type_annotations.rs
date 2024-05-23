@@ -65,7 +65,7 @@ pub enum TypeAnnotation {
 	/// Object literal e.g. `{ y: string }`
 	ObjectLiteral(Vec<WithComment<Decorated<InterfaceMember>>>, Span),
 	/// Tuple literal e.g. `[number, x: string]`
-	TupleLiteral(Vec<(TupleElementKind, AnnotationWithBinder)>, Span),
+	TupleLiteral(Vec<TupleLiteralElement>, Span),
 	/// ?
 	TemplateLiteral(Vec<TemplateLiteralPart<AnnotationWithBinder>>, Span),
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
@@ -266,27 +266,10 @@ impl ASTNode for TypeAnnotation {
 			}
 			Self::NamespacedName(..) => todo!(),
 			Self::ObjectLiteral(members, _) => {
-				buf.push('{');
-				for (at_end, member) in members.iter().endiate() {
-					member.to_string_from_buffer(buf, options, local);
-					if !at_end {
-						buf.push_str(", ");
-					}
-				}
-				buf.push('}');
+				to_string_bracketed(members, ('{', '}'), buf, options, local);
 			}
 			Self::TupleLiteral(members, _) => {
-				buf.push('[');
-				for (at_end, (spread, member)) in members.iter().endiate() {
-					if matches!(spread, TupleElementKind::Spread) {
-						buf.push_str("...");
-					}
-					member.to_string_from_buffer(buf, options, local);
-					if !at_end {
-						buf.push_str(", ");
-					}
-				}
-				buf.push(']');
+				to_string_bracketed(members, ('[', ']'), buf, options, local);
 			}
 			Self::Index(on, with, _) => {
 				on.to_string_from_buffer(buf, options, local);
@@ -299,10 +282,33 @@ impl ASTNode for TypeAnnotation {
 				item.to_string_from_buffer(buf, options, local);
 			}
 			Self::Conditional { condition, resolve_true, resolve_false, .. } => {
+				// Same as expression::condition
+				let split_lines = crate::are_nodes_over_length(
+					[condition, resolve_true, resolve_false].iter().map(AsRef::as_ref),
+					options,
+					local,
+					Some(
+						u32::from(options.max_line_length)
+							.saturating_sub(buf.characters_on_current_line()),
+					),
+					true,
+				);
 				condition.to_string_from_buffer(buf, options, local);
-				buf.push_str(" ? ");
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str("? ");
+				} else {
+					buf.push_str(if options.pretty { " ? " } else { "?" });
+				}
 				resolve_true.to_string_from_buffer(buf, options, local);
-				buf.push_str(" : ");
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str(": ");
+				} else {
+					buf.push_str(if options.pretty { " : " } else { ":" });
+				}
 				resolve_false.to_string_from_buffer(buf, options, local);
 			}
 			Self::ArrayLiteral(item, _) => {
@@ -580,40 +586,11 @@ impl TypeAnnotation {
 				Self::ObjectLiteral(members, position)
 			}
 			// Tuple literal type
-			Token(TSXToken::OpenBracket, start_pos) => {
-				let mut members = Vec::new();
-				loop {
-					if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
-						break;
-					}
-					let is_spread = reader
-						.conditional_next(|token| matches!(token, TSXToken::Spread))
-						.is_some();
-
-					let annotation_with_binder =
-						AnnotationWithBinder::from_reader(reader, state, options)?;
-
-					let kind = if is_spread {
-						TupleElementKind::Spread
-					} else if reader
-						.conditional_next(|token| matches!(token, TSXToken::QuestionMark))
-						.is_some()
-					{
-						TupleElementKind::Optional
-					} else {
-						TupleElementKind::Standard
-					};
-
-					members.push((kind, annotation_with_binder));
-
-					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-						reader.next();
-					} else {
-						break;
-					}
-				}
-				let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-				Self::TupleLiteral(members, start_pos.union(end))
+			Token(TSXToken::OpenBracket, start) => {
+				let (members, end) =
+					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
+				let position = start.union(end);
+				Self::TupleLiteral(members, position)
 			}
 			Token(TSXToken::TemplateLiteralStart, start) => {
 				let mut parts = Vec::new();
@@ -1082,6 +1059,64 @@ pub struct TypeAnnotationSpreadFunctionParameter {
 	pub position: Span,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[apply(derive_ASTNode)]
+pub struct TupleLiteralElement(pub TupleElementKind, pub AnnotationWithBinder, pub Span);
+
+impl ASTNode for TupleLiteralElement {
+	fn get_position(&self) -> Span {
+		self.2
+	}
+
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &crate::ParseOptions,
+	) -> ParseResult<Self> {
+		let is_spread = reader.conditional_next(|token| matches!(token, TSXToken::Spread));
+
+		let annotation_with_binder = AnnotationWithBinder::from_reader(reader, state, options)?;
+
+		let (kind, position) = if let Some(spread) = is_spread {
+			(TupleElementKind::Spread, spread.1.union(annotation_with_binder.get_position()))
+		} else if let Some(trailing_question) =
+			reader.conditional_next(|token| matches!(token, TSXToken::QuestionMark))
+		{
+			(
+				TupleElementKind::Optional,
+				annotation_with_binder.get_position().union(trailing_question.get_end()),
+			)
+		} else {
+			(TupleElementKind::Standard, annotation_with_binder.get_position())
+		};
+
+		Ok(Self(kind, annotation_with_binder, position))
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if let TupleElementKind::Spread = self.0 {
+			buf.push_str("...");
+		}
+		self.1.to_string_from_buffer(buf, options, local);
+		if let TupleElementKind::Optional = self.0 {
+			buf.push('?');
+		}
+	}
+}
+
+impl ListItem for TupleLiteralElement {
+	const EMPTY: Option<Self> = None;
+
+	fn allow_comma_after(&self) -> bool {
+		true
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1180,19 +1215,21 @@ mod tests {
 		assert_matches_ast!(
 			"[number, x: string]",
 			TypeAnnotation::TupleLiteral(
-				Deref @ [(
+				Deref @ [TupleLiteralElement(
 					TupleElementKind::Standard,
 					AnnotationWithBinder::NoAnnotation(TypeAnnotation::CommonName(
 						CommonTypes::Number,
 						span!(1, 7),
 					)),
-				), (
+					_,
+				), TupleLiteralElement(
 					TupleElementKind::Standard,
 					AnnotationWithBinder::Annotated {
 						name: Deref @ "x",
 						ty: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
 						position: _,
 					},
+					_,
 				)],
 				span!(0, 19),
 			)
