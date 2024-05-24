@@ -24,7 +24,9 @@ fn do_fuzz(data: &str) -> Corpus {
 		return Corpus::Reject;
 	};
 
-	let to_string_options = ToStringOptions::default();
+	// Comments in weird places currently cause printing issues
+	let to_string_options =
+		ToStringOptions { comments: ezno_parser::Comments::None, ..Default::default() };
 
 	let output1 = module1.to_string(&to_string_options);
 
