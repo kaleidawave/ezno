@@ -429,8 +429,7 @@ impl TSXToken {
 	pub fn is_expression_postfix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Comment(..)
-				| TSXToken::MultiLineComment(..)
+			TSXToken::MultiLineComment(..)
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr

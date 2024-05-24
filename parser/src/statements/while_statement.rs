@@ -76,7 +76,7 @@ impl ASTNode for DoWhileStatement {
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		let position =
 			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
-		Ok(Self { position, condition, inner })
+		Ok(Self { condition, inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

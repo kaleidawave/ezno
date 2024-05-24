@@ -111,7 +111,7 @@ impl ASTNode for StatementOrDeclaration {
 				assert!(options.expect_markers, "Unexpected marker in AST");
 			}
 			StatementOrDeclaration::Imported { moved, from, originally: _ } => {
-				moved.to_string_from_buffer(buf, options, local.change_source(*from))
+				moved.to_string_from_buffer(buf, options, local.change_source(*from));
 			}
 		}
 	}
