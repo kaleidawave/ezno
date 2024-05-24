@@ -1038,10 +1038,12 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number(..) => {
+		LexingState::Number(literal_type) => {
 			// Just `.` or ends with combination token
 			if script[start..].trim_end() == "."
-				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+				|| script.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+				|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+					&& script.ends_with(['e', 'E', 'b', 'B']))
 			{
 				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}
