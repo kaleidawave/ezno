@@ -141,36 +141,36 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					if options.pretty {
-						let mut done = false;
-						for line in comment.lines() {
-							if done {
+						// Perform indent correction
+						for (idx, line) in comment.lines().enumerate() {
+							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim_start());
-							done = true;
 						}
+						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}
-					buf.push_str("*/ ");
+					buf.push_str("*/");
 				}
 				ast.to_string_from_buffer(buf, options, local);
 			}
 			Self::PostfixComment(ast, comment, _) => {
 				ast.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('*')) {
-					buf.push_str(" /*");
+					buf.push_str("/*");
 					if options.pretty {
-						let mut done = false;
-						for line in comment.lines() {
-							if done {
+						// Perform indent correction
+						for (idx, line) in comment.lines().enumerate() {
+							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim_start());
-							done = true;
 						}
+						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}

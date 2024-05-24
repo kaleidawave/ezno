@@ -253,6 +253,7 @@ impl ASTNode for Statement {
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim_start());
 						}
+						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}
