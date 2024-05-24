@@ -230,7 +230,7 @@ jobs:
 
       - name: Run fuzzing
         env:
-          SHORT_CIRCUIT: true
+          SHORT_CIRCUIT: false
         if: steps.changes.outputs.parser == 'true'
         run: |
           if ${{ env.SHORT_CIRCUIT }}; then

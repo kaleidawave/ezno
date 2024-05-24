@@ -1209,7 +1209,7 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 	// Whether just to consider the amount on the line or the entire object
 	total: bool,
 ) -> bool {
-	if options.enforce_limit_length_limit() {
+	if options.enforce_limit_length_limit() && local.should_try_pretty_print {
 		let room = available_space.map_or(options.max_line_length as usize, |s| s as usize);
 		let mut buf = source_map::StringWithOptionalSourceMap {
 			source: String::new(),

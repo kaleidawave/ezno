@@ -186,6 +186,13 @@ impl LeadingParameter for (Option<ThisParameter>, Option<SuperParameter>) {
 	}
 }
 
+enum ParameterLike<'a> {
+	ThisParameter(&'a ThisParameter),
+	SuperParameter(&'a SuperParameter),
+	Regular(&'a Parameter<()>),
+	SpreadParameter(&'a SpreadParameter)
+}
+
 impl<L, V> ASTNode for FunctionParameters<L, V>
 where
 	L: LeadingParameter,
@@ -211,18 +218,25 @@ where
 		local: crate::LocalToStringInformation,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
-		// TODO parameters don't implement ASTNode
-		// let large = are_nodes_over_length(
-		// 	parameters.iter(),
+		// const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
+		// TODO cheaty recursion stuff. Parameter (and stuff) should maybe implement ASTNode (then make a union `ParameterLike` or `dyn`?). Maybe use to_string_bracketed?
+		// let large = crate::are_nodes_over_length(
+		// 	std::iter::once(self),
 		// 	options,
 		// 	local,
 		// 	Some(MAX_INLINE_OBJECT_LITERAL),
 		// 	true,
 		// );
+
 		buf.push('(');
+		// let local = if large { local.next_level() } else { local };
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()
 		{
+			// if large {
+			// 	buf.push_new_line();
+			// 	options.add_indent(local.depth, buf);
+			// }
 			// decorators_to_string_from_buffer(decorators, buf, options, local);
 			name.to_string_from_buffer(buf, options, local);
 			if let (true, Some(ref type_annotation)) =
@@ -244,6 +258,10 @@ where
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {
+			// if large {
+			// 	buf.push_new_line();
+			// 	options.add_indent(local.depth, buf);
+			// }
 			buf.push_str("...");
 			rest_parameter.name.to_string_from_buffer(buf, options, local);
 			if let Some(ref type_annotation) = rest_parameter.type_annotation {
@@ -251,6 +269,9 @@ where
 				type_annotation.to_string_from_buffer(buf, options, local);
 			}
 		}
+		// if large {
+		// 	buf.push_new_line();
+		// }
 		buf.push(')');
 	}
 }
