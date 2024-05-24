@@ -405,7 +405,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				parser::Declaration::TypeAlias(_) | parser::Declaration::Import(_) => {}
 			},
-			StatementOrDeclaration::Marker(_, _) => {}
+			StatementOrDeclaration::Imported { .. } | StatementOrDeclaration::Marker(_, _) => {}
 		}
 	}
 

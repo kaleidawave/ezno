@@ -130,7 +130,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		}
 
 		use simple_json_parser::*;
-		let body = lines.next().ok_or_else(|| "No body on API request")?;
+		let body = lines.next().ok_or("No body on API request")?;
 
 		#[cfg(target_os = "windows")]
 		const EXPECTED_END: &str = "windows.exe";
@@ -141,7 +141,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		let mut version_name = None;
 
 		// Name comes before assets so okay here on exit signal
-		let result = parse_with_exit_signal(&body, |keys, value| {
+		let result = parse_with_exit_signal(body, |keys, value| {
 			if let [JSONKey::Slice("name")] = keys {
 				if let RootJSONValue::String(s) = value {
 					version_name = Some(s.to_owned());
@@ -165,7 +165,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 
 		(
 			version_name.unwrap_or_default(),
-			required_binary.ok_or_else(|| "could not find binary for platform")?,
+			required_binary.ok_or("could not find binary for platform")?,
 		)
 	};
 
@@ -198,7 +198,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 			}
 		}
 
-		location.ok_or_else(|| "no location")?
+		location.ok_or("no location")?
 	};
 
 	// Finally do download
@@ -242,8 +242,8 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	reader.read_to_end(&mut buffer)?;
 	file.write_all(&buffer)?;
 
-	self_replace::self_replace(&new_binary)?;
-	std::fs::remove_file(&new_binary)?;
+	self_replace::self_replace(new_binary)?;
+	std::fs::remove_file(new_binary)?;
 
 	Ok(version_name)
 }

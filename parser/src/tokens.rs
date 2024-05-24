@@ -407,6 +407,8 @@ impl TSXToken {
 			self,
 			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
 				| TSXToken::Arrow
+				// for `const x = 2; /something/g`
+				| TSXToken::SemiColon
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
 				| TSXToken::JSXExpressionStart
@@ -415,11 +417,25 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
-				// for `const x = 2; /something/g`
-				| TSXToken::SemiColon
 				| TSXToken::Multiply
 				| TSXToken::Add
 				| TSXToken::Subtract
+				| TSXToken::Divide
+		) || self.is_assignment()
+	}
+
+	/// For trailing expression comments
+	#[must_use]
+	pub fn is_expression_postfix(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::Comment(..)
+				| TSXToken::MultiLineComment(..)
+				| TSXToken::LogicalNot
+				| TSXToken::LogicalAnd
+				| TSXToken::LogicalOr
+				| TSXToken::Multiply
+				| TSXToken::Add | TSXToken::Subtract
 				| TSXToken::Divide
 		) || self.is_assignment()
 	}

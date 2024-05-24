@@ -74,8 +74,9 @@ impl ASTNode for DoWhileStatement {
 		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		reader.expect_next(TSXToken::CloseParentheses)?;
-		Ok(Self { position: start.union(inner.get_position()), condition, inner })
+		let position =
+			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
+		Ok(Self { position, condition, inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -303,8 +303,8 @@ impl LocalToStringInformation {
 		}
 	}
 
-	/// TODO for bundling
-	pub(crate) fn _change_source(self, new: SourceId) -> LocalToStringInformation {
+	/// For printing source maps after bundling
+	pub(crate) fn change_source(self, new: SourceId) -> LocalToStringInformation {
 		LocalToStringInformation {
 			under: new,
 			depth: self.depth,
@@ -1118,7 +1118,11 @@ pub(crate) fn expect_semi_colon(
 	if let Some(token) = reader.peek() {
 		let Token(kind, start) = token;
 
-		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
+		if let TSXToken::CloseBrace
+		| TSXToken::EOS
+		| TSXToken::Comment(..)
+		| TSXToken::MultiLineComment(..) = kind
+		{
 			Ok(line_starts
 				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
 				.saturating_sub(1))

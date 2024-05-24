@@ -996,7 +996,23 @@ impl Expression {
 
 					top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 				}
-				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
+				TSXToken::Comment(_) => {
+					// TODO while not comment
+					if reader.peek_n(1).is_some_and(|t| t.0.is_expression_postfix()) {
+						let (content, is_multiline, position) =
+							TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						top = Expression::Comment {
+							content,
+							on: Box::new(top),
+							position,
+							is_multiline,
+							prefix: false,
+						};
+					} else {
+						return Ok(top);
+					}
+				}
+				TSXToken::MultiLineComment(_) => {
 					let (content, is_multiline, position) =
 						TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 					top = Expression::Comment {
@@ -1529,7 +1545,7 @@ impl Expression {
 			}
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
-					chain_to_string_from_buffer(&self, buf, options, local);
+					chain_to_string_from_buffer(self, buf, options, local);
 					return;
 				}
 
@@ -2303,11 +2319,11 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 						PropertyReference::Standard { property, .. } => buf.push_str(property),
 						PropertyReference::Marker(_) => {}
 					}
-					Some(&*parent)
+					Some(parent)
 				}
 				Expression::Index { indexer, indexee, .. } => {
 					indexer.to_string_from_buffer(&mut buf, options, local);
-					Some(&*indexee)
+					Some(indexee)
 				}
 				Expression::FunctionCall { function, type_arguments, arguments, .. } => {
 					if let (true, Some(type_arguments)) =
@@ -2316,7 +2332,7 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 						to_string_bracketed(type_arguments, ('<', '>'), &mut buf, options, local);
 					}
 					arguments_to_string(arguments, &mut buf, options, local);
-					Some(&*function)
+					Some(function)
 				}
 				expression => {
 					expression.to_string_from_buffer(&mut buf, options, local);
@@ -2386,7 +2402,7 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 			}
 		}
 	} else {
-		original.to_string_from_buffer(buf, options, local.do_not_pretty_print())
+		original.to_string_from_buffer(buf, options, local.do_not_pretty_print());
 	}
 }
 
