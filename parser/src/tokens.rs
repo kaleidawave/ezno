@@ -430,7 +430,6 @@ impl TSXToken {
 		matches!(
 			self,
 			TSXToken::MultiLineComment(..)
-				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
 				| TSXToken::Multiply
