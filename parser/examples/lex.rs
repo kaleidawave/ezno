@@ -6,7 +6,7 @@ use tokenizer_lib::{sized_tokens::SizedToken, ParallelTokenQueue, Token, TokenRe
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut args: std::collections::VecDeque<_> = std::env::args().skip(1).collect();
 	let path = args.pop_front().ok_or("expected argument")?;
-	let print_tokens = args.iter().any(|item| item == "--print-tokens");
+	let print_tokens = !args.iter().any(|item| item == "--quiet");
 
 	let script = std::fs::read_to_string(path)?;
 	lex_and_print_tokens(script, print_tokens);
@@ -15,6 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn lex_and_print_tokens(script: String, print_tokens: bool) {
 	let (mut sender, mut receiver) = ParallelTokenQueue::new();
+
+	println!("{:?}", ezno_parser::source_map::LineStarts::new(&script));
 
 	let lexer_options: ezno_parser::LexerOptions = Default::default();
 	let other = script.clone();

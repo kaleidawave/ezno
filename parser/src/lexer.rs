@@ -466,7 +466,7 @@ pub fn lex_script(
 				ref mut in_set,
 			} => {
 				if *after_last_slash {
-					if !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y') {
+					if !chr.is_alphabetic() {
 						if start != idx {
 							push_token!(TSXToken::RegexFlagLiteral(script[start..idx].to_owned()));
 						}
@@ -498,6 +498,9 @@ pub fn lex_script(
 						']' if *in_set => {
 							*in_set = false;
 						}
+						'\n' => {
+							return_err!(LexingErrors::ExpectedEndToRegexLiteral);
+						}
 						_ => {
 							*escaped = false;
 						}
@@ -528,7 +531,7 @@ pub fn lex_script(
 					continue;
 				}
 				'`' if !*escaped => {
-					if idx > start + 1 {
+					if idx > start {
 						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
 					}
 					start = idx;
@@ -1038,10 +1041,12 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number(..) => {
+		LexingState::Number(literal_type) => {
 			// Just `.` or ends with combination token
 			if script[start..].trim_end() == "."
-				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+				|| script.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+				|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+					&& script.ends_with(['e', 'E', 'b', 'B']))
 			{
 				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}

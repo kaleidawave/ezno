@@ -60,6 +60,7 @@ jobs:
 
           \`\`\`ts
           // $LINES_OF_CODE lines of TypeScript generated from specification.md
+          // this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
           $(cat ./demo.ts)
           \`\`\`
           </details>
@@ -97,12 +98,12 @@ jobs:
             "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )
 
-          // TODO hyperfine
-
           for url in "${strings[@]}"; do
               curl -sS $url > input.js
               echo "--- debug: $url ---"
               cargo run -p ezno-parser --example parse input.js --timings --render-timings
               echo "--- release: $url ---"
               cargo run -p ezno-parser --release --example parse input.js --timings --render-timings
+
+              hyperfine "./target/debug/examples/parse input.js" "./target/release/examples/parse input.js"
           done

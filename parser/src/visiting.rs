@@ -251,7 +251,8 @@ mod ast {
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
 		crate::VariableKeyword,
-		crate::types::namespace::Namespace
+		crate::types::namespace::Namespace,
+		source_map::SourceId
 	];
 }
 

@@ -19,6 +19,13 @@ use crate::{
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
+	/// For bundling,
+	Imported {
+		moved: Box<StatementOrDeclaration>,
+		/// from the import statement
+		originally: Span,
+		from: source_map::SourceId,
+	},
 	/// TODO under cfg
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(#[visit_skip_field] Marker<Statement>, Span),
@@ -28,8 +35,8 @@ impl StatementOrDeclaration {
 	pub(crate) fn requires_semi_colon(&self) -> bool {
 		// TODO maybe more?
 		match self {
-			StatementOrDeclaration::Statement(stmt) => stmt.requires_semi_colon(),
-			StatementOrDeclaration::Declaration(dec) => matches!(
+			Self::Statement(stmt) => stmt.requires_semi_colon(),
+			Self::Declaration(dec) => matches!(
 				dec,
 				Declaration::Variable(..)
 					| Declaration::Export(Decorated {
@@ -43,6 +50,7 @@ impl StatementOrDeclaration {
 					}) | Declaration::Import(..)
 					| Declaration::TypeAlias(..)
 			),
+			Self::Imported { moved, .. } => moved.requires_semi_colon(),
 			Self::Marker(..) => false,
 		}
 	}
@@ -50,11 +58,7 @@ impl StatementOrDeclaration {
 
 impl ASTNode for StatementOrDeclaration {
 	fn get_position(&self) -> Span {
-		match self {
-			StatementOrDeclaration::Statement(item) => item.get_position(),
-			StatementOrDeclaration::Declaration(item) => item.get_position(),
-			StatementOrDeclaration::Marker(_, pos) => *pos,
-		}
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 
 	fn from_reader(
@@ -105,6 +109,9 @@ impl ASTNode for StatementOrDeclaration {
 			}
 			StatementOrDeclaration::Marker(_, _) => {
 				assert!(options.expect_markers, "Unexpected marker in AST");
+			}
+			StatementOrDeclaration::Imported { moved, from, originally: _ } => {
+				moved.to_string_from_buffer(buf, options, local.change_source(*from));
 			}
 		}
 	}
@@ -384,12 +391,11 @@ pub(crate) fn parse_statements_and_declarations(
 			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
 		} else if options.retain_blank_lines {
 			let Token(kind, next) = reader.peek().unwrap();
-			let byte_indexes_crosses_lines =
-				state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
+			let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 			if let TSXToken::EOS = kind {
-				byte_indexes_crosses_lines
+				lines
 			} else {
-				byte_indexes_crosses_lines.saturating_sub(1)
+				lines.saturating_sub(1)
 			}
 		} else {
 			0

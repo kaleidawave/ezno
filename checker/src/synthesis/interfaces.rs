@@ -265,6 +265,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameter,
 					rule,
 					matching_type,
+					as_type: _,
 					optionality: _,
 					is_readonly: _,
 					output_type,

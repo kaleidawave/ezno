@@ -301,7 +301,11 @@ pub enum TSXKeyword {
     Case, Yield, Return, Continue, Break,
     Import, Export, Default, From, With,
     In, Of,
-    TypeOf, InstanceOf, Void, Delete, Assert,
+    TypeOf, InstanceOf, Void, Delete, 
+	/// For [import assertions](https://v8.dev/features/import-assertions) lol
+	Assert,
+	/// For [assertion function type annotations](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#assertion-functions) lol
+	Asserts,
     Debugger,
     Try, Catch, Finally, Throw,
     Async, Await,
@@ -372,6 +376,11 @@ impl TSXKeyword {
 
 impl TSXToken {
 	#[must_use]
+	pub fn is_identifier_or_ident(&self) -> bool {
+		matches!(self, TSXToken::Identifier(_) | TSXToken::Keyword(_))
+	}
+
+	#[must_use]
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
 	}
@@ -398,6 +407,8 @@ impl TSXToken {
 			self,
 			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
 				| TSXToken::Arrow
+				// for `const x = 2; /something/g`
+				| TSXToken::SemiColon
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
 				| TSXToken::JSXExpressionStart
@@ -406,11 +417,23 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
-				// for `const x = 2; /something/g`
-				| TSXToken::SemiColon
 				| TSXToken::Multiply
 				| TSXToken::Add
 				| TSXToken::Subtract
+				| TSXToken::Divide
+		) || self.is_assignment()
+	}
+
+	/// For trailing expression comments
+	#[must_use]
+	pub fn is_expression_postfix(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::MultiLineComment(..)
+				| TSXToken::LogicalAnd
+				| TSXToken::LogicalOr
+				| TSXToken::Multiply
+				| TSXToken::Add | TSXToken::Subtract
 				| TSXToken::Divide
 		) || self.is_assignment()
 	}

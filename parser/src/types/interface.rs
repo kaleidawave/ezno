@@ -3,8 +3,9 @@ use crate::{
 	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
 	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	ExpressionOrStatementPosition, NumberRepresentation, ParseOptions, ParseResult, PropertyKey,
-	Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter, WithComment,
+	ExpressionOrStatementPosition, NumberRepresentation, ParseErrors, ParseOptions, ParseResult,
+	PropertyKey, Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
+	WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -156,6 +157,15 @@ impl ASTNode for InterfaceDeclaration {
 	}
 }
 
+/// For some reason mapped types can have a negated a readonly keyword
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MappedReadonlyKind {
+	Negated,
+	Always,
+	False,
+}
+
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, GetFieldByType)]
@@ -190,25 +200,27 @@ pub enum InterfaceMember {
 	/// new (...params: any[]): HTMLElement
 	/// ```
 	Constructor {
-		parameters: TypeAnnotationFunctionParameters,
 		type_parameters: Option<Vec<TypeParameter>>,
+		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		position: Span,
 	},
 	Caller {
-		parameters: TypeAnnotationFunctionParameters,
 		type_parameters: Option<Vec<TypeParameter>>,
+		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		position: Span,
 	},
+	/// [For mapped types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
 	Rule {
 		parameter: String,
 		rule: TypeRule,
 		matching_type: Box<TypeAnnotation>,
+		as_type: Option<Box<TypeAnnotation>>,
 		optionality: Optionality,
-		is_readonly: bool,
+		is_readonly: MappedReadonlyKind,
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
@@ -310,6 +322,35 @@ impl ASTNode for InterfaceMember {
 					return_type,
 				})
 			}
+			TSXToken::Subtract => {
+				// Little bit weird, but prevents a lot of duplication
+				let subtract_pos = reader.next().unwrap().get_span();
+				let inner = Self::from_reader(reader, state, options)?;
+				if let Self::Rule {
+					parameter,
+					rule,
+					matching_type,
+					as_type,
+					optionality,
+					is_readonly: MappedReadonlyKind::Always,
+					output_type,
+					position,
+				} = inner
+				{
+					Ok(Self::Rule {
+						parameter,
+						rule,
+						matching_type,
+						as_type,
+						optionality,
+						is_readonly: MappedReadonlyKind::Negated,
+						output_type,
+						position,
+					})
+				} else {
+					Err(crate::ParseError::new(ParseErrors::ExpectRule, subtract_pos))
+				}
+			}
 			token if token.is_comment() => {
 				let token = reader.next().unwrap();
 				if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
@@ -385,8 +426,22 @@ impl ASTNode for InterfaceMember {
 										} else {
 											TypeRule::In
 										};
+
 										let matching_type =
 											TypeAnnotation::from_reader(reader, state, options)?;
+
+										let next_is_as = reader.conditional_next(|t| {
+											matches!(t, TSXToken::Keyword(TSXKeyword::As))
+										});
+
+										let as_type = if next_is_as.is_some() {
+											Some(Box::new(TypeAnnotation::from_reader_with_config(
+												reader, state, options, None, None,
+											)?))
+										} else {
+											None
+										};
+
 										reader.expect_next(TSXToken::CloseBracket)?;
 										// TODO the -?: ?: : stuff '-?:' should be a token
 										let token = reader.next().ok_or_else(parse_lexing_error)?;
@@ -418,11 +473,16 @@ impl ASTNode for InterfaceMember {
 										return Ok(InterfaceMember::Rule {
 											parameter: name,
 											optionality,
-											is_readonly: readonly_position.is_some(),
+											is_readonly: if readonly_position.is_some() {
+												MappedReadonlyKind::Always
+											} else {
+												MappedReadonlyKind::False
+											},
 											matching_type: Box::new(matching_type),
 											rule,
 											output_type: Box::new(output_type),
 											position,
+											as_type,
 										});
 									}
 									token => {
@@ -606,20 +666,60 @@ impl ASTNode for InterfaceMember {
 				buf.push_str("]: ");
 				return_type.to_string_from_buffer(buf, options, local);
 			}
-			InterfaceMember::Constructor { .. } => todo!(),
-			InterfaceMember::Caller { .. } => todo!(),
-			InterfaceMember::Rule {
+			InterfaceMember::Constructor {
+				parameters,
+				type_parameters,
+				return_type,
 				is_readonly,
-				matching_type,
-				optionality,
-				output_type,
-				parameter,
-				rule,
 				position: _,
 			} => {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
+				buf.push_str("new ");
+				if let Some(ref type_parameters) = type_parameters {
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				}
+				parameters.to_string_from_buffer(buf, options, local);
+				if let Some(ref return_type) = return_type {
+					buf.push_str(": ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
+			InterfaceMember::Caller {
+				parameters,
+				type_parameters,
+				return_type,
+				is_readonly,
+				position: _,
+			} => {
+				if *is_readonly {
+					buf.push_str("readonly ");
+				}
+				if let Some(ref type_parameters) = type_parameters {
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				}
+				parameters.to_string_from_buffer(buf, options, local);
+				if let Some(ref return_type) = return_type {
+					buf.push_str(": ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
+			InterfaceMember::Rule {
+				is_readonly,
+				matching_type,
+				optionality,
+				output_type,
+				as_type,
+				parameter,
+				rule,
+				position: _,
+			} => {
+				buf.push_str(match is_readonly {
+					MappedReadonlyKind::Negated => "-readonly ",
+					MappedReadonlyKind::Always => "readonly ",
+					MappedReadonlyKind::False => "",
+				});
 				buf.push('[');
 				buf.push_str(parameter.as_str());
 				buf.push_str(match rule {
@@ -627,6 +727,10 @@ impl ASTNode for InterfaceMember {
 					TypeRule::InKeyOf => " in keyof ",
 				});
 				matching_type.to_string_from_buffer(buf, options, local);
+				if let Some(as_type) = as_type {
+					buf.push(' ');
+					as_type.to_string_from_buffer(buf, options, local);
+				}
 				buf.push(']');
 				buf.push_str(match optionality {
 					Optionality::Default => ": ",
@@ -635,7 +739,17 @@ impl ASTNode for InterfaceMember {
 				});
 				output_type.to_string_from_buffer(buf, options, local);
 			}
-			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
+			InterfaceMember::Comment(c, is_multiline, _) => {
+				if *is_multiline {
+					buf.push_str("/*");
+					buf.push_str(c);
+					buf.push_str("*/");
+				} else {
+					buf.push_str("//");
+					buf.push_str(c);
+					buf.push_new_line();
+				}
+			}
 		}
 	}
 

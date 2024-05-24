@@ -284,7 +284,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		Statement::Comment(..)
 		| Statement::MultiLineComment(..)
 		| Statement::Debugger(_)
-		| Statement::Empty(_) => {}
+		| Statement::Empty(_)
+		| Statement::AestheticSemiColon(_) => {}
 	}
 }
 

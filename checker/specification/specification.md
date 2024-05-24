@@ -288,7 +288,7 @@ interface MyObject { property: string }
 const a: MyObject = { property: "hello", another: 2 }
 ```
 
-- Excess property 'another' was provided, but is not a property of MyObject
+- 'another' is not a property of MyObject
 
 #### Excess property at argument
 
@@ -297,10 +297,10 @@ interface MyObject { property: string }
 
 function process(param: MyObject) {}
 
-process({ property: "hello", another: 2 })
+process({ property: "hello", another: 2 });
 ```
 
-- Excess property 'another' was provided, but is not a property of MyObject
+- 'another' is not a property of MyObject
 
 #### Excess property at return type
 
@@ -312,7 +312,7 @@ function returnNewObject(): MyObject {
 }
 ```
 
-- Excess property 'another' was provided, but is not a property of MyObject
+- 'another' is not a property of MyObject
 
 #### Excess property checks through spread and condition
 
@@ -338,8 +338,8 @@ const c: MyObject = {
 };
 ```
 
-- Excess property 'invalid' was provided, but is not a property of MyObject
-- Excess property 'non_existent' was provided, but is not a property of MyObject
+- 'invalid' is not a property of MyObject
+- 'non_existent' is not a property of MyObject
 
 ### Constant evaluation
 
@@ -2590,7 +2590,7 @@ const x: Record2<"test", boolean> = { no: false },
       z: Record2<"test", boolean> = { test: false };
 ```
 
-- Excess property 'no' was provided, but is not a property of { [\"test\"]: boolean }
+- 'no' is not a property of { [\"test\"]: boolean }
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 

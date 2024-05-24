@@ -118,3 +118,19 @@ export default function (a: string): string
 
 	assert_eq!(output, input.clone());
 }
+
+#[test]
+fn mapped_type() {
+	let input = r#"
+type Record<T extends string, V> = { [P in T]: V }
+"#
+	.trim()
+	.replace("    ", "\t");
+
+	let parse_options = ParseOptions { type_definition_module: true, ..Default::default() };
+
+	let module = Module::from_string(input.clone(), parse_options).unwrap();
+	let output = module.to_string(&ToStringOptions::typescript());
+
+	assert_eq!(output, input.clone());
+}

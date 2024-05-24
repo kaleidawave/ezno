@@ -9,11 +9,10 @@ use std::{
 };
 
 use crate::{
-	build::{build, BuildOutput, FailedBuildOutput},
-	build::{BuildConfig, EznoParsePostCheckVisitors},
+	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
 	reporting::emit_diagnostics,
-	utilities::print_to_cli,
+	utilities::{self, print_to_cli},
 };
 use argh::FromArgs;
 use checker::CheckOutput;
@@ -57,6 +56,8 @@ pub(crate) struct ExperimentalArguments {
 pub(crate) enum ExperimentalSubcommand {
 	Build(BuildArguments),
 	Format(FormatArguments),
+	#[cfg(not(target_family = "wasm"))]
+	Upgrade(UpgradeArguments),
 }
 
 // TODO definition file as list
@@ -139,6 +140,12 @@ pub(crate) struct FormatArguments {
 	#[argh(positional)]
 	pub path: PathBuf,
 }
+
+/// Upgrade/update the ezno binary to the latest version
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "upgrade")]
+#[cfg(not(target_family = "wasm"))]
+pub(crate) struct UpgradeArguments {}
 
 // /// Run project using Deno
 // #[derive(FromArgs, PartialEq, Debug)]
@@ -307,6 +314,19 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				}
 			}
 		}
+		#[cfg(not(target_family = "wasm"))]
+		CompilerSubCommand::Experimental(ExperimentalArguments {
+			nested: ExperimentalSubcommand::Upgrade(UpgradeArguments {}),
+		}) => match utilities::upgrade_self() {
+			Ok(name) => {
+				print_to_cli(format_args!("Successfully updated to {name}"));
+				std::process::ExitCode::SUCCESS
+			}
+			Err(err) => {
+				print_to_cli(format_args!("Error: {err}\nCould not upgrade binary. Retry manually from {repository}/releases", repository=env!("CARGO_PKG_REPOSITORY")));
+				std::process::ExitCode::FAILURE
+			}
+		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
 			repl.run(read_file, cli_input_resolver);
 			// TODO not always true

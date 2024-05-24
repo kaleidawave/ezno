@@ -25,7 +25,7 @@ Now in the `ezno` directory, `cargo run` should show the CLI.
 You can run just the checker with
 
 ```shell
-cargo run -p ezno-checker --example run path/to/file.ts
+cargo run -p ezno-checker --example run-checker path/to/file.ts
 ```
 
 > [!TIP]
@@ -48,7 +48,7 @@ cargo test -p ezno-checker-specification -F all
 If you want to regenerate the binary definition file
 
 ```shell
-cargo run -p ezno-checker -F ezno-parser --example cache ./checker/definitions/overrides.d.ts ./checker/definitions/internal.ts.d.bin
+cargo run -p ezno-checker -F ezno-parser --example generate-cache ./checker/definitions/overrides.d.ts ./checker/definitions/internal.ts.d.bin
 ```
 
 If you want to test the lexing and parsing in Ezno's parser

@@ -4,7 +4,7 @@ target
 /private
 .vscode
 .env
-**/examples/private-*.rs
+**/examples/private*.rs
 build
 node_modules
 /TODO.txt

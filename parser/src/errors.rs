@@ -30,6 +30,8 @@ pub enum ParseErrors<'a> {
 	ExpectedIdentifier,
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
+	ExpectRule,
+	InvalidRegexFlag,
 }
 
 #[allow(missing_docs)]
@@ -194,6 +196,12 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")
+			}
+			ParseErrors::ExpectRule => {
+				write!(f, "'-' must be followed by a readonly rule")
+			}
+			ParseErrors::InvalidRegexFlag => {
+				write!(f, "Regexp flags must be one of 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
 			}
 		}
 	}

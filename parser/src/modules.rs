@@ -57,7 +57,7 @@ impl Module {
 		self.to_string_from_buffer(
 			&mut buf,
 			options,
-			LocalToStringInformation { depth: 0, under: this },
+			LocalToStringInformation { depth: 0, under: this, should_try_pretty_print: true },
 		);
 		buf.build(fs)
 	}

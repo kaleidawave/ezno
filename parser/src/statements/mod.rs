@@ -61,8 +61,9 @@ pub enum Statement {
 		statement: Box<Statement>,
 	},
 	VarVariable(VarVariableStatement),
-	// TODO position
 	Empty(Span),
+	/// Lol
+	AestheticSemiColon(Span),
 }
 
 #[apply(derive_ASTNode)]
@@ -201,7 +202,9 @@ impl ASTNode for Statement {
 					unreachable!()
 				}
 			}
-			TSXToken::SemiColon => Ok(Statement::Empty(reader.next().unwrap().get_span())),
+			TSXToken::SemiColon => {
+				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
@@ -218,6 +221,7 @@ impl ASTNode for Statement {
 	) {
 		match self {
 			Statement::Empty(..) => {}
+			Statement::AestheticSemiColon(..) => buf.push(';'),
 			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
@@ -241,15 +245,15 @@ impl ASTNode for Statement {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
 					if options.pretty {
-						let mut done = false;
-						for line in comment.lines() {
-							if done {
+						// Perform indent correction
+						for (idx, line) in comment.lines().enumerate() {
+							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim_start());
-							done = true;
 						}
+						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}
