@@ -61,6 +61,7 @@ impl CallCheckingBehavior for CheckThings {
 
 pub struct InvocationContext(Vec<InvocationKind>);
 
+/// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
 	Conditional(LocalInformation),
 	/// *Unconditional*

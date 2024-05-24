@@ -26,8 +26,7 @@ use crate::{
 		objects::SpecialObjects,
 		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	},
-	types::generics::contributions::Contributions,
-	Decidable, Environment, FunctionId, SmallMap,
+	Decidable, FunctionId,
 };
 
 pub use self::functions::*;
@@ -37,9 +36,9 @@ use self::{generics::generic_type_arguments::StructureGenericArguments, properti
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
 
 /// Final
-pub type TypeArguments = SmallMap<TypeId, TypeId>;
-pub type TypeRestrictions = SmallMap<TypeId, ExplicitTypeArgument>;
-pub type LookUpGenericMap = SmallMap<TypeId, LookUpGeneric>;
+pub type TypeArguments = crate::Map<TypeId, TypeId>;
+pub type TypeRestrictions = crate::Map<TypeId, ExplicitTypeArgument>;
+pub type LookUpGenericMap = crate::Map<TypeId, LookUpGeneric>;
 
 /// References [Type]
 ///
@@ -102,7 +101,7 @@ impl TypeId {
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 27;
 }
 
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Type {
 	/// For
 	/// - `extends` interface part (for multiple it to is a `Type::And`)
@@ -167,6 +166,11 @@ pub enum PolyNature {
 		based_on: TypeId,
 	},
 	RecursiveFunction(FunctionId, TypeId),
+	CatchVariable(TypeId),
+	/// From `infer U`
+	InferGeneric {
+		name: String,
+	},
 }
 
 impl PolyNature {
@@ -176,6 +180,28 @@ impl PolyNature {
 			self,
 			Self::Parameter { .. } | Self::StructureGeneric { .. } | Self::FunctionGeneric { .. }
 		)
+	}
+
+	#[must_use]
+	pub fn is_inferrable(&self) -> bool {
+		matches!(
+			self,
+			Self::Parameter { fixed_to: to } | Self::FreeVariable { based_on: to, .. } | Self::CatchVariable(to)
+			// TODO matches TypeId::unknown
+			if matches!(*to, TypeId::ANY_TYPE)
+		)
+	}
+
+	pub fn try_get_constraint(&self) -> Option<TypeId> {
+		match self {
+			PolyNature::Parameter { fixed_to: to }
+			| PolyNature::FunctionGeneric { eager_fixed: to, .. }
+			| PolyNature::FreeVariable { based_on: to, .. }
+			| PolyNature::RecursiveFunction(_, to)
+			| PolyNature::CatchVariable(to)
+			| PolyNature::Open(to) => Some(*to),
+			PolyNature::StructureGeneric { .. } | PolyNature::InferGeneric { .. } => None,
+		}
 	}
 }
 
@@ -378,84 +404,9 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 	}
 }
 
-/// TODO `add_property_restrictions` via const generics
-pub struct BasicEquality {
-	pub position: SpanWithSource,
-	pub add_property_restrictions: bool,
-	pub object_constraints: Vec<(TypeId, TypeId)>,
-	/// used in `satisfies` assertions for the unit tests lol
-	pub allow_errors: bool,
-}
-
-impl Default for BasicEquality {
-	fn default() -> Self {
-		Self {
-			add_property_restrictions: false,
-			position: source_map::Nullable::NULL,
-			object_constraints: Default::default(),
-			allow_errors: false,
-		}
-	}
-}
-
-/// For subtyping
-
-pub trait SubTypeBehavior<'a> {
-	/// For specialisation during calling
-	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>>;
-
-	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId);
-
-	fn add_function_restriction(
-		&mut self,
-		environment: &mut Environment,
-		function_id: FunctionId,
-		function_type: FunctionType,
-	);
-
-	fn allow_errors(&self) -> bool;
-
-	// /// TODO can go faster than Vec, by passing all options,
-	// fn get_constraint<C: InformationChain>(&self, under: TypeId, info: &C) -> Option<ArgumentOrLookup>;
-}
-
 pub enum ArgumentOrLookup {
 	Argument(TypeId),
 	LookUpGeneric(LookUpGeneric),
-}
-
-impl<'a> SubTypeBehavior<'a> for BasicEquality {
-	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
-		None
-	}
-
-	fn add_object_mutation_constraint(&mut self, on: TypeId, constraint: TypeId) {
-		self.object_constraints.push((on, constraint));
-	}
-
-	fn add_function_restriction(
-		&mut self,
-		environment: &mut Environment,
-		function_id: FunctionId,
-		function_type: FunctionType,
-	) {
-		let result = environment
-			.deferred_function_constraints
-			.insert(function_id, (function_type, self.position));
-
-		debug_assert!(result.is_none());
-	}
-
-	fn allow_errors(&self) -> bool {
-		self.allow_errors
-	}
-}
-
-/// TODO implement `Try` / `?` on `SubTypeResult`
-#[derive(Debug)]
-pub enum SubTypeResult {
-	IsSubType,
-	IsNotSubType(NonEqualityReason),
 }
 
 pub type GenericChain<'a> = Option<GenericChainLink<'a>>;
@@ -471,13 +422,13 @@ pub enum GenericChainLink<'a> {
 	},
 	FunctionRoot {
 		parent: Option<&'a StructureGenericArguments>,
-		call_site_type_arguments: Option<&'a map_vec::Map<TypeId, (TypeId, SpanWithSource)>>,
-		type_arguments: &'a map_vec::Map<TypeId, TypeId>,
+		call_site_type_arguments: Option<&'a crate::Map<TypeId, (TypeId, SpanWithSource)>>,
+		type_arguments: &'a crate::Map<TypeId, TypeId>,
 	},
 }
 
 impl<'a> GenericChainLink<'a> {
-	fn _get_value(self) -> Option<&'a StructureGenericArguments> {
+	fn get_value(self) -> Option<&'a StructureGenericArguments> {
 		if let Self::Link { value, .. } = self {
 			Some(value)
 		} else {
@@ -598,6 +549,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 						Some(TypeId::ANY_TYPE)
 					}
 				}
+				PolyNature::CatchVariable(constraint) => constraint,
+				PolyNature::InferGeneric { .. } => return Some(TypeId::ANY_TYPE),
 			}),
 		),
 		Type::Constructor(constructor) => match constructor.clone() {
@@ -749,11 +702,11 @@ pub enum Confirmation {
 	IsType { on: (), ty: () },
 }
 
-pub(crate) fn get_structure_arguments_based_on_object_constraint<C: InformationChain>(
+pub(crate) fn get_structure_arguments_based_on_object_constraint<'a, C: InformationChain>(
 	object: TypeId,
 	info_chain: &C,
-	types: &TypeStore,
-) -> Option<StructureGenericArguments> {
+	types: &'a TypeStore,
+) -> Option<&'a StructureGenericArguments> {
 	if let Some(object_constraint) =
 		info_chain.get_chain_of_info().find_map(|c| c.object_constraints.get(&object).copied())
 	{
@@ -763,7 +716,7 @@ pub(crate) fn get_structure_arguments_based_on_object_constraint<C: InformationC
 			..
 		})) = ty
 		{
-			Some(arguments.clone())
+			Some(arguments)
 		} else {
 			crate::utilities::notify!("Generics might be missed here {:?}", ty);
 			None

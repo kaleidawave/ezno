@@ -563,7 +563,7 @@ mod defined_errors_and_warnings {
 					FunctionCallingError::UnconditionalThrow { value, call_site } => {
 						Diagnostic::Position {
 							reason: format!(
-								"{value} unconditionally thrown in function"
+								"Conditional '{value}' was thrown in function"
 							),
 							position: call_site.unwrap(),
 							kind,

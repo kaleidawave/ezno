@@ -1,3 +1,5 @@
+//! For the regular concatenation + special function calling syntax
+
 use source_map::Span;
 
 use crate::{
@@ -167,6 +169,7 @@ where
 }
 
 /// **Expects static part first**
+///
 /// TODO API is different to the `synthesise_template_literal_expression` above
 pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStore) -> TypeId {
 	let mut parts_iter = parts.into_iter();

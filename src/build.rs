@@ -71,8 +71,7 @@ pub fn build<T: crate::ReadFromFS>(
 	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax
-	let type_check_options =
-		TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
+	let type_check_options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
 
 	let result = crate::check(input_paths, fs_resolver, type_definition_module, type_check_options);
 

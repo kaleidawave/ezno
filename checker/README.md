@@ -17,6 +17,10 @@ While the checker is indented for the Ezno toolchain and its parser, most (3/4) 
 
 #TODO `ASTImplementation`, `synthesis` folder rule
 
+## Documentation
+
+A sparse documentation of some to the internals of the functions, structures and processes exists in the `/documentation` folder.
+
 ## Testing
 
 Set `EZNO_DEBUG` to any value to trace diagnostic information from the `crate::utils::notify!` macro (In powershell = `$Env:EZNO_DEBUG=1`)

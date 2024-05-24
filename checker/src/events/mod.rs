@@ -1,22 +1,24 @@
 //! Side effects which are not described in return types... Such as variable reassignment, function calling etc
 //!
-//! Events is the general name for the IR. Effect = Events of a function
+//! Events is the general name for the IR (intermediate representation) of impure operations. Effect = Events of a function
+
+pub(crate) mod application;
 
 use crate::{
 	context::{get_on_ctx, information::Publicity},
 	features::iteration::IterationKind,
 	types::{
 		calling::CalledWithNew,
+		functions::SynthesisedArgument,
 		properties::{PropertyKey, PropertyValue},
 		store::TypeStore,
+		TypeId,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
-pub(crate) mod application;
 pub(crate) use application::apply_event;
-
-use crate::{types::functions::SynthesisedArgument, types::TypeId};
+use source_map::Nullable;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
 pub enum RootReference {
@@ -35,7 +37,7 @@ impl RootReference {
 }
 
 /// For iterations. TODO up for debate
-pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
+pub type InitialVariables = crate::Map<VariableId, TypeId>;
 
 /// Events which happen
 ///
@@ -62,6 +64,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		publicity: Publicity,
 		position: SpanWithSource,
+		bind_this: bool
 	},
 	/// All changes to the value of a property
 	Setter {
@@ -101,7 +104,6 @@ pub enum Event {
 		// condition: TypeId,
 		iterate_over: Box<[Event]>,
 	},
-
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -127,7 +129,26 @@ pub enum Event {
 		/// Debug only
 		is_function_this: bool,
 	},
+	/// aka try-catch-finally
+	ExceptionTrap {
+		/// events in the try block
+		investigate: Box<[Event]>,
+		/// This can run subtyping
+		trapped_type_id: Option<Trapped>,
+		/// events in catch block
+		handle: Box<[Event]>,
+		/// run `Immediately before a control-flow statement (return, throw, break, continue) is executed in the try block or catch block`
+		finally: Box<[Event]>,
+	},
+	// TODO block trap...?
 	FinalEvent(FinalEvent),
+}
+
+#[derive(Debug, Copy, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct Trapped {
+	pub generic_type: TypeId,
+	/// To check thrown type against
+	pub constrained: Option<TypeId>,
 }
 
 impl From<FinalEvent> for Event {
@@ -210,6 +231,17 @@ impl ApplicationResult {
 		}
 	}
 
+	pub(crate) fn may_throw(type_id: TypeId) -> ApplicationResult {
+		ApplicationResult::Conditionally {
+			on: TypeId::BOOLEAN_TYPE,
+			truthy: Box::new(ApplicationResult::Interrupt(FinalEvent::Return {
+				returned: type_id,
+				returned_position: source_map::SpanWithSource::NULL,
+			})),
+			otherwise: Box::new(ApplicationResult::Completed),
+		}
+	}
+
 	pub(crate) fn append_termination(&mut self, result: impl Into<ApplicationResult>) {
 		match self {
 			ApplicationResult::Completed => *self = result.into(),
@@ -249,7 +281,7 @@ impl ApplicationResult {
 	pub(crate) fn returned_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
 			ApplicationResult::Completed => TypeId::UNDEFINED_TYPE,
-			ApplicationResult::Interrupt(int) => int.returns().expect("returning continue ??"),
+			ApplicationResult::Interrupt(int) => int.returns().unwrap_or(TypeId::UNDEFINED_TYPE),
 			ApplicationResult::Conditionally { on, truthy, otherwise } => {
 				let truthy_result = truthy.returned_type(types);
 				let otherwise_result = otherwise.returned_type(types);
@@ -259,13 +291,13 @@ impl ApplicationResult {
 	}
 
 	// TODO Option?
-	pub(crate) fn throw_type(&self, types: &mut TypeStore) -> TypeId {
+	pub(crate) fn thrown_type(&self, types: &mut TypeStore) -> TypeId {
 		match self {
 			ApplicationResult::Completed => TypeId::NEVER_TYPE,
-			ApplicationResult::Interrupt(int) => int.throws().expect("no throw?"),
+			ApplicationResult::Interrupt(int) => int.throws().unwrap_or(TypeId::NEVER_TYPE),
 			ApplicationResult::Conditionally { on, truthy, otherwise } => {
-				let truthy_result = truthy.throw_type(types);
-				let otherwise_result = otherwise.throw_type(types);
+				let truthy_result = truthy.thrown_type(types);
+				let otherwise_result = otherwise.thrown_type(types);
 				types.new_conditional_type(*on, truthy_result, otherwise_result)
 			}
 		}

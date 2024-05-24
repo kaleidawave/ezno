@@ -143,6 +143,11 @@ declare class Array<T> {
     // }
 }
 
+declare class Map<T, U> {
+    #keys: Array<T> = [];
+    #value: Array<T> = [];
+}
+
 declare class Math {
     @Constant
     static sin(x: number): number;
@@ -184,10 +189,18 @@ declare class String {
 
 declare class Promise<T> { }
 
-interface Response {
+type ResponseBody = string;
+
+declare class Response {
     ok: boolean;
 
-    json(): Promise<any>;
+    // constructor(body?: ResponseBody, options: any);
+
+    // json(): Promise<any>;
+
+    // static json(data: any): Response {
+    //     return new Response(JSON.stringify(data))
+    // }
 }
 
 declare class Console {
@@ -254,12 +267,25 @@ declare class Console {
 
 declare const console: Console;
 
+declare class SyntaxError { }
+
+declare class Exception {
+    message: string
+
+    // TODO `@AllowElidedNew`
+    constructor(message: string) {
+        this.message = message
+    }
+}
+
 declare class JSON {
     // TODO any temp
-    parse(input: string): any;
+    @Constant("json:parse", SyntaxError)
+    static parse(input: string): any;
 
     // TODO any temp
-    stringify(input: any): string;
+    @Constant("json:stringify")
+    static stringify(input: any): string;
 }
 
 declare class Function {
@@ -269,6 +295,11 @@ declare class Function {
 declare class Symbols {
     // TODO temp
     iterator: 199
+}
+
+declare class Proxy {
+    @Constant("proxy:constructor")
+        constructor(obj: any, cb: any);
 }
 
 declare class Object {

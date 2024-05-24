@@ -71,7 +71,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 				attr_restriction,
 		// 				attr_value,
 		// 				None,
-		// 				&mut basic_subtyping,
+		// 				todo!(),
 		// 				environment,
 		// 				&checking_data.types,
 		// 			);
@@ -128,6 +128,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// }
 
 	let child_nodes = if let parser::JSXElementChildren::Children(ref children) = element.children {
+		// fn get_children() {
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
@@ -173,6 +174,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				None,
 			);
 		}
+		// }
 
 		Some(synthesised_child_nodes.build_object())
 	} else {
@@ -287,7 +289,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			attr_restriction,
 	// 			// 			attr_value,
 	// 			// 			None,
-	// 			// 			&mut basic_subtyping,
+	// 			// 			todo!(),
 	// 			// 			environment,
 	// 			// 			&checking_data.types,
 	// 			// 		);

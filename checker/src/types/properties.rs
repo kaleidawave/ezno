@@ -7,17 +7,23 @@ use crate::{
 	},
 	diagnostics::TypeStringRepresentation,
 	events::Event,
-	features::{functions::ThisValue, objects::SpecialObjects},
-	subtyping::{type_is_subtype_of_property, SubTypeResult},
+	features::{
+		functions::ThisValue,
+		objects::{Proxy, SpecialObjects},
+	},
+	subtyping::{type_is_subtype_of_property, State, SubTypeResult},
 	types::{
-		calling::FunctionCallingError, generics::generic_type_arguments::StructureGenericArguments,
+		calling::{call_type, CallingInput, FunctionCallingError},
+		generics::{
+			generic_type_arguments::StructureGenericArguments, substitution::SubstitutionArguments,
+		},
 		get_constraint, substitute, FunctionType, GenericChain, GenericChainLink, ObjectNature,
 		StructureGenerics, SynthesisedArgument,
 	},
 	Constant, Environment, TypeId,
 };
 
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use super::{calling::CalledWithNew, Constructor, Type, TypeStore};
 
@@ -39,6 +45,7 @@ pub enum PropertyKey<'a> {
 	// SomeThingLike(TypeId),
 }
 
+// Cannot derive BinarySerializable because lifetime
 impl crate::BinarySerializable for PropertyKey<'static> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		match self {
@@ -112,12 +119,21 @@ impl<'a> PropertyKey<'a> {
 	pub(crate) fn new_empty_property_key() -> Self {
 		PropertyKey::String(Cow::Borrowed(""))
 	}
+
+	fn to_type(&self, types: &mut TypeStore) -> TypeId {
+		match self {
+			PropertyKey::String(s) => {
+				types.new_constant_type(Constant::String(s.clone().into_owned()))
+			}
+			PropertyKey::Type(t) => *t,
+		}
+	}
 }
 
 static NUMBERS: &str = "0123456789";
 
 impl<'a> PropertyKey<'a> {
-	/// For array indexes
+	/// For small array indexes
 	#[must_use]
 	pub fn from_usize(a: usize) -> Self {
 		if a < 10 {
@@ -289,15 +305,16 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								Some((PropertyKind::Direct, func))
 							}
 							Type::FunctionReference(_) => {
-								let ty = if let Some(_chain) = generics {
-									todo!()
-								// assert!(chain.parent.is_none());
-								// types.register_type(Type::Constructor(
-								// 	Constructor::StructureGenerics(StructureGenerics {
-								// 		on: value,
-								// 		arguments: chain.value.into_owned(),
-								// 	}),
-								// ))
+								let ty = if let Some(arguments) =
+									generics.and_then(|chain| chain.get_value()).cloned()
+								{
+									// assert!(chain.parent.is_none());
+									types.register_type(Type::Constructor(
+										Constructor::StructureGenerics(StructureGenerics {
+											on: value,
+											arguments,
+										}),
+									))
 								} else {
 									value
 								};
@@ -423,6 +440,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	}
 
 	// TODO explain what happens around non constant strings
+	// TODO this breaks for conditionals maybe #120 fixes it?
 	if let Type::Constant(Constant::String(s)) = types.get_type_by_id(on) {
 		if let Some(n) = under.as_number(types) {
 			return s.chars().nth(n).map(|s| {
@@ -431,10 +449,29 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		}
 	}
 
-	// ? is okay here
-	let result = get_property_unbound(on, publicity, under, types, environment).ok()?;
+	let result = get_property_unbound((on, None), (publicity, under), environment, types);
 
-	resolve_property_on_logical(result, on, None, environment, types, behavior, bind_this)
+	match result {
+		Ok(logical) => {
+			resolve_property_on_logical(logical, on, None, environment, types, behavior, bind_this)
+		}
+		Err(err) => match err {
+			crate::context::MissingOrToCalculate::Missing => None,
+			crate::context::MissingOrToCalculate::Error => {
+				// Don't return none because that will raise error!
+				Some((PropertyKind::Direct, TypeId::ERROR_TYPE))
+			}
+			// Can get through set prototype..?
+			crate::context::MissingOrToCalculate::Infer { .. } => {
+				crate::utilities::notify!("TODO set infer");
+				Some((PropertyKind::Direct, TypeId::ERROR_TYPE))
+			}
+			crate::context::MissingOrToCalculate::Proxy(Proxy { handler, over }) => {
+				todo!(); // #33
+				 // TODO pass down
+			}
+		},
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -469,7 +506,28 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::RootPolyType(_)
 						| Type::Constructor(_)) => {
 							let result = if let Some(arguments) = arguments {
-								substitute(value, &mut arguments.clone(), environment, types)
+								// TODO
+								crate::utilities::notify!(
+									"TODO here specfalizse with substitution"
+								);
+								let arguments = match arguments {
+									StructureGenericArguments::ExplicitRestrictions(s) => {
+										SubstitutionArguments {
+											parent: None,
+											arguments: Default::default(),
+											closures: Default::default(),
+										}
+									}
+									StructureGenericArguments::LookUp { on } => {
+										SubstitutionArguments {
+											parent: None,
+											arguments: Default::default(),
+											closures: Default::default(),
+										}
+									}
+									StructureGenericArguments::Closure(_) => todo!(),
+								};
+								substitute(value, &arguments, environment, types)
 							} else {
 								crate::utilities::notify!("Here, getting property on {:?}", t);
 								value
@@ -576,7 +634,8 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		}
 	}
 
-	let fact = get_property_unbound(on, publicity, &under, types, top_environment).ok()?;
+	let fact =
+		get_property_unbound((on, None), (publicity, &under), top_environment, types).ok()?;
 
 	// crate::utilities::notify!("unbound is is {:?}", fact);
 
@@ -596,6 +655,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		reflects_dependency: Some(value),
 		publicity,
 		position,
+		bind_this,
 	});
 
 	Some((PropertyKind::Direct, value))
@@ -623,7 +683,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// if E::CHECK_PARAMETERS {
 	if let Some(constraint) = environment.get_object_constraint(on) {
 		let property_constraint =
-			get_property_unbound(constraint, publicity, under, types, environment);
+			get_property_unbound((constraint, None), (publicity, under), environment, types);
 
 		// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
@@ -635,22 +695,21 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		// );
 
 		if let Ok(property_constraint) = property_constraint {
-			let mut basic_subtyping = crate::types::subtyping::BasicEquality {
-				// This is important for free variables, sometimes ?
-				add_property_restrictions: true,
-				// TODO position here
-				position: source_map::Nullable::NULL,
+			// TODO ...?
+			let mut state = State {
+				already_checked: Default::default(),
+				mode: Default::default(),
+				contributions: Default::default(),
+				others: Default::default(),
 				object_constraints: Default::default(),
-				allow_errors: true,
 			};
 
 			match new {
 				PropertyValue::Value(value) => {
 					let result = type_is_subtype_of_property(
-						&property_constraint,
-						None,
+						(&property_constraint, None),
 						value,
-						&mut basic_subtyping,
+						&mut state,
 						environment,
 						types,
 					);
@@ -673,7 +732,10 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				PropertyValue::Dependent { .. } => todo!(),
 			}
 
-			environment.add_object_constraints(basic_subtyping.object_constraints, types);
+		// environment
+		// 	.add_object_constraints(basic_subtyping.object_constraints.into_iter(), types);
+
+		// environment.context_type.requests.append(todo!().parameter_constraint_request);
 		} else {
 			// TODO does not exist warning
 			// return Err(SetPropertyError::DoesNotMeetConstraint(
@@ -690,7 +752,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// 	crate::types::printing::print_type(types, new.as_get_type(), environment, true),
 	// );
 
-	let current_property = get_property_unbound(on, publicity, under, types, environment);
+	let current_property = get_property_unbound((on, None), (publicity, under), environment, types);
 
 	// crate::utilities::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 

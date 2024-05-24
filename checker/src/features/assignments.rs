@@ -4,14 +4,14 @@ use crate::{context::information::Publicity, types::properties::PropertyKey, Typ
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 
+/// A single or multiple items to assign to
 pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
 	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
 	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
 }
 
-// TODO derive copy, when span derives copy
-// TODO reference
+/// TODO Can this use lifetimes?
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
@@ -50,6 +50,7 @@ pub enum IncrementOrDecrement {
 	Decrement,
 }
 
+/// Used for example for `++x` returns the new value, whereas `x++` returns the previous value (yay for *incredible useful and clear* semantics)
 pub enum AssignmentReturnStatus {
 	Previous,
 	New,
@@ -63,6 +64,7 @@ impl Reference {
 		}
 	}
 
+	/// is_empty => for when edit in progress in playground / LSP
 	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		match self {
@@ -73,6 +75,7 @@ impl Reference {
 		}
 	}
 
+	/// for LSP
 	#[must_use]
 	pub fn new_empty_variable_reference(position: SpanWithSource) -> Self {
 		Self::Variable(String::new(), position)

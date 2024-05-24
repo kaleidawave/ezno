@@ -12,7 +12,7 @@ y()";
 	let type_definition_files = HashSet::from_iter([definition_file]);
 
 	// `store_expression_type_mappings` important
-	let options = TypeCheckOptions { store_expression_type_mappings: true, ..Default::default() };
+	let options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
 
 	let root = "index.ts";
 

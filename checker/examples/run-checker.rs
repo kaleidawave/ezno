@@ -17,6 +17,7 @@ fn main() {
 
 	let use_simple = args.iter().any(|item| item == "--simple-dts");
 	let no_cache = args.iter().any(|item| item == "--no-cache");
+	let debug_types = args.iter().any(|item| item == "--debug-types");
 
 	let now = Instant::now();
 
@@ -31,7 +32,6 @@ fn main() {
 	};
 	let type_definition_files = HashSet::from_iter([definition_file]);
 
-	let debug_types = false;
 	let options = TypeCheckOptions { debug_types, ..Default::default() };
 
 	let result = check_project::<_, synthesis::EznoParser>(

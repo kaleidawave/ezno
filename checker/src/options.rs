@@ -26,8 +26,8 @@ pub struct TypeCheckOptions {
 	/// Enables `as` casts
 	pub allow_cast: bool,
 
-	/// For post type check optimisations and
-	pub store_expression_type_mappings: bool,
+	/// For post type check optimisations and LSP. Stores both expressions and type annotations
+	pub store_type_mappings: bool,
 
 	/// TODO WIP
 	pub parse_comments: bool,
@@ -46,7 +46,7 @@ impl Default for TypeCheckOptions {
 			debug_types: false,
 			parse_comments: true,
 			strict_casts: false,
-			store_expression_type_mappings: false,
+			store_type_mappings: false,
 			lsp_mode: false,
 			// TODO false at some point hopefully!
 			allow_cast: true,

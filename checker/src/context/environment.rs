@@ -1,5 +1,5 @@
 use source_map::{SourceId, Span, SpanWithSource};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
 	diagnostics::{
@@ -13,6 +13,7 @@ use crate::{
 			AssignmentKind, Reference,
 		},
 		modules::Exported,
+		narrowing::narrow_based_on_expression,
 		objects::SpecialObjects,
 		operations::{
 			evaluate_logical_operation_with_expression,
@@ -20,7 +21,7 @@ use crate::{
 		},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		is_type_truthy_falsy, printing,
 		properties::{PropertyKey, PropertyKind, PropertyValue},
@@ -60,6 +61,10 @@ pub struct Syntax<'a> {
 	///
 	/// In the future narrowing
 	pub state: ApplicationResult,
+
+	/// Parameter inference requests
+	/// TODO RHS = Has Property
+	pub requests: Vec<(TypeId, TypeId)>,
 }
 
 /// Code under a dynamic boundary can run more than once
@@ -197,6 +202,8 @@ pub enum Scope {
 		label: Label, // TODO on: Proofs,
 	},
 	TryBlock {},
+	CatchBlock {},
+	FinallyBlock {},
 	// Just blocks and modules
 	Block {},
 	Module {
@@ -215,6 +222,10 @@ pub enum Scope {
 	PassThrough {
 		source: SourceId,
 	},
+	TypeAnnotationCondition {
+		infer_parameters: HashMap<String, TypeId>,
+	},
+	TypeAnnotationConditionResult,
 }
 
 impl Scope {
@@ -688,24 +699,10 @@ impl<'a> Environment<'a> {
 							}
 
 							if let Some(reassignment_constraint) = *reassignment_constraint {
-								// TODO tuple with position:
-								let mut basic_subtyping = BasicEquality {
-									add_property_restrictions: false,
-									position: *declared_at,
-									object_constraints: Default::default(),
-									allow_errors: true,
-								};
-
-								let result = type_is_subtype(
+								let result = type_is_subtype_object(
 									reassignment_constraint,
 									new_type,
-									&mut basic_subtyping,
 									self,
-									types,
-								);
-
-								self.add_object_constraints(
-									basic_subtyping.object_constraints,
 									types,
 								);
 
@@ -765,6 +762,14 @@ impl<'a> Environment<'a> {
 
 	pub fn get_environment_type_mut(&mut self) -> &mut Scope {
 		&mut self.context_type.scope
+	}
+
+	/// `object_constraints` is LHS is constrained to RHS
+	pub fn add_parameter_constraint_request(
+		&mut self,
+		requests: impl Iterator<Item = (TypeId, TypeId)>,
+	) {
+		self.context_type.requests.extend(requests)
 	}
 
 	/// TODO decidable & private?
@@ -1116,6 +1121,8 @@ impl<'a> Environment<'a> {
 			};
 		}
 
+		narrow_based_on_expression(condition, &mut self.info, &checking_data.types);
+
 		let (truthy_result, truthy_info, truthy_state) = {
 			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: condition,
@@ -1223,20 +1230,18 @@ impl<'a> Environment<'a> {
 			// Don't check inferred, only annotations
 			if let Some(ExpectedReturnType::FromReturnAnnotation(expected, position)) = expected {
 				// TODO what about conditional things
-				let mut basic_equality = BasicEquality {
-					add_property_restrictions: false,
-					position: source_map::Nullable::NULL,
-					object_constraints: Default::default(),
-					allow_errors: true,
+
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: SubTypingOptions::satisfies(),
+					// TODO don't think there is much case in constraining it here
+					object_constraints: None,
 				};
 
-				let result = type_is_subtype(
-					expected,
-					returned,
-					&mut basic_equality,
-					self,
-					&checking_data.types,
-				);
+				let result =
+					type_is_subtype(expected, returned, &mut state, self, &checking_data.types);
 
 				if let SubTypeResult::IsNotSubType(_) = result {
 					checking_data.diagnostics_container.add_error(
@@ -1348,6 +1353,8 @@ impl<'a> Environment<'a> {
 				let scope = &ctx.context_type.scope;
 
 				match scope {
+					Scope::TypeAnnotationCondition { .. }
+					| Scope::TypeAnnotationConditionResult => unreachable!(),
 					Scope::Function(_)
 					| Scope::InterfaceEnvironment { .. }
 					| Scope::FunctionAnnotation {}
@@ -1370,13 +1377,17 @@ impl<'a> Environment<'a> {
 					Scope::Conditional { is_switch: Some(_label @ Some(_)), .. }
 						if !is_continue && looking_for_label.is_some() =>
 					{
-						todo!("switch break")
+						crate::utilities::notify!("TODO");
+					}
+					Scope::Block {} => {
+						crate::utilities::notify!("TODO");
 					}
 					Scope::PassThrough { .. }
 					| Scope::Conditional { .. }
 					| Scope::TryBlock {}
-					| Scope::DefaultFunctionParameter {}
-					| Scope::Block {} => {}
+					| Scope::CatchBlock {}
+					| Scope::FinallyBlock {}
+					| Scope::DefaultFunctionParameter {} => {}
 				}
 			}
 		}

@@ -15,7 +15,7 @@ use crate::{
 	types::{
 		calling::FunctionCallingError,
 		functions::SynthesisedArgument,
-		generics::FunctionTypeArguments,
+		generics::{substitution::SubstitutionArguments, FunctionTypeArguments},
 		get_constraint, is_type_truthy_falsy,
 		printing::print_type,
 		properties::{get_property, set_property, PropertyKey, PropertyValue},
@@ -31,13 +31,15 @@ pub struct ErrorsAndInfo {
 }
 
 /// `rest_of_events` for conditional result things
+///
+/// type_arguments mut to add new ones in
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_event(
 	event: Event,
 	rest_of_events: &mut impl Iterator<Item = Event>,
 	this_value: ThisValue,
-	type_arguments: &mut FunctionTypeArguments,
+	type_arguments: &mut SubstitutionArguments,
 	environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
@@ -48,7 +50,8 @@ pub(crate) fn apply_event(
 			if let Some(id) = reflects_dependency {
 				let value = match reference {
 					RootReference::Variable(id) => {
-						let value = get_value_of_variable(environment, id, Some(&*type_arguments));
+						//  Some(&*type_arguments)
+						let value = get_value_of_variable(environment, id, Some(type_arguments));
 						if let Some(ty) = value {
 							ty
 						} else {
@@ -64,7 +67,7 @@ pub(crate) fn apply_event(
 					}
 					RootReference::This => this_value.get(environment, types, position),
 				};
-				type_arguments.set_id_from_event_application(id, value);
+				type_arguments.set_during_application(id, value);
 			}
 		}
 		Event::SetsVariable(variable, value, position) => {
@@ -73,15 +76,15 @@ pub(crate) fn apply_event(
 			// TODO temp assigns to many contexts, which is bad.
 			// Closures should have an indicator of what they close over #56
 			let info = target.get_latest_info(environment);
-			for closure_id in &type_arguments.closure_ids {
+			for id in &type_arguments.closures {
 				info.closure_current_values
-					.insert((*closure_id, RootReference::Variable(variable)), new_value);
+					.insert((*id, RootReference::Variable(variable)), new_value);
 			}
 
 			info.events.push(Event::SetsVariable(variable, new_value, position));
 			info.variable_current_value.insert(variable, new_value);
 		}
-		Event::Getter { on, under, reflects_dependency, publicity, position } => {
+		Event::Getter { on, under, reflects_dependency, publicity, position, bind_this } => {
 			// let was = on;
 			let on = substitute(on, type_arguments, environment, types);
 
@@ -104,7 +107,7 @@ pub(crate) fn apply_event(
 				target,
 				types,
 				position,
-				true,
+				bind_this,
 			) else {
 				panic!(
 					"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
@@ -113,7 +116,7 @@ pub(crate) fn apply_event(
 			};
 
 			if let Some(id) = reflects_dependency {
-				type_arguments.set_id_from_event_application(id, value);
+				type_arguments.set_during_application(id, value);
 			}
 		}
 		Event::Setter { on, under, new, initialization, publicity, position } => {
@@ -253,10 +256,18 @@ pub(crate) fn apply_event(
 						Ok(mut result) => {
 							errors.warnings.append(&mut result.warnings);
 							if let Some(reflects_dependency) = reflects_dependency {
-								type_arguments.set_id_from_event_application(
+								type_arguments.set_during_application(
 									reflects_dependency,
 									result.returned_type,
 								);
+							}
+
+							if result.thrown_type != TypeId::NEVER_TYPE {
+								return FinalEvent::Throw {
+									thrown: result.thrown_type,
+									position: source_map::Nullable::NULL,
+								}
+								.into();
 							}
 						}
 						Err(mut calling_errors) => {
@@ -265,7 +276,7 @@ pub(crate) fn apply_event(
 							);
 							errors.errors.append(&mut calling_errors);
 							if let Some(reflects_dependency) = reflects_dependency {
-								type_arguments.set_id_from_event_application(
+								type_arguments.set_during_application(
 									reflects_dependency,
 									TypeId::ERROR_TYPE,
 								);
@@ -555,39 +566,103 @@ pub(crate) fn apply_event(
 			// 	new_object_id_with_curried_arguments
 			// );
 
-			type_arguments.set_id_from_event_application(referenced_in_scope_as, new_object_id);
+			if let Some(object_constraint) =
+				environment.get_object_constraint(referenced_in_scope_as)
+			{
+				environment.add_object_constraints(
+					std::iter::once((new_object_id, object_constraint)),
+					types,
+				);
+			}
+
+			type_arguments.set_during_application(referenced_in_scope_as, new_object_id);
 		}
 		Event::Iterate { kind, iterate_over, initial } => {
-			let initial = initial
-				.into_iter()
-				.map(|(id, value)| (id, substitute(value, type_arguments, environment, types)))
-				.collect();
+			todo!()
+			// let initial = initial
+			// 	.into_iter()
+			// 	.map(|(id, value)| (id, substitute(value, type_arguments, environment, types)))
+			// 	.collect();
 
-			let kind = match kind {
-				IterationKind::Condition { under, postfix_condition } => IterationKind::Condition {
-					under: under.map(|under| under.specialise(type_arguments, environment, types)),
-					postfix_condition,
-				},
-				IterationKind::Properties { on, variable } => IterationKind::Properties {
-					on: substitute(on, type_arguments, environment, types),
-					variable,
-				},
-				IterationKind::Iterator { on, variable } => IterationKind::Iterator {
-					on: substitute(on, type_arguments, environment, types),
-					variable,
-				},
-			};
+			// let kind = match kind {
+			// 	IterationKind::Condition { under, postfix_condition } => IterationKind::Condition {
+			// 		under: under.map(|under| under.specialise(type_arguments, environment, types)),
+			// 		postfix_condition,
+			// 	},
+			// 	IterationKind::Properties { on, variable } => IterationKind::Properties {
+			// 		on: substitute(on, type_arguments, environment, types),
+			// 		variable,
+			// 	},
+			// 	IterationKind::Iterator { on, variable } => IterationKind::Iterator {
+			// 		on: substitute(on, type_arguments, environment, types),
+			// 		variable,
+			// 	},
+			// };
 
-			return iteration::run_iteration_block(
-				kind,
-				iterate_over.to_vec(),
-				iteration::InitialVariablesInput::Calculated(initial),
-				type_arguments,
-				environment,
-				target,
-				errors,
-				types,
-			);
+			// return iteration::run_iteration_block(
+			// 	kind,
+			// 	iterate_over.to_vec(),
+			// 	iteration::InitialVariablesInput::Calculated(initial),
+			// 	type_arguments,
+			// 	environment,
+			// 	target,
+			// 	errors,
+			// 	types,
+			// );
+		}
+		Event::ExceptionTrap { investigate, handle, finally: _, trapped_type_id } => {
+			let mut investigate_iter = investigate.to_vec().into_iter();
+			while let Some(event) = investigate_iter.next() {
+				let termination = apply_event(
+					event,
+					&mut investigate_iter,
+					this_value,
+					type_arguments,
+					environment,
+					target,
+					types,
+					errors,
+				);
+
+				if let ApplicationResult::Interrupt(i) = termination {
+					match i {
+						FinalEvent::Return { .. }
+						| FinalEvent::Break { .. }
+						| FinalEvent::Continue { .. } => return termination,
+						FinalEvent::Throw { thrown, position: _ } => {
+							if let Some(trap) = trapped_type_id {
+								type_arguments.set_during_application(trap.generic_type, thrown);
+
+								if let Some(_a) = trap.constrained {
+									crate::utilities::notify!("TODO check using function");
+								}
+								let mut handler_iter = handle.to_vec().into_iter();
+
+								while let Some(event) = handler_iter.next() {
+									let termination = apply_event(
+										event,
+										&mut handler_iter,
+										this_value,
+										type_arguments,
+										environment,
+										target,
+										types,
+										errors,
+									);
+
+									if termination.is_it_so_over() {
+										return termination;
+									}
+								}
+							} else {
+								crate::utilities::notify!("here");
+							}
+						}
+					}
+				} else {
+					crate::utilities::notify!("todo {:?}", termination);
+				}
+			}
 		}
 	}
 
@@ -602,7 +677,7 @@ pub(crate) fn apply_event(
 pub(crate) fn apply_event_unknown(
 	event: Event,
 	_this_value: ThisValue,
-	type_arguments: &mut FunctionTypeArguments,
+	type_arguments: &mut SubstitutionArguments,
 	environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
@@ -620,8 +695,29 @@ pub(crate) fn apply_event_unknown(
 					.insert(variable, reflects_dependency);
 			}
 		}
-		Event::Getter { .. } => {
-			crate::utilities::notify!("Run getters");
+		Event::Getter { reflects_dependency, on, under, publicity, position, bind_this } => {
+			// Evaluates getters
+			if let Some(reflects_dependency) = reflects_dependency {
+				crate::utilities::notify!("Run getters");
+				let on = substitute(on, type_arguments, environment, types);
+				let under = match under {
+					under @ PropertyKey::String(_) => under,
+					PropertyKey::Type(under) => {
+						PropertyKey::Type(substitute(under, type_arguments, environment, types))
+					}
+				};
+				// get_property(
+				// 	on,
+				// 	publicity,
+				// 	&under,
+				// 	None,
+				// 	top_environment,
+				// 	target,
+				// 	types,
+				// 	position,
+				// 	bind_this,
+				// )
+			}
 		}
 		Event::SetsVariable(_variable, _value, _) => {
 			crate::utilities::notify!("Here");
@@ -631,6 +727,7 @@ pub(crate) fn apply_event_unknown(
 			// 	})
 			// 	.unwrap_or(value);
 
+			// // Don't like this but I think it is okay
 			// environment.info.variable_current_value.insert(variable, new_value);
 		}
 		Event::Setter { on, under, new, initialization: _, publicity, position } => {
@@ -656,6 +753,7 @@ pub(crate) fn apply_event_unknown(
 					PropertyKey::Type(substitute(under, type_arguments, environment, types))
 				}
 			};
+
 			environment.info.register_property(on, publicity, under, new_value, false, position);
 		}
 		Event::CallsType { .. } => {
@@ -691,6 +789,10 @@ pub(crate) fn apply_event_unknown(
 			// 		types,
 			// 	)
 			// }
+			crate::utilities::notify!("Iterate trap anytime");
+		}
+		Event::ExceptionTrap { .. } => {
+			crate::utilities::notify!("Exception trap anytime");
 		}
 	}
 }

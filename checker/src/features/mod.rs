@@ -1,29 +1,35 @@
+//! Contains implementations of specific JavaScript items and how Ezno handles them.
+//! Contains
+//! - Helper / abstracting functions for synthesising
+//!
+//! Does not contain
+//! - Logic stuff
+//! - Context
+//! - Internal structures
+
+pub mod assignments;
+pub mod constant_functions;
+pub mod exceptions;
+pub mod functions;
+pub mod iteration;
+pub mod modules;
+pub mod narrowing;
+pub mod objects;
+pub mod operations;
+pub mod template_literal;
+pub mod variables;
+
 use source_map::SpanWithSource;
 
 use crate::{
+	context::information::InformationChain,
 	types::{get_constraint, StructureGenerics, TypeStore},
 	CheckingData, Environment, Type, TypeId,
 };
 
 use self::objects::SpecialObjects;
 
-/// Contains implementations of specific JavaScript items and how Ezno handles them.
-/// Contains
-/// - Helper / abstracting functions for synthesising
-/// Does not contain
-/// - Logic stuff
-/// - Context
-/// - Internal structures
-pub mod assignments;
-pub mod constant_functions;
-pub mod functions;
-pub mod iteration;
-pub mod modules;
-pub mod objects;
-pub mod operations;
-pub mod template_literal;
-pub mod variables;
-
+/// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 	if let Some(constraint) = get_constraint(on, types) {
 		let name = match constraint {
@@ -63,6 +69,52 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 	}
 }
 
+// TODO think this is okay
+fn extends_prototype(lhs: TypeId, rhs: TypeId, information: &impl InformationChain) -> bool {
+	for info in information.get_chain_of_info() {
+		if let Some(lhs_prototype) = info.prototypes.get(&lhs).copied() {
+			let prototypes_equal = lhs_prototype == rhs;
+			crate::utilities::notify!("{:?} and {:?}", lhs_prototype, rhs);
+			return if prototypes_equal {
+				true
+			} else {
+				extends_prototype(lhs_prototype, rhs, information)
+			};
+		}
+	}
+	return false;
+}
+
+pub fn instance_of_operator(
+	lhs: TypeId,
+	rhs: TypeId,
+	information: &impl InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
+	// TODO frozen prototypes
+	if let Some(_constraint) = get_constraint(lhs, types) {
+		todo!()
+	} else {
+		let rhs_prototype =
+			if let Type::SpecialObject(SpecialObjects::ClassConstructor { prototype, .. }) =
+				types.get_type_by_id(rhs)
+			{
+				*prototype
+			} else {
+				// TODO err
+				rhs
+			};
+
+		if extends_prototype(lhs, rhs_prototype, information) {
+			TypeId::TRUE
+		} else {
+			TypeId::FALSE
+		}
+	}
+}
+
+/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
+/// occur for casting a constant
 pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
 	use crate::types::{Constructor, PolyNature};
 
@@ -98,7 +150,7 @@ pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<Typ
 	}
 }
 
-/// TODO await ors etc
+/// Return `await *on*`. TODO await [`Type::Or`] etc
 pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	on: TypeId,
 	_environment: &mut Environment,

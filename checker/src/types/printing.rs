@@ -11,7 +11,10 @@ use crate::{
 		Logical,
 	},
 	events::{Event, FinalEvent},
-	features::{functions::ThisValue, objects::SpecialObjects},
+	features::{
+		functions::ThisValue,
+		objects::{Proxy, SpecialObjects},
+	},
 	types::{
 		generics::generic_type_arguments::StructureGenericArguments, get_constraint, Constructor,
 		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
@@ -150,6 +153,16 @@ fn print_type_into_buf<C: InformationChain>(
 				// 	GeneralContext::Root(root) => root.bases.get(&id).copied(),
 				// };
 			}
+			PolyNature::CatchVariable(constraint) => {
+				if debug {
+					write!(buf, "[catch variable {}] ", ty.0).unwrap();
+				}
+				print_type_into_buf(*constraint, buf, cycles, args, types, info_chain, debug);
+			}
+			PolyNature::InferGeneric { name } => {
+				buf.push_str("infer ");
+				buf.push_str(name);
+			}
 		},
 		// TODO these can vary
 		Type::Constructor(constructor) => match constructor {
@@ -194,9 +207,7 @@ fn print_type_into_buf<C: InformationChain>(
 						StructureGenericArguments::Closure(closures) => {
 							write!(buf, "<Closures {closures:?}>").unwrap();
 						}
-						StructureGenericArguments::LookUp { on } => {
-							write!(buf, "<Lookup {on:?}>").unwrap();
-						}
+						_ => {}
 					}
 				} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
 					types.get_type_by_id(*on)
@@ -217,15 +228,15 @@ fn print_type_into_buf<C: InformationChain>(
 							}
 							buf.push('>');
 						}
-						StructureGenericArguments::Closure(..)
-						| StructureGenericArguments::LookUp { .. } => {}
+						StructureGenericArguments::Closure(..) => {}
+						_ => {}
 					}
 				} else {
 					print_type_into_buf(
 						*on,
 						buf,
 						cycles,
-						GenericChainLink::append(args.as_ref(), arguments),
+						GenericChainLink::append(args.as_ref(), &arguments.clone().into()),
 						types,
 						info_chain,
 						debug,
@@ -320,7 +331,7 @@ fn print_type_into_buf<C: InformationChain>(
 						*result,
 						buf,
 						cycles,
-						GenericChainLink::append(args.as_ref(), &sgs.arguments),
+						GenericChainLink::append(args.as_ref(), &sgs.arguments.clone().into()),
 						types,
 						info_chain,
 						debug,
@@ -342,7 +353,7 @@ fn print_type_into_buf<C: InformationChain>(
 			} else {
 				buf.push_str(name);
 			}
-
+			// TODO
 			// if let (true, Some(parameters)) = (debug, parameters) {
 			// 	buf.push('{');
 			// 	for param in parameters {
@@ -494,7 +505,7 @@ fn print_type_into_buf<C: InformationChain>(
 		Type::SpecialObject(special_object) => match special_object {
 			SpecialObjects::Promise { events: () } => todo!(),
 			SpecialObjects::Generator { position: () } => todo!(),
-			SpecialObjects::Proxy { handler, over } => {
+			SpecialObjects::Proxy(Proxy { handler, over }) => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
 				print_type_into_buf(*over, buf, cycles, args, types, info_chain, debug);
@@ -523,14 +534,18 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObjects::Regexp(exp) => {
+			SpecialObjects::RegularExpression(exp) => {
 				buf.push('/');
 				buf.push_str(exp);
 				buf.push('/');
 			}
 			SpecialObjects::Function(..) => unreachable!(),
-			SpecialObjects::ClassConstructor { name, constructor: _ } => {
-				buf.push_str(name);
+			SpecialObjects::ClassConstructor { name, prototype, constructor: _ } => {
+				if debug {
+					write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
+				} else {
+					buf.push_str(name);
+				}
 			}
 		},
 	}
@@ -553,7 +568,7 @@ fn get_simple_value(
 		}
 	}
 
-	information::get_property_unbound(on, Publicity::Public, property, types, ctx)
+	information::get_property_unbound((on, None), (Publicity::Public, property), ctx, types)
 		.ok()
 		.and_then(get_logical)
 }
@@ -631,7 +646,14 @@ pub fn debug_effects<C: InformationChain>(
 				write!(buf, "{variable:?}' =").unwrap();
 				print_type_into_buf(*value, buf, &mut HashSet::new(), args, types, info, debug);
 			}
-			Event::Getter { on, under, reflects_dependency, publicity: _, position: _ } => {
+			Event::Getter {
+				on,
+				under,
+				reflects_dependency,
+				publicity: _,
+				position: _,
+				bind_this: _,
+			} => {
 				buf.push_str("read ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
 				if let PropertyKey::String(_) = under {
@@ -753,6 +775,7 @@ pub fn debug_effects<C: InformationChain>(
 				buf.push_str("return ");
 				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, types, info, debug);
 			}
+			Event::ExceptionTrap { .. } => todo!(),
 		}
 		buf.push('\n');
 	}

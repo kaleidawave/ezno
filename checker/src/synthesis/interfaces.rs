@@ -11,7 +11,7 @@ use crate::{
 		properties::{PropertyKey, PropertyValue},
 		FunctionType, Type,
 	},
-	CheckingData, TypeId,
+	CheckingData, Scope, TypeId,
 };
 
 use super::{
@@ -271,25 +271,26 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					output_type,
 					position: _,
 				} => {
-					// TODO WIP
 					let to = match rule {
-						parser::types::interface::TypeRule::In => {
-							crate::utilities::notify!("TODO");
-							TypeId::ANY_TYPE
-						}
+						parser::types::interface::TypeRule::In => TypeId::ANY_TYPE,
 						parser::types::interface::TypeRule::InKeyOf => todo!(),
 					};
 
-					// TODO
-					let _parameter = checking_data.types.register_type(Type::RootPolyType(
-						crate::types::PolyNature::FunctionGeneric {
-							name: parameter.clone(),
-							eager_fixed: to,
-						},
-					));
-
 					let key = synthesise_type_annotation(matching_type, environment, checking_data);
-					let value = synthesise_type_annotation(output_type, environment, checking_data);
+
+					// TODO need as
+					let value = {
+						// TODO special cases here
+						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
+							crate::types::PolyNature::FunctionGeneric {
+								name: parameter.clone(),
+								eager_fixed: to,
+							},
+						));
+						environment.named_types.insert(parameter.clone(), parameter_type);
+						synthesise_type_annotation(output_type, &mut environment, checking_data)
+					};
 
 					interface_register_behavior.register(
 						ParserPropertyKeyType::Type(key),

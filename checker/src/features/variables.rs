@@ -1,12 +1,16 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::information::{get_property_unbound, Publicity};
-use crate::context::VariableRegisterArguments;
-use crate::context::{environment::ContextLocation, AssignmentError};
+use crate::context::{
+	environment::ContextLocation,
+	information::{get_property_unbound, Publicity},
+	AssignmentError, VariableRegisterArguments,
+};
 use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
-use crate::types::printing::print_type;
-use crate::types::properties::PropertyKey;
-use crate::{types::TypeId, CheckingData, VariableId};
+use crate::subtyping::{type_is_subtype_object, SubTypeResult};
+use crate::{
+	types::{printing::print_type, properties::PropertyKey, TypeId},
+	CheckingData, VariableId,
+};
 use crate::{Environment, Instance, Logical};
 use std::fmt::Debug;
 
@@ -47,6 +51,7 @@ impl VariableOrImport {
 		}
 	}
 
+	/// Whether can be reassigned
 	pub(crate) fn get_mutability(&self) -> VariableMutability {
 		match self {
 			VariableOrImport::Variable { mutability, .. } => *mutability,
@@ -85,25 +90,12 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 	environment: &mut crate::context::Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
-	use crate::types::subtyping::{type_is_subtype, BasicEquality, SubTypeResult};
-
-	let mut basic_subtyping = BasicEquality {
-		add_property_restrictions: true,
-		position: variable_declared_pos,
-		object_constraints: Default::default(),
-		allow_errors: true,
-	};
-
-	let type_is_subtype = type_is_subtype(
+	let type_is_subtype = type_is_subtype_object(
 		variable_declared_type,
 		expression_type,
-		&mut basic_subtyping,
 		environment,
-		&checking_data.types,
+		&mut checking_data.types,
 	);
-
-	environment
-		.add_object_constraints(basic_subtyping.object_constraints, &mut checking_data.types);
 
 	if let SubTypeResult::IsNotSubType(_matches) = type_is_subtype {
 		let error = crate::diagnostics::TypeCheckError::AssignmentError(
@@ -114,7 +106,7 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				variable_site: basic_subtyping.position,
+				variable_site: variable_declared_pos,
 				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
 					environment,
@@ -140,11 +132,10 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 
 	let space = on.space.map(|space| {
 		let property_constraint = get_property_unbound(
-			space,
-			Publicity::Public,
-			under,
-			&checking_data.types,
+			(space, None),
+			(Publicity::Public, under),
 			environment,
+			&checking_data.types,
 		);
 		if let Ok(value) = property_constraint {
 			match value {

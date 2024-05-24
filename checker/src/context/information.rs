@@ -5,9 +5,15 @@ use source_map::SpanWithSource;
 use crate::{
 	context::PossibleLogical,
 	events::{Event, RootReference},
-	features::functions::{ClosureId, ThisValue},
-	types::{get_constraint, properties::PropertyKey, GenericChain, TypeStore},
-	Constant, PropertyValue, Type, TypeId, VariableId,
+	features::{
+		functions::{ClosureId, ThisValue},
+		objects::SpecialObjects,
+	},
+	types::{
+		generics::generic_type_arguments::StructureGenericArguments, get_constraint,
+		properties::PropertyKey, GenericChain, TypeStore,
+	},
+	Constant, Logical, PropertyValue, Type, TypeId, VariableId,
 };
 
 /// TODO explain usage
@@ -214,30 +220,296 @@ pub(crate) fn get_value_of_constant_import_variable(
 }
 
 pub(crate) fn get_property_unbound(
-	on: TypeId,
-	publicity: Publicity,
-	under: &PropertyKey,
+	(on, on_type_arguments): (TypeId, GenericChain),
+	(publicity, under): (Publicity, &PropertyKey),
+	info_chain: &impl InformationChain,
 	types: &TypeStore,
-	info: &impl InformationChain,
 ) -> PossibleLogical<PropertyValue> {
-	fn get_property(
+	fn resolver(
+		(publicity, under, on, on_type_arguments): (Publicity, &PropertyKey, TypeId, GenericChain),
 		info: &LocalInformation,
 		types: &TypeStore,
-		on: TypeId,
-		on_type_arguments: GenericChain,
-		under: (Publicity, &PropertyKey),
 	) -> Option<PropertyValue> {
-		info.current_properties
-			.get(&on)
-			.and_then(|properties| get_property_under(properties, under, on_type_arguments, types))
+		// TODO if on == constant string and property == length. Need to be able to create types here
+
+		info.current_properties.get(&on).and_then(|properties| {
+			get_property_under(properties, (publicity, under), on_type_arguments, types)
+		})
 	}
 
-	// let under = match under {
-	// 	PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-	// 	under @ PropertyKey::String(_) => under,
-	// };
+	if on == TypeId::ERROR_TYPE {
+		return Err(crate::context::MissingOrToCalculate::Error);
+	}
+	if on == TypeId::ANY_TYPE {
+		// TODO any
+		return Err(crate::context::MissingOrToCalculate::Infer { on });
+	}
 
-	types.get_fact_about_type(info, on, None, &get_property, (publicity, under))
+	match types.get_type_by_id(on) {
+		Type::SpecialObject(SpecialObjects::Function(..)) => info_chain
+			.get_chain_of_info()
+			.find_map(|info| {
+				resolver((publicity, under, on, on_type_arguments), info, types).or_else(|| {
+					resolver(
+						(publicity, under, TypeId::FUNCTION_TYPE, on_type_arguments),
+						info,
+						types,
+					)
+				})
+			})
+			.map(Logical::Pure)
+			.ok_or(crate::context::MissingOrToCalculate::Missing),
+		Type::FunctionReference(_) => info_chain
+			.get_chain_of_info()
+			.find_map(|info| {
+				resolver((publicity, under, TypeId::FUNCTION_TYPE, on_type_arguments), info, types)
+			})
+			.map(Logical::Pure)
+			.ok_or(crate::context::MissingOrToCalculate::Missing),
+		Type::AliasTo { to, .. } => {
+			get_property_unbound((*to, on_type_arguments), (publicity, under), info_chain, types)
+			// TODO why would an alias have a property
+			// let property_on_types = info_chain
+			// 	.get_chain_of_info()
+			// 	.find_map(|info| resolver(info, types, on, on_type_arguments,))
+			// 	.map(Logical::Pure);
+		}
+		Type::And(left, right) => {
+			get_property_unbound((*left, on_type_arguments), (publicity, under), info_chain, types)
+				.or_else(|_| {
+					get_property_unbound(
+						(*right, on_type_arguments),
+						(publicity, under),
+						info_chain,
+						types,
+					)
+				})
+		}
+		Type::Or(left, right) => {
+			let left = get_property_unbound(
+				(*left, on_type_arguments),
+				(publicity, under),
+				info_chain,
+				types,
+			);
+			let right = get_property_unbound(
+				(*right, on_type_arguments),
+				(publicity, under),
+				info_chain,
+				types,
+			);
+
+			// TODO throwaway if both Missing::None
+
+			Ok(Logical::Or {
+				based_on: TypeId::BOOLEAN_TYPE,
+				left: Box::new(left),
+				right: Box::new(right),
+			})
+		}
+		Type::RootPolyType(_nature) => {
+			// Can assign to properties on parameters etc
+			let aliases = get_constraint(on, types).expect("poly type with no constraint");
+
+			info_chain
+				.get_chain_of_info()
+				.find_map(|info| resolver((publicity, under, on, on_type_arguments), info, types))
+				.map(Logical::Pure)
+				.ok_or(crate::context::MissingOrToCalculate::Missing)
+				.or_else(|_| {
+					get_property_unbound(
+						(aliases, on_type_arguments),
+						(publicity, under),
+						info_chain,
+						types,
+					)
+				})
+		}
+		Type::Constructor(crate::types::Constructor::StructureGenerics(
+			crate::types::StructureGenerics { on: base, arguments },
+		)) => {
+			let on_sg_type = if let StructureGenericArguments::Closure(_) = arguments {
+				info_chain
+					.get_chain_of_info()
+					.find_map(|info| {
+						resolver((publicity, under, on, on_type_arguments), info, types)
+					})
+					.map(Logical::Pure)
+					.ok_or(crate::context::MissingOrToCalculate::Missing)
+			} else {
+				Err(crate::context::MissingOrToCalculate::Missing)
+			};
+
+			on_sg_type.or_else(|_| {
+				let on_type_arguments =
+					crate::types::GenericChainLink::append(on_type_arguments.as_ref(), &arguments);
+
+				get_property_unbound(
+					(*base, on_type_arguments),
+					(publicity, under),
+					info_chain,
+					types,
+				)
+				.map(|fact| Logical::Implies {
+					on: Box::new(fact),
+					antecedent: arguments.clone().into(),
+				})
+			})
+		}
+		Type::Constructor(crate::types::Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			otherwise_result,
+			result_union: _,
+		}) => {
+			let left = get_property_unbound(
+				(*truthy_result, on_type_arguments),
+				(publicity, under),
+				info_chain,
+				types,
+			);
+			let right = get_property_unbound(
+				(*otherwise_result, on_type_arguments),
+				(publicity, under),
+				info_chain,
+				types,
+			);
+
+			// TODO throwaway if both Missing::None
+
+			Ok(Logical::Or { based_on: *condition, left: Box::new(left), right: Box::new(right) })
+		}
+		Type::Constructor(_constructor) => {
+			let on_constructor_type = info_chain
+				.get_chain_of_info()
+				.find_map(|info| resolver((publicity, under, on, on_type_arguments), info, types))
+				.map(Logical::Pure)
+				.ok_or(crate::context::MissingOrToCalculate::Missing);
+
+			let aliases = get_constraint(on, types).expect("no constraint for constructor");
+
+			on_constructor_type.or_else(|_| {
+				get_property_unbound(
+					(aliases, on_type_arguments),
+					(publicity, under),
+					info_chain,
+					types,
+				)
+			})
+		}
+		Type::Object(..) => {
+			let object_constraint_structure_generics =
+				crate::types::get_structure_arguments_based_on_object_constraint(
+					on, info_chain, types,
+				);
+
+			let prototype =
+				info_chain.get_chain_of_info().find_map(|facts| facts.prototypes.get(&on)).copied();
+
+			let generics = if let Some(generics) = object_constraint_structure_generics {
+				// TODO clone
+				Some(generics.clone())
+			} else if prototype
+				.is_some_and(|prototype| types.lookup_generic_map.contains_key(&prototype))
+			{
+				crate::utilities::notify!("Registering lookup");
+				Some(StructureGenericArguments::LookUp { on })
+			} else {
+				None
+			};
+
+			info_chain
+				.get_chain_of_info()
+				.find_map(|info| {
+					let on_self = resolver((publicity, under, on, on_type_arguments), info, types);
+
+					let result = if let (Some(prototype), None) = (prototype, &on_self) {
+						resolver((publicity, under, prototype, on_type_arguments), info, types)
+					} else {
+						on_self
+					};
+
+					result.map(|result| {
+						let pure = Logical::Pure(result);
+						if let Some(ref generics) = generics {
+							// TODO clone
+							Logical::Implies { on: Box::new(pure), antecedent: generics.clone() }
+						} else {
+							pure
+						}
+					})
+				})
+				.ok_or(crate::context::MissingOrToCalculate::Missing)
+		}
+		Type::Interface { .. } => info_chain
+			.get_chain_of_info()
+			.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
+			.map(Logical::Pure)
+			.ok_or(crate::context::MissingOrToCalculate::Missing)
+			.or_else(|_| {
+				// TODO class and class constructor extends etc
+				if let Some(extends) = types.interface_extends.get(&on) {
+					get_property_unbound(
+						(*extends, on_type_arguments),
+						(publicity, under),
+						info_chain,
+						types,
+					)
+				} else {
+					Err(crate::context::MissingOrToCalculate::Missing)
+				}
+			}),
+		Type::SpecialObject(SpecialObjects::ClassConstructor { .. }) | Type::Class { .. } => {
+			info_chain
+				.get_chain_of_info()
+				.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
+				.map(Logical::Pure)
+				.ok_or(crate::context::MissingOrToCalculate::Missing)
+				.or_else(|_| {
+					if let Some(prototype) =
+						info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+					{
+						get_property_unbound(
+							(*prototype, on_type_arguments),
+							(publicity, under),
+							info_chain,
+							types,
+						)
+					} else {
+						Err(crate::context::MissingOrToCalculate::Missing)
+					}
+				})
+		}
+		Type::Constant(cst) => info_chain
+			.get_chain_of_info()
+			.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
+			.map(Logical::Pure)
+			.ok_or(crate::context::MissingOrToCalculate::Missing)
+			.or_else(|_| {
+				let backing_type = cst.get_backing_type_id();
+				get_property_unbound(
+					(backing_type, on_type_arguments),
+					(publicity, under),
+					info_chain,
+					types,
+				)
+			}),
+		Type::SpecialObject(SpecialObjects::Promise { .. }) => {
+			todo!()
+		}
+		Type::SpecialObject(SpecialObjects::Import(..)) => {
+			todo!()
+		}
+		Type::SpecialObject(SpecialObjects::Proxy(proxy)) => {
+			Err(crate::context::MissingOrToCalculate::Proxy(*proxy))
+		}
+		Type::SpecialObject(SpecialObjects::Generator { .. }) => {
+			todo!()
+		}
+		Type::SpecialObject(SpecialObjects::RegularExpression(..)) => {
+			todo!()
+		}
+	}
 }
 
 fn get_property_under(

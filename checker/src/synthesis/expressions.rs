@@ -812,13 +812,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					Instance::RValue(to_cast)
 				}
 			}
-			SpecialOperators::Is { value: _, type_annotation: _ } => {
-				todo!()
-			}
 			SpecialOperators::Satisfies { value, type_annotation, .. } => {
-				let value = synthesise_expression(value, environment, checking_data, expecting);
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
+
+				let value = synthesise_expression(value, environment, checking_data, satisfying);
 
 				checking_data.check_satisfies(
 					value,
@@ -848,14 +846,21 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
 			}
-			SpecialOperators::InstanceOf { .. } => {
-				checking_data.raise_unimplemented_error(
-					"instanceof expression",
-					position.with_source(environment.get_source()),
-				);
-				return TypeId::ERROR_TYPE;
+			SpecialOperators::InstanceOf { lhs, rhs } => {
+				let lhs = synthesise_expression(lhs, environment, checking_data, expecting);
+				let rhs = synthesise_expression(rhs, environment, checking_data, expecting);
+				Instance::RValue(features::instance_of_operator(
+					lhs,
+					rhs,
+					environment,
+					&mut checking_data.types,
+				))
 			}
 			SpecialOperators::NonNullAssertion(_) => todo!(),
+			SpecialOperators::Is { value: _, type_annotation: _ } => {
+				// Special non-standard
+				todo!()
+			}
 		},
 		Expression::ImportMeta(_) => {
 			Instance::RValue(checking_data.types.new_open_type(TypeId::IMPORT_META))
@@ -874,7 +879,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 	let position = ASTNode::get_position(expression).with_source(environment.get_source());
 
-	if checking_data.options.store_expression_type_mappings {
+	if checking_data.options.store_type_mappings {
 		checking_data.add_expression_mapping(position, instance.clone());
 	}
 
@@ -1063,11 +1068,10 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let position_with_source = position.with_source(environment.get_source());
 
 				let maybe_property_expecting = get_property_unbound(
-					expected,
-					Publicity::Public,
-					&key,
-					&checking_data.types,
+					(expected, None),
+					(Publicity::Public, &key),
 					environment,
+					&checking_data.types,
 				);
 
 				if expected != TypeId::ANY_TYPE
@@ -1142,11 +1146,10 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				// TODO needs improvement
 				let property_expecting = get_property_unbound(
-					expected,
-					Publicity::Public,
-					&key,
-					&checking_data.types,
+					(expected, None),
+					(Publicity::Public, &key),
 					environment,
+					&checking_data.types,
 				)
 				.ok()
 				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })

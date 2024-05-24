@@ -1,5 +1,3 @@
-#TODO some of this will be made into a post :0
-
 ### Properties
 - Keyed data (as in JS properties), these are local based and can be throught of a triple (On,Under,As)
 - Functions #TODO
@@ -29,7 +27,7 @@ function func() {
   return { a: 2 }
 }
 
-assertType<false>(func() === func())
+(func() === func()) satisfies false;
 ```
 
 Unlike constants, these are different objects. They can mutated with different things #TODO explain. This is because unlike constants, something else is going on. If I now rewrite it in a de-sugared way (without a heap, only a stack) it, the problem around what objects are becomes easier.

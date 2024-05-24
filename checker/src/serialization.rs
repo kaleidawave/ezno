@@ -174,25 +174,6 @@ where
 	}
 }
 
-impl<K, V> BinarySerializable for map_vec::Map<K, V>
-where
-	K: BinarySerializable + std::hash::Hash + std::cmp::Eq,
-	V: BinarySerializable,
-{
-	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&u16::try_from(self.len()).unwrap().to_le_bytes());
-		for (k, v) in self {
-			k.serialize(buf);
-			v.serialize(buf);
-		}
-	}
-
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		let size = u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()]);
-		(0..size).map(|_| (K::deserialize(iter, source), V::deserialize(iter, source))).collect()
-	}
-}
-
 impl BinarySerializable for SpanWithSource {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		self.start.serialize(buf);

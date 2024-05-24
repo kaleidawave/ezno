@@ -20,7 +20,7 @@
 
 use std::convert::TryInto;
 
-use map_vec::Map;
+use crate::{types::generics::ExplicitTypeArguments, Map};
 use parser::{
 	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement},
 	ASTNode, TypeAnnotation,
@@ -33,11 +33,13 @@ use crate::{
 	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments,
+		generics::{
+			generic_type_arguments::StructureGenericArguments, substitution::SubstitutionArguments,
+		},
 		properties::{PropertyKey, PropertyValue},
 		Constant, Constructor, StructureGenerics, Type, TypeId,
 	},
-	CheckingData, Environment,
+	CheckingData, Environment, Scope,
 };
 
 /// Turns a [`parser::TypeAnnotation`] into [`TypeId`]
@@ -75,6 +77,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::Name(name, pos) => match name.as_str() {
 			"any" => TypeId::ANY_TYPE,
+			"never" => TypeId::NEVER_TYPE,
+			// TODO differentiate?
+			"unknown" => TypeId::ANY_TYPE,
 			"this" => todo!(), // environment.get_value_of_this(&mut checking_data.types),
 			"self" => TypeId::ANY_INFERRED_FREE_THIS,
 			name => {
@@ -185,8 +190,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					None
 				};
 
-				let mut type_arguments: map_vec::Map<TypeId, (TypeId, SpanWithSource)> =
-					map_vec::Map::new();
+				let mut type_arguments: crate::Map<TypeId, (TypeId, SpanWithSource)> =
+					crate::Map::default();
 
 				for (parameter, argument_type_annotation) in
 					parameters.clone().into_iter().zip(arguments.iter())
@@ -256,15 +261,16 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				}
 
 				// Eagerly specialise for type alias. TODO don't do for object types...
-				let mut arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
 				if let Some(on) = is_flattenable_alias {
 					crate::types::substitute(
 						on,
-						&mut arguments,
+						&ExplicitTypeArguments(type_arguments).into_substitution_arguments(),
 						environment,
 						&mut checking_data.types,
 					)
 				} else {
+					let arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
+
 					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 						on: inner_type_id,
 						arguments,
@@ -430,12 +436,36 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
-			let condition = synthesise_type_annotation(condition, environment, checking_data);
+			let (condition, infer_types) = {
+				let mut environment =
+					environment.new_lexical_environment(Scope::TypeAnnotationCondition {
+						infer_parameters: Default::default(),
+					});
+				let condition =
+					synthesise_type_annotation(condition, &mut environment, checking_data);
+				let Scope::TypeAnnotationCondition { infer_parameters } =
+					environment.context_type.scope
+				else {
+					unreachable!()
+				};
+				(condition, infer_parameters)
+			};
 
-			let truthy_result =
-				synthesise_type_annotation(resolve_true, environment, checking_data);
+			let truthy_result = {
+				if infer_types.is_empty() {
+					synthesise_type_annotation(resolve_true, environment, checking_data)
+				} else {
+					let mut environment =
+						environment.new_lexical_environment(Scope::TypeAnnotationConditionResult);
+					environment.named_types.extend(infer_types);
+					synthesise_type_annotation(resolve_true, &mut environment, checking_data)
+				}
+			};
+
 			let otherwise_result =
 				synthesise_type_annotation(resolve_false, environment, checking_data);
+
+			// TODO might want to record whether infer_types is_empty here
 
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
@@ -474,19 +504,30 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			synthesize_template_literal_type(parts, &mut checking_data.types)
 		}
-		TypeAnnotation::TypeOf(_item, position) => {
+		TypeAnnotation::TypeOf(_item, pos) => {
 			checking_data.raise_unimplemented_error(
 				"typeof annotation",
-				position.with_source(environment.get_source()),
+				pos.with_source(environment.get_source()),
 			);
 			TypeId::ERROR_TYPE
 		}
-		TypeAnnotation::Infer(_name, position) => {
-			checking_data.raise_unimplemented_error(
-				"infer annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
+		TypeAnnotation::Infer(name, _pos) => {
+			if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =
+				environment.context_type.scope
+			{
+				let infer_type = checking_data.types.register_type(Type::RootPolyType(
+					crate::types::PolyNature::InferGeneric { name: name.clone() },
+				));
+
+				let existing = infer_parameters.insert(name.clone(), infer_type);
+				if existing.is_some() {
+					crate::utilities::notify!("Raise error diagnostic");
+				}
+				infer_type
+			} else {
+				crate::utilities::notify!("Raise error diagnostic");
+				TypeId::ERROR_TYPE
+			}
 		}
 		TypeAnnotation::Extends { item, extends, position: _ } => {
 			let item = synthesise_type_annotation(item, environment, checking_data);
@@ -496,14 +537,10 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			));
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Is { item, is, position } => {
+		TypeAnnotation::Is { item, is, position: _ } => {
 			let _item = synthesise_type_annotation(item, environment, checking_data);
 			let _is = synthesise_type_annotation(is, environment, checking_data);
-			checking_data.raise_unimplemented_error(
-				"is annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
+			todo!();
 			// let ty = Type::Constructor(Constructor::TypeRelationOperator(
 			// 	crate::types::TypeRelationOperator::E { ty: item, is },
 			// ));
@@ -526,7 +563,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 	};
 
-	if checking_data.options.store_expression_type_mappings {
+	if checking_data.options.store_type_mappings {
 		checking_data
 			.local_type_mappings
 			.types_to_types

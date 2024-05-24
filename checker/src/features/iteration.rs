@@ -1,3 +1,6 @@
+//! This contains logic for synthesising iteration structures (`for`, `while`, `do {} ... while`, etc)
+//! and running them (sometimes)
+
 use std::{collections::HashMap, iter};
 
 use crate::{
@@ -17,9 +20,11 @@ use crate::{
 	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
 };
 
+/// The type of iteration to synthesis
 #[derive(Clone, Copy)]
 pub enum IterationBehavior<'a, A: crate::ASTImplementation> {
 	While(&'a A::MultipleExpression<'a>),
+	/// Same as above but run the body first
 	DoWhile(&'a A::MultipleExpression<'a>),
 	For {
 		initialiser: &'a Option<A::ForStatementInitiliser<'a>>,
@@ -340,7 +345,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
-					A::declare_and_assign_to_fields(lhs, environment, checking_data, variable);
+					let arguments = crate::VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: Some(variable),
+					};
+					A::declare_and_assign_to_fields(lhs, environment, checking_data, arguments);
 					loop_body(environment, checking_data);
 				},
 			);
@@ -436,7 +446,7 @@ pub(crate) fn run_iteration_block(
 				// );
 
 				if let InitialVariablesInput::Calculated(initial) = initial {
-					for (variable_id, initial_value) in &initial {
+					for (variable_id, initial_value) in initial.iter() {
 						invocation_context
 							.get_latest_info(top_environment)
 							.variable_current_value
@@ -572,7 +582,7 @@ fn evaluate_unknown_iteration_for_loop(
 ) -> ApplicationResult {
 	let initial = match initial {
 		InitialVariablesInput::Calculated(initial) => {
-			for (id, value) in &initial {
+			for (id, value) in initial.iter() {
 				invocation_context
 					.get_latest_info(top_environment)
 					.variable_current_value
@@ -621,14 +631,15 @@ fn evaluate_unknown_iteration_for_loop(
 
 	// TODO can skip if at the end of a function
 	for event in events.clone() {
-		apply_event_unknown(
-			event,
-			super::functions::ThisValue::UseParent,
-			type_arguments,
-			top_environment,
-			invocation_context,
-			types,
-		);
+		todo!()
+		// apply_event_unknown(
+		// 	event,
+		// 	super::functions::ThisValue::UseParent,
+		// 	type_arguments,
+		// 	top_environment,
+		// 	invocation_context,
+		// 	types,
+		// );
 	}
 
 	invocation_context.get_latest_info(top_environment).events.push(Event::Iterate {
@@ -655,7 +666,7 @@ fn evaluate_single_loop_iteration(
 				// TODO
 				&mut iter::empty(),
 				crate::features::functions::ThisValue::UseParent,
-				arguments,
+				todo!("arguments"),
 				top_environment,
 				invocation_context,
 				types,
@@ -708,11 +719,12 @@ impl LoopStructure {
 		top_environment: &mut Environment,
 		types: &mut TypeStore,
 	) -> Self {
-		Self {
-			start: substitute(self.start, arguments, top_environment, types),
-			increment_by: substitute(self.increment_by, arguments, top_environment, types),
-			roof: substitute(self.roof, arguments, top_environment, types),
-		}
+		todo!()
+		// Self {
+		// 	start: substitute(self.start, arguments, top_environment, types),
+		// 	increment_by: substitute(self.increment_by, arguments, top_environment, types),
+		// 	roof: substitute(self.roof, arguments, top_environment, types),
+		// }
 	}
 
 	pub fn calculate_iterations(self, types: &TypeStore) -> Result<usize, Self> {
@@ -821,7 +833,18 @@ fn calculate_result_of_loop(
 					{
 						end
 					} else {
-						*inside_loop.variable_values.get(possible_changing_variable_id).unwrap()
+						inside_loop
+							.variable_values
+							.get(possible_changing_variable_id)
+							.or_else(|| {
+								// TODO wip, value doesn't change?
+								parent_environment
+									.info
+									.variable_current_value
+									.get(possible_changing_variable_id)
+							})
+							.copied()
+							.unwrap_or(TypeId::ERROR_TYPE)
 					},
 				);
 

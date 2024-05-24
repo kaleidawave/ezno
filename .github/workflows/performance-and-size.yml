@@ -72,7 +72,7 @@ jobs:
           <summary>Diagnostics</summary>
           
           \`\`\`
-          $(./target/release/ezno check demo.ts --timings || true)
+          $(./target/release/ezno check demo.ts --timings 2>&1 || true)
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY

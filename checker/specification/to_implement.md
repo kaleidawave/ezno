@@ -70,25 +70,6 @@ print_type(mapper)
 
 - TODO
 
-### Mapped types
-
-#### Specialisation
-
-```ts
-type Id<T> = { [P in K]: T[P] }
-```
-
-- TODO
-
-#### Negated
-
-```ts
-type Omit<K extends string, T> = { [P in K]-?: T }
-
-```
-
-- TODO
-
 ### Imports
 
 #### Import package with definition file
@@ -122,21 +103,6 @@ export function spin(degrees: number): number;
 - Expected boolean, found number
 - Argument "10" not assignable to number
 - Expected 1, found 2
-
-### Narrowing
-
-> TODO `typeof`, `instanceof`, conditional, across a function
-
-#### Equality
-
-```ts
-declare let a: string;
-if (a === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
 
 ### This
 
@@ -363,27 +329,6 @@ function func() {
 
 > TODO effects, different traps and `Object.defineProperty`
 
-#### Proxy object with default callback
-
-```ts
-const a = new Proxy({ prop: 2 })
-
-a.prop satisfies 3
-```
-
-- Expected 3, found 2
-
-#### Proxy getters
-
-```ts
-const a = new Proxy({ }, { get(prop) { return prop } })
-
-a.prop1 satisfies "prop1"
-a.prop3 satisfies "prop2"
-```
-
-- Expected "prop2", found "prop3"
-
 ### Collections
 
 #### `some` and `every`
@@ -428,15 +373,12 @@ array2[2] satisfies string;
 #### Array destructuring assign
 
 ```ts
-let array1 = [1, 2, 3];
-let a = 0, b = 0;
-[a, b] = array1;
-
-a satisfies 1;
-b satisfies "hello world";
+const a = [4, 5];
+[a[1], a[0]] = [6, 7];
+a satisfies string;
 ```
 
-- Expected "hello world", found 2
+- Expected string, found [7, 6]
 
 #### Optional interface property
 
@@ -464,18 +406,6 @@ delete global.b;
 ```
 
 - Cannot delete property "b" off { a?: string, b: string }
-
-#### `instanceof` expression
-
-```ts
-class X {}
-class Y {}
-
-(new X instanceof X) satisfies number;
-(new X instanceof Y) satisfies false;
-```
-
-- Expected number, found true
 
 #### Optional property access
 

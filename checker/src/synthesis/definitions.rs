@@ -1,5 +1,6 @@
 use parser::{
-	ASTNode, Declaration, ExpressionOrStatementPosition, Statement, StatementOrDeclaration,
+	ASTNode, Declaration, Expression, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration,
 };
 use source_map::SourceId;
 
@@ -161,7 +162,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					},
 				);
 			}
-			StatementOrDeclaration::Statement(Statement::Comment(..) | Statement::Empty(..)) => {}
+			StatementOrDeclaration::Statement(
+				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
+			) => {}
 			item => checking_data.diagnostics_container.add_warning(
 				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
 					item.get_position().with_source(environment.get_source()),
@@ -226,15 +229,27 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators: &[parser::Decorator],
 	function_name: &str,
 ) -> Option<InternalFunctionEffect> {
-	decorators.iter().find_map(|d| {
-		if d.name.len() == 1 {
-			let name = d.name.first().map(String::as_str)?;
-			match name {
-				"Constant" => Some(InternalFunctionEffect::Constant(function_name.to_owned())),
-				"InputOutput" => {
-					Some(InternalFunctionEffect::InputOutput(function_name.to_owned()))
-				}
-				_ => None,
+	decorators.iter().find_map(|decorator| {
+		if decorator.name.len() == 1 {
+			let decorator_name = decorator.name.first().map(String::as_str)?;
+			if matches!(decorator_name, "Constant" | "InputOutput") {
+				let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+					decorator.arguments.as_ref().and_then(|args| args.first())
+				{
+					crate::utilities::notify!("{:?}", identifier);
+					identifier.clone()
+				} else {
+					function_name.to_owned()
+				};
+				// TODO
+				let may_throw = None;
+				Some(match decorator_name {
+					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
+					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
+					_ => unreachable!(),
+				})
+			} else {
+				None
 			}
 		} else {
 			None

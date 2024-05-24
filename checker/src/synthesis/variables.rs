@@ -46,6 +46,8 @@ pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>
 }
 
 /// For eagerly registering variables, before the statement and its RHS is actually evaluate
+///
+/// TODO type annotations extras
 pub(crate) fn register_variable<T: crate::ReadFromFS>(
 	name: &parser::VariableField,
 	environment: &mut Environment,
@@ -74,7 +76,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							argument,
 						);
 					}
-					ArrayDestructuringField::Name(name, _, _initial_value) => {
+					ArrayDestructuringField::Name(name, _type, _initial_value) => {
 						// TODO account for spread in `idx`
 						let key = PropertyKey::from_usize(idx);
 						let argument = get_new_register_argument_under(
@@ -93,7 +95,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 		parser::VariableField::Object(items, _) => {
 			for field in items {
 				match field.get_ast_ref() {
-					ObjectDestructuringField::Name(variable, ..) => {
+					ObjectDestructuringField::Name(variable, _type, ..) => {
 						let name = match variable {
 							VariableIdentifier::Standard(ref name, _) => name,
 							VariableIdentifier::Marker(_, _) => "?",
@@ -128,9 +130,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 					}
 					ObjectDestructuringField::Map {
 						from,
+						// TODO
+						annotation: _,
 						name,
 						default_value: _default_value,
-						annotation: _,
 						position,
 					} => {
 						let key = parser_property_key_to_checker_property_key(
@@ -341,8 +344,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 					ObjectDestructuringField::Map {
 						from,
 						name,
-						default_value,
 						annotation: _,
+						default_value,
 						position,
 					} => {
 						let key_ty = super::parser_property_key_to_checker_property_key(

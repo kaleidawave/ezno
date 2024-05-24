@@ -1,3 +1,5 @@
+//! Contains logic for mathematical, bitwise and logical operators
+
 use derive_enum_from_into::EnumFrom;
 use source_map::{Span, SpanWithSource};
 
@@ -12,6 +14,7 @@ use crate::{
 
 use super::objects::SpecialObjects;
 
+/// For these **binary** operations both operands are synthesised
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum MathematicalAndBitwise {
 	Add,
@@ -183,7 +186,8 @@ pub fn evaluate_mathematical_operation(
 	attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 }
 
-/// Not canonical / reducible
+/// Not canonical / reducible form of [`CanonicalEqualityAndInequality`].
+/// (for examples `a > b` is equivalent to `b < a` (after side effects) and `a !== b` is equivalent to `!(a === b)`)
 #[derive(Clone, Copy, Debug)]
 pub enum EqualityAndInequality {
 	StrictEqual,
@@ -196,7 +200,7 @@ pub enum EqualityAndInequality {
 	GreaterThanOrEqual,
 }
 
-/// Canonical / irreducible
+/// Canonical / irreducible form of [`EqualityAndInequality`].
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum CanonicalEqualityAndInequality {
 	StrictEqual,
@@ -381,6 +385,7 @@ pub fn evaluate_equality_inequality_operation(
 pub enum LogicalOperator {
 	And,
 	Or,
+	/// TODO is this canocial?
 	NullCoalescing,
 }
 
@@ -433,7 +438,7 @@ pub fn evaluate_logical_operation_with_expression<
 	}
 }
 
-/// `typeof` done elsewhere
+/// `typeof` and some others done elsewhere
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
 	LogicalNot,
@@ -485,6 +490,9 @@ pub fn evaluate_pure_unary_operator(
 	}
 }
 
+/// Returns whether lhs and rhs are always equal or never equal. TODO more
+///
+/// TODO return decidable.
 fn attempt_constant_equality(
 	lhs: TypeId,
 	rhs: TypeId,

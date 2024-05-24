@@ -46,23 +46,35 @@ pub enum FunctionEffect {
 		/// The type is the initial value of the closure variable when this is called
 		closed_over_variables: ClosedOverVariables,
 	},
-	Constant(String),
-	InputOutput(String),
+	Constant {
+		/// used to pick which function to calling in constant_functions
+		///
+		/// in the future this may need to have a prefix
+		identifier: String,
+		may_throw: Option<TypeId>,
+	},
+	InputOutput {
+		/// not used in the checker, but may be useful to other tools
+		identifier: String,
+		may_throw: Option<TypeId>,
+	},
 	Unknown,
 }
 
 #[derive(Debug)]
 pub enum InternalFunctionEffect {
-	Constant(String),
-	InputOutput(String),
+	Constant { identifier: String, may_throw: Option<TypeId> },
+	InputOutput { identifier: String, may_throw: Option<TypeId> },
 }
 
 impl From<InternalFunctionEffect> for FunctionEffect {
 	fn from(value: InternalFunctionEffect) -> Self {
 		match value {
-			InternalFunctionEffect::Constant(identifier) => FunctionEffect::Constant(identifier),
-			InternalFunctionEffect::InputOutput(identifier) => {
-				FunctionEffect::InputOutput(identifier)
+			InternalFunctionEffect::Constant { identifier, may_throw } => {
+				FunctionEffect::Constant { identifier, may_throw }
+			}
+			InternalFunctionEffect::InputOutput { identifier, may_throw } => {
+				FunctionEffect::InputOutput { identifier, may_throw }
 			}
 		}
 	}

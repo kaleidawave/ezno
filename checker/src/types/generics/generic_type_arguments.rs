@@ -4,11 +4,10 @@
 use crate::{
 	context::information::{InformationChain, LocalInformation},
 	features::functions::{ClosureChain, ClosureId},
-	types::{StructureGenerics, TypeArguments, TypeRestrictions, TypeStore},
+	types::{StructureGenerics, SubstitutionArguments, TypeArguments, TypeRestrictions, TypeStore},
 	Type, TypeId,
 };
 
-use map_vec::Map as SmallMap;
 use source_map::{Nullable, SpanWithSource};
 
 use std::fmt::Debug;
@@ -30,7 +29,7 @@ impl FunctionTypeArguments {
 
 	pub(crate) fn new_arguments_for_use_in_loop() -> Self {
 		Self {
-			local_arguments: SmallMap::new(),
+			local_arguments: crate::Map::default(),
 			closure_ids: Default::default(),
 			call_site: SpanWithSource::NULL,
 		}
@@ -124,24 +123,20 @@ impl TypeArgumentStore for FunctionTypeArguments {
 /// These are curried between structures
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum StructureGenericArguments {
+	/// This is from a specialised result
 	ExplicitRestrictions(TypeRestrictions),
 	Closure(Vec<ClosureId>),
+	/// For example calling `.map` on `[1, 2, 3]`. We lookup `T` based on the elements of `on`. This can be passed through functions
 	LookUp {
-		/// The object that has a generic prototype
 		on: TypeId,
 	},
-	// /// TODO this shouldn't exist, but as there is no way to disce
-	// ClosuresAndGenerics {
-	// 	closures: Vec<ClosureId>,
-	// 	restrictions: TypeRestrictions,
-	// },
 }
 
 impl StructureGenericArguments {
 	#[must_use]
 	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
 		if let StructureGenericArguments::ExplicitRestrictions(type_restrictions) = self {
-			crate::utilities::notify!("under={:?}", under);
+			// crate::utilities::notify!("under={:?}", under);
 			type_restrictions.get(&under).map(|(l, _)| *l)
 		} else {
 			None
@@ -176,6 +171,27 @@ impl StructureGenericArguments {
 			}
 		}
 	}
+
+	#[must_use]
+	pub fn into_substitutable(&self) -> SubstitutionArguments<'static> {
+		match self {
+			StructureGenericArguments::ExplicitRestrictions(res) => SubstitutionArguments {
+				parent: None,
+				arguments: res.iter().map(|(k, (v, _))| (*k, *v)).collect(),
+				closures: Default::default(),
+			},
+			StructureGenericArguments::Closure(closures) => SubstitutionArguments {
+				parent: None,
+				arguments: Default::default(),
+				closures: closures.clone(),
+			},
+			StructureGenericArguments::LookUp { on } => SubstitutionArguments {
+				parent: None,
+				arguments: Default::default(),
+				closures: Default::default(),
+			},
+		}
+	}
 }
 
 impl TypeArgumentStore for StructureGenericArguments {
@@ -185,25 +201,25 @@ impl TypeArgumentStore for StructureGenericArguments {
 		info: &C,
 		types: &mut TypeStore,
 	) -> Option<TypeId> {
-		if let StructureGenericArguments::LookUp { on } = self {
-			let prototype =
-				*info.get_chain_of_info().find_map(|env| env.prototypes.get(on)).unwrap();
+		// if let StructureGenericArguments::LookUp { on } = self {
+		// 	let prototype =
+		// 		*info.get_chain_of_info().find_map(|env| env.prototypes.get(on)).unwrap();
 
-			let lookup =
-				types.lookup_generic_map.get(&prototype).and_then(|lookup| lookup.get(&under))?;
+		// 	let lookup =
+		// 		types.lookup_generic_map.get(&prototype).and_then(|lookup| lookup.get(&under))?;
 
-			crate::utilities::notify!("Hopefully here {:?}", prototype);
-			let res = lookup.calculate_lookup(info, *on);
-			let mut iter = res.into_iter();
-			let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);
-			let mut acc = first;
-			for ty in iter {
-				acc = types.new_or_type(acc, ty);
-			}
-			Some(acc)
-		} else {
-			self.get_structure_restriction(under)
-		}
+		// 	crate::utilities::notify!("Hopefully here {:?}", prototype);
+		// 	let res = lookup.calculate_lookup(info, *on);
+		// 	let mut iter = res.into_iter();
+		// 	let first = iter.next().unwrap_or(TypeId::NEVER_TYPE);
+		// 	let mut acc = first;
+		// 	for ty in iter {
+		// 		acc = types.new_or_type(acc, ty);
+		// 	}
+		// 	Some(acc)
+		// } else {
+		self.get_structure_restriction(under)
+		// }
 	}
 
 	fn get_structural_closures(&self) -> Option<Vec<ClosureId>> {

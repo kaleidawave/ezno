@@ -14,7 +14,7 @@ use crate::{
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::RootReference,
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
 		classes::ClassValue,
@@ -23,7 +23,8 @@ use crate::{
 		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
-		StructureGenerics, SynthesisedParameter, SynthesisedRestParameter, TypeStore,
+		StructureGenerics, SubstitutionArguments, SynthesisedParameter, SynthesisedRestParameter,
+		TypeStore,
 	},
 	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, ReadFromFS, Scope,
 	Type, TypeId, VariableId,
@@ -196,33 +197,34 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		},
 	);
 
-	let mut basic_equality = BasicEquality::default();
-
-	let result = type_is_subtype(
-		parameter_constraint,
-		value,
-		&mut basic_equality,
-		environment,
-		&checking_data.types,
-	);
-
-	if let SubTypeResult::IsNotSubType(_) = result {
-		let expected = TypeStringRepresentation::from_type_id(
-			parameter_ty,
+	{
+		let result = type_is_subtype_object(
+			parameter_constraint,
+			value,
 			environment,
-			&checking_data.types,
-			false,
+			&mut checking_data.types,
 		);
 
-		let found =
-			TypeStringRepresentation::from_type_id(value, environment, &checking_data.types, false);
-		let at = A::expression_position(expression).with_source(environment.get_source());
+		if let SubTypeResult::IsNotSubType(_) = result {
+			let expected = TypeStringRepresentation::from_type_id(
+				parameter_ty,
+				environment,
+				&checking_data.types,
+				false,
+			);
 
-		checking_data.diagnostics_container.add_error(TypeCheckError::InvalidDefaultParameter {
-			at,
-			expected,
-			found,
-		});
+			let found = TypeStringRepresentation::from_type_id(
+				value,
+				environment,
+				&checking_data.types,
+				false,
+			);
+			let at = A::expression_position(expression).with_source(environment.get_source());
+
+			checking_data
+				.diagnostics_container
+				.add_error(TypeCheckError::InvalidDefaultParameter { at, expected, found });
+		}
 	}
 
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
@@ -405,6 +407,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		/// Is this [`Option::is_some`] then can use `super()`
 		super_type: Option<TypeId>,
 		properties: ClassPropertiesToRegister<'a, A>,
+		internal_marker: Option<InternalFunctionEffect>,
 	},
 }
 
@@ -476,7 +479,12 @@ where
 
 	// unfold information from the behavior
 	let kind: FunctionKind<A> = match behavior {
-		FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => {
+		FunctionRegisterBehavior::Constructor {
+			super_type,
+			prototype,
+			properties,
+			internal_marker,
+		} => {
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
 					non_super_prototype: super_type.is_some().then_some(prototype),
@@ -487,7 +495,7 @@ where
 					type_of_super: super_type,
 					this_object_type: TypeId::ERROR_TYPE,
 				},
-				internal: None,
+				internal: internal_marker,
 				constructor: Some((prototype, properties)),
 				expected_parameters: None,
 				// TODO
@@ -858,8 +866,13 @@ where
 
 		let closes_over = ClosedOverVariables(closes_over);
 
-		let Syntax { free_variables, closed_over_references: function_closes_over, state, .. } =
-			function_environment.context_type;
+		let Syntax {
+			free_variables,
+			closed_over_references: function_closes_over,
+			state,
+			requests,
+			..
+		} = function_environment.context_type;
 
 		let returned = if function.has_body() {
 			state.returned_type(&mut checking_data.types)
@@ -876,6 +889,24 @@ where
 
 		let info = function_environment.info;
 		let variable_names = function_environment.variable_names;
+
+		{
+			let mut _back_requests = HashMap::<(), ()>::new();
+			for (on, to) in requests.into_iter() {
+				let type_to_alter = checking_data.types.get_type_by_id(on);
+				if let Type::RootPolyType(
+					PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
+				) = type_to_alter
+				{
+					checking_data.types.set_inferred_constraint(on, to);
+				} else if let Type::Constructor(constructor) = type_to_alter {
+					crate::utilities::notify!("TODO constructor {:?}", constructor);
+				} else {
+					crate::utilities::notify!("TODO {:?}", type_to_alter);
+				}
+				crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
+			}
+		}
 
 		// TODO this fixes properties being lost during printing and subtyping
 		for (on, properties) in info.current_properties {
@@ -975,15 +1006,7 @@ where
 			}
 		}
 
-		let effect = match internal {
-			Some(InternalFunctionEffect::Constant(identifier)) => {
-				FunctionEffect::Constant(identifier)
-			}
-			Some(InternalFunctionEffect::InputOutput(identifier)) => {
-				FunctionEffect::InputOutput(identifier)
-			}
-			None => FunctionEffect::Unknown,
-		};
+		let effect = internal.map_or(FunctionEffect::Unknown, Into::into);
 
 		FunctionType { id, type_parameters, parameters, return_type, behavior, effect }
 	}
@@ -1003,33 +1026,41 @@ fn get_expected_parameters_from_type(
 		on,
 	})) = ty
 	{
-		let mut structure_generic_arguments = arguments.clone();
+		let structure_generic_arguments = arguments.clone();
+
+		// TODO abstract done too many times
+		let type_arguments = match structure_generic_arguments {
+			types::generics::generic_type_arguments::StructureGenericArguments::ExplicitRestrictions(explicit_restrictions) => SubstitutionArguments {
+				parent: None,
+				arguments: explicit_restrictions.into_iter().map(|(l, (r, _))| (l, r)).collect(),
+				closures: Default::default(),
+			},
+			types::generics::generic_type_arguments::StructureGenericArguments::Closure(_) => todo!(),
+			types::generics::generic_type_arguments::StructureGenericArguments::LookUp { .. } => todo!(),
+		};
 
 		let (expected_parameters, expected_return_type) =
 			get_expected_parameters_from_type(*on, types, environment);
 
 		(
-			expected_parameters.map(|e| SynthesisedParameters {
-				parameters: e
+			expected_parameters.map(|e| {
+				let parameters = e
 					.parameters
 					.into_iter()
 					.map(|p| SynthesisedParameter {
-						ty: substitute(p.ty, &mut structure_generic_arguments, environment, types),
+						ty: substitute(p.ty, &type_arguments, environment, types),
 						..p
 					})
-					.collect(),
-				rest_parameter: e.rest_parameter.map(|rp| SynthesisedRestParameter {
-					item_type: substitute(
-						rp.item_type,
-						&mut structure_generic_arguments,
-						environment,
-						types,
-					),
+					.collect();
+
+				let rest_parameter = e.rest_parameter.map(|rp| SynthesisedRestParameter {
+					item_type: substitute(rp.item_type, &type_arguments, environment, types),
 					..rp
-				}),
+				});
+
+				SynthesisedParameters { parameters, rest_parameter }
 			}),
-			expected_return_type
-				.map(|rt| substitute(rt, &mut structure_generic_arguments, environment, types)),
+			expected_return_type.map(|rt| substitute(rt, &type_arguments, environment, types)),
 		)
 	} else {
 		(None, None)

@@ -3,7 +3,6 @@ use parser::{
 	functions::MethodHeader,
 	ASTNode, Decorated, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
-use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	context::{
@@ -15,7 +14,7 @@ use crate::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
 		FunctionRegisterBehavior, GetterSetter, PartialFunction, ReturnType, SynthesisableFunction,
 	},
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	subtyping::{type_is_subtype, State, SubTypeResult},
 	synthesis::{
 		definitions::get_internal_function_effect_from_decorators,
 		functions::variable_field_to_string, parser_property_key_to_checker_property_key,
@@ -83,7 +82,7 @@ pub(super) fn synthesise_class_declaration<
 
 	let class_constructor = class.members.iter().find_map(|member| {
 		if let ClassMember::Constructor(c) = &member.on {
-			Some(c)
+			Some((&member.decorators, c))
 		} else {
 			None
 		}
@@ -133,12 +132,13 @@ pub(super) fn synthesise_class_declaration<
 					}
 				};
 
-				let internal_marker =
-					if let ParserPropertyKey::Ident(name, _, _) = method.name.get_ast_ref() {
-						get_internal_function_effect_from_decorators(&member.decorators, name)
-					} else {
-						None
-					};
+				let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
+					(is_declare, method.name.get_ast_ref())
+				{
+					get_internal_function_effect_from_decorators(&member.decorators, name)
+				} else {
+					None
+				};
 
 				let behavior = FunctionRegisterBehavior::ClassMethod {
 					is_async,
@@ -213,11 +213,18 @@ pub(super) fn synthesise_class_declaration<
 	}
 
 	// TODO abstract
-	let constructor = if let Some(constructor) = class_constructor {
+	let constructor = if let Some((decorators, constructor)) = class_constructor {
+		let internal_marker = if is_declare {
+			get_internal_function_effect_from_decorators(decorators, "TODO")
+		} else {
+			None
+		};
+
 		let behavior = FunctionRegisterBehavior::Constructor {
 			prototype: class_prototype,
 			super_type: extends,
 			properties: ClassPropertiesToRegister { properties },
+			internal_marker,
 		};
 		synthesise_function(constructor, behavior, environment, checking_data)
 	} else {
@@ -230,7 +237,8 @@ pub(super) fn synthesise_class_declaration<
 		)
 	};
 
-	let class_type = checking_data.types.new_class_constructor_type(name, constructor);
+	let class_type =
+		checking_data.types.new_class_constructor_type(name, constructor, class_prototype);
 
 	{
 		// Static items and blocks
@@ -248,12 +256,13 @@ pub(super) fn synthesise_class_declaration<
 						_ => Publicity::Public,
 					};
 
-					let internal_marker =
-						if let ParserPropertyKey::Ident(name, _, _) = method.name.get_ast_ref() {
-							get_internal_function_effect_from_decorators(&member.decorators, name)
-						} else {
-							None
-						};
+					let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
+						(is_declare, method.name.get_ast_ref())
+					{
+						get_internal_function_effect_from_decorators(&member.decorators, name)
+					} else {
+						None
+					};
 
 					let (getter_setter, is_async, is_generator) = match &method.header {
 						MethodHeader::Get => (GetterSetter::Getter, false, false),
@@ -418,49 +427,41 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	let mut members_iter = class.members.iter().peekable();
 	while let Some(member) = members_iter.next() {
 		match &member.on {
-			ClassMember::Method(is_static, method) => {
-				if *is_static {
-					continue;
-				}
-
+			ClassMember::Method(initial_is_static, method) => {
 				// TODO refactor. Maybe do in reverse?
 				let (overloads, actual) = if method.body.0.is_none() {
 					let mut overloads = Vec::new();
 					let shape = synthesise_shape(method, environment, checking_data);
 					overloads.push(shape);
 
+					// Read declarations until
 					while let Some(overload_declaration) = members_iter
-						.next_if(|t| matches!(&t.on, ClassMember::Method(_, m) if m.has_body()))
+						.next_if(|t| matches!(&t.on, ClassMember::Method(is_static, m) if initial_is_static == is_static && m.name == method.name && !m.has_body()))
 					{
-						let ClassMember::Method(overload_is_static, method) =
+						let ClassMember::Method(_, method) =
 							&overload_declaration.on
 						else {
 							unreachable!()
 						};
-						if is_static != overload_is_static {
-							todo!()
-						}
 						// todo check name equals =
 						let shape = synthesise_shape(method, environment, checking_data);
 						overloads.push(shape);
 					}
 
-					if let Some(Decorated {
-						on: ClassMember::Method(overload_is_static, method),
-						..
-					}) = members_iter.next()
+					let upcoming = members_iter.peek();
+					if matches!(upcoming, Some(Decorated { on: ClassMember::Method(is_static, m), ..}) if initial_is_static == is_static && m.name == method.name && !m.has_body())
 					{
-						if is_static != overload_is_static {
-							todo!()
-						}
-						// todo check name equals =
+						let ClassMember::Method(_, ref method) = members_iter.next().unwrap().on
+						else {
+							unreachable!()
+						};
 						let actual = synthesise_shape(method, environment, checking_data);
 						(overloads, actual)
 					} else if class.name.declare {
 						let actual = overloads.pop().unwrap();
 						(overloads, actual)
 					} else {
-						todo!("error")
+						todo!("error that missing body")
 					}
 				} else {
 					let actual = synthesise_shape(method, environment, checking_data);
@@ -538,9 +539,12 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					None,
 				);
 			}
-			ClassMember::Constructor(_)
-			| ClassMember::StaticBlock(_)
-			| ClassMember::Comment(_, _, _) => {}
+			ClassMember::Constructor(c) => {
+				if !c.has_body() {
+					crate::utilities::notify!("TODO possible constructor overloading");
+				}
+			}
+			ClassMember::StaticBlock(_) | ClassMember::Comment(_, _, _) => {}
 		}
 	}
 }
@@ -702,11 +706,12 @@ fn build_overloaded_function(
 				let res = type_is_subtype(
 					base_type,
 					op.ty,
-					&mut BasicEquality {
-						add_property_restrictions: false,
-						allow_errors: true,
-						position,
-						object_constraints: Vec::new(),
+					&mut State {
+						already_checked: Default::default(),
+						mode: Default::default(),
+						contributions: None,
+						object_constraints: None,
+						others: Default::default(),
 					},
 					environment,
 					types,
@@ -743,11 +748,12 @@ fn build_overloaded_function(
 			let res = type_is_subtype(
 				base,
 				overload,
-				&mut BasicEquality {
-					add_property_restrictions: false,
-					allow_errors: true,
-					position: SpanWithSource::NULL,
-					object_constraints: Vec::new(),
+				&mut State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: None,
+					object_constraints: None,
+					others: Default::default(),
 				},
 				environment,
 				types,

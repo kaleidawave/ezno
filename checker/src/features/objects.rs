@@ -14,6 +14,7 @@ use crate::{
 
 use super::functions::ThisValue;
 
+/// Helper for building objects easy
 // TODO slice indexes
 pub struct ObjectBuilder {
 	pub object: TypeId,
@@ -47,20 +48,21 @@ impl ObjectBuilder {
 	}
 }
 
+/// These are objects (`typeof * = "object"`) but have special behavior
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum SpecialObjects {
+	/// Hold state of the runtime
 	Promise {
 		events: (),
 	},
+	/// Hold state of the runtime
 	Generator {
 		position: (),
 	},
-	Proxy {
-		over: TypeId,
-		handler: TypeId,
-	},
+	/// Needs overrides for calling, getting etc
+	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
-	Regexp(String),
+	RegularExpression(String),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
 	/// Yeah here
@@ -69,5 +71,14 @@ pub enum SpecialObjects {
 	ClassConstructor {
 		name: String,
 		constructor: FunctionId,
+		/// For `instanceof` thing
+		prototype: TypeId
 	},
+}
+
+/// Properties of handler called (`over` passed as first argument)
+#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct Proxy {
+	pub over: TypeId,
+	pub handler: TypeId,
 }
