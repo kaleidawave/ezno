@@ -466,7 +466,7 @@ pub fn lex_script(
 				ref mut in_set,
 			} => {
 				if *after_last_slash {
-					if !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y') {
+					if !chr.is_alphabetic() {
 						if start != idx {
 							push_token!(TSXToken::RegexFlagLiteral(script[start..idx].to_owned()));
 						}
@@ -497,6 +497,9 @@ pub fn lex_script(
 						}
 						']' if *in_set => {
 							*in_set = false;
+						}
+						'\n' => {
+							return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 						}
 						_ => {
 							*escaped = false;

@@ -270,13 +270,21 @@ impl Expression {
 				let mut position = start.with_length(pattern.len());
 				let flag_token =
 					reader.conditional_next(|t| matches!(t, TSXToken::RegexFlagLiteral(..)));
-				let flags =
-					if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) = flag_token {
-						position = position.union(start.get_end_after(flags.len()));
-						Some(flags)
-					} else {
-						None
-					};
+				let flags = if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) =
+					flag_token
+				{
+					if flags.contains(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'))
+					{
+						return Err(ParseError::new(
+							ParseErrors::InvalidRegexFlag,
+							start.with_length(flags.len()),
+						));
+					}
+					position = position.union(start.get_end_after(flags.len()));
+					Some(flags)
+				} else {
+					None
+				};
 				Expression::RegexLiteral { pattern, flags, position }
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::True), _) => {
