@@ -503,20 +503,20 @@ pub enum FunctionCallingError {
 	TDZ {
 		error: TDZ,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	/// TODO WIP
 	UnconditionalThrow {
 		value: TypeStringRepresentation,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	MismatchedThis {
 		expected: TypeStringRepresentation,
@@ -620,6 +620,7 @@ impl FunctionType {
 					arguments,
 					types,
 					environment,
+					call_site,
 				);
 
 				match result {
@@ -872,6 +873,7 @@ impl FunctionType {
 				target,
 				types,
 				errors,
+				call_site,
 			);
 
 			// Adjust call sites. (because they aren't currently passed down)
@@ -882,7 +884,7 @@ impl FunctionType {
 				}
 				| FunctionCallingError::UnconditionalThrow { call_site: ref mut c, .. } = d
 				{
-					*c = Some(call_site);
+					*c = call_site;
 				}
 			}
 
@@ -1140,8 +1142,12 @@ impl FunctionType {
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
 				// TODO reuse synthesise_array literal logic (especially for spread items)
-				let mut basis =
-					ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, &mut environment.info);
+				let mut basis = ObjectBuilder::new(
+					Some(TypeId::ARRAY_TYPE),
+					types,
+					rest_parameter.position,
+					&mut environment.info,
+				);
 
 				let mut count = 0;
 
@@ -1196,7 +1202,7 @@ impl FunctionType {
 							crate::context::information::Publicity::Public,
 							key,
 							crate::types::properties::PropertyValue::Value(argument.value),
-							None,
+							argument.position,
 						);
 					}
 
@@ -1213,7 +1219,7 @@ impl FunctionType {
 						crate::context::information::Publicity::Public,
 						PropertyKey::String("length".into()),
 						crate::types::properties::PropertyValue::Value(length),
-						None,
+						rest_parameter.position,
 					);
 				}
 

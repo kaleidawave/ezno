@@ -364,11 +364,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			)
 			.0
 		}
-		TypeAnnotation::TupleLiteral(members, _) => {
+		TypeAnnotation::TupleLiteral(members, position) => {
 			// TODO maybe should be special type
 			let mut obj = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
+				position.with_source(environment.get_source()),
 				&mut environment.info,
 			);
 
@@ -392,7 +393,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							Publicity::Public,
 							PropertyKey::from_usize(idx),
 							PropertyValue::Value(item_ty),
-							Some(ty_position),
+							ty_position,
 						);
 					}
 					TupleElementKind::Optional => {
@@ -413,7 +414,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length_value),
-				None,
+				annotation.get_position().with_source(environment.get_source()),
 			);
 
 			obj.build_object()

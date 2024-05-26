@@ -1,3 +1,5 @@
+use source_map::SpanWithSource;
+
 use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
 
 use crate::{
@@ -42,6 +44,7 @@ pub(crate) fn apply_event(
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
 	errors: &mut ErrorsAndInfo,
+	call_site: SpanWithSource,
 ) -> ApplicationResult {
 	match event {
 		Event::ReadsReference { reference, reflects_dependency, position } => {
@@ -57,7 +60,7 @@ pub(crate) fn apply_event(
 									variable_name: environment.get_variable_name(id).to_owned(),
 									position,
 								},
-								call_site: None,
+								call_site,
 							});
 							TypeId::ERROR_TYPE
 						}
@@ -138,7 +141,7 @@ pub(crate) fn apply_event(
 				PropertyValue::Setter(_) => todo!(),
 				// TODO this might be a different thing at some point
 				PropertyValue::Deleted => {
-					environment.delete_property(on, &under);
+					environment.delete_property(on, &under, position);
 					return None.into();
 				}
 				PropertyValue::Dependent { .. } => {
@@ -203,8 +206,8 @@ pub(crate) fn apply_event(
 							crate::types::calling::FunctionCallingError::SetPropertyConstraint {
 								property_type: property_constraint,
 								value_type,
-								assignment_position: position.unwrap(),
-								call_site: None,
+								assignment_position: position,
+								call_site,
 							},
 						);
 					} else {
@@ -322,6 +325,7 @@ pub(crate) fn apply_event(
 									target,
 									types,
 									errors,
+									position,
 								);
 
 								if result.is_it_so_over() {
@@ -351,6 +355,7 @@ pub(crate) fn apply_event(
 									target,
 									types,
 									errors,
+									position,
 								);
 
 								if result.is_it_so_over() {
@@ -372,6 +377,7 @@ pub(crate) fn apply_event(
 									target,
 									types,
 									errors,
+									position,
 								);
 
 								if result.is_it_so_over() {
@@ -409,6 +415,7 @@ pub(crate) fn apply_event(
 									target,
 									types,
 									errors,
+									position,
 								);
 
 								// TODO temp
@@ -500,10 +507,9 @@ pub(crate) fn apply_event(
 							types,
 							false,
 						);
-						errors.errors.push(FunctionCallingError::UnconditionalThrow {
-							value,
-							call_site: None,
-						});
+						errors
+							.errors
+							.push(FunctionCallingError::UnconditionalThrow { value, call_site });
 					}
 					FinalEvent::Throw { thrown: substituted_thrown, position }
 				}
@@ -515,12 +521,7 @@ pub(crate) fn apply_event(
 			});
 		}
 		// TODO Needs a position (or not?)
-		Event::CreateObject {
-			referenced_in_scope_as,
-			prototype,
-			position: _,
-			is_function_this,
-		} => {
+		Event::CreateObject { referenced_in_scope_as, prototype, position, is_function_this } => {
 			// TODO
 			let is_under_dyn = true;
 
@@ -530,6 +531,7 @@ pub(crate) fn apply_event(
 					target.get_latest_info(environment).new_object(
 						Some(prototype),
 						types,
+						position,
 						is_under_dyn,
 						is_function_this,
 					)
@@ -537,6 +539,7 @@ pub(crate) fn apply_event(
 				PrototypeArgument::None => target.get_latest_info(environment).new_object(
 					None,
 					types,
+					position,
 					is_under_dyn,
 					is_function_this,
 				),
@@ -587,6 +590,7 @@ pub(crate) fn apply_event(
 				target,
 				errors,
 				types,
+				call_site,
 			);
 		}
 	}

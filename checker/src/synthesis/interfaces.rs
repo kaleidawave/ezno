@@ -2,6 +2,7 @@ use parser::{
 	types::interface::{InterfaceDeclaration, InterfaceMember},
 	Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
+use source_map::SpanWithSource;
 
 use crate::{
 	context::{information::Publicity, Context, Environment},
@@ -42,6 +43,7 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
+		position: SpanWithSource,
 	);
 
 	fn interface_type(&self) -> Option<TypeId>;
@@ -68,6 +70,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
+		position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
 			ParserPropertyKeyType::ClassProperty(key) => {
@@ -121,7 +124,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		};
 
 		// None position should be fine here
-		environment.info.register_property(self.0, publicity, under, ty, false, None);
+		environment.info.register_property(self.0, publicity, under, ty, false, position);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -177,13 +180,15 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
 					};
 
+					let position_with_source = position.with_source(environment.get_source());
+
 					let function = synthesise_function_annotation(
 						type_parameters,
 						parameters,
 						return_type.as_ref(),
 						environment,
 						checking_data,
-						&position.with_source(environment.get_source()),
+						&position_with_source,
 						behavior,
 					);
 
@@ -192,6 +197,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Function(function, getter),
 						checking_data,
 						environment,
+						position_with_source,
 					);
 				}
 				InterfaceMember::Property {
@@ -222,6 +228,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						value,
 						checking_data,
 						environment,
+						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Indexer {
@@ -229,7 +236,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					indexer_type,
 					return_type,
 					is_readonly: _,
-					position: _,
+					position,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
@@ -239,6 +246,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
+						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Constructor {
@@ -269,7 +277,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					optionality: _,
 					is_readonly: _,
 					output_type,
-					position: _,
+					position,
 				} => {
 					// TODO WIP
 					let to = match rule {
@@ -296,6 +304,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
+						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Comment { .. } => {}

@@ -206,6 +206,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		&checking_data.types,
 	);
 
+	let at = A::expression_position(expression).with_source(environment.get_source());
 	if let SubTypeResult::IsNotSubType(_) = result {
 		let expected = TypeStringRepresentation::from_type_id(
 			parameter_ty,
@@ -216,7 +217,6 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 
 		let found =
 			TypeStringRepresentation::from_type_id(value, environment, &checking_data.types, false);
-		let at = A::expression_position(expression).with_source(environment.get_source());
 
 		checking_data.diagnostics_container.add_error(TypeCheckError::InvalidDefaultParameter {
 			at,
@@ -255,6 +255,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		out.unwrap().0,
 		None,
 		&mut checking_data.types,
+		at,
 	);
 
 	result
@@ -668,6 +669,7 @@ where
 		let this_constraint =
 			function.this_constraint(&mut function_environment, checking_data).or(this_shape);
 
+		let position = function.get_position().with_source(base_environment.get_source());
 		// `this` changes stuff
 		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
 			match scope {
@@ -710,6 +712,7 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								Some(prototype),
 								&mut checking_data.types,
+								position,
 								true,
 								true,
 							);
@@ -727,6 +730,7 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								None,
 								&mut checking_data.types,
+								position,
 								true,
 								true,
 							);
@@ -760,15 +764,19 @@ where
 							&mut checking_data.types,
 							&mut function_environment.info,
 							prototype,
+							position,
 						);
 
 						*this_object_type = new_this_object_type;
+						let position =
+							function.get_position().with_source(function_environment.get_source());
 						// TODO super/derived behavior
 						types::classes::register_properties_into_environment(
 							&mut function_environment,
 							new_this_object_type,
 							checking_data,
 							properties,
+							position,
 						);
 
 						function_environment.can_reference_this =

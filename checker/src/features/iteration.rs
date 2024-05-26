@@ -1,5 +1,7 @@
 use std::{collections::HashMap, iter};
 
+use source_map::SpanWithSource;
+
 use crate::{
 	context::{
 		environment::Label, get_value_of_variable, information::get_properties_on_type,
@@ -43,6 +45,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 	loop_body: impl FnOnce(&mut Environment, &mut CheckingData<T, A>),
+	position: SpanWithSource,
 ) {
 	match behavior {
 		IterationBehavior::While(condition) => {
@@ -61,10 +64,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					let break_event = Event::Conditionally {
 						condition,
 						true_events: Default::default(),
-						else_events: Box::new([
-							FinalEvent::Break { position: None, carry: 0 }.into()
-						]),
-						position: None,
+						else_events: Box::new([FinalEvent::Break { position, carry: 0 }.into()]),
+						position,
 					};
 					environment.info.events.push(break_event);
 
@@ -105,6 +106,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
 				&mut checking_data.types,
+				position,
 			);
 
 			if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
@@ -145,10 +147,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					let break_event = Event::Conditionally {
 						condition,
 						true_events: Default::default(),
-						else_events: Box::new([
-							FinalEvent::Break { position: None, carry: 0 }.into()
-						]),
-						position: None,
+						else_events: Box::new([FinalEvent::Break { position, carry: 0 }.into()]),
+						position,
 					};
 					environment.info.events.push(break_event);
 
@@ -184,6 +184,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 				todo!("{early_return:?}")
@@ -242,11 +243,11 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 										condition,
 										true_events: Default::default(),
 										else_events: Box::new([FinalEvent::Break {
-											position: None,
+											position,
 											carry: 0,
 										}
 										.into()]),
-										position: None,
+										position,
 									};
 									environment.info.events.push(break_event);
 
@@ -317,6 +318,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 				todo!("{early_return:?}")
@@ -357,6 +359,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 				todo!("{early_return:?}")
@@ -401,6 +404,7 @@ pub(crate) fn run_iteration_block(
 	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> ApplicationResult {
 	/// TODO via config and per line
 	const MAX_ITERATIONS: usize = 100;
@@ -452,6 +456,7 @@ pub(crate) fn run_iteration_block(
 						invocation_context,
 						errors,
 						types,
+						position,
 					);
 
 					if let ApplicationResult::Interrupt(result) = result {
@@ -517,6 +522,7 @@ pub(crate) fn run_iteration_block(
 						invocation_context,
 						errors,
 						types,
+						position,
 					);
 
 					if let ApplicationResult::Interrupt(result) = result {
@@ -647,6 +653,7 @@ fn evaluate_single_loop_iteration(
 	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) -> ApplicationResult {
 	let final_event = invocation_context.new_loop_iteration(|invocation_context| {
 		for event in events {
@@ -660,6 +667,7 @@ fn evaluate_single_loop_iteration(
 				invocation_context,
 				types,
 				errors,
+				position,
 			);
 
 			if result.is_it_so_over() {

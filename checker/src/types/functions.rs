@@ -75,6 +75,7 @@ impl FunctionType {
 		properties: ClassPropertiesToRegister<A>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
+		position: SpanWithSource,
 	) -> Self {
 		let scope = Scope::Function(FunctionScope::Constructor {
 			extends: false,
@@ -91,6 +92,7 @@ impl FunctionType {
 					&mut checking_data.types,
 					&mut environment.info,
 					class_prototype,
+					position,
 				);
 				if let Scope::Function(FunctionScope::Constructor {
 					ref mut this_object_type,
@@ -120,7 +122,13 @@ impl FunctionType {
 					);
 				}
 
-				register_properties_into_environment(environment, on, checking_data, properties);
+				register_properties_into_environment(
+					environment,
+					on,
+					checking_data,
+					properties,
+					position,
+				);
 
 				on
 			},
@@ -150,6 +158,7 @@ pub(crate) fn create_this_before_function_synthesis(
 	types: &mut TypeStore,
 	info: &mut LocalInformation,
 	prototype: TypeId,
+	position: SpanWithSource,
 ) -> TypeId {
 	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 
@@ -158,7 +167,7 @@ pub(crate) fn create_this_before_function_synthesis(
 	let value = Event::CreateObject {
 		referenced_in_scope_as: ty,
 		prototype: crate::events::PrototypeArgument::Yeah(prototype),
-		position: None,
+		position,
 		// TODO right?
 		is_function_this: true,
 	};

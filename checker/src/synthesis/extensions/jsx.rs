@@ -41,8 +41,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let tag_name_as_cst_ty =
 		checking_data.types.new_constant_type(Constant::String(element.tag_name.clone()));
 
-	let mut attributes_object =
-		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.info);
+	let mut attributes_object = ObjectBuilder::new(
+		None,
+		&mut checking_data.types,
+		element.position.with_source(environment.get_source()),
+		&mut environment.info,
+	);
 
 	for attribute in &element.attributes {
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
@@ -52,7 +56,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			crate::context::information::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
-			Some(attribute_position),
+			attribute_position,
 		);
 
 		// let constraint = environment
@@ -131,6 +135,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
+			element.position.with_source(environment.get_source()),
 			&mut environment.info,
 		);
 
@@ -151,7 +156,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				crate::context::information::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
-				Some(child_position),
+				child_position,
 			);
 
 			// TODO spread ??
@@ -170,7 +175,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 				crate::context::information::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
-				None,
+				element.get_position().with_source(environment.get_source()),
 			);
 		}
 
