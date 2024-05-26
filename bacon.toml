@@ -62,11 +62,13 @@ background = true
 # should go in your personal global prefs.toml file instead.
 [keybindings]
 # alt-m = "job:my-job"
-c = "job:clippy-all"   # comment this to have 'c' run clippy on only the default target
-1 = "job:test-spec"
-2 = "job:test-staging"
-3 = "job:test-all"
-
+c = "job:clippy-all"            # comment this to have 'c' run clippy on only the default target
+1 = "job:test-spec-no-watch"
+2 = "job:test-staging-no-watch"
+3 = "job:test-all-no-watch"
+4 = "job:test-spec"
+5 = "job:test-staging"
+6 = "job:test-all"
 
 [jobs.test-spec]
 command = [
@@ -116,3 +118,52 @@ command = [
 ]
 need_stdout = true
 watch = ["checker", "parser"]
+
+[jobs.test-spec-no-watch]
+command = [
+    "cargo",
+    "test",
+    "-p",
+    "ezno-checker-specification",
+    "--color",
+    "always",
+    "--",
+    "--color",
+    "always",
+]
+need_stdout = true
+default_watch = false
+
+[jobs.test-staging-no-watch]
+command = [
+    "cargo",
+    "test",
+    "-p",
+    "ezno-checker-specification",
+    "-F",
+    "staging",
+    "--color",
+    "always",
+    "--",
+    "--color",
+    "always",
+]
+need_stdout = true
+default_watch = false
+
+[jobs.test-all-no-watch]
+command = [
+    "cargo",
+    "test",
+    "-p",
+    "ezno-checker-specification",
+    "-F",
+    "all",
+    "--color",
+    "always",
+    "--",
+    "--color",
+    "always",
+]
+need_stdout = true
+default_watch = false
