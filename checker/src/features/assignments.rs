@@ -1,6 +1,9 @@
 use source_map::SpanWithSource;
 
-use crate::{context::information::Publicity, types::properties::PropertyKey, TypeId};
+use crate::{
+	types::properties::{PropertyKey, Publicity},
+	TypeId,
+};
 
 use super::operations::{LogicalOperator, MathematicalAndBitwise};
 

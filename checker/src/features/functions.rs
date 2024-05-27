@@ -13,7 +13,7 @@ use crate::{
 		CanReferenceThis, ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	events::RootReference,
+	events::{Event, FinalEvent, RootReference},
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
@@ -107,6 +107,7 @@ pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplement
 
 pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
+	overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
 	location: ContextLocation,
@@ -114,14 +115,6 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
-	if !function.has_body() {
-		checking_data.raise_unimplemented_error(
-			"Overloaded function",
-			function.get_position().with_source(environment.get_source()),
-		);
-		return;
-	}
-
 	let behavior = FunctionRegisterBehavior::StatementFunction {
 		hoisted: variable_id,
 		is_async,
@@ -131,15 +124,26 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
-	environment
-		.info
-		.variable_current_value
-		.insert(variable_id, checking_data.types.new_function_type(function));
+
+	if overloaded {
+		let _last_type = checking_data
+			.local_type_mappings
+			.variables_to_constraints
+			.0
+			.get(&variable_id)
+			.expect("variable constraint not set when trying to unify overload");
+
+		crate::utilities::notify!("TODO check that the result is the same");
+	}
+
+	let v = checking_data.types.new_function_type(function);
+	environment.info.variable_current_value.insert(variable_id, v);
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
+	overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
 	location: Option<String>,
@@ -277,15 +281,21 @@ pub enum FunctionBehavior {
 	},
 	/// Functions defined `function`. Extends above by allowing `new`
 	Function {
-		/// IMPORTANT THIS DOES NOT POINT TO THE OBJECT
+		/// This points the general `this` object.
+		/// When calling with:
+		/// - `new`: an arguments should set with (this_this_id, *new object*)
+		/// - regularly: bound argument, else parent `this` (I think)
 		free_this_id: TypeId,
+		///
+		prototype: TypeId,
 		is_async: bool,
+		/// Cannot be called with `new` if true
 		is_generator: bool,
 	},
 	/// Constructors, always new
 	Constructor {
-		/// None is super exists, as that is handled by events
-		non_super_prototype: Option<TypeId>,
+		/// The prototype of the base object
+		prototype: TypeId,
 		/// The id of the generic that needs to be pulled out
 		this_object_type: TypeId,
 	},
@@ -487,7 +497,7 @@ where
 		} => {
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
-					non_super_prototype: super_type.is_some().then_some(prototype),
+					prototype,
 					this_object_type: TypeId::ERROR_TYPE,
 				},
 				scope: FunctionScope::Constructor {
@@ -551,11 +561,17 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+
+			let prototype = checking_data
+				.types
+				.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
 			FunctionKind {
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
 					free_this_id: TypeId::ERROR_TYPE,
+					prototype,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -578,25 +594,32 @@ where
 			is_generator,
 			location,
 			internal_marker,
-		} => FunctionKind {
-			behavior: FunctionBehavior::Function {
-				is_async,
-				is_generator,
-				free_this_id: TypeId::ERROR_TYPE,
-			},
-			scope: FunctionScope::Function {
-				is_generator,
-				is_async,
-				this_type: TypeId::ERROR_TYPE,
-				type_of_super: TypeId::ERROR_TYPE,
-				expected_return: None,
-				location,
-			},
-			internal: internal_marker,
-			constructor: None,
-			expected_parameters: None,
-			this_shape: None,
-		},
+		} => {
+			let prototype = checking_data
+				.types
+				.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
+			FunctionKind {
+				behavior: FunctionBehavior::Function {
+					is_async,
+					is_generator,
+					prototype,
+					free_this_id: TypeId::ERROR_TYPE,
+				},
+				scope: FunctionScope::Function {
+					is_generator,
+					is_async,
+					this_type: TypeId::ERROR_TYPE,
+					type_of_super: TypeId::ERROR_TYPE,
+					expected_return: None,
+					location,
+				},
+				internal: internal_marker,
+				constructor: None,
+				expected_parameters: None,
+				this_shape: None,
+			}
+		}
 		FunctionRegisterBehavior::ClassMethod {
 			is_async,
 			is_generator,
@@ -718,8 +741,8 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								Some(prototype),
 								&mut checking_data.types,
-								true,
-								true,
+								// TODO this is cheating to not queue event
+								false,
 							);
 
 							let this_free_variable = checking_data.types.register_type(
@@ -735,8 +758,8 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								None,
 								&mut checking_data.types,
-								true,
-								true,
+								// TODO this is cheating to not queue event
+								false,
 							);
 							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
 						};
@@ -764,29 +787,30 @@ where
 				} => {
 					crate::utilities::notify!("Setting 'this' type here");
 					if let Some((prototype, properties)) = constructor {
-						let new_this_object_type = types::create_this_before_function_synthesis(
+						let this_constructed_object = function_environment.info.new_object(
+							Some(prototype),
 							&mut checking_data.types,
-							&mut function_environment.info,
-							prototype,
+							// TODO this is cheating to not queue event
+							false,
 						);
 
-						*this_object_type = new_this_object_type;
+						*this_object_type = this_constructed_object;
 						// TODO super/derived behavior
 						types::classes::register_properties_into_environment(
 							&mut function_environment,
-							new_this_object_type,
+							this_constructed_object,
 							checking_data,
 							properties,
 						);
 
-						function_environment.can_reference_this =
-							CanReferenceThis::ConstructorCalled;
+						// function_environment.can_reference_this =
+						// 	CanReferenceThis::ConstructorCalled;
 
 						if let FunctionBehavior::Constructor { ref mut this_object_type, .. } =
 							behavior
 						{
 							crate::utilities::notify!("Set this object type");
-							*this_object_type = new_this_object_type;
+							*this_object_type = this_constructed_object;
 						} else {
 							unreachable!()
 						}
@@ -837,7 +861,11 @@ where
 						let get_value_of_variable = get_value_of_variable(
 							&function_environment,
 							*on,
-							None::<&crate::types::generics::FunctionTypeArguments>,
+							None::<
+								&crate::types::generics::substitution::SubstitutionArguments<
+									'static,
+								>,
+							>,
 						);
 						let ty = if let Some(value) = get_value_of_variable {
 							value
@@ -867,15 +895,25 @@ where
 		let closes_over = ClosedOverVariables(closes_over);
 
 		let Syntax {
-			free_variables,
-			closed_over_references: function_closes_over,
-			state,
-			requests,
-			..
+			free_variables, closed_over_references: function_closes_over, requests, ..
 		} = function_environment.context_type;
 
 		let returned = if function.has_body() {
-			state.returned_type(&mut checking_data.types)
+			if let Some(event) = function_environment.info.events.last() {
+				match event {
+					// TODO
+					Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => *returned,
+					Event::FinalEvent(FinalEvent::Throw { thrown: _, position: _ }) => {
+						TypeId::NEVER_TYPE
+					}
+					_ => {
+						crate::utilities::notify!("TODO might be others here");
+						TypeId::UNDEFINED_TYPE
+					}
+				}
+			} else {
+				TypeId::UNDEFINED_TYPE
+			}
 		} else {
 			return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |ReturnType(ty, _)| ty)
 		};

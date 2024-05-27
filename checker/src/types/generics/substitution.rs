@@ -1,5 +1,7 @@
 //! How type parameters are resolved
 
+use source_map::{Nullable, SpanWithSource};
+
 use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId, ThisValue},
@@ -47,6 +49,14 @@ impl<'a> SubstitutionArguments<'a> {
 			.cloned()
 			.or_else(|| self.parent.and_then(|parent| parent.get_argument(id)))
 	}
+
+	pub(crate) fn new_arguments_for_use_in_loop() -> SubstitutionArguments<'static> {
+		SubstitutionArguments {
+			parent: None,
+			arguments: Default::default(),
+			closures: Default::default(),
+		}
+	}
 }
 
 // TODO replace environment with information chain
@@ -67,13 +77,45 @@ pub(crate) fn substitute(
 		Type::Constant(_) | Type::AliasTo { .. } | Type::Interface { .. } | Type::Class { .. } => {
 			id
 		}
-		// This works for both objects and `AnonymousTypeAnnotation`s
-		Type::Object(ObjectNature::RealDeal | ObjectNature::AnonymousTypeAnnotation) => {
-			crate::utilities::notify!("Here!!!");
-			todo!("arguments.curry_arguments(types, id)")
+		// Closures for objects
+		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
+		| Type::Object(ObjectNature::RealDeal) => {
+			// Apply curring
+			if arguments.closures.is_empty() {
+				id
+			} else {
+				types.register_type(Type::Constructor(Constructor::StructureGenerics(
+					StructureGenerics {
+						on: id,
+						arguments: StructureGenericArguments::Closure(arguments.closures.clone()),
+					},
+				)))
+			}
+		}
+		// Specialisation for object type annotation (todo could do per property in future)
+		// Can return functions from functions somehow as well
+		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation) => {
+			// Apply curring
+			if arguments.arguments.is_empty() {
+				id
+			} else {
+				types.register_type(Type::Constructor(Constructor::StructureGenerics(
+					StructureGenerics {
+						on: id,
+						// TODO argument positions
+						arguments: StructureGenericArguments::ExplicitRestrictions(
+							arguments
+								.arguments
+								.iter()
+								.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
+								.collect(),
+						),
+					},
+				)))
+			}
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
-			// Also sub the this type
+			// Substitute the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
@@ -84,10 +126,18 @@ pub(crate) fn substitute(
 			} else {
 				id
 			};
-			todo!("arguments.curry_arguments(types, id)")
+			// Apply curring
+			if arguments.closures.is_empty() {
+				id
+			} else {
+				types.register_type(Type::Constructor(Constructor::StructureGenerics(
+					StructureGenerics {
+						on: id,
+						arguments: StructureGenericArguments::Closure(arguments.closures.clone()),
+					},
+				)))
+			}
 		}
-		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
-		| Type::FunctionReference(..) => todo!("arguments.curry_arguments(types, id)"),
 		Type::SpecialObject(special_object) => match special_object {
 			SpecialObjects::Promise { .. } => todo!(),
 			SpecialObjects::Generator { .. } => todo!(),

@@ -163,6 +163,7 @@ pub fn import_items<
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
 	}
@@ -193,6 +194,7 @@ pub fn import_items<
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
 					if let Some((variable, mutability)) = exported_variable {
@@ -244,39 +246,31 @@ pub fn import_items<
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
 			}
 		}
 		ImportKind::All { under, position } => {
-			if let Ok(Ok(ref exports)) = exports {
-				let value = checking_data.types.register_type(Type::SpecialObject(
+			let value = if let Ok(Ok(ref exports)) = exports {
+				checking_data.types.register_type(Type::SpecialObject(
 					crate::features::objects::SpecialObjects::Import(exports.clone()),
-				));
-
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(value),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
+				))
 			} else {
 				crate::utilities::notify!("TODO :?");
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(TypeId::ERROR_TYPE),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
-			}
+				TypeId::ERROR_TYPE
+			};
+			environment.register_variable_handle_error(
+				under,
+				VariableRegisterArguments {
+					constant: true,
+					space: None,
+					initial_value: Some(value),
+				},
+				position.with_source(current_source),
+				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
+			);
 		}
 		ImportKind::Everything => {
 			if let Ok(Ok(ref exports)) = exports {

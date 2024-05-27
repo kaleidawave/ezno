@@ -1,30 +1,29 @@
 use parser::{
 	declarations::{classes::ClassMember, ClassDeclaration},
 	functions::MethodHeader,
-	ASTNode, Decorated, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
+	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
 
 use crate::{
-	context::{
-		information::{InformationChain, Publicity},
-		Environment, VariableRegisterArguments,
-	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	context::{information::InformationChain, Environment, VariableRegisterArguments},
+	diagnostics::TypeCheckError,
 	features::functions::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
-		FunctionRegisterBehavior, GetterSetter, PartialFunction, ReturnType, SynthesisableFunction,
+		FunctionRegisterBehavior, GetterSetter, SynthesisableFunction,
 	},
-	subtyping::{type_is_subtype, State, SubTypeResult},
 	synthesis::{
 		definitions::get_internal_function_effect_from_decorators,
-		functions::variable_field_to_string, parser_property_key_to_checker_property_key,
-		type_annotations::synthesise_type_annotation, variables::register_variable_identifier,
+		functions::{build_overloaded_function, synthesise_shape},
+		parser_property_key_to_checker_property_key,
+		type_annotations::synthesise_type_annotation,
+		variables::register_variable_identifier,
 	},
 	types::{
-		classes::ClassValue, properties::PropertyKey, FunctionType, PolyNature,
-		SynthesisedParameter, SynthesisedParameters, TypeStore,
+		classes::ClassValue,
+		properties::{PropertyKey, Publicity},
+		FunctionType, PolyNature,
 	},
-	CheckingData, DiagnosticsContainer, FunctionId, PropertyValue, Scope, Type, TypeId,
+	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
 
 use super::{block::synthesise_block, expressions::synthesise_expression};
@@ -371,7 +370,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 ) {
 	{
 		const CLASS_VARIABLE_CONSTANT: bool = true;
-		crate::utilities::notify!("registering {:?}", class.name.identifier);
+		// crate::utilities::notify!("registering {:?}", class.name.identifier);
 
 		register_variable_identifier(
 			&class.name.identifier,
@@ -435,26 +434,33 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					overloads.push(shape);
 
 					// Read declarations until
-					while let Some(overload_declaration) = members_iter
-						.next_if(|t| matches!(&t.on, ClassMember::Method(is_static, m) if initial_is_static == is_static && m.name == method.name && !m.has_body()))
-					{
-						let ClassMember::Method(_, method) =
-							&overload_declaration.on
-						else {
+					while let Some(overload_declaration) = members_iter.next_if(|t| {
+						matches!(
+							&t.on, 
+							ClassMember::Method(is_static, m) 
+							if initial_is_static == is_static 
+							&& m.name == method.name 
+							&& !m.has_body())
+					}) {
+						let ClassMember::Method(_, method) = &overload_declaration.on else {
 							unreachable!()
 						};
-						// todo check name equals =
 						let shape = synthesise_shape(method, environment, checking_data);
 						overloads.push(shape);
 					}
 
-					let upcoming = members_iter.peek();
-					if matches!(upcoming, Some(Decorated { on: ClassMember::Method(is_static, m), ..}) if initial_is_static == is_static && m.name == method.name && !m.has_body())
-					{
-						let ClassMember::Method(_, ref method) = members_iter.next().unwrap().on
-						else {
-							unreachable!()
-						};
+					let upcoming = members_iter.peek().and_then(|next| {
+						matches!(
+							&next.on,
+							ClassMember::Method(is_static, m)
+							if initial_is_static == is_static
+							&& m.name == method.name
+							&& m.has_body()
+						)
+						.then_some(&next.on)
+					});
+
+					if let Some(ClassMember::Method(_, method)) = upcoming {
 						let actual = synthesise_shape(method, environment, checking_data);
 						(overloads, actual)
 					} else if class.name.declare {
@@ -549,94 +555,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	}
 }
 
-fn synthesise_shape<T: crate::ReadFromFS>(
-	method: &parser::FunctionBase<parser::ast::ClassFunctionBase>,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> PartialFunction {
-	let type_parameters = method.type_parameters.as_ref().map(|type_parameters| {
-		super::functions::synthesise_type_parameters(type_parameters, environment, checking_data)
-	});
-
-	let parameters = method
-		.parameters
-		.parameters
-		.iter()
-		.map(|parameter| {
-			let parameter_constraint =
-				parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |ta| {
-					synthesise_type_annotation(ta, environment, checking_data)
-				});
-
-			// TODO I think this is correct
-			let is_optional = parameter.additionally.is_some();
-			let ty = if is_optional {
-				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
-			} else {
-				parameter_constraint
-			};
-
-			SynthesisedParameter {
-				name: variable_field_to_string(parameter.name.get_ast_ref()),
-				is_optional,
-				ty,
-				position: parameter.position.with_source(environment.get_source()),
-			}
-		})
-		.collect();
-
-	let rest_parameter = method.parameters.rest_parameter.as_ref().map(|rest_parameter| {
-		use crate::types::{Constructor, StructureGenerics, SynthesisedRestParameter};
-		let parameter_constraint =
-			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
-				synthesise_type_annotation(annotation, environment, checking_data)
-			});
-
-		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
-			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-			on: TypeId::ARRAY_TYPE,
-			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
-		{
-			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
-				item
-			} else {
-				unreachable!()
-			}
-		} else {
-			crate::utilities::notify!("rest parameter should be array error");
-			// checking_data.diagnostics_container.add_error(
-			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
-			// );
-			TypeId::ERROR_TYPE
-		};
-
-		let name = variable_field_to_string(&rest_parameter.name);
-
-		SynthesisedRestParameter {
-			item_type,
-			// This will be verridden when actual synthesis
-			ty: parameter_constraint,
-			name,
-			position: rest_parameter.position.with_source(environment.get_source()),
-		}
-	});
-
-	let return_type = method.return_type.as_ref().map(|annotation| {
-		ReturnType(
-			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().with_source(environment.get_source()),
-		)
-	});
-
-	PartialFunction(
-		type_parameters,
-		SynthesisedParameters { parameters, rest_parameter },
-		return_type,
-	)
-}
-
+/// For hoisting using the class as a type annotation
 /// Don't want to evaluate side effects during this stage
 fn get_extends_as_simple_type<T: crate::ReadFromFS>(
 	extends: &Expression,
@@ -669,128 +588,4 @@ fn get_extends_as_simple_type<T: crate::ReadFromFS>(
 	} else {
 		None
 	}
-}
-
-/// TODO WIP
-/// TODO also check generics?
-fn build_overloaded_function(
-	id: FunctionId,
-	behavior: FunctionBehavior,
-	overloads: Vec<PartialFunction>,
-	actual: PartialFunction,
-	environment: &Environment,
-	types: &mut TypeStore,
-	diagnostics: &mut DiagnosticsContainer,
-) -> TypeId {
-	// TODO bad
-	let expected_parameters = actual.1.clone();
-
-	let as_function = FunctionType {
-		id,
-		behavior,
-		type_parameters: actual.0,
-		parameters: actual.1,
-		return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-		effect: crate::types::FunctionEffect::Unknown,
-	};
-
-	let actual_func = types.new_hoisted_function_type(as_function);
-
-	let mut result = actual_func;
-
-	for overload in overloads {
-		for (idx, op) in overload.1.parameters.iter().enumerate() {
-			if let Some((base_type, position)) =
-				expected_parameters.get_parameter_type_at_index(idx)
-			{
-				let res = type_is_subtype(
-					base_type,
-					op.ty,
-					&mut State {
-						already_checked: Default::default(),
-						mode: Default::default(),
-						contributions: None,
-						object_constraints: None,
-						others: Default::default(),
-					},
-					environment,
-					types,
-				);
-				if let SubTypeResult::IsNotSubType(..) = res {
-					diagnostics.add_error(TypeCheckError::IncompatibleOverloadParameter {
-						parameter_position: position,
-						overloaded_parameter_position: op.position,
-						parameter: TypeStringRepresentation::from_type_id(
-							base_type,
-							environment,
-							types,
-							false,
-						),
-						overloaded_parameter: TypeStringRepresentation::from_type_id(
-							op.ty,
-							environment,
-							types,
-							false,
-						),
-					});
-				}
-			} else {
-				// TODO warning
-			}
-		}
-
-		// TODO other cases
-		if let (
-			Some(ReturnType(base, base_position)),
-			Some(ReturnType(overload, overload_position)),
-		) = (actual.2, overload.2)
-		{
-			let res = type_is_subtype(
-				base,
-				overload,
-				&mut State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: None,
-					object_constraints: None,
-					others: Default::default(),
-				},
-				environment,
-				types,
-			);
-			if let SubTypeResult::IsNotSubType(..) = res {
-				diagnostics.add_error(TypeCheckError::IncompatibleOverloadReturnType {
-					base_position,
-					overload_position,
-					base: TypeStringRepresentation::from_type_id(base, environment, types, false),
-					overload: TypeStringRepresentation::from_type_id(
-						overload,
-						environment,
-						types,
-						false,
-					),
-				});
-			}
-		} else {
-			// TODO warning
-		}
-
-		// Partial
-		let as_function = FunctionType {
-			id,
-			behavior,
-			type_parameters: overload.0,
-			parameters: overload.1,
-			return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-			effect: crate::types::FunctionEffect::Unknown,
-		};
-
-		// TODO
-		let func = types.new_hoisted_function_type(as_function);
-
-		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
-		result = types.new_and_type(func, result).unwrap();
-	}
-
-	result
 }

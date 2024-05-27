@@ -499,7 +499,22 @@ x.a = "hi"
 
 - Cannot assign. Restricted to number
 
-### Classes
+### Functions and classes
+
+#### New can return an object
+
+> TODO test for class constructors as well
+
+```ts
+function MyClass(value) {
+	this.value = value
+    return { v: this }
+}
+
+const object = new MyClass("hi").v.value satisfies number;
+```
+
+- Expected number, found "hi"
 
 #### Privacy
 
@@ -604,9 +619,21 @@ a satisfies 3; b satisfies string;
 
 - Expected string, found 2
 
-### Overloads
+### Functions
 
-#### Calling
+#### No generics
+
+```ts
+function id(a) { return a }
+
+id<5>(4)
+```
+
+- Cannot pass generic arguments to function without generic arguments
+
+> Or at least explicit generic arguments
+
+#### Method overloading
 
 ```ts
 interface X {
@@ -617,6 +644,13 @@ interface X {
 declare let x: X;
 x.overload(5) satisfies string;
 x.overload("hi") satisfies boolean;
+
+declare function f(param: string): string;
+declare function f(param: number): number;
+
+f("hi") satisfies string;
+f(3) satisfies boolean;
+f(false)
 ```
 
 - Expected boolean, found string

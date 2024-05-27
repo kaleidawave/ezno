@@ -4,19 +4,13 @@ use crate::Map as SmallMap;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{
-		information::{get_property_unbound, InformationChain},
-		Logical, PossibleLogical,
-	},
+	context::Logical,
 	features::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
 	},
-	types::{
-		get_structure_arguments_based_on_object_constraint, FunctionType, GenericChain,
-		GenericChainLink, PolyNature, Type,
-	},
-	Environment, FunctionId, LocalInformation, TypeId,
+	types::{FunctionType, PolyNature, Type},
+	Environment, FunctionId, TypeId,
 };
 
 use super::{
@@ -356,12 +350,9 @@ impl TypeStore {
 				bind_this: true,
 			});
 			self.register_type(ty)
-		} else if let Ok(prop) = get_property_unbound(
+		} else if let Ok(prop) = super::properties::get_property_unbound(
 			(indexee, None),
-			(
-				crate::context::information::Publicity::Public,
-				&PropertyKey::from_type(indexer, self),
-			),
+			(crate::types::properties::Publicity::Public, &PropertyKey::from_type(indexer, self)),
 			environment,
 			self,
 		) {
@@ -448,5 +439,9 @@ impl TypeStore {
 			constructor: id,
 			prototype: constructs,
 		}))
+	}
+
+	pub(crate) fn create_this_object(&mut self) -> TypeId {
+		self.register_type(Type::Object(super::ObjectNature::RealDeal))
 	}
 }

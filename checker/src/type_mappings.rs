@@ -19,7 +19,8 @@ use crate::{
 pub struct TypeMappings {
 	/// Figures out the types of the expressions in the AST
 	pub expressions_to_instances: RangeMap<Instance>,
-	/// [Variable] data to a AST mapping
+	/// [Variable] data to a AST mapping.
+	/// **THIS INFORMATION IS CURRENTLY USED IN TYPE CHECKING AND SO IS NOT JUST FOR LATER ANALYSIS**
 	pub variables_to_constraints: VariablesToTypes,
 	/// Property to type, TODO kind of temp
 	pub properties_to_types: RangeMap<TypeId>,

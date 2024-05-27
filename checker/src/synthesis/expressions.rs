@@ -15,10 +15,7 @@ use parser::{
 };
 
 use crate::{
-	context::{
-		information::{get_properties_on_type, get_property_unbound},
-		Logical,
-	},
+	context::Logical,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
 		self, await_expression,
@@ -31,13 +28,12 @@ use crate::{
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
 		printing::print_property_key,
-		properties::PropertyKey,
+		properties::{get_properties_on_type, get_property_unbound, PropertyKey},
 	},
 	Decidable,
 };
 
 use crate::{
-	context::information::Publicity,
 	features::{
 		objects::ObjectBuilder,
 		operations::{
@@ -48,6 +44,7 @@ use crate::{
 		template_literal::synthesise_template_literal_expression,
 	},
 	types::calling::CalledWithNew,
+	types::properties::Publicity,
 	types::{Constant, TypeId},
 	CheckingData, Environment, Instance, SpecialExpressions,
 };
@@ -595,7 +592,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						);
 						let (result, special) = call_function(
 							super_type,
-							CalledWithNew::SpecialSuperCall { this_type },
+							CalledWithNew::Super { this_type },
 							&None,
 							Some(arguments),
 							environment,
@@ -613,51 +610,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						crate::utilities::notify!("TODO unlock reference to `this`");
 
 						Instance::RValue(result)
-						// let crate::ConstructorInformation {
-						// 	fields,
-						// 	class_constructor_ty,
-						// 	class_instance_ty,
-						// 	..
-						// } = checking_data
-						// 	.functions
-						// 	.constructor_information
-						// 	.get(&constructor_pointer)
-						// 	.unwrap()
-						// 	.clone();
-
-						// let super_ty = if let Type::AliasTo { to, .. } =
-						// 	environment.get_type_by_id(class_instance_ty)
-						// {
-						// 	*to
-						// } else {
-						// 	panic!("No super")
-						// };
-
-						// let this_constructor =
-						// 	environment.get_constructor_for_prototype(class_instance_ty).unwrap();
-						// let super_constructor =
-						// 	environment.get_constructor_for_prototype(super_ty).unwrap();
-
-						// let this = environment.create_this(class_instance_ty);
-
-						// let mut chain = Chain::new();
-						// let mut chain = Annex::new(&chain);
-
-						// let ty = call_function(
-						// 	super_constructor,
-						// 	&None,
-						// 	Some(arguments),
-						// 	environment,
-						// 	checking_data,
-						// 	&
-						// 	position,
-						// 	CalledWithNew::SpecialSuperCall { on: this_constructor },
-						// );
-
-						// TODO explain
-						// synthesise_class_fields(fields, environment, checking_data, &chain);
-
-						// Instance::RValue(ty)
 					}
 					SuperReference::PropertyAccess { property: _ } => todo!(),
 					SuperReference::Index { indexer: _ } => todo!(),

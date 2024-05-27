@@ -32,7 +32,11 @@ fn main() {
 	};
 	let type_definition_files = HashSet::from_iter([definition_file]);
 
-	let options = TypeCheckOptions { debug_types, ..Default::default() };
+	let options = TypeCheckOptions {
+		debug_types,
+		record_all_assignments_and_reads: true,
+		..Default::default()
+	};
 
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![path.to_path_buf()],

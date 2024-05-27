@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
 // TEMP
-// #![allow(unused)]
+#![allow(unused)]
 
 pub mod context;
 pub mod diagnostics;

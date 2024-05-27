@@ -4,10 +4,7 @@ use std::collections::HashSet;
 use super::{properties::PropertyKey, GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
 	context::{
-		information::{
-			self, get_properties_on_type, get_value_of_constant_import_variable, InformationChain,
-			Publicity,
-		},
+		information::{self, get_value_of_constant_import_variable, InformationChain},
 		Logical,
 	},
 	events::{Event, FinalEvent},
@@ -16,8 +13,11 @@ use crate::{
 		objects::{Proxy, SpecialObjects},
 	},
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments, get_constraint, Constructor,
-		FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics, TypeRelationOperator,
+		generics::generic_type_arguments::StructureGenericArguments,
+		get_constraint,
+		properties::{get_properties_on_type, get_property_unbound, Publicity},
+		Constructor, FunctionEffect, GenericChainLink, ObjectNature, StructureGenerics,
+		TypeRelationOperator,
 	},
 	Constant, PropertyValue,
 };
@@ -232,15 +232,9 @@ fn print_type_into_buf<C: InformationChain>(
 						_ => {}
 					}
 				} else {
-					print_type_into_buf(
-						*on,
-						buf,
-						cycles,
-						GenericChainLink::append(args.as_ref(), &arguments.clone().into()),
-						types,
-						info_chain,
-						debug,
-					);
+					let into = arguments.clone().into();
+					let args = GenericChainLink::append(ty, args.as_ref(), &into);
+					print_type_into_buf(*on, buf, cycles, args, types, info_chain, debug);
 				}
 			}
 			constructor if debug => match constructor {
@@ -327,15 +321,9 @@ fn print_type_into_buf<C: InformationChain>(
 				} else if let Some(Type::Constructor(Constructor::StructureGenerics(sgs))) =
 					get_constraint(*on, types).map(|ty| types.get_type_by_id(ty))
 				{
-					print_type_into_buf(
-						*result,
-						buf,
-						cycles,
-						GenericChainLink::append(args.as_ref(), &sgs.arguments.clone().into()),
-						types,
-						info_chain,
-						debug,
-					);
+					let into = sgs.arguments.clone().into();
+					let args = GenericChainLink::append(ty, args.as_ref(), &into);
+					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
 				} else {
 					print_type_into_buf(*result, buf, cycles, args, types, info_chain, debug);
 				}
@@ -568,7 +556,7 @@ fn get_simple_value(
 		}
 	}
 
-	information::get_property_unbound((on, None), (Publicity::Public, property), ctx, types)
+	get_property_unbound((on, None), (Publicity::Public, property), ctx, types)
 		.ok()
 		.and_then(get_logical)
 }
@@ -730,35 +718,25 @@ pub fn debug_effects<C: InformationChain>(
 			}
 			Event::Conditionally {
 				condition,
-				true_events: events_if_truthy,
-				else_events,
+				truthy_events: events_if_truthy,
+				otherwise_events: else_events,
 				position: _,
 			} => {
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, types, info, debug);
 				buf.push_str(" then ");
-				debug_effects(buf, events_if_truthy, types, info, debug);
-				if !else_events.is_empty() {
-					buf.push_str(" else ");
-					debug_effects(buf, else_events, types, info, debug);
-				}
+				// debug_effects(buf, events_if_truthy, types, info, debug);
+				// if !else_events.is_empty() {
+				// 	buf.push_str(" else ");
+				// 	debug_effects(buf, else_events, types, info, debug);
+				// }
 			}
-
-			Event::CreateObject {
-				prototype: _,
-				referenced_in_scope_as,
-				position: _,
-				is_function_this,
-			} => {
-				if *is_function_this {
-					write!(buf, "create this function object").unwrap();
-				} else {
-					write!(buf, "create object as {referenced_in_scope_as:?}").unwrap();
-				}
+			Event::CreateObject { prototype: _, referenced_in_scope_as, position: _ } => {
+				write!(buf, "create object as {referenced_in_scope_as:?}").unwrap();
 			}
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {
 				buf.push_str("iterate\n");
-				debug_effects(buf, iterate_over, types, info, debug);
+				// debug_effects(buf, iterate_over, types, info, debug);
 				buf.push_str("end");
 			}
 			Event::FinalEvent(FinalEvent::Throw { thrown, .. }) => {
@@ -771,11 +749,14 @@ pub fn debug_effects<C: InformationChain>(
 			Event::FinalEvent(FinalEvent::Continue { .. }) => {
 				buf.push_str("continue");
 			}
-			Event::FinalEvent(FinalEvent::Return { returned, returned_position: _ }) => {
+			Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => {
 				buf.push_str("return ");
 				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, types, info, debug);
 			}
 			Event::ExceptionTrap { .. } => todo!(),
+			Event::RegisterVariable { .. } => {
+				buf.push_str("register variable");
+			}
 		}
 		buf.push('\n');
 	}

@@ -123,31 +123,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				parameters,
 				position: _,
 			})) => {
-				// To remove when implementing
-				#[allow(clippy::redundant_pattern_matching)]
-				if let Some(_) = parameters {
-					todo!()
-				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut root = env.new_lexical_root();
-				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
-				//         type_parameters,
-				//         &mut env,
-				//         error_handler,
-				//         type_mappings,
-				//     );
-				//     let borrow = type_parameters.0.borrow();
-				//     for parameter in borrow.iter().cloned() {
-				//         env.declare_generic_type_parameter(parameter);
-				//     }
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// } else {
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// };
-				// todo!("This should have two passes with a empty type");
-				} else {
-					// todo!("Modify alias")
-					// let ty = env.get_type_handle_errors(&type_expression, checking_data);
-					// env.register_type(ty);
+				if let Some(_parameters) = parameters {
+					todo!("set parameters")
 				}
 			}
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
@@ -165,11 +142,14 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Statement(
 				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
 			) => {}
-			item => checking_data.diagnostics_container.add_warning(
-				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
-					item.get_position().with_source(environment.get_source()),
-				),
-			),
+			item => {
+				crate::utilities::notify!("unknown {:?}", item);
+				checking_data.diagnostics_container.add_warning(
+					TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
+						item.get_position().with_source(environment.get_source()),
+					),
+				)
+			}
 		}
 	}
 
@@ -208,6 +188,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 
 				synthesise_declare_statement_function(
 					variable_id,
+					// TODO
+					false,
 					is_async,
 					is_generator,
 					location,
@@ -236,7 +218,6 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 				let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
 					decorator.arguments.as_ref().and_then(|args| args.first())
 				{
-					crate::utilities::notify!("{:?}", identifier);
 					identifier.clone()
 				} else {
 					function_name.to_owned()
@@ -249,6 +230,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 					_ => unreachable!(),
 				})
 			} else {
+				crate::utilities::notify!("Unknown decorator {:?}", decorator_name);
 				None
 			}
 		} else {

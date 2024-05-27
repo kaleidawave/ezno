@@ -27,8 +27,8 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		crate::utilities::notify!("TODO also get possible impure functions");
 
 		// TODO want to also get whether condition. Any unknowns etc
-		let thrown_type =
-			try_block_environment.context_type.state.thrown_type(&mut checking_data.types);
+		let thrown_type = todo!("scan through events");
+		// try_block_environment.context_type.state.thrown_type(&mut checking_data.types);
 
 		// TODO merge info stuff
 		let events = try_block_environment.info.events;
@@ -102,14 +102,16 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		let catch_events = catch_block_environment.info.events;
 
 		// TODO catch
-		let try_event = Event::ExceptionTrap {
-			investigate: throw_events.into_boxed_slice(),
-			handle: catch_events.into_boxed_slice(),
-			finally: Box::default(),
-			trapped_type_id: constraint,
-		};
+		// let try_event = Event::ExceptionTrap {
+		// 	investigate: throw_events.into_boxed_slice(),
+		// 	handle: catch_events.into_boxed_slice(),
+		// 	finally: Box::default(),
+		// 	trapped_type_id: constraint,
+		// };
 
-		environment.info.events.push(try_event);
+		todo!()
+
+	// environment.info.events.push(try_event);
 	// 	},
 	// );
 	} else {

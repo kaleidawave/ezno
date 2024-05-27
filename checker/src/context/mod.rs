@@ -3,16 +3,12 @@
 //! They also handle scoping, e.g. what is accessible where and branching
 
 pub mod environment;
-mod root;
-// TODO better name
-mod bases;
 pub mod information;
 pub mod invocation;
+mod root;
 
 pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
-
-pub(crate) use bases::Boundary;
 
 use source_map::{Span, SpanWithSource};
 
@@ -21,7 +17,7 @@ use crate::{
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
 	},
-	events::{ApplicationResult, RootReference},
+	events::RootReference,
 	features::{
 		functions::ClosureChain,
 		objects::{Proxy, SpecialObjects},
@@ -82,6 +78,10 @@ pub enum GeneralContext<'a> {
 	Root(&'a RootContext),
 }
 
+/// Specifies where a variable exists
+#[derive(Debug, Clone, Copy)]
+pub struct Boundary(pub(crate) ContextId);
+
 /// Used for doing things with a Context that is either [Root] or [Environment]
 macro_rules! get_on_ctx {
 	(&$env:ident$(.$field:ident)*) => {
@@ -126,8 +126,6 @@ pub trait ContextType: Sized {
 
 	fn as_syntax(&self) -> Option<&Syntax>;
 
-	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult>;
-
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
 
@@ -166,7 +164,6 @@ pub struct Context<T: ContextType> {
 
 	/// TODO unsure if needed
 	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
-	pub(crate) bases: bases::Bases,
 
 	/// TODO replace with `info.value_of_this`
 	pub(crate) can_reference_this: CanReferenceThis,
@@ -194,19 +191,6 @@ pub(super) enum CanReferenceThis {
 }
 
 impl<T: ContextType> Context<T> {
-	/// This exists on context because bases are localised
-	// TODO with_rule
-	pub fn attempt_to_modify_base(
-		&mut self,
-		on: TypeId,
-		boundary: Boundary,
-		new_constraint: TypeId,
-	) {
-		crate::utilities::notify!("Modifying #{} to have new base #{}", on.0, new_constraint.0);
-
-		self.bases.mutable_bases.insert(on, (boundary, new_constraint));
-	}
-
 	/// Declares a new variable in the environment and returns the new variable
 	/// TODO maybe name: `VariableDeclarator` to include destructuring ...?
 	/// TODO hoisted vs declared
@@ -215,6 +199,7 @@ impl<T: ContextType> Context<T> {
 		name: &'b str,
 		declared_at: SpanWithSource,
 		VariableRegisterArguments { constant, initial_value, space }: VariableRegisterArguments,
+		record_event: bool,
 	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
 
@@ -240,6 +225,14 @@ impl<T: ContextType> Context<T> {
 			self.info.variable_current_value.insert(id, initial_value);
 		}
 
+		if record_event {
+			self.info.events.push(crate::events::Event::RegisterVariable {
+				name: name.to_owned(),
+				position: declared_at,
+				initial_value,
+			});
+		}
+
 		if existing {
 			Err(CannotRedeclareVariable { name })
 		} else {
@@ -253,8 +246,9 @@ impl<T: ContextType> Context<T> {
 		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
 		diagnostics_container: &mut DiagnosticsContainer,
+		record_event: bool,
 	) {
-		if let Err(_err) = self.register_variable(name, declared_at, argument) {
+		if let Err(_err) = self.register_variable(name, declared_at, argument, record_event) {
 			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
 				name: name.to_owned(),
 				position: declared_at,
@@ -471,8 +465,6 @@ impl<T: ContextType> Context<T> {
 				requests: Default::default(),
 				closed_over_references: Default::default(),
 				location: None,
-				// TODO inherit from above
-				state: ApplicationResult::Completed,
 			},
 			can_reference_this: self.can_reference_this.clone(),
 			// TODO maybe based on something in the AST
@@ -482,7 +474,6 @@ impl<T: ContextType> Context<T> {
 			deferred_function_constraints: Default::default(),
 			variable_names: Default::default(),
 			info: Default::default(),
-			bases: Default::default(),
 			possibly_mutated_objects: Default::default(),
 		}
 	}
@@ -519,25 +510,21 @@ impl<T: ContextType> Context<T> {
 					free_variables: used_parent_references,
 					closed_over_references,
 					location: _,
-					state,
 					requests: _,
 				},
 			can_reference_this,
-			bases,
 			variable_names,
 			deferred_function_constraints,
 			mut info,
 			possibly_mutated_objects,
 		} = new_environment;
 
-		if let Some(self_state) = self.context_type.get_state_mut() {
-			let state =
-				if let Scope::TryBlock { .. } = scope { state.remove_throws() } else { state };
+		// if let Some(self_state) = self.context_type.get_state_mut() {
+		// 	let state =
+		// 		if let Scope::TryBlock { .. } = scope { state.remove_throws() } else { state };
 
-			self_state.append_termination(state);
-		}
-
-		self.bases.merge(bases, self.context_id);
+		// 	self_state.append_termination(state);
+		// }
 
 		self.variable_names.extend(variable_names);
 		self.possibly_mutated_objects.extend(possibly_mutated_objects);
@@ -1149,8 +1136,15 @@ pub(crate) fn get_value_of_variable(
 
 		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		if res.is_some() {
-			return res;
+		// TODO WIP narrowing
+
+		// TODO in remaining info, don't loop again
+		if let Some(res) = res {
+			// TODO recursive to find via distributivity ?
+			let find_map =
+				info.get_chain_of_info().find_map(|info| info.narrowed_values.get(&res).copied());
+
+			return Some(find_map.unwrap_or(res));
 		}
 	}
 	None

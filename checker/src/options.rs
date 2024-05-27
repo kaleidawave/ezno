@@ -34,6 +34,9 @@ pub struct TypeCheckOptions {
 
 	/// Allows partial syntax and collects other information for using in editor
 	pub lsp_mode: bool,
+
+	/// Can be used for linting
+	pub record_all_assignments_and_reads: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -48,6 +51,7 @@ impl Default for TypeCheckOptions {
 			strict_casts: false,
 			store_type_mappings: false,
 			lsp_mode: false,
+			record_all_assignments_and_reads: false,
 			// TODO false at some point hopefully!
 			allow_cast: true,
 		}

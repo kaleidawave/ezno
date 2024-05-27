@@ -7,11 +7,14 @@ use parser::{
 
 use super::expressions::synthesise_expression;
 use crate::{
-	context::{information::Publicity, Context, ContextType, VariableRegisterArguments},
+	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation},
 	features::variables::{get_new_register_argument_under, VariableMutability},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{printing, properties::PropertyKey},
+	types::{
+		printing,
+		properties::{PropertyKey, Publicity},
+	},
 	CheckingData, Environment, TypeId,
 };
 
@@ -37,6 +40,7 @@ pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>
 				argument,
 				pos.with_source(environment.get_source()),
 				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
 		parser::VariableIdentifier::Marker(..) => {

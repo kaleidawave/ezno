@@ -23,18 +23,60 @@ array1.fill(6) satisfies [1, 1, 1, 1];
 #### `super` call
 
 ```ts
-class X extends Y {
-  constructor() {
-    super()
-  }
+let b: number = 0;
+class Y {
+    constructor(a) {
+        this.a = a;
+        b++;
+    }
 }
+
+class X extends Y {
+    constructor(a) {
+        super(a);
+    }
+}
+
+const x = new X("hi");
+x.a satisfies "hello";
+b satisfies 1;
 ```
 
-- uhh
+- Expected "hello", found "hi"
 
 ### Statements
 
 > TODO Await position.
+
+#### `new` on function prototype
+
+```ts
+function MyClass(value) {
+	this.value = value
+}
+
+MyClass.prototype.other = 2;
+
+const object = new MyClass("hi");
+object.value satisfies "hi";
+object.other satisfies "hello";
+```
+
+- Expected "hello", found 2
+
+#### Checking with function prototype
+
+```ts
+function MyClass(this: { other: string }, value) {
+	this.value = value
+}
+
+MyClass.prototype.other = 2;
+
+const object = new MyClass("hi");
+```
+
+- Cannot call with { other: 2 }, required { other: string } (or smth like that)
 
 #### `instanceof` operator
 
@@ -43,21 +85,14 @@ class X extends Y {
 ```ts
 ([] instanceof Array) satisfies true;
 ({} instanceof Map) satisfies 4;
+
+class X {}
+
+(new X instanceof X) satisfies true;
+([] instanceof X) satisfies false;
 ```
 
 - Expected 4, found false
-
-#### No generics
-
-```ts
-function id(a) { return a }
-
-id<5>(4)
-```
-
-- Cannot pass generic arguments to function without generic arguments
-
-> Or at least explicit generic arguments
 
 ### Readonly and `as const`
 
@@ -243,6 +278,33 @@ if (a === "hi") {
 
 - Expected "hello", found "hi"
 
+#### Condition as a function
+
+```ts
+declare let a: string;
+
+const equalsHi = (p: string) => p === "hi";
+
+if (equalsHi(a)) {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Passed around
+
+```ts
+declare let a: string;
+
+const b = a;
+if (b === "hi") {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
 ### Mapped types
 
 #### Specialisation
@@ -289,16 +351,72 @@ const x: Required<{ a?: number }> = { a: 3 },
 
 ### Types
 
-#### Infer, extends + distribution
+#### Union with never
+
+```ts
+declare function func<T>(): T | string;
+
+func<number>() satisfies string | number;
+func<never>() satisfies boolean;
+```
+
+- Expected boolean, found string
+
+#### Infer and extends distribution
 
 ```ts
 type ElementOf<T> = T extends Array<infer U> ? U : never;
 
-declare let mk_x: ElementOf<number>;
-declare let mk_y: ElementOf<Array<number>>;
-declare let mk_z: ElementOf<Array<string> | string>;
+declare let y: ElementOf<Array<number>>;
+declare let z: ElementOf<Array<number> | string>;
 
-print_type(mk_x, mk_y, mk_z);
+y satisfies number;
+z satisfies string;
+
+declare let n: never;
+n satisfies ElementOf<number>;
 ```
 
-- TODO
+- Expected string, found number
+
+### Functions
+
+#### Function hoisting
+
+> `getString` can be used and has a type before it has been synthesised
+> TODO actual calling before defined (this currently only works bc of free-variables)
+
+```ts
+function x() {
+    getString(3)
+}
+
+function y() {
+    getString("something") satisfies string;
+}
+
+function getString(param: string): string {
+    return "hi"
+}
+```
+
+- Argument of type 3 is not assignable to parameter of type string
+
+### Others
+
+#### Unconditional throw
+
+```ts
+function safeDivide(num: number, denom: number) {
+	if (denom === 0) {
+		throw Error("Cannot divide by zero");
+	}
+	return num / denom
+}
+
+safeDivide(8, 4) satisfies 2;
+
+safeDivide(10, 0);
+```
+
+- thrown!

@@ -8,7 +8,7 @@ use crate::{
 
 pub fn narrow_based_on_expression(
 	condition: TypeId,
-	_into: &mut LocalInformation,
+	into: &mut LocalInformation,
 	types: &TypeStore,
 ) {
 	if let Type::Constructor(Constructor::CanonicalRelationOperator {
@@ -20,5 +20,8 @@ pub fn narrow_based_on_expression(
 		if let Type::RootPolyType(PolyNature::Parameter { .. }) = types.get_type_by_id(*lhs) {
 			crate::utilities::notify!("lhs is {:?} with {:?}", lhs, types.get_type_by_id(*rhs));
 		}
+
+		// TODO reflexive ?
+		into.narrowed_values.insert(*lhs, *rhs);
 	}
 }

@@ -819,7 +819,7 @@ toUpperCase();
 
 - The 'this' context of the function is expected to be string, found undefined
 
-#### Calling new on a function
+#### Calling `new` on a function
 
 ```ts
 function MyClass(value) {
@@ -2223,7 +2223,7 @@ getA({ a: 2 })
 
 - Argument of type { a: 2 } is not assignable to parameter of type T
 
-> I think reasons contains more information
+> I think reasons contains more information for the T parameter
 
 #### Function parameter subtyping
 

@@ -1,6 +1,5 @@
 use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
-	events::ApplicationResult,
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
@@ -26,10 +25,6 @@ impl ContextType for Root {
 	}
 
 	fn as_syntax(&self) -> Option<&super::Syntax> {
-		None
-	}
-
-	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
 		None
 	}
 
@@ -97,7 +92,6 @@ impl RootContext {
 			variables: HashMap::from_iter(variables),
 			variable_names: Default::default(),
 			deferred_function_constraints: Default::default(),
-			bases: Default::default(),
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			info,

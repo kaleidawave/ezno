@@ -52,6 +52,8 @@ impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
 	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
+	/// Don't know what to do here
+	pub const HMM_ERROR: TypeId = TypeId::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
@@ -417,11 +419,12 @@ pub type GenericChainParent<'a> = Option<&'a GenericChainLink<'a>>;
 #[derive(Clone, Copy, Debug)]
 pub enum GenericChainLink<'a> {
 	Link {
-		parent: GenericChainParent<'a>,
+		from: TypeId,
+		parent_link: GenericChainParent<'a>,
 		value: &'a StructureGenericArguments,
 	},
 	FunctionRoot {
-		parent: Option<&'a StructureGenericArguments>,
+		parent_link: Option<&'a StructureGenericArguments>,
 		call_site_type_arguments: Option<&'a crate::Map<TypeId, (TypeId, SpanWithSource)>>,
 		type_arguments: &'a crate::Map<TypeId, TypeId>,
 	},
@@ -445,34 +448,37 @@ impl<'a> GenericChainLink<'a> {
 		types: &TypeStore,
 	) -> Option<Vec<TypeId>> {
 		match self {
-			GenericChainLink::Link { parent, value } => value
+			GenericChainLink::Link { parent_link: parent, value, from: _ } => value
 				.get_argument_as_list(on, info, types)
 				.or_else(|| parent.and_then(|parent| parent.get_argument(on, info, types))),
-			GenericChainLink::FunctionRoot { parent, call_site_type_arguments, type_arguments } => {
-				parent
-					.and_then(|parent| parent.get_argument_as_list(on, info, types))
-					.or_else(|| {
-						call_site_type_arguments
-							.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
-					})
-					.or_else(|| type_arguments.get(&on).map(|a| vec![*a]))
-			}
+			GenericChainLink::FunctionRoot {
+				parent_link: parent,
+				call_site_type_arguments,
+				type_arguments,
+			} => parent
+				.and_then(|parent| parent.get_argument_as_list(on, info, types))
+				.or_else(|| {
+					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
+				})
+				.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
 		}
 	}
 
 	pub(crate) fn append_to_link(
+		from: TypeId,
 		parent: GenericChainParent<'a>,
 		value: &'a StructureGenericArguments,
 	) -> GenericChainLink<'a> {
-		GenericChainLink::Link { parent, value }
+		GenericChainLink::Link { parent_link: parent, value, from }
 	}
 
 	#[allow(clippy::unnecessary_wraps)]
 	pub(crate) fn append(
+		from: TypeId,
 		parent: GenericChainParent<'a>,
 		value: &'a StructureGenericArguments,
 	) -> GenericChain<'a> {
-		Some(GenericChainLink::append_to_link(parent, value))
+		Some(GenericChainLink::append_to_link(from, parent, value))
 	}
 
 	/// Does not do 'lookup generics'. Which may be fine
@@ -480,17 +486,19 @@ impl<'a> GenericChainLink<'a> {
 	/// - (swaps `get_argument_as_list` with `get_structure_restriction`)
 	pub(crate) fn get_single_argument(&self, on: TypeId) -> Option<TypeId> {
 		match self {
-			GenericChainLink::Link { parent, value } => value
+			GenericChainLink::Link { parent_link: parent, value, from: _ } => value
 				.get_structure_restriction(on)
 				.or_else(|| parent.and_then(|parent| parent.get_single_argument(on))),
-			GenericChainLink::FunctionRoot { parent, call_site_type_arguments, type_arguments } => {
-				parent
-					.and_then(|parent| parent.get_structure_restriction(on))
-					.or_else(|| {
-						call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
-					})
-					.or_else(|| type_arguments.get(&on).copied())
-			}
+			GenericChainLink::FunctionRoot {
+				parent_link: parent,
+				call_site_type_arguments,
+				type_arguments,
+			} => parent
+				.and_then(|parent| parent.get_structure_restriction(on))
+				.or_else(|| {
+					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
+				})
+				.or_else(|| type_arguments.get(&on).copied()),
 		}
 	}
 }

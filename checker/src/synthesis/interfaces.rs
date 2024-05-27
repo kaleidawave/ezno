@@ -4,11 +4,11 @@ use parser::{
 };
 
 use crate::{
-	context::{information::Publicity, Context, Environment},
+	context::{Context, Environment},
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		properties::{PropertyKey, PropertyValue},
+		properties::{PropertyKey, PropertyValue, Publicity},
 		FunctionType, Type,
 	},
 	CheckingData, Scope, TypeId,
@@ -17,23 +17,6 @@ use crate::{
 use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
-
-fn _get_extends<T: crate::ReadFromFS>(
-	interface: &InterfaceDeclaration,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	interface_type: TypeId,
-) {
-	if let Some([reference, others @ ..]) = interface.extends.as_deref() {
-		let mut ty = synthesise_type_annotation(reference, environment, checking_data);
-		for reference in others {
-			let rhs = synthesise_type_annotation(reference, environment, checking_data);
-			ty = checking_data.types.register_type(Type::And(ty, rhs));
-		}
-
-		environment.bases.connect_extends(interface_type, ty);
-	}
-}
 
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(

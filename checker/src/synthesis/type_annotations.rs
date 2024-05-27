@@ -28,10 +28,10 @@ use parser::{
 use source_map::SpanWithSource;
 
 use crate::{
-	context::information::Publicity,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
 	synthesis::functions::synthesise_function_annotation,
+	types::properties::Publicity,
 	types::{
 		generics::{
 			generic_type_arguments::StructureGenericArguments, substitution::SubstitutionArguments,
@@ -350,8 +350,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			type_parameters: _,
 			parameters: _,
 			return_type: _,
-			position: _,
-		} => unimplemented!(),
+			position,
+		} => {
+			checking_data.raise_unimplemented_error(
+				"constructor literal",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
 		TypeAnnotation::ObjectLiteral(members, _) => {
@@ -434,7 +440,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			checking_data.types.new_property_on_type_annotation(being_indexed, indexer, environment)
 		}
-		TypeAnnotation::KeyOf(_, _) => unimplemented!(),
+		TypeAnnotation::KeyOf(of, position) => {
+			let of = synthesise_type_annotation(of, environment, checking_data);
+			checking_data.raise_unimplemented_error(
+				"key of annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
 			let (condition, infer_types) = {
 				let mut environment =
@@ -537,10 +550,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			));
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Is { item, is, position: _ } => {
+		TypeAnnotation::Is { item, is, position } => {
 			let _item = synthesise_type_annotation(item, environment, checking_data);
 			let _is = synthesise_type_annotation(is, environment, checking_data);
-			todo!();
+			checking_data.raise_unimplemented_error(
+				"is type annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
 			// let ty = Type::Constructor(Constructor::TypeRelationOperator(
 			// 	crate::types::TypeRelationOperator::E { ty: item, is },
 			// ));

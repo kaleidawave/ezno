@@ -99,11 +99,7 @@ impl FunctionType {
 			scope,
 			checking_data,
 			|environment, checking_data| {
-				let on = create_this_before_function_synthesis(
-					&mut checking_data.types,
-					&mut environment.info,
-					class_prototype,
-				);
+				let on = checking_data.types.create_this_object();
 				if let Scope::Function(FunctionScope::Constructor {
 					ref mut this_object_type,
 					..
@@ -114,8 +110,7 @@ impl FunctionType {
 
 				if let Some(extends) = extends {
 					crate::utilities::notify!("Here extends");
-					let called_with_new =
-						super::calling::CalledWithNew::SpecialSuperCall { this_type: on };
+					let called_with_new = super::calling::CalledWithNew::Super { this_type: on };
 
 					let input = CallingInput {
 						call_site: BaseSpan::NULL,
@@ -139,7 +134,7 @@ impl FunctionType {
 		);
 
 		let behavior =
-			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
+			FunctionBehavior::Constructor { prototype: class_prototype, this_object_type: on };
 
 		let (info, _free_variables) = env_data.unwrap();
 		Self {
@@ -155,28 +150,6 @@ impl FunctionType {
 			},
 		}
 	}
-}
-
-/// For inside the function
-pub(crate) fn create_this_before_function_synthesis(
-	types: &mut TypeStore,
-	info: &mut LocalInformation,
-	prototype: TypeId,
-) -> TypeId {
-	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-
-	// crate::utilities::notify!("Registered 'this' in constructor as {:?}", ty);
-
-	let value = Event::CreateObject {
-		referenced_in_scope_as: ty,
-		prototype: crate::events::PrototypeArgument::Yeah(prototype),
-		position: None,
-		// TODO right?
-		is_function_this: true,
-	};
-	info.events.push(value);
-
-	ty
 }
 
 /// TODO temp

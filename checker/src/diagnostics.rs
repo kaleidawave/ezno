@@ -242,7 +242,11 @@ impl TypeStringRepresentation {
 				}
 				Self::from_property_constraint(
 					*on,
-					Some(GenericChainLink::Link { parent: None, value: &antecedent }),
+					Some(GenericChainLink::Link {
+						parent_link: None,
+						value: &antecedent,
+						from: TypeId::HMM_ERROR,
+					}),
 					ctx,
 					types,
 					debug_mode,

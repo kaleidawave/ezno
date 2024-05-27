@@ -267,9 +267,8 @@ declare class Console {
 
 declare const console: Console;
 
-declare class SyntaxError { }
 
-declare class Exception {
+declare class Error {
     message: string
 
     // TODO `@AllowElidedNew`
@@ -277,6 +276,9 @@ declare class Exception {
         this.message = message
     }
 }
+
+declare class SyntaxError extends Error { }
+
 
 declare class JSON {
     // TODO any temp

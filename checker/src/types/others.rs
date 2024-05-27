@@ -1,8 +1,8 @@
 // Types to runtime behavior
 
 use crate::{
-	context::information::{get_properties_on_type, Publicity},
 	features::objects::{ObjectBuilder, SpecialObjects},
+	types::properties::{get_properties_on_type, Publicity},
 	Constant, Environment, Type, TypeId,
 };
 

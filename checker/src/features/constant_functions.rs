@@ -153,10 +153,6 @@ pub(crate) fn call_constant_function(
 				Ok(ConstantOutput::Diagnostic(buf))
 			}
 		}
-		"print_environment_state" => Ok(ConstantOutput::Diagnostic(format!(
-			"EnvState is: {:?}",
-			environment.context_type.state
-		))),
 		"print_constraint" => {
 			let ty = arguments
 				.first()

@@ -3,17 +3,15 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{
-		information::{get_property_unbound, InformationChain, Publicity},
-		Environment, GeneralContext, Logical,
-	},
+	context::{information::InformationChain, Environment, GeneralContext, Logical},
 	features::objects::SpecialObjects,
 	types::{
 		generics::{
 			contributions::Contributions, generic_type_arguments::StructureGenericArguments,
 		},
 		printing::print_type,
-		GenericChainLink, ObjectNature, TypeStore,
+		properties::{get_property_unbound, Publicity},
+		substitute, GenericChainLink, ObjectNature, TypeStore,
 	},
 	PropertyValue, TypeId,
 };
@@ -327,6 +325,14 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 
 				return SubTypeResult::IsSubType;
+			}
+
+			if let SubTypingMode::Covariant { position } = state.mode {
+				crate::utilities::notify!("Here covariant parameter chaos?");
+				// if let Some(ref mut contributions) = state.contributions {
+				// 	contributions.staging_covariant.insert(ty, (base_type, position))
+				// }
+				// return SubTypeResult::IsSubType;
 			}
 
 			// If lhs is not operator unless argument is operator
@@ -722,7 +728,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				let into = arguments.clone().into();
 
 				let base_type_arguments =
-					GenericChainLink::append(base_structure_arguments.as_ref(), &into);
+					GenericChainLink::append(base_type, base_structure_arguments.as_ref(), &into);
 
 				type_is_subtype_with_generics(
 					(*on, base_type_arguments),
@@ -811,29 +817,35 @@ pub(crate) fn type_is_subtype_with_generics(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
-			Type::Object(..) => subtype_properties(
-				(base_type, base_structure_arguments),
-				(ty, ty_structure_arguments),
-				state,
-				environment,
-				types,
-			),
+			Type::Object(..) => {
+				// WIP Nominal-ness for #128
+				if let Some(prototype) =
+					environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty))
+				{
+					if *prototype == base_type {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				} else {
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				}
+			}
 			Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 				on,
 				arguments,
-			})) => type_is_subtype_with_generics(
-				(base_type, base_structure_arguments),
-				(
-					*on,
-					GenericChainLink::append(
-						ty_structure_arguments.as_ref(),
-						&arguments.clone().into(),
-					),
-				),
-				state,
-				environment,
-				types,
-			),
+			})) => {
+				let into = arguments.clone().into();
+				let right =
+					(*on, GenericChainLink::append(ty, ty_structure_arguments.as_ref(), &into));
+				type_is_subtype_with_generics(
+					(base_type, base_structure_arguments),
+					right,
+					state,
+					environment,
+					types,
+				)
+			}
 			_ => SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch),
 		},
 		Type::Interface { nominal: base_type_nominal, .. } => {
@@ -919,19 +931,18 @@ pub(crate) fn type_is_subtype_with_generics(
 				Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
 					on,
 					arguments,
-				})) => type_is_subtype_with_generics(
-					(base_type, base_structure_arguments),
-					(
-						*on,
-						GenericChainLink::append(
-							ty_structure_arguments.as_ref(),
-							&&&arguments.clone().into(),
-						),
-					),
-					state,
-					environment,
-					types,
-				),
+				})) => {
+					let into = arguments.clone().into();
+					let append =
+						GenericChainLink::append(ty, ty_structure_arguments.as_ref(), &into);
+					type_is_subtype_with_generics(
+						(base_type, base_structure_arguments),
+						(*on, append),
+						state,
+						environment,
+						types,
+					)
+				}
 				Type::AliasTo { .. } | Type::Interface { .. } => {
 					crate::utilities::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
 					// TODO
@@ -1015,7 +1026,10 @@ fn subtype_function(
 
 	for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
 		match right_func.parameters.get_parameter_type_at_index(idx) {
-			Some((right_param_ty, _position)) => {
+			Some((right_param_ty, position)) => {
+				let last_mode =
+					std::mem::replace(&mut state.mode, SubTypingMode::Covariant { position });
+
 				// Reverse is important
 				let result = type_is_subtype_with_generics(
 					(right_param_ty, right_type_arguments),
@@ -1038,6 +1052,8 @@ fn subtype_function(
 					// TODO don't short circuit
 					return err;
 				}
+
+				state.mode = last_mode;
 			}
 			None => {
 				if !lhs_param.is_optional {
@@ -1080,14 +1096,14 @@ fn subtype_properties(
 	state.mode = state.mode.one_deeper();
 
 	// TODO (#128): This is a compromise where only boolean and number types are treated as nominal
-	match base_type {
-		TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE if base_type != ty => {
-			crate::utilities::notify!("Here");
-			state.mode = state.mode.one_shallower();
-			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
-		}
-		_ => {}
-	}
+	// match base_type {
+	// 	TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE if base_type != ty => {
+	// 		crate::utilities::notify!("Here");
+	// 		state.mode = state.mode.one_shallower();
+	// 		return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+	// 	}
+	// 	_ => {}
+	// }
 
 	let mut property_errors = Vec::new();
 	let reversed_flattened_properties = environment
@@ -1133,7 +1149,16 @@ fn subtype_properties(
 	let result = if property_errors.is_empty() {
 		// TODO type arguments
 		if let Some(ref mut object_constraints) = state.object_constraints {
-			assert!(base_type_arguments.is_none(), "TODO base type arguments set");
+			let base_type = if let Some(ref arguments) = base_type_arguments {
+				if let GenericChainLink::Link { from, parent_link, value: _ } = arguments {
+					assert!(parent_link.is_none(), "TODO recursive get_from");
+					*from
+				} else {
+					base_type
+				}
+			} else {
+				base_type
+			};
 			object_constraints.push((ty, base_type));
 		}
 
@@ -1285,7 +1310,7 @@ fn check_logical_property(
 		}
 		Logical::Or { .. } => todo!(),
 		Logical::Implies { on, antecedent } => check_logical_property(
-			(base, GenericChainLink::append(base_type_arguments.as_ref(), &antecedent)),
+			(base, GenericChainLink::append(base, base_type_arguments.as_ref(), &antecedent)),
 			(*on, right_type_arguments),
 			state,
 			environment,
@@ -1335,7 +1360,10 @@ pub fn type_is_subtype_of_property(
 			// }
 		}
 		Logical::Implies { on, antecedent } => type_is_subtype_of_property(
-			(on, GenericChainLink::append(property_generics.as_ref(), antecedent)),
+			(
+				on,
+				GenericChainLink::append(TypeId::HMM_ERROR, property_generics.as_ref(), antecedent),
+			),
 			ty,
 			state,
 			environment,

@@ -74,7 +74,7 @@ where
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
-						crate::context::information::Publicity::Public,
+						crate::types::properties::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
@@ -102,7 +102,7 @@ where
 			// TODO: Should there be a position here?
 			static_parts.append(
 				environment,
-				crate::context::information::Publicity::Public,
+				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				None,

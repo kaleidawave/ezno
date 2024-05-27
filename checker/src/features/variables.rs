@@ -1,14 +1,14 @@
 use source_map::{Span, SpanWithSource};
 
-use crate::context::{
-	environment::ContextLocation,
-	information::{get_property_unbound, Publicity},
-	AssignmentError, VariableRegisterArguments,
-};
+use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};
 use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
 use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
-	types::{printing::print_type, properties::PropertyKey, TypeId},
+	types::{
+		printing::print_type,
+		properties::{get_property_unbound, PropertyKey, Publicity},
+		TypeId,
+	},
 	CheckingData, VariableId,
 };
 use crate::{Environment, Instance, Logical};

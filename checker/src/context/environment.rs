@@ -6,7 +6,7 @@ use crate::{
 		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError, TypeCheckWarning,
 		TypeStringRepresentation, TDZ,
 	},
-	events::{ApplicationResult, Event, FinalEvent, RootReference},
+	events::{Event, FinalEvent, RootReference},
 	features::{
 		assignments::{
 			Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
@@ -24,7 +24,7 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		is_type_truthy_falsy, printing,
-		properties::{PropertyKey, PropertyKind, PropertyValue},
+		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
 		PolyNature, Type, TypeCombinable, TypeStore,
 	},
 	CheckingData, Decidable, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -32,7 +32,7 @@ use crate::{
 
 use super::{
 	get_on_ctx, get_value_of_variable,
-	information::{merge_info, InformationChain, Publicity},
+	information::{merge_info, InformationChain},
 	invocation::CheckThings,
 	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
 	GeneralContext, SetPropertyError,
@@ -55,12 +55,6 @@ pub struct Syntax<'a> {
 
 	/// TODO WIP! server, client, worker etc
 	pub location: ContextLocation,
-
-	/// Represents whether [`crate::events::FinalEvent`]s have occurred. Can be used to tell
-	/// whether the statements will fire. Shortcut for inferred return types
-	///
-	/// In the future narrowing
-	pub state: ApplicationResult,
 
 	/// Parameter inference requests
 	/// TODO RHS = Has Property
@@ -92,10 +86,6 @@ impl<'a> ContextType for Syntax<'a> {
 
 	fn as_syntax(&self) -> Option<&Syntax> {
 		Some(self)
-	}
-
-	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult> {
-		Some(&mut self.state)
 	}
 
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
@@ -960,14 +950,18 @@ impl<'a> Environment<'a> {
 						let current_value = get_value_of_variable(
 							self,
 							og_var.get_id(),
-							None::<&crate::types::generics::FunctionTypeArguments>,
+							None::<
+								&crate::types::generics::substitution::SubstitutionArguments<
+									'static,
+								>,
+							>,
 						);
 
 						if let Some(current_value) = current_value {
 							let ty = checking_data.types.get_type_by_id(current_value);
 
 							// TODO temp
-							if matches!(ty, Type::SpecialObject(SpecialObjects::Function(..))) {
+							if let Type::SpecialObject(SpecialObjects::Function(..)) = ty {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
 								crate::utilities::notify!(
@@ -979,9 +973,9 @@ impl<'a> Environment<'a> {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
-							crate::utilities::notify!("Free variable!");
+							crate::utilities::notify!("Free variable with value!");
 						} else {
-							crate::utilities::notify!("No current value");
+							crate::utilities::notify!("Free variable with no current value");
 						}
 					}
 
@@ -1070,7 +1064,7 @@ impl<'a> Environment<'a> {
 				let current_value = get_value_of_variable(
 					self,
 					of,
-					None::<&crate::types::generics::FunctionTypeArguments>,
+					None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
 				)
 				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
@@ -1079,7 +1073,7 @@ impl<'a> Environment<'a> {
 			let current_value = get_value_of_variable(
 				self,
 				og_var.get_id(),
-				None::<&crate::types::generics::FunctionTypeArguments>,
+				None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
 			);
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))
@@ -1093,6 +1087,7 @@ impl<'a> Environment<'a> {
 		}
 	}
 
+	/// TODO move to features/conditionals
 	pub fn new_conditional_context<T, A, R>(
 		&mut self,
 		(condition, pos): (TypeId, Span),
@@ -1121,17 +1116,23 @@ impl<'a> Environment<'a> {
 			};
 		}
 
-		narrow_based_on_expression(condition, &mut self.info, &checking_data.types);
-
-		let (truthy_result, truthy_info, truthy_state) = {
+		let (truthy_result, truthy_info) = {
 			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: condition,
 				is_switch: None,
 			});
+
+			// TODO also negative narrowing on the other branch
+			narrow_based_on_expression(
+				condition,
+				&mut truthy_environment.info,
+				&checking_data.types,
+			);
+
 			let result = then_evaluate(&mut truthy_environment, checking_data);
 
 			let Context {
-				context_type: Syntax { free_variables, closed_over_references, state, .. },
+				context_type: Syntax { free_variables, closed_over_references, .. },
 				info,
 				..
 			} = truthy_environment;
@@ -1139,10 +1140,10 @@ impl<'a> Environment<'a> {
 			self.context_type.free_variables.extend(free_variables);
 			self.context_type.closed_over_references.extend(closed_over_references);
 
-			(result, info, state)
+			(result, info)
 		};
 
-		let (falsy_result, falsy_info, falsy_state) = if let Some(else_evaluate) = else_evaluate {
+		let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
 			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
 				antecedent: checking_data.types.new_logical_negation_type(condition),
 				is_switch: None,
@@ -1151,7 +1152,7 @@ impl<'a> Environment<'a> {
 			let result = else_evaluate(&mut falsy_environment, checking_data);
 
 			let Context {
-				context_type: Syntax { free_variables, closed_over_references, state, .. },
+				context_type: Syntax { free_variables, closed_over_references, .. },
 				info,
 				..
 			} = falsy_environment;
@@ -1159,13 +1160,10 @@ impl<'a> Environment<'a> {
 			self.context_type.free_variables.extend(free_variables);
 			self.context_type.closed_over_references.extend(closed_over_references);
 
-			(result, Some(info), state)
+			(result, Some(info))
 		} else {
-			(R::default(), None, ApplicationResult::Completed)
+			(R::default(), None)
 		};
-
-		self.context_type.state =
-			ApplicationResult::new_from_unknown_condition(condition, truthy_state, falsy_state);
 
 		let combined_result =
 			R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
@@ -1198,7 +1196,6 @@ impl<'a> Environment<'a> {
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
 		let final_event = FinalEvent::Throw { thrown, position };
-		self.context_type.state.append_termination(final_event);
 		self.info.events.push(final_event.into());
 	}
 
@@ -1226,6 +1223,7 @@ impl<'a> Environment<'a> {
 			),
 		};
 
+		// Check that it meets the return type (could do at the end, but fine here)
 		{
 			// Don't check inferred, only annotations
 			if let Some(ExpectedReturnType::FromReturnAnnotation(expected, position)) = expected {
@@ -1266,8 +1264,7 @@ impl<'a> Environment<'a> {
 			}
 		}
 
-		let final_event = FinalEvent::Return { returned, returned_position };
-		self.context_type.state.append_termination(final_event);
+		let final_event = FinalEvent::Return { returned, position: returned_position };
 		self.info.events.push(final_event.into());
 	}
 
