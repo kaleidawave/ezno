@@ -14,9 +14,8 @@ use crate::{
 };
 
 use super::{
-	generics::generic_type_arguments::StructureGenericArguments, get_constraint,
-	properties::PropertyKey, Constructor, LookUpGeneric, LookUpGenericMap, StructureGenerics,
-	TypeRelationOperator,
+	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeRelationOperator,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -56,7 +55,8 @@ impl Default for TypeStore {
 	fn default() -> Self {
 		// These have to be in the order of TypeId
 		let types = vec![
-			Type::Interface { name: "error".to_owned(), parameters: None, nominal: true },
+			// TODO will `TypeId::ANY_TYPE` cause any problems
+			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
 			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
 			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
 			Type::Class { name: "boolean".to_owned(), parameters: None },
@@ -352,7 +352,11 @@ impl TypeStore {
 			self.register_type(ty)
 		} else if let Ok(prop) = super::properties::get_property_unbound(
 			(indexee, None),
-			(crate::types::properties::Publicity::Public, &PropertyKey::from_type(indexer, self)),
+			(
+				crate::types::properties::Publicity::Public,
+				&PropertyKey::from_type(indexer, self),
+				None,
+			),
 			environment,
 			self,
 		) {
@@ -387,18 +391,27 @@ impl TypeStore {
 	}
 
 	pub fn new_array_type(&mut self, item_type: TypeId, position: SpanWithSource) -> TypeId {
-		let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		let ty = Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
-			arguments: StructureGenericArguments::ExplicitRestrictions(FromIterator::from_iter([
-				(TypeId::T_TYPE, (item_type, position)),
-			])),
-		}));
+			arguments: GenericArguments::ExplicitRestrictions(FromIterator::from_iter([(
+				TypeId::T_TYPE,
+				(item_type, position),
+			)])),
+		});
 		self.register_type(ty)
 	}
 
-	/// TODO WIP
+	/// See [`PolyNature::Open`]
 	pub fn new_open_type(&mut self, base: TypeId) -> TypeId {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
+	}
+
+	/// For any synthesis errors to keep the program going a type is needed.
+	/// Most of the time use [`TypeId:ERROR_TYPE`] which is generic any like type.
+	/// However sometimes we can use some type annotation instead to still leave some information.
+	/// This method creates one of these
+	pub(crate) fn new_error_type(&mut self, base: TypeId) -> TypeId {
+		self.register_type(Type::RootPolyType(PolyNature::Error(base)))
 	}
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
@@ -443,5 +456,9 @@ impl TypeStore {
 
 	pub(crate) fn create_this_object(&mut self) -> TypeId {
 		self.register_type(Type::Object(super::ObjectNature::RealDeal))
+	}
+
+	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
+		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
 	}
 }

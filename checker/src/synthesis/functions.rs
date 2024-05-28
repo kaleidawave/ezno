@@ -18,7 +18,7 @@ use crate::{
 			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
-		Constructor, StructureGenerics, Type, TypeId,
+		Constructor, PartiallyAppliedGenerics, Type, TypeId,
 	},
 	CheckingData, Environment, FunctionId,
 };
@@ -282,10 +282,10 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
@@ -437,10 +437,10 @@ fn synthesise_function_parameters<
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
@@ -651,7 +651,7 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 		.collect();
 
 	let rest_parameter = function.parameters.rest_parameter.as_ref().map(|rest_parameter| {
-		use crate::types::{Constructor, StructureGenerics, SynthesisedRestParameter};
+		use crate::types::{Constructor, PartiallyAppliedGenerics, SynthesisedRestParameter};
 		let parameter_constraint =
 			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
 				synthesise_type_annotation(annotation, environment, checking_data)
@@ -659,10 +659,10 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item

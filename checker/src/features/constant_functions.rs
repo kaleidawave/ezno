@@ -6,7 +6,7 @@ use crate::{
 	types::{
 		functions::SynthesisedArgument,
 		printing::{debug_effects, print_type},
-		Constructor, FunctionEffect, StructureGenerics, Type, TypeRestrictions, TypeStore,
+		Constructor, FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
 	Constant, Environment, TypeId,
 };
@@ -189,15 +189,14 @@ pub(crate) fn call_constant_function(
 				.map_err(|()| ConstantFunctionError::BadCall)?;
 
 			// Unwrap structure generics
-			let ty = if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on,
-				..
-			})) = types.get_type_by_id(ty)
-			{
-				*on
-			} else {
-				ty
-			};
+			let ty =
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, .. }) =
+					types.get_type_by_id(ty)
+				{
+					*on
+				} else {
+					ty
+				};
 
 			let get_type_by_id = types.get_type_by_id(ty);
 			if let Type::SpecialObject(

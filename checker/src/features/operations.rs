@@ -5,9 +5,10 @@ use source_map::{Span, SpanWithSource};
 
 use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	features::conditional::new_conditional_context,
 	types::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
-		StructureGenerics, TypeStore,
+		PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
@@ -402,7 +403,8 @@ pub fn evaluate_logical_operation_with_expression<
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
 	match operator {
-		LogicalOperator::And => Ok(environment.new_conditional_context(
+		LogicalOperator::And => Ok(new_conditional_context(
+			environment,
 			lhs,
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
@@ -410,7 +412,8 @@ pub fn evaluate_logical_operation_with_expression<
 			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 			checking_data,
 		)),
-		LogicalOperator::Or => Ok(environment.new_conditional_context(
+		LogicalOperator::Or => Ok(new_conditional_context(
+			environment,
 			lhs,
 			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
@@ -426,7 +429,8 @@ pub fn evaluate_logical_operation_with_expression<
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			)?;
-			Ok(environment.new_conditional_context(
+			Ok(new_conditional_context(
+				environment,
 				(is_lhs_null, lhs.1),
 				|env: &mut Environment, data: &mut CheckingData<T, A>| {
 					A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
@@ -513,14 +517,8 @@ fn attempt_constant_equality(
 		}
 		// Temp fix for closures
 		else if let (
-			Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
-				on: on_lhs,
-				..
-			})),
-			Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
-				on: on_rhs,
-				..
-			})),
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: on_lhs, .. }),
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: on_rhs, .. }),
 		) = (lhs, rhs)
 		{
 			// TODO does this work?

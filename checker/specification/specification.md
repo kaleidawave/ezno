@@ -2292,6 +2292,8 @@ function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
 }
 ```
 
+> This is not TS behavior:
+
 - Cannot return T["other"] because the function is expected to return T["prop"]
 
 #### Index into dependent array

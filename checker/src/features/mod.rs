@@ -8,6 +8,7 @@
 //! - Internal structures
 
 pub mod assignments;
+pub mod conditional;
 pub mod constant_functions;
 pub mod exceptions;
 pub mod functions;
@@ -23,7 +24,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::information::InformationChain,
-	types::{get_constraint, StructureGenerics, TypeStore},
+	types::{get_constraint, PartiallyAppliedGenerics, TypeStore},
 	CheckingData, Environment, Type, TypeId,
 };
 
@@ -125,11 +126,11 @@ pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<Typ
 			crate::Type::Constructor(constr) => match constr {
 				Constructor::CanonicalRelationOperator { .. }
 				| Constructor::UnaryOperator { .. }
-				| Constructor::StructureGenerics(_)
 				| Constructor::BinaryOperator { .. } => false,
 				Constructor::TypeOperator(_) => todo!(),
 				Constructor::TypeRelationOperator(_) => todo!(),
 				Constructor::Awaited { .. }
+				| Constructor::KeyOf(..)
 				| Constructor::ConditionalResult { .. }
 				| Constructor::Image { .. }
 				| Constructor::Property { .. } => true,
@@ -184,10 +185,10 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 }
 
 fn get_promise_value(constraint: TypeId, types: &TypeStore) -> Option<TypeId> {
-	if let Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
+	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 		on: TypeId::PROMISE_TYPE,
 		arguments,
-	})) = types.get_type_by_id(constraint)
+	}) = types.get_type_by_id(constraint)
 	{
 		let result = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 		Some(result)

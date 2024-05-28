@@ -19,13 +19,14 @@ use crate::{
 	},
 	events::RootReference,
 	features::{
+		assignments::Reference,
 		functions::ClosureChain,
 		objects::{Proxy, SpecialObjects},
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments, FunctionType, PolyNature,
-		Type, TypeId, TypeStore,
+		generics::generic_type_arguments::GenericArguments, FunctionType, PolyNature, Type, TypeId,
+		TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
 };
@@ -352,6 +353,31 @@ impl<T: ContextType> Context<T> {
 				| Scope::Module { .. } => None,
 			},
 			GeneralContext::Root(_root) => None,
+		}
+	}
+
+	/// TODO part of the `typeof` work
+	pub fn get_reference_constraint(&self, reference: Reference) -> Option<TypeId> {
+		match reference {
+			Reference::Variable(name, _) => {
+				self.get_variable_unbound(&name).map(|v| {
+					match v.2 {
+						VariableOrImport::Variable { mutability, .. } => match mutability {
+							// TODO get value + object constraint
+							VariableMutability::Mutable { reassignment_constraint: None }
+							| VariableMutability::Constant => TypeId::ERROR_TYPE,
+							VariableMutability::Mutable {
+								reassignment_constraint: Some(value),
+							} => *value,
+						},
+						// TODO
+						VariableOrImport::MutableImport { .. } => TypeId::ERROR_TYPE,
+						// TODO
+						VariableOrImport::ConstantImport { .. } => TypeId::ERROR_TYPE,
+					}
+				})
+			}
+			Reference::Property { on, with, publicity, span } => todo!("keyof on?"),
 		}
 	}
 
@@ -1092,7 +1118,7 @@ pub enum Logical<T> {
 	},
 	Implies {
 		on: Box<Self>,
-		antecedent: StructureGenericArguments,
+		antecedent: GenericArguments,
 	},
 }
 

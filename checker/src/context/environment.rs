@@ -43,7 +43,7 @@ pub type ContextLocation = Option<String>;
 #[derive(Debug)]
 pub struct Syntax<'a> {
 	pub scope: Scope,
-	pub(super) parent: GeneralContext<'a>,
+	pub(crate) parent: GeneralContext<'a>,
 
 	/// Variables that this context pulls in from above (across a dynamic context). aka not from parameters of bound this
 	/// Not to be confused with `closed_over_references`
@@ -1085,113 +1085,6 @@ impl<'a> Environment<'a> {
 				Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
 			}
 		}
-	}
-
-	/// TODO move to features/conditionals
-	pub fn new_conditional_context<T, A, R>(
-		&mut self,
-		(condition, pos): (TypeId, Span),
-		then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
-		else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R>,
-		checking_data: &mut CheckingData<T, A>,
-	) -> R
-	where
-		A: crate::ASTImplementation,
-		R: TypeCombinable,
-		T: crate::ReadFromFS,
-	{
-		if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
-			// TODO could be better
-			checking_data.diagnostics_container.add_warning(TypeCheckWarning::DeadBranch {
-				expression_span: pos.with_source(self.get_source()),
-				expression_value: result,
-			});
-
-			return if result {
-				then_evaluate(self, checking_data)
-			} else if let Some(else_evaluate) = else_evaluate {
-				else_evaluate(self, checking_data)
-			} else {
-				R::default()
-			};
-		}
-
-		let (truthy_result, truthy_info) = {
-			let mut truthy_environment = self.new_lexical_environment(Scope::Conditional {
-				antecedent: condition,
-				is_switch: None,
-			});
-
-			// TODO also negative narrowing on the other branch
-			narrow_based_on_expression(
-				condition,
-				&mut truthy_environment.info,
-				&checking_data.types,
-			);
-
-			let result = then_evaluate(&mut truthy_environment, checking_data);
-
-			let Context {
-				context_type: Syntax { free_variables, closed_over_references, .. },
-				info,
-				..
-			} = truthy_environment;
-
-			self.context_type.free_variables.extend(free_variables);
-			self.context_type.closed_over_references.extend(closed_over_references);
-
-			(result, info)
-		};
-
-		let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
-			let mut falsy_environment = self.new_lexical_environment(Scope::Conditional {
-				antecedent: checking_data.types.new_logical_negation_type(condition),
-				is_switch: None,
-			});
-
-			let result = else_evaluate(&mut falsy_environment, checking_data);
-
-			let Context {
-				context_type: Syntax { free_variables, closed_over_references, .. },
-				info,
-				..
-			} = falsy_environment;
-
-			self.context_type.free_variables.extend(free_variables);
-			self.context_type.closed_over_references.extend(closed_over_references);
-
-			(result, Some(info))
-		} else {
-			(R::default(), None)
-		};
-
-		let combined_result =
-			R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
-
-		match self.context_type.parent {
-			GeneralContext::Syntax(syn) => {
-				merge_info(
-					syn,
-					&mut self.info,
-					condition,
-					truthy_info,
-					falsy_info,
-					&mut checking_data.types,
-				);
-			}
-			GeneralContext::Root(root) => {
-				merge_info(
-					root,
-					&mut self.info,
-					condition,
-					truthy_info,
-					falsy_info,
-					&mut checking_data.types,
-				);
-			}
-		}
-
-		combined_result
 	}
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {

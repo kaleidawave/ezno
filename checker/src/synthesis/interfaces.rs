@@ -248,31 +248,47 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameter,
 					rule,
 					matching_type,
-					as_type: _,
+					as_type,
 					optionality: _,
 					is_readonly: _,
 					output_type,
 					position: _,
 				} => {
+					let matching_type =
+						synthesise_type_annotation(matching_type, environment, checking_data);
+
+					// TODO get constraint?
 					let to = match rule {
-						parser::types::interface::TypeRule::In => TypeId::ANY_TYPE,
-						parser::types::interface::TypeRule::InKeyOf => todo!(),
+						parser::types::interface::TypeRule::In => matching_type,
+						parser::types::interface::TypeRule::InKeyOf => {
+							todo!("remove from parser lol")
+						}
 					};
 
-					let key = synthesise_type_annotation(matching_type, environment, checking_data);
-
-					// TODO need as
-					let value = {
-						// TODO special cases here
+					let (key, value) = {
+						// TODO special scope here
 						let mut environment = environment.new_lexical_environment(Scope::Block {});
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
-							crate::types::PolyNature::FunctionGeneric {
+							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
 								eager_fixed: to,
 							},
 						));
 						environment.named_types.insert(parameter.clone(), parameter_type);
-						synthesise_type_annotation(output_type, &mut environment, checking_data)
+
+						let key = if let Some(as_type) = as_type {
+							synthesise_type_annotation(as_type, &mut environment, checking_data)
+						} else {
+							parameter_type
+						};
+
+						let value = synthesise_type_annotation(
+							output_type,
+							&mut environment,
+							checking_data,
+						);
+
+						(key, value)
 					};
 
 					interface_register_behavior.register(

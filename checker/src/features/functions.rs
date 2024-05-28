@@ -22,9 +22,9 @@ use crate::{
 		generics::GenericTypeParameters,
 		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
-		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
-		StructureGenerics, SubstitutionArguments, SynthesisedParameter, SynthesisedRestParameter,
-		TypeStore,
+		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
+		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
+		SynthesisedRestParameter, TypeStore,
 	},
 	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, ReadFromFS, Scope,
 	Type, TypeId, VariableId,
@@ -1059,22 +1059,20 @@ fn get_expected_parameters_from_type(
 	if let Type::FunctionReference(func_id) = ty {
 		let f = types.get_function_from_id(*func_id);
 		(Some(f.parameters.clone()), Some(f.return_type))
-	} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-		arguments,
-		on,
-	})) = ty
-	{
+	} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { arguments, on }) = ty {
 		let structure_generic_arguments = arguments.clone();
 
 		// TODO abstract done too many times
 		let type_arguments = match structure_generic_arguments {
-			types::generics::generic_type_arguments::StructureGenericArguments::ExplicitRestrictions(explicit_restrictions) => SubstitutionArguments {
+			types::generics::generic_type_arguments::GenericArguments::ExplicitRestrictions(
+				explicit_restrictions,
+			) => SubstitutionArguments {
 				parent: None,
 				arguments: explicit_restrictions.into_iter().map(|(l, (r, _))| (l, r)).collect(),
 				closures: Default::default(),
 			},
-			types::generics::generic_type_arguments::StructureGenericArguments::Closure(_) => todo!(),
-			types::generics::generic_type_arguments::StructureGenericArguments::LookUp { .. } => todo!(),
+			types::generics::generic_type_arguments::GenericArguments::Closure(_) => todo!(),
+			types::generics::generic_type_arguments::GenericArguments::LookUp { .. } => todo!(),
 		};
 
 		let (expected_parameters, expected_return_type) =

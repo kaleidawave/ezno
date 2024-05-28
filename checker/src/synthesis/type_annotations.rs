@@ -20,7 +20,10 @@
 
 use std::convert::TryInto;
 
-use crate::{types::generics::ExplicitTypeArguments, Map};
+use crate::{
+	synthesis::assignments::synthesise_access_to_reference, types::generics::ExplicitTypeArguments,
+	Map,
+};
 use parser::{
 	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement},
 	ASTNode, TypeAnnotation,
@@ -33,11 +36,9 @@ use crate::{
 	synthesis::functions::synthesise_function_annotation,
 	types::properties::Publicity,
 	types::{
-		generics::{
-			generic_type_arguments::StructureGenericArguments, substitution::SubstitutionArguments,
-		},
+		generics::{generic_type_arguments::GenericArguments, substitution::SubstitutionArguments},
 		properties::{PropertyKey, PropertyValue},
-		Constant, Constructor, StructureGenerics, Type, TypeId,
+		Constant, Constructor, PartiallyAppliedGenerics, Type, TypeId,
 	},
 	CheckingData, Environment, Scope,
 };
@@ -269,12 +270,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						&mut checking_data.types,
 					)
 				} else {
-					let arguments = StructureGenericArguments::ExplicitRestrictions(type_arguments);
+					let arguments = GenericArguments::ExplicitRestrictions(type_arguments);
 
-					let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+					let ty = Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 						on: inner_type_id,
 						arguments,
-					}));
+					});
 
 					checking_data.types.register_type(ty)
 				}
@@ -322,23 +323,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				TypeId::T_TYPE,
 				(underlying_type, pos.with_source(environment.get_source())),
 			)]);
-			let ty = Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+			let ty = Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 				on: TypeId::READONLY_RESTRICTION,
-				arguments: StructureGenericArguments::ExplicitRestrictions(restrictions),
-			}));
+				arguments: GenericArguments::ExplicitRestrictions(restrictions),
+			});
 
 			checking_data.types.register_type(ty)
 
-			// let ty_to_be_readonly = checking_data.types.register_type(Type::AliasTo {
-			// 	to: underlying_type,
-			// 	name: None,
-			// 	parameters: None,
-			// });
-
-			// // TODO I think Readonly == freeze...?
 			// environment.frozen.insert(ty_to_be_readonly, TypeId::TRUE);
-
-			// ty_to_be_readonly)
 		}
 		TypeAnnotation::NamespacedName(_, _, _) => unimplemented!(),
 		TypeAnnotation::ArrayLiteral(item_annotation, _) => {
@@ -442,12 +434,25 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::KeyOf(of, position) => {
 			let of = synthesise_type_annotation(of, environment, checking_data);
-			checking_data.raise_unimplemented_error(
-				"key of annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
+			checking_data.types.new_key_of(of)
 		}
+		TypeAnnotation::TypeOf(item, position) => match &**item {
+			parser::ast::LHSOfAssignment::VariableOrPropertyAccess(v) => {
+				let reference = synthesise_access_to_reference(v, environment, checking_data);
+				match environment.get_reference_constraint(reference) {
+					Some(value) => value,
+					None => {
+						checking_data.raise_unimplemented_error(
+							"throw error for annotation",
+							position.with_source(environment.get_source()),
+						);
+						TypeId::ERROR_TYPE
+					}
+				}
+			}
+			parser::ast::LHSOfAssignment::ArrayDestructuring(_, _) => todo!("remove from parser"),
+			parser::ast::LHSOfAssignment::ObjectDestructuring(_, _) => todo!("remove from parser"),
+		},
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
 			let (condition, infer_types) = {
 				let mut environment =
@@ -516,13 +521,6 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				.collect();
 
 			synthesize_template_literal_type(parts, &mut checking_data.types)
-		}
-		TypeAnnotation::TypeOf(_item, pos) => {
-			checking_data.raise_unimplemented_error(
-				"typeof annotation",
-				pos.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
 		}
 		TypeAnnotation::Infer(name, _pos) => {
 			if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =

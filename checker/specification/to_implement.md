@@ -311,20 +311,6 @@ function x*() {
 
 - TODO
 
-### Closures
-
-#### TDZ
-
-```ts
-function func() {
-    return function () { return closedOverVariable }
-    let closedOverVariable = 2;
-}
-```
-
-- Unreachable statement
-- Function contains unreachable closed over variable 'closedOverVariable'
-
 ### `Proxy` and `Object`
 
 > TODO effects, different traps and `Object.defineProperty`
@@ -440,64 +426,23 @@ document.addEventListener("scroll", () => {
 
 - Expected 0, found number
 
-### Object constraints
+### Narrowing
 
-#### Mutation by a function with unknown effects
+#### Has property
 
-> This is where the object loses its constant-ness
-> Effectively raises it to the parameter type
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
-object.prop satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
-
-#### Mutation negated via `readonly`
-
-> This is where the object loses its constant-ness
+> TODO maybe need to constrain side effects here
 
 ```ts
-function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 6);
+function func(parameter: { property: string }) {
+    if (parameter.property === "hello") {
+        parameter.property satisfies 4;
+    }
 }
 ```
 
-- Expected 6, found 8
+- Expected 4, found "hello"
 
-#### Possible mutation breaks object constraint
-
-> This unfortunately can flag up valid code, but handling those is too difficult atm
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
-	const obj: { prop: number } = { prop: 8 };
-	callback(obj);
-}
-```
-
-- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
-
-#### Possible mutation via anytime function
-
-```ts
-const x = { a: 2 }
-setTimeout(() => { Math.sin(x.a) })
-x.a = "hi"
-```
-
-- Cannot assign. Restricted to number
+> TODO `typeof`, `instanceof`, conditional, across a function
 
 ### Functions and classes
 
@@ -552,20 +497,6 @@ class Rectangle implements Draw {
 
 - Class "MyNumber", does not implement draw
 - Expected string, found CanvasRenderingContext2D
-
-#### Nominal-ness
-
-```ts
-class X { a: number }
-class Y { a: number }
-
-function doThingWithX(x: X) {}
-
-doThingWithX(new X())
-doThingWithX(new Y())
-```
-
-- Cannot Y with X
 
 ### Recursion
 

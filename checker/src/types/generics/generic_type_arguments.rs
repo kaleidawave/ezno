@@ -14,7 +14,7 @@ use std::fmt::Debug;
 
 /// These are curried between structures
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum StructureGenericArguments {
+pub enum GenericArguments {
 	/// This is from a specialised result
 	ExplicitRestrictions(TypeRestrictions),
 	Closure(Vec<ClosureId>),
@@ -24,10 +24,10 @@ pub enum StructureGenericArguments {
 	},
 }
 
-impl StructureGenericArguments {
+impl GenericArguments {
 	#[must_use]
 	pub fn get_structure_restriction(&self, under: TypeId) -> Option<TypeId> {
-		if let StructureGenericArguments::ExplicitRestrictions(type_restrictions) = self {
+		if let GenericArguments::ExplicitRestrictions(type_restrictions) = self {
 			// crate::utilities::notify!("under={:?}", under);
 			type_restrictions.get(&under).map(|(l, _)| *l)
 		} else {
@@ -35,7 +35,7 @@ impl StructureGenericArguments {
 		}
 	}
 
-	/// Like [`StructureGenericArguments::get_argument`], but creates a list instead
+	/// Like [`GenericArguments::get_argument`], but creates a list instead
 	pub fn get_argument_as_list<C: InformationChain>(
 		&self,
 		under: TypeId,
@@ -44,11 +44,11 @@ impl StructureGenericArguments {
 	) -> Option<Vec<TypeId>> {
 		match self {
 			// | Self::ClosuresAndGenerics { restrictions, .. } => {
-			StructureGenericArguments::ExplicitRestrictions(restrictions) => {
+			GenericArguments::ExplicitRestrictions(restrictions) => {
 				restrictions.get(&under).map(|(ty, _)| vec![*ty])
 			}
-			StructureGenericArguments::Closure(_) => None,
-			StructureGenericArguments::LookUp { on } => {
+			GenericArguments::Closure(_) => None,
+			GenericArguments::LookUp { on } => {
 				let prototype =
 					*info.get_chain_of_info().find_map(|env| env.prototypes.get(on)).unwrap();
 
@@ -67,17 +67,17 @@ impl StructureGenericArguments {
 	#[must_use]
 	pub fn into_substitutable(&self) -> SubstitutionArguments<'static> {
 		match self {
-			StructureGenericArguments::ExplicitRestrictions(res) => SubstitutionArguments {
+			GenericArguments::ExplicitRestrictions(res) => SubstitutionArguments {
 				parent: None,
 				arguments: res.iter().map(|(k, (v, _))| (*k, *v)).collect(),
 				closures: Default::default(),
 			},
-			StructureGenericArguments::Closure(closures) => SubstitutionArguments {
+			GenericArguments::Closure(closures) => SubstitutionArguments {
 				parent: None,
 				arguments: Default::default(),
 				closures: closures.clone(),
 			},
-			StructureGenericArguments::LookUp { on } => SubstitutionArguments {
+			GenericArguments::LookUp { on } => SubstitutionArguments {
 				parent: None,
 				arguments: Default::default(),
 				closures: Default::default(),

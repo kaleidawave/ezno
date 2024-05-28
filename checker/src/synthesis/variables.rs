@@ -192,15 +192,22 @@ pub(super) fn synthesise_variable_declaration_item<
 			super::expressions::synthesise_expression(value, environment, checking_data, expecting);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
-			crate::features::variables::check_variable_initialization(
+			let is_valid = crate::features::variables::check_variable_initialization(
 				(var_ty, ta_pos),
 				(value_ty, value.get_position().with_source(environment.get_source())),
 				environment,
 				checking_data,
 			);
-		}
 
-		value_ty
+			if is_valid {
+				value_ty
+			} else {
+				// If not error, then create a new type like the annotation
+				checking_data.types.new_error_type(var_ty)
+			}
+		} else {
+			value_ty
+		}
 	} else {
 		TypeId::UNDEFINED_TYPE
 	};

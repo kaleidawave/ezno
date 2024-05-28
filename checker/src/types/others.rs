@@ -134,6 +134,7 @@ pub(crate) fn create_object_for_type(
 		}
 		Type::SpecialObject(_) => todo!(),
 		Type::Class { name, parameters } => todo!(),
+		Type::PartiallyAppliedGenerics(..) => todo!(),
 	}
 	obj.build_object()
 }

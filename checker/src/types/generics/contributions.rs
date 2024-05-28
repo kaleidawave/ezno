@@ -6,7 +6,7 @@ use crate::{
 	Environment, TypeId,
 };
 
-use super::generic_type_arguments::StructureGenericArguments;
+use super::generic_type_arguments::GenericArguments;
 
 // pub type X<T, U> = crate::Map<T, U>;
 pub type DoubleMap<T, U> = crate::Map<T, U>;
@@ -23,7 +23,7 @@ pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
 #[derive(Default)]
 pub struct Contributions<'a> {
 	/// Contains **parent** constraints or some ways to lookup **parent** constraints (*more like arguments*)
-	pub parent: Option<&'a StructureGenericArguments>,
+	pub parent: Option<&'a GenericArguments>,
 
 	/// Constraints constraints for the **current function call**
 	pub call_site_type_arguments: Option<&'a TypeRestrictions>,

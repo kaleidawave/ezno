@@ -10,7 +10,7 @@ use crate::{
 		objects::SpecialObjects,
 	},
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments,
+		generics::generic_type_arguments::GenericArguments,
 		get_constraint,
 		properties::{PropertyKey, Publicity},
 		GenericChain, TypeStore,

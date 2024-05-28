@@ -26,13 +26,14 @@ use crate::{
 	types::{
 		functions::SynthesisedArgument, generics::substitution::SubstitutionArguments,
 		get_structure_arguments_based_on_object_constraint, substitute, FunctionEffect,
-		FunctionType, GenericChainLink, LookUpGeneric, ObjectNature, StructureGenerics, Type,
+		FunctionType, GenericChainLink, LookUpGeneric, ObjectNature, PartiallyAppliedGenerics,
+		Type,
 	},
 	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
 
 use super::{
-	generics::{contributions::Contributions, generic_type_arguments::StructureGenericArguments},
+	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 	get_constraint, is_type_constant,
 	properties::PropertyKey,
 	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
@@ -105,7 +106,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 						}) {
 							crate::utilities::notify!("Registering lookup for calling");
 
-							Some(StructureGenericArguments::LookUp { on: this_passed })
+							Some(GenericArguments::LookUp { on: this_passed })
 						} else {
 							None
 						}
@@ -278,7 +279,7 @@ fn get_logical_callable_from_type(
 			crate::features::objects::SpecialObjects::Proxy { .. } => todo!(),
 			_ => Err(MissingOrToCalculate::Missing),
 		},
-		Type::Constructor(Constructor::StructureGenerics(generic)) => {
+		Type::PartiallyAppliedGenerics(generic) => {
 			get_logical_callable_from_type(generic.on, on, from, types).map(|res| {
 				crate::utilities::notify!("Calling found {:?}", generic.arguments);
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
@@ -292,9 +293,7 @@ fn get_logical_callable_from_type(
 				get_logical_callable_from_type(*result, Some(this_value), Some(ty), types)?;
 
 			let and_then = get_constraint(*on, types).and_then(|c| {
-				if let Type::Constructor(Constructor::StructureGenerics(generic)) =
-					types.get_type_by_id(c)
-				{
+				if let Type::PartiallyAppliedGenerics(generic) = types.get_type_by_id(c) {
 					Some(generic.arguments.clone())
 				} else {
 					None
@@ -357,7 +356,7 @@ fn call_logical<E: CallCheckingBehavior>(
 	called_with_new: CalledWithNew,
 	call_site: SpanWithSource,
 	explicit_type_arguments: Option<CallSiteTypeArguments>,
-	structure_generics: Option<StructureGenericArguments>,
+	structure_generics: Option<GenericArguments>,
 	arguments: Vec<SynthesisedArgument>,
 	top_environment: &mut Environment,
 	types: &mut TypeStore,
@@ -487,6 +486,7 @@ fn find_possible_mutations(
 			| Type::And(_, _)
 			| Type::Object(ObjectNature::AnonymousTypeAnnotation)
 			| Type::FunctionReference(_)
+			| Type::PartiallyAppliedGenerics(_)
 			| Type::Or(_, _) => {
 				crate::utilities::notify!("Unreachable");
 			}
@@ -599,7 +599,7 @@ impl FunctionType {
 		call_site: SpanWithSource,
 		arguments: &[SynthesisedArgument],
 		call_site_type_arguments: Option<CallSiteTypeArguments>,
-		parent_arguments: Option<StructureGenericArguments>,
+		parent_arguments: Option<GenericArguments>,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
@@ -735,7 +735,7 @@ impl FunctionType {
 		let mut type_arguments = SubstitutionArguments {
 			parent: None,
 			arguments: crate::Map::default(),
-			closures: if let Some(StructureGenericArguments::Closure(ref cs)) = parent_arguments {
+			closures: if let Some(GenericArguments::Closure(ref cs)) = parent_arguments {
 				cs.clone()
 			} else {
 				Default::default()
@@ -1100,7 +1100,7 @@ impl FunctionType {
 		arguments: &[SynthesisedArgument],
 		type_arguments: &mut SubstitutionArguments<'static>,
 		call_site_type_arguments: Option<CallSiteTypeArguments>,
-		parent: Option<&StructureGenericArguments>,
+		parent: Option<&GenericArguments>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
@@ -1297,7 +1297,7 @@ impl FunctionType {
 fn check_parameter_type(
 	parameter_ty: TypeId,
 	call_site_type_arguments: Option<&CallSiteTypeArguments>,
-	parent: Option<&StructureGenericArguments>,
+	parent: Option<&GenericArguments>,
 	value: TypeId,
 	type_arguments: &mut SubstitutionArguments,
 	environment: &mut Environment,
@@ -1379,7 +1379,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 	arguments: &[UnsynthesisedArgument<A>],
 	(call_site_type_arguments, parent_arguments): (
 		Option<Vec<(TypeId, SpanWithSource)>>,
-		Option<&StructureGenericArguments>,
+		Option<&GenericArguments>,
 	),
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T, A>,
@@ -1448,7 +1448,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			{
 				let mut arguments = type_arguments_restrictions.clone().unwrap_or_default();
 				match parent_arguments {
-					Some(StructureGenericArguments::LookUp { on }) => {
+					Some(GenericArguments::LookUp { on }) => {
 						// TODO copied from somewhere
 						let prototype = environment
 							.get_chain_of_info()
@@ -1470,8 +1470,8 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							arguments.insert(*under, (ty, BaseSpan::NULL));
 						}
 					}
-					Some(StructureGenericArguments::Closure(..)) => {}
-					Some(StructureGenericArguments::ExplicitRestrictions(ers)) => {
+					Some(GenericArguments::Closure(..)) => {}
+					Some(GenericArguments::ExplicitRestrictions(ers)) => {
 						arguments.extend(ers.iter().map(|(k, v)| (*k, *v)))
 					}
 					None => {}
@@ -1507,13 +1507,13 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 
 							if let Some(arguments) = type_arguments.clone() {
 								// Unfortunately this seems the best way to pass down to expected type
-								checking_data.types.register_type(Type::Constructor(
-									Constructor::StructureGenerics(StructureGenerics {
+								checking_data.types.register_type(Type::PartiallyAppliedGenerics(
+									PartiallyAppliedGenerics {
 										on: parameter_type,
-										arguments: StructureGenericArguments::ExplicitRestrictions(
+										arguments: GenericArguments::ExplicitRestrictions(
 											arguments,
 										),
-									}),
+									},
 								))
 							} else {
 								parameter_type

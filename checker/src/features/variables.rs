@@ -84,12 +84,13 @@ pub enum VariableMutability {
 #[derive(Clone, Debug)]
 pub struct VariableWithValue(pub VariableOrImport, pub TypeId);
 
+/// Returns whether valid
 pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	(variable_declared_type, variable_declared_pos): (TypeId, SpanWithSource),
 	(expression_type, expression_declared_pos): (TypeId, SpanWithSource),
 	environment: &mut crate::context::Environment,
 	checking_data: &mut CheckingData<T, A>,
-) {
+) -> bool {
 	let type_is_subtype = type_is_subtype_object(
 		variable_declared_type,
 		expression_type,
@@ -118,6 +119,9 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 		);
 
 		checking_data.diagnostics_container.add_error(error);
+		false
+	} else {
+		true
 	}
 }
 
@@ -133,7 +137,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 	let space = on.space.map(|space| {
 		let property_constraint = get_property_unbound(
 			(space, None),
-			(Publicity::Public, under),
+			(Publicity::Public, under, None),
 			environment,
 			&checking_data.types,
 		);

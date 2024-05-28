@@ -11,11 +11,14 @@ use crate::{
 		functions::{FunctionBehavior, ThisValue},
 		objects::{Proxy, SpecialObjects},
 	},
-	subtyping::{type_is_subtype_of_property, State, SubTypeResult},
+	subtyping::{
+		type_is_subtype, type_is_subtype_of_property, State, SubTypeResult, SubTypingOptions,
+	},
 	types::{
-		calling::FunctionCallingError, generics::generic_type_arguments::StructureGenericArguments,
+		calling::FunctionCallingError,
+		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 		get_constraint, substitute, FunctionType, GenericChain, GenericChainLink, ObjectNature,
-		StructureGenerics, SynthesisedArgument,
+		PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
 	},
 	Constant, Environment, LocalInformation, TypeId,
 };
@@ -140,6 +143,23 @@ impl<'a> PropertyKey<'a> {
 				types.new_constant_type(Constant::String(s.clone().into_owned()))
 			}
 			PropertyKey::Type(t) => *t,
+		}
+	}
+
+	pub(crate) fn mapped_generic_id(&self, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+		match self {
+			PropertyKey::String(_) => None,
+			PropertyKey::Type(ty) => {
+				let get_type_by_id = types.get_type_by_id(*ty);
+				if let Type::RootPolyType(super::PolyNature::MappedGeneric {
+					eager_fixed, ..
+				}) = get_type_by_id
+				{
+					Some((*ty, *eager_fixed))
+				} else {
+					None
+				}
+			}
 		}
 	}
 }
@@ -323,11 +343,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 									generics.and_then(|chain| chain.get_value()).cloned()
 								{
 									// assert!(chain.parent.is_none());
-									types.register_type(Type::Constructor(
-										Constructor::StructureGenerics(StructureGenerics {
-											on: value,
-											arguments,
-										}),
+									types.register_type(Type::PartiallyAppliedGenerics(
+										PartiallyAppliedGenerics { on: value, arguments },
 									))
 								} else {
 									value
@@ -355,9 +372,10 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								Some((PropertyKind::Direct, value))
 							}
 							// For closures
-							Type::Constructor(Constructor::StructureGenerics(
-								StructureGenerics { on: sg_on, arguments },
-							)) => {
+							Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+								on: sg_on,
+								arguments,
+							}) => {
 								// TODO not great... need less overhead
 								if let Type::SpecialObject(SpecialObjects::Function(f, _p)) =
 									types.get_type_by_id(*sg_on)
@@ -366,11 +384,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 									let f = types.register_type(Type::SpecialObject(
 										SpecialObjects::Function(*f, ThisValue::Passed(on)),
 									));
-									let ty = types.register_type(Type::Constructor(
-										Constructor::StructureGenerics(StructureGenerics {
-											on: f,
-											arguments,
-										}),
+									let ty = types.register_type(Type::PartiallyAppliedGenerics(
+										PartiallyAppliedGenerics { on: f, arguments },
 									));
 									Some((PropertyKind::Direct, ty))
 								} else {
@@ -467,7 +482,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		}
 	}
 
-	let result = get_property_unbound((on, None), (publicity, under), environment, types);
+	let result = get_property_unbound((on, None), (publicity, under, None), environment, types);
 
 	match result {
 		Ok(logical) => {
@@ -510,7 +525,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		on: TypeId,
 		under: PropertyKey,
 		// TODO generic chain
-		arguments: Option<&StructureGenericArguments>,
+		arguments: Option<&GenericArguments>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		bind_this: bool,
@@ -524,7 +539,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::RootPolyType(_)
 						| Type::Constructor(_)) => {
 							let result = if let Some(arguments) = arguments {
-								let arguments = arguments.into_substitutable();
+								let mut arguments = arguments.into_substitutable();
 								substitute(value, &arguments, environment, types)
 							} else {
 								crate::utilities::notify!("Here, getting property on {:?}", t);
@@ -551,6 +566,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							bind_this,
 						})),
 						Type::Constant(_)
+						| Type::PartiallyAppliedGenerics(_)
 						| Type::Object(ObjectNature::RealDeal)
 						| Type::SpecialObject(..) => value,
 					},
@@ -633,9 +649,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	}
 
 	let fact =
-		get_property_unbound((on, None), (publicity, &under), top_environment, types).ok()?;
+		get_property_unbound((on, None), (publicity, &under, None), top_environment, types).ok()?;
 
-	// crate::utilities::notify!("unbound is is {:?}", fact);
+	crate::utilities::notify!("unbound is is {:?}", fact);
 
 	let value = resolve_logical_with_poly(
 		fact,
@@ -681,7 +697,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// if E::CHECK_PARAMETERS {
 	if let Some(constraint) = environment.get_object_constraint(on) {
 		let property_constraint =
-			get_property_unbound((constraint, None), (publicity, under), environment, types);
+			get_property_unbound((constraint, None), (publicity, under, None), environment, types);
 
 		// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
@@ -701,6 +717,24 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				others: Default::default(),
 				object_constraints: Default::default(),
 			};
+
+			// TODO property value is readonly
+			// TODO state is writeable etc?
+			// TODO document difference with context.writeable
+			match &property_constraint {
+				Logical::Pure(PropertyValue::Value(p)) => {
+					if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: TypeId::READONLY_RESTRICTION,
+						..
+					}) = types.get_type_by_id(*p)
+					{
+						return Err(SetPropertyError::NotWriteable);
+					}
+				}
+				Logical::Pure(_) => {}
+				Logical::Or { based_on, left, right } => todo!(),
+				Logical::Implies { on, antecedent } => todo!(),
+			}
 
 			match new {
 				PropertyValue::Value(value) => {
@@ -750,7 +784,8 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// 	crate::types::printing::print_type(types, new.as_get_type(), environment, true),
 	// );
 
-	let current_property = get_property_unbound((on, None), (publicity, under), environment, types);
+	let current_property =
+		get_property_unbound((on, None), (publicity, under, None), environment, types);
 
 	// crate::utilities::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
@@ -941,19 +976,52 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 
 pub(crate) fn get_property_unbound(
 	(on, on_type_arguments): (TypeId, GenericChain),
-	(publicity, under): (Publicity, &PropertyKey),
+	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
 ) -> PossibleLogical<PropertyValue> {
+	/// Has to return `Logical` for mapped types
 	fn resolver(
-		(publicity, under, on, on_type_arguments): (Publicity, &PropertyKey, TypeId, GenericChain),
+		(on, on_type_arguments): (TypeId, GenericChain),
+		(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
 		info: &LocalInformation,
 		types: &TypeStore,
-	) -> Option<PropertyValue> {
+	) -> Option<Logical<PropertyValue>> {
 		// TODO if on == constant string and property == length. Need to be able to create types here
 
-		info.current_properties.get(&on).and_then(|properties| {
-			get_property_under(properties, (publicity, under), on_type_arguments, types)
+		info.current_properties.get(&on).and_then(|properties_on_on| {
+			{
+				let (on_properties, on_type_arguments) = (properties_on_on, on_type_arguments);
+				let (required_publicity, want_key, want_type_arguments) =
+					(publicity, under, under_type_arguments);
+				// 'rev' is important
+				on_properties.iter().rev().find_map(move |(publicity, key, value)| {
+					if *publicity != required_publicity {
+						return None;
+					}
+
+					let key_matches = key_matches(
+						(key, on_type_arguments),
+						(want_key, want_type_arguments),
+						types,
+					);
+					if key_matches {
+						let pure = Logical::Pure(value.clone());
+						Some(if let Some((parameter, _)) = key.mapped_generic_id(types) {
+							Logical::Implies {
+								on: Box::new(pure),
+								antecedent: GenericArguments::ExplicitRestrictions(todo!(
+									"want TypeArgument::PropertyKey 😀"
+								)),
+							}
+						} else {
+							pure
+						})
+					} else {
+						None
+					}
+				})
+			}
 		})
 	}
 
@@ -969,63 +1037,79 @@ pub(crate) fn get_property_unbound(
 		Type::SpecialObject(SpecialObjects::Function(function_id, _)) => info_chain
 			.get_chain_of_info()
 			.find_map(|info| {
-				resolver((publicity, under, on, on_type_arguments), info, types)
-					.or_else(|| {
-						if let (true, FunctionBehavior::Function { prototype, .. }) = (
-							under.is_equal_to("prototype"),
-							&types.get_function_from_id(*function_id).behavior,
-						) {
-							Some(PropertyValue::Value(*prototype))
-						} else {
-							None
-						}
-					})
-					.or_else(|| {
-						resolver(
-							(publicity, under, TypeId::FUNCTION_TYPE, on_type_arguments),
-							info,
-							types,
-						)
-					})
+				resolver(
+					(on, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					info,
+					types,
+				)
+				.or_else(|| {
+					if let (true, FunctionBehavior::Function { prototype, .. }) = (
+						under.is_equal_to("prototype"),
+						&types.get_function_from_id(*function_id).behavior,
+					) {
+						Some(Logical::Pure(PropertyValue::Value(*prototype)))
+					} else {
+						None
+					}
+				})
+				.or_else(|| {
+					resolver(
+						(TypeId::FUNCTION_TYPE, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info,
+						types,
+					)
+				})
 			})
-			.map(Logical::Pure)
 			.ok_or(crate::context::MissingOrToCalculate::Missing),
 		Type::FunctionReference(_) => info_chain
 			.get_chain_of_info()
 			.find_map(|info| {
-				resolver((publicity, under, TypeId::FUNCTION_TYPE, on_type_arguments), info, types)
+				resolver(
+					(TypeId::FUNCTION_TYPE, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					info,
+					types,
+				)
 			})
-			.map(Logical::Pure)
 			.ok_or(crate::context::MissingOrToCalculate::Missing),
 		Type::AliasTo { to, .. } => {
-			get_property_unbound((*to, on_type_arguments), (publicity, under), info_chain, types)
+			get_property_unbound(
+				(*to, on_type_arguments),
+				(publicity, under, under_type_arguments),
+				info_chain,
+				types,
+			)
 			// TODO why would an alias have a property
 			// let property_on_types = info_chain
 			// 	.get_chain_of_info()
 			// 	.find_map(|info| resolver(info, types, on, on_type_arguments,))
-			// 	.map(Logical::Pure);
 		}
-		Type::And(left, right) => {
-			get_property_unbound((*left, on_type_arguments), (publicity, under), info_chain, types)
-				.or_else(|_| {
-					get_property_unbound(
-						(*right, on_type_arguments),
-						(publicity, under),
-						info_chain,
-						types,
-					)
-				})
-		}
+		Type::And(left, right) => get_property_unbound(
+			(*left, on_type_arguments),
+			(publicity, under, under_type_arguments),
+			info_chain,
+			types,
+		)
+		.or_else(|_| {
+			get_property_unbound(
+				(*right, on_type_arguments),
+				(publicity, under, under_type_arguments),
+				info_chain,
+				types,
+			)
+		}),
 		Type::Or(left, right) => {
 			let left = get_property_unbound(
 				(*left, on_type_arguments),
-				(publicity, under),
+				(publicity, under, under_type_arguments),
 				info_chain,
 				types,
 			);
 			let right = get_property_unbound(
 				(*right, on_type_arguments),
-				(publicity, under),
+				(publicity, under, under_type_arguments),
 				info_chain,
 				types,
 			);
@@ -1044,28 +1128,39 @@ pub(crate) fn get_property_unbound(
 
 			info_chain
 				.get_chain_of_info()
-				.find_map(|info| resolver((publicity, under, on, on_type_arguments), info, types))
-				.map(Logical::Pure)
+				.find_map(|info| {
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info,
+						types,
+					)
+				})
 				.ok_or(crate::context::MissingOrToCalculate::Missing)
 				.or_else(|_| {
 					get_property_unbound(
 						(aliases, on_type_arguments),
-						(publicity, under),
+						(publicity, under, under_type_arguments),
 						info_chain,
 						types,
 					)
 				})
 		}
-		Type::Constructor(crate::types::Constructor::StructureGenerics(
-			crate::types::StructureGenerics { on: base, arguments },
-		)) => {
-			let on_sg_type = if let StructureGenericArguments::Closure(_) = arguments {
+		Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+			on: base,
+			arguments,
+		}) => {
+			let on_sg_type = if let GenericArguments::Closure(_) = arguments {
 				info_chain
 					.get_chain_of_info()
 					.find_map(|info| {
-						resolver((publicity, under, on, on_type_arguments), info, types)
+						resolver(
+							(on, on_type_arguments),
+							(publicity, under, under_type_arguments),
+							info,
+							types,
+						)
 					})
-					.map(Logical::Pure)
 					.ok_or(crate::context::MissingOrToCalculate::Missing)
 			} else {
 				Err(crate::context::MissingOrToCalculate::Missing)
@@ -1078,9 +1173,11 @@ pub(crate) fn get_property_unbound(
 					&arguments,
 				);
 
+				crate::utilities::notify!("{:?}", on_type_arguments);
+
 				get_property_unbound(
 					(*base, on_type_arguments),
-					(publicity, under),
+					(publicity, under, under_type_arguments),
 					info_chain,
 					types,
 				)
@@ -1098,13 +1195,13 @@ pub(crate) fn get_property_unbound(
 		}) => {
 			let left = get_property_unbound(
 				(*truthy_result, on_type_arguments),
-				(publicity, under),
+				(publicity, under, under_type_arguments),
 				info_chain,
 				types,
 			);
 			let right = get_property_unbound(
 				(*otherwise_result, on_type_arguments),
-				(publicity, under),
+				(publicity, under, under_type_arguments),
 				info_chain,
 				types,
 			);
@@ -1116,8 +1213,14 @@ pub(crate) fn get_property_unbound(
 		Type::Constructor(_constructor) => {
 			let on_constructor_type = info_chain
 				.get_chain_of_info()
-				.find_map(|info| resolver((publicity, under, on, on_type_arguments), info, types))
-				.map(Logical::Pure)
+				.find_map(|info| {
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info,
+						types,
+					)
+				})
 				.ok_or(crate::context::MissingOrToCalculate::Missing);
 
 			let aliases = get_constraint(on, types).expect("no constraint for constructor");
@@ -1125,7 +1228,7 @@ pub(crate) fn get_property_unbound(
 			on_constructor_type.or_else(|_| {
 				get_property_unbound(
 					(aliases, on_type_arguments),
-					(publicity, under),
+					(publicity, under, under_type_arguments),
 					info_chain,
 					types,
 				)
@@ -1146,7 +1249,7 @@ pub(crate) fn get_property_unbound(
 			} else if prototype
 				.is_some_and(|prototype| types.lookup_generic_map.contains_key(&prototype))
 			{
-				Some(StructureGenericArguments::LookUp { on })
+				Some(GenericArguments::LookUp { on })
 			} else {
 				None
 			};
@@ -1154,21 +1257,30 @@ pub(crate) fn get_property_unbound(
 			info_chain
 				.get_chain_of_info()
 				.find_map(|info| {
-					let on_self = resolver((publicity, under, on, on_type_arguments), info, types);
+					let on_self = resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info,
+						types,
+					);
 
 					let result = if let (Some(prototype), None) = (prototype, &on_self) {
-						resolver((publicity, under, prototype, on_type_arguments), info, types)
+						resolver(
+							(prototype, on_type_arguments),
+							(publicity, under, under_type_arguments),
+							info,
+							types,
+						)
 					} else {
 						on_self
 					};
 
 					result.map(|result| {
-						let pure = Logical::Pure(result);
 						if let Some(ref generics) = generics {
 							// TODO clone
-							Logical::Implies { on: Box::new(pure), antecedent: generics.clone() }
+							Logical::Implies { on: Box::new(result), antecedent: generics.clone() }
 						} else {
-							pure
+							result
 						}
 					})
 				})
@@ -1176,15 +1288,21 @@ pub(crate) fn get_property_unbound(
 		}
 		Type::Interface { .. } => info_chain
 			.get_chain_of_info()
-			.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
-			.map(Logical::Pure)
+			.find_map(|env| {
+				resolver(
+					(on, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					env,
+					types,
+				)
+			})
 			.ok_or(crate::context::MissingOrToCalculate::Missing)
 			.or_else(|_| {
 				// TODO class and class constructor extends etc
 				if let Some(extends) = types.interface_extends.get(&on) {
 					get_property_unbound(
 						(*extends, on_type_arguments),
-						(publicity, under),
+						(publicity, under, under_type_arguments),
 						info_chain,
 						types,
 					)
@@ -1195,8 +1313,14 @@ pub(crate) fn get_property_unbound(
 		Type::SpecialObject(SpecialObjects::ClassConstructor { .. }) | Type::Class { .. } => {
 			info_chain
 				.get_chain_of_info()
-				.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
-				.map(Logical::Pure)
+				.find_map(|env| {
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						env,
+						types,
+					)
+				})
 				.ok_or(crate::context::MissingOrToCalculate::Missing)
 				.or_else(|_| {
 					if let Some(prototype) =
@@ -1204,7 +1328,7 @@ pub(crate) fn get_property_unbound(
 					{
 						get_property_unbound(
 							(*prototype, on_type_arguments),
-							(publicity, under),
+							(publicity, under, under_type_arguments),
 							info_chain,
 							types,
 						)
@@ -1215,14 +1339,20 @@ pub(crate) fn get_property_unbound(
 		}
 		Type::Constant(cst) => info_chain
 			.get_chain_of_info()
-			.find_map(|env| resolver((publicity, under, on, on_type_arguments), env, types))
-			.map(Logical::Pure)
+			.find_map(|env| {
+				resolver(
+					(on, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					env,
+					types,
+				)
+			})
 			.ok_or(crate::context::MissingOrToCalculate::Missing)
 			.or_else(|_| {
 				let backing_type = cst.get_backing_type_id();
 				get_property_unbound(
 					(backing_type, on_type_arguments),
-					(publicity, under),
+					(publicity, under, under_type_arguments),
 					info_chain,
 					types,
 				)
@@ -1245,72 +1375,103 @@ pub(crate) fn get_property_unbound(
 	}
 }
 
-fn get_property_under(
-	properties: &[(Publicity, PropertyKey<'_>, PropertyValue)],
-	(want_publicity, want_key): (Publicity, &PropertyKey<'_>),
-	key_type_arguments: GenericChain,
-	types: &TypeStore,
-) -> Option<PropertyValue> {
-	// 'rev' is important
-	properties.iter().rev().find_map(move |(publicity, key, value)| {
-		if *publicity != want_publicity {
-			return None;
-		}
-
-		match key {
-			PropertyKey::String(string) => {
-				if let PropertyKey::String(want) = want_key {
-					(string == want).then_some(value.clone())
-				} else {
-					// TODO
-					None
-				}
-			}
-			PropertyKey::Type(key) => {
-				key_matches(*key, key_type_arguments, want_key, types).then(|| value.clone())
-			}
-		}
-	})
-}
-
-/// TODO contributions for `P`
+/// Does lhs equal want
+/// Aka is `want_key in { [lhs_key]: ... }`
 #[allow(clippy::if_same_then_else)]
 fn key_matches(
-	key: TypeId,
-	key_type_arguments: GenericChain,
-	want_key: &PropertyKey<'_>,
+	(key, key_type_arguments): (&PropertyKey<'_>, GenericChain),
+	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
 	types: &TypeStore,
 ) -> bool {
-	let key = if let Some(on_type_arguments) = key_type_arguments {
-		on_type_arguments.get_single_argument(key).unwrap_or(key)
-	} else {
-		key
-	};
-	if let Type::Or(lhs, rhs) = types.get_type_by_id(key) {
-		key_matches(*lhs, key_type_arguments, want_key, types)
-			|| key_matches(*rhs, key_type_arguments, want_key, types)
-	} else {
-		match want_key {
-			PropertyKey::Type(want) => {
-				crate::utilities::notify!("want {:?} key {:?}", want, key);
-				let want = get_constraint(*want, types).unwrap_or(*want);
-				crate::utilities::notify!("want {:?} key {:?}", want, key);
-				key == want
+	crate::utilities::notify!(
+		"Have {:?} want {:?}",
+		(key, key_type_arguments),
+		(want, want_type_arguments)
+	);
+
+	match (key, want) {
+		(PropertyKey::String(left), PropertyKey::String(right)) => left == right,
+		(PropertyKey::String(s), PropertyKey::Type(want)) => {
+			if let Some(substituted_key) =
+				want_type_arguments.and_then(|args| args.get_single_argument(*want))
+			{
+				crate::utilities::notify!("Here");
+				return key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(substituted_key), want_type_arguments),
+					types,
+				);
 			}
-			PropertyKey::String(s) => {
-				// TODO WIP
-				if key == TypeId::ANY_TYPE {
-					true
-				} else if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
-					true
-				} else if key == TypeId::STRING_TYPE && s.parse::<usize>().is_err() {
-					true
-				} else if let Type::Constant(Constant::String(ks)) = types.get_type_by_id(key) {
-					ks == s
-				} else {
-					false
-				}
+			let want_ty = types.get_type_by_id(*want);
+			crate::utilities::notify!("key_ty={:?}", want_ty);
+			if let Type::Or(lhs, rhs) = want_ty {
+				key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(*lhs), key_type_arguments),
+					types,
+				) || key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(*rhs), key_type_arguments),
+					types,
+				)
+			} else if let Type::RootPolyType(PolyNature::MappedGeneric {
+				eager_fixed: to, ..
+			}) = want_ty
+			{
+				key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(*to), want_type_arguments),
+					types,
+				)
+			} else if let Type::Constant(c) = want_ty {
+				crate::utilities::notify!("{:?}", c);
+				// TODO
+				*s == c.as_js_string()
+			} else {
+				false
 			}
+		}
+		(PropertyKey::Type(key), PropertyKey::String(s)) => {
+			if let Some(substituted_key) =
+				key_type_arguments.and_then(|args| args.get_single_argument(*key))
+			{
+				return key_matches(
+					(&PropertyKey::Type(substituted_key), key_type_arguments),
+					(want, want_type_arguments),
+					types,
+				);
+			}
+
+			let key = *key;
+			let key_type = types.get_type_by_id(key);
+
+			if let Type::RootPolyType(PolyNature::MappedGeneric { eager_fixed: to, .. }) = key_type
+			{
+				return key_matches(
+					(&PropertyKey::Type(*to), key_type_arguments),
+					(want, want_type_arguments),
+					types,
+				);
+			}
+
+			// TODO WIP
+			if key == TypeId::ANY_TYPE {
+				true
+			} else if let Type::Constant(Constant::String(ks)) = key_type {
+				ks == s
+			} else if key == TypeId::BOOLEAN_TYPE && (s == "true" || s == "false") {
+				true
+			} else if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
+				true
+			} else if key == TypeId::STRING_TYPE && s.parse::<usize>().is_err() {
+				true
+			} else {
+				false
+			}
+		}
+		(PropertyKey::Type(left), PropertyKey::Type(right)) => {
+			// TODO subtyping
+			left == right
 		}
 	}
 }

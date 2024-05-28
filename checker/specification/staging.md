@@ -44,6 +44,20 @@ b satisfies 1;
 
 - Expected "hello", found "hi"
 
+#### Nominal-ness
+
+```ts
+class X { a: number }
+class Y { a: number }
+
+function doThingWithX(x: X) {}
+
+doThingWithX(new X())
+doThingWithX(new Y())
+```
+
+- Cannot Y with X
+
 ### Statements
 
 > TODO Await position.
@@ -251,22 +265,6 @@ function optionalNumber(n: number | undefined): string {
 
 - Cannot return string, found number | 2
 
-#### Has property
-
-> TODO maybe need to constrain side effects here
-
-```ts
-function func(parameter: { property: string }) {
-    if (parameter.property === "hello") {
-        parameter.property satisfies 4;
-    }
-}
-```
-
-- Expected 4, found "hello"
-
-> TODO `typeof`, `instanceof`, conditional, across a function
-
 #### Equality
 
 ```ts
@@ -379,6 +377,35 @@ n satisfies ElementOf<number>;
 
 - Expected string, found number
 
+#### `keyof` type annotation
+
+```ts
+interface X {
+    a: string,
+    b: string
+}
+
+"a" satisfies keyof X;
+"b" satisfies keyof X;
+"c" satisfies keyof X;
+```
+
+- Expected keyof X, found "c"
+
+### Function calling
+
+#### Canceled generics
+
+> aka remove generic arguments if they don't match the structure
+
+```ts
+declare function func<T>(prop: { a: number, b: T, c: string } | { a: number, b: string, c: T }): T;
+
+func({ a: 3, b: "hi", c: false }) satisfies string;
+```
+
+- Expected string, found false
+
 ### Functions
 
 #### Function hoisting
@@ -404,6 +431,24 @@ function getString(param: string): string {
 
 ### Others
 
+#### Use annotation when errors
+
+```ts
+const x: string = 5;
+const y: string = h;
+
+function getString(a: number): string {
+    return a
+}
+
+x satisfies string;
+y satisfies string;
+
+getString(2) satisfies number;
+```
+
+- Expected number, found string
+
 #### Unconditional throw
 
 ```ts
@@ -420,3 +465,76 @@ safeDivide(10, 0);
 ```
 
 - thrown!
+
+### Closures
+
+#### TDZ
+
+```ts
+function func() {
+    return function () { return closedOverVariable }
+    let closedOverVariable = 2;
+}
+```
+
+- Unreachable statement
+- Function contains unreachable closed over variable 'closedOverVariable'
+
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number

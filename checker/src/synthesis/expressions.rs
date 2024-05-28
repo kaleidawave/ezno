@@ -19,6 +19,7 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
 		self, await_expression,
+		conditional::new_conditional_context,
 		functions::{
 			function_to_property, register_arrow_function, register_expression_function,
 			synthesise_function, GetterSetter,
@@ -659,7 +660,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let condition =
 				synthesise_expression(condition, environment, checking_data, TypeId::ANY_TYPE);
 
-			Instance::RValue(environment.new_conditional_context(
+			Instance::RValue(new_conditional_context(
+				environment,
 				(condition, condition_pos),
 				|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 					synthesise_expression(truthy_result, env, data, expecting)
@@ -1021,7 +1023,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let maybe_property_expecting = get_property_unbound(
 					(expected, None),
-					(Publicity::Public, &key),
+					(Publicity::Public, &key, None),
 					environment,
 					&checking_data.types,
 				);
@@ -1099,7 +1101,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// TODO needs improvement
 				let property_expecting = get_property_unbound(
 					(expected, None),
-					(Publicity::Public, &key),
+					(Publicity::Public, &key, None),
 					environment,
 					&checking_data.types,
 				)

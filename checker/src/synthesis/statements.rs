@@ -6,6 +6,7 @@ use crate::{
 	context::Scope,
 	diagnostics::TypeCheckError,
 	features::{
+		conditional::new_conditional_context,
 		exceptions::new_try_context,
 		iteration::{synthesise_iteration, IterationBehavior},
 	},
@@ -63,7 +64,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					TypeId::ANY_TYPE,
 				);
 
-				environment.new_conditional_context(
+				new_conditional_context(
+					environment,
 					(condition, condition_pos),
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 						synthesise_block_or_single_statement(current.1, env, data);

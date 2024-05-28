@@ -19,7 +19,7 @@ use crate::{
 		get_constraint, is_type_truthy_falsy,
 		printing::print_type,
 		properties::{get_property, set_property, PropertyKey, PropertyValue},
-		substitute, Constructor, StructureGenerics, TypeId, TypeStore,
+		substitute, Constructor, PartiallyAppliedGenerics, TypeId, TypeStore,
 	},
 	Decidable, Environment, Type,
 };
@@ -169,9 +169,10 @@ pub(crate) fn apply_events(
 
 				if *initialization {
 					// TODO temp fix for closures
-					let on = if let Type::Constructor(Constructor::StructureGenerics(
-						StructureGenerics { on, arguments: _ },
-					)) = types.get_type_by_id(on)
+					let on = if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on,
+						arguments: _,
+					}) = types.get_type_by_id(on)
 					{
 						*on
 					} else {

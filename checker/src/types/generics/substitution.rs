@@ -13,13 +13,15 @@ use crate::{
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
-		generics::contributions::Contributions, get_constraint, Constructor, ObjectNature,
-		PolyNature, StructureGenerics, Type, TypeStore,
+		generics::contributions::Contributions,
+		get_constraint,
+		properties::{get_property_unbound, Publicity},
+		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
-	Decidable, Environment, TypeId,
+	Decidable, Environment, Logical, PropertyValue, TypeId,
 };
 
-use super::generic_type_arguments::StructureGenericArguments;
+use super::generic_type_arguments::GenericArguments;
 
 pub struct SubstitutionArguments<'a> {
 	/// for extends + parent generics
@@ -84,12 +86,10 @@ pub(crate) fn substitute(
 			if arguments.closures.is_empty() {
 				id
 			} else {
-				types.register_type(Type::Constructor(Constructor::StructureGenerics(
-					StructureGenerics {
-						on: id,
-						arguments: StructureGenericArguments::Closure(arguments.closures.clone()),
-					},
-				)))
+				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: id,
+					arguments: GenericArguments::Closure(arguments.closures.clone()),
+				}))
 			}
 		}
 		// Specialisation for object type annotation (todo could do per property in future)
@@ -99,19 +99,17 @@ pub(crate) fn substitute(
 			if arguments.arguments.is_empty() {
 				id
 			} else {
-				types.register_type(Type::Constructor(Constructor::StructureGenerics(
-					StructureGenerics {
-						on: id,
-						// TODO argument positions
-						arguments: StructureGenericArguments::ExplicitRestrictions(
-							arguments
-								.arguments
-								.iter()
-								.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
-								.collect(),
-						),
-					},
-				)))
+				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: id,
+					// TODO argument positions
+					arguments: GenericArguments::ExplicitRestrictions(
+						arguments
+							.arguments
+							.iter()
+							.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
+							.collect(),
+					),
+				}))
 			}
 		}
 		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
@@ -130,13 +128,37 @@ pub(crate) fn substitute(
 			if arguments.closures.is_empty() {
 				id
 			} else {
-				types.register_type(Type::Constructor(Constructor::StructureGenerics(
-					StructureGenerics {
-						on: id,
-						arguments: StructureGenericArguments::Closure(arguments.closures.clone()),
-					},
-				)))
+				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: id,
+					arguments: GenericArguments::Closure(arguments.closures.clone()),
+				}))
 			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on,
+			arguments: structure_arguments,
+		}) => {
+			let on = *on;
+			let new_structure_arguments = match structure_arguments.clone() {
+				GenericArguments::ExplicitRestrictions(restrictions) => {
+					let restrictions = restrictions
+						.into_iter()
+						.map(|(lhs, (arg, pos))| {
+							(lhs, (substitute(arg, arguments, environment, types), pos))
+						})
+						.collect();
+					GenericArguments::ExplicitRestrictions(restrictions)
+				}
+				GenericArguments::Closure(_) => return id,
+				GenericArguments::LookUp { on } => {
+					GenericArguments::LookUp { on: substitute(on, arguments, environment, types) }
+				}
+			};
+
+			types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on,
+				arguments: new_structure_arguments,
+			}))
 		}
 		Type::SpecialObject(special_object) => match special_object {
 			SpecialObjects::Promise { .. } => todo!(),
@@ -280,12 +302,13 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Property { on, under, result, bind_this, .. } => {
-				let id = get_constraint(on, types).unwrap_or(on);
+				let on = get_constraint(on, types).unwrap_or(on);
 
-				if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+				let on_type = types.get_type_by_id(on);
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: TypeId::ARRAY_TYPE,
 					arguments,
-				})) = types.get_type_by_id(id)
+				}) = on_type
 				{
 					// Try get the constant
 					if under.as_number(types).is_some() {
@@ -315,10 +338,34 @@ pub(crate) fn substitute(
 							bind_this,
 						}))
 					}
+				} else if let Type::Interface { .. }
+				| Type::Object(ObjectNature::AnonymousTypeAnnotation) = on_type
+				{
+					let under = match under {
+						crate::types::properties::PropertyKey::Type(under) => {
+							let ty = substitute(under, arguments, environment, types);
+							crate::types::properties::PropertyKey::from_type(ty, types)
+						}
+						under @ crate::types::properties::PropertyKey::String(_) => under.clone(),
+					};
+
+					// TODO union ors etc
+					match get_property_unbound(
+						(on, None),
+						(Publicity::Public, &under, None),
+						environment,
+						types,
+					) {
+						Ok(Logical::Pure(PropertyValue::Value(v))) => v,
+						result => {
+							crate::utilities::notify!("Here!! {:?}", result);
+							TypeId::ERROR_TYPE
+						}
+					}
 				} else {
 					todo!(
 						"Constructor::Property ({:?}[{:?}]) should be covered by events",
-						on,
+						on_type,
 						under
 					);
 				}
@@ -354,30 +401,6 @@ pub(crate) fn substitute(
 				// environment
 				// 	.get_property(on, property, checking_data, None)
 				// 	.expect("Inferred constraints and checking failed for a property")
-			}
-			Constructor::StructureGenerics(StructureGenerics {
-				on,
-				arguments: structure_arguments,
-			}) => {
-				let new_structure_arguments = match structure_arguments {
-					StructureGenericArguments::ExplicitRestrictions(restrictions) => {
-						let restrictions = restrictions
-							.into_iter()
-							.map(|(lhs, (arg, pos))| {
-								(lhs, (substitute(arg, arguments, environment, types), pos))
-							})
-							.collect();
-						StructureGenericArguments::ExplicitRestrictions(restrictions)
-					}
-					StructureGenericArguments::Closure(_) => return id,
-					StructureGenericArguments::LookUp { on } => StructureGenericArguments::LookUp {
-						on: substitute(on, arguments, environment, types),
-					},
-				};
-
-				types.register_type(Type::Constructor(Constructor::StructureGenerics(
-					StructureGenerics { on, arguments: new_structure_arguments },
-				)))
 			}
 
 			// Constructor::PrototypeOf(prototype) => {
@@ -473,6 +496,10 @@ pub(crate) fn substitute(
 				}
 			},
 			Constructor::Awaited { .. } => todo!("should have effect result"),
+			Constructor::KeyOf(on) => {
+				let on = substitute(on, arguments, environment, types);
+				types.new_key_of(on)
+			}
 		},
 	}
 }
