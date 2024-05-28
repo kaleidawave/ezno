@@ -142,14 +142,15 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction
-						for (idx, line) in comment.lines().enumerate() {
+						// Have to use '\n' as `.lines` with it's handling of '\r'
+						for (idx, line) in comment.split('\n').enumerate() {
 							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
-							buf.push_str(line.trim_start());
+							buf.push_str(line.trim());
 						}
-						buf.push_new_line();
+					// buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}
@@ -163,14 +164,13 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction
-						for (idx, line) in comment.lines().enumerate() {
+						for (idx, line) in comment.split('\n').enumerate() {
 							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
-							buf.push_str(line.trim_start());
+							buf.push_str(line.trim());
 						}
-						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}

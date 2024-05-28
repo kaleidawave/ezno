@@ -11,6 +11,11 @@ function x(a: { something: string, another: number, third: "yes" }, b: Array<{ e
 something({ here: 2 }).property.get_lines_by_length(2323, 2323).then(console.log).afterwards({ do_something: ["with", 2] })
 
 const normal = "simple".length;
+
+for (let i = 2; i < something.anotherThing("large string here"); i += calculateFromFunction()) {
+	console.log("here")
+
+}
     "#;
 
 	let module = Module::from_string(

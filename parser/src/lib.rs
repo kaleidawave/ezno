@@ -1079,7 +1079,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 		are_nodes_over_length(nodes.iter(), options, local, Some(MAX_INLINE_OBJECT_LITERAL), true);
 
 	buf.push(left_bracket);
-	let local = if large {
+	let inner_local = if large {
 		local.next_level()
 	} else {
 		if left_bracket == '{' {
@@ -1090,9 +1090,9 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	for (at_end, node) in nodes.iter().endiate() {
 		if large {
 			buf.push_new_line();
-			options.add_indent(local.depth, buf);
+			options.add_indent(inner_local.depth, buf);
 		}
-		node.to_string_from_buffer(buf, options, local);
+		node.to_string_from_buffer(buf, options, inner_local);
 		if !at_end {
 			buf.push(',');
 			options.push_gap_optionally(buf);
@@ -1100,6 +1100,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	}
 	if large {
 		buf.push_new_line();
+		options.add_indent(local.depth, buf);
 	} else if left_bracket == '{' {
 		options.push_gap_optionally(buf);
 	}

@@ -56,7 +56,7 @@ impl crate::ASTImplementation for EznoParser {
 
 	type VariableField<'_a> = parser::VariableField;
 
-	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementInitializer;
+	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementinitialiser;
 
 	fn module_from_string(
 		// TODO remove
@@ -156,13 +156,13 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
 		match for_loop_initialiser {
-			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
+			parser::statements::ForLoopStatementinitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(declaration, environment, checking_data, false);
 			}
-			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
+			parser::statements::ForLoopStatementinitialiser::VarStatement(_) => todo!(),
+			parser::statements::ForLoopStatementinitialiser::Expression(_) => todo!(),
 		}
 	}
 

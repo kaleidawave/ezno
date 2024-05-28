@@ -19,7 +19,7 @@ use super::{
 	TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
-pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
+pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementinitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
 pub use try_catch_statement::TryCatchStatement;
@@ -246,14 +246,13 @@ impl ASTNode for Statement {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction
-						for (idx, line) in comment.lines().enumerate() {
+						for (idx, line) in comment.split('\n').enumerate() {
 							if idx > 0 {
 								buf.push_new_line();
 							}
 							options.add_indent(local.depth, buf);
-							buf.push_str(line.trim_start());
+							buf.push_str(line.trim());
 						}
-						buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(comment.as_str());
 					}

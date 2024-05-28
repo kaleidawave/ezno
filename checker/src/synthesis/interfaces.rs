@@ -263,7 +263,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				),
 				InterfaceMember::Rule {
 					parameter,
-					rule,
 					matching_type,
 					as_type: _,
 					optionality: _,
@@ -272,13 +271,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position: _,
 				} => {
 					// TODO WIP
-					let to = match rule {
-						parser::types::interface::TypeRule::In => {
-							crate::utilities::notify!("TODO");
-							TypeId::ANY_TYPE
-						}
-						parser::types::interface::TypeRule::InKeyOf => todo!(),
-					};
+					let to = TypeId::ANY_TYPE;
 
 					// TODO
 					let _parameter = checking_data.types.register_type(Type::RootPolyType(

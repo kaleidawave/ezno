@@ -131,6 +131,7 @@ pub fn evaluate_mathematical_operation(
 					let lhs = cast_as_number(c1, strict_casts).unwrap_or(f64::NAN);
 					let rhs = cast_as_number(c2, strict_casts).unwrap_or(f64::NAN);
 					// TODO hopefully Rust implementation is the same as JS
+					#[allow(clippy::cast_possible_truncation)]
 					let value = match operator {
 						MathematicalAndBitwise::Add => unreachable!(),
 						MathematicalAndBitwise::Subtract => lhs - rhs,
