@@ -1,4 +1,4 @@
-use source_map::Span;
+use source_map::SpanWithSource;
 
 use crate::{
 	context::invocation::CheckThings,
@@ -17,7 +17,7 @@ pub enum TemplateLiteralPart<'a, T> {
 pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
 	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
-	position: &Span,
+	position: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId
@@ -60,6 +60,7 @@ where
 		let mut static_parts = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
+			position,
 			&mut environment.info,
 		);
 
@@ -76,7 +77,7 @@ where
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
-						None,
+						position,
 					);
 					static_part_count += 1;
 				}
@@ -103,7 +104,7 @@ where
 				crate::context::information::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
-				None,
+				position,
 			);
 		}
 
@@ -117,13 +118,11 @@ where
 			},
 		);
 
-		let call_site = position.with_source(environment.get_source());
-
 		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
-			call_site,
+			call_site: position,
 			call_site_type_arguments: None,
 		};
 		match crate::types::calling::call_type(

@@ -127,7 +127,7 @@ pub fn import_items<
 		checking_data.diagnostics_container.add_error(
 			crate::diagnostics::TypeCheckError::CannotOpenFile {
 				file: err.clone(),
-				position: Some(import_position.with_source(environment.get_source())),
+				import_position: Some(import_position.with_source(environment.get_source())),
 			},
 		);
 	}

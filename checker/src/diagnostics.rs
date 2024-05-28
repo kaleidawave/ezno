@@ -41,7 +41,7 @@ pub enum Diagnostic {
 	PositionWithAdditionalLabels {
 		reason: String,
 		position: SpanWithSource,
-		labels: Vec<(String, Option<SpanWithSource>)>,
+		labels: Vec<(String, SpanWithSource)>,
 		kind: DiagnosticKind,
 	},
 }
@@ -64,9 +64,7 @@ impl Diagnostic {
 			Diagnostic::Global { .. } => Left(Left(iter::empty())),
 			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source))),
 			Diagnostic::PositionWithAdditionalLabels { position: pos, labels, .. } => {
-				Right(iter::once(pos.source).chain(
-					labels.iter().filter_map(|(_, span)| span.as_ref().map(|span| span.source)),
-				))
+				Right(iter::once(pos.source).chain(labels.iter().map(|(_, span)| span.source)))
 			}
 		}
 	}
@@ -311,7 +309,7 @@ mod defined_errors_and_warnings {
 			expected_return_type: TypeStringRepresentation,
 			returned_type: TypeStringRepresentation,
 			/// Can be `None` if it is inferred parameters
-			annotation_position: Option<SpanWithSource>,
+			annotation_position: SpanWithSource,
 			returned_position: SpanWithSource,
 		},
 		// TODO are these the same errors?
@@ -387,7 +385,8 @@ mod defined_errors_and_warnings {
 		DoubleDefaultExport(SpanWithSource),
 		CannotOpenFile {
 			file: CouldNotOpenFile,
-			position: Option<SpanWithSource>,
+			/// `None` if reading it from entry point (aka CLI args)
+			import_position: Option<SpanWithSource>,
 		},
 		VariableNotDefinedInContext {
 			variable: &'a str,
@@ -477,7 +476,7 @@ mod defined_errors_and_warnings {
 									format!(
 										"{parameter_type} was specialised with type {restriction}"
 									),
-									Some(restriction_pos),
+									restriction_pos,
 								)],
 								kind,
 							}
@@ -489,7 +488,7 @@ mod defined_errors_and_warnings {
 								position: argument_position,
 								labels: vec![(
 									format!("Parameter has type {parameter_type}"),
-									Some(parameter_position),
+									parameter_position,
 								)],
 								kind,
 							}
@@ -502,7 +501,7 @@ mod defined_errors_and_warnings {
 							kind,
 							labels: vec![(
 								"(non-optional) Parameter declared here".into(),
-								Some(parameter_position),
+								parameter_position,
 							)],
 						}
 					}
@@ -542,22 +541,22 @@ mod defined_errors_and_warnings {
 					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
 					FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => Diagnostic::PositionWithAdditionalLabels {
 						reason: format!("Variable '{variable_name}' used before declaration"),
-						position: call_site.unwrap(),
+						position: call_site,
 						kind,
 						labels: vec![(
 							"Variable referenced here".to_owned(),
-							Some(position),
+							position,
 						)],
 					},
 					FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position, call_site } => Diagnostic::PositionWithAdditionalLabels {
 						reason: "Invalid assignment to parameter".to_owned(),
-						position: call_site.unwrap(),
+						position: call_site,
 						kind,
 						labels: vec![(
 							format!(
 								"Type {value_type} does not meet property constraint {property_type}"
 							),
-							Some(assignment_position),
+							assignment_position,
 						)],
 					},
 					FunctionCallingError::UnconditionalThrow { value, call_site } => {
@@ -565,7 +564,7 @@ mod defined_errors_and_warnings {
 							reason: format!(
 								"{value} unconditionally thrown in function"
 							),
-							position: call_site.unwrap(),
+							position: call_site,
 							kind,
 						}
 					}
@@ -590,7 +589,7 @@ mod defined_errors_and_warnings {
 						position: value_site,
 						labels: vec![(
 							format!("Variable declared with type {variable_type}"),
-							Some(variable_site),
+							variable_site,
 						)],
 						kind,
 					},
@@ -647,10 +646,10 @@ mod defined_errors_and_warnings {
 					reason: format!(
 						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
 					),
-					labels: annotation_position.into_iter().map(|annotation_position| (
+					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
-						Some(annotation_position),
-					)).collect(),
+						annotation_position,
+					)],
 					position: returned_position,
 					kind,
 				},
@@ -779,10 +778,10 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { file, position } => if let Some(position) = position {
+				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
 						reason: "Cannot find file".to_owned(),
-						position,
+						position: import_position,
 						kind,
 					}
 				} else {
@@ -845,7 +844,7 @@ mod defined_errors_and_warnings {
 					),
 					labels: vec![(
 						format!("Function has base type {parameter} here"),
-						Some(parameter_position),
+						parameter_position,
 					)],
 					position: overloaded_parameter_position,
 					kind,
@@ -856,7 +855,7 @@ mod defined_errors_and_warnings {
 				),
 				labels: vec![(
 					format!("Function annotated to return {base} here"),
-					Some(base_position),
+					base_position,
 				)],
 				position: overload_position,
 				kind,

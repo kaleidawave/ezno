@@ -31,6 +31,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
+	let position = statement.get_position().with_source(environment.get_source());
 	match statement {
 		Statement::Expression(expression) => {
 			synthesise_multiple_expression(
@@ -115,6 +116,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 			},
+			position,
 		),
 		Statement::DoWhileLoop(stmt) => synthesise_iteration(
 			IterationBehavior::DoWhile(&stmt.condition),
@@ -124,6 +126,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 			},
+			position,
 		),
 		Statement::ForLoop(stmt) => match &stmt.condition {
 			parser::statements::ForLoopCondition::ForOf {
@@ -131,7 +134,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				keyword: _,
 				variable,
 				of,
-				position: _,
+				position,
 			} => {
 				synthesise_iteration(
 					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
@@ -145,13 +148,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 							checking_data,
 						);
 					},
+					position.with_source(environment.get_source()),
 				);
 			}
 			parser::statements::ForLoopCondition::ForIn {
 				keyword: _,
 				variable,
 				r#in,
-				position: _,
+				position,
 			} => {
 				synthesise_iteration(
 					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
@@ -165,13 +169,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 							checking_data,
 						);
 					},
+					position.with_source(environment.get_source()),
 				);
 			}
 			parser::statements::ForLoopCondition::Statements {
 				initialiser,
 				condition,
 				afterthought,
-				position: _,
+				position,
 			} => synthesise_iteration(
 				IterationBehavior::For { initialiser, condition, afterthought },
 				information.and_then(|info| info.label),
@@ -180,6 +185,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| {
 					synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 				},
+				position.with_source(environment.get_source()),
 			),
 		},
 		Statement::Block(ref block) => {

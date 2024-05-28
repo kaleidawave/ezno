@@ -160,7 +160,7 @@ pub(super) fn synthesise_class_declaration<
 					is_declare,
 				);
 
-				let position = Some(method.position.with_source(environment.get_source()));
+				let position = method.position.with_source(environment.get_source());
 
 				environment.info.register_property(
 					class_prototype,
@@ -227,6 +227,7 @@ pub(super) fn synthesise_class_declaration<
 			ClassPropertiesToRegister { properties },
 			environment,
 			checking_data,
+			class.position.with_source(environment.get_source()),
 		)
 	};
 
@@ -295,7 +296,7 @@ pub(super) fn synthesise_class_declaration<
 						// TODO
 						true,
 						// TODO not needed right?
-						None,
+						method.position.with_source(environment.get_source()),
 					);
 				}
 				ClassMember::Property(true, property) => {
@@ -330,7 +331,7 @@ pub(super) fn synthesise_class_declaration<
 						// TODO
 						true,
 						// TODO not needed right?
-						None,
+						property.position.with_source(environment.get_source()),
 					);
 				}
 				ClassMember::StaticBlock(block) => {
@@ -494,7 +495,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					under,
 					PropertyValue::Value(value),
 					false,
-					None,
+					method.position.with_source(environment.get_source()),
 				);
 			}
 			ClassMember::Property(_is_static, property) => {
@@ -515,7 +516,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					under,
 					PropertyValue::Value(value),
 					false,
-					None,
+					property.position.with_source(environment.get_source()),
 				);
 			}
 			ClassMember::Indexer {
@@ -523,7 +524,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				indexer_type,
 				return_type,
 				is_readonly: _,
-				position: _,
+				position,
 			} => {
 				crate::utilities::notify!("Warn if not declare");
 				// TODO think this is okay
@@ -535,7 +536,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					PropertyKey::Type(key),
 					PropertyValue::Value(value),
 					false,
-					None,
+					position.with_source(environment.get_source()),
 				);
 			}
 			ClassMember::Constructor(_)

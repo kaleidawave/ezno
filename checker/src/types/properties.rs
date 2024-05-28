@@ -613,7 +613,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
-	setter_position: Option<SpanWithSource>,
+	setter_position: SpanWithSource,
 ) -> Result<Option<TypeId>, SetPropertyError> {
 	// TODO
 	// if environment.is_not_writeable(on, under) {
@@ -823,7 +823,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 	under: &PropertyKey<'_>,
 	new: PropertyValue,
 	types: &mut TypeStore,
-	setter_position: Option<SpanWithSource>,
+	setter_position: SpanWithSource,
 ) -> Result<(), Vec<FunctionCallingError>> {
 	match og {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
@@ -846,12 +846,8 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 		}
 		PropertyValue::Getter(_) => todo!(),
 		PropertyValue::Setter(setter) => {
-			// TODO: FunctionType.Call requires a SpanWithSource but here we have an
-			// Option<SpanWithSource>. However, updating this function to require a SpanWithSource
-			// would mean fairly broad changes.
-			let some_setter_position = setter_position.expect("Setter position is required!");
 			let arg = SynthesisedArgument {
-				position: some_setter_position,
+				position: setter_position,
 				spread: false,
 				value: match new {
 					PropertyValue::Value(type_id) => type_id,
@@ -863,7 +859,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				.call(
 					CalledWithNew::None,
 					ThisValue::Passed(on),
-					some_setter_position,
+					setter_position,
 					&[arg],
 					None,
 					// TODO structure generics
