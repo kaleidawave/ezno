@@ -524,6 +524,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			);
 			TypeId::ERROR_TYPE
 		}
+		TypeAnnotation::This(position) => {
+			checking_data.raise_unimplemented_error(
+				"`this` annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 	};
 
 	if checking_data.options.store_expression_type_mappings {
