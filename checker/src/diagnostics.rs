@@ -385,7 +385,8 @@ mod defined_errors_and_warnings {
 		DoubleDefaultExport(SpanWithSource),
 		CannotOpenFile {
 			file: CouldNotOpenFile,
-			position: SpanWithSource,
+			/// `None` if reading it from entry point (aka CLI args)
+			import_position: Option<SpanWithSource>,
 		},
 		VariableNotDefinedInContext {
 			variable: &'a str,
@@ -777,10 +778,14 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { position, .. } => Diagnostic::Position {
+				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
+					Diagnostic::Position {
 						reason: "Cannot find file".to_owned(),
-						position,
+						position: import_position,
 						kind,
+					}
+				} else {
+					Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
 				},
 				TypeCheckError::VariableNotDefinedInContext {
 					variable,

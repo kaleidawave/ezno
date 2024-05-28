@@ -26,9 +26,7 @@ pub(crate) use serialization::BinarySerializable;
 
 use features::{functions::SynthesisableFunction, modules::SynthesisedModule};
 
-use source_map::{
-	global_store::GlobalStore, FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap,
-};
+use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
@@ -521,11 +519,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
-				position: SpanWithSource {
-					source: SourceId::new(&mut GlobalStore, point.clone(), String::new()),
-					start: 0,
-					end: 0,
-				},
+				import_position: None,
 			});
 			continue;
 		}
