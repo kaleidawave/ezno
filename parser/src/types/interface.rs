@@ -698,7 +698,7 @@ impl ASTNode for InterfaceMember {
 				buf.push_str(" in ");
 				matching_type.to_string_from_buffer(buf, options, local);
 				if let Some(as_type) = as_type {
-					buf.push(' ');
+					buf.push_str(" as ");
 					as_type.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(']');
