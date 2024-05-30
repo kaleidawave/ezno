@@ -368,11 +368,12 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			)
 			.0
 		}
-		TypeAnnotation::TupleLiteral(members, _) => {
+		TypeAnnotation::TupleLiteral(members, position) => {
 			// TODO maybe should be special type
 			let mut obj = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
+				position.with_source(environment.get_source()),
 				&mut environment.info,
 			);
 
@@ -396,7 +397,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							Publicity::Public,
 							PropertyKey::from_usize(idx),
 							PropertyValue::Value(item_ty),
-							Some(ty_position),
+							ty_position,
 						);
 					}
 					TupleElementKind::Optional => {
@@ -417,7 +418,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length_value),
-				None,
+				annotation.get_position().with_source(environment.get_source()),
 			);
 
 			obj.build_object()
@@ -436,23 +437,19 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let of = synthesise_type_annotation(of, environment, checking_data);
 			checking_data.types.new_key_of(of)
 		}
-		TypeAnnotation::TypeOf(item, position) => match &**item {
-			parser::ast::LHSOfAssignment::VariableOrPropertyAccess(v) => {
-				let reference = synthesise_access_to_reference(v, environment, checking_data);
-				match environment.get_reference_constraint(reference) {
-					Some(value) => value,
-					None => {
-						checking_data.raise_unimplemented_error(
-							"throw error for annotation",
-							position.with_source(environment.get_source()),
-						);
-						TypeId::ERROR_TYPE
-					}
+		TypeAnnotation::TypeOf(item, position) => {
+			let reference = synthesise_access_to_reference(item, environment, checking_data);
+			match environment.get_reference_constraint(reference) {
+				Some(value) => value,
+				None => {
+					checking_data.raise_unimplemented_error(
+						"throw error for annotation",
+						position.with_source(environment.get_source()),
+					);
+					TypeId::ERROR_TYPE
 				}
 			}
-			parser::ast::LHSOfAssignment::ArrayDestructuring(_, _) => todo!("remove from parser"),
-			parser::ast::LHSOfAssignment::ObjectDestructuring(_, _) => todo!("remove from parser"),
-		},
+		}
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
 			let (condition, infer_types) = {
 				let mut environment =
@@ -580,6 +577,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// TODO construct condition for never
 			checking_data.raise_unimplemented_error(
 				"asserts annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::This(position) => {
+			checking_data.raise_unimplemented_error(
+				"`this` annotation",
 				position.with_source(environment.get_source()),
 			);
 			TypeId::ERROR_TYPE

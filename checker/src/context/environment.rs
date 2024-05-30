@@ -621,7 +621,7 @@ impl<'a> Environment<'a> {
 					&with,
 					rhs,
 					&mut checking_data.types,
-					Some(span),
+					span,
 					&checking_data.options,
 				)?
 				.unwrap_or(rhs)),
@@ -773,7 +773,12 @@ impl<'a> Environment<'a> {
 	}
 
 	/// TODO decidable & private?
-	pub fn delete_property(&mut self, on: TypeId, property: &PropertyKey) -> bool {
+	pub fn delete_property(
+		&mut self,
+		on: TypeId,
+		property: &PropertyKey,
+		position: SpanWithSource,
+	) -> bool {
 		let existing = self.property_in(on, property);
 
 		let under = property.into_owned();
@@ -793,7 +798,7 @@ impl<'a> Environment<'a> {
 			new: PropertyValue::Deleted,
 			initialization: false,
 			publicity: Publicity::Public,
-			position: None,
+			position,
 		});
 
 		existing
@@ -1146,7 +1151,7 @@ impl<'a> Environment<'a> {
 								&checking_data.types,
 								checking_data.options.debug_types,
 							),
-							annotation_position: Some(position.with_source(self.get_source())),
+							annotation_position: position.with_source(self.get_source()),
 							returned_position,
 						},
 					);
@@ -1172,11 +1177,8 @@ impl<'a> Environment<'a> {
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, true) {
 			self.info.events.push(
-				FinalEvent::Continue {
-					position: Some(position.with_source(self.get_source())),
-					carry,
-				}
-				.into(),
+				FinalEvent::Continue { position: position.with_source(self.get_source()), carry }
+					.into(),
 			);
 			Ok(())
 		} else {
@@ -1194,11 +1196,8 @@ impl<'a> Environment<'a> {
 	) -> Result<(), NotInLoopOrCouldNotFindLabel> {
 		if let Some(carry) = self.find_label_or_conditional_count(label, false) {
 			self.info.events.push(
-				FinalEvent::Break {
-					position: Some(position.with_source(self.get_source())),
-					carry,
-				}
-				.into(),
+				FinalEvent::Break { position: position.with_source(self.get_source()), carry }
+					.into(),
 			);
 			Ok(())
 		} else {
@@ -1220,7 +1219,7 @@ impl<'a> Environment<'a> {
 		under: &PropertyKey,
 		new: TypeId,
 		types: &mut TypeStore,
-		setter_position: Option<SpanWithSource>,
+		setter_position: SpanWithSource,
 		options: &TypeCheckOptions,
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(

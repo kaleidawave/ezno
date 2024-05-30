@@ -1,3 +1,5 @@
+use source_map::SpanWithSource;
+
 use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
 
 use crate::{
@@ -44,6 +46,7 @@ pub(crate) fn apply_events(
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
 	errors: &mut ErrorsAndInfo,
+	call_site: SpanWithSource,
 ) -> Option<ApplicationResult> {
 	// WIP
 	let mut trailing = None::<(TypeId, ApplicationResult)>;
@@ -69,7 +72,7 @@ pub(crate) fn apply_events(
 												.to_owned(),
 											position: *position,
 										},
-										call_site: None,
+										call_site,
 									},
 								);
 								TypeId::ERROR_TYPE
@@ -155,7 +158,7 @@ pub(crate) fn apply_events(
 					PropertyValue::Setter(_) => todo!(),
 					// TODO this might be a different thing at some point
 					PropertyValue::Deleted => {
-						top_environment.delete_property(on, &under);
+						top_environment.delete_property(on, &under, *position);
 						return None;
 					}
 					PropertyValue::ConditionallyExists { .. } => {
@@ -229,8 +232,8 @@ pub(crate) fn apply_events(
 								crate::types::calling::FunctionCallingError::SetPropertyConstraint {
 									property_type: property_constraint,
 									value_type,
-									assignment_position: position.unwrap(),
-									call_site: None,
+									assignment_position: *position,
+									call_site,
 								},
 							);
 						} else {
@@ -332,7 +335,7 @@ pub(crate) fn apply_events(
 				}
 			}
 			// TODO extract
-			Event::Conditionally { condition, truthy_events, otherwise_events, position: _ } => {
+			Event::Conditionally { condition, truthy_events, otherwise_events, position } => {
 				let condition = substitute(*condition, type_arguments, top_environment, types);
 
 				let fixed_result = is_type_truthy_falsy(condition, types);
@@ -364,6 +367,7 @@ pub(crate) fn apply_events(
 									target,
 									types,
 									errors,
+									*position,
 								)
 							});
 
@@ -396,6 +400,7 @@ pub(crate) fn apply_events(
 									target,
 									types,
 									errors,
+									*position,
 								)
 							},
 						);
@@ -440,7 +445,7 @@ pub(crate) fn apply_events(
 							);
 							errors.errors.push(FunctionCallingError::UnconditionalThrow {
 								value,
-								call_site: None,
+								call_site,
 							});
 						}
 						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
@@ -456,7 +461,7 @@ pub(crate) fn apply_events(
 				});
 			}
 			// TODO Needs a position (or not?)
-			Event::CreateObject { referenced_in_scope_as, prototype, position: _ } => {
+			Event::CreateObject { referenced_in_scope_as, prototype, position } => {
 				// TODO
 				let is_under_dyn = true;
 
@@ -468,12 +473,13 @@ pub(crate) fn apply_events(
 							target.get_latest_info(top_environment).new_object(
 								Some(prototype),
 								types,
+								*position,
 								is_under_dyn,
 							)
 						}
 						PrototypeArgument::None => target
 							.get_latest_info(top_environment)
-							.new_object(None, types, is_under_dyn),
+							.new_object(None, types, *position, is_under_dyn),
 						PrototypeArgument::Function(id) => types.register_type(
 							crate::Type::SpecialObject(SpecialObjects::Function(*id, this_value)),
 						),
@@ -539,6 +545,8 @@ pub(crate) fn apply_events(
 						target,
 						errors,
 						types,
+						// TODO iterator.position
+						call_site,
 					)
 				});
 				// if result.is_some() {
@@ -560,6 +568,7 @@ pub(crate) fn apply_events(
 					target,
 					types,
 					errors,
+					call_site,
 				);
 
 				if let Some(result) = inner_result {
@@ -631,6 +640,7 @@ pub(crate) fn apply_events(
 								target,
 								types,
 								errors,
+								call_site,
 							);
 
 							if result.is_some() {

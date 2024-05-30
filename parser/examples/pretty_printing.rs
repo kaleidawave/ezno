@@ -5,13 +5,20 @@ fn main() {
 const y = "hello world something x", z = "another thing quite long, lolmao. another thing quite long, lolmao";
 
 function x(a: { something: string, another: number, third: "yes" }, b: Array<{ everything: any }>) {
+	something({ here: 2 }).property.get_lines_by_length(2323, 2323).then(console.log).afterwards({ do_something: ["with", 2] })
+	
+	const normal = "simple".length;
+	
+	for (let i = 0; i < something.anotherThing("large string here"); i += calculateFromFunction()) {
+		console.log("here 1")
+	
+	}
 
+	for (let i = 0; i < 5; i += 1) {
+		console.log("here 2")
+	}
 }
-
-something({ here: 2 }).property.get_lines_by_length(2323, 2323).then(console.log).afterwards({ do_something: ["with", 2] })
-
-const normal = "simple".length;
-    "#;
+"#;
 
 	let module = Module::from_string(
 		input.to_owned(),

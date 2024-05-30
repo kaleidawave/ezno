@@ -65,13 +65,9 @@ fn checker_diagnostic_to_codespan_diagnostic(
 				diagnostic.labels.push(main_label);
 
 				for (message, position) in labels {
-					if let Some(position) = position {
-						diagnostic.labels.push(
-							Label::secondary(position.source, position).with_message(message),
-						);
-					} else {
-						diagnostic.notes.push(message)
-					}
+					diagnostic
+						.labels
+						.push(Label::secondary(position.source, position).with_message(message));
 				}
 			}
 

@@ -7,7 +7,7 @@ use source_map::Span;
 
 pub fn new_conditional_context<T, A, R>(
 	environment: &mut Environment,
-	(condition, pos): (TypeId, Span),
+	(condition, position): (TypeId, Span),
 	then_evaluate: impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R,
 	else_evaluate: Option<impl FnOnce(&mut Environment, &mut CheckingData<T, A>) -> R>,
 	checking_data: &mut CheckingData<T, A>,
@@ -21,7 +21,7 @@ where
 		// TODO could be better
 		checking_data.diagnostics_container.add_warning(
 			crate::diagnostics::TypeCheckWarning::DeadBranch {
-				expression_span: pos.with_source(environment.get_source()),
+				expression_span: position.with_source(environment.get_source()),
 				expression_value: result,
 			},
 		);
@@ -78,6 +78,8 @@ where
 	let combined_result =
 		R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
 
+	let position = position.with_source(environment.get_source());
+
 	match environment.context_type.parent {
 		crate::GeneralContext::Syntax(syn) => {
 			merge_info(
@@ -87,6 +89,7 @@ where
 				truthy_info,
 				falsy_info,
 				&mut checking_data.types,
+				position,
 			);
 		}
 		crate::GeneralContext::Root(root) => {
@@ -97,6 +100,7 @@ where
 				truthy_info,
 				falsy_info,
 				&mut checking_data.types,
+				position,
 			);
 		}
 	}

@@ -75,7 +75,7 @@ pub enum Event {
 		/// see <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields>
 		initialization: bool,
 		publicity: Publicity,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// This includes closed over variables, anything dependent
 	CallsType {
@@ -92,7 +92,7 @@ pub enum Event {
 		condition: TypeId,
 		truthy_events: u32,
 		otherwise_events: u32,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// Run events multiple times
 	Iterate {
@@ -124,7 +124,7 @@ pub enum Event {
 		///
 		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// aka try-catch-finally
 	ExceptionTrap {
@@ -177,12 +177,12 @@ pub enum FinalEvent {
 	},
 	Break {
 		carry: u8,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
 	Continue {
 		carry: u8,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	// Yield {
 	// }
@@ -234,12 +234,12 @@ pub enum ApplicationResult {
 	Yield {},
 	Break {
 		carry: u8,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
 	Continue {
 		carry: u8,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	},
 	/// One of these is `Some`.
 	Or {

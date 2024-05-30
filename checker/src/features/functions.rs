@@ -201,6 +201,8 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		},
 	);
 
+	let at = A::expression_position(expression).with_source(environment.get_source());
+
 	{
 		let result = type_is_subtype_object(
 			parameter_constraint,
@@ -223,7 +225,6 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 				&checking_data.types,
 				false,
 			);
-			let at = A::expression_position(expression).with_source(environment.get_source());
 
 			checking_data
 				.diagnostics_container
@@ -261,6 +262,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		out.unwrap().0,
 		None,
 		&mut checking_data.types,
+		at,
 	);
 
 	result
@@ -699,6 +701,7 @@ where
 		let this_constraint =
 			function.this_constraint(&mut function_environment, checking_data).or(this_shape);
 
+		let position = function.get_position().with_source(base_environment.get_source());
 		// `this` changes stuff
 		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
 			match scope {
@@ -741,7 +744,7 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								Some(prototype),
 								&mut checking_data.types,
-								// TODO this is cheating to not queue event
+								position,
 								false,
 							);
 
@@ -758,7 +761,7 @@ where
 							let this_constructed_object = function_environment.info.new_object(
 								None,
 								&mut checking_data.types,
-								// TODO this is cheating to not queue event
+								position,
 								false,
 							);
 							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
@@ -791,16 +794,19 @@ where
 							Some(prototype),
 							&mut checking_data.types,
 							// TODO this is cheating to not queue event
+							position,
 							false,
 						);
 
 						*this_object_type = this_constructed_object;
+
 						// TODO super/derived behavior
 						types::classes::register_properties_into_environment(
 							&mut function_environment,
 							this_constructed_object,
 							checking_data,
 							properties,
+							position,
 						);
 
 						// function_environment.can_reference_this =

@@ -60,6 +60,37 @@ cargo run -p ezno-parser --example parse path/to/file.ts
 cargo run -p ezno-parser --example lex path/to/file.ts
 ```
 
+### Bacon (script runner)
+
+The [Bacon script runner](https://dystroy.org/bacon/) is configured for this repo. This can watch your files and re-run things like checks or tests on file change.
+The configuration is managed in the [`bacon.toml`](./bacon.toml) file. The configuration has dedicated jobs for the checker specification tests mentioned above. 
+
+#### Installing Bacon
+
+To install bacon, simply run `cargo install --locked bacon`, and you're ready to go.
+
+#### Using Bacon
+
+To use bacon, you can start it by running `bacon check`. This will spin up a job that listens to the source and runs checks on file changes!
+There are also hotkeys you can use to switch jobs, or manually trigger a re-run of a job (for jobs where watch functionality is disabled).
+We have some custom jobs defined as well:
+
+| Job Name      | Description      | Hotkey    |
+| ------------- | ------------- | ------------- |
+| test-spec-no-watch | this job runs `cargo test -p ezno-checker-specification` and does *not* watch for file changes | 1 |
+| test-staging-no-watch | this job runs `cargo test -p ezno-checker-specification -F staging` and does *not* watch for file changes | 2 |
+| test-all-no-watch | this job runs `cargo test -p ezno-checker-specification -F all` and does *not* watch for file changes | 3 |
+| test-spec | this job runs `cargo test -p ezno-checker-specification` and watches for file changes | 4 |
+| test-staging | this job runs `cargo test -p ezno-checker-specification -F staging` and watches for file changes | 5 |
+| test-all | this job runs `cargo test -p ezno-checker-specification -F all` and watches for file changes | 6 |
+
+At any point, you can press `?` to see a list of all available hotkeys.
+
+#### Adding new jobs to our Bacon config
+
+New jobs can easily be added to our `bacon.toml` config if we find there are repetitive actions we're doing frequently. 
+[The Bacon documentation](https://dystroy.org/bacon/config/#jobs) does a good job of explaining how to do so.
+
 ### Useful commands
 
 - Check source is valid with `cargo check --workspace`

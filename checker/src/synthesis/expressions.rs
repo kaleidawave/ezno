@@ -13,6 +13,7 @@ use parser::{
 	functions::MethodHeader,
 	ASTNode, Expression,
 };
+use source_map::SpanWithSource;
 
 use crate::{
 	context::Logical,
@@ -146,6 +147,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let mut basis = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
 				&mut checking_data.types,
+				expression.get_position().with_source(environment.get_source()),
 				&mut environment.info,
 			);
 
@@ -162,7 +164,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						Publicity::Public,
 						key,
 						crate::types::properties::PropertyValue::Value(value),
-						Some(spread_expression_position),
+						spread_expression_position,
 					);
 				}
 			}
@@ -172,14 +174,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				let length = checking_data.types.new_constant_type(Constant::Number(
 					(elements.len() as f64).try_into().unwrap(),
 				));
+				let value = crate::types::properties::PropertyValue::Value(length);
 
 				// TODO: Should there be a position here?
 				basis.append(
 					environment,
 					Publicity::Public,
 					PropertyKey::String("length".into()),
-					crate::types::properties::PropertyValue::Value(length),
-					None,
+					value,
+					expression.get_position().with_source(environment.get_source()),
 				);
 			}
 
@@ -189,6 +192,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			object_literal,
 			checking_data,
 			environment,
+			object_literal.position.with_source(environment.get_source()),
 			expecting,
 		)),
 		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
@@ -207,7 +211,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			Instance::RValue(synthesise_template_literal_expression(
 				tag,
 				parts_iter,
-				position,
+				position.with_source(environment.get_source()),
 				environment,
 				checking_data,
 			))
@@ -379,6 +383,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									let result = environment.delete_property(
 										on,
 										&PropertyKey::String(Cow::Owned(property.clone())),
+										parent.get_position().with_source(environment.get_source()),
 									);
 									return if result { TypeId::TRUE } else { TypeId::FALSE };
 								}
@@ -403,7 +408,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							);
 
 							let property = PropertyKey::from_type(indexer, &checking_data.types);
-							let result = environment.delete_property(being_indexed, &property);
+							let result = environment.delete_property(
+								being_indexed,
+								&property,
+								indexee.get_position().with_source(environment.get_source()),
+							);
 							return if result { TypeId::TRUE } else { TypeId::FALSE };
 						}
 						_ => {
@@ -953,10 +962,11 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	ObjectLiteral { members, .. }: &ObjectLiteral,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	environment: &mut Environment,
+	position: SpanWithSource,
 	expected: TypeId,
 ) -> TypeId {
 	let mut object_builder =
-		ObjectBuilder::new(None, &mut checking_data.types, &mut environment.info);
+		ObjectBuilder::new(None, &mut checking_data.types, position, &mut environment.info);
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
@@ -984,7 +994,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 								Publicity::Public,
 								key,
 								value,
-								Some(pos.with_source(environment.get_source())),
+								pos.with_source(environment.get_source()),
 							);
 						}
 					}
@@ -1046,7 +1056,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 									Publicity::Public,
 									key.clone(),
 									PropertyValue::Value(value),
-									Some(position),
+									position,
 								)
 							}
 						} else {
@@ -1060,7 +1070,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 										on: *condition,
 										truthy: Box::new(value),
 									},
-									Some(member_position.clone()),
+									member_position.clone(),
 								);
 							}
 							let negation =
@@ -1075,7 +1085,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 										on: negation,
 										truthy: Box::new(value),
 									},
-									Some(member_position.clone()),
+									member_position.clone(),
 								)
 							}
 						}
@@ -1126,7 +1136,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Publicity::Public,
 					key,
 					crate::types::properties::PropertyValue::Value(value),
-					Some(member_position),
+					member_position,
 				);
 			}
 			ObjectLiteralMember::Property { key, value, position, .. } => {
@@ -1181,13 +1191,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					synthesise_expression(value, environment, checking_data, property_expecting);
 
 				let value = crate::types::properties::PropertyValue::Value(value);
-				object_builder.append(
-					environment,
-					Publicity::Public,
-					key,
-					value,
-					Some(member_position),
-				);
+				object_builder.append(environment, Publicity::Public, key, value, member_position);
 
 				// let property_name: PropertyName<'static> = property_key.into();
 
@@ -1249,7 +1253,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					Publicity::Public,
 					key,
 					property,
-					Some(member_position),
+					member_position,
 				);
 			}
 		}

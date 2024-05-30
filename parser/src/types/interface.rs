@@ -36,14 +36,6 @@ pub enum Optionality {
 	Required,
 }
 
-// Used around type aliases for inline rule thingies
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(derive_ASTNode)]
-pub enum TypeRule {
-	In,
-	InKeyOf,
-}
-
 impl ASTNode for InterfaceDeclaration {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -216,7 +208,6 @@ pub enum InterfaceMember {
 	/// [For mapped types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
 	Rule {
 		parameter: String,
-		rule: TypeRule,
 		matching_type: Box<TypeAnnotation>,
 		as_type: Option<Box<TypeAnnotation>>,
 		optionality: Optionality,
@@ -328,7 +319,6 @@ impl ASTNode for InterfaceMember {
 				let inner = Self::from_reader(reader, state, options)?;
 				if let Self::Rule {
 					parameter,
-					rule,
 					matching_type,
 					as_type,
 					optionality,
@@ -339,7 +329,6 @@ impl ASTNode for InterfaceMember {
 				{
 					Ok(Self::Rule {
 						parameter,
-						rule,
 						matching_type,
 						as_type,
 						optionality,
@@ -413,20 +402,6 @@ impl ASTNode for InterfaceMember {
 										});
 									}
 									Token(TSXToken::Keyword(TSXKeyword::In), _) => {
-										let rule = if reader
-											.conditional_next(|token| {
-												matches!(
-													token,
-													TSXToken::Keyword(TSXKeyword::KeyOf)
-												)
-											})
-											.is_some()
-										{
-											TypeRule::InKeyOf
-										} else {
-											TypeRule::In
-										};
-
 										let matching_type =
 											TypeAnnotation::from_reader(reader, state, options)?;
 
@@ -479,7 +454,6 @@ impl ASTNode for InterfaceMember {
 												MappedReadonlyKind::False
 											},
 											matching_type: Box::new(matching_type),
-											rule,
 											output_type: Box::new(output_type),
 											position,
 											as_type,
@@ -712,7 +686,6 @@ impl ASTNode for InterfaceMember {
 				output_type,
 				as_type,
 				parameter,
-				rule,
 				position: _,
 			} => {
 				buf.push_str(match is_readonly {
@@ -722,13 +695,10 @@ impl ASTNode for InterfaceMember {
 				});
 				buf.push('[');
 				buf.push_str(parameter.as_str());
-				buf.push_str(match rule {
-					TypeRule::In => " in ",
-					TypeRule::InKeyOf => " in keyof ",
-				});
+				buf.push_str(" in ");
 				matching_type.to_string_from_buffer(buf, options, local);
 				if let Some(as_type) = as_type {
-					buf.push(' ');
+					buf.push_str(" as ");
 					as_type.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(']');

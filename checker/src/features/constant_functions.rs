@@ -1,4 +1,5 @@
 use iterator_endiate::EndiateIteratorExt;
+use source_map::SpanWithSource;
 
 use crate::{
 	context::{get_on_ctx, information::InformationChain},
@@ -42,6 +43,7 @@ pub(crate) fn call_constant_function(
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,
+	_call_site: SpanWithSource,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -351,6 +353,7 @@ pub(crate) fn call_constant_function(
 		// 			value.first().ok_or(ConstantFunctionError::BadCall)?.0,
 		// 			environment,
 		// 			types,
+		// 			call_site,
 		// 		);
 		// 		Ok(ConstantOutput::Value(value))
 		// 	} else {

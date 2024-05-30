@@ -53,7 +53,7 @@ impl LocalInformation {
 		under: PropertyKey<'static>,
 		to: PropertyValue,
 		register_setter_event: bool,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	) {
 		// crate::utilities::notify!("Registering {:?} {:?} {:?}", on, under, to);
 		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
@@ -83,6 +83,7 @@ impl LocalInformation {
 		&mut self,
 		prototype: Option<TypeId>,
 		types: &mut crate::types::TypeStore,
+		position: SpanWithSource,
 		// TODO if this on environment instead it could be worked out?
 		is_under_dyn: bool,
 	) -> TypeId {
@@ -100,9 +101,7 @@ impl LocalInformation {
 			};
 			// TODO maybe register the environment if function ...
 			// TODO register properties
-			// TODO Needs a position (or not?)
-			let value =
-				Event::CreateObject { referenced_in_scope_as: ty, prototype, position: None };
+			let value = Event::CreateObject { referenced_in_scope_as: ty, prototype, position };
 			self.events.push(value);
 		}
 
@@ -189,12 +188,13 @@ pub fn merge_info(
 	mut truthy: LocalInformation,
 	mut otherwise: Option<LocalInformation>,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) {
 	onto.events.push(Event::Conditionally {
 		condition,
 		truthy_events: truthy.events.len() as u32,
 		otherwise_events: otherwise.as_ref().map_or(0, |f| f.events.len() as u32),
-		position: None,
+		position,
 	});
 
 	onto.events.append(&mut truthy.events);

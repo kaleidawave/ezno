@@ -21,11 +21,12 @@ impl ObjectBuilder {
 	pub fn new(
 		prototype: Option<TypeId>,
 		types: &mut TypeStore,
+		position: SpanWithSource,
 		info: &mut LocalInformation,
 	) -> Self {
 		// TODO is_under_dyn bad
 		let is_under_dyn = true;
-		Self { object: info.new_object(prototype, types, is_under_dyn) }
+		Self { object: info.new_object(prototype, types, position, is_under_dyn) }
 	}
 
 	pub fn append(
@@ -34,7 +35,7 @@ impl ObjectBuilder {
 		publicity: Publicity,
 		under: PropertyKey<'static>,
 		value: PropertyValue,
-		position: Option<SpanWithSource>,
+		position: SpanWithSource,
 	) {
 		environment.info.register_property(self.object, publicity, under, value, true, position);
 	}

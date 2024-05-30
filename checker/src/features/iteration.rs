@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use source_map::SpanWithSource;
+
 use crate::{
 	context::{
 		environment::Label, get_value_of_variable, invocation::InvocationContext,
@@ -48,6 +50,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 	loop_body: impl FnOnce(&mut Environment, &mut CheckingData<T, A>),
+	position: SpanWithSource,
 ) {
 	match behavior {
 		IterationBehavior::While(condition) => {
@@ -63,17 +66,14 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					);
 
 					// TODO not always needed
-					// let break_event = Event::Conditionally {
-					// 	condition,
-					// 	truthy_events: Default::default(),
-					// 	otherwise_events: Box::new([FinalEvent::Break {
-					// 		position: None,
-					// 		carry: 0,
-					// 	}
-					// 	.into()]),
-					// 	position: None,
-					// };
-					// environment.info.events.push(break_event);
+					let break_event = Event::Conditionally {
+						condition,
+						truthy_events: 0,
+						otherwise_events: 1,
+						position,
+					};
+					environment.info.events.push(break_event);
+					environment.info.events.push(FinalEvent::Break { position, carry: 0 }.into());
 
 					loop_body(environment, checking_data);
 
@@ -112,6 +112,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
 				&mut checking_data.types,
+				position,
 			);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
@@ -149,17 +150,14 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					);
 
 					// TODO not always needed
-					// let break_event = Event::Conditionally {
-					// 	condition,
-					// 	truthy_events: Default::default(),
-					// 	otherwise_events: Box::new([FinalEvent::Break {
-					// 		position: None,
-					// 		carry: 0,
-					// 	}
-					// 	.into()]),
-					// 	position: None,
-					// };
-					// environment.info.events.push(break_event);
+					let break_event = Event::Conditionally {
+						condition,
+						truthy_events: 0,
+						otherwise_events: 1,
+						position,
+					};
+					environment.info.events.push(break_event);
+					environment.info.events.push(FinalEvent::Break { position, carry: 0 }.into());
 
 					condition
 				},
@@ -193,6 +191,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -246,18 +245,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 										TypeId::TRUE
 									};
 
-									// // TODO not always needed
-									// let break_event = Event::Conditionally {
-									// 	condition,
-									// 	truthy_events: Default::default(),
-									// 	otherwise_events: Box::new([FinalEvent::Break {
-									// 		position: None,
-									// 		carry: 0,
-									// 	}
-									// 	.into()]),
-									// 	position: None,
-									// };
-									// environment.info.events.push(break_event);
+									// TODO not always needed
+									let break_event = Event::Conditionally {
+										condition,
+										truthy_events: 0,
+										otherwise_events: 1,
+										position,
+									};
+									environment.info.events.push(break_event);
+									environment
+										.info
+										.events
+										.push(FinalEvent::Break { position, carry: 0 }.into());
 
 									loop_body(environment, checking_data);
 
@@ -326,6 +325,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -371,6 +371,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
+				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -415,8 +416,9 @@ pub(crate) fn run_iteration_block(
 	invocation_context: &mut InvocationContext,
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
+	position: SpanWithSource,
 ) {
-	/// TODO via config and also take into account `events.len()`
+	/// TODO via config and per line
 	const MAX_ITERATIONS: usize = 100;
 
 	let mut s = String::new();
@@ -471,6 +473,7 @@ pub(crate) fn run_iteration_block(
 					types,
 					errors,
 					|_, _| {},
+					position,
 				);
 			} else {
 				evaluate_unknown_iteration_for_loop(
@@ -504,6 +507,7 @@ pub(crate) fn run_iteration_block(
 
 						n += 1;
 					},
+					position,
 				);
 			} else {
 				evaluate_unknown_iteration_for_loop(
@@ -531,6 +535,7 @@ fn run_iteration_loop(
 	errors: &mut ErrorsAndInfo,
 	// For `for in` (TODO for of)
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
+	position: SpanWithSource,
 ) {
 	invocation_context.new_loop_iteration(|invocation_context| {
 		for _ in 0..iterations {
@@ -543,6 +548,7 @@ fn run_iteration_loop(
 				invocation_context,
 				types,
 				errors,
+				position,
 			);
 
 			if let Some(result) = result {

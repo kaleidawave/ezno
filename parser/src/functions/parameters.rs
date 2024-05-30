@@ -211,20 +211,49 @@ where
 		local: crate::LocalToStringInformation,
 	) {
 		let FunctionParameters { parameters, rest_parameter, .. } = self;
-		// TODO parameters don't implement ASTNode
-		// let large = are_nodes_over_length(
-		// 	parameters.iter(),
-		// 	options,
-		// 	local,
-		// 	Some(MAX_INLINE_OBJECT_LITERAL),
-		// 	true,
-		// );
+		let mut large = false;
+		if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+			let room = options.max_line_length as usize;
+			let mut buf = source_map::StringWithOptionalSourceMap {
+				source: String::new(),
+				source_map: None,
+				quit_after: Some(room),
+				since_new_line: 0,
+			};
+			// Not particularly accurate but does sort of work
+			for parameter in parameters {
+				parameter.name.to_string_from_buffer(&mut buf, options, local);
+				let type_annotation = parameter.type_annotation.as_ref();
+				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
+				if let Some(ParameterData::WithDefaultValue(ref value)) = parameter.additionally {
+					value.to_string_from_buffer(&mut buf, options, local);
+				}
+				large = buf.source.len() > room;
+				if large {
+					break;
+				}
+			}
+			if let Some(rest_parameter) = rest_parameter {
+				rest_parameter.name.to_string_from_buffer(&mut buf, options, local);
+				let type_annotation = rest_parameter.type_annotation.as_ref();
+				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
+				large = buf.source.len() > room;
+			}
+		}
+
+		let inner_local = if large { local.next_level() } else { local };
+
 		buf.push('(');
+		// let local = if large { local.next_level() } else { local };
 		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
 			parameters.iter().endiate()
 		{
-			// decorators_to_string_from_buffer(decorators, buf, options, local);
-			name.to_string_from_buffer(buf, options, local);
+			if large {
+				buf.push_new_line();
+				options.add_indent(inner_local.depth, buf);
+			}
+			// decorators_to_string_from_buffer(decorators, buf, options, inner_local);
+			name.to_string_from_buffer(buf, options, inner_local);
 			if let (true, Some(ref type_annotation)) =
 				(options.include_type_annotations, type_annotation)
 			{
@@ -232,11 +261,11 @@ where
 					buf.push('?');
 				}
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, local);
+				type_annotation.to_string_from_buffer(buf, options, inner_local);
 			}
 			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				value.to_string_from_buffer(buf, options, local);
+				value.to_string_from_buffer(buf, options, inner_local);
 			}
 			if !at_end || rest_parameter.is_some() {
 				buf.push(',');
@@ -244,12 +273,20 @@ where
 			}
 		}
 		if let Some(rest_parameter) = rest_parameter {
+			if large {
+				buf.push_new_line();
+				options.add_indent(inner_local.depth, buf);
+			}
 			buf.push_str("...");
-			rest_parameter.name.to_string_from_buffer(buf, options, local);
+			rest_parameter.name.to_string_from_buffer(buf, options, inner_local);
 			if let Some(ref type_annotation) = rest_parameter.type_annotation {
 				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, local);
+				type_annotation.to_string_from_buffer(buf, options, inner_local);
 			}
+		}
+		if large {
+			buf.push_new_line();
+			options.add_indent(local.depth, buf);
 		}
 		buf.push(')');
 	}

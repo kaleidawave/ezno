@@ -68,7 +68,7 @@ impl ASTNode for ForLoopStatement {
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
-pub enum ForLoopStatementInitializer {
+pub enum ForLoopStatementinitialiser {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
 	Expression(MultipleExpression),
@@ -92,7 +92,7 @@ pub enum ForLoopCondition {
 		position: Span,
 	},
 	Statements {
-		initialiser: Option<ForLoopStatementInitializer>,
+		initialiser: Option<ForLoopStatementinitialiser>,
 		condition: Option<MultipleExpression>,
 		afterthought: Option<MultipleExpression>,
 		position: Span,
@@ -160,31 +160,31 @@ impl ASTNode for ForLoopCondition {
 			}
 			_ => {
 				let peek = reader.peek();
-				let initializer =
+				let initialiser =
 					if let Some(Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _)) =
 						peek
 					{
 						let declaration = VariableDeclaration::from_reader(reader, state, options)?;
-						Some(ForLoopStatementInitializer::VariableDeclaration(declaration))
+						Some(ForLoopStatementinitialiser::VariableDeclaration(declaration))
 					} else if let Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) = peek {
 						let stmt = VarVariableStatement::from_reader(reader, state, options)?;
-						Some(ForLoopStatementInitializer::VarStatement(stmt))
+						Some(ForLoopStatementinitialiser::VarStatement(stmt))
 					} else if let Some(Token(TSXToken::SemiColon, _)) = peek {
 						None
 					} else {
 						let expr = MultipleExpression::from_reader(reader, state, options)?;
-						Some(ForLoopStatementInitializer::Expression(expr))
+						Some(ForLoopStatementinitialiser::Expression(expr))
 					};
 
 				let semi_colon_one = reader.expect_next(TSXToken::SemiColon)?;
-				let start = initializer.as_ref().map_or(semi_colon_one, |init| match init {
-					ForLoopStatementInitializer::VariableDeclaration(item) => {
+				let start = initialiser.as_ref().map_or(semi_colon_one, |init| match init {
+					ForLoopStatementinitialiser::VariableDeclaration(item) => {
 						item.get_position().get_start()
 					}
-					ForLoopStatementInitializer::VarStatement(item) => {
+					ForLoopStatementinitialiser::VarStatement(item) => {
 						item.get_position().get_start()
 					}
-					ForLoopStatementInitializer::Expression(item) => {
+					ForLoopStatementinitialiser::Expression(item) => {
 						item.get_position().get_start()
 					}
 				});
@@ -205,7 +205,7 @@ impl ASTNode for ForLoopCondition {
 					.as_ref()
 					.map_or(semi_colon_two, |expr| expr.get_position().get_end());
 				let position = start.union(end);
-				Self::Statements { initialiser: initializer, condition, afterthought, position }
+				Self::Statements { initialiser, condition, afterthought, position }
 			}
 		};
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -238,29 +238,66 @@ impl ASTNode for ForLoopCondition {
 				buf.push_str(" in ");
 				r#in.to_string_from_buffer(buf, options, local);
 			}
-			Self::Statements { initialiser: initializer, condition, afterthought, position: _ } => {
-				if let Some(initializer) = initializer {
-					match initializer {
-						ForLoopStatementInitializer::VariableDeclaration(stmt) => {
-							stmt.to_string_from_buffer(buf, options, local);
-						}
-						ForLoopStatementInitializer::Expression(expr) => {
-							expr.to_string_from_buffer(buf, options, local);
-						}
-						ForLoopStatementInitializer::VarStatement(stmt) => {
-							stmt.to_string_from_buffer(buf, options, local);
+			Self::Statements { initialiser, condition, afterthought, position: _ } => {
+				let mut large = false;
+				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+					let room = options.max_line_length as usize;
+					let mut buf = source_map::StringWithOptionalSourceMap {
+						source: String::new(),
+						source_map: None,
+						quit_after: Some(room),
+						since_new_line: 0,
+					};
+
+					if let Some(initialiser) = initialiser {
+						initialiser_to_string(initialiser, &mut buf, options, local);
+					};
+					large = buf.source.len() > room;
+					if !large {
+						if let Some(condition) = condition {
+							condition.to_string_from_buffer(&mut buf, options, local);
+						};
+						large = buf.source.len() > room;
+						if !large {
+							if let Some(afterthought) = afterthought {
+								afterthought.to_string_from_buffer(&mut buf, options, local);
+							};
+							large = buf.source.len() > room;
 						}
 					}
 				}
+				let inner_local = if large { local.next_level() } else { local };
+
+				if let Some(initialiser) = initialiser {
+					if large {
+						buf.push_new_line();
+						options.add_indent(inner_local.depth, buf);
+					}
+					initialiser_to_string(initialiser, buf, options, inner_local);
+				}
 				buf.push(';');
 				if let Some(condition) = condition {
-					options.push_gap_optionally(buf);
-					condition.to_string_from_buffer(buf, options, local);
+					if large {
+						buf.push_new_line();
+						options.add_indent(inner_local.depth, buf);
+					} else {
+						options.push_gap_optionally(buf);
+					}
+					condition.to_string_from_buffer(buf, options, inner_local);
 				}
 				buf.push(';');
 				if let Some(afterthought) = afterthought {
-					options.push_gap_optionally(buf);
-					afterthought.to_string_from_buffer(buf, options, local);
+					if large {
+						buf.push_new_line();
+						options.add_indent(inner_local.depth, buf);
+					} else {
+						options.push_gap_optionally(buf);
+					}
+					afterthought.to_string_from_buffer(buf, options, inner_local);
+				}
+				if large {
+					buf.push_new_line();
+					options.add_indent(local.depth, buf);
 				}
 			}
 		}
@@ -272,6 +309,25 @@ impl ASTNode for ForLoopCondition {
 			ForLoopCondition::ForOf { position, .. }
 			| ForLoopCondition::ForIn { position, .. }
 			| ForLoopCondition::Statements { position, .. } => *position,
+		}
+	}
+}
+
+fn initialiser_to_string<T: source_map::ToString>(
+	initialiser: &ForLoopStatementinitialiser,
+	buf: &mut T,
+	options: &crate::ToStringOptions,
+	local: crate::LocalToStringInformation,
+) {
+	match initialiser {
+		ForLoopStatementinitialiser::VariableDeclaration(stmt) => {
+			stmt.to_string_from_buffer(buf, options, local);
+		}
+		ForLoopStatementinitialiser::Expression(expr) => {
+			expr.to_string_from_buffer(buf, options, local);
+		}
+		ForLoopStatementinitialiser::VarStatement(stmt) => {
+			stmt.to_string_from_buffer(buf, options, local);
 		}
 	}
 }

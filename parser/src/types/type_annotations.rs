@@ -1,5 +1,6 @@
 use std::ops::Neg;
 
+use crate::ast::VariableOrPropertyAccess;
 use crate::{
 	derive_ASTNode, parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
 	ListItem, ParseErrors, Quoted,
@@ -18,8 +19,8 @@ use super::{
 };
 
 use crate::{
-	ast::assignments::LHSOfAssignment, tokens::token_as_identifier, ASTNode, NumberRepresentation,
-	ParseError, ParseOptions, Span, TSXKeyword, TSXToken, Token, TokenReader,
+	tokens::token_as_identifier, ASTNode, NumberRepresentation, ParseError, ParseOptions, Span,
+	TSXKeyword, TSXToken, Token, TokenReader,
 };
 
 /// A reference to a type
@@ -31,6 +32,8 @@ pub enum TypeAnnotation {
 	/// A name e.g. `IPost`
 	Name(String, Span),
 	CommonName(CommonTypes, Span),
+	/// WIP
+	This(Span),
 	/// A name e.g. `Intl.IPost`. TODO can there be more than 2 members
 	NamespacedName(String, String, Span),
 	/// A name with generics e.g. `Array<number>`
@@ -74,7 +77,7 @@ pub enum TypeAnnotation {
 	Index(Box<TypeAnnotation>, Box<TypeAnnotation>, Span),
 	/// KeyOf
 	KeyOf(Box<TypeAnnotation>, Span),
-	TypeOf(Box<LHSOfAssignment>, Span),
+	TypeOf(Box<VariableOrPropertyAccess>, Span),
 	Infer(String, Span),
 	/// This is technically a special return type in TypeScript but we can make a superset behavior here
 	Asserts(Box<TypeAnnotation>, Span),
@@ -229,9 +232,9 @@ impl ASTNode for TypeAnnotation {
 				buf.push_str(" => ");
 				return_type.to_string_from_buffer(buf, options, local);
 			}
-			Self::BooleanLiteral(expression, _) => {
-				buf.push_str(if *expression { "true" } else { "false" });
-			}
+			Self::BooleanLiteral(true, _) => buf.push_str("true"),
+			Self::BooleanLiteral(false, _) => buf.push_str("false"),
+			Self::This(..) => buf.push_str("this"),
 			Self::NumberLiteral(value, _) => {
 				buf.push_str(&value.to_string());
 			}
@@ -435,6 +438,7 @@ impl TypeAnnotation {
 			t @ Token(TSXToken::Keyword(TSXKeyword::False), _) => {
 				Self::BooleanLiteral(false, t.get_span())
 			}
+			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => Self::This(t.get_span()),
 			Token(TSXToken::Keyword(TSXKeyword::Infer), start) => {
 				let token = reader.next().ok_or_else(parse_lexing_error)?;
 				let (name, position) = token_as_identifier(token, "infer name")?;
@@ -451,6 +455,11 @@ impl TypeAnnotation {
 				)?;
 				let position = start.union(predicate.get_position());
 				Self::Asserts(Box::new(predicate), position)
+			}
+			Token(TSXToken::Keyword(TSXKeyword::TypeOf), start) => {
+				let reference = VariableOrPropertyAccess::from_reader(reader, state, options)?;
+				let position = start.union(reference.get_position());
+				Self::TypeOf(Box::new(reference), position)
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
 				let position = t.get_span();

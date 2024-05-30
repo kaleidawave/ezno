@@ -85,6 +85,7 @@ impl FunctionType {
 		properties: ClassPropertiesToRegister<A>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
+		position: SpanWithSource,
 	) -> Self {
 		let scope = Scope::Function(FunctionScope::Constructor {
 			extends: false,
@@ -130,6 +131,7 @@ impl FunctionType {
 					on,
 					checking_data,
 					properties,
+					position,
 				);
 
 				on

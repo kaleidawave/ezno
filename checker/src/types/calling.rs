@@ -615,20 +615,20 @@ pub enum FunctionCallingError {
 	TDZ {
 		error: TDZ,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	/// TODO WIP
 	UnconditionalThrow {
 		value: TypeStringRepresentation,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	MismatchedThis {
 		expected: TypeStringRepresentation,
@@ -726,6 +726,7 @@ impl FunctionType {
 					arguments,
 					types,
 					environment,
+					call_site,
 				);
 
 				match result {
@@ -899,6 +900,7 @@ impl FunctionType {
 						target,
 						types,
 						errors,
+						call_site,
 					);
 
 					// Adjust call sites. (because they aren't currently passed down)
@@ -913,7 +915,7 @@ impl FunctionType {
 							..
 						} = d
 						{
-							*c = Some(call_site);
+							*c = call_site;
 						}
 					}
 
@@ -1030,7 +1032,7 @@ impl FunctionType {
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
-		call_site: source_map::BaseSpan<SourceId>,
+		call_site: SpanWithSource,
 		behavior: &E,
 	) {
 		match self.behavior {
@@ -1137,8 +1139,12 @@ impl FunctionType {
 
 						// TODO think so
 						let is_under_dyn = true;
-						let value_of_this =
-							environment.info.new_object(Some(prototype), types, is_under_dyn);
+						let value_of_this = environment.info.new_object(
+							Some(prototype),
+							types,
+							call_site,
+							is_under_dyn,
+						);
 
 						type_arguments.insert(free_this_id, value_of_this);
 					}
@@ -1168,8 +1174,12 @@ impl FunctionType {
 							"Creating new class object with prototype={:?}",
 							prototype
 						);
-						let value_of_this =
-							environment.info.new_object(Some(prototype), types, is_under_dyn);
+						let value_of_this = environment.info.new_object(
+							Some(prototype),
+							types,
+							call_site,
+							is_under_dyn,
+						);
 
 						crate::utilities::notify!("Here with new");
 						type_arguments.insert(this_object_type, value_of_this);
@@ -1220,7 +1230,7 @@ impl FunctionType {
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
-		call_site: source_map::BaseSpan<SourceId>,
+		call_site: SpanWithSource,
 		behavior: &E,
 	) {
 		for (parameter_idx, parameter) in self.parameters.parameters.iter().enumerate() {
@@ -1292,8 +1302,12 @@ impl FunctionType {
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
 				// TODO reuse synthesise_array literal logic (especially for spread items)
-				let mut basis =
-					ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, &mut environment.info);
+				let mut basis = ObjectBuilder::new(
+					Some(TypeId::ARRAY_TYPE),
+					types,
+					rest_parameter.position,
+					&mut environment.info,
+				);
 
 				let mut count = 0;
 
@@ -1348,7 +1362,7 @@ impl FunctionType {
 							crate::types::properties::Publicity::Public,
 							key,
 							crate::types::properties::PropertyValue::Value(argument.value),
-							None,
+							argument.position,
 						);
 					}
 
@@ -1365,7 +1379,7 @@ impl FunctionType {
 						crate::types::properties::Publicity::Public,
 						PropertyKey::String("length".into()),
 						crate::types::properties::PropertyValue::Value(length),
-						None,
+						rest_parameter.position,
 					);
 				}
 
