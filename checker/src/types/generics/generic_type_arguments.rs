@@ -8,8 +8,6 @@ use crate::{
 	TypeId,
 };
 
-use source_map::{Nullable, SpanWithSource};
-
 use std::fmt::Debug;
 
 /// These are curried between structures
@@ -77,7 +75,7 @@ impl GenericArguments {
 				arguments: Default::default(),
 				closures: closures.clone(),
 			},
-			GenericArguments::LookUp { on } => SubstitutionArguments {
+			GenericArguments::LookUp { on: _ } => SubstitutionArguments {
 				parent: None,
 				arguments: Default::default(),
 				closures: Default::default(),

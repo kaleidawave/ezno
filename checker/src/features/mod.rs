@@ -14,7 +14,6 @@ pub mod exceptions;
 pub mod functions;
 pub mod iteration;
 pub mod modules;
-pub mod narrowing;
 pub mod objects;
 pub mod operations;
 pub mod template_literal;

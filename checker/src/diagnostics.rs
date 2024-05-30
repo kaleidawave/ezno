@@ -219,7 +219,7 @@ impl TypeStringRepresentation {
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
 				crate::PropertyValue::Deleted => todo!(),
-				crate::PropertyValue::Dependent { .. } => todo!(),
+				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
 			},
 			crate::context::Logical::Or { .. } => {
 				todo!()
@@ -580,6 +580,13 @@ mod defined_errors_and_warnings {
 						position: call_site,
 						kind,
 					},
+					FunctionCallingError::CannotCatch { catch, thrown, thrown_position } => Diagnostic::Position {
+						reason: format!(
+							"Cannot throw {thrown} in block that expects {catch}"
+						),
+						position: thrown_position,
+						kind,
+					}
 				},
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {

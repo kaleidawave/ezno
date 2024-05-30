@@ -23,3 +23,15 @@ impl ExplicitTypeArguments {
 		}
 	}
 }
+
+// pub enum GenericTypeArgument {
+// 	Explicit(TypeId, SpanWithSource),
+// 	Inferred(TypeId),
+// 	NeedsComputation(NeedsComputation)
+// }
+
+// /// TODO more
+// pub enum NeedsComputation {
+// 	Slice(Range<u32, TypeId),
+// 	PropertyKey(PropertyKey<'static>)
+// }

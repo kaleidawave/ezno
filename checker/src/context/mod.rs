@@ -80,7 +80,10 @@ pub enum GeneralContext<'a> {
 }
 
 /// Specifies where a variable exists
+///
+/// TODO is ContextId going to be used in the future?
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct Boundary(pub(crate) ContextId);
 
 /// Used for doing things with a Context that is either [Root] or [Environment]
@@ -377,7 +380,7 @@ impl<T: ContextType> Context<T> {
 					}
 				})
 			}
-			Reference::Property { on, with, publicity, span } => todo!("keyof on?"),
+			Reference::Property { .. } => todo!("keyof on?"),
 		}
 	}
 
@@ -1112,7 +1115,7 @@ pub enum Logical<T> {
 	/// Note this uses [`PossibleLogical<T>`] rather than [`Logical<T>`]
 	Or {
 		/// This can be [`TypeId::BOOLEAN_TYPE`] for unknown left-right-ness
-		based_on: TypeId,
+		condition: TypeId,
 		left: Box<PossibleLogical<T>>,
 		right: Box<PossibleLogical<T>>,
 	},
@@ -1166,11 +1169,7 @@ pub(crate) fn get_value_of_variable(
 
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			// TODO recursive to find via distributivity ?
-			let find_map =
-				info.get_chain_of_info().find_map(|info| info.narrowed_values.get(&res).copied());
-
-			return Some(find_map.unwrap_or(res));
+			return Some(res);
 		}
 	}
 	None

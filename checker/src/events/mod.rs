@@ -11,14 +11,12 @@ use crate::{
 		calling::CalledWithNew,
 		functions::SynthesisedArgument,
 		properties::{PropertyKey, PropertyValue, Publicity},
-		store::TypeStore,
 		TypeId,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
 pub(crate) use application::apply_events;
-use source_map::Nullable;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
 pub enum RootReference {
@@ -86,6 +84,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
+		possibly_thrown: Option<TypeId>,
 		position: SpanWithSource,
 	},
 	/// Run events conditionally

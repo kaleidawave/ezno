@@ -47,16 +47,16 @@ b satisfies 1;
 #### Nominal-ness
 
 ```ts
-class X { a: number }
-class Y { a: number }
+class X { a: number = 2 }
+class Y { a: number = 2}
 
 function doThingWithX(x: X) {}
 
-doThingWithX(new X())
+doThingWithX(new X());
 doThingWithX(new Y())
 ```
 
-- Cannot Y with X
+- Argument of type [Y] { a: 2 } is not assignable to parameter of type X
 
 ### Statements
 
@@ -81,16 +81,14 @@ object.other satisfies "hello";
 #### Checking with function prototype
 
 ```ts
-function MyClass(this: { other: string }, value) {
-	this.value = value
-}
+function MyClass(this: { other: string }) { }
 
 MyClass.prototype.other = 2;
 
-const object = new MyClass("hi");
+const m = new MyClass();
 ```
 
-- Cannot call with { other: 2 }, required { other: string } (or smth like that)
+- The 'this' context of the function is expected to be { other: string }, found { other: 2 }
 
 #### `instanceof` operator
 
@@ -111,7 +109,6 @@ class X {}
 ### Readonly and `as const`
 
 > TODO constrained inference
->
 
 #### Readonly parameter
 
@@ -121,7 +118,7 @@ function x(p: readonly { a: string }) {
 }
 ```
 
-- Cannot assign to const
+- Cannot assign to immutable property
 
 ### Properties
 
@@ -145,6 +142,8 @@ Object.fromEntries([["hello", "world"]]) satisfies string;
 
 #### Spread condition
 
+> TODO technically `.bar` should be 2 | undefined
+
 ```ts
 declare let condition: boolean;
 
@@ -156,10 +155,11 @@ const obj = {
   } : {}),
 };
 
-print_type(obj.bar);
+obj.foo satisfies number;
+obj.bar satisfies string;
 ```
 
-- TODO
+- Expected string, found 2 | undefined
 
 #### Getter and setter through function
 
@@ -251,101 +251,7 @@ function exceptionToResult(s: string) {
 }
 ```
 
-- Throw is SyntaxError | never
-
-### Narrowing
-
-#### Conditional operator
-
-```ts
-function optionalNumber(n: number | undefined): string {
-    return n ?? 2
-}
-```
-
-- Cannot return string, found number | 2
-
-#### Equality
-
-```ts
-declare let a: string;
-if (a === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Condition as a function
-
-```ts
-declare let a: string;
-
-const equalsHi = (p: string) => p === "hi";
-
-if (equalsHi(a)) {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Passed around
-
-```ts
-declare let a: string;
-
-const b = a;
-if (b === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-### Mapped types
-
-#### Specialisation
-
-```ts
-type Pick<T, K extends keyof T> = {
-    [P in K]: T[P];
-};
-
-interface X { a: number, b: string, c: string }
-
-const x: Pick<X, "a"> = { a: 5 };
-
-({ b: "string" }) satisfies Pick<X, "a">;
-```
-
-- TODO
-
-#### Optional
-
-```ts
-type Partial<T> = {
-    [P in keyof T]?: T[P];
-};
-
-const x: Partial<{ a: number, b: string }> = { a: 3 },
-      y: Partial<{ a: number, b: string }> = { a: "hi" }
-```
-
-- Cannot assign { a: "hi" }
-
-#### Negated
-
-```ts
-type Required<T> = {
-    [P in keyof T]-?: T[P];
-};
-
-const x: Required<{ a?: number }> = { a: 3 },
-      y: Required<{ a?: number }> = { };
-```
-
-- Cannot assign { } to required
+- Cannot catch type number because the try block throws SyntaxError
 
 ### Types
 
@@ -392,6 +298,17 @@ interface X {
 
 - Expected keyof X, found "c"
 
+#### Template literal types
+
+```ts
+type Introduction = `Hello ${string}`;
+
+const first: Introduction = "Hello Ben";
+const second: Introduction = "Hi Ben";
+```
+
+- Type "Hi Ben" is not assignable to type Introduction
+
 ### Function calling
 
 #### Canceled generics
@@ -431,7 +348,9 @@ function getString(param: string): string {
 
 ### Others
 
-#### Use annotation when errors
+#### Use type annotation in the presence of error
+
+> Note x and y are still string and the function still returns string
 
 ```ts
 const x: string = 5;
@@ -448,13 +367,16 @@ getString(2) satisfies number;
 ```
 
 - Expected number, found string
+- Cannot return number because the function is expected to return string
+- Type 5 is not assignable to type string
+- Could not find variable 'h' in scope
 
 #### Unconditional throw
 
 ```ts
 function safeDivide(num: number, denom: number) {
 	if (denom === 0) {
-		throw Error("Cannot divide by zero");
+		throw new Error("Cannot divide by zero");
 	}
 	return num / denom
 }
@@ -464,7 +386,7 @@ safeDivide(8, 4) satisfies 2;
 safeDivide(10, 0);
 ```
 
-- thrown!
+- Conditional '[Error] { message: \"Cannot divide by zero\" }' was thrown in function
 
 ### Closures
 

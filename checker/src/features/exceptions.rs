@@ -3,7 +3,7 @@
 use crate::{
 	context::VariableRegisterArguments,
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	events::{Event, Trapped},
+	events::{Event, FinalEvent, Trapped},
 	subtyping::type_is_subtype_object,
 	CheckingData, Environment, Scope, Type, TypeId,
 };
@@ -20,36 +20,46 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
-	let (thrown_type, throw_events) = {
+	let (thrown_type, mut throw_events) = {
 		let mut try_block_environment = environment.new_lexical_environment(Scope::TryBlock {});
 
 		A::synthesise_block(&try_block, &mut try_block_environment, checking_data);
 		crate::utilities::notify!("TODO also get possible impure functions");
 
+		let mut thrown_type_acc = TypeId::NEVER_TYPE;
+
+		// TODO should events be removed?
+		for event in &try_block_environment.info.events {
+			// TODO possible getters
+			if let Event::CallsType { possibly_thrown, .. } = event {
+				if let Some(thrown) = possibly_thrown {
+					thrown_type_acc = checking_data.types.new_or_type(thrown_type_acc, *thrown);
+				} else {
+					crate::utilities::notify!("Maybe not never if not pure");
+				}
+			} else if let Event::Conditionally { .. } = event {
+				crate::utilities::notify!("TODO");
+			} else if let Event::Iterate { .. } = event {
+				crate::utilities::notify!("TODO");
+			} else if let Event::FinalEvent(FinalEvent::Throw { thrown, position: _ }) = event {
+				thrown_type_acc = checking_data.types.new_or_type(thrown_type_acc, *thrown);
+			}
+		}
+
 		// TODO want to also get whether condition. Any unknowns etc
-		let thrown_type = todo!("scan through events");
-		// try_block_environment.context_type.state.thrown_type(&mut checking_data.types);
 
 		// TODO merge info stuff
 		let events = try_block_environment.info.events;
 
-		(thrown_type, events)
+		(thrown_type_acc, events)
 	};
 
 	if let Some((catch_block, exception_variable)) = catch_block {
-		if thrown_type != TypeId::NEVER_TYPE {
+		if thrown_type == TypeId::NEVER_TYPE {
 			crate::utilities::notify!("warning");
 		}
 
 		let mut catch_block_environment = environment.new_lexical_environment(Scope::CatchBlock {});
-
-		// TODO exception_variable
-
-		// TODO catch when never
-		// environment.new_lexical_environment_fold_into_parent(
-		// 	crate::Scope::Block {},
-		// 	checking_data,
-		// 	|environment, checking_data| {
 
 		// Important that this is declared in the same one as the block
 		let constraint = if let Some((clause, ty_annotation)) = exception_variable {
@@ -99,21 +109,18 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 		A::synthesise_block(&catch_block, &mut catch_block_environment, checking_data);
 
-		let catch_events = catch_block_environment.info.events;
+		let mut catch_events = catch_block_environment.info.events;
 
-		// TODO catch
-		// let try_event = Event::ExceptionTrap {
-		// 	investigate: throw_events.into_boxed_slice(),
-		// 	handle: catch_events.into_boxed_slice(),
-		// 	finally: Box::default(),
-		// 	trapped_type_id: constraint,
-		// };
+		let try_event = Event::ExceptionTrap {
+			investigate: throw_events.len() as u32,
+			handle: catch_events.len() as u32,
+			finally: 0,
+			trapped_type_id: constraint,
+		};
 
-		todo!()
-
-	// environment.info.events.push(try_event);
-	// 	},
-	// );
+		environment.info.events.push(try_event);
+		environment.info.events.append(&mut throw_events);
+		environment.info.events.append(&mut catch_events);
 	} else {
 		// TODO finally
 	}

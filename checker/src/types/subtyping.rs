@@ -9,9 +9,9 @@ use crate::{
 		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 		printing::print_type,
 		properties::{get_property_unbound, Publicity},
-		substitute, GenericChainLink, ObjectNature, TypeStore,
+		GenericChainLink, ObjectNature, TypeStore,
 	},
-	PropertyValue, TypeId,
+	Constant, PropertyValue, TypeId,
 };
 
 use super::{
@@ -177,27 +177,32 @@ pub struct State<'a> {
 	pub others: SubTypingOptions,
 }
 
-pub type StateSavePoint = [u16; 3];
+pub type StateSavePoint = [u16; 4];
 
 /// WIP
 impl<'a> State<'a> {
 	/// For `or`s, some items might have to be removed if the branch fails
 	pub fn produce_save_point(&self) -> StateSavePoint {
+		let contributions = self.contributions.as_ref();
 		[
 			self.already_checked.len() as u16,
-			self.contributions
-				.as_ref()
-				.map_or(0, |c| c.staging_covariant.len().try_into().unwrap()),
+			contributions.map_or(0, |c| c.staging_covariant.len().try_into().unwrap()),
+			contributions.map_or(0, |c| c.staging_contravariant.len().try_into().unwrap()),
 			self.object_constraints.as_ref().map_or(0, |c| c.len().try_into().unwrap()),
 		]
 	}
 
 	/// For setting the state back to where it was at the point of [Self::produce_save_point]
 	pub fn reset(&mut self, last: StateSavePoint) {
-		let [already_checked, contributions_covariant, object_constraint_count] = last;
+		let [already_checked, contributions_covariant, contributions_contravariant, object_constraint_count] =
+			last;
+
 		self.already_checked.drain((already_checked as usize)..);
 		if let Some(ref mut contributions) = self.contributions {
 			contributions.staging_covariant.drop_range((contributions_covariant as usize)..);
+			contributions
+				.staging_contravariant
+				.drop_range((contributions_contravariant as usize)..);
 		}
 		if let Some(ref mut object_constraints) = self.object_constraints {
 			object_constraints.drain((object_constraint_count as usize)..);
@@ -212,14 +217,14 @@ pub(crate) fn type_is_subtype_with_generics(
 	environment: &Environment,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	{
-		let debug = true;
-		crate::utilities::notify!(
-			"Checking {} :>= {}",
-			print_type(base_type, types, environment, debug),
-			print_type(ty, types, environment, debug)
-		);
-	}
+	// {
+	// 	let debug = true;
+	// 	crate::utilities::notify!(
+	// 		"Checking {} :>= {}",
+	// 		print_type(base_type, types, environment, debug),
+	// 		print_type(ty, types, environment, debug)
+	// 	);
+	// }
 
 	// (unless specified) treat as subtype as error would have already been thrown
 	if state.others.allow_errors && (base_type == TypeId::ERROR_TYPE || ty == TypeId::ERROR_TYPE) {
@@ -325,7 +330,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				return SubTypeResult::IsSubType;
 			}
 
-			if let SubTypingMode::Covariant { position } = state.mode {
+			if let SubTypingMode::Covariant { position: _ } = state.mode {
 				crate::utilities::notify!("Here covariant parameter chaos?");
 				// if let Some(ref mut contributions) = state.contributions {
 				// 	contributions.staging_covariant.insert(ty, (base_type, position))
@@ -347,7 +352,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					left_ty,
 					Type::RootPolyType(rpt)
 					if rpt.is_substitutable()
-				) || matches!(left_ty, Type::Constructor(cst));
+				) || matches!(left_ty, Type::Constructor(..));
 
 			if !edge_case {
 				let result = type_is_subtype_with_generics(
@@ -532,7 +537,7 @@ pub(crate) fn type_is_subtype_with_generics(
 							.as_mut()
 							.unwrap()
 							.staging_contravariant
-							.insert(base_type, (ty, depth));
+							.insert(base_type, (ty.into(), depth));
 
 						result
 					}
@@ -732,6 +737,31 @@ pub(crate) fn type_is_subtype_with_generics(
 			}
 		}
 		Type::Constructor(cst) => match cst {
+			// For template literal types
+			Constructor::BinaryOperator {
+				lhs,
+				rhs,
+				operator: crate::types::MathematicalAndBitwise::Add,
+			} => {
+				if let Type::Constant(Constant::String(rs)) = right_ty {
+					// TODO abstract
+					if let Type::Constant(Constant::String(ls)) = types.get_type_by_id(*lhs) {
+						let matches = rs.starts_with(ls);
+						if let (true, TypeId::STRING_TYPE) = (matches, *rhs) {
+							SubTypeResult::IsSubType
+						} else {
+							crate::utilities::notify!("TODO more complex {:?}", (matches, rhs));
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
+					} else {
+						crate::utilities::notify!("TODO prefix equality");
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				} else {
+					crate::utilities::notify!("RHS not string");
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				}
+			}
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
 			| Constructor::UnaryOperator { .. } => unreachable!("invalid constructor on LHS"),
@@ -1158,12 +1188,12 @@ fn subtype_properties(
 	// }
 
 	let mut property_errors = Vec::new();
-	let reversed_flattened_properties = environment
+	let reversed_flattened_properties_on_on = environment
 		.get_chain_of_info()
 		.filter_map(|info| info.current_properties.get(&base_type).map(|v| v.iter().rev()))
 		.flatten();
 
-	for (publicity, key, lhs_property) in reversed_flattened_properties {
+	for (publicity, key, lhs_property) in reversed_flattened_properties_on_on {
 		// crate::utilities::notify!(
 		// 	"key {:?} with base_type_arguments={:?}",
 		// 	key,
@@ -1247,7 +1277,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 	match lhs_property {
 		PropertyValue::Value(lhs_value) => {
 			// TODO should all values do this or is it only mapped generic ids
-			let mut root;
+			let root;
 			let base_type_arguments = if let Some((id, to)) = key.mapped_generic_id(types) {
 				// WIP, need to work for ors etc
 				// let to = base_type_arguments.and_then(|args| args.get_single_argument(to)).unwrap_or(to);
@@ -1259,8 +1289,6 @@ fn check_lhs_property_is_super_type_of_rhs(
 				base_type_arguments
 			};
 
-			let key_ty = crate::types::printing::print_property_key(key, types, environment, true);
-
 			let res = get_property_unbound(
 				(ty, right_type_arguments),
 				(publicity, key, base_type_arguments),
@@ -1268,13 +1296,14 @@ fn check_lhs_property_is_super_type_of_rhs(
 				types,
 			);
 
-			crate::utilities::notify!(
-				"looked for {:?} ({:?} with {:?}) found {:?}",
-				key,
-				key_ty,
-				base_type_arguments,
-				res
-			);
+			// let key_ty = crate::types::printing::print_property_key(key, types, environment, true);
+			// crate::utilities::notify!(
+			// 	"looked for {:?} ({:?} with {:?}) found {:?}",
+			// 	key,
+			// 	key_ty,
+			// 	base_type_arguments,
+			// 	res
+			// );
 
 			// // TODO shouldn't this use substitution
 			// let mut v;
@@ -1351,26 +1380,45 @@ fn check_lhs_property_is_super_type_of_rhs(
 				Ok(())
 			}
 		}
-		PropertyValue::Dependent { on: _, truthy, otherwise } => {
-			let lhs = check_lhs_property_is_super_type_of_rhs(
-				(publicity, key),
-				(truthy, base_type_arguments),
-				(ty, right_type_arguments),
-				state,
-				environment,
-				types,
-			);
-			if lhs.is_err() {
-				check_lhs_property_is_super_type_of_rhs(
-					(publicity, key),
-					(otherwise, base_type_arguments),
+		PropertyValue::ConditionallyExists { on: _, truthy } => {
+			if let PropertyValue::Value(lhs_value) = &**truthy {
+				let property = get_property_unbound(
 					(ty, right_type_arguments),
-					state,
+					(publicity, key, base_type_arguments),
 					environment,
 					types,
-				)
+				);
+				if let Ok(property) = property {
+					// TODO
+					let found = if let Logical::Pure(PropertyValue::Value(ref found)) = property {
+						*found
+					} else {
+						TypeId::ERROR_TYPE
+					};
+
+					let res = check_logical_property(
+						(*lhs_value, base_type_arguments),
+						(property, right_type_arguments),
+						state,
+						environment,
+						types,
+					);
+
+					if let SubTypeResult::IsNotSubType(reason) = res {
+						Err(PropertyError::Invalid {
+							expected: *lhs_value,
+							found,
+							mismatch: reason,
+						})
+					} else {
+						Ok(())
+					}
+				} else {
+					// Okay if missing because of the above
+					Ok(())
+				}
 			} else {
-				lhs
+				todo!()
 			}
 		}
 	}

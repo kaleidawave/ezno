@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
 	diagnostics::{
-		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError, TypeCheckWarning,
+		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError,
 		TypeStringRepresentation, TDZ,
 	},
 	events::{Event, FinalEvent, RootReference},
@@ -13,7 +13,6 @@ use crate::{
 			AssignmentKind, Reference,
 		},
 		modules::Exported,
-		narrowing::narrow_based_on_expression,
 		objects::SpecialObjects,
 		operations::{
 			evaluate_logical_operation_with_expression,
@@ -23,17 +22,15 @@ use crate::{
 	},
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
-		is_type_truthy_falsy, printing,
+		printing,
 		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
-		PolyNature, Type, TypeCombinable, TypeStore,
+		PolyNature, Type, TypeStore,
 	},
-	CheckingData, Decidable, Instance, RootContext, TypeCheckOptions, TypeId,
+	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
 };
 
 use super::{
-	get_on_ctx, get_value_of_variable,
-	information::{merge_info, InformationChain},
-	invocation::CheckThings,
+	get_on_ctx, get_value_of_variable, information::InformationChain, invocation::CheckThings,
 	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
 	GeneralContext, SetPropertyError,
 };
@@ -1153,6 +1150,13 @@ impl<'a> Environment<'a> {
 							returned_position,
 						},
 					);
+
+					// Add the expected return type instead here
+					// if it fell through to another then it could be bad
+					let returned = checking_data.types.new_error_type(expected);
+					let final_event = FinalEvent::Return { returned, position: returned_position };
+					self.info.events.push(final_event.into());
+					return;
 				}
 			}
 		}

@@ -2,16 +2,45 @@ use source_map::SpanWithSource;
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{GenericChain, TypeRestrictions, TypeStore},
+	types::{properties::PropertyKey, GenericChain, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
 use super::generic_type_arguments::GenericArguments;
 
-// pub type X<T, U> = crate::Map<T, U>;
 pub type DoubleMap<T, U> = crate::Map<T, U>;
-// pub type X2<T, U, V> = crate::Map<T, Vec<(U, V)>>;
 pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
+
+/// How deep through the contribution is ()
+pub type Depth = u8;
+
+/// This is something that is generated inferred during subtyping
+#[derive(Debug, Clone)]
+pub enum CovariantContribution {
+	TypeId(TypeId),
+	SliceOf(Box<Self>, (u32, u32)),
+	PropertyKey(PropertyKey<'static>),
+}
+
+impl CovariantContribution {
+	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
+		match self {
+			CovariantContribution::TypeId(ty) => ty,
+			CovariantContribution::SliceOf(inner, _) => {
+				let inner = inner.into_type(types);
+				// TODO slice
+				inner
+			}
+			CovariantContribution::PropertyKey(p) => p.into_type(types),
+		}
+	}
+}
+
+impl From<TypeId> for CovariantContribution {
+	fn from(value: TypeId) -> Self {
+		CovariantContribution::TypeId(value)
+	}
+}
 
 /// `staging_*` is to get around the fact that intersections cannot be during subtyping (as types
 /// is immutable at this stage, rather than mutable)
@@ -33,7 +62,7 @@ pub struct Contributions<'a> {
 	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
 	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,
-	pub staging_contravariant: TriMap<TypeId, TypeId, u8>,
+	pub staging_contravariant: TriMap<TypeId, CovariantContribution, Depth>,
 }
 
 impl<'a> Contributions<'a> {

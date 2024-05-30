@@ -210,7 +210,9 @@ declare class Error {
     }
 }
 
-// declare class SyntaxError extends Error { }
+declare class SyntaxError extends Error {
+    constructor() { super("syntax error") }
+}
 
 declare class JSON {
     // TODO any temp

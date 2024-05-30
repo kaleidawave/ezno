@@ -2,7 +2,7 @@
 
 use crate::{
 	features::objects::{ObjectBuilder, SpecialObjects},
-	types::properties::{get_properties_on_type, Publicity},
+	types::properties::{get_properties_on_single_type, Publicity},
 	Constant, Environment, Type, TypeId,
 };
 
@@ -66,15 +66,16 @@ pub(crate) fn create_object_for_type(
 				let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 				// let properties = env.create_array();
-				for (_, key, property) in get_properties_on_type(ty, types, environment) {
-					let value = create_object_for_type(property, environment, types);
-					inner_object.append(
-						environment,
-						Publicity::Public,
-						key,
-						crate::PropertyValue::Value(value),
-						None,
-					);
+				for (_, key, property) in get_properties_on_single_type(ty, types, environment) {
+					todo!()
+					// let value = create_object_for_type(property, environment, types);
+					// inner_object.append(
+					// 	environment,
+					// 	Publicity::Public,
+					// 	key,
+					// 	crate::PropertyValue::Value(value),
+					// 	None,
+					// );
 				}
 
 				obj.append(
@@ -113,15 +114,16 @@ pub(crate) fn create_object_for_type(
 			let mut inner_object = ObjectBuilder::new(None, types, &mut environment.info);
 
 			// let properties = env.create_array();
-			for (_, key, property) in get_properties_on_type(ty, types, environment) {
-				let value = create_object_for_type(property, environment, types);
-				inner_object.append(
-					environment,
-					Publicity::Public,
-					key,
-					crate::PropertyValue::Value(value),
-					None,
-				);
+			for (_, key, property) in get_properties_on_single_type(ty, types, environment) {
+				todo!()
+				// let value = create_object_for_type(property, environment, types);
+				// inner_object.append(
+				// 	environment,
+				// 	Publicity::Public,
+				// 	key,
+				// 	crate::PropertyValue::Value(value),
+				// 	None,
+				// );
 			}
 
 			obj.append(

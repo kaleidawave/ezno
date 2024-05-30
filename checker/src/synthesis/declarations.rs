@@ -58,7 +58,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 			synthesise_variable_declaration(declaration, environment, checking_data, false);
 		}
 		Declaration::Class(class) => {
-			let _constructor = synthesise_class_declaration(&class.on, environment, checking_data);
+			synthesise_class_declaration(&class.on, environment, checking_data);
 		}
 		Declaration::DeclareVariable(_)
 		| Declaration::Function(_)

@@ -184,6 +184,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				let internal_marker = get_internal_function_effect_from_decorators(
 					&function.decorators,
 					function.on.name.as_option_str().unwrap(),
+					&environment,
 				);
 
 				synthesise_declare_statement_function(
@@ -210,20 +211,36 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators: &[parser::Decorator],
 	function_name: &str,
+	environment: &Environment,
 ) -> Option<InternalFunctionEffect> {
 	decorators.iter().find_map(|decorator| {
 		if decorator.name.len() == 1 {
 			let decorator_name = decorator.name.first().map(String::as_str)?;
 			if matches!(decorator_name, "Constant" | "InputOutput") {
-				let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
-					decorator.arguments.as_ref().and_then(|args| args.first())
-				{
-					identifier.clone()
-				} else {
-					function_name.to_owned()
-				};
-				// TODO
-				let may_throw = None;
+				let (identifier, may_throw) =
+					if let Some(arguments) = decorator.arguments.as_ref() {
+						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+							arguments.first()
+						{
+							identifier.clone()
+						} else {
+							panic!("first argument to constant or input output should be string literal");
+						};
+						let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
+							arguments.get(1)
+						{
+							Some(
+								environment
+									.get_type_from_name(&identifier)
+									.expect("could not find thrown type"),
+							)
+						} else {
+							None
+						};
+						(identifier, may_throw)
+					} else {
+						(function_name.to_owned(), None)
+					};
 				Some(match decorator_name {
 					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
 					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
@@ -241,7 +258,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 
 pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
-		matches!(dec.name.first().map(String::as_str), Some("server" | "client"))
+		matches!(dec.name.first().map(String::as_str), Some("Server" | "Client"))
 			.then(|| dec.name.first().unwrap().to_owned())
 	})
 }

@@ -1,6 +1,5 @@
 use parser::{
-	types::interface::{InterfaceDeclaration, InterfaceMember},
-	Decorated, PropertyKey as ParserPropertyKey, WithComment,
+	types::interface::InterfaceMember, Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
 
 use crate::{
@@ -96,10 +95,9 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			},
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
 			// optional properties (`?:`) is implemented here:
-			InterfaceValue::Optional(value) => PropertyValue::Dependent {
+			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
 				on: TypeId::BOOLEAN_TYPE,
 				truthy: PropertyValue::Value(value).into(),
-				otherwise: PropertyValue::Deleted.into(),
 			},
 		};
 

@@ -1,21 +1,14 @@
-use std::{collections::HashMap, mem};
-
 use source_map::SpanWithSource;
+use std::collections::HashMap;
 
 use crate::{
-	context::PossibleLogical,
 	events::{Event, RootReference},
-	features::{
-		functions::{ClosureId, ThisValue},
-		objects::SpecialObjects,
-	},
+	features::functions::{ClosureId, ThisValue},
 	types::{
-		generics::generic_type_arguments::GenericArguments,
-		get_constraint,
 		properties::{PropertyKey, Publicity},
-		GenericChain, TypeStore,
+		TypeStore,
 	},
-	Constant, Logical, PropertyValue, Type, TypeId, VariableId,
+	PropertyValue, Type, TypeId, VariableId,
 };
 
 /// Things that are currently true or have happened
@@ -44,10 +37,6 @@ pub struct LocalInformation {
 	///
 	/// *not quite the best place, but used in [`InformationChain`]*
 	pub(crate) object_constraints: HashMap<TypeId, TypeId>,
-
-	/// WIP
-	/// TODO how will chaining but not cycles work
-	pub(crate) narrowed_values: HashMap<TypeId, TypeId>,
 
 	/// For super calls etc
 	///
@@ -198,31 +187,30 @@ pub fn merge_info(
 	onto: &mut LocalInformation,
 	condition: TypeId,
 	mut truthy: LocalInformation,
-	mut falsy: Option<LocalInformation>,
+	mut otherwise: Option<LocalInformation>,
 	types: &mut TypeStore,
 ) {
 	onto.events.push(Event::Conditionally {
 		condition,
 		truthy_events: truthy.events.len() as u32,
-		otherwise_events: falsy.as_ref().map_or(0, |f| f.events.len() as u32),
+		otherwise_events: otherwise.as_ref().map_or(0, |f| f.events.len() as u32),
 		position: None,
 	});
 
 	onto.events.append(&mut truthy.events);
-	if let Some(ref mut falsy) = falsy {
-		crate::utilities::notify!("{:?} {:?}", truthy.events, falsy.events);
-
-		onto.events.append(&mut falsy.events);
+	if let Some(ref mut otherwise) = otherwise {
+		crate::utilities::notify!("truthy {:?} otherwise {:?}", truthy.events, otherwise.events);
+		onto.events.append(&mut otherwise.events);
 	}
 
 	// TODO don't need to do above some scope
 	for (var, true_value) in truthy.variable_current_value {
 		crate::utilities::notify!("{:?} {:?}", var, true_value);
 		// TODO don't get value above certain scope...
-		let falsy_value = falsy
+		let otherwise_value = otherwise
 			.as_mut()
 			// Remove is important here
-			.and_then(|falsy| falsy.variable_current_value.remove(&var))
+			.and_then(|otherwise| otherwise.variable_current_value.remove(&var))
 			.or_else(|| onto.variable_current_value.get(&var).copied())
 			.or_else(|| {
 				parents
@@ -232,9 +220,16 @@ pub fn merge_info(
 			})
 			.unwrap_or(TypeId::ERROR_TYPE);
 
-		let new = types.new_conditional_type(condition, true_value, falsy_value);
+		let new = types.new_conditional_type(condition, true_value, otherwise_value);
 
 		onto.variable_current_value.insert(var, new);
+	}
+
+	// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
+	// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
+	onto.current_properties.extend(truthy.current_properties.drain());
+	if let Some(ref mut otherwise) = otherwise {
+		onto.current_properties.extend(otherwise.current_properties.drain());
 	}
 
 	// TODO set more information? an exit condition?

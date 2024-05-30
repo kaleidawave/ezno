@@ -509,7 +509,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 	// Third stage: functions
 	let mut third_stage_items = items.iter().peekable();
-	while let Some(mut item) = third_stage_items.next() {
+	while let Some(item) = third_stage_items.next() {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
 				let variable_id =
@@ -522,8 +522,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				});
 
 				if function.on.name.declare {
-					let (overloaded, last) = if !function.on.has_body() {
-						let mut overloaded = false;
+					let (overloaded, _last) = if !function.on.has_body() {
+						// let mut overloaded = false;
 						let mut last = function;
 						while let Some(StatementOrDeclaration::Declaration(
 							Declaration::Function(next_function),
@@ -553,8 +553,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 					);
 				} else {
-					let (overloaded, last) = if !function.on.has_body() {
-						let mut last = third_stage_items.find_map(|f| {
+					let (overloaded, _last) = if !function.on.has_body() {
+						let last = third_stage_items.find_map(|f| {
 							if let StatementOrDeclaration::Declaration(Declaration::Function(
 								function,
 							)) = f

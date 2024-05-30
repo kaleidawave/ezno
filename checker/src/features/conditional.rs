@@ -39,13 +39,6 @@ where
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
 
-		// TODO also negative narrowing on the other branch
-		super::narrowing::narrow_based_on_expression(
-			condition,
-			&mut truthy_environment.info,
-			&checking_data.types,
-		);
-
 		let result = then_evaluate(&mut truthy_environment, checking_data);
 
 		let Context {

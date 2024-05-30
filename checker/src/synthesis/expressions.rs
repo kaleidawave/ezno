@@ -28,10 +28,11 @@ use crate::{
 	},
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
-		printing::print_property_key,
-		properties::{get_properties_on_type, get_property_unbound, PropertyKey},
+		printing::{print_property_key, print_type},
+		properties::{get_properties_on_single_type, get_property_unbound, PropertyKey},
+		Constructor,
 	},
-	Decidable,
+	Decidable, PropertyValue,
 };
 
 use crate::{
@@ -524,20 +525,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Err(_err) => Instance::RValue(TypeId::ERROR_TYPE),
 			}
 		}
-		Expression::PropertyAccess { parent, position, property, .. } => {
+		Expression::PropertyAccess { parent, position, property, is_optional: _, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
-			let property = match property {
-				parser::PropertyReference::Standard { property, is_private: _ } => {
-					PropertyKey::String(Cow::Borrowed(property.as_str()))
-				}
+			let (property, publicity) = match property {
+				parser::PropertyReference::Standard { property, is_private } => (
+					PropertyKey::String(Cow::Borrowed(property.as_str())),
+					if *is_private { Publicity::Private } else { Publicity::Public },
+				),
 				parser::PropertyReference::Marker(_) => {
 					crate::utilities::notify!("Property marker found. TODO union of properties");
 					return TypeId::ERROR_TYPE;
 				}
 			};
-
-			// TODO
-			let publicity = Publicity::Public;
 
 			let result = environment.get_property_handle_errors(
 				on,
@@ -969,17 +968,136 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let spread = synthesise_expression(spread, environment, checking_data, expected);
 
 				// TODO use what about string, what about enumerable ...
-				for (_, key, value) in
-					get_properties_on_type(spread, &checking_data.types, environment)
-				{
-					object_builder.append(
-						environment,
-						Publicity::Public,
-						key,
-						// TODO what about getters
-						crate::PropertyValue::Value(value),
-						Some(pos.with_source(environment.get_source())),
-					);
+
+				match checking_data.types.get_type_by_id(spread) {
+					crate::Type::Object(_) => {
+						let get_properties_on_type = get_properties_on_single_type(
+							spread,
+							&checking_data.types,
+							environment,
+						);
+
+						for (_, key, value) in get_properties_on_type {
+							// TODO evaluate getters & check enumerability
+							object_builder.append(
+								environment,
+								Publicity::Public,
+								key,
+								value,
+								Some(pos.with_source(environment.get_source())),
+							);
+						}
+					}
+					crate::Type::Constructor(Constructor::ConditionalResult {
+						condition,
+						truthy_result,
+						otherwise_result,
+						result_union: _,
+					}) => {
+						let truthy_properties = get_properties_on_single_type(
+							*truthy_result,
+							&checking_data.types,
+							environment,
+						);
+						let otherwise_properties = get_properties_on_single_type(
+							*otherwise_result,
+							&checking_data.types,
+							environment,
+						);
+						crate::utilities::notify!(
+							"Here {:?} {:?} {:?} {:?}",
+							truthy_properties,
+							otherwise_properties,
+							print_type(*truthy_result, &checking_data.types, environment, true),
+							print_type(*otherwise_result, &checking_data.types, environment, true)
+						);
+						// Concatenate some types here if they all have the same keys
+						// && matches!(
+						// 	(lv, rv),
+						// 	(PropertyValue::Value(..), PropertyValue::Value(..))
+						// ))
+						let same_keys = truthy_properties.len() == otherwise_properties.len()
+							&& truthy_properties
+								.iter()
+								.zip(otherwise_properties.iter())
+								.all(|((_lp, lk, _lv), (_rp, rk, _rv))| lk == rk);
+
+						// TODO really want to get like a leading prefix
+
+						// Common case
+						if same_keys {
+							let condition = *condition;
+							for ((_, key, lv), (_, _, rv)) in
+								truthy_properties.iter().zip(otherwise_properties.iter())
+							{
+								// TODO really isn't a position but okay
+								let position = pos.with_source(environment.get_source());
+								let value =
+									if let (PropertyValue::Value(l), PropertyValue::Value(r)) =
+										(lv, rv)
+									{
+										checking_data.types.new_conditional_type(condition, *l, *r)
+									} else {
+										unreachable!("checked above")
+									};
+
+								object_builder.append(
+									environment,
+									Publicity::Public,
+									key.clone(),
+									PropertyValue::Value(value),
+									Some(position),
+								)
+							}
+						} else {
+							crate::utilities::notify!("Here");
+							for (_, key, value) in truthy_properties {
+								object_builder.append(
+									environment,
+									Publicity::Public,
+									key,
+									PropertyValue::ConditionallyExists {
+										on: *condition,
+										truthy: Box::new(value),
+									},
+									Some(member_position.clone()),
+								);
+							}
+							let negation =
+								checking_data.types.new_logical_negation_type(*condition);
+
+							for (_, key, value) in otherwise_properties {
+								object_builder.append(
+									environment,
+									Publicity::Public,
+									key,
+									PropertyValue::ConditionallyExists {
+										on: negation,
+										truthy: Box::new(value),
+									},
+									Some(member_position.clone()),
+								)
+							}
+						}
+					}
+					crate::Type::AliasTo { .. }
+					| crate::Type::And { .. }
+					| crate::Type::Or { .. }
+					| crate::Type::RootPolyType { .. }
+					| crate::Type::Constructor { .. }
+					| crate::Type::PartiallyAppliedGenerics { .. }
+					| crate::Type::Interface { .. }
+					| crate::Type::Class { .. }
+					| crate::Type::Constant { .. }
+					| crate::Type::FunctionReference { .. }
+					| crate::Type::SpecialObject(_) => {
+						checking_data.raise_unimplemented_error(
+							"more than binary spread",
+							pos.with_source(environment.get_source()),
+						);
+
+						return TypeId::ERROR_TYPE;
+					}
 				}
 			}
 			ObjectLiteralMember::Shorthand(name, position) => {

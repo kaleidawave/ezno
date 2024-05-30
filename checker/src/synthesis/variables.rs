@@ -199,11 +199,13 @@ pub(super) fn synthesise_variable_declaration_item<
 				checking_data,
 			);
 
-			if is_valid {
-				value_ty
-			} else {
-				// If not error, then create a new type like the annotation
+			crate::utilities::notify!("{:?} {:?}", is_valid, variable_declaration);
+
+			if !is_valid || value_ty == TypeId::ERROR_TYPE {
+				// If error, then create a new type like the annotation
 				checking_data.types.new_error_type(var_ty)
+			} else {
+				value_ty
 			}
 		} else {
 			value_ty

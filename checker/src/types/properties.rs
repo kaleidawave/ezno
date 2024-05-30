@@ -11,12 +11,9 @@ use crate::{
 		functions::{FunctionBehavior, ThisValue},
 		objects::{Proxy, SpecialObjects},
 	},
-	subtyping::{
-		type_is_subtype, type_is_subtype_of_property, State, SubTypeResult, SubTypingOptions,
-	},
+	subtyping::{State, SubTypeResult},
 	types::{
-		calling::FunctionCallingError,
-		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
+		calling::FunctionCallingError, generics::generic_type_arguments::GenericArguments,
 		get_constraint, substitute, FunctionType, GenericChain, GenericChainLink, ObjectNature,
 		PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
 	},
@@ -137,7 +134,7 @@ impl<'a> PropertyKey<'a> {
 	}
 
 	/// TODO when is this used
-	pub fn to_type(&self, types: &mut TypeStore) -> TypeId {
+	pub fn into_type(&self, types: &mut TypeStore) -> TypeId {
 		match self {
 			PropertyKey::String(s) => {
 				types.new_constant_type(Constant::String(s.clone().into_owned()))
@@ -188,10 +185,9 @@ pub enum PropertyValue {
 	Setter(Box<FunctionType>),
 	/// TODO doesn't exist Deleted | Optional
 	Deleted,
-	Dependent {
+	ConditionallyExists {
 		on: TypeId,
 		truthy: Box<Self>,
-		otherwise: Box<Self>,
 	},
 }
 
@@ -205,14 +201,9 @@ impl PropertyValue {
 			// TODO unsure about these two
 			PropertyValue::Setter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
-			PropertyValue::Dependent { truthy, otherwise, .. } => {
+			PropertyValue::ConditionallyExists { truthy, .. } => {
 				// TODO temp
-				let t = truthy.as_get_type();
-				if t == TypeId::NEVER_TYPE {
-					otherwise.as_get_type()
-				} else {
-					t
-				}
+				truthy.as_get_type()
 			}
 		}
 	}
@@ -225,7 +216,10 @@ impl PropertyValue {
 			// TODO unsure about these two
 			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
-			PropertyValue::Dependent { .. } => todo!(),
+			PropertyValue::ConditionallyExists { truthy, .. } => {
+				// TODO temp
+				truthy.as_get_type()
+			}
 		}
 	}
 }
@@ -423,13 +417,18 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					}
 					PropertyValue::Setter(_) => todo!(),
 					PropertyValue::Deleted => None,
-					PropertyValue::Dependent { on, truthy: _, otherwise: _ } => {
-						// TODO: why does this work?
-						Some((PropertyKind::Direct, on))
+					PropertyValue::ConditionallyExists { on, truthy } => {
+						if let PropertyValue::Value(value) = *truthy {
+							let value =
+								types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE);
+							return Some((PropertyKind::Direct, value));
+						} else {
+							todo!()
+						}
 					}
 				}
 			}
-			Logical::Or { left, right, based_on } => left
+			Logical::Or { left, right, condition: based_on } => left
 				.map(|l| {
 					resolve_property_on_logical(
 						l,
@@ -499,7 +498,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 				crate::utilities::notify!("TODO set infer");
 				Some((PropertyKind::Direct, TypeId::ERROR_TYPE))
 			}
-			crate::context::MissingOrToCalculate::Proxy(Proxy { handler, over }) => {
+			crate::context::MissingOrToCalculate::Proxy(Proxy { .. }) => {
 				todo!(); // #33
 				 // TODO pass down
 			}
@@ -539,7 +538,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::RootPolyType(_)
 						| Type::Constructor(_)) => {
 							let result = if let Some(arguments) = arguments {
-								let mut arguments = arguments.into_substitutable();
+								let arguments = arguments.into_substitutable();
 								substitute(value, &arguments, environment, types)
 							} else {
 								crate::utilities::notify!("Here, getting property on {:?}", t);
@@ -587,10 +586,17 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					PropertyValue::Setter(_) => todo!(),
 					// Very important
 					PropertyValue::Deleted => return None,
-					PropertyValue::Dependent { .. } => todo!(),
+					PropertyValue::ConditionallyExists { on, truthy } => {
+						// TODO can only get if optional ?
+						if let PropertyValue::Value(value) = *truthy {
+							types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)
+						} else {
+							todo!()
+						}
+					}
 				})
 			}
-			Logical::Or { based_on, left, right } => {
+			Logical::Or { condition: based_on, left, right } => {
 				// let left = resolve_logical_with_poly(
 				// 	*left,
 				// 	on,
@@ -732,13 +738,13 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 					}
 				}
 				Logical::Pure(_) => {}
-				Logical::Or { based_on, left, right } => todo!(),
-				Logical::Implies { on, antecedent } => todo!(),
+				Logical::Or { .. } => todo!(),
+				Logical::Implies { .. } => todo!(),
 			}
 
 			match new {
 				PropertyValue::Value(value) => {
-					let result = type_is_subtype_of_property(
+					let result = crate::subtyping::type_is_subtype_of_property(
 						(&property_constraint, None),
 						value,
 						&mut state,
@@ -761,7 +767,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 				PropertyValue::Getter(_) => todo!(),
 				PropertyValue::Setter(_) => todo!(),
 				PropertyValue::Deleted => todo!(),
-				PropertyValue::Dependent { .. } => todo!(),
+				PropertyValue::ConditionallyExists { .. } => todo!(),
 			}
 
 		// environment
@@ -868,6 +874,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 							FunctionCallingError::MismatchedThis { .. } => {
 								todo!()
 							}
+							FunctionCallingError::CannotCatch { .. } => todo!(),
 						}
 					}
 				}
@@ -953,24 +960,27 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 					_ => todo!(),
 				},
 			};
-			// Ignore the result
-			setter
-				.call(
-					CalledWithNew::None,
-					ThisValue::Passed(on),
-					some_setter_position,
-					&[arg],
-					None,
-					// TODO structure generics
-					None,
-					environment,
-					behavior,
-					types,
-					false,
-				)
-				.map(|_| ())
+			let result = setter.call(
+				CalledWithNew::None,
+				ThisValue::Passed(on),
+				some_setter_position,
+				&[arg],
+				None,
+				// TODO structure generics
+				None,
+				environment,
+				behavior,
+				types,
+				false,
+			);
+
+			match result {
+				// Ignore the result
+				Ok(_ok) => Ok(()),
+				Err(res) => Err(res.errors),
+			}
 		}
-		PropertyValue::Dependent { .. } => todo!(),
+		PropertyValue::ConditionallyExists { .. } => todo!(),
 	}
 }
 
@@ -994,10 +1004,13 @@ pub(crate) fn get_property_unbound(
 				let (on_properties, on_type_arguments) = (properties_on_on, on_type_arguments);
 				let (required_publicity, want_key, want_type_arguments) =
 					(publicity, under, under_type_arguments);
+
+				// TODO conditional for conditional?
+				let mut acc = ();
 				// 'rev' is important
-				on_properties.iter().rev().find_map(move |(publicity, key, value)| {
+				for (publicity, key, value) in on_properties.iter().rev() {
 					if *publicity != required_publicity {
-						return None;
+						continue;
 					}
 
 					let key_matches = key_matches(
@@ -1006,21 +1019,26 @@ pub(crate) fn get_property_unbound(
 						types,
 					);
 					if key_matches {
+						// TODO if conditional then continue to find then logical or
 						let pure = Logical::Pure(value.clone());
-						Some(if let Some((parameter, _)) = key.mapped_generic_id(types) {
-							Logical::Implies {
-								on: Box::new(pure),
-								antecedent: GenericArguments::ExplicitRestrictions(todo!(
-									"want TypeArgument::PropertyKey 😀"
-								)),
-							}
+						return Some(if let Some((_parameter, _)) = key.mapped_generic_id(types) {
+							// Logical::Implies {
+							// 	on: Box::new(pure),
+							// 	antecedent: GenericArguments::ExplicitRestrictions(todo!(
+							// 		"want TypeArgument::PropertyKey 😀"
+							// 	)),
+							// }
+							crate::utilities::notify!(
+								"TODO to set property key as a type argument?"
+							);
+							pure
 						} else {
 							pure
-						})
-					} else {
-						None
+						});
 					}
-				})
+				}
+
+				None
 			}
 		})
 	}
@@ -1117,7 +1135,7 @@ pub(crate) fn get_property_unbound(
 			// TODO throwaway if both Missing::None
 
 			Ok(Logical::Or {
-				based_on: TypeId::BOOLEAN_TYPE,
+				condition: TypeId::BOOLEAN_TYPE,
 				left: Box::new(left),
 				right: Box::new(right),
 			})
@@ -1208,7 +1226,7 @@ pub(crate) fn get_property_unbound(
 
 			// TODO throwaway if both Missing::None
 
-			Ok(Logical::Or { based_on: *condition, left: Box::new(left), right: Box::new(right) })
+			Ok(Logical::Or { condition: *condition, left: Box::new(left), right: Box::new(right) })
 		}
 		Type::Constructor(_constructor) => {
 			let on_constructor_type = info_chain
@@ -1476,35 +1494,52 @@ fn key_matches(
 	}
 }
 
-/// Get all properties on a type (for printing and other non-one property uses)
+pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
+
+/// Get properties on a type (for printing and other non-one property uses)
 ///
-/// - TODO make aware of ands and aliases
 /// - TODO prototypes
 /// - TODO could this be an iterator
 /// - TODO return whether it is fixed
 /// - TODO doesn't evaluate properties
-pub fn get_properties_on_type(
+pub fn get_properties_on_single_type(
 	base: TypeId,
-	_types: &TypeStore,
+	types: &TypeStore,
 	info: &impl InformationChain,
-) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
-	let reversed_flattened_properties = info
-		.get_chain_of_info()
-		.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
-		.flatten();
+) -> Properties {
+	match types.get_type_by_id(base) {
+		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
+			let reversed_flattened_properties = info
+				.get_chain_of_info()
+				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
+				.flatten();
 
-	let mut deleted_or_existing_properties = std::collections::HashSet::<PropertyKey>::new();
+			let mut deleted_or_existing_properties =
+				std::collections::HashSet::<PropertyKey>::new();
 
-	let mut properties = Vec::new();
-	for (publicity, key, prop) in reversed_flattened_properties {
-		if let PropertyValue::Deleted = prop {
-			// TODO doesn't cover constants :(
-			deleted_or_existing_properties.insert(key.clone());
-		} else if deleted_or_existing_properties.insert(key.clone()) {
-			properties.push((*publicity, key.to_owned(), prop.as_get_type()));
+			// This retains ordering here
+
+			let mut properties = Vec::new();
+			for (publicity, key, prop) in reversed_flattened_properties {
+				if let PropertyValue::Deleted = prop {
+					// TODO doesn't cover constants :(
+					deleted_or_existing_properties.insert(key.clone());
+				} else if deleted_or_existing_properties.insert(key.clone()) {
+					properties.push((*publicity, key.to_owned(), prop.clone()));
+				}
+			}
+
+			properties.reverse();
+			properties
 		}
+		t @ (Type::SpecialObject(_)
+		| Type::Constructor(_)
+		| Type::RootPolyType(_)
+		| Type::Or(..)
+		| Type::PartiallyAppliedGenerics(_)
+		| Type::Constant(_)
+		| Type::AliasTo { .. }
+		| Type::FunctionReference(_)
+		| Type::And(_, _)) => panic!("Cannot get all properties on {:?}", t),
 	}
-
-	properties.reverse();
-	properties
 }

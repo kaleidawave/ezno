@@ -9,11 +9,8 @@ use crate::{
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
 	types::calling::CallingInput,
-	CheckingData, Environment, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type,
-	TypeId,
+	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
-
-use super::{classes::register_properties_into_environment, TypeStore};
 
 /// This is a mesh of annotation and actually defined functions
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -82,6 +79,7 @@ impl From<InternalFunctionEffect> for FunctionEffect {
 
 impl FunctionType {
 	pub(crate) fn new_auto_constructor<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		function_id: FunctionId,
 		class_prototype: TypeId,
 		extends: Option<TypeId>,
 		properties: ClassPropertiesToRegister<A>,
@@ -127,7 +125,12 @@ impl FunctionType {
 					);
 				}
 
-				register_properties_into_environment(environment, on, checking_data, properties);
+				crate::types::classes::register_properties_into_environment(
+					environment,
+					on,
+					checking_data,
+					properties,
+				);
 
 				on
 			},
@@ -138,7 +141,7 @@ impl FunctionType {
 
 		let (info, _free_variables) = env_data.unwrap();
 		Self {
-			id: crate::FunctionId::AUTO_CONSTRUCTOR,
+			id: function_id,
 			type_parameters: None,
 			parameters: SynthesisedParameters::default(),
 			return_type: on,

@@ -32,11 +32,11 @@ use source_map::SpanWithSource;
 
 use crate::{
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::{objects::ObjectBuilder, template_literal::synthesize_template_literal_type},
+	features::objects::ObjectBuilder,
 	synthesis::functions::synthesise_function_annotation,
 	types::properties::Publicity,
 	types::{
-		generics::{generic_type_arguments::GenericArguments, substitution::SubstitutionArguments},
+		generics::generic_type_arguments::GenericArguments,
 		properties::{PropertyKey, PropertyValue},
 		Constant, Constructor, PartiallyAppliedGenerics, Type, TypeId,
 	},
@@ -432,7 +432,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			checking_data.types.new_property_on_type_annotation(being_indexed, indexer, environment)
 		}
-		TypeAnnotation::KeyOf(of, position) => {
+		TypeAnnotation::KeyOf(of, _position) => {
 			let of = synthesise_type_annotation(of, environment, checking_data);
 			checking_data.types.new_key_of(of)
 		}
@@ -504,23 +504,31 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral(parts, _) => {
-			let parts = parts
-				.iter()
-				.map(|part| match part {
-					parser::ast::TemplateLiteralPart::Static(s) => {
-						checking_data.types.new_constant_type(Constant::String(s.clone()))
-					}
-					parser::ast::TemplateLiteralPart::Dynamic(p) => {
-						let annotation = match &**p {
-							AnnotationWithBinder::Annotated { ty, .. }
-							| AnnotationWithBinder::NoAnnotation(ty) => ty,
-						};
-						synthesise_type_annotation(annotation, environment, checking_data)
-					}
-				})
-				.collect();
-
-			synthesize_template_literal_type(parts, &mut checking_data.types)
+			let mut iter = parts.iter();
+			let mut acc = part_to_type(iter.next().unwrap(), checking_data, environment);
+			// Using the existing thing breaks because we try to do `"..." + string` and
+			// the evaluate_mathematical_operator expects literal or poly values (not just types)
+			// TODO abstract to features/template_literal.rs
+			for part in iter {
+				let next = part_to_type(part, checking_data, environment);
+				let ty = if let (
+					Type::Constant(Constant::String(left)),
+					Type::Constant(Constant::String(right)),
+				) = (
+					checking_data.types.get_type_by_id(acc),
+					checking_data.types.get_type_by_id(next),
+				) {
+					Type::Constant(Constant::String(format!("{left}{right}")))
+				} else {
+					Type::Constructor(Constructor::BinaryOperator {
+						lhs: acc,
+						operator: crate::features::operations::MathematicalAndBitwise::Add,
+						rhs: next,
+					})
+				};
+				acc = checking_data.types.register_type(ty);
+			}
+			acc
 		}
 		TypeAnnotation::Infer(name, _pos) => {
 			if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =
@@ -586,6 +594,27 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	}
 
 	ty
+}
+
+fn part_to_type<T: crate::ReadFromFS>(
+	part: &parser::ast::TemplateLiteralPart<AnnotationWithBinder>,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+	environment: &mut crate::context::Context<crate::context::Syntax>,
+) -> TypeId {
+	match part {
+		parser::ast::TemplateLiteralPart::Static(s) => {
+			checking_data.types.new_constant_type(Constant::String(s.clone()))
+		}
+		parser::ast::TemplateLiteralPart::Dynamic(p) => {
+			let annotation = p.get_inner_ref();
+			let ty = synthesise_type_annotation(annotation, environment, checking_data);
+			if let Type::AliasTo { to, .. } = checking_data.types.get_type_by_id(ty) {
+				*to
+			} else {
+				ty
+			}
+		}
+	}
 }
 
 /// Comment as type annotation

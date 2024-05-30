@@ -1,7 +1,5 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
-// TEMP
-#![allow(unused)]
 
 pub mod context;
 pub mod diagnostics;
@@ -261,10 +259,6 @@ pub struct VariableId(pub SourceId, pub u32);
 /// TODO split for annotations based functions
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub SourceId, pub u32);
-
-impl FunctionId {
-	pub const AUTO_CONSTRUCTOR: Self = FunctionId(source_map::Nullable::NULL, 0);
-}
 
 #[derive(Debug)]
 pub enum Decidable<T> {

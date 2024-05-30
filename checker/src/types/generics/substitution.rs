@@ -563,7 +563,7 @@ fn compute_extends_rule(
 				let args = contributions
 					.staging_contravariant
 					.into_iter()
-					.map(|(key, (value, _))| (key, value))
+					.map(|(key, (value, _))| (key, value.into_type(types)))
 					.chain(
 						contributions
 							.staging_covariant

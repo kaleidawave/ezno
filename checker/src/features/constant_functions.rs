@@ -6,7 +6,7 @@ use crate::{
 	types::{
 		functions::SynthesisedArgument,
 		printing::{debug_effects, print_type},
-		Constructor, FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
+		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
 	Constant, Environment, TypeId,
 };
@@ -215,7 +215,7 @@ pub(crate) fn call_constant_function(
 					match effects {
 						FunctionEffect::SideEffects { events, .. } => {
 							let mut buf = String::new();
-							debug_effects(&mut buf, events, types, environment, true);
+							debug_effects(&mut buf, events, types, environment, 0, true);
 							Ok(ConstantOutput::Diagnostic(buf))
 						}
 						FunctionEffect::Constant { identifier, may_throw: _ } => {

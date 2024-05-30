@@ -426,24 +426,6 @@ document.addEventListener("scroll", () => {
 
 - Expected 0, found number
 
-### Narrowing
-
-#### Has property
-
-> TODO maybe need to constrain side effects here
-
-```ts
-function func(parameter: { property: string }) {
-    if (parameter.property === "hello") {
-        parameter.property satisfies 4;
-    }
-}
-```
-
-- Expected 4, found "hello"
-
-> TODO `typeof`, `instanceof`, conditional, across a function
-
 ### Functions and classes
 
 #### New can return an object
@@ -585,3 +567,113 @@ f(false)
 ```
 
 - Expected boolean, found string
+
+### Narrowing
+
+#### Has property
+
+> TODO maybe need to constrain side effects here
+
+```ts
+function func(parameter: { property: string }) {
+    if (parameter.property === "hello") {
+        parameter.property satisfies 4;
+    }
+}
+```
+
+- Expected 4, found "hello"
+
+> TODO `typeof`, `instanceof`, conditional, across a function
+
+#### Conditional operator
+
+```ts
+function optionalNumber(n: number | undefined): string {
+    return n ?? 2
+}
+```
+
+- Cannot return string, found number | 2
+
+#### Equality
+
+```ts
+declare let a: string;
+if (a === "hi") {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Condition as a function
+
+```ts
+declare let a: string;
+
+const equalsHi = (p: string) => p === "hi";
+
+if (equalsHi(a)) {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Passed around
+
+```ts
+declare let a: string;
+
+const b = a;
+if (b === "hi") {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+### Mapped types
+
+#### Specialisation
+
+```ts
+type Pick<T, K extends keyof T> = {
+    [P in K]: T[P];
+};
+
+interface X { a: number, b: string, c: string }
+
+const x: Pick<X, "a"> = { a: 5 };
+
+({ b: "string" }) satisfies Pick<X, "a">;
+```
+
+- TODO
+
+#### Optional
+
+```ts
+type Partial<T> = {
+    [P in keyof T]?: T[P];
+};
+
+const x: Partial<{ a: number, b: string }> = { a: 3 },
+      y: Partial<{ a: number, b: string }> = { a: "hi" }
+```
+
+- Cannot assign { a: "hi" }
+
+#### Negated
+
+```ts
+type Required<T> = {
+    [P in keyof T]-?: T[P];
+};
+
+const x: Required<{ a?: number }> = { a: 3 },
+      y: Required<{ a?: number }> = { };
+```
+
+- Cannot assign { } to required

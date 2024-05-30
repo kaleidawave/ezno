@@ -10,7 +10,7 @@ use crate::{
 		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
 		get_on_ctx, get_value_of_variable,
 		information::{merge_info, LocalInformation},
-		CanReferenceThis, ContextType, Syntax,
+		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, FinalEvent, RootReference},
@@ -143,7 +143,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 #[allow(clippy::too_many_arguments)]
 pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
-	overloaded: bool,
+	_overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
 	location: Option<String>,
@@ -292,7 +292,7 @@ pub enum FunctionBehavior {
 		/// Cannot be called with `new` if true
 		is_generator: bool,
 	},
-	/// Constructors, always new
+	/// Constructors, require new
 	Constructor {
 		/// The prototype of the base object
 		prototype: TypeId,
@@ -914,8 +914,10 @@ where
 			} else {
 				TypeId::UNDEFINED_TYPE
 			}
+		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
+			ty
 		} else {
-			return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |ReturnType(ty, _)| ty)
+			TypeId::UNDEFINED_TYPE
 		};
 
 		// crate::utilities::notify!(

@@ -18,7 +18,7 @@ use crate::{
 			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
-		Constructor, PartiallyAppliedGenerics, Type, TypeId,
+		PartiallyAppliedGenerics, Type, TypeId,
 	},
 	CheckingData, Environment, FunctionId,
 };
@@ -651,7 +651,6 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 		.collect();
 
 	let rest_parameter = function.parameters.rest_parameter.as_ref().map(|rest_parameter| {
-		use crate::types::{Constructor, PartiallyAppliedGenerics, SynthesisedRestParameter};
 		let parameter_constraint =
 			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
 				synthesise_type_annotation(annotation, environment, checking_data)

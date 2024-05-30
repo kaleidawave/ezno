@@ -1,10 +1,7 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
 use super::information::LocalInformation;
-use crate::{
-	events::{ApplicationResult, FinalEvent},
-	Environment, FunctionId,
-};
+use crate::{events::ApplicationResult, types::TypeStore, Environment, FunctionId, TypeId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -27,8 +24,25 @@ pub trait CallCheckingBehavior {
 	fn debug_types(&self) -> bool {
 		false
 	}
+
+	fn evaluate_conditionally<I, T, R>(
+		&mut self,
+		top_environment: &mut Environment,
+		types: &mut TypeStore,
+		condition: TypeId,
+		input: (T, T),
+		data: I,
+		cb: impl for<'a> Fn(
+			&'a mut Environment,
+			&'a mut TypeStore,
+			&'a mut InvocationContext,
+			T,
+			&'a mut I,
+		) -> R,
+	) -> (R, R);
 }
 
+/// Top level. Evaluating directly, rather than deep in event application
 pub struct CheckThings {
 	pub debug_types: bool,
 }
@@ -59,6 +73,24 @@ impl CallCheckingBehavior for CheckThings {
 
 	fn debug_types(&self) -> bool {
 		self.debug_types
+	}
+
+	fn evaluate_conditionally<I, T, R>(
+		&mut self,
+		top_environment: &mut Environment,
+		types: &mut TypeStore,
+		condition: TypeId,
+		(input_left, input_right): (T, T),
+		mut data: I,
+		cb: impl for<'a> Fn(
+			&'a mut Environment,
+			&'a mut TypeStore,
+			&'a mut InvocationContext,
+			T,
+			&'a mut I,
+		) -> R,
+	) -> (R, R) {
+		todo!()
 	}
 }
 
@@ -111,6 +143,43 @@ impl CallCheckingBehavior for InvocationContext {
 		self.0.pop();
 		value
 	}
+
+	/// TODO maybe take result -> R
+	fn evaluate_conditionally<I, T, R>(
+		&mut self,
+		top_environment: &mut Environment,
+		types: &mut TypeStore,
+		condition: TypeId,
+		(input_left, input_right): (T, T),
+		mut data: I,
+		cb: impl for<'a> Fn(
+			&'a mut Environment,
+			&'a mut TypeStore,
+			&'a mut InvocationContext,
+			T,
+			&'a mut I,
+		) -> R,
+	) -> (R, R) {
+		let (mut truthy_info, truthy_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_left, &mut data)
+			});
+
+		let (mut otherwise_info, otherwise_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_right, &mut data)
+			});
+
+		// TODO all things that are
+		// - variable and property values (these aren't read from events)
+		// - immutable, mutable, prototypes etc
+		let info = self.get_latest_info(top_environment);
+
+		// TODO
+		// merge_info(top_environment, info, condition, truthy_info, Some(otherwise_info), types);
+
+		(truthy_result, otherwise_result)
+	}
 }
 
 impl InvocationContext {
@@ -119,10 +188,10 @@ impl InvocationContext {
 		InvocationContext(Vec::new())
 	}
 
-	pub(crate) fn new_conditional_target(
+	fn new_conditional_target<T>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<ApplicationResult>,
-	) -> (LocalInformation, Option<ApplicationResult>) {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
+	) -> (LocalInformation, T) {
 		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
 		let result = cb(self);
 		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {

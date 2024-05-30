@@ -30,7 +30,7 @@ use super::{block::synthesise_block, expressions::synthesise_expression};
 
 /// Doesn't have any metadata yet
 ///
-/// Returns the constructor
+/// Returns the constructor for expressions!
 ///
 /// TODO this duplicates work done during lifting
 pub(super) fn synthesise_class_declaration<
@@ -55,8 +55,12 @@ pub(super) fn synthesise_class_declaration<
 		// let class_type = checking_data.types.register_type(ty);
 	}
 
+	// crate::utilities::notify!("hmm {:?}", (&checking_data.local_type_mappings.types_to_types, class.position));
+
 	let existing_id =
 		checking_data.local_type_mappings.types_to_types.get_exact(class.position).copied();
+
+	crate::utilities::notify!("existing_id={:?}", existing_id);
 
 	// Will leak hoisted properties on existing class ...?
 	let class_prototype = if let Some(existing_id) = existing_id {
@@ -134,7 +138,7 @@ pub(super) fn synthesise_class_declaration<
 				let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
-					get_internal_function_effect_from_decorators(&member.decorators, name)
+					get_internal_function_effect_from_decorators(&member.decorators, name, &environment)
 				} else {
 					None
 				};
@@ -214,7 +218,7 @@ pub(super) fn synthesise_class_declaration<
 	// TODO abstract
 	let constructor = if let Some((decorators, constructor)) = class_constructor {
 		let internal_marker = if is_declare {
-			get_internal_function_effect_from_decorators(decorators, "TODO")
+			get_internal_function_effect_from_decorators(decorators, "TODO", &environment)
 		} else {
 			None
 		};
@@ -227,7 +231,9 @@ pub(super) fn synthesise_class_declaration<
 		};
 		synthesise_function(constructor, behavior, environment, checking_data)
 	} else {
+		let function_id = FunctionId(environment.get_source(), class.position.start);
 		FunctionType::new_auto_constructor(
+			function_id,
 			class_prototype,
 			extends,
 			ClassPropertiesToRegister { properties },
@@ -236,7 +242,7 @@ pub(super) fn synthesise_class_declaration<
 		)
 	};
 
-	let class_type =
+	let class_variable_type =
 		checking_data.types.new_class_constructor_type(name, constructor, class_prototype);
 
 	{
@@ -258,7 +264,7 @@ pub(super) fn synthesise_class_declaration<
 					let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
 						(is_declare, method.name.get_ast_ref())
 					{
-						get_internal_function_effect_from_decorators(&member.decorators, name)
+						get_internal_function_effect_from_decorators(&member.decorators, name, &environment)
 					} else {
 						None
 					};
@@ -279,7 +285,7 @@ pub(super) fn synthesise_class_declaration<
 						// TODO
 						expecting: TypeId::ANY_TYPE,
 						// Important that it points to the marker
-						this_shape: class_type,
+						this_shape: class_variable_type,
 						internal_marker,
 					};
 
@@ -296,7 +302,7 @@ pub(super) fn synthesise_class_declaration<
 					let key = static_property_keys.pop().unwrap();
 
 					environment.info.register_property(
-						class_type,
+						class_variable_type,
 						publicity_kind,
 						key,
 						property,
@@ -331,7 +337,7 @@ pub(super) fn synthesise_class_declaration<
 					};
 
 					environment.info.register_property(
-						class_type,
+						class_variable_type,
 						publicity_kind,
 						static_property_keys.pop().unwrap(),
 						PropertyValue::Value(value),
@@ -343,7 +349,7 @@ pub(super) fn synthesise_class_declaration<
 				}
 				ClassMember::StaticBlock(block) => {
 					environment.new_lexical_environment_fold_into_parent(
-						Scope::StaticBlock { this_type: class_type },
+						Scope::StaticBlock { this_type: class_variable_type },
 						checking_data,
 						|environment, checking_data| {
 							synthesise_block(&block.0, environment, checking_data);
@@ -356,13 +362,15 @@ pub(super) fn synthesise_class_declaration<
 	}
 
 	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
-		environment.info.variable_current_value.insert(variable, class_type);
+		environment.info.variable_current_value.insert(variable, class_variable_type);
 	}
 
-	class_type
+	class_variable_type
 }
 
-/// Also sets variable
+/// Also sets variable for hoisting
+///
+/// Builds the type of the class
 pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	class: &ClassDeclaration<StatementPosition>,
 	environment: &mut Environment,
@@ -388,7 +396,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	let class_type = *checking_data
 		.local_type_mappings
 		.types_to_types
-		.get(class.get_position().start)
+		.get_exact(class.get_position())
 		.expect("class type not lifted");
 
 	if let Some(ref extends) = class.extends {
@@ -421,7 +429,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	}
 
 	// Set the class type, should be okay
-	checking_data.local_type_mappings.types_to_types.push(class.position, class_type);
+	// checking_data.local_type_mappings.types_to_types.push(class.position, class_type);
 
 	let mut members_iter = class.members.iter().peekable();
 	while let Some(member) = members_iter.next() {

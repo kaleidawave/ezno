@@ -1,7 +1,7 @@
 //! This contains logic for synthesising iteration structures (`for`, `while`, `do {} ... while`, etc)
 //! and running them (sometimes)
 
-use std::{collections::HashMap, iter};
+use std::collections::HashMap;
 
 use crate::{
 	context::{
@@ -9,13 +9,13 @@ use crate::{
 		CallCheckingBehavior, ClosedOverReferencesInScope,
 	},
 	events::{
-		application::{apply_event_unknown, ErrorsAndInfo},
+		application::{apply_events_unknown, ErrorsAndInfo},
 		apply_events, ApplicationResult, Event, FinalEvent, InitialVariables, RootReference,
 	},
 	features::operations::CanonicalEqualityAndInequality,
 	types::{
-		properties::get_properties_on_type, substitute, Constructor, ObjectNature, PolyNature,
-		SubstitutionArguments, TypeStore,
+		printing::debug_effects, properties::get_properties_on_single_type, substitute,
+		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 	},
 	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
 };
@@ -103,9 +103,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let mut errors_and_info = ErrorsAndInfo::default();
 
-			let run_iteration_block = run_iteration_block(
+			let _run_iteration_block = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
-				events,
+				&events,
 				InitialVariablesInput::Compute(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -183,9 +183,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_info,
 			);
 
-			let run_iteration_block = run_iteration_block(
+			let _run_iteration_block = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
-				events,
+				&events,
 				InitialVariablesInput::Compute(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -316,9 +316,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				environment.info.variable_current_value.insert(var, start);
 			}
 
-			let run_iteration_block = run_iteration_block(
+			let _run_iteration_block = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
-				events,
+				&events,
 				InitialVariablesInput::Compute(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -361,9 +361,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let (LocalInformation { events, .. }, closes_over) = result.unwrap();
 
-			let run_iteration_block = run_iteration_block(
+			let _run_iteration_block = run_iteration_block(
 				IterationKind::Properties { on, variable },
-				events,
+				&events,
 				InitialVariablesInput::Compute(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -408,7 +408,7 @@ pub enum IterationKind {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_iteration_block(
 	condition: IterationKind,
-	events: Vec<Event>,
+	events: &[Event],
 	initial: InitialVariablesInput,
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
@@ -416,8 +416,12 @@ pub(crate) fn run_iteration_block(
 	errors: &mut ErrorsAndInfo,
 	types: &mut TypeStore,
 ) {
-	/// TODO via config and per line
+	/// TODO via config and also take into account `events.len()`
 	const MAX_ITERATIONS: usize = 100;
+
+	let mut s = String::new();
+	debug_effects(&mut s, events, types, top_environment, 0, true);
+	crate::utilities::notify!("Applying:\n{}", s);
 
 	match condition {
 		IterationKind::Condition { postfix_condition, under } => {
@@ -470,7 +474,7 @@ pub(crate) fn run_iteration_block(
 				);
 			} else {
 				evaluate_unknown_iteration_for_loop(
-					events,
+					&events,
 					initial,
 					condition,
 					type_arguments,
@@ -482,7 +486,7 @@ pub(crate) fn run_iteration_block(
 		}
 		IterationKind::Properties { on, variable } => {
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				let properties = get_properties_on_type(on, types, top_environment);
+				let properties = get_properties_on_single_type(on, types, top_environment);
 				let mut n = 0;
 				run_iteration_loop(
 					invocation_context,
@@ -494,7 +498,7 @@ pub(crate) fn run_iteration_block(
 					errors,
 					|type_arguments, types| {
 						let (_publicity, property, _value) = &properties[n];
-						let property_key_as_type = property.to_type(types);
+						let property_key_as_type = property.into_type(types);
 
 						type_arguments.set_during_application(variable, property_key_as_type);
 
@@ -520,7 +524,7 @@ pub(crate) fn run_iteration_block(
 fn run_iteration_loop(
 	invocation_context: &mut InvocationContext,
 	iterations: usize,
-	events: &Vec<Event>,
+	events: &[Event],
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut crate::context::Context<crate::context::Syntax>,
 	types: &mut TypeStore,
@@ -570,7 +574,7 @@ fn run_iteration_loop(
 						info.events.push(FinalEvent::Throw { thrown, position }.into());
 					}
 					ApplicationResult::Yield {} => todo!(),
-					ApplicationResult::Or { on, truthy_result, otherwise_result } => {
+					ApplicationResult::Or { .. } => {
 						todo!()
 					}
 				}
@@ -580,7 +584,7 @@ fn run_iteration_loop(
 }
 
 fn evaluate_unknown_iteration_for_loop(
-	mut events: Vec<Event>,
+	events: &[Event],
 	initial: InitialVariablesInput,
 	kind: IterationKind,
 	type_arguments: &mut SubstitutionArguments,
@@ -639,16 +643,14 @@ fn evaluate_unknown_iteration_for_loop(
 		};
 
 	// TODO can skip if at the end of a function
-	for event in events.clone() {
-		apply_event_unknown(
-			event,
-			super::functions::ThisValue::UseParent,
-			type_arguments,
-			top_environment,
-			invocation_context,
-			types,
-		);
-	}
+	apply_events_unknown(
+		events,
+		super::functions::ThisValue::UseParent,
+		type_arguments,
+		top_environment,
+		invocation_context,
+		types,
+	);
 
 	let get_latest_info = invocation_context.get_latest_info(top_environment);
 	get_latest_info.events.push(Event::Iterate {
@@ -656,7 +658,7 @@ fn evaluate_unknown_iteration_for_loop(
 		initial,
 		iterate_over: events.len() as u32,
 	});
-	get_latest_info.events.append(&mut events);
+	get_latest_info.events.extend(events.iter().cloned());
 }
 
 /// Denotes values at the end of a loop
