@@ -2777,6 +2777,8 @@ what(2, 3) satisfies string;
 
 > Aka generic property keys
 
+> Only works for `Record` atm. And while defined in the root environment, want to test the definition here as well
+
 #### Simple key
 
 ```ts

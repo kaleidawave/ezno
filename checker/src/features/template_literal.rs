@@ -85,11 +85,16 @@ where
 					);
 					static_part_count += 1;
 				}
-				p @ TemplateLiteralPart::Dynamic(_) => {
+				TemplateLiteralPart::Dynamic(expression) => {
+					let position =
+						A::expression_position(expression).with_source(environment.get_source());
 					arguments.push(SynthesisedArgument {
-						value: part_to_type(p, environment, checking_data),
-						// TODO position
-						position: source_map::Nullable::NULL,
+						value: part_to_type(
+							TemplateLiteralPart::Dynamic(expression),
+							environment,
+							checking_data,
+						),
+						position,
 						spread: false,
 					});
 				}

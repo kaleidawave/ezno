@@ -1248,7 +1248,9 @@ fn subtype_properties(
 				if let Some(GenericChainLink::Link { ref from, parent_link, value: _ }) =
 					base_type_arguments
 				{
-					assert!(parent_link.is_none(), "TODO recursive get_from");
+					if parent_link.is_none() {
+						crate::utilities::notify!("TODO recursive get_from");
+					}
 					*from
 				} else {
 					base_type

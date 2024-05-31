@@ -1,6 +1,8 @@
 @Constant
 declare function debug_type_independent(t: any): void;
 
+// Eventually this will be merged with existing TS es5.d.ts files but for now is the standalone see #121
+
 interface ImportEnv {
     [key: string]: string | undefined;
 }
@@ -128,21 +130,30 @@ declare class Array<T> {
     //     return false
     // }
 
-    // join(joiner: string = ","): string {
-    //     const { length } = this;
-    //     let i: number = 1;
-    //     if (length === 0) {
-    //         return ""
-    //     }
-    //     let s: string = "" + this[0];
-    //     while (i < length) {
-    //         s += joiner;
-    //         s += this[i++];
-    //         // debug_type_independent(s)
-    //     }
-    //     return s
-    // }
+    join(joiner: string = ","): string {
+        const { length } = this;
+        let i: number = 1;
+        if (length === 0) {
+            return ""
+        }
+        let s: string = "" + this[0];
+        while (i < length) {
+            s += joiner;
+            s += this[i++];
+        }
+        return s
+    }
+
+    at(index: number) {
+        if (index < 0) {
+            return this[index + this.length]
+        } else {
+            return this[index]
+        }
+    }
 }
+
+type Record<K extends string, T> = { [P in K]: T }
 
 declare class Map<T, U> {
     #keys: Array<T> = [];
