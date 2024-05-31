@@ -131,6 +131,20 @@ declare class Array<T> {
     //     return false
     // }
 
+    join(joiner: string = ","): string {
+        const { length } = this;
+        let i: number = 1;
+        if (length === 0) {
+            return ""
+        }
+        let s: string = "" + this[0];
+        while (i < length) {
+            s += joiner;
+            s += this[i++];
+        }
+        return s
+    }
+
     at(index: number) {
         if (index < 0) {
             return this[index + this.length]
@@ -139,6 +153,8 @@ declare class Array<T> {
         }
     }
 }
+
+type Record<K extends string, T> = { [P in K]: T }
 
 declare class Map<T, U> {
     #keys: Array<T> = [];

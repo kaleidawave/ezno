@@ -117,16 +117,6 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
 				register_statement_class_with_members(&class.on, &mut environment, checking_data);
 			}
-			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
-				name: _,
-				references: _,
-				parameters,
-				position: _,
-			})) => {
-				if let Some(_parameters) = parameters {
-					todo!("set parameters")
-				}
-			}
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
 				crate::synthesis::variables::register_variable_identifier(
 					&function.on.name.identifier,
@@ -138,6 +128,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 						initial_value: None,
 					},
 				);
+			}
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias { .. })) => {
+				crate::utilities::notify!("Don't think anything needed here");
 			}
 			StatementOrDeclaration::Statement(
 				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),

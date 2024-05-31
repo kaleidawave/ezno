@@ -1439,7 +1439,8 @@ pub(crate) fn key_matches(
 				)
 			} else if let Type::RootPolyType(PolyNature::MappedGeneric {
 				eager_fixed: to, ..
-			}) = want_ty
+			})
+			| Type::AliasTo { to, .. } = want_ty
 			{
 				key_matches(
 					(key, key_type_arguments),
@@ -1470,6 +1471,15 @@ pub(crate) fn key_matches(
 
 			if let Type::RootPolyType(PolyNature::MappedGeneric { eager_fixed: to, .. }) = key_type
 			{
+				crate::utilities::notify!("Special behavior?");
+				return key_matches(
+					(&PropertyKey::Type(*to), key_type_arguments),
+					(want, want_type_arguments),
+					types,
+				);
+			}
+
+			if let Type::AliasTo { to, .. } = key_type {
 				return key_matches(
 					(&PropertyKey::Type(*to), key_type_arguments),
 					(want, want_type_arguments),

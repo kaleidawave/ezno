@@ -7,7 +7,13 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use checker::{diagnostics, synthesis::EznoParser};
+use checker::{
+	diagnostics,
+	source_map::{Nullable, SourceId},
+	synthesis::EznoParser,
+};
+
+// This is here as it is used in the included `/specification.rs`
 use parser::ASTNode;
 
 mod specification {
@@ -96,6 +102,7 @@ fn check_errors(
 		.map(|diag| {
 			let (reason, pos) = diag.reason_and_position();
 			if let Some(pos) = pos {
+				assert_ne!(pos.source, SourceId::NULL);
 				// TODO position
 				reason
 			} else {
