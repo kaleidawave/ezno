@@ -1,7 +1,7 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
 use super::information::LocalInformation;
-use crate::{events::ApplicationResult, Environment, FunctionId};
+use crate::{events::ApplicationResult, types::TypeStore, Environment, FunctionId, TypeId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -26,6 +26,7 @@ pub trait CallCheckingBehavior {
 	}
 }
 
+/// Top level. Evaluating directly, rather than deep in event application
 pub struct CheckThings {
 	pub debug_types: bool,
 }
@@ -61,6 +62,7 @@ impl CallCheckingBehavior for CheckThings {
 
 pub struct InvocationContext(Vec<InvocationKind>);
 
+/// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
 	Conditional(LocalInformation),
 	/// *Unconditional*
@@ -115,10 +117,10 @@ impl InvocationContext {
 		InvocationContext(Vec::new())
 	}
 
-	pub(crate) fn new_conditional_target(
+	fn new_conditional_target<T>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> ApplicationResult,
-	) -> (LocalInformation, ApplicationResult) {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
+	) -> (LocalInformation, T) {
 		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
 		let result = cb(self);
 		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {
@@ -130,8 +132,8 @@ impl InvocationContext {
 
 	pub(crate) fn new_unconditional_target(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> ApplicationResult,
-	) -> ApplicationResult {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<ApplicationResult>,
+	) -> Option<ApplicationResult> {
 		self.0.push(InvocationKind::AlwaysTrue);
 		let result = cb(self);
 		self.0.pop();
@@ -158,5 +160,43 @@ impl InvocationContext {
 
 	pub(crate) fn in_unconditional(&self) -> bool {
 		self.0.iter().any(|mem| matches!(mem, InvocationKind::AlwaysTrue))
+	}
+
+	/// TODO maybe take result -> R
+	/// TODO move to trait
+	pub(crate) fn evaluate_conditionally<I, T, R>(
+		&mut self,
+		top_environment: &mut Environment,
+		types: &mut TypeStore,
+		_condition: TypeId,
+		(input_left, input_right): (T, T),
+		mut data: I,
+		cb: impl for<'a> Fn(
+			&'a mut Environment,
+			&'a mut TypeStore,
+			&'a mut InvocationContext,
+			T,
+			&'a mut I,
+		) -> R,
+	) -> (I, (R, R)) {
+		let (_truthy_info, truthy_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_left, &mut data)
+			});
+
+		let (_otherwise_info, otherwise_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_right, &mut data)
+			});
+
+		// TODO all things that are
+		// - variable and property values (these aren't read from events)
+		// - immutable, mutable, prototypes etc
+		let _info = self.get_latest_info(top_environment);
+
+		// TODO
+		// merge_info(top_environment, info, condition, truthy_info, Some(otherwise_info), types);
+
+		(data, (truthy_result, otherwise_result))
 	}
 }

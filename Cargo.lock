@@ -307,8 +307,6 @@ dependencies = [
  "ezno-parser",
  "iterator-endiate",
  "levenshtein",
- "map_vec",
- "once_cell",
  "ordered-float",
  "path-absolutize",
  "serde",
@@ -557,15 +555,6 @@ name = "macro_rules_attribute-proc_macro"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8dd856d451cc0da70e2ef2ce95a18e39a93b7558bedf10201ad28503f918568"
-
-[[package]]
-name = "map_vec"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "111eca49e254749133fc156821beda7b9a0445e2f3a37e9bd88701a6ebecf85f"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "match_deref"

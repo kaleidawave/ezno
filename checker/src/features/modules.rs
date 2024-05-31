@@ -13,6 +13,7 @@ use crate::{
 use simple_json_parser::{JSONKey, RootJSONValue};
 use source_map::{FileSystem, Span};
 
+/// For imports and exports
 #[derive(Debug)]
 pub struct NamePair<'a> {
 	pub value: &'a str,
@@ -30,6 +31,7 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 	Everything,
 }
 
+/// A module once it has been type chedked (note could have type errorts that have been raised) and all information has been resolved about it
 pub struct SynthesisedModule<M> {
 	pub content: M,
 	pub exported: Exported,
@@ -43,6 +45,7 @@ impl<M> SynthesisedModule<M> {
 		self.mappings.expressions_to_instances.get(pos)
 	}
 
+	/// Returns the instance + the span of the matched
 	pub fn get_instance_at_position_with_span(
 		&self,
 		pos: u32,
@@ -61,11 +64,6 @@ pub struct Exported {
 }
 
 pub type ExportedVariable = (VariableId, VariableMutability);
-
-pub enum TypeOrVariable {
-	ExportedVariable(),
-	Type(TypeId),
-}
 
 impl Exported {
 	pub(crate) fn get_export(
@@ -91,11 +89,16 @@ impl Exported {
 /// After a syntax error
 pub struct InvalidModule;
 
+/// The result of syntehsising a module
 pub type FinalModule<M> = Result<SynthesisedModule<M>, InvalidModule>;
 
 #[derive(Debug, Clone)]
 pub struct CouldNotOpenFile(pub PathBuf);
 
+/// Given the current environment for a module:
+/// - Parse the `partial_import_path` to a resolved module
+/// - Type check the module (if not already done)
+/// - Import names by `kind` (and another information)
 #[allow(clippy::too_many_arguments)]
 pub fn import_items<
 	'b,
@@ -160,6 +163,7 @@ pub fn import_items<
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
 	}
@@ -190,6 +194,7 @@ pub fn import_items<
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
 					if let Some((variable, mutability)) = exported_variable {
@@ -241,39 +246,31 @@ pub fn import_items<
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
 			}
 		}
 		ImportKind::All { under, position } => {
-			if let Ok(Ok(ref exports)) = exports {
-				let value = checking_data.types.register_type(Type::SpecialObject(
+			let value = if let Ok(Ok(ref exports)) = exports {
+				checking_data.types.register_type(Type::SpecialObject(
 					crate::features::objects::SpecialObjects::Import(exports.clone()),
-				));
-
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(value),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
+				))
 			} else {
 				crate::utilities::notify!("TODO :?");
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(TypeId::ERROR_TYPE),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
-			}
+				TypeId::ERROR_TYPE
+			};
+			environment.register_variable_handle_error(
+				under,
+				VariableRegisterArguments {
+					constant: true,
+					space: None,
+					initial_value: Some(value),
+				},
+				position.with_source(current_source),
+				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
+			);
 		}
 		ImportKind::Everything => {
 			if let Ok(Ok(ref exports)) = exports {
@@ -290,6 +287,7 @@ pub fn import_items<
 	}
 }
 
+/// TODO better name.
 pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	to_import: &str,
 	environment: &mut Environment,

@@ -1,21 +1,15 @@
-use std::{collections::HashMap, mem};
-
 use source_map::SpanWithSource;
+use std::collections::HashMap;
 
 use crate::{
-	context::PossibleLogical,
 	events::{Event, RootReference},
 	features::functions::{ClosureId, ThisValue},
-	types::{get_constraint, properties::PropertyKey, GenericChain, TypeStore},
-	Constant, PropertyValue, Type, TypeId, VariableId,
+	types::{
+		properties::{PropertyKey, Publicity},
+		TypeStore,
+	},
+	PropertyValue, Type, TypeId, VariableId,
 };
-
-/// TODO explain usage
-#[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
-pub enum Publicity {
-	Private,
-	Public,
-}
 
 /// Things that are currently true or have happened
 #[derive(Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -92,7 +86,6 @@ impl LocalInformation {
 		position: SpanWithSource,
 		// TODO if this on environment instead it could be worked out?
 		is_under_dyn: bool,
-		is_function_this: bool,
 	) -> TypeId {
 		let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
 		// crate::utilities::notify!("New object created under {:?}", ty);
@@ -108,13 +101,7 @@ impl LocalInformation {
 			};
 			// TODO maybe register the environment if function ...
 			// TODO register properties
-			// TODO Needs a position (or not?)
-			let value = Event::CreateObject {
-				referenced_in_scope_as: ty,
-				prototype,
-				position,
-				is_function_this,
-			};
+			let value = Event::CreateObject { referenced_in_scope_as: ty, prototype, position };
 			self.events.push(value);
 		}
 
@@ -160,6 +147,20 @@ impl LocalInformation {
 		self.writable.extend(other.writable.iter().clone());
 		self.frozen.extend(other.frozen.iter().clone());
 	}
+
+	#[must_use]
+	pub fn is_halted(&self) -> bool {
+		if let Some(last) = self.events.last() {
+			if let Event::FinalEvent(_) = last {
+				true
+			} else {
+				crate::utilities::notify!("TODO ifs others");
+				false
+			}
+		} else {
+			false
+		}
+	}
 }
 
 pub trait InformationChain {
@@ -172,39 +173,6 @@ impl InformationChain for LocalInformation {
 	}
 }
 
-/// Get all properties on a type (for printing and other non-one property uses)
-///
-/// - TODO make aware of ands and aliases
-/// - TODO prototypes
-/// - TODO could this be an iterator
-/// - TODO return whether it is fixed
-/// - TODO doesn't evaluate properties
-pub fn get_properties_on_type(
-	base: TypeId,
-	_types: &TypeStore,
-	info: &impl InformationChain,
-) -> Vec<(Publicity, PropertyKey<'static>, TypeId)> {
-	let reversed_flattened_properties = info
-		.get_chain_of_info()
-		.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
-		.flatten();
-
-	let mut deleted_or_existing_properties = std::collections::HashSet::<PropertyKey>::new();
-
-	let mut properties = Vec::new();
-	for (publicity, key, prop) in reversed_flattened_properties {
-		if let PropertyValue::Deleted = prop {
-			// TODO doesn't cover constants :(
-			deleted_or_existing_properties.insert(key.clone());
-		} else if deleted_or_existing_properties.insert(key.clone()) {
-			properties.push((*publicity, key.to_owned(), prop.as_get_type()));
-		}
-	}
-
-	properties.reverse();
-	properties
-}
-
 pub(crate) fn get_value_of_constant_import_variable(
 	variable: VariableId,
 	info: &impl InformationChain,
@@ -214,130 +182,35 @@ pub(crate) fn get_value_of_constant_import_variable(
 		.unwrap()
 }
 
-pub(crate) fn get_property_unbound(
-	on: TypeId,
-	publicity: Publicity,
-	under: &PropertyKey,
-	types: &TypeStore,
-	info: &impl InformationChain,
-) -> PossibleLogical<PropertyValue> {
-	fn get_property(
-		info: &LocalInformation,
-		types: &TypeStore,
-		on: TypeId,
-		on_type_arguments: GenericChain,
-		under: (Publicity, &PropertyKey),
-	) -> Option<PropertyValue> {
-		info.current_properties
-			.get(&on)
-			.and_then(|properties| get_property_under(properties, under, on_type_arguments, types))
-	}
-
-	// let under = match under {
-	// 	PropertyKey::Type(t) => PropertyKey::Type(get_constraint(t, types).unwrap_or(t)),
-	// 	under @ PropertyKey::String(_) => under,
-	// };
-
-	types.get_fact_about_type(info, on, None, &get_property, (publicity, under))
-}
-
-fn get_property_under(
-	properties: &[(Publicity, PropertyKey<'_>, PropertyValue)],
-	(want_publicity, want_key): (Publicity, &PropertyKey<'_>),
-	key_type_arguments: GenericChain,
-	types: &TypeStore,
-) -> Option<PropertyValue> {
-	// 'rev' is important
-	properties.iter().rev().find_map(move |(publicity, key, value)| {
-		if *publicity != want_publicity {
-			return None;
-		}
-
-		match key {
-			PropertyKey::String(string) => {
-				if let PropertyKey::String(want) = want_key {
-					(string == want).then_some(value.clone())
-				} else {
-					// TODO
-					None
-				}
-			}
-			PropertyKey::Type(key) => {
-				key_matches(*key, key_type_arguments, want_key, types).then(|| value.clone())
-			}
-		}
-	})
-}
-
-/// TODO contributions for `P`
-#[allow(clippy::if_same_then_else)]
-fn key_matches(
-	key: TypeId,
-	key_type_arguments: GenericChain,
-	want_key: &PropertyKey<'_>,
-	types: &TypeStore,
-) -> bool {
-	let key = if let Some(on_type_arguments) = key_type_arguments {
-		on_type_arguments.get_single_argument(key).unwrap_or(key)
-	} else {
-		key
-	};
-	if let Type::Or(lhs, rhs) = types.get_type_by_id(key) {
-		key_matches(*lhs, key_type_arguments, want_key, types)
-			|| key_matches(*rhs, key_type_arguments, want_key, types)
-	} else {
-		match want_key {
-			PropertyKey::Type(want) => {
-				crate::utilities::notify!("want {:?} key {:?}", want, key);
-				let want = get_constraint(*want, types).unwrap_or(*want);
-				crate::utilities::notify!("want {:?} key {:?}", want, key);
-				key == want
-			}
-			PropertyKey::String(s) => {
-				// TODO WIP
-				if key == TypeId::ANY_TYPE {
-					true
-				} else if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
-					true
-				} else if key == TypeId::STRING_TYPE && s.parse::<usize>().is_err() {
-					true
-				} else if let Type::Constant(Constant::String(ks)) = types.get_type_by_id(key) {
-					ks == s
-				} else {
-					false
-				}
-			}
-		}
-	}
-}
-
 pub fn merge_info(
 	parents: &impl InformationChain,
 	onto: &mut LocalInformation,
 	condition: TypeId,
-	truthy: LocalInformation,
-	mut falsy: Option<LocalInformation>,
+	mut truthy: LocalInformation,
+	mut otherwise: Option<LocalInformation>,
 	types: &mut TypeStore,
 	position: SpanWithSource,
 ) {
-	onto.events.push(Event::Conditionally {
-		condition,
-		true_events: truthy.events.into_boxed_slice(),
-		else_events: falsy
-			.as_mut()
-			.map(|falsy| mem::take(&mut falsy.events).into_boxed_slice())
-			.unwrap_or_default(),
-		position,
-	});
+	let truthy_events = truthy.events.len() as u32;
+	let otherwise_events = otherwise.as_ref().map_or(0, |f| f.events.len() as u32);
+	onto.events.push(Event::Conditionally { condition, truthy_events, otherwise_events, position });
+
+	onto.events.append(&mut truthy.events);
+	if let Some(ref mut otherwise) = otherwise {
+		crate::utilities::notify!("truthy {:?} otherwise {:?}", truthy.events, otherwise.events);
+		onto.events.append(&mut otherwise.events);
+	}
+
+	onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
 
 	// TODO don't need to do above some scope
 	for (var, true_value) in truthy.variable_current_value {
 		crate::utilities::notify!("{:?} {:?}", var, true_value);
 		// TODO don't get value above certain scope...
-		let falsy_value = falsy
+		let otherwise_value = otherwise
 			.as_mut()
 			// Remove is important here
-			.and_then(|falsy| falsy.variable_current_value.remove(&var))
+			.and_then(|otherwise| otherwise.variable_current_value.remove(&var))
 			.or_else(|| onto.variable_current_value.get(&var).copied())
 			.or_else(|| {
 				parents
@@ -347,8 +220,17 @@ pub fn merge_info(
 			})
 			.unwrap_or(TypeId::ERROR_TYPE);
 
-		let new = types.new_conditional_type(condition, true_value, falsy_value);
+		let new = types.new_conditional_type(condition, true_value, otherwise_value);
 
 		onto.variable_current_value.insert(var, new);
 	}
+
+	// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
+	// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
+	onto.current_properties.extend(truthy.current_properties.drain());
+	if let Some(ref mut otherwise) = otherwise {
+		onto.current_properties.extend(otherwise.current_properties.drain());
+	}
+
+	// TODO set more information? an exit condition?
 }

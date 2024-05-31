@@ -1,21 +1,16 @@
-use source_map::SpanWithSource;
+//! Contains implementations of specific JavaScript items and how Ezno handles them.
+//! Contains
+//! - Helper / abstracting functions for synthesising
+//!
+//! Does not contain
+//! - Logic stuff
+//! - Context
+//! - Internal structures
 
-use crate::{
-	types::{get_constraint, StructureGenerics, TypeStore},
-	CheckingData, Environment, Type, TypeId,
-};
-
-use self::objects::SpecialObjects;
-
-/// Contains implementations of specific JavaScript items and how Ezno handles them.
-/// Contains
-/// - Helper / abstracting functions for synthesising
-/// Does not contain
-/// - Logic stuff
-/// - Context
-/// - Internal structures
 pub mod assignments;
+pub mod conditional;
 pub mod constant_functions;
+pub mod exceptions;
 pub mod functions;
 pub mod iteration;
 pub mod modules;
@@ -24,6 +19,19 @@ pub mod operations;
 pub mod template_literal;
 pub mod variables;
 
+use source_map::SpanWithSource;
+
+use crate::{
+	context::{get_value_of_variable, information::InformationChain, ClosedOverReferencesInScope},
+	events::RootReference,
+	features::functions::ClosedOverVariables,
+	types::{get_constraint, PartiallyAppliedGenerics, TypeStore},
+	CheckingData, Environment, Type, TypeId,
+};
+
+use self::objects::SpecialObjects;
+
+/// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 	if let Some(constraint) = get_constraint(on, types) {
 		let name = match constraint {
@@ -63,6 +71,52 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 	}
 }
 
+// TODO think this is okay
+fn extends_prototype(lhs: TypeId, rhs: TypeId, information: &impl InformationChain) -> bool {
+	for info in information.get_chain_of_info() {
+		if let Some(lhs_prototype) = info.prototypes.get(&lhs).copied() {
+			let prototypes_equal = lhs_prototype == rhs;
+			crate::utilities::notify!("{:?} and {:?}", lhs_prototype, rhs);
+			return if prototypes_equal {
+				true
+			} else {
+				extends_prototype(lhs_prototype, rhs, information)
+			};
+		}
+	}
+	false
+}
+
+pub fn instance_of_operator(
+	lhs: TypeId,
+	rhs: TypeId,
+	information: &impl InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
+	// TODO frozen prototypes
+	if let Some(_constraint) = get_constraint(lhs, types) {
+		todo!()
+	} else {
+		let rhs_prototype =
+			if let Type::SpecialObject(SpecialObjects::ClassConstructor { prototype, .. }) =
+				types.get_type_by_id(rhs)
+			{
+				*prototype
+			} else {
+				// TODO err
+				rhs
+			};
+
+		if extends_prototype(lhs, rhs_prototype, information) {
+			TypeId::TRUE
+		} else {
+			TypeId::FALSE
+		}
+	}
+}
+
+/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
+/// occur for casting a constant
 pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
 	use crate::types::{Constructor, PolyNature};
 
@@ -73,11 +127,11 @@ pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<Typ
 			crate::Type::Constructor(constr) => match constr {
 				Constructor::CanonicalRelationOperator { .. }
 				| Constructor::UnaryOperator { .. }
-				| Constructor::StructureGenerics(_)
 				| Constructor::BinaryOperator { .. } => false,
 				Constructor::TypeOperator(_) => todo!(),
 				Constructor::TypeRelationOperator(_) => todo!(),
 				Constructor::Awaited { .. }
+				| Constructor::KeyOf(..)
 				| Constructor::ConditionalResult { .. }
 				| Constructor::Image { .. }
 				| Constructor::Property { .. } => true,
@@ -98,7 +152,7 @@ pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<Typ
 	}
 }
 
-/// TODO await ors etc
+/// Return `await *on*`. TODO await [`Type::Or`] etc
 pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	on: TypeId,
 	_environment: &mut Environment,
@@ -132,14 +186,57 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 }
 
 fn get_promise_value(constraint: TypeId, types: &TypeStore) -> Option<TypeId> {
-	if let Type::Constructor(crate::types::Constructor::StructureGenerics(StructureGenerics {
+	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 		on: TypeId::PROMISE_TYPE,
 		arguments,
-	})) = types.get_type_by_id(constraint)
+	}) = types.get_type_by_id(constraint)
 	{
 		let result = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 		Some(result)
 	} else {
 		None
 	}
+}
+
+/// For function synthesis and
+pub(crate) fn create_closed_over_references(
+	closed_over_references: &ClosedOverReferencesInScope,
+	current_environment: &Environment,
+) -> ClosedOverVariables {
+	ClosedOverVariables(
+		closed_over_references
+			.iter()
+			.map(|reference| {
+				match reference {
+					RootReference::Variable(on) => {
+						let c = None::<
+							&crate::types::generics::substitution::SubstitutionArguments<'static>,
+						>;
+						let get_value_of_variable =
+							get_value_of_variable(current_environment, *on, c);
+						let ty = if let Some(value) = get_value_of_variable {
+							value
+						} else {
+							// TODO think we are getting rid of this
+							// let name = function_environment.get_variable_name(*on);
+							// checking_data.diagnostics_container.add_error(
+							// 	TypeCheckError::UnreachableVariableClosedOver(
+							// 		name.to_string(),
+							// 		function
+							// 			.get_position()
+							// 			.with_source(base_environment.get_source()),
+							// 	),
+							// );
+
+							// `TypeId::ERROR_TYPE` is also okay
+							TypeId::NEVER_TYPE
+						};
+						(*on, ty)
+					}
+					// TODO unsure
+					RootReference::This => todo!(),
+				}
+			})
+			.collect(),
+	)
 }

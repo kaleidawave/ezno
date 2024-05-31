@@ -1,7 +1,7 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	context::information::Publicity, events::Event, features::functions::ClassPropertiesToRegister,
+	events::Event, features::functions::ClassPropertiesToRegister, types::properties::Publicity,
 	CheckingData, Environment, PropertyValue, TypeId,
 };
 
@@ -45,7 +45,10 @@ pub struct RegisterClassPropertiesEvent {
 	pub class_prototype: TypeId,
 }
 
-fn _register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+fn _register_class_properties_for_later_application<
+	T: crate::ReadFromFS,
+	A: crate::ASTImplementation,
+>(
 	environment: &mut Environment,
 	class_prototype: TypeId,
 	properties: ClassPropertiesToRegister<A>,

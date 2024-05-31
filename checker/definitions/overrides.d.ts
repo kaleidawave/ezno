@@ -31,7 +31,8 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            delete this[this.length];
+            // TODO this currently breaks value?
+            // delete this[this.length];
             return value
         }
     }
@@ -143,6 +144,11 @@ declare class Array<T> {
     // }
 }
 
+declare class Map<T, U> {
+    #keys: Array<T> = [];
+    #value: Array<T> = [];
+}
+
 declare class Math {
     @Constant
     static sin(x: number): number;
@@ -184,10 +190,18 @@ declare class String {
 
 declare class Promise<T> { }
 
-interface Response {
+type ResponseBody = string;
+
+declare class Response {
     ok: boolean;
 
-    json(): Promise<any>;
+    // constructor(body?: ResponseBody, options: any);
+
+    // json(): Promise<any>;
+
+    // static json(data: any): Response {
+    //     return new Response(JSON.stringify(data))
+    // }
 }
 
 declare class Console {
@@ -254,12 +268,27 @@ declare class Console {
 
 declare const console: Console;
 
+declare class Error {
+    message: string
+
+    // TODO `@AllowElidedNew`
+    constructor(message: string) {
+        this.message = message
+    }
+}
+
+declare class SyntaxError extends Error {
+    constructor() { super("syntax error") }
+}
+
 declare class JSON {
     // TODO any temp
-    parse(input: string): any;
+    @Constant("json:parse", SyntaxError)
+    static parse(input: string): any;
 
     // TODO any temp
-    stringify(input: any): string;
+    @Constant("json:stringify")
+    static stringify(input: any): string;
 }
 
 declare class Function {
@@ -269,6 +298,11 @@ declare class Function {
 declare class Symbols {
     // TODO temp
     iterator: 199
+}
+
+declare class Proxy {
+    @Constant("proxy:constructor")
+        constructor(obj: any, cb: any);
 }
 
 declare class Object {
@@ -284,29 +318,29 @@ declare class Object {
     //     return n
     // }
 
-    // static keys(on: object): Array<string> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push(key);
-    //     }
-    //     return keys
-    // }
+    static keys(on: { [s: string]: any }): Array<string> {
+        const keys: Array<string> = [];
+        for (const key in on) {
+            keys.push(key);
+        }
+        return keys
+    }
 
-    // static values(on: object): Array<string> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push(on[key]);
-    //     }
-    //     return keys
-    // }
+    static values(on: { [s: string]: any }): Array<any> {
+        const values: Array<any> = [];
+        for (const key in on) {
+            values.push(on[key]);
+        }
+        return values
+    }
 
-    // static entries(on: object): Array<[string, any]> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push([key, on[key]]);
-    //     }
-    //     return keys
-    // }
+    static entries(on: { [s: string]: any }): Array<[string, any]> {
+        const entries: Array<[string, any]> = [];
+        for (const key in on) {
+            entries.push([key, on[key]]);
+        }
+        return entries
+    }
 
     // static fromEntries(iterator: any): object {
     //     const obj = {};

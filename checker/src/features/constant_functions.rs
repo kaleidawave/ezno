@@ -3,15 +3,13 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{get_on_ctx, information::InformationChain},
-	// subtyping::check_satisfies,
+	features::objects::Proxy,
 	types::{
 		functions::SynthesisedArgument,
 		printing::{debug_effects, print_type},
-		Constructor, FunctionEffect, StructureGenerics, Type, TypeRestrictions, TypeStore,
+		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
-	Constant,
-	Environment,
-	TypeId,
+	Constant, Environment, TypeId,
 };
 
 use super::{functions::ThisValue, objects::SpecialObjects};
@@ -99,6 +97,7 @@ pub(crate) fn call_constant_function(
 				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN_TYPE)),
 			}
 		}
+		// String stuff
 		"toUpperCase" | "toLowerCase" | "string_length" => {
 			if let Some(Type::Constant(Constant::String(s))) =
 				this_argument.get_passed().map(|t| types.get_type_by_id(t))
@@ -156,10 +155,6 @@ pub(crate) fn call_constant_function(
 				Ok(ConstantOutput::Diagnostic(buf))
 			}
 		}
-		"print_environment_state" => Ok(ConstantOutput::Diagnostic(format!(
-			"EnvState is: {:?}",
-			environment.context_type.state
-		))),
 		"print_constraint" => {
 			let ty = arguments
 				.first()
@@ -196,15 +191,14 @@ pub(crate) fn call_constant_function(
 				.map_err(|()| ConstantFunctionError::BadCall)?;
 
 			// Unwrap structure generics
-			let ty = if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-				on,
-				..
-			})) = types.get_type_by_id(ty)
-			{
-				*on
-			} else {
-				ty
-			};
+			let ty =
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, .. }) =
+					types.get_type_by_id(ty)
+				{
+					*on
+				} else {
+					ty
+				};
 
 			let get_type_by_id = types.get_type_by_id(ty);
 			if let Type::SpecialObject(
@@ -223,13 +217,13 @@ pub(crate) fn call_constant_function(
 					match effects {
 						FunctionEffect::SideEffects { events, .. } => {
 							let mut buf = String::new();
-							debug_effects(&mut buf, events, types, environment, true);
+							debug_effects(&mut buf, events, types, environment, 0, true);
 							Ok(ConstantOutput::Diagnostic(buf))
 						}
-						FunctionEffect::Constant(identifier) => {
+						FunctionEffect::Constant { identifier, may_throw: _ } => {
 							Ok(ConstantOutput::Diagnostic(format!("Constant: {identifier}")))
 						}
-						FunctionEffect::InputOutput(identifier) => {
+						FunctionEffect::InputOutput { identifier, may_throw: _ } => {
 							Ok(ConstantOutput::Diagnostic(format!("InputOutput: {identifier}")))
 						}
 						FunctionEffect::Unknown => Ok(ConstantOutput::Diagnostic("unknown".into())),
@@ -288,19 +282,29 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"create_proxy" => {
+		"proxy:constructor" => {
+			crate::utilities::notify!("Here creating proxy");
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading
 				let value = types.register_type(Type::SpecialObject(
-					crate::features::objects::SpecialObjects::Proxy {
+					crate::features::objects::SpecialObjects::Proxy(Proxy {
 						handler: trap.non_spread_type().expect("single type"),
 						over: object.non_spread_type().expect("single type"),
-					},
+					}),
 				));
 				Ok(ConstantOutput::Value(value))
 			} else {
 				Err(ConstantFunctionError::BadCall)
 			}
+		}
+		// TODO
+		"json:parse" => {
+			crate::utilities::notify!("TODO json:parse");
+			Err(ConstantFunctionError::BadCall)
+		}
+		"json:stringify" => {
+			crate::utilities::notify!("TODO json:stringify");
+			Err(ConstantFunctionError::BadCall)
 		}
 		// "satisfies" => {
 		// 	let ty = arguments

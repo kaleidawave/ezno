@@ -1,19 +1,17 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{
-		information::{LocalInformation, Publicity},
-		Environment,
-	},
+	context::Environment,
 	types::{
-		properties::{PropertyKey, PropertyValue},
+		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeStore,
 	},
-	FunctionId, TypeId,
+	FunctionId, LocalInformation, TypeId,
 };
 
 use super::functions::ThisValue;
 
+/// Helper for building objects easy
 // TODO slice indexes
 pub struct ObjectBuilder {
 	pub object: TypeId,
@@ -28,7 +26,7 @@ impl ObjectBuilder {
 	) -> Self {
 		// TODO is_under_dyn bad
 		let is_under_dyn = true;
-		Self { object: info.new_object(prototype, types, position, is_under_dyn, false) }
+		Self { object: info.new_object(prototype, types, position, is_under_dyn) }
 	}
 
 	pub fn append(
@@ -48,20 +46,17 @@ impl ObjectBuilder {
 	}
 }
 
+/// These are objects (`typeof * = "object"`) but have special behavior
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum SpecialObjects {
-	Promise {
-		events: (),
-	},
-	Generator {
-		position: (),
-	},
-	Proxy {
-		over: TypeId,
-		handler: TypeId,
-	},
+	/// Hold state of the runtime
+	Promise { events: () },
+	/// Hold state of the runtime
+	Generator { position: () },
+	/// Needs overrides for calling, getting etc
+	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
-	Regexp(String),
+	RegularExpression(String),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
 	/// Yeah here
@@ -70,5 +65,14 @@ pub enum SpecialObjects {
 	ClassConstructor {
 		name: String,
 		constructor: FunctionId,
+		/// For `instanceof` thing
+		prototype: TypeId,
 	},
+}
+
+/// Properties of handler called (`over` passed as first argument)
+#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct Proxy {
+	pub over: TypeId,
+	pub handler: TypeId,
 }

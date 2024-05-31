@@ -8,7 +8,7 @@ These can all be ran as tests using the markdown to Rust test code transpiler in
 - Each block contains errors, the list afterwards is the expected errors
 - Comments can be in block quotes to explain additional details in the tests
 - Sections are at level three headings (`###`), tests are at level four headings (`####`), the tested code goes a code block with the language tag `ts` and errors in a bullet list after in order
-- Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.ts`
+- Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.tsx`
 
 ---
 Other tests unrelated to specific checking features can be found in `checker/tests`

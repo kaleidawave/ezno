@@ -9,11 +9,8 @@ use crate::{
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
 	types::calling::CallingInput,
-	CheckingData, Environment, FunctionId, GenericTypeParameters, LocalInformation, Scope, Type,
-	TypeId,
+	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
-
-use super::{classes::register_properties_into_environment, TypeStore};
 
 /// This is a mesh of annotation and actually defined functions
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
@@ -46,23 +43,35 @@ pub enum FunctionEffect {
 		/// The type is the initial value of the closure variable when this is called
 		closed_over_variables: ClosedOverVariables,
 	},
-	Constant(String),
-	InputOutput(String),
+	Constant {
+		/// used to pick which function to calling in `constant_functions`
+		///
+		/// in the future this may need to have a prefix
+		identifier: String,
+		may_throw: Option<TypeId>,
+	},
+	InputOutput {
+		/// not used in the checker, but may be useful to other tools
+		identifier: String,
+		may_throw: Option<TypeId>,
+	},
 	Unknown,
 }
 
 #[derive(Debug)]
 pub enum InternalFunctionEffect {
-	Constant(String),
-	InputOutput(String),
+	Constant { identifier: String, may_throw: Option<TypeId> },
+	InputOutput { identifier: String, may_throw: Option<TypeId> },
 }
 
 impl From<InternalFunctionEffect> for FunctionEffect {
 	fn from(value: InternalFunctionEffect) -> Self {
 		match value {
-			InternalFunctionEffect::Constant(identifier) => FunctionEffect::Constant(identifier),
-			InternalFunctionEffect::InputOutput(identifier) => {
-				FunctionEffect::InputOutput(identifier)
+			InternalFunctionEffect::Constant { identifier, may_throw } => {
+				FunctionEffect::Constant { identifier, may_throw }
+			}
+			InternalFunctionEffect::InputOutput { identifier, may_throw } => {
+				FunctionEffect::InputOutput { identifier, may_throw }
 			}
 		}
 	}
@@ -70,6 +79,7 @@ impl From<InternalFunctionEffect> for FunctionEffect {
 
 impl FunctionType {
 	pub(crate) fn new_auto_constructor<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		function_id: FunctionId,
 		class_prototype: TypeId,
 		extends: Option<TypeId>,
 		properties: ClassPropertiesToRegister<A>,
@@ -88,12 +98,7 @@ impl FunctionType {
 			scope,
 			checking_data,
 			|environment, checking_data| {
-				let on = create_this_before_function_synthesis(
-					&mut checking_data.types,
-					&mut environment.info,
-					class_prototype,
-					position,
-				);
+				let on = checking_data.types.create_this_object();
 				if let Scope::Function(FunctionScope::Constructor {
 					ref mut this_object_type,
 					..
@@ -104,8 +109,7 @@ impl FunctionType {
 
 				if let Some(extends) = extends {
 					crate::utilities::notify!("Here extends");
-					let called_with_new =
-						super::calling::CalledWithNew::SpecialSuperCall { this_type: on };
+					let called_with_new = super::calling::CalledWithNew::Super { this_type: on };
 
 					let input = CallingInput {
 						call_site: BaseSpan::NULL,
@@ -122,7 +126,7 @@ impl FunctionType {
 					);
 				}
 
-				register_properties_into_environment(
+				crate::types::classes::register_properties_into_environment(
 					environment,
 					on,
 					checking_data,
@@ -135,11 +139,11 @@ impl FunctionType {
 		);
 
 		let behavior =
-			FunctionBehavior::Constructor { non_super_prototype: None, this_object_type: on };
+			FunctionBehavior::Constructor { prototype: class_prototype, this_object_type: on };
 
 		let (info, _free_variables) = env_data.unwrap();
 		Self {
-			id: crate::FunctionId::AUTO_CONSTRUCTOR,
+			id: function_id,
 			type_parameters: None,
 			parameters: SynthesisedParameters::default(),
 			return_type: on,
@@ -151,29 +155,6 @@ impl FunctionType {
 			},
 		}
 	}
-}
-
-/// For inside the function
-pub(crate) fn create_this_before_function_synthesis(
-	types: &mut TypeStore,
-	info: &mut LocalInformation,
-	prototype: TypeId,
-	position: SpanWithSource,
-) -> TypeId {
-	let ty = types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-
-	// crate::utilities::notify!("Registered 'this' in constructor as {:?}", ty);
-
-	let value = Event::CreateObject {
-		referenced_in_scope_as: ty,
-		prototype: crate::events::PrototypeArgument::Yeah(prototype),
-		position,
-		// TODO right?
-		is_function_this: true,
-	};
-	info.events.push(value);
-
-	ty
 }
 
 /// TODO temp

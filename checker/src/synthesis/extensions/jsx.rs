@@ -6,6 +6,7 @@ use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
 
 use crate::{
 	context::invocation::CheckThings,
+	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
@@ -53,7 +54,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		let attribute_position = attribute.get_position().with_source(environment.get_source());
 		attributes_object.append(
 			environment,
-			crate::context::information::Publicity::Public,
+			crate::types::properties::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
 			attribute_position,
@@ -75,7 +76,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 				attr_restriction,
 		// 				attr_value,
 		// 				None,
-		// 				&mut basic_subtyping,
+		// 				todo!(),
 		// 				environment,
 		// 				&checking_data.types,
 		// 			);
@@ -132,6 +133,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// }
 
 	let child_nodes = if let parser::JSXElementChildren::Children(ref children) = element.children {
+		// fn get_children() {
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
@@ -153,7 +155,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
 				environment,
-				crate::context::information::Publicity::Public,
+				crate::types::properties::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
 				child_position,
@@ -172,12 +174,13 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			// TODO: Should there be a position here?
 			synthesised_child_nodes.append(
 				environment,
-				crate::context::information::Publicity::Public,
+				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				element.get_position().with_source(environment.get_source()),
 			);
 		}
+		// }
 
 		Some(synthesised_child_nodes.build_object())
 	} else {
@@ -227,9 +230,18 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		&mut check_things,
 		&mut checking_data.types,
 	) {
-		Ok(res) => res.returned_type,
-		Err(_) => {
-			todo!("JSX Calling error")
+		Ok(res) => crate::types::calling::application_result_to_return_type(
+			res.result,
+			environment,
+			&mut checking_data.types,
+		),
+		Err(error) => {
+			error.errors.into_iter().for_each(|error| {
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::JSXCallingError(error));
+			});
+			error.returned_type
 		}
 	}
 
@@ -292,7 +304,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			attr_restriction,
 	// 			// 			attr_value,
 	// 			// 			None,
-	// 			// 			&mut basic_subtyping,
+	// 			// 			todo!(),
 	// 			// 			environment,
 	// 			// 			&checking_data.types,
 	// 			// 		);

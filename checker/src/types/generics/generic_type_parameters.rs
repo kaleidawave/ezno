@@ -34,8 +34,8 @@ impl From<Vec<GenericTypeParameter>> for GenericTypeParameters {
 pub struct GenericTypeParameter {
 	/// name is only for error displaying
 	pub name: String,
-	// Id of the type, using aliases can find restriction
-	pub id: TypeId,
+	// Using its associated [`Type`], its restriction can be found
+	pub type_id: TypeId,
 	pub default: Option<TypeId>,
 }
 
@@ -56,7 +56,7 @@ pub struct GenericTypeParameter {
 impl PartialEq for GenericTypeParameter {
 	/// For type subtyping
 	fn eq(&self, other: &Self) -> bool {
-		let type_ids_equal = self.id == other.id;
+		let type_ids_equal = self.type_id == other.type_id;
 		// TODO fallback to checking extends
 		type_ids_equal || todo!("Check extends")
 	}

@@ -1,12 +1,46 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	subtyping::{type_is_subtype_with_generics, AlreadyChecked, SubTypeBehavior, SubTypeResult},
-	types::{GenericChain, TypeRestrictions, TypeStore},
+	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
+	types::{properties::PropertyKey, GenericChain, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
-use super::generic_type_arguments::StructureGenericArguments;
+use super::generic_type_arguments::GenericArguments;
+
+pub type DoubleMap<T, U> = crate::Map<T, U>;
+pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
+
+/// How deep through the contribution is ()
+pub type Depth = u8;
+
+/// This is something that is generated inferred during subtyping
+#[derive(Debug, Clone)]
+pub enum CovariantContribution {
+	TypeId(TypeId),
+	// SliceOf(Box<Self>, (u32, u32)),
+	PropertyKey(PropertyKey<'static>),
+}
+
+impl CovariantContribution {
+	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
+		match self {
+			CovariantContribution::TypeId(ty) => ty,
+			// CovariantContribution::SliceOf(inner, _) => {
+			// 	let inner = inner.into_type(types);
+			// 	crate::utilities::notify!("TODO as slice");
+			// 	inner
+			// }
+			CovariantContribution::PropertyKey(p) => p.into_type(types),
+		}
+	}
+}
+
+impl From<TypeId> for CovariantContribution {
+	fn from(value: TypeId) -> Self {
+		CovariantContribution::TypeId(value)
+	}
+}
 
 /// `staging_*` is to get around the fact that intersections cannot be during subtyping (as types
 /// is immutable at this stage, rather than mutable)
@@ -14,25 +48,27 @@ use super::generic_type_arguments::StructureGenericArguments;
 /// `covariant :> contravariant`!!
 ///
 /// This picks contributions. IT DOES NOT CREATE ARGUMENTS EAGERLY
+///
+#[derive(Default)]
 pub struct Contributions<'a> {
 	/// Contains **parent** constraints or some ways to lookup **parent** constraints (*more like arguments*)
-	pub(crate) parent: Option<&'a StructureGenericArguments>,
+	pub parent: Option<&'a GenericArguments>,
 
 	/// Constraints constraints for the **current function call**
-	pub(crate) call_site_type_arguments: Option<&'a TypeRestrictions>,
+	pub call_site_type_arguments: Option<&'a TypeRestrictions>,
 
-	/// From other parameters
-	#[allow(unused)]
-	pub(crate) existing_covariant: &'a mut map_vec::Map<TypeId, TypeId>,
-
+	// /// From other parameters
+	// #[allow(unused)]
+	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
-	pub(crate) staging_covariant: map_vec::Map<TypeId, Vec<(TypeId, u8)>>,
-	pub(crate) staging_contravariant: map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>>,
+	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,
+	pub staging_contravariant: TriMap<TypeId, CovariantContribution, Depth>,
 }
 
 impl<'a> Contributions<'a> {
 	/// TODO return position?
-	fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {
+	#[must_use]
+	pub fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {
 		let cstr = self.call_site_type_arguments.and_then(|ta| ta.get(&under).map(|(c, _pos)| *c));
 		if let cstr @ Some(_) = cstr {
 			cstr
@@ -41,14 +77,13 @@ impl<'a> Contributions<'a> {
 		}
 	}
 
-	fn passes_under_current_covariant(
+	fn _passes_under_current_covariant(
 		&mut self,
 		under: TypeId,
 		argument: TypeId,
+		state: &mut State,
 		environment: &Environment,
 		types: &TypeStore,
-		_lookup_properties: bool,
-		already_checked: &mut AlreadyChecked,
 	) -> SubTypeResult {
 		// else if let Some(lookup_restriction) = lookup_properties
 		// 	.then(|| prototype.and_then(|prototype| self.get_lookup(prototype, under, types)))
@@ -78,115 +113,79 @@ impl<'a> Contributions<'a> {
 		if let Some(constraint) = self.get_standard_restriction(under) {
 			crate::utilities::notify!("Constraint is {:?}", constraint);
 			type_is_subtype_with_generics(
-				constraint,
-				GenericChain::None,
-				argument,
-				GenericChain::None,
-				self,
+				(constraint, GenericChain::None),
+				(argument, GenericChain::None),
+				state,
 				environment,
 				types,
-				Default::default(),
-				already_checked,
 			)
 		} else {
 			// TODO not sure
 			let constraint = crate::types::get_constraint(under, types).unwrap();
 			crate::utilities::notify!("Here, constraint={:?}", constraint);
 			type_is_subtype_with_generics(
-				constraint,
-				GenericChain::None,
-				argument,
-				GenericChain::None,
-				self,
+				(constraint, GenericChain::None),
+				(argument, GenericChain::None),
+				state,
 				environment,
 				types,
-				Default::default(),
-				already_checked,
 			)
 		}
 	}
 
-	pub fn try_set_contravariant(
-		&mut self,
-		on: TypeId,
-		argument: TypeId,
-		depth: u8,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		// {
-		// 	let lhs = crate::types::printing::print_type(on, types, environment, true);
-		// 	let rhs = crate::types::printing::print_type(argument, types, environment, true);
-		// 	crate::utilities::notify!("Here on=({}) :< arg=({})", lhs, rhs);
-		// }
+	// pub fn try_set_contravariant(
+	// 	&mut self,
+	// 	on: TypeId,
+	// 	argument: TypeId,
+	// 	state: &mut State,
+	// 	_environment: &Environment,
+	// 	_types: &TypeStore,
+	// ) -> SubTypeResult {
+	// 	// {
+	// 	// 	let lhs = crate::types::printing::print_type(on, types, environment, true);
+	// 	// 	let rhs = crate::types::printing::print_type(argument, types, environment, true);
+	// 	// 	crate::utilities::notify!("Here on=({}) :< arg=({})", lhs, rhs);
+	// 	// }
 
-		if let e @ SubTypeResult::IsNotSubType(_) = self.passes_under_current_covariant(
-			on,
-			argument,
-			environment,
-			types,
-			false,
-			already_checked,
-		) {
-			// TODO more detailed error
-			return e;
-		}
+	// 	// if let e @ SubTypeResult::IsNotSubType(_) =
+	// 	// 	self.passes_under_current_covariant(on, argument, environment, state, types)
+	// 	// {
+	// 	// 	// TODO more detailed error
+	// 	// 	return e;
+	// 	// }
 
-		self.staging_covariant.entry(on).or_default().push((argument, depth));
+	// 	// TODO on state?
+	// 	if let SubTypingMode::Contravariant { depth } = state.mode {
+	// 		self.staging_covariant.push((on, argument, depth));
+	// 	// self.staging_covariant.entry(on).or_default().push((argument, depth));
+	// 	} else {
+	// 		unreachable!()
+	// 	}
 
-		SubTypeResult::IsSubType
-	}
+	// 	SubTypeResult::IsSubType
+	// }
 
-	pub fn try_set_covariant(
-		&mut self,
-		on: TypeId,
-		restriction: TypeId,
-		_position: SpanWithSource,
-		environment: &Environment,
-		types: &TypeStore,
-		already_checked: &mut AlreadyChecked,
-	) -> SubTypeResult {
-		crate::utilities::notify!("TODO assert it meets existing_covariant and staging_covariant");
-		crate::utilities::notify!("TODO add to staging_covariant");
+	// pub fn try_set_covariant(
+	// 	&mut self,
+	// 	on: TypeId,
+	// 	restriction: TypeId,
+	// 	state: &mut State,
+	// 	environment: &Environment,
+	// 	types: &TypeStore,
+	// ) -> SubTypeResult {
+	// 	crate::utilities::notify!("TODO assert it meets existing_covariant and staging_covariant");
+	// 	crate::utilities::notify!("TODO add to staging_covariant");
 
-		if let Some(under) = self.get_standard_restriction(on) {
-			type_is_subtype_with_generics(
-				under,
-				GenericChain::None,
-				restriction,
-				GenericChain::None,
-				self,
-				environment,
-				types,
-				Default::default(),
-				already_checked,
-			)
-		} else {
-			SubTypeResult::IsSubType
-		}
-	}
-}
-
-impl<'a> SubTypeBehavior<'a> for Contributions<'a> {
-	fn add_object_mutation_constraint(&mut self, _on: TypeId, _constraint: TypeId) {
-		crate::utilities::notify!("TODO");
-	}
-
-	fn add_function_restriction(
-		&mut self,
-		_environment: &mut Environment,
-		_function_id: crate::FunctionId,
-		_function_type: crate::types::FunctionType,
-	) {
-		todo!()
-	}
-
-	fn get_contributions<'b>(&'b mut self) -> Option<&'b mut Contributions<'a>> {
-		Some(self)
-	}
-
-	fn allow_errors(&self) -> bool {
-		true
-	}
+	// 	if let Some(under) = self.get_standard_restriction(on) {
+	// 		type_is_subtype_with_generics(
+	// 			(under, GenericChain::None),
+	// 			(restriction, GenericChain::None),
+	// 			state,
+	// 			environment,
+	// 			types,
+	// 		)
+	// 	} else {
+	// 		SubTypeResult::IsSubType
+	// 	}
+	// }
 }

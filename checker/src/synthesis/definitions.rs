@@ -1,5 +1,6 @@
 use parser::{
-	ASTNode, Declaration, ExpressionOrStatementPosition, Statement, StatementOrDeclaration,
+	ASTNode, Declaration, Expression, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration,
 };
 use source_map::SourceId;
 
@@ -122,31 +123,8 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				parameters,
 				position: _,
 			})) => {
-				// To remove when implementing
-				#[allow(clippy::redundant_pattern_matching)]
-				if let Some(_) = parameters {
-					todo!()
-				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut root = env.new_lexical_root();
-				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
-				//         type_parameters,
-				//         &mut env,
-				//         error_handler,
-				//         type_mappings,
-				//     );
-				//     let borrow = type_parameters.0.borrow();
-				//     for parameter in borrow.iter().cloned() {
-				//         env.declare_generic_type_parameter(parameter);
-				//     }
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// } else {
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// };
-				// todo!("This should have two passes with a empty type");
-				} else {
-					// todo!("Modify alias")
-					// let ty = env.get_type_handle_errors(&type_expression, checking_data);
-					// env.register_type(ty);
+				if let Some(_parameters) = parameters {
+					todo!("set parameters")
 				}
 			}
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
@@ -161,12 +139,17 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					},
 				);
 			}
-			StatementOrDeclaration::Statement(Statement::Comment(..) | Statement::Empty(..)) => {}
-			item => checking_data.diagnostics_container.add_warning(
-				TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
-					item.get_position().with_source(environment.get_source()),
-				),
-			),
+			StatementOrDeclaration::Statement(
+				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
+			) => {}
+			item => {
+				crate::utilities::notify!("unknown {:?}", item);
+				checking_data.diagnostics_container.add_warning(
+					TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
+						item.get_position().with_source(environment.get_source()),
+					),
+				);
+			}
 		}
 	}
 
@@ -201,10 +184,13 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 				let internal_marker = get_internal_function_effect_from_decorators(
 					&function.decorators,
 					function.on.name.as_option_str().unwrap(),
+					&environment,
 				);
 
 				synthesise_declare_statement_function(
 					variable_id,
+					// TODO
+					false,
 					is_async,
 					is_generator,
 					location,
@@ -225,16 +211,44 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators: &[parser::Decorator],
 	function_name: &str,
+	environment: &Environment,
 ) -> Option<InternalFunctionEffect> {
-	decorators.iter().find_map(|d| {
-		if d.name.len() == 1 {
-			let name = d.name.first().map(String::as_str)?;
-			match name {
-				"Constant" => Some(InternalFunctionEffect::Constant(function_name.to_owned())),
-				"InputOutput" => {
-					Some(InternalFunctionEffect::InputOutput(function_name.to_owned()))
-				}
-				_ => None,
+	decorators.iter().find_map(|decorator| {
+		if decorator.name.len() == 1 {
+			let decorator_name = decorator.name.first().map(String::as_str)?;
+			if matches!(decorator_name, "Constant" | "InputOutput") {
+				let (identifier, may_throw) =
+					if let Some(arguments) = decorator.arguments.as_ref() {
+						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+							arguments.first()
+						{
+							identifier.clone()
+						} else {
+							panic!("first argument to constant or input output should be string literal");
+						};
+						let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
+							arguments.get(1)
+						{
+							Some(
+								environment
+									.get_type_from_name(identifier)
+									.expect("could not find thrown type"),
+							)
+						} else {
+							None
+						};
+						(identifier, may_throw)
+					} else {
+						(function_name.to_owned(), None)
+					};
+				Some(match decorator_name {
+					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
+					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
+					_ => unreachable!(),
+				})
+			} else {
+				crate::utilities::notify!("Unknown decorator {:?}", decorator_name);
+				None
 			}
 		} else {
 			None
@@ -244,7 +258,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 
 pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
-		matches!(dec.name.first().map(String::as_str), Some("server" | "client"))
+		matches!(dec.name.first().map(String::as_str), Some("Server" | "Client"))
 			.then(|| dec.name.first().unwrap().to_owned())
 	})
 }

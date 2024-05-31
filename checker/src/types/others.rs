@@ -3,8 +3,8 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	context::information::{get_properties_on_type, Publicity},
 	features::objects::{ObjectBuilder, SpecialObjects},
+	types::properties::{get_properties_on_single_type, Publicity},
 	Constant, Environment, Type, TypeId,
 };
 
@@ -70,15 +70,16 @@ pub(crate) fn create_object_for_type(
 					ObjectBuilder::new(None, types, call_site, &mut environment.info);
 
 				// let properties = env.create_array();
-				for (_, key, property) in get_properties_on_type(ty, types, environment) {
-					let value = create_object_for_type(property, environment, types, call_site);
-					inner_object.append(
-						environment,
-						Publicity::Public,
-						key,
-						crate::PropertyValue::Value(value),
-						call_site,
-					);
+				for (_, key, property) in get_properties_on_single_type(ty, types, environment) {
+					todo!()
+					// let value = create_object_for_type(property, environment, types);
+					// inner_object.append(
+					// 	environment,
+					// 	Publicity::Public,
+					// 	key,
+					// 	crate::PropertyValue::Value(value),
+					// 	None,
+					// );
 				}
 
 				obj.append(
@@ -118,15 +119,16 @@ pub(crate) fn create_object_for_type(
 				ObjectBuilder::new(None, types, call_site, &mut environment.info);
 
 			// let properties = env.create_array();
-			for (_, key, property) in get_properties_on_type(ty, types, environment) {
-				let value = create_object_for_type(property, environment, types, call_site);
-				inner_object.append(
-					environment,
-					Publicity::Public,
-					key,
-					crate::PropertyValue::Value(value),
-					call_site,
-				);
+			for (_, key, property) in get_properties_on_single_type(ty, types, environment) {
+				todo!()
+				// let value = create_object_for_type(property, environment, types);
+				// inner_object.append(
+				// 	environment,
+				// 	Publicity::Public,
+				// 	key,
+				// 	crate::PropertyValue::Value(value),
+				// 	None,
+				// );
 			}
 
 			obj.append(
@@ -139,6 +141,7 @@ pub(crate) fn create_object_for_type(
 		}
 		Type::SpecialObject(_) => todo!(),
 		Type::Class { name, parameters } => todo!(),
+		Type::PartiallyAppliedGenerics(..) => todo!(),
 	}
 	obj.build_object()
 }

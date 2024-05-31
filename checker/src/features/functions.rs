@@ -1,20 +1,18 @@
-use std::{
-	borrow::Cow,
-	collections::{hash_map::Entry, HashMap},
-};
+use std::{borrow::Cow, collections::hash_map::Entry};
 
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	context::{
 		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
-		get_on_ctx, get_value_of_variable,
+		get_on_ctx,
 		information::{merge_info, LocalInformation},
-		CanReferenceThis, ContextType, Syntax,
+		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	events::RootReference,
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
+	events::{Event, FinalEvent, RootReference},
+	features::create_closed_over_references,
+	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
 		classes::ClassValue,
@@ -22,11 +20,12 @@ use crate::{
 		generics::GenericTypeParameters,
 		printing::print_type,
 		properties::{PropertyKey, PropertyValue},
-		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect, PolyNature,
-		StructureGenerics, SynthesisedParameter, SynthesisedRestParameter, TypeStore,
+		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
+		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
+		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, ReadFromFS, Scope,
-	Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, Map, ReadFromFS,
+	Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -104,8 +103,10 @@ pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplement
 	checking_data.types.new_function_type(function_type)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
+	overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
 	location: ContextLocation,
@@ -113,14 +114,6 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
-	if !function.has_body() {
-		checking_data.raise_unimplemented_error(
-			"Overloaded function",
-			function.get_position().with_source(environment.get_source()),
-		);
-		return;
-	}
-
 	let behavior = FunctionRegisterBehavior::StatementFunction {
 		hoisted: variable_id,
 		is_async,
@@ -130,15 +123,26 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
-	environment
-		.info
-		.variable_current_value
-		.insert(variable_id, checking_data.types.new_function_type(function));
+
+	if overloaded {
+		let _last_type = checking_data
+			.local_type_mappings
+			.variables_to_constraints
+			.0
+			.get(&variable_id)
+			.expect("variable constraint not set when trying to unify overload");
+
+		crate::utilities::notify!("TODO check that the result is the same");
+	}
+
+	let v = checking_data.types.new_function_type(function);
+	environment.info.variable_current_value.insert(variable_id, v);
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
+	_overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
 	location: Option<String>,
@@ -196,33 +200,35 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		},
 	);
 
-	let mut basic_equality = BasicEquality::default();
-
-	let result = type_is_subtype(
-		parameter_constraint,
-		value,
-		&mut basic_equality,
-		environment,
-		&checking_data.types,
-	);
-
 	let at = A::expression_position(expression).with_source(environment.get_source());
-	if let SubTypeResult::IsNotSubType(_) = result {
-		let expected = TypeStringRepresentation::from_type_id(
-			parameter_ty,
+
+	{
+		let result = type_is_subtype_object(
+			parameter_constraint,
+			value,
 			environment,
-			&checking_data.types,
-			false,
+			&mut checking_data.types,
 		);
 
-		let found =
-			TypeStringRepresentation::from_type_id(value, environment, &checking_data.types, false);
+		if let SubTypeResult::IsNotSubType(_) = result {
+			let expected = TypeStringRepresentation::from_type_id(
+				parameter_ty,
+				environment,
+				&checking_data.types,
+				false,
+			);
 
-		checking_data.diagnostics_container.add_error(TypeCheckError::InvalidDefaultParameter {
-			at,
-			expected,
-			found,
-		});
+			let found = TypeStringRepresentation::from_type_id(
+				value,
+				environment,
+				&checking_data.types,
+				false,
+			);
+
+			checking_data
+				.diagnostics_container
+				.add_error(TypeCheckError::InvalidDefaultParameter { at, expected, found });
+		}
 	}
 
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
@@ -276,15 +282,21 @@ pub enum FunctionBehavior {
 	},
 	/// Functions defined `function`. Extends above by allowing `new`
 	Function {
-		/// IMPORTANT THIS DOES NOT POINT TO THE OBJECT
+		/// This points the general `this` object.
+		/// When calling with:
+		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
+		/// - regularly: bound argument, else parent `this` (I think)
 		free_this_id: TypeId,
+		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
+		prototype: TypeId,
 		is_async: bool,
+		/// Cannot be called with `new` if true
 		is_generator: bool,
 	},
-	/// Constructors, always new
+	/// Constructors, require new
 	Constructor {
-		/// None is super exists, as that is handled by events
-		non_super_prototype: Option<TypeId>,
+		/// The prototype of the base object
+		prototype: TypeId,
 		/// The id of the generic that needs to be pulled out
 		this_object_type: TypeId,
 	},
@@ -406,6 +418,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		/// Is this [`Option::is_some`] then can use `super()`
 		super_type: Option<TypeId>,
 		properties: ClassPropertiesToRegister<'a, A>,
+		internal_marker: Option<InternalFunctionEffect>,
 	},
 }
 
@@ -440,7 +453,7 @@ impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
 }
 
 #[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub struct ClosedOverVariables(pub(crate) HashMap<VariableId, TypeId>);
+pub struct ClosedOverVariables(pub(crate) Map<VariableId, TypeId>);
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
 pub struct ClosureId(pub(crate) u32);
@@ -477,10 +490,15 @@ where
 
 	// unfold information from the behavior
 	let kind: FunctionKind<A> = match behavior {
-		FunctionRegisterBehavior::Constructor { super_type, prototype, properties } => {
+		FunctionRegisterBehavior::Constructor {
+			super_type,
+			prototype,
+			properties,
+			internal_marker,
+		} => {
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
-					non_super_prototype: super_type.is_some().then_some(prototype),
+					prototype,
 					this_object_type: TypeId::ERROR_TYPE,
 				},
 				scope: FunctionScope::Constructor {
@@ -488,7 +506,7 @@ where
 					type_of_super: super_type,
 					this_object_type: TypeId::ERROR_TYPE,
 				},
-				internal: None,
+				internal: internal_marker,
 				constructor: Some((prototype, properties)),
 				expected_parameters: None,
 				// TODO
@@ -544,11 +562,17 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+
+			let prototype = checking_data
+				.types
+				.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
 			FunctionKind {
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
 					free_this_id: TypeId::ERROR_TYPE,
+					prototype,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -571,25 +595,32 @@ where
 			is_generator,
 			location,
 			internal_marker,
-		} => FunctionKind {
-			behavior: FunctionBehavior::Function {
-				is_async,
-				is_generator,
-				free_this_id: TypeId::ERROR_TYPE,
-			},
-			scope: FunctionScope::Function {
-				is_generator,
-				is_async,
-				this_type: TypeId::ERROR_TYPE,
-				type_of_super: TypeId::ERROR_TYPE,
-				expected_return: None,
-				location,
-			},
-			internal: internal_marker,
-			constructor: None,
-			expected_parameters: None,
-			this_shape: None,
-		},
+		} => {
+			let prototype = checking_data
+				.types
+				.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
+
+			FunctionKind {
+				behavior: FunctionBehavior::Function {
+					is_async,
+					is_generator,
+					prototype,
+					free_this_id: TypeId::ERROR_TYPE,
+				},
+				scope: FunctionScope::Function {
+					is_generator,
+					is_async,
+					this_type: TypeId::ERROR_TYPE,
+					type_of_super: TypeId::ERROR_TYPE,
+					expected_return: None,
+					location,
+				},
+				internal: internal_marker,
+				constructor: None,
+				expected_parameters: None,
+				this_shape: None,
+			}
+		}
 		FunctionRegisterBehavior::ClassMethod {
 			is_async,
 			is_generator,
@@ -713,8 +744,7 @@ where
 								Some(prototype),
 								&mut checking_data.types,
 								position,
-								true,
-								true,
+								false,
 							);
 
 							let this_free_variable = checking_data.types.register_type(
@@ -731,8 +761,7 @@ where
 								None,
 								&mut checking_data.types,
 								position,
-								true,
-								true,
+								false,
 							);
 							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
 						};
@@ -760,33 +789,33 @@ where
 				} => {
 					crate::utilities::notify!("Setting 'this' type here");
 					if let Some((prototype, properties)) = constructor {
-						let new_this_object_type = types::create_this_before_function_synthesis(
+						let this_constructed_object = function_environment.info.new_object(
+							Some(prototype),
 							&mut checking_data.types,
-							&mut function_environment.info,
-							prototype,
+							// TODO this is cheating to not queue event
 							position,
+							false,
 						);
 
-						*this_object_type = new_this_object_type;
-						let position =
-							function.get_position().with_source(function_environment.get_source());
+						*this_object_type = this_constructed_object;
+
 						// TODO super/derived behavior
 						types::classes::register_properties_into_environment(
 							&mut function_environment,
-							new_this_object_type,
+							this_constructed_object,
 							checking_data,
 							properties,
 							position,
 						);
 
-						function_environment.can_reference_this =
-							CanReferenceThis::ConstructorCalled;
+						// function_environment.can_reference_this =
+						// 	CanReferenceThis::ConstructorCalled;
 
 						if let FunctionBehavior::Constructor { ref mut this_object_type, .. } =
 							behavior
 						{
 							crate::utilities::notify!("Set this object type");
-							*this_object_type = new_this_object_type;
+							*this_object_type = this_constructed_object;
 						} else {
 							unreachable!()
 						}
@@ -828,51 +857,38 @@ where
 
 		function.body(&mut function_environment, checking_data);
 
-		let iter = function_environment.context_type.closed_over_references.iter();
+		let closes_over = create_closed_over_references(
+			&function_environment.context_type.closed_over_references,
+			&function_environment,
+		);
 
-		let closes_over: HashMap<_, _> = iter
-			.map(|reference| {
-				match reference {
-					RootReference::Variable(on) => {
-						let get_value_of_variable = get_value_of_variable(
-							&function_environment,
-							*on,
-							None::<&crate::types::generics::FunctionTypeArguments>,
-						);
-						let ty = if let Some(value) = get_value_of_variable {
-							value
-						} else {
-							// TODO think we are getting rid of this
-							// let name = function_environment.get_variable_name(*on);
-							// checking_data.diagnostics_container.add_error(
-							// 	TypeCheckError::UnreachableVariableClosedOver(
-							// 		name.to_string(),
-							// 		function
-							// 			.get_position()
-							// 			.with_source(base_environment.get_source()),
-							// 	),
-							// );
-
-							// `TypeId::ERROR_TYPE` is also okay
-							TypeId::NEVER_TYPE
-						};
-						(*on, ty)
-					}
-					// TODO unsure
-					RootReference::This => todo!(),
-				}
-			})
-			.collect();
-
-		let closes_over = ClosedOverVariables(closes_over);
-
-		let Syntax { free_variables, closed_over_references: function_closes_over, state, .. } =
-			function_environment.context_type;
+		let Syntax {
+			free_variables,
+			closed_over_references: function_closes_over,
+			requests: _,
+			..
+		} = function_environment.context_type;
 
 		let returned = if function.has_body() {
-			state.returned_type(&mut checking_data.types)
+			if let Some(event) = function_environment.info.events.last() {
+				match event {
+					// TODO
+					Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => *returned,
+					Event::FinalEvent(FinalEvent::Throw { thrown: _, position: _ }) => {
+						TypeId::NEVER_TYPE
+					}
+					_ => {
+						crate::utilities::notify!("TODO might be others here");
+						TypeId::UNDEFINED_TYPE
+					}
+				}
+			} else {
+				TypeId::UNDEFINED_TYPE
+			}
+		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
+			ty
 		} else {
-			return_type_annotation.map_or(TypeId::UNDEFINED_TYPE, |ReturnType(ty, _)| ty)
+			TypeId::UNDEFINED_TYPE
 		};
 
 		// crate::utilities::notify!(
@@ -884,6 +900,24 @@ where
 
 		let info = function_environment.info;
 		let variable_names = function_environment.variable_names;
+
+		{
+			// let mut _back_requests = HashMap::<(), ()>::new();
+			// for (on, to) in requests {
+			// 	let type_to_alter = checking_data.types.get_type_by_id(on);
+			// 	if let Type::RootPolyType(
+			// 		PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
+			// 	) = type_to_alter
+			// 	{
+			// 		checking_data.types.set_inferred_constraint(on, to);
+			// 	} else if let Type::Constructor(constructor) = type_to_alter {
+			// 		crate::utilities::notify!("TODO constructor {:?}", constructor);
+			// 	} else {
+			// 		crate::utilities::notify!("TODO {:?}", type_to_alter);
+			// 	}
+			// 	crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
+			// }
+		}
 
 		// TODO this fixes properties being lost during printing and subtyping
 		for (on, properties) in info.current_properties {
@@ -983,15 +1017,7 @@ where
 			}
 		}
 
-		let effect = match internal {
-			Some(InternalFunctionEffect::Constant(identifier)) => {
-				FunctionEffect::Constant(identifier)
-			}
-			Some(InternalFunctionEffect::InputOutput(identifier)) => {
-				FunctionEffect::InputOutput(identifier)
-			}
-			None => FunctionEffect::Unknown,
-		};
+		let effect = internal.map_or(FunctionEffect::Unknown, Into::into);
 
 		FunctionType { id, type_parameters, parameters, return_type, behavior, effect }
 	}
@@ -1006,38 +1032,44 @@ fn get_expected_parameters_from_type(
 	if let Type::FunctionReference(func_id) = ty {
 		let f = types.get_function_from_id(*func_id);
 		(Some(f.parameters.clone()), Some(f.return_type))
-	} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
-		arguments,
-		on,
-	})) = ty
-	{
-		let mut structure_generic_arguments = arguments.clone();
+	} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { arguments, on }) = ty {
+		let structure_generic_arguments = arguments.clone();
+
+		// TODO abstract done too many times
+		let type_arguments = match structure_generic_arguments {
+			types::generics::generic_type_arguments::GenericArguments::ExplicitRestrictions(
+				explicit_restrictions,
+			) => SubstitutionArguments {
+				parent: None,
+				arguments: explicit_restrictions.into_iter().map(|(l, (r, _))| (l, r)).collect(),
+				closures: Default::default(),
+			},
+			types::generics::generic_type_arguments::GenericArguments::Closure(_) => todo!(),
+			types::generics::generic_type_arguments::GenericArguments::LookUp { .. } => todo!(),
+		};
 
 		let (expected_parameters, expected_return_type) =
 			get_expected_parameters_from_type(*on, types, environment);
 
 		(
-			expected_parameters.map(|e| SynthesisedParameters {
-				parameters: e
+			expected_parameters.map(|e| {
+				let parameters = e
 					.parameters
 					.into_iter()
 					.map(|p| SynthesisedParameter {
-						ty: substitute(p.ty, &mut structure_generic_arguments, environment, types),
+						ty: substitute(p.ty, &type_arguments, environment, types),
 						..p
 					})
-					.collect(),
-				rest_parameter: e.rest_parameter.map(|rp| SynthesisedRestParameter {
-					item_type: substitute(
-						rp.item_type,
-						&mut structure_generic_arguments,
-						environment,
-						types,
-					),
+					.collect();
+
+				let rest_parameter = e.rest_parameter.map(|rp| SynthesisedRestParameter {
+					item_type: substitute(rp.item_type, &type_arguments, environment, types),
 					..rp
-				}),
+				});
+
+				SynthesisedParameters { parameters, rest_parameter }
 			}),
-			expected_return_type
-				.map(|rt| substitute(rt, &mut structure_generic_arguments, environment, types)),
+			expected_return_type.map(|rt| substitute(rt, &type_arguments, environment, types)),
 		)
 	} else {
 		(None, None)

@@ -6,13 +6,13 @@ use parser::{
 };
 
 use crate::{
-	context::{information::Publicity, Environment},
+	context::Environment,
 	features::assignments::{
 		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
 		Reference,
 	},
 	synthesis::expressions::synthesise_expression,
-	types::properties::PropertyKey,
+	types::properties::{PropertyKey, Publicity},
 	CheckingData, TypeId,
 };
 
@@ -264,7 +264,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 				on: parent_ty,
 				with: PropertyKey::from_type(key_ty, &checking_data.types),
 				span: position.with_source(environment.get_source()),
-				publicity: crate::context::information::Publicity::Public,
+				publicity: crate::types::properties::Publicity::Public,
 			}
 		}
 	}

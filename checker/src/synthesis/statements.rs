@@ -1,21 +1,20 @@
 use super::{
-	expressions::synthesise_multiple_expression,
-	synthesise_block,
-	type_annotations::synthesise_type_annotation,
-	variables::{register_variable, synthesise_variable_declaration_item},
+	expressions::synthesise_multiple_expression, synthesise_block,
+	variables::synthesise_variable_declaration_item,
 };
 use crate::{
-	context::{Scope, VariableRegisterArguments},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	features::iteration::{synthesise_iteration, IterationBehavior},
-	subtyping::{type_is_subtype, BasicEquality},
+	context::Scope,
+	diagnostics::TypeCheckError,
+	features::{
+		conditional::new_conditional_context,
+		exceptions::new_try_context,
+		iteration::{synthesise_iteration, IterationBehavior},
+	},
 	synthesis::EznoParser,
 	CheckingData, Environment, TypeId,
 };
 
-use parser::{
-	expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement, TypeAnnotation,
-};
+use parser::{expressions::MultipleExpression, ASTNode, BlockOrSingleStatement, Statement};
 use std::collections::HashMap;
 
 pub type ExportedItems = HashMap<String, crate::features::variables::VariableOrImport>;
@@ -66,7 +65,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					TypeId::ANY_TYPE,
 				);
 
-				environment.new_conditional_context(
+				new_conditional_context(
+					environment,
 					(condition, condition_pos),
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 						synthesise_block_or_single_statement(current.1, env, data);
@@ -233,53 +233,18 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				synthesise_variable_declaration_item(declaration, environment, checking_data, None);
 			}
 		}
-		Statement::TryCatch(stmt) => {
-			let thrown_type: TypeId =
-				environment.new_try_context(checking_data, |environment, checking_data| {
-					synthesise_block(&stmt.try_inner.0, environment, checking_data);
-				});
-
-			if let Some(ref catch_block) = stmt.catch_inner {
-				// TODO catch when never
-				environment.new_lexical_environment_fold_into_parent(
-					crate::Scope::Block {},
-					checking_data,
-					|environment, checking_data| {
-						if let Some((clause, ty_annotation)) = &stmt.exception_var {
-							let mut catch_variable_type = None;
-							if let Some(ty_annotation) = ty_annotation {
-								let catch_type_id = synthesise_type_annotation(
-									ty_annotation,
-									environment,
-									checking_data,
-								);
-								check_catch_type(
-									ty_annotation,
-									catch_type_id,
-									thrown_type,
-									environment,
-									checking_data,
-								);
-								catch_variable_type = Some(catch_type_id);
-							}
-
-							register_variable(
-								clause.get_ast_ref(),
-								environment,
-								checking_data,
-								VariableRegisterArguments {
-									// TODO catch variable constant option
-									constant: true,
-									space: catch_variable_type,
-									initial_value: Some(thrown_type),
-								},
-							);
-						}
-						synthesise_block(&catch_block.0, environment, checking_data);
-					},
-				);
-			}
-		}
+		Statement::TryCatch(stmt) => new_try_context(
+			&stmt.try_inner,
+			stmt.catch_inner.as_ref().map(|inner| {
+				(
+					inner,
+					stmt.exception_var.as_ref().map(|(var, ty)| (var.get_ast_ref(), ty.as_ref())),
+				)
+			}),
+			stmt.finally_inner.as_ref(),
+			environment,
+			checking_data,
+		),
 		// TODO do these higher up in the block. To set relevant information
 		Statement::Comment(s, _) if s.starts_with("@ts") => {
 			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
@@ -292,51 +257,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		| Statement::Debugger(_)
 		| Statement::Empty(_)
 		| Statement::AestheticSemiColon(_) => {}
-	}
-}
-
-fn check_catch_type<T>(
-	catch_annotation: &TypeAnnotation,
-	catch_type: TypeId,
-	thrown_type: TypeId,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
-	let mut basic_equality = BasicEquality {
-		add_property_restrictions: false,
-		position: source_map::Nullable::NULL,
-		object_constraints: Default::default(),
-		allow_errors: false,
-	};
-	let result = type_is_subtype(
-		catch_type,
-		thrown_type,
-		&mut basic_equality,
-		environment,
-		&checking_data.types,
-	);
-
-	if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-		let expected = TypeStringRepresentation::from_type_id(
-			thrown_type,
-			environment,
-			&checking_data.types,
-			false,
-		);
-		let found = TypeStringRepresentation::from_type_id(
-			catch_type,
-			environment,
-			&checking_data.types,
-			false,
-		);
-
-		let at = catch_annotation.get_position().with_source(environment.get_source());
-
-		checking_data.diagnostics_container.add_error(TypeCheckError::CatchTypeDoesNotMatch {
-			at,
-			expected,
-			found,
-		});
 	}
 }
 

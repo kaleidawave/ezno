@@ -51,6 +51,7 @@ impl crate::ASTImplementation for EznoParser {
 	type TypeAnnotation<'_a> = parser::TypeAnnotation;
 	type TypeParameter<'_a> = parser::TypeParameter;
 	type Expression<'_a> = parser::Expression;
+	type Block<'_a> = parser::Block;
 	type MultipleExpression<'_a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'_a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
@@ -116,6 +117,12 @@ impl crate::ASTImplementation for EznoParser {
 		&parameter.name
 	}
 
+	fn type_annotation_position<'_a>(
+		annotation: &'_a Self::TypeAnnotation<'_a>,
+	) -> source_map::Span {
+		ASTNode::get_position(annotation)
+	}
+
 	fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		annotation: &Self::TypeAnnotation<'_>,
 		environment: &mut Environment,
@@ -170,23 +177,21 @@ impl crate::ASTImplementation for EznoParser {
 		field: &'a Self::VariableField<'a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
-		value: TypeId,
+		arguments: VariableRegisterArguments,
 	) {
-		register_variable(
-			field,
-			environment,
-			checking_data,
-			VariableRegisterArguments {
-				// TODO
-				constant: true,
-				space: None,
-				initial_value: Some(value),
-			},
-		);
+		register_variable(field, environment, checking_data, arguments);
 	}
 
 	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool {
 		parameter.extends.is_some()
+	}
+
+	fn synthesise_block<'a, T: crate::ReadFromFS>(
+		block: &'a Self::Block<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		synthesise_block(&block.0, environment, checking_data);
 	}
 }
 

@@ -7,5 +7,31 @@ pub mod generic_type_arguments;
 pub mod generic_type_parameters;
 pub mod substitution;
 
-pub(crate) use generic_type_arguments::FunctionTypeArguments;
 pub use generic_type_parameters::*;
+use source_map::SpanWithSource;
+
+use crate::{types::SubstitutionArguments, TypeId};
+
+pub struct ExplicitTypeArguments(pub crate::Map<TypeId, (TypeId, SpanWithSource)>);
+
+impl ExplicitTypeArguments {
+	pub(crate) fn into_substitution_arguments(self) -> SubstitutionArguments<'static> {
+		SubstitutionArguments {
+			arguments: self.0.into_iter().map(|(key, (v, _pos))| (key, v)).collect(),
+			parent: None,
+			closures: Vec::new(),
+		}
+	}
+}
+
+// pub enum GenericTypeArgument {
+// 	Explicit(TypeId, SpanWithSource),
+// 	Inferred(TypeId),
+// 	NeedsComputation(NeedsComputation)
+// }
+
+// /// TODO more
+// pub enum NeedsComputation {
+// 	Slice(Range<u32, TypeId),
+// 	PropertyKey(PropertyKey<'static>)
+// }

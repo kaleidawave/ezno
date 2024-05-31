@@ -18,7 +18,7 @@ use crate::{
 			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
-		Constructor, StructureGenerics, Type, TypeId,
+		PartiallyAppliedGenerics, Type, TypeId,
 	},
 	CheckingData, Environment, FunctionId,
 };
@@ -282,10 +282,10 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
@@ -314,6 +314,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			},
 			rest_parameter.position.with_source(environment.get_source()),
 			&mut checking_data.diagnostics_container,
+			checking_data.options.record_all_assignments_and_reads,
 		);
 
 		SynthesisedRestParameter {
@@ -436,10 +437,10 @@ fn synthesise_function_parameters<
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
-		} else if let Type::Constructor(Constructor::StructureGenerics(StructureGenerics {
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::ARRAY_TYPE,
 			arguments,
-		})) = checking_data.types.get_type_by_id(parameter_constraint)
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
 		{
 			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
 				item
@@ -610,4 +611,215 @@ pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextTyp
 			},
 		)
 		.0
+}
+
+/// For hoisting, don't have the events of the function
+pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
+	function: &parser::FunctionBase<B>,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> crate::features::functions::PartialFunction {
+	let type_parameters = function.type_parameters.as_ref().map(|type_parameters| {
+		super::functions::synthesise_type_parameters(type_parameters, environment, checking_data)
+	});
+
+	let parameters = function
+		.parameters
+		.parameters
+		.iter()
+		.map(|parameter| {
+			let parameter_constraint =
+				parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |ta| {
+					synthesise_type_annotation(ta, environment, checking_data)
+				});
+
+			// TODO I think this is correct
+			let is_optional = parameter.additionally.is_some();
+			let ty = if is_optional {
+				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
+			} else {
+				parameter_constraint
+			};
+
+			SynthesisedParameter {
+				name: variable_field_to_string(parameter.name.get_ast_ref()),
+				is_optional,
+				ty,
+				position: parameter.position.with_source(environment.get_source()),
+			}
+		})
+		.collect();
+
+	let rest_parameter = function.parameters.rest_parameter.as_ref().map(|rest_parameter| {
+		let parameter_constraint =
+			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
+				synthesise_type_annotation(annotation, environment, checking_data)
+			});
+
+		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
+			TypeId::ERROR_TYPE
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::ARRAY_TYPE,
+			arguments,
+		}) = checking_data.types.get_type_by_id(parameter_constraint)
+		{
+			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
+				item
+			} else {
+				unreachable!()
+			}
+		} else {
+			crate::utilities::notify!("rest parameter should be array error");
+			// checking_data.diagnostics_container.add_error(
+			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
+			// );
+			TypeId::ERROR_TYPE
+		};
+
+		let name = variable_field_to_string(&rest_parameter.name);
+
+		SynthesisedRestParameter {
+			item_type,
+			// This will be overridden when actual synthesis
+			ty: parameter_constraint,
+			name,
+			position: rest_parameter.position.with_source(environment.get_source()),
+		}
+	});
+
+	let return_type = function.return_type.as_ref().map(|annotation| {
+		ReturnType(
+			synthesise_type_annotation(annotation, environment, checking_data),
+			annotation.get_position().with_source(environment.get_source()),
+		)
+	});
+
+	crate::features::functions::PartialFunction(
+		type_parameters,
+		SynthesisedParameters { parameters, rest_parameter },
+		return_type,
+	)
+}
+
+/// TODO WIP
+/// TODO also check generics?
+pub(super) fn build_overloaded_function(
+	id: FunctionId,
+	behavior: FunctionBehavior,
+	overloads: Vec<crate::features::functions::PartialFunction>,
+	actual: crate::features::functions::PartialFunction,
+	environment: &Environment,
+	types: &mut crate::types::TypeStore,
+	diagnostics: &mut crate::DiagnosticsContainer,
+) -> TypeId {
+	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
+	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
+
+	// TODO bad
+	let expected_parameters = actual.1.clone();
+
+	let as_function = FunctionType {
+		id,
+		behavior,
+		type_parameters: actual.0,
+		parameters: actual.1,
+		return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+		effect: crate::types::FunctionEffect::Unknown,
+	};
+
+	let actual_func = types.new_hoisted_function_type(as_function);
+
+	let mut result = actual_func;
+
+	for overload in overloads {
+		for (idx, op) in overload.1.parameters.iter().enumerate() {
+			if let Some((base_type, position)) =
+				expected_parameters.get_parameter_type_at_index(idx)
+			{
+				let res = type_is_subtype(
+					base_type,
+					op.ty,
+					&mut State {
+						already_checked: Default::default(),
+						mode: Default::default(),
+						contributions: None,
+						object_constraints: None,
+						others: Default::default(),
+					},
+					environment,
+					types,
+				);
+				if let SubTypeResult::IsNotSubType(..) = res {
+					let parameter = TypeStringRepresentation::from_type_id(
+						base_type,
+						environment,
+						types,
+						false,
+					);
+					let overloaded_parameter =
+						TypeStringRepresentation::from_type_id(op.ty, environment, types, false);
+
+					diagnostics.add_error(TypeCheckError::IncompatibleOverloadParameter {
+						parameter_position: position,
+						overloaded_parameter_position: op.position,
+						parameter,
+						overloaded_parameter,
+					});
+				}
+			} else {
+				// TODO warning
+			}
+		}
+
+		// TODO other cases
+		if let (
+			Some(ReturnType(base, base_position)),
+			Some(ReturnType(overload, overload_position)),
+		) = (actual.2, overload.2)
+		{
+			let res = type_is_subtype(
+				base,
+				overload,
+				&mut State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: None,
+					object_constraints: None,
+					others: Default::default(),
+				},
+				environment,
+				types,
+			);
+			if let SubTypeResult::IsNotSubType(..) = res {
+				let overload =
+					TypeStringRepresentation::from_type_id(overload, environment, types, false);
+				diagnostics.add_error(TypeCheckError::IncompatibleOverloadReturnType {
+					base_position,
+					overload_position,
+					base: TypeStringRepresentation::from_type_id(base, environment, types, false),
+					overload,
+				});
+			}
+		} else {
+			// TODO warning
+		}
+
+		// Partial
+		let as_function = FunctionType {
+			id,
+			behavior,
+			type_parameters: overload.0,
+			parameters: overload.1,
+			return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+			effect: crate::types::FunctionEffect::Unknown,
+		};
+
+		// TODO
+		let func = types.new_hoisted_function_type(as_function);
+
+		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
+		result = types.new_and_type(func, result).unwrap();
+	}
+
+	result
 }

@@ -1,40 +1,22 @@
 use parser::{
-	types::interface::{InterfaceDeclaration, InterfaceMember},
-	Decorated, PropertyKey as ParserPropertyKey, WithComment,
+	types::interface::InterfaceMember, Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{information::Publicity, Context, Environment},
+	context::{Context, Environment},
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		properties::{PropertyKey, PropertyValue},
+		properties::{PropertyKey, PropertyValue, Publicity},
 		FunctionType, Type,
 	},
-	CheckingData, TypeId,
+	CheckingData, Scope, TypeId,
 };
 
 use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
-
-fn _get_extends<T: crate::ReadFromFS>(
-	interface: &InterfaceDeclaration,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	interface_type: TypeId,
-) {
-	if let Some([reference, others @ ..]) = interface.extends.as_deref() {
-		let mut ty = synthesise_type_annotation(reference, environment, checking_data);
-		for reference in others {
-			let rhs = synthesise_type_annotation(reference, environment, checking_data);
-			ty = checking_data.types.register_type(Type::And(ty, rhs));
-		}
-
-		environment.bases.connect_extends(interface_type, ty);
-	}
-}
 
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
@@ -116,10 +98,9 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			},
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
 			// optional properties (`?:`) is implemented here:
-			InterfaceValue::Optional(value) => PropertyValue::Dependent {
+			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
 				on: TypeId::BOOLEAN_TYPE,
 				truthy: PropertyValue::Value(value).into(),
-				otherwise: PropertyValue::Deleted.into(),
 			},
 		};
 
@@ -272,25 +253,40 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				InterfaceMember::Rule {
 					parameter,
 					matching_type,
-					as_type: _,
+					as_type,
 					optionality: _,
 					is_readonly: _,
 					output_type,
 					position,
 				} => {
-					// TODO WIP
-					let to = TypeId::ANY_TYPE;
+					let matching_type =
+						synthesise_type_annotation(matching_type, environment, checking_data);
 
-					// TODO
-					let _parameter = checking_data.types.register_type(Type::RootPolyType(
-						crate::types::PolyNature::FunctionGeneric {
-							name: parameter.clone(),
-							eager_fixed: to,
-						},
-					));
+					let (key, value) = {
+						// TODO special scope here
+						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
+							crate::types::PolyNature::MappedGeneric {
+								name: parameter.clone(),
+								eager_fixed: matching_type,
+							},
+						));
+						environment.named_types.insert(parameter.clone(), parameter_type);
 
-					let key = synthesise_type_annotation(matching_type, environment, checking_data);
-					let value = synthesise_type_annotation(output_type, environment, checking_data);
+						let key = if let Some(as_type) = as_type {
+							synthesise_type_annotation(as_type, &mut environment, checking_data)
+						} else {
+							parameter_type
+						};
+
+						let value = synthesise_type_annotation(
+							output_type,
+							&mut environment,
+							checking_data,
+						);
+
+						(key, value)
+					};
 
 					interface_register_behavior.register(
 						ParserPropertyKeyType::Type(key),

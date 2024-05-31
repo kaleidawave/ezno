@@ -27,7 +27,7 @@ pub(crate) fn cast_as_string(cst: &Constant, strict_casts: bool) -> Result<Strin
 	if strict_casts && !matches!(cst, Constant::String(_)) {
 		return Err(());
 	}
-	Ok(cst.as_js_string())
+	Ok(cst.as_js_string().into_owned())
 }
 
 /// <https://tc39.es/ecma262/multipage/abstract-operations.html#sec-toboolean>

@@ -9,7 +9,10 @@ use parser::{
 use crate::{
 	context::{Environment, VariableRegisterArguments},
 	features::{
-		functions::{synthesise_declare_statement_function, synthesise_hoisted_statement_function},
+		functions::{
+			synthesise_declare_statement_function, synthesise_hoisted_statement_function,
+			SynthesisableFunction,
+		},
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
@@ -229,7 +232,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Second stage: variables and function type hoisting
-	for item in items {
+	let mut second_items = items.iter().peekable();
+	while let Some(item) = second_items.next() {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(stmt) = stmt {
@@ -266,16 +270,108 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					if let Some(VariableIdentifier::Standard(name, ..)) =
 						func.on.name.as_option_variable_identifier()
 					{
+						// Copied from classes hoisting
+						let (overloads, actual) = if func.on.body.0.is_none() {
+							let mut overloads = Vec::new();
+							let shape = super::functions::synthesise_shape(
+								&func.on,
+								environment,
+								checking_data,
+							);
+							overloads.push(shape);
+
+							// Read declarations until
+							while let Some(overload_declaration) = second_items.next_if(|t| {
+								matches!(
+									t, 
+									StatementOrDeclaration::Declaration( parser::Declaration::Function(func)) 
+									if func.on.name.as_option_str().is_some_and(|n| n == name) && !func.on.has_body())
+							}) {
+								let parser::StatementOrDeclaration::Declaration(
+									parser::Declaration::Function(func),
+								) = &overload_declaration
+								else {
+									unreachable!()
+								};
+								let shape = super::functions::synthesise_shape(
+									&func.on,
+									environment,
+									checking_data,
+								);
+								overloads.push(shape);
+							}
+
+							let upcoming = second_items.peek().and_then(|next| {
+								matches!(
+									next,
+									StatementOrDeclaration::Declaration( parser::Declaration::Function(func))
+									if
+										func.on.name.as_option_str().is_some_and(|n| n == name)
+										&& func.on.has_body()
+								)
+								.then_some(next)
+							});
+
+							if let Some(StatementOrDeclaration::Declaration(
+								Declaration::Function(func),
+							)) = upcoming
+							{
+								let actual = super::functions::synthesise_shape(
+									&func.on,
+									environment,
+									checking_data,
+								);
+								(overloads, actual)
+							} else if func.on.name.declare {
+								let actual = overloads.pop().unwrap();
+								(overloads, actual)
+							} else {
+								todo!("error that missing body or not declare")
+							}
+						} else {
+							let actual = super::functions::synthesise_shape(
+								&func.on,
+								environment,
+								checking_data,
+							);
+							(Vec::new(), actual)
+						};
+
+						let value = super::functions::build_overloaded_function(
+							crate::FunctionId(environment.get_source(), func.on.position.start),
+							crate::features::functions::FunctionBehavior::Function {
+								free_this_id: TypeId::ERROR_TYPE,
+								prototype: TypeId::ERROR_TYPE,
+								is_async: func.on.header.is_async(),
+								is_generator: func.on.header.is_generator(),
+							},
+							overloads,
+							actual,
+							environment,
+							&mut checking_data.types,
+							&mut checking_data.diagnostics_container,
+						);
+
+						let k = crate::VariableId(environment.get_source(), func.on.position.start);
+						checking_data
+							.local_type_mappings
+							.variables_to_constraints
+							.0
+							.insert(k, value);
+
+						let argument = VariableRegisterArguments {
+							// TODO functions are constant references
+							constant: true,
+							space: Some(value),
+							initial_value: Some(value),
+						};
+
 						environment.register_variable_handle_error(
 							name,
-							VariableRegisterArguments {
-								// TODO functions are constant references
-								constant: true,
-								space: None,
-								initial_value: None,
-							},
+							argument,
 							func.get_position().with_source(environment.get_source()),
 							&mut checking_data.diagnostics_container,
+							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
 				}
@@ -342,22 +438,24 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 						match exported {
 							Exportable::Function(func) => {
-								let declared_at =
-									func.get_position().with_source(environment.get_source());
+								let declared_at = ASTNode::get_position(func)
+									.with_source(environment.get_source());
 
 								if let Some(VariableIdentifier::Standard(name, ..)) =
 									func.name.as_option_variable_identifier()
 								{
+									let argument = VariableRegisterArguments {
+										// TODO based on keyword
+										constant: true,
+										space: None,
+										initial_value: None,
+									};
 									environment.register_variable_handle_error(
 										name,
-										VariableRegisterArguments {
-											// TODO based on keyword
-											constant: true,
-											space: None,
-											initial_value: None,
-										},
+										argument,
 										declared_at,
 										&mut checking_data.diagnostics_container,
+										checking_data.options.record_all_assignments_and_reads,
 									);
 								}
 							}
@@ -410,7 +508,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Third stage: functions
-	for item in items {
+	let mut third_stage_items = items.iter().peekable();
+	while let Some(item) = third_stage_items.next() {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
 				let variable_id =
@@ -423,8 +522,34 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				});
 
 				if function.on.name.declare {
+					let (overloaded, _last) = if function.on.has_body() {
+						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
+							if let StatementOrDeclaration::Declaration(Declaration::Function(
+								function,
+							)) = f
+							{
+								function.on.has_body()
+							} else {
+								false
+							}
+						});
+
+						if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+							function,
+						))) = last
+						{
+							(true, function)
+						} else {
+							// Some error with non-overloads
+							continue;
+						}
+					};
+
 					synthesise_declare_statement_function(
 						variable_id,
+						overloaded,
 						is_async,
 						is_generator,
 						location,
@@ -434,8 +559,34 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 					);
 				} else {
+					let (overloaded, _last) = if function.on.has_body() {
+						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
+							if let StatementOrDeclaration::Declaration(Declaration::Function(
+								function,
+							)) = f
+							{
+								function.on.has_body()
+							} else {
+								false
+							}
+						});
+
+						if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+							function,
+						))) = last
+						{
+							(true, function)
+						} else {
+							// Some error with non-overloads
+							continue;
+						}
+					};
+
 					synthesise_hoisted_statement_function(
 						variable_id,
+						overloaded,
 						is_async,
 						is_generator,
 						location,
@@ -465,6 +616,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 				synthesise_hoisted_statement_function(
 					variable_id,
+					// TODO
+					false,
 					is_async,
 					is_generator,
 					location,

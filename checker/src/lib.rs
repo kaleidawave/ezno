@@ -19,12 +19,13 @@ pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/inter
 pub mod synthesis;
 
 use context::Names;
-pub use map_vec::Map as SmallMap;
 
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
-use features::{functions::SynthesisableFunction, modules::SynthesisedModule};
+use features::{
+	functions::SynthesisableFunction, modules::CouldNotOpenFile, modules::SynthesisedModule,
+};
 
 use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 use std::{
@@ -34,15 +35,18 @@ use std::{
 
 use types::TypeStore;
 
-pub use context::{GeneralContext, Logical, RootContext};
+pub use context::{
+	information::LocalInformation, Environment, GeneralContext, Logical, RootContext, Scope,
+	VariableRegisterArguments,
+};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
-pub use types::{calling::call_type_handle_errors, generics::GenericTypeParameters, subtyping};
+pub use types::{
+	calling::call_type_handle_errors, generics::GenericTypeParameters, properties::PropertyValue,
+	subtyping, Constant, Type, TypeId,
+};
 
 pub use type_mappings::*;
-pub use types::{properties::PropertyValue, Constant, Type, TypeId};
-
-pub use context::{information::LocalInformation, Environment, Scope};
 
 pub trait ReadFromFS {
 	/// Returns `Vec<u8>` as this callback can return binary file
@@ -62,6 +66,8 @@ where
 
 pub use source_map::{self, SourceId, Span};
 
+use crate::subtyping::State;
+
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	/// Custom allocator etc
@@ -78,6 +84,8 @@ pub trait ASTImplementation: Sized {
 	type TypeAnnotation<'a>;
 	type TypeParameter<'a>;
 	type Expression<'a>;
+	/// List of statements and declarations
+	type Block<'a>;
 	type MultipleExpression<'a>;
 	type ForStatementInitiliser<'a>;
 
@@ -137,6 +145,12 @@ pub trait ASTImplementation: Sized {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
 
+	fn synthesise_block<'a, T: crate::ReadFromFS>(
+		block: &'a Self::Block<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	);
+
 	/// Don't need to return anything. All information recorded via changed to `environment`
 	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
 		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
@@ -147,6 +161,8 @@ pub trait ASTImplementation: Sized {
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
+
+	fn type_annotation_position<'a>(annotation: &'a Self::TypeAnnotation<'a>) -> Span;
 
 	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool;
 
@@ -159,11 +175,9 @@ pub trait ASTImplementation: Sized {
 		field: &'a Self::VariableField<'a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
-		value: TypeId,
+		arguments: VariableRegisterArguments,
 	);
 }
-
-use crate::features::modules::CouldNotOpenFile;
 
 /// Contains all the modules and mappings for import statements
 ///
@@ -245,10 +259,6 @@ pub struct VariableId(pub SourceId, pub u32);
 /// TODO split for annotations based functions
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub SourceId, pub u32);
-
-impl FunctionId {
-	pub const AUTO_CONSTRUCTOR: Self = FunctionId(source_map::Nullable::NULL, 0);
-}
 
 #[derive(Debug)]
 pub enum Decidable<T> {
@@ -352,20 +362,15 @@ where
 			if expr_ty == TypeId::ERROR_TYPE {
 				false
 			} else {
-				let mut basic_equality = subtyping::BasicEquality {
-					add_property_restrictions: false,
-					position: source_map::Nullable::NULL,
-					object_constraints: Default::default(),
-					// IMPORTANT: FOR TESTS
-					allow_errors: false,
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: subtyping::SubTypingOptions { allow_errors: false },
+					object_constraints: None,
 				};
-				let result = subtyping::type_is_subtype(
-					to_satisfy,
-					expr_ty,
-					&mut basic_equality,
-					environment,
-					types,
-				);
+				let result =
+					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
 
 				matches!(result, subtyping::SubTypeResult::IsSubType)
 			}
@@ -720,4 +725,81 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	buf.extend_from_slice(content.as_bytes());
 
 	buf
+}
+
+/// Small map for 1-5 items
+/// Also should be rewindable
+#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct Map<K, V>(pub Vec<(K, V)>);
+
+impl<K, V> Default for Map<K, V> {
+	fn default() -> Self {
+		Self(Default::default())
+	}
+}
+
+impl<K, V> Map<K, V>
+where
+	K: PartialEq,
+{
+	pub fn get(&self, want: &K) -> Option<&V> {
+		self.0.iter().rev().find_map(|(key, value)| (want == key).then_some(value))
+	}
+
+	pub fn get_mut(&mut self, want: &K) -> Option<&mut V> {
+		self.0.iter_mut().rev().find_map(|(key, value)| (want == key).then_some(value))
+	}
+
+	#[must_use]
+	pub fn iter(&self) -> impl ExactSizeIterator<Item = &(K, V)> {
+		self.0.iter()
+	}
+
+	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
+		self.0.iter_mut()
+	}
+
+	#[must_use]
+	pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
+		self.0.iter().map(|(_, v)| v)
+	}
+
+	/// *assumes `id` not already inside*
+	pub fn insert(&mut self, id: K, value: V) {
+		self.0.push((id, value));
+	}
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+	#[must_use]
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn drop_range(&mut self, range: std::ops::RangeFrom<usize>) {
+		self.0.drain(range);
+	}
+}
+
+impl<K, V> std::iter::IntoIterator for Map<K, V> {
+	type Item = (K, V);
+
+	type IntoIter = <Vec<(K, V)> as std::iter::IntoIterator>::IntoIter;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
+	}
+}
+
+impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
+	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+		Self(Vec::from_iter(iter))
+	}
+}
+
+impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
+	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+		self.0.extend(iter);
+	}
 }

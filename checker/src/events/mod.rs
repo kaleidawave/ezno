@@ -1,22 +1,22 @@
 //! Side effects which are not described in return types... Such as variable reassignment, function calling etc
 //!
-//! Events is the general name for the IR. Effect = Events of a function
+//! Events is the general name for the IR (intermediate representation) of impure operations. Effect = Events of a function
+
+pub(crate) mod application;
 
 use crate::{
-	context::{get_on_ctx, information::Publicity},
-	features::iteration::IterationKind,
+	context::get_on_ctx,
+	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
 		calling::CalledWithNew,
-		properties::{PropertyKey, PropertyValue},
-		store::TypeStore,
+		functions::SynthesisedArgument,
+		properties::{PropertyKey, PropertyValue, Publicity},
+		TypeId,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
-pub(crate) mod application;
-pub(crate) use application::apply_event;
-
-use crate::{types::functions::SynthesisedArgument, types::TypeId};
+pub(crate) use application::apply_events;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, binary_serialize_derive::BinarySerializable)]
 pub enum RootReference {
@@ -35,7 +35,7 @@ impl RootReference {
 }
 
 /// For iterations. TODO up for debate
-pub type InitialVariables = map_vec::Map<VariableId, TypeId>;
+pub type InitialVariables = crate::Map<VariableId, TypeId>;
 
 /// Events which happen
 ///
@@ -62,6 +62,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		publicity: Publicity,
 		position: SpanWithSource,
+		bind_this: bool,
 	},
 	/// All changes to the value of a property
 	Setter {
@@ -83,25 +84,25 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
+		possibly_thrown: Option<TypeId>,
 		position: SpanWithSource,
 	},
 	/// Run events conditionally
 	Conditionally {
 		condition: TypeId,
-		true_events: Box<[Event]>,
-		else_events: Box<[Event]>,
+		truthy_events: u32,
+		otherwise_events: u32,
 		position: SpanWithSource,
 	},
 	/// Run events multiple times
 	Iterate {
 		kind: IterationKind,
 		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
-		initial: InitialVariables,
+		initial: ClosedOverVariables,
 		/// TODO for of and in variants here:
 		// condition: TypeId,
-		iterate_over: Box<[Event]>,
+		iterate_over: u32,
 	},
-
 	/// *lil bit magic*, handles:
 	/// - Creating objects `{}`
 	/// - Creating objects with prototypes:
@@ -124,10 +125,39 @@ pub enum Event {
 		/// This is also for the specialisation (somehow)
 		referenced_in_scope_as: TypeId,
 		position: SpanWithSource,
-		/// Debug only
-		is_function_this: bool,
 	},
+	/// aka try-catch-finally
+	ExceptionTrap {
+		/// events in the try block
+		investigate: u32,
+		/// This can run subtyping
+		trapped_type_id: Option<Trapped>,
+		/// events in catch block
+		handle: u32,
+		/// run `Immediately before a control-flow statement (return, throw, break, continue) is executed in the try block or catch block`
+		finally: u32,
+	},
+	// TODO block trap...?
 	FinalEvent(FinalEvent),
+
+	/// **doesn't affect type checking**
+	/// useful for linting WIP
+	RegisterVariable {
+		name: String,
+		position: SpanWithSource,
+		/// `None` for `let x;`
+		initial_value: Option<TypeId>,
+	},
+
+	/// TODO was trying to avoid
+	EndOfControlFlow(u32),
+}
+
+#[derive(Debug, Copy, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct Trapped {
+	pub generic_type: TypeId,
+	/// To check thrown type against
+	pub constrained: Option<TypeId>,
 }
 
 impl From<FinalEvent> for Event {
@@ -141,7 +171,7 @@ impl From<FinalEvent> for Event {
 pub enum FinalEvent {
 	Return {
 		returned: TypeId,
-		returned_position: SpanWithSource,
+		position: SpanWithSource,
 	},
 	/// From a `throw ***` statement (or expression)
 	Throw {
@@ -157,6 +187,8 @@ pub enum FinalEvent {
 		carry: u8,
 		position: SpanWithSource,
 	},
+	// Yield {
+	// }
 }
 
 impl FinalEvent {
@@ -167,128 +199,6 @@ impl FinalEvent {
 			FinalEvent::Throw { .. } => Some(TypeId::NEVER_TYPE),
 			FinalEvent::Break { .. } | FinalEvent::Continue { .. } => None,
 		}
-	}
-
-	#[must_use]
-	pub fn throws(self) -> Option<TypeId> {
-		match self {
-			FinalEvent::Throw { thrown, .. } => Some(thrown),
-			FinalEvent::Return { .. } | FinalEvent::Break { .. } | FinalEvent::Continue { .. } => {
-				None
-			}
-		}
-	}
-}
-
-/// TODO WIP
-#[derive(Debug)]
-pub enum ApplicationResult {
-	Completed,
-	Interrupt(FinalEvent),
-	/// This is a blend
-	Conditionally {
-		on: TypeId,
-		truthy: Box<ApplicationResult>,
-		otherwise: Box<ApplicationResult>,
-	},
-}
-
-impl From<FinalEvent> for ApplicationResult {
-	fn from(value: FinalEvent) -> Self {
-		ApplicationResult::Interrupt(value)
-	}
-}
-
-impl ApplicationResult {
-	pub(crate) fn is_it_so_over(&self) -> bool {
-		match self {
-			ApplicationResult::Completed => false,
-			ApplicationResult::Interrupt(_) => true,
-			ApplicationResult::Conditionally { on: _, truthy, otherwise } => {
-				truthy.is_it_so_over() && otherwise.is_it_so_over()
-			}
-		}
-	}
-
-	pub(crate) fn append_termination(&mut self, result: impl Into<ApplicationResult>) {
-		match self {
-			ApplicationResult::Completed => *self = result.into(),
-			ApplicationResult::Interrupt(_) => {
-				crate::utilities::notify!("Should be unreachable, result already failed");
-			}
-			ApplicationResult::Conditionally { on: _, truthy, otherwise } => {
-				if truthy.is_it_so_over() {
-					otherwise.append_termination(result);
-				} else {
-					truthy.append_termination(result);
-				}
-			}
-		}
-	}
-
-	pub(crate) fn new_from_unknown_condition(
-		on: TypeId,
-		truthy: ApplicationResult,
-		otherwise: ApplicationResult,
-		// types: &mut TypeStore,
-	) -> Self {
-		match (truthy, otherwise) {
-			(ApplicationResult::Completed, ApplicationResult::Completed) => {
-				ApplicationResult::Completed
-			}
-			// (ApplicationResult::Interrupt(FinalEvent::Return { returned, returned_position }), ApplicationResult::Interrupt(FinalEvent::Return { returned, returned_position }))
-			// => ApplicationResult::Completed,
-			(truthy, otherwise) => ApplicationResult::Conditionally {
-				on,
-				truthy: Box::new(truthy),
-				otherwise: Box::new(otherwise),
-			},
-		}
-	}
-
-	pub(crate) fn returned_type(self, types: &mut TypeStore) -> TypeId {
-		match self {
-			ApplicationResult::Completed => TypeId::UNDEFINED_TYPE,
-			ApplicationResult::Interrupt(int) => int.returns().expect("returning continue ??"),
-			ApplicationResult::Conditionally { on, truthy, otherwise } => {
-				let truthy_result = truthy.returned_type(types);
-				let otherwise_result = otherwise.returned_type(types);
-				types.new_conditional_type(on, truthy_result, otherwise_result)
-			}
-		}
-	}
-
-	// TODO Option?
-	pub(crate) fn throw_type(&self, types: &mut TypeStore) -> TypeId {
-		match self {
-			ApplicationResult::Completed => TypeId::NEVER_TYPE,
-			ApplicationResult::Interrupt(int) => int.throws().expect("no throw?"),
-			ApplicationResult::Conditionally { on, truthy, otherwise } => {
-				let truthy_result = truthy.throw_type(types);
-				let otherwise_result = otherwise.throw_type(types);
-				types.new_conditional_type(*on, truthy_result, otherwise_result)
-			}
-		}
-	}
-
-	pub(crate) fn remove_throws(self) -> ApplicationResult {
-		match self {
-			ApplicationResult::Interrupt(FinalEvent::Throw { .. }) => ApplicationResult::Completed,
-			ApplicationResult::Conditionally { on, truthy, otherwise } => {
-				ApplicationResult::Conditionally {
-					on,
-					truthy: truthy.remove_throws().into(),
-					otherwise: otherwise.remove_throws().into(),
-				}
-			}
-			ApplicationResult::Completed | ApplicationResult::Interrupt(..) => self,
-		}
-	}
-}
-
-impl From<Option<FinalEvent>> for ApplicationResult {
-	fn from(value: Option<FinalEvent>) -> Self {
-		value.map_or(Self::Completed, Self::Interrupt)
 	}
 }
 
@@ -305,4 +215,39 @@ pub enum CallingTiming {
 	QueueTask,
 	/// TODO could use above mechanism at some point
 	AtSomePointManyTimes,
+}
+
+/// This doesn't cover unconditional thrown from internal functions
+///
+/// Similar to [`FinalEvent`] but includes different information + or
+/// `break` and `continue` don't apply for function returns (but do for iteration and conditionals)
+#[derive(Debug)]
+pub enum ApplicationResult {
+	Return {
+		returned: TypeId,
+		position: SpanWithSource,
+	},
+	/// From a `throw ***` statement (or expression).
+	///
+	Throw {
+		thrown: TypeId,
+		position: SpanWithSource,
+	},
+	/// TODO state
+	Yield {},
+	Break {
+		carry: u8,
+		position: SpanWithSource,
+	},
+	/// TODO explain why this can't be done with just (or at least label makes it more difficult)
+	Continue {
+		carry: u8,
+		position: SpanWithSource,
+	},
+	/// One of these is `Some`.
+	Or {
+		on: TypeId,
+		truthy_result: Box<ApplicationResult>,
+		otherwise_result: Box<ApplicationResult>,
+	},
 }

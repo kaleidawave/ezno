@@ -3,16 +3,12 @@
 //! They also handle scoping, e.g. what is accessible where and branching
 
 pub mod environment;
-mod root;
-// TODO better name
-mod bases;
 pub mod information;
 pub mod invocation;
+mod root;
 
 pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
-
-pub(crate) use bases::Boundary;
 
 use source_map::{Span, SpanWithSource};
 
@@ -21,15 +17,16 @@ use crate::{
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
 	},
-	events::{ApplicationResult, RootReference},
+	events::RootReference,
 	features::{
+		assignments::Reference,
 		functions::ClosureChain,
-		objects::SpecialObjects,
+		objects::{Proxy, SpecialObjects},
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		generics::generic_type_arguments::StructureGenericArguments, FunctionType, PolyNature,
-		Type, TypeId, TypeStore,
+		generics::generic_type_arguments::GenericArguments, FunctionType, PolyNature, Type, TypeId,
+		TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
 };
@@ -82,6 +79,13 @@ pub enum GeneralContext<'a> {
 	Root(&'a RootContext),
 }
 
+/// Specifies where a variable exists
+///
+/// TODO is `ContextId` going to be used in the future?
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub struct Boundary(pub(crate) ContextId);
+
 /// Used for doing things with a Context that is either [Root] or [Environment]
 macro_rules! get_on_ctx {
 	(&$env:ident$(.$field:ident)*) => {
@@ -126,8 +130,6 @@ pub trait ContextType: Sized {
 
 	fn as_syntax(&self) -> Option<&Syntax>;
 
-	fn get_state_mut(&mut self) -> Option<&mut ApplicationResult>;
-
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
 
@@ -166,13 +168,13 @@ pub struct Context<T: ContextType> {
 
 	/// TODO unsure if needed
 	pub(crate) deferred_function_constraints: HashMap<FunctionId, (FunctionType, SpanWithSource)>,
-	pub(crate) bases: bases::Bases,
 
 	/// TODO replace with `info.value_of_this`
 	pub(crate) can_reference_this: CanReferenceThis,
 
 	/// When a objects `TypeId` is in here getting a property returns a constructor rather than
 	pub possibly_mutated_objects: HashSet<TypeId>,
+	pub possibly_mutated_variables: HashSet<VariableId>,
 
 	// pub (crate) info: info,
 	pub info: LocalInformation,
@@ -194,19 +196,6 @@ pub(super) enum CanReferenceThis {
 }
 
 impl<T: ContextType> Context<T> {
-	/// This exists on context because bases are localised
-	// TODO with_rule
-	pub fn attempt_to_modify_base(
-		&mut self,
-		on: TypeId,
-		boundary: Boundary,
-		new_constraint: TypeId,
-	) {
-		crate::utilities::notify!("Modifying #{} to have new base #{}", on.0, new_constraint.0);
-
-		self.bases.mutable_bases.insert(on, (boundary, new_constraint));
-	}
-
 	/// Declares a new variable in the environment and returns the new variable
 	/// TODO maybe name: `VariableDeclarator` to include destructuring ...?
 	/// TODO hoisted vs declared
@@ -215,6 +204,7 @@ impl<T: ContextType> Context<T> {
 		name: &'b str,
 		declared_at: SpanWithSource,
 		VariableRegisterArguments { constant, initial_value, space }: VariableRegisterArguments,
+		record_event: bool,
 	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
 
@@ -240,6 +230,14 @@ impl<T: ContextType> Context<T> {
 			self.info.variable_current_value.insert(id, initial_value);
 		}
 
+		if record_event {
+			self.info.events.push(crate::events::Event::RegisterVariable {
+				name: name.to_owned(),
+				position: declared_at,
+				initial_value,
+			});
+		}
+
 		if existing {
 			Err(CannotRedeclareVariable { name })
 		} else {
@@ -253,8 +251,9 @@ impl<T: ContextType> Context<T> {
 		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
 		diagnostics_container: &mut DiagnosticsContainer,
+		record_event: bool,
 	) {
-		if let Err(_err) = self.register_variable(name, declared_at, argument) {
+		if let Err(_err) = self.register_variable(name, declared_at, argument, record_event) {
 			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
 				name: name.to_owned(),
 				position: declared_at,
@@ -279,12 +278,16 @@ impl<T: ContextType> Context<T> {
 			let variables = get_on_ctx!(ctx.variables.len());
 			let ty = if let GeneralContext::Syntax(syn) = ctx {
 				match &syn.context_type.scope {
+					Scope::TypeAnnotationCondition { .. }
+					| Scope::TypeAnnotationConditionResult => "conditional type annotation",
 					Scope::Function { .. } => "function",
 					Scope::InterfaceEnvironment { .. } => "interface",
 					Scope::FunctionAnnotation {} => "function reference",
 					Scope::Conditional { .. } => "conditional",
 					Scope::Iteration { .. } => "iteration",
 					Scope::TryBlock { .. } => "try",
+					Scope::CatchBlock { .. } => "catch",
+					Scope::FinallyBlock { .. } => "finally",
 					Scope::Block {} => "block",
 					Scope::Module { .. } => "module",
 					Scope::TypeAlias => "type alias",
@@ -342,20 +345,57 @@ impl<T: ContextType> Context<T> {
 				| Scope::StaticBlock { .. }
 				| Scope::Function(_)
 				| Scope::TryBlock { .. }
+				| Scope::CatchBlock { .. }
+				| Scope::FinallyBlock { .. }
 				| Scope::TypeAlias
 				| Scope::Block {}
 				| Scope::PassThrough { .. }
 				| Scope::DefaultFunctionParameter { .. }
 				| Scope::DefinitionModule { .. }
+				| Scope::TypeAnnotationCondition { .. }
+				| Scope::TypeAnnotationConditionResult
 				| Scope::Module { .. } => None,
 			},
 			GeneralContext::Root(_root) => None,
 		}
 	}
 
+	/// TODO part of the `typeof` work
+	pub fn get_reference_constraint(&self, reference: Reference) -> Option<TypeId> {
+		match reference {
+			Reference::Variable(name, _) => {
+				self.get_variable_unbound(&name).map(|v| {
+					match v.2 {
+						VariableOrImport::Variable { mutability, .. } => match mutability {
+							// TODO get value + object constraint
+							VariableMutability::Mutable { reassignment_constraint: None }
+							| VariableMutability::Constant => TypeId::ERROR_TYPE,
+							VariableMutability::Mutable {
+								reassignment_constraint: Some(value),
+							} => *value,
+						},
+						// TODO
+						VariableOrImport::MutableImport { .. } => {
+							crate::utilities::notify!("TODO MutableImport");
+							TypeId::ERROR_TYPE
+						}
+						// TODO
+						VariableOrImport::ConstantImport { .. } => {
+							crate::utilities::notify!("TODO ConstantImport");
+							TypeId::ERROR_TYPE
+						}
+					}
+				})
+			}
+			Reference::Property { .. } => todo!("keyof on?"),
+		}
+	}
+
 	/// Similar to [`Context::get_this_unbound`]
 	///
 	/// First `bool` is whether this variable is on [`Context<Root>`]
+	///
+	/// **NOTE THIS IS RECURSIVE. Each step can append information**
 	fn get_variable_unbound(
 		&self,
 		variable_name: &str,
@@ -369,11 +409,14 @@ impl<T: ContextType> Context<T> {
 		let local_variable = self.variables.get(variable_name);
 		if let Some(local) = local_variable {
 			let is_root = self.context_type.get_parent().is_none();
-			Some((is_root, None, local))
+			let is_mutated = self.possibly_mutated_variables.contains(&local.get_id());
+			let boundary = is_mutated.then_some(Boundary(self.context_id));
+			Some((is_root, boundary, local))
 		} else {
 			let parent = self.context_type.get_parent()?;
-			let (is_root, parent_boundary, var) =
-				get_on_ctx!(parent.get_variable_unbound(variable_name))?;
+			let var_name = get_on_ctx!(parent.get_variable_unbound(variable_name));
+			// This trailing question does a lot of heavy lifting
+			let (is_root, parent_boundary, found_var) = var_name?;
 
 			/* Sometimes the top might not be dynamic (example below) so adding that here.
 			```
@@ -392,20 +435,23 @@ impl<T: ContextType> Context<T> {
 			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
 				if !self
 					.get_chain_of_info()
-					.any(|info| info.variable_current_value.contains_key(&var.get_id()))
+					.any(|info| info.variable_current_value.contains_key(&found_var.get_id()))
 				{
 					// Cannot use yet in loop
 					return None;
 				}
 			}
 
-			let boundary = if is_dynamic_boundary.is_some() && parent_boundary.is_none() {
-				let boundary = Boundary(get_on_ctx!(parent.context_id));
-				Some(boundary)
+			let record_as_free = (is_dynamic_boundary.is_some() && parent_boundary.is_none())
+				|| self.possibly_mutated_variables.contains(&found_var.get_id());
+
+			let boundary = if record_as_free {
+				Some(Boundary(get_on_ctx!(parent.context_id)))
 			} else {
 				parent_boundary
 			};
-			Some((is_root, boundary, var))
+
+			Some((is_root, boundary, found_var))
 		}
 	}
 
@@ -460,10 +506,9 @@ impl<T: ContextType> Context<T> {
 				scope: new_scope,
 				parent: T::as_general_context(self),
 				free_variables: Default::default(),
+				requests: Default::default(),
 				closed_over_references: Default::default(),
 				location: None,
-				// TODO inherit from above
-				state: ApplicationResult::Completed,
 			},
 			can_reference_this: self.can_reference_this.clone(),
 			// TODO maybe based on something in the AST
@@ -473,29 +518,9 @@ impl<T: ContextType> Context<T> {
 			deferred_function_constraints: Default::default(),
 			variable_names: Default::default(),
 			info: Default::default(),
-			bases: Default::default(),
 			possibly_mutated_objects: Default::default(),
+			possibly_mutated_variables: Default::default(),
 		}
-	}
-
-	pub fn new_try_context<U: crate::ReadFromFS, A: crate::ASTImplementation>(
-		&mut self,
-		checking_data: &mut CheckingData<U, A>,
-		func: impl for<'a> FnOnce(&'a mut Environment, &'a mut CheckingData<U, A>),
-	) -> TypeId {
-		let (thrown, ..) = self.new_lexical_environment_fold_into_parent(
-			Scope::TryBlock {},
-			checking_data,
-			|env, cd| {
-				func(env, cd);
-
-				crate::utilities::notify!("TODO also get possible impure functions");
-
-				env.context_type.state.throw_type(&mut cd.types)
-			},
-		);
-
-		thrown
 	}
 
 	/// TODO
@@ -530,27 +555,26 @@ impl<T: ContextType> Context<T> {
 					free_variables: used_parent_references,
 					closed_over_references,
 					location: _,
-					state,
+					requests: _,
 				},
 			can_reference_this,
-			bases,
 			variable_names,
 			deferred_function_constraints,
 			mut info,
 			possibly_mutated_objects,
+			possibly_mutated_variables,
 		} = new_environment;
 
-		if let Some(self_state) = self.context_type.get_state_mut() {
-			let state =
-				if let Scope::TryBlock { .. } = scope { state.remove_throws() } else { state };
+		// if let Some(self_state) = self.context_type.get_state_mut() {
+		// 	let state =
+		// 		if let Scope::TryBlock { .. } = scope { state.remove_throws() } else { state };
 
-			self_state.append_termination(state);
-		}
-
-		self.bases.merge(bases, self.context_id);
+		// 	self_state.append_termination(state);
+		// }
 
 		self.variable_names.extend(variable_names);
 		self.possibly_mutated_objects.extend(possibly_mutated_objects);
+		self.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
@@ -566,9 +590,11 @@ impl<T: ContextType> Context<T> {
 		// TODO
 		self.add_object_constraints(
 			// TODO
-			mem::take(&mut info.object_constraints).into_iter().collect(),
+			mem::take(&mut info.object_constraints).into_iter(),
 			&mut checking_data.types,
 		);
+
+		// TODO extend requests
 
 		// Run any truths through subtyping
 		let additional = match scope {
@@ -597,11 +623,13 @@ impl<T: ContextType> Context<T> {
 			Scope::Conditional { .. } => {
 				unreachable!("use new_conditional")
 			}
+			Scope::TryBlock {} | Scope::CatchBlock {} | Scope::FinallyBlock {} => {
+				unreachable!("use new_try_block")
+			}
 			// TODO Scope::Module ??
 			Scope::InterfaceEnvironment { .. }
 			| Scope::TypeAlias
 			| Scope::Block {}
-			| Scope::TryBlock {}
 			| Scope::PassThrough { .. }
 			| Scope::Module { .. }
 			| Scope::StaticBlock { .. }
@@ -651,6 +679,9 @@ impl<T: ContextType> Context<T> {
 					Some((info, Default::default()))
 				}
 			}
+			Scope::TypeAnnotationCondition { .. } | Scope::TypeAnnotationConditionResult => {
+				unreachable!("do this elsewhere")
+			}
 		};
 		(res, additional, context_id)
 	}
@@ -686,9 +717,13 @@ impl<T: ContextType> Context<T> {
 
 		crate::types::generics::GenericTypeParameter {
 			name: name.to_owned(),
-			id: ty,
+			type_id: ty,
 			default: default_type,
 		}
+	}
+
+	pub fn new_infer_type(&mut self) -> TypeId {
+		todo!()
 	}
 
 	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
@@ -1000,9 +1035,10 @@ impl<T: ContextType> Context<T> {
 		})
 	}
 
+	/// `object_constraints` is LHS is constrained to RHS
 	pub(crate) fn add_object_constraints(
 		&mut self,
-		object_constraints: Vec<(TypeId, TypeId)>,
+		object_constraints: impl Iterator<Item = (TypeId, TypeId)>,
 		types: &mut TypeStore,
 	) {
 		for (on, constraint) in object_constraints {
@@ -1094,29 +1130,32 @@ pub enum AssignmentError {
 #[derive(Debug, Clone)]
 pub enum Logical<T> {
 	Pure(T),
+	/// Note this uses [`PossibleLogical<T>`] rather than [`Logical<T>`]
 	Or {
 		/// This can be [`TypeId::BOOLEAN_TYPE`] for unknown left-right-ness
-		based_on: TypeId,
+		condition: TypeId,
 		left: Box<PossibleLogical<T>>,
 		right: Box<PossibleLogical<T>>,
 	},
 	Implies {
 		on: Box<Self>,
-		antecedent: StructureGenericArguments,
+		antecedent: GenericArguments,
 	},
 }
 
 #[derive(Debug, Clone)]
-pub enum Missing {
+pub enum MissingOrToCalculate {
 	/// Doesn't contain request
-	None,
+	Missing,
 	/// From [`TypeId::ERROR_TYPE`]
 	Error,
 	/// From [`TypeId::ANY_TYPE`]
 	Infer { on: TypeId },
+	/// Proxies require extra work in some cases
+	Proxy(Proxy),
 }
 
-pub type PossibleLogical<T> = Result<Logical<T>, Missing>;
+pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
 
 pub enum SetPropertyError {
 	NotWriteable,
@@ -1135,7 +1174,7 @@ pub(crate) fn get_value_of_variable(
 	for fact in info.get_chain_of_info() {
 		let res = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
-				crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
+				// crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
 			})
 		} else {
@@ -1144,8 +1183,11 @@ pub(crate) fn get_value_of_variable(
 
 		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		if res.is_some() {
-			return res;
+		// TODO WIP narrowing
+
+		// TODO in remaining info, don't loop again
+		if let Some(res) = res {
+			return Some(res);
 		}
 	}
 	None
