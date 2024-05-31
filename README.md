@@ -1,7 +1,7 @@
 A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance.
 
 > [!IMPORTANT]
-> Ezno is in active development and **currently does not support enough features to check existing projects**. Check out the [getting started guide](./checker/docs/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
+> Ezno is in active development and **currently does not support enough features to check existing projects**. Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
 
 <!-- ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
 
