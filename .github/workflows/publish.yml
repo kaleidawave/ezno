@@ -77,8 +77,7 @@ jobs:
           echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
 
           CONTRIBUTORS=$(
-            gh pr list --search "-author:@me" --state merged --json author 
-            | jq 'map(.author.name) | unique | join(",")'
+            gh pr list --search "-author:@me" --state merged --json author | jq 'map(.author.name) | unique | join(",")' --raw-output
           )
 
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
