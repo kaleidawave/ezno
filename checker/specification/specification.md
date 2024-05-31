@@ -2796,11 +2796,9 @@ myRecord.hello;
 #### Assignment
 
 ```ts
-type Record2<K extends string, T> = { [P in K]: T }
-
-const x: Record2<"test", boolean> = { no: false },
-      y: Record2<"test", boolean> = { test: 6 },
-      z: Record2<"test", boolean> = { test: false };
+const x: Record<"test", boolean> = { no: false },
+      y: Record<"test", boolean> = { test: 6 },
+      z: Record<"test", boolean> = { test: false };
 ```
 
 - 'no' is not a property of { [\"test\"]: boolean }
@@ -2810,16 +2808,14 @@ const x: Record2<"test", boolean> = { no: false },
 #### Union and types as keys
 
 ```ts
-type Record2<K extends string, T> = { [P in K]: T }
-
-declare let obj1: Record2<"hi" | "hello", boolean>;
+declare let obj1: Record<"hi" | "hello", boolean>;
 
 obj1.hi satisfies boolean;
 obj1.hello satisfies boolean;
 
 obj1.bye;
 
-declare let obj2: Record2<string, boolean>;
+declare let obj2: Record<string, boolean>;
 obj2.fine satisfies boolean;
 obj2[2];
 ```
@@ -3269,12 +3265,12 @@ safeDivide(10, 0);
 ```ts
 function throwGreeting() {
     throw "Hello";
-    return 5
+    return "Unreachable!"
 }
 
 function doSomething() {
     throwGreeting()
-    const x = 2;
+    const unreachable = 2;
 }
 ```
 
