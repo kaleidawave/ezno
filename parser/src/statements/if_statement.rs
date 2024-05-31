@@ -1,5 +1,6 @@
 use crate::{
-	block::BlockOrSingleStatement, expressions::MultipleExpression, ParseOptions, TSXKeyword,
+	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ParseOptions,
+	TSXKeyword,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -9,10 +10,9 @@ use visitable_derive::Visitable;
 use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct IfStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -22,9 +22,8 @@ pub struct IfStatement {
 }
 
 /// `... else if (...) { ... }`
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub struct ConditionalElseStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -32,9 +31,8 @@ pub struct ConditionalElseStatement {
 }
 
 /// `... else { ... }`
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
@@ -75,12 +73,18 @@ impl ASTNode for IfStatement {
 				break;
 			}
 		}
-		let position = start.union(inner.get_position());
+		let position = start.union(if let Some(ref t) = trailing_else {
+			t.get_position()
+		} else if let Some(t) = else_conditions.last() {
+			t.get_position()
+		} else {
+			inner.get_position()
+		});
 		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -130,8 +134,8 @@ impl ASTNode for ConditionalElseStatement {
 		Self::from_reader_sub_without_else(reader, state, options, else_start)
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -180,8 +184,8 @@ impl ASTNode for UnconditionalElseStatement {
 		Self::from_reader_sub_without_else(reader, state, options, else_position)
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

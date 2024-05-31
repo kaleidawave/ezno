@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::TypeId;
 
 /// Terms
@@ -25,15 +27,15 @@ pub enum Constant {
 impl Constant {
 	/// **AS OF THE JS IMPLEMENTATION**
 	#[must_use]
-	pub fn as_js_string(&self) -> String {
+	pub fn as_js_string(&self) -> Cow<str> {
 		match self {
-			Constant::Number(value) => value.to_string(),
-			Constant::String(value) => value.clone(),
-			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
-			Constant::Symbol { key } => format!("Symbol({key})"),
-			Constant::Undefined => "undefined".to_owned(),
-			Constant::Null => "null".to_owned(),
-			Constant::NaN => "NaN".to_owned(),
+			Constant::Number(value) => Cow::Owned(value.to_string()),
+			Constant::String(value) => Cow::Borrowed(value),
+			Constant::Boolean(value) => Cow::Borrowed(if *value { "true" } else { "false" }),
+			Constant::Symbol { key } => Cow::Owned(format!("Symbol({key})")),
+			Constant::Undefined => Cow::Borrowed("undefined"),
+			Constant::Null => Cow::Borrowed("null"),
+			Constant::NaN => Cow::Borrowed("NaN"),
 		}
 	}
 

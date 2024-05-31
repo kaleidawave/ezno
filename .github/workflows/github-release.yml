@@ -22,11 +22,11 @@ jobs:
 
     outputs:
       new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
-      new-ezno-version-name: ${{ steps.get-version.outputs.new-ezno-version-name }}
-      sponsors: ${{ steps.get-sponsors.outputs.sponsors }}
+      SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
+      CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-tags: true
 
@@ -36,7 +36,7 @@ jobs:
           if [ ${{ inputs.ezno-version }} = 'latest' ]; then
             echo "::group::Ezno tags"
             git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*'
-            echo "::endgroup"
+            echo "::endgroup::"
 
             TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
             echo "Building GH release for ${TAG:13}"
@@ -44,7 +44,6 @@ jobs:
 
             # Replace '.' with '-'
             NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
-            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           else
             VERSION="${{ inputs.ezno-version }}"
             echo "Building GH release for ${VERSION}"
@@ -52,10 +51,9 @@ jobs:
 
             # Replace '.' with '-'
             NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
-            echo "new-ezno-version-name=${NAME_VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - id: get-sponsors
+      - id: get-sponsors-and-contributors
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
@@ -63,15 +61,23 @@ jobs:
                 edges {
                   node {
                     sponsor {
-                      login
+                      name
                     }
                   }
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
           
-          echo "sponsors=$SPONSORS" >> $GITHUB_OUTPUT
+          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
+
+          CONTRIBUTORS=$(
+            gh pr list --search "-author:@me" --state merged --json author 
+            | jq 'map(.author.name) | unique | join(",")'
+          )
+
+          echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
+
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,9 +99,9 @@ jobs:
 
     # Important that everything here works in all the above OSes!
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
@@ -103,12 +109,13 @@ jobs:
       - name: Build binary
         run: cargo build --release
         env:
-          SPONSORS: ${{ needs.get-build-info.outputs.sponsors }}
+          SPONSORS: ${{ needs.get-build-info.outputs.SPONSORS }}
+          CONTRIBUTORS: ${{ needs.get-build-info.outputs.CONTRIBUTORS }}
 
       - name: Rename and move release assets
         run: |
           mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version-name }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
+          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -122,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - uses: actions/download-artifact@v4
       with:

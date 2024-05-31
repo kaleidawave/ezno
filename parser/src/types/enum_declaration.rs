@@ -1,4 +1,4 @@
-use crate::{TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
@@ -6,9 +6,8 @@ use visitable_derive::Visitable;
 
 use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression};
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
 	pub name: String,
@@ -17,8 +16,8 @@ pub struct EnumDeclaration {
 }
 
 impl ASTNode for EnumDeclaration {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -61,41 +60,42 @@ impl ASTNode for EnumDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if self.is_constant {
-			buf.push_str("const ");
-		}
-		buf.push_str("enum ");
-		buf.push_str(&self.name);
-		options.push_gap_optionally(buf);
-		buf.push_str("{");
-		for (at_end, member) in self.members.iter().endiate() {
-			if options.pretty {
+		if options.include_type_annotations {
+			if self.is_constant {
+				buf.push_str("const ");
+			}
+			buf.push_str("enum ");
+			buf.push_str(&self.name);
+			options.push_gap_optionally(buf);
+			buf.push_str("{");
+			for (at_end, member) in self.members.iter().endiate() {
+				if options.pretty {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				}
+				member.to_string_from_buffer(buf, options, local);
+				if !options.pretty && !at_end {
+					buf.push(',');
+				}
+			}
+			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
 			}
-			member.to_string_from_buffer(buf, options, local);
-			if !options.pretty && !at_end {
-				buf.push(',');
-			}
+			buf.push('}');
 		}
-		if options.pretty && !self.members.is_empty() {
-			buf.push_new_line();
-		}
-		buf.push('}');
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub enum EnumMember {
 	Variant { name: String, value: Option<Expression>, position: Span },
 }
 
 impl ASTNode for EnumMember {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			EnumMember::Variant { position, .. } => position,
+			EnumMember::Variant { position, .. } => *position,
 		}
 	}
 

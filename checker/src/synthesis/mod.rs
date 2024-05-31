@@ -18,12 +18,15 @@ pub mod type_annotations;
 pub mod variables;
 
 use block::synthesise_block;
-use parser::{ASTNode, PropertyKey as ParserPropertyKey};
+use parser::{
+	ASTNode, ExpressionPosition, ParseOptions, PropertyKey as ParserPropertyKey, StatementPosition,
+};
 use source_map::SourceId;
 
 use crate::{
-	context::Names, types::properties::PropertyKey, CheckingData, Diagnostic, Environment, Facts,
-	RootContext, TypeId,
+	context::{Names, VariableRegisterArguments},
+	types::properties::PropertyKey,
+	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId, VariableId,
 };
 
 use self::{
@@ -31,29 +34,30 @@ use self::{
 	expressions::{synthesise_expression, synthesise_multiple_expression},
 	hoisting::hoist_variable_declaration,
 	type_annotations::synthesise_type_annotation,
+	variables::register_variable,
 };
 
 pub struct EznoParser;
 
-// Clippy suggests a fix that breaks the code
-#[allow(clippy::needless_lifetimes)]
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
 	type ParserRequirements = ();
 
-	type Module<'a> = parser::Module;
+	type Module<'_a> = parser::Module;
 	type OwnedModule = parser::Module;
+	type DefinitionFile<'_a> = parser::Module;
 
-	type TypeAnnotation<'a> = parser::TypeAnnotation;
-	type TypeParameter<'a> = parser::GenericTypeConstraint;
-	type Expression<'a> = parser::Expression;
-	type MultipleExpression<'a> = parser::expressions::MultipleExpression;
-	type ClassMethod<'a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
+	type TypeAnnotation<'_a> = parser::TypeAnnotation;
+	type TypeParameter<'_a> = parser::TypeParameter;
+	type Expression<'_a> = parser::Expression;
+	type Block<'_a> = parser::Block;
+	type MultipleExpression<'_a> = parser::expressions::MultipleExpression;
+	type ClassMethod<'_a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
-	type VariableField<'a> = parser::VariableField<parser::VariableFieldInSourceCode>;
+	type VariableField<'_a> = parser::VariableField;
 
-	type ForStatementInitiliser<'a> = parser::statements::ForLoopStatementInitializer;
+	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementinitialiser;
 
 	fn module_from_string(
 		// TODO remove
@@ -72,12 +76,14 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
-		let options = Default::default();
-		parser::TypeDefinitionModule::from_string(&string, options).map_err(|err| (err, source_id))
+		let options = ParseOptions { type_definition_module: true, ..Default::default() };
+
+		<parser::Module as parser::ASTNode>::from_string(string, options)
+			.map_err(|err| (err, source_id))
 	}
 
-	fn synthesise_module<'a, T: crate::ReadFromFS>(
-		module: &Self::Module<'a>,
+	fn synthesise_module<T: crate::ReadFromFS>(
+		module: &Self::Module<'_>,
 		_source_id: SourceId,
 		module_environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -85,8 +91,17 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
-	fn synthesise_expression<'a, U: crate::ReadFromFS>(
-		expression: &Self::Expression<'a>,
+	fn synthesise_definition_file<T: crate::ReadFromFS>(
+		file: Self::DefinitionFile<'_>,
+		source: SourceId,
+		root: &RootContext,
+		checking_data: &mut CheckingData<T, Self>,
+	) -> (Names, LocalInformation) {
+		definitions::type_definition_file(file, source, checking_data, root)
+	}
+
+	fn synthesise_expression<U: crate::ReadFromFS>(
+		expression: &Self::Expression<'_>,
 		expecting: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<U, Self>,
@@ -94,30 +109,26 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_expression(expression, environment, checking_data, expecting)
 	}
 
-	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> source_map::Span {
-		*ASTNode::get_position(expression)
+	fn expression_position<'_a>(expression: &'_a Self::Expression<'_a>) -> source_map::Span {
+		ASTNode::get_position(expression)
 	}
 
-	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str {
-		parameter.name()
+	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
+		&parameter.name
 	}
 
-	fn synthesise_type_annotation<'a, T: crate::ReadFromFS>(
-		annotation: &Self::TypeAnnotation<'a>,
+	fn type_annotation_position<'_a>(
+		annotation: &'_a Self::TypeAnnotation<'_a>,
+	) -> source_map::Span {
+		ASTNode::get_position(annotation)
+	}
+
+	fn synthesise_type_annotation<T: crate::ReadFromFS>(
+		annotation: &Self::TypeAnnotation<'_>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId {
 		synthesise_type_annotation(annotation, environment, checking_data)
-	}
-
-	type DefinitionFile<'a> = parser::TypeDefinitionModule;
-
-	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'a>,
-		root: &RootContext,
-		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts) {
-		definitions::type_definition_file(file, checking_data, root)
 	}
 
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
@@ -137,8 +148,8 @@ impl crate::ASTImplementation for EznoParser {
 		m
 	}
 
-	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
-		expression: &'a Self::MultipleExpression<'a>,
+	fn synthesise_multiple_expression<'_a, T: crate::ReadFromFS>(
+		expression: &'_a Self::MultipleExpression<'_a>,
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -146,23 +157,45 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
 	}
 
-	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
-		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
+	fn synthesise_for_loop_initialiser<'_a, T: crate::ReadFromFS>(
+		for_loop_initialiser: &'_a Self::ForStatementInitiliser<'_a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
 		match for_loop_initialiser {
-			parser::statements::ForLoopStatementInitializer::VariableDeclaration(declaration) => {
+			parser::statements::ForLoopStatementinitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(declaration, environment, checking_data, false);
 			}
-			parser::statements::ForLoopStatementInitializer::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementInitializer::Expression(_) => todo!(),
+			parser::statements::ForLoopStatementinitialiser::VarStatement(_) => todo!(),
+			parser::statements::ForLoopStatementinitialiser::Expression(_) => todo!(),
 		}
+	}
+
+	fn declare_and_assign_to_fields<'a, T: crate::ReadFromFS>(
+		field: &'a Self::VariableField<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+		arguments: VariableRegisterArguments,
+	) {
+		register_variable(field, environment, checking_data, arguments);
+	}
+
+	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool {
+		parameter.extends.is_some()
+	}
+
+	fn synthesise_block<'a, T: crate::ReadFromFS>(
+		block: &'a Self::Block<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) {
+		synthesise_block(&block.0, environment, checking_data);
 	}
 }
 
+/// `perform_side_effect_computed` is used for hoisting
 pub(super) fn parser_property_key_to_checker_property_key<
 	P: parser::property_key::PropertyKeyKind,
 	T: crate::ReadFromFS,
@@ -170,6 +203,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 	property_key: &ParserPropertyKey<P>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, EznoParser>,
+	perform_side_effect_computed: bool,
 ) -> PropertyKey<'static> {
 	match property_key {
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
@@ -193,9 +227,13 @@ pub(super) fn parser_property_key_to_checker_property_key<
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
-			let key_type =
-				synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
-			PropertyKey::from_type(key_type, &checking_data.types)
+			if perform_side_effect_computed {
+				let key_type =
+					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE);
+				PropertyKey::from_type(key_type, &checking_data.types)
+			} else {
+				PropertyKey::Type(TypeId::ANY_TYPE)
+			}
 		}
 	}
 }
@@ -210,29 +248,28 @@ impl From<(parser::ParseError, SourceId)> for Diagnostic {
 	}
 }
 
-pub enum Performs<'a> {
-	Block(&'a parser::Block),
-	Const(String),
-	None,
-}
-
-impl crate::GenericTypeParameter for parser::GenericTypeConstraint {
+impl crate::GenericTypeParameter for parser::TypeParameter {
 	fn get_name(&self) -> &str {
-		self.name()
+		&self.name
 	}
 }
 
-impl<'a> From<Option<&'a parser::types::AnnotationPerforms>> for Performs<'a> {
-	fn from(value: Option<&'a parser::types::AnnotationPerforms>) -> Self {
-		match value {
-			Some(parser::types::AnnotationPerforms::PerformsConst { identifier }) => {
-				Performs::Const(identifier.clone())
-			}
-			Some(parser::types::AnnotationPerforms::PerformsStatements { body: statements }) => {
-				Performs::Block(statements)
-			}
-			None => Performs::None,
+pub trait StatementOrExpressionVariable {
+	fn get_variable_id(&self, under: SourceId) -> Option<VariableId>;
+}
+
+impl StatementOrExpressionVariable for StatementPosition {
+	fn get_variable_id(&self, under: SourceId) -> Option<VariableId> {
+		match self.identifier {
+			parser::VariableIdentifier::Standard(_, pos) => Some(VariableId(under, pos.start)),
+			parser::VariableIdentifier::Marker(_, _) => None,
 		}
+	}
+}
+
+impl StatementOrExpressionVariable for ExpressionPosition {
+	fn get_variable_id(&self, _under: SourceId) -> Option<VariableId> {
+		None
 	}
 }
 
@@ -298,12 +335,7 @@ pub mod interactive {
 							checking_data,
 							TypeId::ANY_TYPE,
 						);
-						Some(print_type(
-							result,
-							&checking_data.types,
-							&environment.as_general_context(),
-							false,
-						))
+						Some(print_type(result, &checking_data.types, environment, false))
 					} else {
 						synthesise_block(&item.items, environment, checking_data);
 						None

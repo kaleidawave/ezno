@@ -1,39 +1,22 @@
 use parser::{
-	types::interface::{InterfaceDeclaration, InterfaceMember},
-	Decorated, PropertyKey as ParserPropertyKey, WithComment,
+	types::interface::InterfaceMember, Decorated, PropertyKey as ParserPropertyKey, WithComment,
 };
+use source_map::SpanWithSource;
 
 use crate::{
-	context::{facts::Publicity, Context, Environment},
+	context::{Context, Environment},
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		properties::{PropertyKey, PropertyValue},
+		properties::{PropertyKey, PropertyValue, Publicity},
 		FunctionType, Type,
 	},
-	CheckingData, TypeId,
+	CheckingData, Scope, TypeId,
 };
 
 use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
-
-fn _get_extends<T: crate::ReadFromFS>(
-	interface: &InterfaceDeclaration,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	interface_type: TypeId,
-) {
-	if let Some([reference, others @ ..]) = interface.extends.as_deref() {
-		let mut ty = synthesise_type_annotation(reference, environment, checking_data);
-		for reference in others {
-			let rhs = synthesise_type_annotation(reference, environment, checking_data);
-			ty = checking_data.types.register_type(Type::And(ty, rhs));
-		}
-
-		environment.bases.connect_extends(interface_type, ty);
-	}
-}
 
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
@@ -42,6 +25,7 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
+		position: SpanWithSource,
 	);
 
 	fn interface_type(&self) -> Option<TypeId>;
@@ -50,6 +34,7 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 pub(crate) enum InterfaceValue {
 	Function(FunctionType, GetterSetter),
 	Value(TypeId),
+	Optional(TypeId),
 }
 
 pub(crate) enum ParserPropertyKeyType<'a> {
@@ -67,16 +52,33 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
+		position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
-			ParserPropertyKeyType::ClassProperty(key) => (
-				if matches!(key, parser::PropertyKey::Ident(_, _, true)) {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				},
-				parser_property_key_to_checker_property_key(key, environment, checking_data),
-			),
+			ParserPropertyKeyType::ClassProperty(key) => {
+				// TODO
+				let perform_side_effect_computed = true;
+				(
+					if matches!(
+						key,
+						parser::PropertyKey::Ident(
+							_,
+							_,
+							parser::property_key::PublicOrPrivate::Private
+						)
+					) {
+						Publicity::Private
+					} else {
+						Publicity::Public
+					},
+					parser_property_key_to_checker_property_key(
+						key,
+						environment,
+						checking_data,
+						perform_side_effect_computed,
+					),
+				)
+			}
 			// ParserPropertyKeyType::ObjectProperty(key) => (
 			// 	Publicity::Public,
 			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
@@ -95,10 +97,15 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				}
 			},
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
+			// optional properties (`?:`) is implemented here:
+			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
+				on: TypeId::BOOLEAN_TYPE,
+				truthy: PropertyValue::Value(value).into(),
+			},
 		};
 
-		// TODO: `None` position passed
-		environment.facts.register_property(self.0, publicity, under, ty, false, None);
+		// None position should be fine here
+		environment.info.register_property(self.0, publicity, under, ty, false, position);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -107,7 +114,8 @@ impl SynthesiseInterfaceBehavior for OnToType {
 }
 
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
-	type_parameters: Option<&[parser::GenericTypeConstraint]>,
+	type_parameters: Option<&[parser::TypeParameter]>,
+	extends: Option<&[parser::TypeAnnotation]>,
 	signatures: &[WithComment<Decorated<InterfaceMember>>],
 	mut behavior: B,
 	environment: &mut Environment,
@@ -130,7 +138,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameters,
 					return_type,
 					is_optional: _,
-					performs,
 					position,
 				} => {
 					// Fix for performing const annotations. TODO want to do better
@@ -153,38 +160,56 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						parser::functions::MethodHeader::Set => GetterSetter::Setter,
 						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
 					};
+
+					let position_with_source = position.with_source(environment.get_source());
+
 					let function = synthesise_function_annotation(
 						type_parameters,
 						parameters,
 						return_type.as_ref(),
 						environment,
 						checking_data,
-						performs.as_ref().into(),
-						&position.with_source(environment.get_source()),
+						&position_with_source,
 						behavior,
-						interface_register_behavior.interface_type(),
 					);
+
 					interface_register_behavior.register(
 						ParserPropertyKeyType::ClassProperty(name),
 						InterfaceValue::Function(function, getter),
 						checking_data,
 						environment,
+						position_with_source,
 					);
 				}
 				InterfaceMember::Property {
 					name,
 					type_annotation,
-					is_readonly: _,
-					is_optional: _,
-					position: _,
+					is_readonly,
+					is_optional,
+					position,
 				} => {
+					if *is_readonly {
+						checking_data.raise_unimplemented_error(
+							"readonly items",
+							position.with_source(environment.get_source()),
+						);
+					}
+
 					let value =
 						synthesise_type_annotation(type_annotation, environment, checking_data);
+
+					let value = if *is_optional {
+						InterfaceValue::Optional(value)
+					} else {
+						InterfaceValue::Value(value)
+					};
+
 					interface_register_behavior.register(
 						ParserPropertyKeyType::ClassProperty(name),
-						InterfaceValue::Value(value),
+						value,
 						checking_data,
 						environment,
+						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Indexer {
@@ -192,7 +217,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					indexer_type,
 					return_type,
 					is_readonly: _,
-					position: _,
+					position,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
@@ -202,6 +227,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
+						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Constructor {
@@ -210,7 +236,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					return_type: _,
 					is_readonly: _,
 					position,
-					performs: _,
 				} => checking_data.raise_unimplemented_error(
 					"interface constructor",
 					position.with_source(environment.get_source()),
@@ -226,36 +251,101 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position.with_source(environment.get_source()),
 				),
 				InterfaceMember::Rule {
-					parameter: _,
-					rule: _,
-					matching_type: _,
+					parameter,
+					matching_type,
+					as_type,
 					optionality: _,
 					is_readonly: _,
-					output_type: _,
+					output_type,
 					position,
-				} => checking_data.raise_unimplemented_error(
-					"interface rule",
-					position.with_source(environment.get_source()),
-				),
+				} => {
+					let matching_type =
+						synthesise_type_annotation(matching_type, environment, checking_data);
+
+					let (key, value) = {
+						// TODO special scope here
+						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
+							crate::types::PolyNature::MappedGeneric {
+								name: parameter.clone(),
+								eager_fixed: matching_type,
+							},
+						));
+						environment.named_types.insert(parameter.clone(), parameter_type);
+
+						let key = if let Some(as_type) = as_type {
+							synthesise_type_annotation(as_type, &mut environment, checking_data)
+						} else {
+							parameter_type
+						};
+
+						let value = synthesise_type_annotation(
+							output_type,
+							&mut environment,
+							checking_data,
+						);
+
+						(key, value)
+					};
+
+					interface_register_behavior.register(
+						ParserPropertyKeyType::Type(key),
+						InterfaceValue::Value(value),
+						checking_data,
+						environment,
+						position.with_source(environment.get_source()),
+					);
+				}
 				InterfaceMember::Comment { .. } => {}
 			}
 		}
 	}
 
-	if let Some(parameters) = type_parameters {
-		let parameter_types = behavior
-			.interface_type()
-			.map(|id| checking_data.types.get_type_by_id(id).get_parameters())
-			.unwrap();
+	if type_parameters.is_some() || extends.is_some() {
+		let interface_type = behavior.interface_type().unwrap();
 
 		environment.new_lexical_environment_fold_into_parent(
 			crate::Scope::InterfaceEnvironment { this_constraint: TypeId::ERROR_TYPE },
 			checking_data,
 			|environment, checking_data| {
-				for (parameter, ty) in parameters.iter().zip(parameter_types.iter().flatten()) {
-					// TODO set constraint by modifying type
-					environment.named_types.insert(parameter.name().to_owned(), *ty);
+				let parameter_types =
+					checking_data.types.get_type_by_id(interface_type).get_parameters();
+
+				if let Some(parameters) = type_parameters {
+					for (parameter, ty) in parameters.iter().zip(parameter_types.iter().flatten()) {
+						if let Some(ref extends) = parameter.extends {
+							let extends =
+								synthesise_type_annotation(extends, environment, checking_data);
+
+							checking_data
+								.types
+								.modify_interface_type_parameter_constraint(*ty, extends);
+						}
+
+						// TODO set constraint by modifying type
+						environment.named_types.insert(parameter.name.clone(), *ty);
+					}
 				}
+
+				// Afterwards so have access to generics
+				if let Some(extends) = extends {
+					let mut iter = extends.iter();
+
+					// TODO generics
+					let mut extends = synthesise_type_annotation(
+						iter.next().unwrap(),
+						environment,
+						checking_data,
+					);
+
+					for ta in iter {
+						let ty = synthesise_type_annotation(ta, environment, checking_data);
+						extends = checking_data.types.new_and_type(extends, ty).unwrap();
+					}
+
+					checking_data.types.set_extends_on_interface(interface_type, extends);
+				}
+
 				synthesise_members(signatures, environment, checking_data, &mut behavior);
 			},
 		);

@@ -1,16 +1,14 @@
-use super::{
-	environment::DynamicBoundaryKind, ClosedOverReferencesInScope, Context, ContextId, ContextType,
-};
+use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
 use crate::{
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
 	},
 	types::TypeId,
-	CheckingData, GeneralContext,
+	CheckingData, Environment, GeneralContext,
 };
 use source_map::SourceId;
-use std::{collections::HashMap, iter::FromIterator};
+use std::{collections::HashMap, iter::FromIterator, mem};
 
 pub type RootContext = Context<Root>;
 
@@ -26,19 +24,11 @@ impl ContextType for Root {
 		None
 	}
 
-	fn is_dynamic_boundary(&self) -> Option<DynamicBoundaryKind> {
+	fn as_syntax(&self) -> Option<&super::Syntax> {
 		None
 	}
 
-	fn is_conditional(&self) -> bool {
-		false
-	}
-
-	fn get_closed_over_references(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
-		None
-	}
-
-	fn get_exports(&mut self) -> Option<&mut Exported> {
+	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		None
 	}
 }
@@ -54,10 +44,17 @@ impl RootContext {
 		// self.tys.extend(other.tys.into_iter());
 	}
 
+	/// **For testing only**
+	#[must_use]
+	#[allow(clippy::needless_lifetimes)]
+	pub fn new_testing_context<'a>(&'a self) -> Environment<'a> {
+		self.new_lexical_environment(crate::Scope::Block {})
+	}
+
 	#[must_use]
 	pub fn new_with_primitive_references() -> Self {
 		// TODO number might not be a reference at some point
-		let types = [
+		let named_types = HashMap::from_iter([
 			("number".to_owned(), TypeId::NUMBER_TYPE),
 			("string".to_owned(), TypeId::STRING_TYPE),
 			("boolean".to_owned(), TypeId::BOOLEAN_TYPE),
@@ -65,11 +62,15 @@ impl RootContext {
 			("undefined".to_owned(), TypeId::UNDEFINED_TYPE),
 			("void".to_owned(), TypeId::VOID_TYPE),
 			("Array".to_owned(), TypeId::ARRAY_TYPE),
+			("Promise".to_owned(), TypeId::PROMISE_TYPE),
+			("ImportMeta".to_owned(), TypeId::IMPORT_META),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),
-		];
+			("Literal".to_owned(), TypeId::LITERAL_RESTRICTION),
+			("Readonly".to_owned(), TypeId::READONLY_RESTRICTION),
+		]);
 
-		let mut facts = crate::Facts::default();
+		let mut info = crate::LocalInformation::default();
 
 		// Add undefined
 		let variables = {
@@ -80,23 +81,22 @@ impl RootContext {
 			};
 			let undefined_id = variable_or_import.get_id();
 			let variables = [("undefined".to_owned(), variable_or_import)];
-			facts.variable_current_value.insert(undefined_id, TypeId::UNDEFINED_TYPE);
+			info.variable_current_value.insert(undefined_id, TypeId::UNDEFINED_TYPE);
 			variables
 		};
 
 		Self {
 			context_type: Root,
 			context_id: ContextId::ROOT,
-			named_types: HashMap::from_iter(types),
+			named_types,
 			variables: HashMap::from_iter(variables),
 			variable_names: Default::default(),
 			deferred_function_constraints: Default::default(),
-			bases: Default::default(),
-			object_constraints: Default::default(),
 			// TODO
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
-			facts,
+			info,
 			possibly_mutated_objects: Default::default(),
+			possibly_mutated_variables: Default::default(),
 		}
 	}
 
@@ -117,7 +117,9 @@ impl RootContext {
 		let module = SynthesisedModule {
 			content: A::owned_module_from_module(module),
 			exported,
-			facts: environment.facts,
+			info: environment.info,
+			// TODO temp
+			mappings: mem::take(&mut checking_data.local_type_mappings),
 		};
 
 		// TODO better way to do this?
@@ -153,7 +155,7 @@ impl RootContext {
 		// 	let ty = Type::deserialize(&mut bytes, backing_source);
 		// 	ctx.new_type(ty);
 		// }
-		// crate::utils::notify!("Registered {:?} types", count);
+		// crate::utilities::notify!("Registered {:?} types", count);
 
 		// ctx.variables = BinarySerializable::deserialize(&mut bytes, backing_source);
 		// // TODO terrible

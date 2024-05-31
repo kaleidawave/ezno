@@ -3,11 +3,11 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::{
-	context::environment::Label,
+	context::{environment::Label, information::InformationChain},
 	diagnostics,
 	types::{
-		poly_types::generic_type_arguments::StructureGenericArguments,
-		printing::print_type_with_generics,
+		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
+		GenericChainLink,
 	},
 };
 use source_map::{SourceId, SpanWithSource};
@@ -19,6 +19,7 @@ use std::{
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(rename_all = "lowercase"))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum DiagnosticKind {
 	Error,
 	Warning,
@@ -28,6 +29,7 @@ pub enum DiagnosticKind {
 /// Contains information
 #[derive(Debug)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Diagnostic {
 	/// Does not have positional information
 	Global {
@@ -42,7 +44,7 @@ pub enum Diagnostic {
 	PositionWithAdditionalLabels {
 		reason: String,
 		position: SpanWithSource,
-		labels: Vec<(String, Option<SpanWithSource>)>,
+		labels: Vec<(String, SpanWithSource)>,
 		kind: DiagnosticKind,
 	},
 }
@@ -65,9 +67,7 @@ impl Diagnostic {
 			Diagnostic::Global { .. } => Left(Left(iter::empty())),
 			Diagnostic::Position { position: span, .. } => Left(Right(iter::once(span.source))),
 			Diagnostic::PositionWithAdditionalLabels { position: pos, labels, .. } => {
-				Right(iter::once(pos.source).chain(
-					labels.iter().filter_map(|(_, span)| span.as_ref().map(|span| span.source)),
-				))
+				Right(iter::once(pos.source).chain(labels.iter().map(|(_, span)| span.source)))
 			}
 		}
 	}
@@ -103,6 +103,7 @@ impl Diagnostic {
 /// TODO this is one variant, others should pipe strait to stdout or put it on a channel etc
 #[derive(Default)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(transparent))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct DiagnosticsContainer {
 	diagnostics: Vec<Diagnostic>,
 	// Quick way to check whether a error was added
@@ -164,12 +165,7 @@ impl IntoIterator for DiagnosticsContainer {
 	}
 }
 
-pub(super) use defined_errors_and_warnings::*;
-
-use crate::{
-	context::GeneralContext,
-	types::{printing::print_type, TypeId, TypeStore},
-};
+use crate::types::{printing::print_type, TypeId, TypeStore};
 
 /// TODO could be more things, for instance a property missing etc
 pub enum TypeStringRepresentation {
@@ -185,7 +181,7 @@ impl TypeStringRepresentation {
 	#[must_use]
 	pub fn from_type_id(
 		id: TypeId,
-		ctx: &GeneralContext,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> Self {
@@ -193,51 +189,67 @@ impl TypeStringRepresentation {
 		Self::Type(value)
 	}
 
+	#[must_use]
+	pub fn from_type_id_with_generics(
+		id: TypeId,
+		type_arguments: GenericChain,
+		ctx: &impl InformationChain,
+		types: &TypeStore,
+		debug_mode: bool,
+	) -> Self {
+		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
+		Self::Type(value)
+	}
+
 	/// TODO working it out
 	pub(crate) fn from_property_constraint(
 		property_constraint: crate::context::Logical<crate::PropertyValue>,
-		// TODO chain
-		generics: Option<&StructureGenericArguments>,
-		ctx: &GeneralContext,
+		generics: GenericChain,
+		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
-			crate::context::Logical::Pure(p) => match p {
+			crate::context::Logical::Pure(constraint) => match constraint {
 				crate::PropertyValue::Value(v) => {
-					// TODO pass down generics!!!
-					let value = print_type_with_generics(
-						v,
-						generics.map(|g| &g.type_arguments),
-						types,
-						ctx,
-						debug_mode,
-					);
+					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
 					Self::Type(value)
 				}
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
 				crate::PropertyValue::Deleted => todo!(),
+				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
 			},
-			crate::context::Logical::Or { left, right } => {
-				let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
-				let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+			crate::context::Logical::Or { .. } => {
+				todo!()
+				// let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
+				// let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
 
-				#[allow(irrefutable_let_patterns)]
-				if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
-					(left, right)
-				{
-					l.push_str(&r);
-					TypeStringRepresentation::Type(l)
-				} else {
-					unreachable!()
-				}
+				// #[allow(irrefutable_let_patterns)]
+				// if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
+				// 	(left, right)
+				// {
+				// 	l.push_str(&r);
+				// 	TypeStringRepresentation::Type(l)
+				// } else {
+				// 	unreachable!()
+				// }
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
 					todo!("chaining")
 				}
-				Self::from_property_constraint(*on, Some(&antecedent), ctx, types, debug_mode)
+				Self::from_property_constraint(
+					*on,
+					Some(GenericChainLink::Link {
+						parent_link: None,
+						value: &antecedent,
+						from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+					}),
+					ctx,
+					types,
+					debug_mode,
+				)
 			}
 		}
 	}
@@ -259,143 +271,168 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 	}
 }
 
-// Contains known internal errors and warnings
-// Contained here in a module to separate user facing
-mod defined_errors_and_warnings {
-	use crate::{
-		context::AssignmentError, features::operations::MathematicalAndBitwise,
-		types::calling::FunctionCallingError,
-	};
-	use source_map::SpanWithSource;
+use crate::{
+	context::AssignmentError,
+	features::{modules::CouldNotOpenFile, operations::MathematicalAndBitwise},
+};
 
-	use crate::Diagnostic;
+/// Reasons for errors, intermediate type for generating [Diagnostic]s
+/// e.g. cannot Call, cannot equate, duplicate key etc
+#[allow(unused)]
+pub(crate) enum TypeCheckError<'a> {
+	FunctionCallingError(FunctionCallingError),
+	JSXCallingError(FunctionCallingError),
+	TemplateLiteralError(FunctionCallingError),
+	PropertyDoesNotExist {
+		on: TypeStringRepresentation,
+		property: PropertyRepresentation,
+		site: SpanWithSource,
+	},
+	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
+	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
+	CouldNotFindVariable {
+		variable: &'a str,
+		possibles: Vec<&'a str>,
+		position: SpanWithSource,
+	},
+	CouldNotFindType(&'a str, SpanWithSource),
+	TypeHasNoGenericParameters(String, SpanWithSource),
+	AssignmentError(AssignmentError),
+	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
+	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
+	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
+	ReturnedTypeDoesNotMatch {
+		expected_return_type: TypeStringRepresentation,
+		returned_type: TypeStringRepresentation,
+		/// Can be `None` if it is inferred parameters
+		annotation_position: SpanWithSource,
+		returned_position: SpanWithSource,
+	},
+	// TODO are these the same errors?
+	TypeIsNotIndexable(TypeStringRepresentation),
+	TypeIsNotIterable(TypeStringRepresentation),
+	// This could be a syntax error but that is difficult to type...
+	NonTopLevelExport(SpanWithSource),
+	FieldNotExported {
+		file: &'a str,
+		importing: &'a str,
+		position: SpanWithSource,
+	},
+	InvalidJSXAttribute {
+		attribute_name: String,
+		attribute_type: TypeStringRepresentation,
+		value_type: TypeStringRepresentation,
+		// TODO
+		attribute_type_site: (),
+		value_site: SpanWithSource,
+	},
+	InvalidJSXInterpolatedValue {
+		interpolation_site: SpanWithSource,
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+	},
+	/// for the `satisfies` keyword
+	NotSatisfied {
+		at: SpanWithSource,
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+	},
+	// catch type is not compatible with thrown type
+	CatchTypeDoesNotMatch {
+		at: SpanWithSource,
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+	},
+	Unsupported {
+		thing: &'static str,
+		at: SpanWithSource,
+	},
+	ReDeclaredVariable {
+		name: &'a str,
+		position: SpanWithSource,
+	},
+	InvalidDefaultParameter {
+		at: SpanWithSource,
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+	},
+	/// TODO temp, needs more info
+	FunctionDoesNotMeetConstraint {
+		function_constraint: TypeStringRepresentation,
+		function_type: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	StatementsNotRun {
+		between: SpanWithSource,
+	},
+	CannotRedeclareVariable {
+		name: String,
+		position: SpanWithSource,
+	},
+	// TODO parameter position
+	GenericArgumentDoesNotMeetRestriction {
+		parameter_restriction: TypeStringRepresentation,
+		argument: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	NotDefinedOperator(&'static str, SpanWithSource),
+	PropertyNotWriteable(SpanWithSource),
+	NotTopLevelImport(SpanWithSource),
+	DoubleDefaultExport(SpanWithSource),
+	CannotOpenFile {
+		file: CouldNotOpenFile,
+		/// `None` if reading it from entry point (aka CLI args)
+		import_position: Option<SpanWithSource>,
+	},
+	VariableNotDefinedInContext {
+		variable: &'a str,
+		expected_context: &'a str,
+		current_context: String,
+		position: SpanWithSource,
+	},
+	TypeNeedsTypeArguments(&'a str, SpanWithSource),
+	CannotFindType(&'a str, SpanWithSource),
+	TypeAlreadyDeclared {
+		name: String,
+		position: SpanWithSource,
+	},
+	TDZ(TDZ),
+	InvalidMathematicalOrBitwiseOperation {
+		operator: MathematicalAndBitwise,
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	InvalidCast {
+		position: SpanWithSource,
+		from: TypeStringRepresentation,
+		to: TypeStringRepresentation,
+	},
+	/// TODO Position = Function body position. Could it be better
+	/// TODO maybe warning?
+	UnreachableVariableClosedOver(String, SpanWithSource),
+	IncompatibleOverloadParameter {
+		parameter_position: SpanWithSource,
+		overloaded_parameter_position: SpanWithSource,
+		parameter: TypeStringRepresentation,
+		overloaded_parameter: TypeStringRepresentation,
+	},
+	IncompatibleOverloadReturnType {
+		base_position: SpanWithSource,
+		overload_position: SpanWithSource,
+		base: TypeStringRepresentation,
+		overload: TypeStringRepresentation,
+	},
+}
 
-	use super::{
-		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeStringRepresentation, TDZ,
-	};
-
-	/// Reasons for errors, intermediate type for generating [Diagnostic]s
-	/// e.g. cannot Call, cannot equate, duplicate key etc
-	#[allow(unused)]
-	pub(crate) enum TypeCheckError<'a> {
-		FunctionCallingError(FunctionCallingError),
-		PropertyDoesNotExist {
-			on: TypeStringRepresentation,
-			property: PropertyRepresentation,
-			site: SpanWithSource,
-		},
-		NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
-		RestParameterAnnotationShouldBeArrayType(SpanWithSource),
-		CouldNotFindVariable {
-			variable: &'a str,
-			possibles: Vec<&'a str>,
-			position: SpanWithSource,
-		},
-		CouldNotFindType(&'a str, SpanWithSource),
-		TypeHasNoGenericParameters(String, SpanWithSource),
-		AssignmentError(AssignmentError),
-		InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-		InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
-		InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
-		ReturnedTypeDoesNotMatch {
-			expected_return_type: TypeStringRepresentation,
-			returned_type: TypeStringRepresentation,
-			annotation_position: SpanWithSource,
-			returned_position: SpanWithSource,
-		},
-		// TODO are these the same errors?
-		TypeIsNotIndexable(TypeStringRepresentation),
-		TypeIsNotIterable(TypeStringRepresentation),
-		// This could be a syntax error but that is difficult to type...
-		NonTopLevelExport(SpanWithSource),
-		FieldNotExported {
-			file: &'a str,
-			importing: &'a str,
-			position: SpanWithSource,
-		},
-		InvalidJSXAttribute {
-			attribute_name: String,
-			attribute_type: TypeStringRepresentation,
-			value_type: TypeStringRepresentation,
-			// TODO
-			attribute_type_site: (),
-			value_site: SpanWithSource,
-		},
-		InvalidJSXInterpolatedValue {
-			interpolation_site: SpanWithSource,
-			expected: TypeStringRepresentation,
-			found: TypeStringRepresentation,
-		},
-		/// for the `satisfies` keyword
-		NotSatisfied {
-			at: SpanWithSource,
-			expected: TypeStringRepresentation,
-			found: TypeStringRepresentation,
-		},
-		Unsupported {
-			thing: &'static str,
-			at: SpanWithSource,
-		},
-		ReDeclaredVariable {
-			name: &'a str,
-			position: SpanWithSource,
-		},
-		/// TODO temp, needs more info
-		FunctionDoesNotMeetConstraint {
-			function_constraint: TypeStringRepresentation,
-			function_type: TypeStringRepresentation,
-			position: SpanWithSource,
-		},
-		StatementsNotRun {
-			between: SpanWithSource,
-		},
-		CannotRedeclareVariable {
-			name: String,
-			position: SpanWithSource,
-		},
-		// TODO parameter position
-		GenericArgumentDoesNotMeetRestriction {
-			parameter_restriction: TypeStringRepresentation,
-			argument: TypeStringRepresentation,
-			position: SpanWithSource,
-		},
-		NotDefinedOperator(&'static str, SpanWithSource),
-		PropertyNotWriteable(SpanWithSource),
-		NotTopLevelImport(SpanWithSource),
-		DoubleDefaultExport(SpanWithSource),
-		CannotOpenFile {
-			file: crate::CouldNotOpenFile,
-			position: Option<SpanWithSource>,
-		},
-		VariableNotDefinedInContext {
-			variable: &'a str,
-			expected_context: &'a str,
-			current_context: String,
-			position: SpanWithSource,
-		},
-		TypeNeedsTypeArguments(&'a str, SpanWithSource),
-		CannotFindType(&'a str, SpanWithSource),
-		TypeAlreadyDeclared {
-			name: String,
-			position: SpanWithSource,
-		},
-		TDZ(TDZ),
-		InvalidMathematicalOrBitwiseOperation {
-			operator: MathematicalAndBitwise,
-			lhs: TypeStringRepresentation,
-			rhs: TypeStringRepresentation,
-			position: SpanWithSource,
-		},
-	}
-
-	impl From<TypeCheckError<'_>> for Diagnostic {
-		fn from(error: TypeCheckError<'_>) -> Self {
-			let kind = super::DiagnosticKind::Error;
-			match error {
+impl From<TypeCheckError<'_>> for Diagnostic {
+	fn from(error: TypeCheckError<'_>) -> Self {
+		let kind = super::DiagnosticKind::Error;
+		match error {
 				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable {variable} in scope",
+							"Could not find variable '{variable}' in scope",
 							// possibles Consider '{:?}'
 						),
 						position,
@@ -417,108 +454,9 @@ mod defined_errors_and_warnings {
 						kind,
 					}
 				}
-				TypeCheckError::FunctionCallingError(error) => match error {
-					FunctionCallingError::InvalidArgumentType {
-						parameter_type,
-						argument_type,
-						argument_position,
-						parameter_position,
-						restriction,
-					} => {
-						if let Some((restriction_pos, restriction)) = restriction {
-							Diagnostic::PositionWithAdditionalLabels {
-								reason: format!(
-									"Argument of type {argument_type} is not assignable to parameter of type {restriction}" 
-								),
-								position: argument_position,
-								labels: vec![(
-									format!(
-										"{parameter_type} was specialised with type {restriction}"
-									),
-									Some(restriction_pos),
-								)],
-								kind,
-							}
-						} else {
-							Diagnostic::PositionWithAdditionalLabels {
-								reason: format!(
-									"Argument of type {argument_type} is not assignable to parameter of type {parameter_type}",
-								),
-								position: argument_position,
-								labels: vec![(
-									format!("Parameter has type {parameter_type}"),
-									Some(parameter_position),
-								)],
-								kind,
-							}
-						}
-					}
-					FunctionCallingError::MissingArgument { parameter_position, call_site } => {
-						Diagnostic::PositionWithAdditionalLabels {
-							reason: "Missing argument".into(),
-							position: call_site,
-							kind,
-							labels: vec![(
-								"(non-optional) Parameter declared here".into(),
-								Some(parameter_position),
-							)],
-						}
-					}
-					FunctionCallingError::ExcessArguments { count: _, position } => {
-						Diagnostic::Position {
-							reason: "Excess argument".into(),
-							position,
-							kind,
-						}
-					}
-					FunctionCallingError::NotCallable { calling, call_site } => {
-						Diagnostic::Position {
-							reason: format!("Cannot call type {calling}"),
-							position: call_site,
-							kind,
-						}
-					}
-					FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-						reference: _,
-						requirement: _,
-						found: _,
-					} => todo!(),
-					// Diagnostic::Position {
-					// 	reason: format!(
-					// 		"Calling function requires {} to be {}, found {}",
-					// 		identifier, requirement, found
-					// 	),
-					// 	position: call_site,
-					// 	kind,
-					// },
-					FunctionCallingError::CyclicRecursion(_, call_site) => Diagnostic::Position {
-						reason: "Encountered recursion".into(),
-						position: call_site,
-						kind,
-					},
-					FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position { reason: format!("no logic for constant function {name}"), kind, position },
-					FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position { reason: "class constructor must be called with new".to_owned(), kind, position },
-					FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => Diagnostic::PositionWithAdditionalLabels {
-						reason: format!("Variable {variable_name} used before declaration"),
-						position: call_site.unwrap(),
-						kind,
-						labels: vec![(
-							"Variable referenced here".to_owned(),
-							Some(position),
-						)],
-					},
-					FunctionCallingError::SetPropertyConstraint { property_type, value_type, assignment_position, call_site } => Diagnostic::PositionWithAdditionalLabels {
-						reason: "Assignment mismatch".to_owned(),
-						position: call_site.unwrap(),
-						kind,
-						labels: vec![(
-							format!(
-								"Type {value_type} does not meet property constraint {property_type}"
-							),
-							Some(assignment_position),
-						)],
-					}
-				},
+				TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
+				TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
+				TypeCheckError::TemplateLiteralError(error) => function_calling_error_diagnostic(error, kind, " (in template literal)"),
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
@@ -532,7 +470,7 @@ mod defined_errors_and_warnings {
 						position: value_site,
 						labels: vec![(
 							format!("Variable declared with type {variable_type}"),
-							Some(variable_site),
+							variable_site,
 						)],
 						kind,
 					},
@@ -554,8 +492,15 @@ mod defined_errors_and_warnings {
 					},
 					AssignmentError::VariableNotFound { variable, assignment_position } => {
 						Diagnostic::Position {
-							reason: format!("Cannot assign to unknown variable {variable}"),
+							reason: format!("Cannot assign to unknown variable '{variable}'"),
 							position: assignment_position,
+							kind,
+						}
+					}
+					AssignmentError::TDZ(TDZ { variable_name, position }) => {
+						Diagnostic::Position {
+							reason: format!("Cannot assign to '{variable_name}' before declaration"),
+							position,
 							kind,
 						}
 					}
@@ -584,9 +529,31 @@ mod defined_errors_and_warnings {
 					),
 					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
-						Some(annotation_position),
+						annotation_position,
 					)],
 					position: returned_position,
+					kind,
+				},
+        TypeCheckError::InvalidDefaultParameter {
+					expected,
+          found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+						"Cannot use a default value of type {found} for parameter of type {expected}",
+          ),
+					position: at,
+					kind,
+				},
+        TypeCheckError::CatchTypeDoesNotMatch {
+					expected,
+					found,
+					at,
+				} => Diagnostic::Position {
+					reason: format!(
+             "Cannot catch type {found} because the try block throws {expected}",
+					),
+					position: at,
 					kind,
 				},
 				TypeCheckError::TypeHasNoGenericParameters(name, position) => {
@@ -630,7 +597,13 @@ mod defined_errors_and_warnings {
 					position: at,
 					kind,
 				},
-				TypeCheckError::ReDeclaredVariable { name: _, position: _pos } => todo!(),
+				TypeCheckError::ReDeclaredVariable { name, position } => {
+					Diagnostic::Position {
+						reason: format!("Cannot declare variable {name}"),
+						position,
+						kind,
+					}
+				}
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
@@ -654,7 +627,7 @@ mod defined_errors_and_warnings {
 				},
 				TypeCheckError::CannotRedeclareVariable { name, position } => {
 					Diagnostic::Position {
-						reason: format!("Cannot redeclare variable {name}"),
+						reason: format!("Cannot redeclare variable '{name}'"),
 						position,
 						kind,
 					}
@@ -665,7 +638,7 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
-					reason: "property not writeable".into(),
+					reason: "Property not writeable".into(),
 					position,
 					kind,
 				},
@@ -686,10 +659,10 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { file, position } => if let Some(position) = position {
+				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
 						reason: "Cannot find file".to_owned(),
-						position,
+						position: import_position,
 						kind,
 					}
 				} else {
@@ -701,7 +674,7 @@ mod defined_errors_and_warnings {
 					current_context,
 					position,
 				} => Diagnostic::Position {
-					reason: format!("{variable} is only available on the {expected_context}, currently in {current_context}"),
+					reason: format!("'{variable}' is only available on the {expected_context}, currently in {current_context}"),
 					position,
 					kind,
 				},
@@ -716,12 +689,12 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
-					reason: format!("Type {name} already declared"),
+					reason: format!("Type named '{name}' already declared"),
 					position,
 					kind,
 				},
 				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
-					reason: format!("Variable {variable_name} used before declaration"),
+					reason: format!("Variable '{variable_name}' used before declaration"),
 					position,
 					kind,
 				},
@@ -732,70 +705,139 @@ mod defined_errors_and_warnings {
 					kind,
 				},
 				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
-			}
-		}
-	}
-
-	pub enum TypeCheckWarning {
-		AwaitUsedOnNonPromise(SpanWithSource),
-		/// TODO could be an error at some point
-		DeadBranch {
-			expression_span: SpanWithSource,
-			expression_value: bool,
-		},
-		IgnoringAsExpression(SpanWithSource),
-		Unimplemented {
-			thing: &'static str,
-			at: SpanWithSource,
-		},
-		UselessExpression {
-			expression_span: SpanWithSource,
-			// TODO other branch information
-		},
-		MergingInterfaceInSameContext {
-			position: SpanWithSource,
-		},
-	}
-
-	impl From<TypeCheckWarning> for Diagnostic {
-		fn from(val: TypeCheckWarning) -> Self {
-			let kind = super::DiagnosticKind::Warning;
-
-			match val {
-				TypeCheckWarning::AwaitUsedOnNonPromise(position) => Diagnostic::Position {
-					reason: "Unnecessary await expression / type is not promise".to_owned(),
-					position,
-					kind,
-				},
-				TypeCheckWarning::DeadBranch { expression_span, expression_value } => {
+				TypeCheckError::InvalidCast { position, from, to } => {
 					Diagnostic::Position {
-						reason: format!("Expression is always {expression_value:?}"),
-						position: expression_span,
-						kind,
-					}
-				}
-				TypeCheckWarning::IgnoringAsExpression(position) => Diagnostic::Position {
-					reason: "'as' expressions are ignore by the checker".to_owned(),
-					position,
-					kind,
-				},
-				TypeCheckWarning::Unimplemented { thing, at } => Diagnostic::Position {
-					reason: format!("Unsupported: {thing}"),
-					position: at,
-					kind,
-				},
-				TypeCheckWarning::UselessExpression { expression_span } => Diagnostic::Position {
-					reason: "Expression is always true".to_owned(),
-					position: expression_span,
-					kind,
-				},
-				TypeCheckWarning::MergingInterfaceInSameContext { position } => {
-					Diagnostic::Position {
-						reason: "Merging interfaces in the same context".to_owned(),
+						reason: format!("Cannot cast {from} to {to}"),
 						position,
 						kind,
 					}
 				}
+				TypeCheckError::UnreachableVariableClosedOver(name, function_position) => {
+					Diagnostic::Position {
+						reason: format!("Function contains unreachable closed over variable '{name}'"),
+						position: function_position,
+						kind,
+					}
+				}
+				TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } => Diagnostic::PositionWithAdditionalLabels {
+					reason: format!(
+						"Overload with parameter of {overloaded_parameter} does not meet base parameter {parameter}",
+					),
+					labels: vec![(
+						format!("Function has base type {parameter} here"),
+						parameter_position,
+					)],
+					position: overloaded_parameter_position,
+					kind,
+				},
+				TypeCheckError::IncompatibleOverloadReturnType { base_position, overload_position, base, overload } => Diagnostic::PositionWithAdditionalLabels {
+					reason: format!(
+						"Cannot return {overload} in overload because base function is expected to return {base}",
+					),
+					labels: vec![(
+						format!("Function annotated to return {base} here"),
+						base_position,
+					)],
+					position: overload_position,
+					kind,
+				}
+			}
+	}
+}
+
+pub enum TypeCheckWarning {
+	AwaitUsedOnNonPromise(SpanWithSource),
+	/// TODO could be an error at some point
+	DeadBranch {
+		expression_span: SpanWithSource,
+		expression_value: bool,
+	},
+	ExcessProperty {
+		position: SpanWithSource,
+		expected_type: TypeStringRepresentation,
+		excess_property_name: String,
+	},
+	IgnoringAsExpression(SpanWithSource),
+	Unimplemented {
+		thing: &'static str,
+		at: SpanWithSource,
+	},
+	UselessExpression {
+		expression_span: SpanWithSource,
+		// TODO other branch information
+	},
+	MergingInterfaceInSameContext {
+		position: SpanWithSource,
+	},
+	TypesDoNotIntersect {
+		left: TypeStringRepresentation,
+		right: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+	Unreachable(SpanWithSource),
+}
+
+impl From<TypeCheckWarning> for Diagnostic {
+	fn from(warning: TypeCheckWarning) -> Self {
+		let kind = super::DiagnosticKind::Warning;
+
+		match warning {
+			TypeCheckWarning::AwaitUsedOnNonPromise(position) => Diagnostic::Position {
+				reason: "Unnecessary await expression / type is not promise".to_owned(),
+				position,
+				kind,
+			},
+			TypeCheckWarning::DeadBranch { expression_span, expression_value } => {
+				Diagnostic::Position {
+					reason: format!("Expression is always {expression_value:?}"),
+					position: expression_span,
+					kind,
+				}
+			}
+			TypeCheckWarning::ExcessProperty { position, expected_type, excess_property_name } => {
+				Diagnostic::Position {
+					reason: format!(
+						"'{excess_property_name}' is not a property of {expected_type}"
+					),
+					position,
+					kind,
+				}
+			}
+			TypeCheckWarning::IgnoringAsExpression(position) => Diagnostic::Position {
+				reason: "'as' expressions are ignore by the checker".to_owned(),
+				position,
+				kind,
+			},
+			TypeCheckWarning::Unimplemented { thing, at } => {
+				Diagnostic::Position { reason: format!("Unsupported: {thing}"), position: at, kind }
+			}
+			TypeCheckWarning::UselessExpression { expression_span } => Diagnostic::Position {
+				reason: "Expression is always true".to_owned(),
+				position: expression_span,
+				kind,
+			},
+			TypeCheckWarning::MergingInterfaceInSameContext { position } => Diagnostic::Position {
+				reason: "Merging interfaces in the same context".to_owned(),
+				position,
+				kind,
+			},
+			TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
+				Diagnostic::Position {
+					reason: format!("No intersection between types {left} and {right}"),
+					position,
+					kind,
+				}
+			}
+			TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(position) => {
+				Diagnostic::Position {
+					reason: "Invalid (or unimplemented) item in definition file skipped".to_owned(),
+					position,
+					kind,
+				}
+			}
+			TypeCheckWarning::Unreachable(position) => {
+				Diagnostic::Position { reason: "Unreachable statement".to_owned(), position, kind }
 			}
 		}
 	}
@@ -835,4 +877,130 @@ impl From<EntryPointNotFound> for Diagnostic {
 #[derive(Debug)]
 pub struct CannotRedeclareVariable<'a> {
 	pub name: &'a str,
+}
+
+fn function_calling_error_diagnostic(
+	error: FunctionCallingError,
+	kind: crate::DiagnosticKind,
+	context: &str,
+) -> Diagnostic {
+	match error {
+		FunctionCallingError::InvalidArgumentType {
+			parameter_type,
+			argument_type,
+			argument_position,
+			parameter_position,
+			restriction,
+		} => {
+			if let Some((restriction_pos, restriction)) = restriction {
+				Diagnostic::PositionWithAdditionalLabels {
+					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {restriction}{context}" ),
+					position: argument_position,
+					labels: vec![(
+						format!("{parameter_type} was specialised with type {restriction}"),
+						restriction_pos,
+					)],
+					kind,
+				}
+			} else {
+				Diagnostic::PositionWithAdditionalLabels {
+					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {parameter_type}{context}", ),
+					position: argument_position,
+					labels: vec![(
+						format!("Parameter has type {parameter_type}"),
+						parameter_position,
+					)],
+					kind,
+				}
+			}
+		}
+		FunctionCallingError::MissingArgument { parameter_position, call_site } => {
+			Diagnostic::PositionWithAdditionalLabels {
+				reason: format!("Missing argument{context}"),
+				position: call_site,
+				kind,
+				labels: vec![(
+					"(non-optional) Parameter declared here".into(),
+					parameter_position,
+				)],
+			}
+		}
+		FunctionCallingError::ExcessArguments { count: _, position } => {
+			Diagnostic::Position { reason: format!("Excess argument{context}"), position, kind }
+		}
+		FunctionCallingError::NotCallable { calling, call_site } => Diagnostic::Position {
+			reason: format!("Cannot call type {calling}{context}"),
+			position: call_site,
+			kind,
+		},
+		FunctionCallingError::ReferenceRestrictionDoesNotMatch {
+			reference: _,
+			requirement: _,
+			found: _,
+		} => todo!(),
+		// Diagnostic::Position {
+		// 	reason: format!(
+		// 		"Calling function requires {} to be {}, found {}",
+		// 		identifier, requirement, found
+		// 	),
+		// 	position: call_site,
+		// 	kind,
+		// },
+		FunctionCallingError::CyclicRecursion(_, call_site) => Diagnostic::Position {
+			reason: format!("Encountered recursion{context}"),
+			position: call_site,
+			kind,
+		},
+		FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position {
+			reason: format!("no logic for constant function {name}{context}"),
+			kind,
+			position,
+		},
+		FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position {
+			reason: "class constructor must be called with new".to_owned(),
+			kind,
+			position,
+		},
+		FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => {
+			Diagnostic::PositionWithAdditionalLabels {
+				reason: format!("Variable '{variable_name}' used before declaration{context}"),
+				position: call_site,
+				kind,
+				labels: vec![("Variable referenced here".to_owned(), position)],
+			}
+		}
+		FunctionCallingError::SetPropertyConstraint {
+			property_type,
+			value_type,
+			assignment_position,
+			call_site,
+		} => Diagnostic::PositionWithAdditionalLabels {
+			reason: format!("Invalid assignment to parameter{context}"),
+			position: call_site,
+			kind,
+			labels: vec![(
+				format!("Type {value_type} does not meet property constraint {property_type}"),
+				assignment_position,
+			)],
+		},
+		FunctionCallingError::UnconditionalThrow { value, call_site } => Diagnostic::Position {
+			reason: format!("Conditional '{value}' was thrown in function{context}"),
+			position: call_site,
+			kind,
+		},
+		FunctionCallingError::MismatchedThis { call_site, expected, found } => {
+			Diagnostic::Position {
+				reason: format!( "The 'this' context of the function is expected to be {expected}, found {found}{context}" ),
+				position: call_site,
+				kind,
+			}
+		}
+		FunctionCallingError::CannotCatch { catch, thrown, thrown_position } => {
+			Diagnostic::Position {
+				reason: format!("Cannot throw {thrown} in block that expects {catch}{context}"),
+				position: thrown_position,
+				kind,
+			}
+		}
+	}
 }

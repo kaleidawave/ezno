@@ -1,11 +1,19 @@
+use std::path::{Path, PathBuf};
+
 use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
-	context::{facts::Facts, VariableRegisterArguments},
-	CheckingData, Environment, Scope, Type, TypeId, VariableId,
+	context::{
+		information::{get_value_of_constant_import_variable, LocalInformation},
+		VariableRegisterArguments,
+	},
+	parse_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings,
+	VariableId,
 };
 
-use source_map::Span;
+use simple_json_parser::{JSONKey, RootJSONValue};
+use source_map::{FileSystem, Span};
 
+/// For imports and exports
 #[derive(Debug)]
 pub struct NamePair<'a> {
 	pub value: &'a str,
@@ -23,11 +31,27 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 	Everything,
 }
 
+/// A module once it has been type chedked (note could have type errorts that have been raised) and all information has been resolved about it
 pub struct SynthesisedModule<M> {
 	pub content: M,
 	pub exported: Exported,
 	/// TODO ...
-	pub facts: Facts,
+	pub info: LocalInformation,
+	pub mappings: TypeMappings,
+}
+
+impl<M> SynthesisedModule<M> {
+	pub fn get_instance_at_position(&self, pos: u32) -> Option<&Instance> {
+		self.mappings.expressions_to_instances.get(pos)
+	}
+
+	/// Returns the instance + the span of the matched
+	pub fn get_instance_at_position_with_span(
+		&self,
+		pos: u32,
+	) -> Option<(&Instance, std::ops::Range<u32>)> {
+		self.mappings.expressions_to_instances.get_with_range(pos)
+	}
 }
 
 /// TODO tidy
@@ -40,11 +64,6 @@ pub struct Exported {
 }
 
 pub type ExportedVariable = (VariableId, VariableMutability);
-
-pub enum TypeOrVariable {
-	ExportedVariable(),
-	Type(TypeId),
-}
 
 impl Exported {
 	pub(crate) fn get_export(
@@ -70,8 +89,16 @@ impl Exported {
 /// After a syntax error
 pub struct InvalidModule;
 
+/// The result of syntehsising a module
 pub type FinalModule<M> = Result<SynthesisedModule<M>, InvalidModule>;
 
+#[derive(Debug, Clone)]
+pub struct CouldNotOpenFile(pub PathBuf);
+
+/// Given the current environment for a module:
+/// - Parse the `partial_import_path` to a resolved module
+/// - Type check the module (if not already done)
+/// - Import names by `kind` (and another information)
 #[allow(clippy::too_many_arguments)]
 pub fn import_items<
 	'b,
@@ -88,26 +115,27 @@ pub fn import_items<
 	also_export: bool,
 	type_only: bool,
 ) {
-	let current_source = environment.get_source();
 	if !matches!(environment.context_type.scope, crate::Scope::Module { .. }) {
 		checking_data.diagnostics_container.add_error(
 			crate::diagnostics::TypeCheckError::NotTopLevelImport(
-				import_position.with_source(current_source),
+				import_position.with_source(environment.get_source()),
 			),
 		);
 		return;
 	}
 
-	let exports = checking_data.import_file(current_source, partial_import_path, environment);
+	let exports = import_file(partial_import_path, environment, checking_data);
 
 	if let Err(ref err) = exports {
 		checking_data.diagnostics_container.add_error(
 			crate::diagnostics::TypeCheckError::CannotOpenFile {
 				file: err.clone(),
-				position: Some(import_position.with_source(environment.get_source())),
+				import_position: Some(import_position.with_source(environment.get_source())),
 			},
 		);
 	}
+
+	let current_source = environment.get_source();
 
 	if let Some((default_name, position)) = default_import {
 		if let Ok(Ok(ref exports)) = exports {
@@ -117,7 +145,7 @@ pub fn import_items<
 					to: None,
 					import_specified_at: position.with_source(current_source),
 				};
-				environment.facts.variable_current_value.insert(id, *item);
+				environment.info.variable_current_value.insert(id, *item);
 				let existing = environment.variables.insert(default_name.to_owned(), v);
 				if let Some(_existing) = existing {
 					todo!("diagnostic")
@@ -135,6 +163,7 @@ pub fn import_items<
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
 	}
@@ -165,14 +194,16 @@ pub fn import_items<
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
 					if let Some((variable, mutability)) = exported_variable {
 						let constant = match mutability {
 							VariableMutability::Constant => {
 								let k = crate::VariableId(current_source, part.position.start);
-								let v = environment.get_value_of_constant_import_variable(variable);
-								environment.facts.variable_current_value.insert(k, v);
+								let v =
+									get_value_of_constant_import_variable(variable, environment);
+								environment.info.variable_current_value.insert(k, v);
 								true
 							}
 							VariableMutability::Mutable { reassignment_constraint: _ } => false,
@@ -215,39 +246,31 @@ pub fn import_items<
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
 			}
 		}
 		ImportKind::All { under, position } => {
-			if let Ok(Ok(ref exports)) = exports {
-				let value = checking_data.types.register_type(Type::SpecialObject(
+			let value = if let Ok(Ok(ref exports)) = exports {
+				checking_data.types.register_type(Type::SpecialObject(
 					crate::features::objects::SpecialObjects::Import(exports.clone()),
-				));
-
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(value),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
+				))
 			} else {
-				crate::utils::notify!("TODO :?");
-				environment.register_variable_handle_error(
-					under,
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(TypeId::ERROR_TYPE),
-					},
-					position.with_source(current_source),
-					&mut checking_data.diagnostics_container,
-				);
-			}
+				crate::utilities::notify!("TODO :?");
+				TypeId::ERROR_TYPE
+			};
+			environment.register_variable_handle_error(
+				under,
+				VariableRegisterArguments {
+					constant: true,
+					space: None,
+					initial_value: Some(value),
+				},
+				position.with_source(current_source),
+				&mut checking_data.diagnostics_container,
+				checking_data.options.record_all_assignments_and_reads,
+			);
 		}
 		ImportKind::Everything => {
 			if let Ok(Ok(ref exports)) = exports {
@@ -261,5 +284,141 @@ pub fn import_items<
 				// TODO ??
 			}
 		}
+	}
+}
+
+/// TODO better name.
+pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	to_import: &str,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, A>,
+) -> Result<Result<Exported, InvalidModule>, CouldNotOpenFile> {
+	fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		full_importer: &Path,
+		_definition_file: Option<&Path>,
+		environment: &mut Environment,
+		checking_data: &'a mut CheckingData<T, A>,
+	) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
+		let existing = checking_data.modules.files.get_source_at_path(full_importer);
+		if let Some(existing) = existing {
+			Some(Ok(checking_data
+				.modules
+				.synthesised_modules
+				.get(&existing)
+				.expect("existing file, but not synthesised")))
+		} else {
+			let content = checking_data.modules.file_reader.read_file(full_importer);
+			if let Some(content) = content {
+				let content = String::from_utf8(content).expect("invalid entry point encoding");
+				let source = checking_data
+					.modules
+					.files
+					.new_source_id(full_importer.to_path_buf(), content.clone());
+				let module = parse_source(full_importer, source, content, checking_data);
+
+				match module {
+					Ok(module) => {
+						let root = &environment.get_root();
+						let new_module_context =
+							root.new_module_context(source, module, checking_data);
+						Some(Ok(new_module_context))
+					}
+					Err(err) => Some(Err(err)),
+				}
+			} else {
+				None
+			}
+		}
+	}
+
+	fn get_package_from_node_modules<T: crate::ReadFromFS>(
+		name: &str,
+		cwd: &Path,
+		fs_reader: &T,
+	) -> Result<(PathBuf, Option<PathBuf>), ()> {
+		// TODO support non `node_modules` or is that over ?
+		let package_directory = cwd.join("node_modules");
+		let package_root = package_directory.join(name);
+		let package_json_path = package_root.join("package.json");
+		// TODO error
+		let package_json = fs_reader.read_file(&PathBuf::from(&package_json_path)).ok_or(())?;
+		let package_json = String::from_utf8(package_json).unwrap();
+
+		let (mut file_path, mut definition_file_path) = (None::<PathBuf>, None::<PathBuf>);
+
+		// TODO JSON parse error
+		let _res = simple_json_parser::parse_with_exit_signal(&package_json, |path, value| {
+			// if let Some(ref export) = export {
+			// 	todo!()
+			// } else {
+			if let [JSONKey::Slice("main")] = path {
+				if let RootJSONValue::String(s) = value {
+					file_path = Some(s.to_owned().into());
+				} else {
+					// invalid type
+				}
+			} else if let [JSONKey::Slice("types")] = path {
+				if let RootJSONValue::String(s) = value {
+					definition_file_path = Some(s.to_owned().into());
+				} else {
+					// invalid type
+				}
+			}
+			// }
+			file_path.is_some() && definition_file_path.is_some()
+		});
+
+		file_path.ok_or(()).map(|entry| {
+			(package_root.join(entry), definition_file_path.map(|dfp| package_root.join(dfp)))
+		})
+	}
+
+	let result = if to_import.starts_with('.') {
+		let from_path = checking_data.modules.files.get_file_path(environment.get_source());
+		let from = PathBuf::from(to_import);
+		let mut full_importer =
+			path_absolutize::Absolutize::absolutize_from(&from, from_path.parent().unwrap())
+				.unwrap()
+				.to_path_buf();
+
+		if full_importer.extension().is_some() {
+			get_module(&full_importer, None, environment, checking_data)
+		} else {
+			let mut result = None;
+			for ext in ["ts", "tsx", "js"] {
+				full_importer.set_extension(ext);
+				// TODO change parse options based on extension
+				result = get_module(&full_importer, None, environment, checking_data);
+				if result.is_some() {
+					break;
+				}
+			}
+			result
+		}
+	} else {
+		crate::utilities::notify!("Here {}", to_import);
+		let result = get_package_from_node_modules(
+			to_import,
+			&checking_data.modules.current_working_directory,
+			checking_data.modules.file_reader,
+		);
+		if let Ok((path, definition_file)) = result {
+			crate::utilities::notify!("Reading path from package {}", path.display());
+			get_module(&path, definition_file.as_deref(), environment, checking_data)
+		} else {
+			None
+		}
+	};
+
+	match result {
+		Some(Ok(synthesised_module)) => {
+			environment.info.extend_ref(&synthesised_module.info);
+			Ok(Ok(synthesised_module.exported.clone()))
+		}
+		Some(Err(error)) => {
+			checking_data.diagnostics_container.add_error(error);
+			Ok(Err(InvalidModule))
+		}
+		None => Err(CouldNotOpenFile(PathBuf::from(to_import.to_owned()))),
 	}
 }

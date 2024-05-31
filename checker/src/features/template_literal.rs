@@ -1,9 +1,13 @@
-use source_map::Span;
+use source_map::SpanWithSource;
 
 use crate::{
 	context::invocation::CheckThings,
+	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
-	types::{calling::CallingInput, cast_as_string, SynthesisedArgument},
+	types::{
+		calling::{application_result_to_return_type, CallingInput},
+		cast_as_string, SynthesisedArgument, TypeStore,
+	},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
 
@@ -14,10 +18,10 @@ pub enum TemplateLiteralPart<'a, T> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn synthesise_template_literal<'a, T, A>(
+pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
 	mut parts_iter: impl Iterator<Item = TemplateLiteralPart<'a, A::Expression<'a>>> + 'a,
-	position: &Span,
+	position: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId
@@ -48,7 +52,7 @@ where
 					let value = cast_as_string(cst, checking_data.options.strict_casts).unwrap();
 					checking_data.types.new_constant_type(Constant::String(value))
 				} else {
-					crate::utils::notify!("Need to cast to string...");
+					crate::utilities::notify!("Need to cast to string...");
 					value
 				}
 			}
@@ -60,7 +64,8 @@ where
 		let mut static_parts = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),
 			&mut checking_data.types,
-			&mut environment.facts,
+			position,
+			&mut environment.info,
 		);
 
 		// TODO position
@@ -72,11 +77,11 @@ where
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
 						environment,
-						crate::context::facts::Publicity::Public,
+						crate::types::properties::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
-						None,
+						position,
 					);
 					static_part_count += 1;
 				}
@@ -91,6 +96,22 @@ where
 			}
 		}
 
+		{
+			// TODO spread
+			let length = checking_data.types.new_constant_type(Constant::Number(
+				f64::from(static_part_count).try_into().unwrap(),
+			));
+
+			// TODO: Should there be a position here?
+			static_parts.append(
+				environment,
+				crate::types::properties::Publicity::Public,
+				crate::types::properties::PropertyKey::String("length".into()),
+				crate::types::properties::PropertyValue::Value(length),
+				position,
+			);
+		}
+
 		arguments.insert(
 			0,
 			SynthesisedArgument {
@@ -101,23 +122,31 @@ where
 			},
 		);
 
-		let call_site = position.with_source(environment.get_source());
+		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+
+		let input = CallingInput {
+			called_with_new: crate::types::calling::CalledWithNew::None,
+			call_site: position,
+			call_site_type_arguments: None,
+		};
 		match crate::types::calling::call_type(
 			tag,
 			arguments,
-			CallingInput {
-				called_with_new: crate::types::calling::CalledWithNew::None,
-				this_value: crate::features::functions::ThisValue::UseParent,
-				call_site,
-				call_site_type_arguments: None,
-			},
+			&input,
 			environment,
-			&mut CheckThings,
+			&mut check_things,
 			&mut checking_data.types,
 		) {
-			Ok(res) => res.returned_type,
-			Err(_) => {
-				todo!("JSX Calling error")
+			Ok(res) => {
+				application_result_to_return_type(res.result, environment, &mut checking_data.types)
+			}
+			Err(error) => {
+				error.errors.into_iter().for_each(|error| {
+					checking_data
+						.diagnostics_container
+						.add_error(TypeCheckError::TemplateLiteralError(error));
+				});
+				error.returned_type
 			}
 		}
 	} else {
@@ -136,7 +165,7 @@ where
 				match result {
 					Ok(result) => acc = result,
 					Err(()) => {
-						crate::utils::notify!("Invalid template literal concatenation");
+						crate::utilities::notify!("Invalid template literal concatenation");
 					}
 				}
 			}
@@ -144,5 +173,44 @@ where
 		} else {
 			checking_data.types.new_constant_type(Constant::String(String::new()))
 		}
+	}
+}
+
+/// **Expects static part first**
+///
+/// TODO API is different to the `synthesise_template_literal_expression` above
+pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStore) -> TypeId {
+	let mut parts_iter = parts.into_iter();
+	if let Some(first) = parts_iter.next() {
+		let mut acc = first;
+		for other in parts_iter {
+			// TODO unfold_alias function
+			let other = if let Type::AliasTo { to, .. } = types.get_type_by_id(other) {
+				*to
+			} else {
+				other
+			};
+			let result = super::operations::evaluate_mathematical_operation(
+				acc,
+				crate::features::operations::MathematicalAndBitwise::Add,
+				other,
+				types,
+				true,
+			);
+			match result {
+				Ok(result) => acc = result,
+				Err(()) => {
+					// crate::utilities::notify!(
+					// 	"acc is {:?}, other is {:?}",
+					// 	types.get_type_by_id(acc),
+					// 	types.get_type_by_id(other)
+					// );
+					crate::utilities::notify!("Invalid type template literal concatenation");
+				}
+			}
+		}
+		acc
+	} else {
+		types.new_constant_type(Constant::String(String::new()))
 	}
 }

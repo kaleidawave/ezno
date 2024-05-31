@@ -10,61 +10,63 @@ pub mod range_map;
 mod serialization;
 mod type_mappings;
 pub mod types;
-mod utils;
+mod utilities;
 
-pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.d.ts";
-pub const INTERNAL_DEFINITION_FILE: &str = include_str!("../definitions/internal.d.ts");
+pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
+pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
 
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
 use context::Names;
+
 use diagnostics::{TypeCheckError, TypeCheckWarning};
 pub(crate) use serialization::BinarySerializable;
 
 use features::{
-	functions::SynthesisableFunction,
-	modules::{Exported, InvalidModule, SynthesisedModule},
+	functions::SynthesisableFunction, modules::CouldNotOpenFile, modules::SynthesisedModule,
 };
 
-use source_map::{FileSystem, MapFileStore, SpanWithSource, WithPathMap};
+use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 };
 
-use types::{subtyping::check_satisfies, TypeStore};
+use types::TypeStore;
 
-pub use context::{GeneralContext, RootContext};
+pub use context::{
+	information::LocalInformation, Environment, GeneralContext, Logical, RootContext, Scope,
+	VariableRegisterArguments,
+};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
-pub use types::{calling::call_type_handle_errors, poly_types::GenericTypeParameters, subtyping};
+pub use types::{
+	calling::call_type_handle_errors, generics::GenericTypeParameters, properties::PropertyValue,
+	subtyping, Constant, Type, TypeId,
+};
 
 pub use type_mappings::*;
-pub use types::{properties::PropertyValue, Constant, Type, TypeId};
 
-pub use context::{facts::Facts, Environment, Scope};
+pub trait ReadFromFS {
+	/// Returns `Vec<u8>` as this callback can return binary file
+	/// TODO this shouldn't take `&self`. Should be just `T::read_file`, doesn't need any data
+	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>>;
+}
 
-pub trait ReadFromFS: Fn(&std::path::Path) -> Option<String> {}
-
-impl<T> ReadFromFS for T where T: Fn(&std::path::Path) -> Option<String> {}
+impl<T, U> ReadFromFS for T
+where
+	T: Fn(&std::path::Path) -> Option<U>,
+	U: Into<Vec<u8>>,
+{
+	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>> {
+		(self)(path).map(Into::into)
+	}
+}
 
 pub use source_map::{self, SourceId, Span};
 
-/// Contains all the modules and mappings for import statements
-///
-/// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
-pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
-	pub(crate) file_reader: &'a FileReader,
-	pub(crate) parser_requirements: AST::ParserRequirements,
-	pub(crate) _current_working_directory: PathBuf,
-	/// Contains the text content of files (for source maps and diagnostics)
-	pub(crate) files: MapFileStore<WithPathMap>,
-	/// To catch cyclic imports
-	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
-	/// The result of checking. Includes exported variables and facts
-	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
-}
+use crate::subtyping::State;
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -82,6 +84,8 @@ pub trait ASTImplementation: Sized {
 	type TypeAnnotation<'a>;
 	type TypeParameter<'a>;
 	type Expression<'a>;
+	/// List of statements and declarations
+	type Block<'a>;
 	type MultipleExpression<'a>;
 	type ForStatementInitiliser<'a>;
 
@@ -114,13 +118,14 @@ pub trait ASTImplementation: Sized {
 	#[allow(clippy::needless_lifetimes)]
 	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
 		file: Self::DefinitionFile<'a>,
+		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
-	) -> (Names, Facts);
+	) -> (Names, LocalInformation);
 
 	/// Expected is used for eagerly setting function parameters
-	fn synthesise_expression<'a, T: crate::ReadFromFS>(
-		expression: &'a Self::Expression<'a>,
+	fn synthesise_expression<T: crate::ReadFromFS>(
+		expression: &Self::Expression<'_>,
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -140,6 +145,12 @@ pub trait ASTImplementation: Sized {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
 
+	fn synthesise_block<'a, T: crate::ReadFromFS>(
+		block: &'a Self::Block<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	);
+
 	/// Don't need to return anything. All information recorded via changed to `environment`
 	fn synthesise_for_loop_initialiser<'a, T: crate::ReadFromFS>(
 		for_loop_initialiser: &'a Self::ForStatementInitiliser<'a>,
@@ -151,9 +162,36 @@ pub trait ASTImplementation: Sized {
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
+	fn type_annotation_position<'a>(annotation: &'a Self::TypeAnnotation<'a>) -> Span;
+
+	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool;
+
 	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
+
+	/// For `for in` and `for of loops`
+	fn declare_and_assign_to_fields<'a, T: crate::ReadFromFS>(
+		field: &'a Self::VariableField<'a>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+		arguments: VariableRegisterArguments,
+	);
+}
+
+/// Contains all the modules and mappings for import statements
+///
+/// TODO could files and `synthesised_modules` be merged? (with a change to the source map crate)
+pub struct ModuleData<'a, FileReader, AST: ASTImplementation> {
+	pub(crate) file_reader: &'a FileReader,
+	pub(crate) parser_requirements: AST::ParserRequirements,
+	pub(crate) current_working_directory: PathBuf,
+	/// Contains the text content of files (for source maps and diagnostics)
+	pub(crate) files: MapFileStore<WithPathMap>,
+	/// To catch cyclic imports
+	pub(crate) _currently_checking_modules: HashSet<PathBuf>,
+	/// The result of checking. Includes exported variables and info
+	pub(crate) synthesised_modules: HashMap<SourceId, SynthesisedModule<AST::OwnedModule>>,
 }
 
 impl<'a, T, A> ModuleData<'a, T, A>
@@ -173,20 +211,46 @@ where
 			_currently_checking_modules: Default::default(),
 			// custom_module_resolvers,
 			file_reader: file_resolver,
-			_current_working_directory: current_working_directory,
+			current_working_directory,
 			parser_requirements,
 		}
 	}
 
-	pub(crate) fn get_file(&mut self, path: &Path) -> Option<(SourceId, String)> {
-		if let Some(source) = self.files.get_source_at_path(path) {
-			Some((source, self.files.get_file_content(source)))
+	pub(crate) fn get_file(&mut self, path: &Path) -> Option<File> {
+		// TODO only internal code should be able to do this
+		if let Some("bin") = path.extension().and_then(|s| s.to_str()) {
+			return self.file_reader.read_file(path).map(|s| File::Binary(s.clone()));
+		}
+
+		let get_source_at_path = self.files.get_source_at_path(path);
+
+		// eprintln!(
+		// 	"Found {:?} {:?} {:?}",
+		// 	get_source_at_path,
+		// 	path.display(),
+		// 	self.files.get_paths()
+		// );
+
+		if let Some(source) = get_source_at_path {
+			Some(File::Source(source, self.files.get_file_content(source)))
 		} else {
-			let content = (self.file_reader)(path)?;
-			let source_id = self.files.new_source_id(path.to_path_buf(), content.clone());
-			Some((source_id, content))
+			// Load into system
+			let content = self.file_reader.read_file(path)?;
+			let content = String::from_utf8(content);
+			if let Ok(content) = content {
+				let source_id = self.files.new_source_id(path.to_path_buf(), content);
+				Some(File::Source(source_id, self.files.get_file_content(source_id)))
+			} else {
+				eprintln!("{} is not valid Utf-8", path.display());
+				None
+			}
 		}
 	}
+}
+
+pub enum File {
+	Binary(Vec<u8>),
+	Source(SourceId, String),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
@@ -195,10 +259,6 @@ pub struct VariableId(pub SourceId, pub u32);
 /// TODO split for annotations based functions
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, binary_serialize_derive::BinarySerializable)]
 pub struct FunctionId(pub SourceId, pub u32);
-
-impl FunctionId {
-	pub const AUTO_CONSTRUCTOR: Self = FunctionId(source_map::Nullable::NULL, 0);
-}
 
 #[derive(Debug)]
 pub enum Decidable<T> {
@@ -225,7 +285,7 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	/// Type checking errors
 	pub diagnostics_container: DiagnosticsContainer,
 	/// TODO temp pub
-	pub type_mappings: TypeMappings,
+	pub local_type_mappings: TypeMappings,
 	/// All module information
 	pub(crate) modules: ModuleData<'a, FSResolver, ModuleAST>,
 	/// Options for checking
@@ -238,9 +298,6 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	/// Do not repeat emitting unimplemented parts
 	unimplemented_items: HashSet<&'static str>,
 }
-
-#[derive(Debug, Clone)]
-pub struct CouldNotOpenFile(pub PathBuf);
 
 impl<'a, T, A> CheckingData<'a, T, A>
 where
@@ -260,95 +317,11 @@ where
 
 		Self {
 			options,
-			type_mappings: Default::default(),
+			local_type_mappings: Default::default(),
 			diagnostics_container: Default::default(),
 			modules,
 			types: Default::default(),
 			unimplemented_items: Default::default(),
-		}
-	}
-
-	pub fn import_file(
-		&mut self,
-		from: SourceId,
-		importing_path: &str,
-		environment: &mut Environment,
-	) -> Result<Result<Exported, InvalidModule>, CouldNotOpenFile> {
-		fn get_module<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
-			full_importer: &Path,
-			environment: &mut Environment,
-			checking_data: &'a mut CheckingData<T, A>,
-		) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
-			let existing = checking_data.modules.files.get_source_at_path(full_importer);
-			if let Some(existing) = existing {
-				Some(Ok(checking_data
-					.modules
-					.synthesised_modules
-					.get(&existing)
-					.expect("existing file, but not synthesised")))
-			} else {
-				let content = (checking_data.modules.file_reader)(full_importer);
-				if let Some(content) = content {
-					let (source, module) = get_source(checking_data, full_importer, content);
-
-					match module {
-						Ok(module) => {
-							let new_module_context = environment.get_root().new_module_context(
-								source,
-								module,
-								checking_data,
-							);
-							Some(Ok(new_module_context))
-						}
-						Err(err) => Some(Err(err)),
-					}
-				} else {
-					None
-				}
-			}
-		}
-
-		if importing_path.starts_with('.') {
-			let from_path = self.modules.files.get_file_path(from);
-			let from = PathBuf::from(importing_path);
-			let mut full_importer =
-				path_absolutize::Absolutize::absolutize_from(&from, from_path.parent().unwrap())
-					.unwrap()
-					.to_path_buf();
-
-			let result = if full_importer.extension().is_some() {
-				get_module(&full_importer, environment, self)
-			} else {
-				let mut result = None;
-				for ext in ["ts", "tsx", "js"] {
-					full_importer.set_extension(ext);
-					// TODO change parse options based on extension
-					result = get_module(&full_importer, environment, self);
-					if result.is_some() {
-						break;
-					}
-				}
-				result
-			};
-
-			match result {
-				Some(Ok(synthesised_module)) => {
-					environment.facts.extend_ref(&synthesised_module.facts);
-					Ok(Ok(synthesised_module.exported.clone()))
-				}
-				Some(Err(error)) => {
-					self.diagnostics_container.add_error(error);
-					Ok(Err(InvalidModule))
-				}
-				None => Err(CouldNotOpenFile(full_importer)),
-			}
-		} else {
-			// TODO temp + bad position
-			self.raise_unimplemented_error(
-				"non relative import (aka npm)",
-				SpanWithSource { source: from, start: 0, end: 1 },
-			);
-			Ok(Err(InvalidModule))
 		}
 	}
 
@@ -369,7 +342,7 @@ where
 	}
 
 	pub fn add_expression_mapping(&mut self, span: SpanWithSource, instance: Instance) {
-		self.type_mappings.expressions_to_instances.push(span, instance);
+		self.local_type_mappings.expressions_to_instances.push(span, instance);
 	}
 
 	pub fn check_satisfies(
@@ -379,16 +352,40 @@ where
 		at: SpanWithSource,
 		environment: &mut Environment,
 	) {
+		pub(crate) fn check_satisfies(
+			expr_ty: TypeId,
+			to_satisfy: TypeId,
+			types: &TypeStore,
+			environment: &mut Environment,
+		) -> bool {
+			// TODO `behavior.allow_error = true` would be better
+			if expr_ty == TypeId::ERROR_TYPE {
+				false
+			} else {
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: subtyping::SubTypingOptions { allow_errors: false },
+					object_constraints: None,
+				};
+				let result =
+					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
+
+				matches!(result, subtyping::SubTypeResult::IsSubType)
+			}
+		}
+
 		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
-				&environment.as_general_context(),
+				environment,
 				&self.types,
 				false,
 			);
 			let found = diagnostics::TypeStringRepresentation::from_type_id(
 				expr_ty,
-				&environment.as_general_context(),
+				environment,
 				&self.types,
 				false,
 			);
@@ -403,11 +400,71 @@ where
 
 /// Used for transformers and other things after checking!!!!
 pub struct CheckOutput<A: crate::ASTImplementation> {
-	pub type_mappings: crate::TypeMappings,
 	pub types: crate::types::TypeStore,
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub diagnostics: crate::DiagnosticsContainer,
+	pub top_level_information: crate::LocalInformation,
+}
+
+impl<A: crate::ASTImplementation> CheckOutput<A> {
+	#[must_use]
+	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
+		let source = self.module_contents.get_source_at_path(path.as_ref())?;
+		self.modules.get(&source).expect("no module").get_instance_at_position(pos).map(
+			|instance| {
+				crate::types::printing::print_type(
+					instance.get_value_on_ref(),
+					&self.types,
+					&self.top_level_information,
+					debug,
+				)
+			},
+		)
+	}
+
+	#[must_use]
+	pub fn get_type_at_position_with_span(
+		&self,
+		path: &str,
+		pos: u32,
+		debug: bool,
+	) -> Option<(String, SpanWithSource)> {
+		let source = self.module_contents.get_source_at_path(path.as_ref())?;
+		if let Some(module) = self.modules.get(&source) {
+			module.get_instance_at_position_with_span(pos).map(|(instance, range)| {
+				(
+					crate::types::printing::print_type(
+						instance.get_value_on_ref(),
+						&self.types,
+						&self.top_level_information,
+						debug,
+					),
+					SpanWithSource { start: range.start, end: range.end, source },
+				)
+			})
+		} else {
+			eprintln!("no module here???");
+			None
+		}
+	}
+
+	#[must_use]
+	pub fn get_module(&self, path: &str) -> Option<&A::OwnedModule> {
+		let source_id = self.module_contents.get_source_at_path(path.as_ref())?;
+		Some(&self.modules.get(&source_id).expect("no module").content)
+	}
+
+	#[must_use]
+	pub fn empty() -> Self {
+		Self {
+			types: Default::default(),
+			module_contents: Default::default(),
+			modules: Default::default(),
+			diagnostics: Default::default(),
+			top_level_information: Default::default(),
+		}
+	}
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -415,34 +472,46 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
 	type_definition_files: HashSet<PathBuf>,
 	resolver: T,
-	options: Option<TypeCheckOptions>,
+	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
+	existing_files: Option<MapFileStore<WithPathMap>>,
 ) -> CheckOutput<A> {
-	let mut checking_data = CheckingData::<T, A>::new(
-		options.unwrap_or_default(),
-		&resolver,
-		None,
-		parser_requirements,
-	);
+	let mut checking_data =
+		CheckingData::<T, A>::new(options, &resolver, existing_files, parser_requirements);
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
+	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {
-			type_mappings: checking_data.type_mappings,
 			types: checking_data.types,
 			module_contents: checking_data.modules.files,
 			modules: Default::default(),
 			diagnostics: checking_data.diagnostics_container,
+			top_level_information: Default::default(),
 		};
 	}
 
+	crate::utilities::notify!("--- Finished definition file ---");
+
 	for point in &entry_points {
-		let entry_content = (checking_data.modules.file_reader)(point);
-		if let Some(content) = entry_content {
-			let (source, module) = get_source(&mut checking_data, point, content);
+		// eprintln!("Trying to get {point} from {:?}", checking_data.modules.files.get_paths());
+		let entry_content = if let Some(source) =
+			checking_data.modules.files.get_source_at_path(point)
+		{
+			Some((source, checking_data.modules.files.get_file_content(source)))
+		} else if let Some(content) = checking_data.modules.file_reader.read_file(point) {
+			let content = String::from_utf8(content).expect("invalid entry point encoding");
+			let source = checking_data.modules.files.new_source_id(point.clone(), content.clone());
+			Some((source, content))
+		} else {
+			None
+		};
+
+		if let Some((source, content)) = entry_content {
+			let module = parse_source(point, source, content, &mut checking_data);
 
 			match module {
 				Ok(module) => {
@@ -455,14 +524,15 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
-				position: None,
+				import_position: None,
 			});
+			continue;
 		}
 	}
 
 	let CheckingData {
 		diagnostics_container,
-		type_mappings,
+		local_type_mappings: _,
 		modules,
 		options: _,
 		types,
@@ -470,24 +540,20 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	} = checking_data;
 
 	CheckOutput {
-		type_mappings,
 		types,
 		module_contents: modules.files,
 		modules: modules.synthesised_modules,
 		diagnostics: diagnostics_container,
+		top_level_information: root.info,
 	}
 }
 
-fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	checking_data: &mut CheckingData<T, A>,
+fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	path: &Path,
+	source: SourceId,
 	content: String,
-) -> (
-	SourceId,
-	Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError>,
-) {
-	let source = checking_data.modules.files.new_source_id(path.to_path_buf(), content.clone());
-
+	checking_data: &mut CheckingData<T, A>,
+) -> Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError> {
 	// TODO abstract using similar to import logic
 	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
 
@@ -497,14 +563,24 @@ fn get_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		checking_data.options.lsp_mode,
 	);
 
-	let module = A::module_from_string(
+	A::module_from_string(
 		source,
 		content,
 		parse_options,
 		&mut checking_data.modules.parser_requirements,
-	);
+	)
+}
 
-	(source, module)
+const CACHE_MARKER: &[u8] = b"ezno-cache-file";
+
+#[derive(binary_serialize_derive::BinarySerializable)]
+pub(crate) struct Cache {
+	pub(crate) variables: HashMap<String, features::variables::VariableOrImport>,
+	pub(crate) named_types: HashMap<String, TypeId>,
+	pub(crate) info: LocalInformation,
+	pub(crate) types: TypeStore,
+	// /// Retains position information
+	// pub(crate) content: String,
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -512,8 +588,13 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 	root: &mut RootContext,
 	checking_data: &mut CheckingData<T, A>,
 ) {
+	let length = type_definition_files.len();
 	for path in type_definition_files {
-		let Some((source_id, content)) = checking_data.modules.get_file(&path) else {
+		let file = if path == PathBuf::from(crate::INTERNAL_DEFINITION_FILE_PATH) {
+			File::Binary(crate::INTERNAL_DEFINITION_FILE.to_owned())
+		} else if let Some(file) = checking_data.modules.get_file(&path) {
+			file
+		} else {
 			checking_data.diagnostics_container.add_error(Diagnostic::Global {
 				reason: format!("could not find {}", path.display()),
 				kind: crate::DiagnosticKind::Error,
@@ -521,67 +602,204 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 			continue;
 		};
 
-		// TODO U::new_tdm_from_string
+		match file {
+			File::Binary(mut content) => {
+				crate::utilities::notify!("Using cache :)");
+				assert_eq!(length, 1, "only a single cache is current supported");
 
-		let result = A::definition_module_from_string(
-			source_id,
-			content,
-			&mut checking_data.modules.parser_requirements,
-		);
+				let vec = content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
+					.to_owned();
 
-		match result {
-			Ok(tdm) => {
-				let (names, facts) = A::synthesise_definition_file(tdm, root, checking_data);
-				root.variables.extend(names.variables);
-				root.named_types.extend(names.named_types);
-				root.variable_names.extend(names.variable_names);
+				let at_end =
+					<u32 as BinarySerializable>::deserialize(&mut vec.into_iter(), SourceId::NULL);
 
-				root.facts.extend(facts, None);
+				let source_id = {
+					// Get source and content which is at the end.
+					let mut drain = content
+						.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
+
+					// Okay as end
+					let (_source_id, path) =
+						<(SourceId, String) as BinarySerializable>::deserialize(
+							&mut drain,
+							SourceId::NULL,
+						);
+
+					let get_source_at_path =
+						checking_data.modules.files.get_source_at_path(Path::new(&path));
+
+					if let Some(source_id) = get_source_at_path {
+						eprintln!("reusing source id {source_id:?}");
+						source_id
+					} else {
+						// Collect from end
+						let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
+						checking_data.modules.files.new_source_id(path.into(), source_content)
+					}
+				};
+
+				let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
+
+				// TODO WIP
+				let Cache { variables, named_types, info, types } =
+					Cache::deserialize(&mut bytes, source_id);
+
+				root.variables = variables;
+				root.named_types = named_types;
+				root.info = info;
+				checking_data.types = types;
 			}
-			Err(err) => {
-				checking_data.diagnostics_container.add_error(err);
-				continue;
+			File::Source(source_id, content) => {
+				let result = A::definition_module_from_string(
+					source_id,
+					content,
+					&mut checking_data.modules.parser_requirements,
+				);
+
+				match result {
+					Ok(tdm) => {
+						let (names, info) =
+							A::synthesise_definition_file(tdm, source_id, root, checking_data);
+
+						root.variables.extend(names.variables);
+						root.named_types.extend(names.named_types);
+						root.variable_names.extend(names.variable_names);
+						root.info.extend(info, None);
+					}
+					Err(err) => {
+						checking_data.diagnostics_container.add_error(err);
+						continue;
+					}
+				}
 			}
 		}
 	}
 }
 
-pub trait TypeCombinable {
-	fn combine(
-		condition: TypeId,
-		truthy_result: Self,
-		else_result: Self,
-		types: &mut TypeStore,
-	) -> Self;
+const U32_BYTES: u32 = u32::BITS / u8::BITS;
 
-	fn default() -> Self;
+pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	on: &Path,
+	read: &T,
+	parser_requirements: A::ParserRequirements,
+) -> Vec<u8> {
+	let mut checking_data =
+		CheckingData::<T, A>::new(Default::default(), read, None, parser_requirements);
+
+	let mut root = crate::context::RootContext::new_with_primitive_references();
+
+	add_definition_files_to_root(
+		HashSet::from_iter([on.to_path_buf()]),
+		&mut root,
+		&mut checking_data,
+	);
+
+	assert!(
+		!checking_data.diagnostics_container.has_error(),
+		"found error in definition file {:#?}",
+		checking_data.diagnostics_container.get_diagnostics()
+	);
+
+	let mut buf = CACHE_MARKER.to_vec();
+
+	buf.extend_from_slice(&0_u32.to_le_bytes());
+
+	let cache = Cache {
+		variables: root.variables,
+		named_types: root.named_types,
+		info: root.info,
+		types: checking_data.types,
+	};
+	cache.serialize(&mut buf);
+
+	let cache_len: usize = buf.len() - CACHE_MARKER.len() - U32_BYTES as usize;
+	// Set length
+	buf[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
+		.copy_from_slice(&(cache_len as u32).to_le_bytes());
+
+	// TODO not great
+	let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else { panic!() };
+
+	let path = on.to_str().unwrap().to_owned();
+	(source, path).serialize(&mut buf);
+	buf.extend_from_slice(content.as_bytes());
+
+	buf
 }
 
-// For if-else branches
-impl TypeCombinable for () {
-	fn combine(
-		_condition: TypeId,
-		_truthy_result: Self,
-		_else_result: Self,
-		_types: &mut TypeStore,
-	) -> Self {
-	}
+/// Small map for 1-5 items
+/// Also should be rewindable
+#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+pub struct Map<K, V>(pub Vec<(K, V)>);
 
-	fn default() -> Self {}
-}
-
-// For ternary conditional operators
-impl TypeCombinable for TypeId {
-	fn combine(
-		condition: TypeId,
-		truthy_result: Self,
-		else_result: Self,
-		types: &mut TypeStore,
-	) -> Self {
-		types.new_conditional_type(condition, truthy_result, else_result)
-	}
-
+impl<K, V> Default for Map<K, V> {
 	fn default() -> Self {
-		TypeId::UNDEFINED_TYPE
+		Self(Default::default())
+	}
+}
+
+impl<K, V> Map<K, V>
+where
+	K: PartialEq,
+{
+	pub fn get(&self, want: &K) -> Option<&V> {
+		self.0.iter().rev().find_map(|(key, value)| (want == key).then_some(value))
+	}
+
+	pub fn get_mut(&mut self, want: &K) -> Option<&mut V> {
+		self.0.iter_mut().rev().find_map(|(key, value)| (want == key).then_some(value))
+	}
+
+	#[must_use]
+	pub fn iter(&self) -> impl ExactSizeIterator<Item = &(K, V)> {
+		self.0.iter()
+	}
+
+	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
+		self.0.iter_mut()
+	}
+
+	#[must_use]
+	pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
+		self.0.iter().map(|(_, v)| v)
+	}
+
+	/// *assumes `id` not already inside*
+	pub fn insert(&mut self, id: K, value: V) {
+		self.0.push((id, value));
+	}
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+	#[must_use]
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn drop_range(&mut self, range: std::ops::RangeFrom<usize>) {
+		self.0.drain(range);
+	}
+}
+
+impl<K, V> std::iter::IntoIterator for Map<K, V> {
+	type Item = (K, V);
+
+	type IntoIter = <Vec<(K, V)> as std::iter::IntoIterator>::IntoIter;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
+	}
+}
+
+impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
+	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+		Self(Vec::from_iter(iter))
+	}
+}
+
+impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
+	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+		self.0.extend(iter);
 	}
 }

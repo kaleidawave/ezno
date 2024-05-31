@@ -1,12 +1,13 @@
 //! Contains wrappers for AST with comments
 
-use super::{ASTNode, ParseError, Span, TSXToken, TokenReader};
-use crate::ParseOptions;
+use super::{ASTNode, Span, TSXToken, TokenReader};
+use crate::{ParseOptions, ParseResult};
 
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
-#[derive(Debug, Clone, Eq, Visitable)]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Visitable)]
 pub enum WithComment<T> {
 	None(T),
 	PrefixComment(String, T, Span),
@@ -94,7 +95,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
-	) -> Result<WithComment<T>, ParseError> {
+	) -> ParseResult<Self> {
 		if let Some(token) =
 			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
 		{
@@ -121,10 +122,10 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			Self::None(ast) => ast.get_position(),
-			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => position,
+			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => *position,
 		}
 	}
 
@@ -139,16 +140,40 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			Self::PrefixComment(comment, ast, _) => {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
-					buf.push_str_contains_new_line(comment.as_str());
-					buf.push_str("*/ ");
+					if options.pretty {
+						// Perform indent correction
+						// Have to use '\n' as `.lines` with it's handling of '\r'
+						for (idx, line) in comment.split('\n').enumerate() {
+							if idx > 0 {
+								buf.push_new_line();
+							}
+							options.add_indent(local.depth, buf);
+							buf.push_str(line.trim());
+						}
+					// buf.push_new_line();
+					} else {
+						buf.push_str_contains_new_line(comment.as_str());
+					}
+					buf.push_str("*/");
 				}
 				ast.to_string_from_buffer(buf, options, local);
 			}
 			Self::PostfixComment(ast, comment, _) => {
 				ast.to_string_from_buffer(buf, options, local);
 				if options.should_add_comment(comment.starts_with('*')) {
-					buf.push_str(" /*");
-					buf.push_str_contains_new_line(comment.as_str());
+					buf.push_str("/*");
+					if options.pretty {
+						// Perform indent correction
+						for (idx, line) in comment.split('\n').enumerate() {
+							if idx > 0 {
+								buf.push_new_line();
+							}
+							options.add_indent(local.depth, buf);
+							buf.push_str(line.trim());
+						}
+					} else {
+						buf.push_str_contains_new_line(comment.as_str());
+					}
 					buf.push_str("*/");
 				}
 			}

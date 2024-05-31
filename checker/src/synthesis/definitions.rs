@@ -1,120 +1,89 @@
-use parser::ASTNode;
+use parser::{
+	ASTNode, Declaration, Expression, ExpressionOrStatementPosition, Statement,
+	StatementOrDeclaration,
+};
+use source_map::SourceId;
 
 use crate::{
 	context::{Names, RootContext, VariableRegisterArguments},
+	diagnostics::TypeCheckWarning,
+	features::functions::synthesise_declare_statement_function,
 	synthesis::{
-		functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
+		classes::{register_statement_class_with_members, synthesise_class_declaration},
+		type_annotations::synthesise_type_annotation,
+		EznoParser,
 	},
-	Environment, Facts, TypeId,
+	types::InternalFunctionEffect,
+	Environment, LocalInformation, TypeId, VariableId,
 };
+
+const FUNCTION_REASSIGNMENT_CONSTANT: bool = true;
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
-	definition: parser::TypeDefinitionModule,
+	definition: parser::Module,
+	source: SourceId,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,
-) -> (Names, Facts) {
-	use std::collections::HashMap;
+) -> (Names, LocalInformation) {
+	use parser::declarations::{DeclareVariableDeclaration, TypeAlias};
 
-	use parser::{
-		declarations::{DeclareVariableDeclaration, TypeAlias},
-		TypeDeclaration, TypeDefinitionModuleDeclaration,
-	};
-
-	let mut idx_to_types = HashMap::new();
-	// TODO NULL
-	let source = source_map::Nullable::NULL;
-	let mut env = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
+	let mut environment = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 
 	// Hoisting names of interfaces, namespaces and types
-	// At some point with binaries could remove this pass
-	for statement in &definition.declarations {
+	for statement in &definition.items {
+		// TODO classes and exports
 		match statement {
-			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = env.new_interface(
-					&interface.on.name,
+			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
+				let ty = environment.register_interface(
+					interface.on.name.identifier.as_option_str().unwrap_or_default(),
 					interface.on.is_nominal,
 					interface.on.type_parameters.as_deref(),
 					interface.on.extends.as_deref(),
 					interface.on.position.with_source(source),
 					checking_data,
 				);
-				idx_to_types.insert(interface.on.position.start, ty);
+				checking_data
+					.local_type_mappings
+					.types_to_types
+					.push(interface.on.get_position(), ty);
 			}
-			TypeDefinitionModuleDeclaration::Class(_class) => {
-				todo!();
-				// (
-				// 	class.type_id,
-				// 	// env.register_type(&class.name, class.type_parameters.is_some(), None),
-				// 	env.register_type(Type::NamedRooted { name class.name.clone())),
-				// ),
+			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
+				let ty = environment.register_class::<EznoParser>(
+					class.on.name.as_option_str().unwrap_or_default(),
+					class.on.type_parameters.as_deref(),
+					class.on.extends.as_deref(),
+					&mut checking_data.types,
+				);
+				checking_data.local_type_mappings.types_to_types.push(class.on.get_position(), ty);
 			}
-			TypeDefinitionModuleDeclaration::TypeAlias(alias) => {
-				env.new_alias(
-					&alias.type_name.name,
-					alias.type_name.type_parameters.as_deref(),
-					&alias.type_expression,
-					*alias.get_position(),
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(alias)) => {
+				let ty = environment.new_alias(
+					alias.name.identifier.as_option_str().unwrap_or_default(),
+					alias.parameters.as_deref(),
+					&alias.references,
+					alias.get_position(),
 					checking_data,
 				);
+				checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
 			}
 			_ => {}
 		}
 	}
 
-	for declaration in definition.declarations {
+	for declaration in &definition.items {
+		// TODO more
 		match declaration {
-			TypeDefinitionModuleDeclaration::Function(func) => {
-				// TODO abstract
-				let declared_at = func.get_position().with_source(source);
-				let base = synthesise_function_annotation(
-					&func.type_parameters,
-					&func.parameters,
-					func.return_type.as_ref(),
-					&mut env,
-					checking_data,
-					func.performs.as_ref().into(),
-					&declared_at,
-					crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
-					None,
-				);
-
-				let base = checking_data.types.new_function_type_annotation(
-					base.type_parameters,
-					base.parameters,
-					base.return_type,
-					// TODO
-					&declared_at,
-					base.effects,
-					base.constant_function,
-				);
-
-				let _context = decorators_to_context(&func.decorators);
-
-				env.register_variable_handle_error(
-					func.name.as_str(),
-					VariableRegisterArguments {
-						constant: true,
-						space: None,
-						initial_value: Some(base),
-					},
-					func.get_position().with_source(source),
-					&mut checking_data.diagnostics_container,
-				);
-			}
-			TypeDefinitionModuleDeclaration::Variable(DeclareVariableDeclaration {
-				keyword: _,
-				declarations,
-				position: _,
-				decorators: _,
-			}) => {
-				for declaration in &declarations {
+			StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
+				DeclareVariableDeclaration { keyword: _, declarations, position: _, decorators: _ },
+			)) => {
+				for declaration in declarations {
 					// TODO is it ever `None`...?
 					let constraint = declaration.type_annotation.as_ref().map_or(
 						TypeId::ANY_TYPE,
 						|annotation| {
-							synthesise_type_annotation(annotation, &mut env, checking_data)
+							synthesise_type_annotation(annotation, &mut environment, checking_data)
 						},
 					);
 
@@ -123,152 +92,173 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					));
 					crate::synthesis::variables::register_variable(
 						declaration.name.get_ast_ref(),
-						&mut env,
+						&mut environment,
 						checking_data,
 						VariableRegisterArguments { constant: true, space: None, initial_value },
 					);
 				}
 			}
-			TypeDefinitionModuleDeclaration::Interface(interface) => {
-				let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
+			StatementOrDeclaration::Declaration(Declaration::Interface(interface)) => {
+				let ty = *checking_data
+					.local_type_mappings
+					.types_to_types
+					.get(interface.on.get_position().start)
+					.unwrap();
+
 				super::interfaces::synthesise_signatures(
 					interface.on.type_parameters.as_deref(),
+					interface.on.extends.as_deref(),
 					&interface.on.members,
 					super::interfaces::OnToType(ty),
-					&mut env,
+					&mut environment,
 					checking_data,
 				);
 			}
-			// TODO handle locals differently, (maybe squash ast as well)
-			TypeDefinitionModuleDeclaration::LocalTypeAlias(TypeAlias {
-				type_name,
-				type_expression: _,
-				..
-			})
-			| TypeDefinitionModuleDeclaration::TypeAlias(TypeAlias {
-				type_name,
-				type_expression: _,
-				..
-			}) => {
-				let TypeDeclaration { type_parameters, .. } = &type_name;
-
-				// To remove when implementing
-				#[allow(clippy::redundant_pattern_matching)]
-				if let Some(_) = type_parameters {
-					todo!()
-				// let ty = if let Some(type_parameters) = type_parameters {
-				//     let mut root = env.new_lexical_root();
-				//     let type_parameters = generic_type_parameters_from_generic_type_constraints(
-				//         type_parameters,
-				//         &mut env,
-				//         error_handler,
-				//         type_mappings,
-				//     );
-				//     let borrow = type_parameters.0.borrow();
-				//     for parameter in borrow.iter().cloned() {
-				//         env.declare_generic_type_parameter(parameter);
-				//     }
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// } else {
-				//     env.get_type(&type_expression, error_handler, type_mappings).unwrap()
-				// };
-				// todo!("This should have two passes with a empty type");
-				} else {
-					// todo!("Modify alias")
-					// let ty = env.get_type_handle_errors(&type_expression, checking_data);
-					// env.register_type(ty);
+			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
+				register_statement_class_with_members(&class.on, &mut environment, checking_data);
+			}
+			StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
+				name: _,
+				references: _,
+				parameters,
+				position: _,
+			})) => {
+				if let Some(_parameters) = parameters {
+					todo!("set parameters")
 				}
 			}
-			TypeDefinitionModuleDeclaration::Namespace(_) => unimplemented!(),
-			TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_) => {
-				unimplemented!()
+			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
+				crate::synthesis::variables::register_variable_identifier(
+					&function.on.name.identifier,
+					&mut environment,
+					checking_data,
+					VariableRegisterArguments {
+						constant: FUNCTION_REASSIGNMENT_CONSTANT,
+						space: None,
+						initial_value: None,
+					},
+				);
 			}
-			TypeDefinitionModuleDeclaration::Comment(_comment) => {}
-			TypeDefinitionModuleDeclaration::Class(_class) => {
-				todo!();
-				// let existing_type =
-				//     checking_data.type_mappings.get_type_declaration(&class.type_id).unwrap();
-				// if let Some(extends_type) = &class.extends {
-				//     let extending_type = root
-				//         .get_type(
-				//             extends_type,
-				//             checking_data,
-				//             &crate::root::GetTypeFromReferenceOptions::Default,
-				//         )
-				//         .expect("Class should have been initialised");
-				//     todo!();
-				//     // match existing_type {
-				//     //     TypeDeclaration::NonGenericType(ngt) => {
-				//     //         // *ngt.extends.borrow_mut() = ExtendsType::Single(extending_type);
-				//     //     }
-				//     //     TypeDeclaration::GenericType(gt) => {
-				//     //         // *gt.extends.borrow_mut() = ExtendsType::Single(extending_type);
-				//     //     }
-				//     //     TypeDeclaration::PrimitiveType(_) => unreachable!(),
-				//     // }
-				// }
-				// TODO parse members
-				// for member in class.
+			StatementOrDeclaration::Statement(
+				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
+			) => {}
+			item => {
+				crate::utilities::notify!("unknown {:?}", item);
+				checking_data.diagnostics_container.add_warning(
+					TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
+						item.get_position().with_source(environment.get_source()),
+					),
+				);
 			}
 		}
 	}
 
-	let Environment { named_types, facts, variable_names, variables, .. } = env;
-	(Names { variables, named_types, variable_names }, facts)
+	for declaration in definition.items {
+		match declaration {
+			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
+				let class_type =
+					synthesise_class_declaration(&class.on, &mut environment, checking_data);
+				let variable_id = VariableId(
+					environment.get_source(),
+					class.on.name.identifier.get_position().start,
+				);
+				environment.info.variable_current_value.insert(variable_id, class_type);
+			}
+			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
+				if !function.on.name.declare {
+					crate::utilities::notify!("TODO warning");
+				}
+
+				let variable_id = crate::VariableId(
+					environment.get_source(),
+					function.on.name.identifier.get_position().start,
+				);
+
+				let is_async = function.on.header.is_async();
+				let is_generator = function.on.header.is_generator();
+				let location = function.on.header.get_location().map(|location| match location {
+					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
+				});
+
+				let internal_marker = get_internal_function_effect_from_decorators(
+					&function.decorators,
+					function.on.name.as_option_str().unwrap(),
+					&environment,
+				);
+
+				synthesise_declare_statement_function(
+					variable_id,
+					// TODO
+					false,
+					is_async,
+					is_generator,
+					location,
+					internal_marker,
+					&function.on,
+					&mut environment,
+					checking_data,
+				);
+			}
+			_ => {}
+		}
+	}
+
+	let Environment { named_types, info, variable_names, variables, .. } = environment;
+	(Names { variables, named_types, variable_names }, info)
 }
 
-pub(crate) fn decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
-	decorators.iter().find_map(|dec| {
-		if dec.name.first() == Some(&"server".to_owned()) {
-			Some("server".to_owned())
-		} else if dec.name.first() == Some(&"client".to_owned()) {
-			Some("client".to_owned())
+pub(crate) fn get_internal_function_effect_from_decorators(
+	decorators: &[parser::Decorator],
+	function_name: &str,
+	environment: &Environment,
+) -> Option<InternalFunctionEffect> {
+	decorators.iter().find_map(|decorator| {
+		if decorator.name.len() == 1 {
+			let decorator_name = decorator.name.first().map(String::as_str)?;
+			if matches!(decorator_name, "Constant" | "InputOutput") {
+				let (identifier, may_throw) =
+					if let Some(arguments) = decorator.arguments.as_ref() {
+						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+							arguments.first()
+						{
+							identifier.clone()
+						} else {
+							panic!("first argument to constant or input output should be string literal");
+						};
+						let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
+							arguments.get(1)
+						{
+							Some(
+								environment
+									.get_type_from_name(identifier)
+									.expect("could not find thrown type"),
+							)
+						} else {
+							None
+						};
+						(identifier, may_throw)
+					} else {
+						(function_name.to_owned(), None)
+					};
+				Some(match decorator_name {
+					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
+					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
+					_ => unreachable!(),
+				})
+			} else {
+				crate::utilities::notify!("Unknown decorator {:?}", decorator_name);
+				None
+			}
 		} else {
 			None
 		}
 	})
 }
 
-#[cfg(feature = "declaration-synthesis")]
-pub fn definition_file_to_buffer<T: crate::ReadFromFS>(
-	handler: &T,
-	cwd: &std::path::Path,
-	file: &std::path::Path,
-) -> Result<Vec<u8>, String> {
-	// 	ModuleData::new_with_custom_module_resolvers(Default::default(), , cwd.to_owned());
-
-	let mut checking_data = crate::CheckingData::new(Default::default(), handler);
-
-	let definition_file = if let Some(source) = handler(file) {
-		let now = std::time::Instant::now();
-		let from_string = parser::TypeDefinitionModule::from_string(source, Default::default());
-
-		println!("Parsing {:?}", now.elapsed());
-		match from_string {
-			Ok((definition_file, _)) => definition_file,
-			Err(err) => {
-				return Err(format!("Error parsing {}, {:?}", file.display(), err));
-			}
-		}
-	} else {
-		return Err(format!("Could not find file {}", file.display()));
-	};
-
-	let now = std::time::Instant::now();
-	let env = type_definition_file(definition_file, &mut checking_data);
-	println!("Synthesis {:?}", now.elapsed());
-
-	if checking_data.diagnostics_container.has_error() {
-		todo!();
-	}
-
-	Ok(env.serialize())
+pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
+	decorators.iter().find_map(|dec| {
+		matches!(dec.name.first().map(String::as_str), Some("Server" | "Client"))
+			.then(|| dec.name.first().unwrap().to_owned())
+	})
 }
-
-// TODO temp
-// pub fn root_context_from_bytes(file: Vec<u8>) -> RootContext {
-// 	let now = std::time::Instant::now();
-// 	let ctx = RootContext::deserialize(file, source_map::source_map::Nullable::NULL).unwrap();
-// 	println!("From binary {:?}", now.elapsed());
-// 	ctx
-// }

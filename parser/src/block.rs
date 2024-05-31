@@ -6,20 +6,26 @@ use visitable_derive::Visitable;
 use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	expect_semi_colon,
+	derive_ASTNode, expect_semi_colon,
 	marker::MARKER,
 	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, TSXKeyword, VisitOptions,
 	Visitable,
 };
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[visit_self(under statement)]
+#[visit_self(under = statement)]
 pub enum StatementOrDeclaration {
 	Statement(Statement),
 	Declaration(Declaration),
+	/// For bundling,
+	Imported {
+		moved: Box<StatementOrDeclaration>,
+		/// from the import statement
+		originally: Span,
+		from: source_map::SourceId,
+	},
 	/// TODO under cfg
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(#[visit_skip_field] Marker<Statement>, Span),
@@ -27,9 +33,10 @@ pub enum StatementOrDeclaration {
 
 impl StatementOrDeclaration {
 	pub(crate) fn requires_semi_colon(&self) -> bool {
+		// TODO maybe more?
 		match self {
-			StatementOrDeclaration::Statement(stmt) => stmt.requires_semi_colon(),
-			StatementOrDeclaration::Declaration(dec) => matches!(
+			Self::Statement(stmt) => stmt.requires_semi_colon(),
+			Self::Declaration(dec) => matches!(
 				dec,
 				Declaration::Variable(..)
 					| Declaration::Export(Decorated {
@@ -41,19 +48,17 @@ impl StatementOrDeclaration {
 							},
 						..
 					}) | Declaration::Import(..)
+					| Declaration::TypeAlias(..)
 			),
+			Self::Imported { moved, .. } => moved.requires_semi_colon(),
 			Self::Marker(..) => false,
 		}
 	}
 }
 
 impl ASTNode for StatementOrDeclaration {
-	fn get_position(&self) -> &Span {
-		match self {
-			StatementOrDeclaration::Statement(item) => item.get_position(),
-			StatementOrDeclaration::Declaration(item) => item.get_position(),
-			StatementOrDeclaration::Marker(_, pos) => pos,
-		}
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 
 	fn from_reader(
@@ -103,17 +108,19 @@ impl ASTNode for StatementOrDeclaration {
 				item.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Marker(_, _) => {
-				panic!()
+				assert!(options.expect_markers, "Unexpected marker in AST");
+			}
+			StatementOrDeclaration::Imported { moved, from, originally: _ } => {
+				moved.to_string_from_buffer(buf, options, local.change_source(*from));
 			}
 		}
 	}
 }
 
 /// A "block" of braced statements and declarations
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
 impl Eq for Block {}
@@ -162,22 +169,26 @@ impl ASTNode for Block {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		buf.push('{');
-		if local.depth > 0 && options.pretty {
-			buf.push_new_line();
+		if options.pretty && self.0.is_empty() {
+			buf.push_str("{}");
+		} else {
+			buf.push('{');
+			if local.depth > 0 && options.pretty {
+				buf.push_new_line();
+			}
+			statements_and_declarations_to_string(&self.0, buf, options, local);
+			if options.pretty && !self.0.is_empty() {
+				buf.push_new_line();
+			}
+			if local.depth > 1 {
+				options.add_indent(local.depth - 1, buf);
+			}
+			buf.push('}');
 		}
-		statements_and_declarations_to_string(&self.0, buf, options, local);
-		if options.pretty && !self.0.is_empty() {
-			buf.push_new_line();
-		}
-		if local.depth > 1 {
-			options.add_indent(local.depth - 1, buf);
-		}
-		buf.push('}');
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.1
+	fn get_position(&self) -> Span {
+		self.1
 	}
 }
 
@@ -240,9 +251,8 @@ impl Visitable for Block {
 }
 
 /// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, Eq, EnumFrom)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, EnumFrom)]
+#[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
@@ -301,7 +311,7 @@ impl From<Statement> for BlockOrSingleStatement {
 }
 
 impl ASTNode for BlockOrSingleStatement {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			BlockOrSingleStatement::Braced(blk) => blk.get_position(),
 			BlockOrSingleStatement::SingleStatement(stmt) => stmt.get_position(),
@@ -318,7 +328,12 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					expect_semi_colon(reader, &state.line_starts, stmt.get_position().end)?;
+					let _ = expect_semi_colon(
+						reader,
+						&state.line_starts,
+						stmt.get_position().end,
+						false,
+					)?;
 				}
 				Box::new(stmt).into()
 			}
@@ -338,14 +353,16 @@ impl ASTNode for BlockOrSingleStatement {
 			BlockOrSingleStatement::Braced(block) => {
 				block.to_string_from_buffer(buf, options, local);
 			}
-			BlockOrSingleStatement::SingleStatement(stmt) => {
-				if options.pretty && !options.single_statement_on_new_line {
+			BlockOrSingleStatement::SingleStatement(statement) => {
+				if let Statement::Empty(..) = &**statement {
+					buf.push(';');
+				} else if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
 					options.push_gap_optionally(buf);
-					stmt.to_string_from_buffer(buf, options, local.next_level());
+					statement.to_string_from_buffer(buf, options, local.next_level());
 				} else {
-					stmt.to_string_from_buffer(buf, options, local);
-					if stmt.requires_semi_colon() {
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
 						buf.push(';');
 					}
 				}
@@ -366,14 +383,35 @@ pub(crate) fn parse_statements_and_declarations(
 			break;
 		}
 
-		let value = StatementOrDeclaration::from_reader(reader, state, options)?;
-		if value.requires_semi_colon() {
-			expect_semi_colon(reader, &state.line_starts, value.get_position().end)?;
+		let item = StatementOrDeclaration::from_reader(reader, state, options)?;
+		let requires_semi_colon = item.requires_semi_colon();
+		let end = item.get_position().end;
+
+		let blank_lines_after_statement = if requires_semi_colon {
+			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
+		} else if options.retain_blank_lines {
+			let Token(kind, next) = reader.peek().unwrap();
+			let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
+			if let TSXToken::EOS = kind {
+				lines
+			} else {
+				lines.saturating_sub(1)
+			}
 		} else {
-			// Skip over semi colons regardless
-			// reader.conditional_next(|t| matches!(t, TSXToken::SemiColon));
+			0
+		};
+
+		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
+			(items.is_empty(), &item)
+		{
+			continue;
 		}
-		items.push(value);
+		items.push(item);
+		for _ in 0..blank_lines_after_statement {
+			// TODO span
+			let span = Span { start: end, end, source: () };
+			items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+		}
 	}
 	Ok(items)
 }
@@ -391,6 +429,20 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			)) = item
 			{
 				continue;
+			}
+		}
+
+		if let (false, StatementOrDeclaration::Declaration(dec)) =
+			(options.include_type_annotations, item)
+		{
+			match dec {
+				Declaration::Function(item) if item.on.name.declare => {
+					continue;
+				}
+				Declaration::Class(item) if item.on.name.declare => {
+					continue;
+				}
+				_ => {}
 			}
 		}
 

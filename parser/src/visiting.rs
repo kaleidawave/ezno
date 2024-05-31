@@ -233,16 +233,16 @@ mod ast {
 		std::path::PathBuf,
 		source_map::Span,
 		crate::TypeAnnotation,
+		crate::types::Visibility,
 		crate::NumberRepresentation,
-		crate::operators::BinaryOperator,
-		crate::operators::BinaryAssignmentOperator,
-		crate::operators::UnaryOperator,
-		crate::operators::UnaryPrefixAssignmentOperator,
-		crate::operators::UnaryPostfixAssignmentOperator,
+		crate::expressions::operators::BinaryOperator,
+		crate::expressions::operators::BinaryAssignmentOperator,
+		crate::expressions::operators::UnaryOperator,
+		crate::expressions::operators::UnaryPrefixAssignmentOperator,
+		crate::expressions::operators::UnaryPostfixAssignmentOperator,
 		crate::types::InterfaceDeclaration,
 		crate::types::type_alias::TypeAlias,
-		crate::types::declares::DeclareFunctionDeclaration,
-		crate::types::declares::DeclareVariableDeclaration,
+		crate::types::declare_variable::DeclareVariableDeclaration,
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
@@ -250,7 +250,9 @@ mod ast {
 		crate::declarations::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::VariableKeyword
+		crate::VariableKeyword,
+		crate::types::namespace::Namespace,
+		source_map::SourceId
 	];
 }
 
@@ -258,7 +260,7 @@ mod ast {
 mod structures {
 	use crate::{
 		property_key::{AlwaysPublic, PublicOrPrivate},
-		Statement, VariableFieldInSourceCode, VariableIdentifier,
+		Statement, VariableField, VariableIdentifier,
 	};
 
 	use super::{
@@ -339,10 +341,8 @@ mod structures {
 		// TODO maybe WithComment on some of these
 		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableField>),
+		ObjectDestructuringMember(&'a WithComment<ObjectDestructuringField<VariableField>>),
 		ClassName(Option<&'a VariableIdentifier>),
 		FunctionName(Option<&'a VariableIdentifier>),
 		ClassPropertyKey(&'a PropertyKey<PublicOrPrivate>),
@@ -353,10 +353,8 @@ mod structures {
 	pub enum MutableVariableOrProperty<'a> {
 		VariableFieldName(&'a mut String),
 		// TODO these should maybe only be the spread variables
-		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableFieldInSourceCode>),
-		ObjectDestructuringMember(
-			&'a mut WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>,
-		),
+		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableField>),
+		ObjectDestructuringMember(&'a mut WithComment<ObjectDestructuringField<VariableField>>),
 		ClassName(Option<&'a mut VariableIdentifier>),
 		FunctionName(Option<&'a mut VariableIdentifier>),
 		ClassPropertyKey(&'a mut PropertyKey<PublicOrPrivate>),
@@ -368,20 +366,14 @@ mod structures {
 		pub fn get_variable_name(&self) -> Option<&'a str> {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
-				ImmutableVariableOrProperty::ArrayDestructuringMember(a) => match a {
-					ArrayDestructuringField::Spread(VariableIdentifier::Standard(a, _), _) => {
-						Some(a.as_str())
-					}
-					_ => None,
-				},
+				ImmutableVariableOrProperty::ArrayDestructuringMember(_) => None,
 				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
 					match o.get_ast_ref() {
-						ObjectDestructuringField::Spread(VariableIdentifier::Standard(a, _), _)
-						| ObjectDestructuringField::Name(
-							VariableIdentifier::Standard(a, _),
+						ObjectDestructuringField::Spread(
+							VariableField::Name(VariableIdentifier::Standard(a, _)),
 							_,
-							_,
-						) => Some(a.as_str()),
+						)
+						| ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => Some(a.as_str()),
 						_ => None,
 					}
 				}
@@ -415,15 +407,15 @@ mod structures {
 		}
 
 		#[must_use]
-		pub fn get_position(&self) -> &Span {
+		pub fn get_position(&self) -> Span {
 			use crate::ASTNode;
 			match self {
 				ImmutableVariableOrProperty::FunctionName(pos)
 				| ImmutableVariableOrProperty::ClassName(pos) => match pos {
 					Some(p) => p.get_position(),
-					None => &source_map::Nullable::NULL,
+					None => source_map::Nullable::NULL,
 				},
-				ImmutableVariableOrProperty::VariableFieldName(_, pos) => pos,
+				ImmutableVariableOrProperty::VariableFieldName(_, pos) => **pos,
 				ImmutableVariableOrProperty::ArrayDestructuringMember(m) => m.get_position(),
 				ImmutableVariableOrProperty::ObjectDestructuringMember(m) => m.get_position(),
 				ImmutableVariableOrProperty::ClassPropertyKey(k) => k.get_position(),

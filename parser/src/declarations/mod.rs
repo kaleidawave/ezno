@@ -5,9 +5,9 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error, extensions::decorators, throw_unexpected_token_with_token,
-	Decorated, Marker, ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition,
-	TSXKeyword, TSXToken, TypeDefinitionModuleDeclaration,
+	derive_ASTNode, errors::parse_lexing_error, extensions::decorators,
+	throw_unexpected_token_with_token, Decorated, Marker, ParseError, ParseErrors, ParseOptions,
+	Quoted, StatementPosition, TSXKeyword, TSXToken,
 };
 
 pub use self::{
@@ -18,13 +18,24 @@ pub use self::{
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const TYPES_STATEMENT_FUNCTION: &str = r"
+	export interface StatementFunction extends FunctionBase {
+		header: FunctionHeader,
+		parameters: FunctionParameters<ThisParameter | null, null>,
+		body: Block,
+		name: StatementPosition
+	}
+";
+
 pub mod classes;
 pub mod export;
 pub mod import;
 pub mod variable;
 
 pub use super::types::{
-	declares::*,
+	declare_variable::*,
 	enum_declaration::{EnumDeclaration, EnumMember},
 	interface::InterfaceDeclaration,
 	type_alias::TypeAlias,
@@ -32,13 +43,12 @@ pub use super::types::{
 pub use classes::ClassDeclaration;
 pub use import::{ImportDeclaration, ImportExportName, ImportPart};
 
+#[apply(derive_ASTNode)]
 #[derive(
 	Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEq, get_field_by_type::GetFieldByType,
 )]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Declaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),
@@ -48,9 +58,8 @@ pub enum Declaration {
 	TypeAlias(TypeAlias),
 	// Special TS only
 	DeclareVariable(DeclareVariableDeclaration),
-	DeclareFunction(DeclareFunctionDeclaration),
-	#[from_ignore]
-	DeclareInterface(InterfaceDeclaration),
+	#[cfg(feature = "full-typescript")]
+	Namespace(crate::types::namespace::Namespace),
 	// Top level only
 	Import(ImportDeclaration),
 	Export(Decorated<ExportDeclaration>),
@@ -64,49 +73,74 @@ impl Declaration {
 		options: &ParseOptions,
 	) -> bool {
 		let Some(Token(token, _)) = reader.peek() else { return false };
+
 		let result = matches!(
 			token,
 			TSXToken::Keyword(
 				TSXKeyword::Let
 					| TSXKeyword::Const | TSXKeyword::Function
-					| TSXKeyword::Class | TSXKeyword::Import
-					| TSXKeyword::Export
+					| TSXKeyword::Class | TSXKeyword::Export
 			) | TSXToken::At,
 		);
 
 		#[cfg(feature = "extras")]
 		return result
 			|| matches!(token, TSXToken::Keyword(kw) if options.custom_function_headers && kw.is_special_function_header())
+			|| (matches!(token, TSXToken::Keyword(TSXKeyword::Namespace) if cfg!(feature = "full-typescript")))
 			|| {
 				let TSXToken::Keyword(token) = *token else { return false };
 				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
 
-				matches!(
-					token,
-					TSXKeyword::Declare | TSXKeyword::Interface
-					if options.type_annotations
-				) || matches!(
-					(token, after),
-					(TSXKeyword::From, TSXToken::StringLiteral(..))
-						| (TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function))
-				) || matches!(
-					(token, after),
-					(TSXKeyword::Async, TSXToken::Keyword(kw)) if options.custom_function_headers && kw.is_special_function_header()
-				)
+				#[allow(clippy::match_same_arms)]
+				match (token, after) {
+					// For dynamic import
+					(
+						TSXKeyword::Import,
+						TSXToken::OpenBrace
+						| TSXToken::Keyword(..)
+						| TSXToken::Identifier(..)
+						| TSXToken::StringLiteral(..)
+						| TSXToken::Multiply,
+					) => true,
+					(TSXKeyword::Declare | TSXKeyword::Interface, _) => options.type_annotations,
+					(TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function)) => true,
+					(TSXKeyword::Async, TSXToken::Keyword(kw)) => {
+						options.custom_function_headers && kw.is_special_function_header()
+					}
+					// Extra
+					(TSXKeyword::From, TSXToken::StringLiteral(..)) => true,
+					(..) => false,
+				}
 			};
 
 		#[cfg(not(feature = "extras"))]
-		return result;
+		return result || {
+			let TSXToken::Keyword(token) = *token else { return false };
+
+			// For dynamic import
+			matches!(token, TSXKeyword::Import)
+				&& matches!(
+					reader.peek_n(1),
+					Some(Token(
+						TSXToken::OpenBrace
+							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
+							| TSXToken::StringLiteral(..)
+							| TSXToken::Multiply,
+						_
+					))
+				)
+		};
 	}
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum ImportLocation {
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(Marker<Self>),
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
+	),
 }
 
 impl ImportLocation {
@@ -222,10 +256,6 @@ impl crate::ASTNode for Declaration {
 			TSXToken::Keyword(TSXKeyword::Import) => {
 				ImportDeclaration::from_reader(reader, state, options).map(Into::into)
 			}
-			#[cfg(feature = "extras")]
-			TSXToken::Keyword(TSXKeyword::From) => {
-				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
-			}
 			TSXToken::Keyword(TSXKeyword::Interface) if options.type_annotations => {
 				InterfaceDeclaration::from_reader(reader, state, options)
 					.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
@@ -235,34 +265,58 @@ impl crate::ASTNode for Declaration {
 			}
 			TSXToken::Keyword(TSXKeyword::Declare) if options.type_annotations => {
 				let Token(_, start) = reader.next().unwrap();
-				crate::modules::parse_declare_item(reader, state, options, decorators, start)
-					.and_then(|ty_def_mod_stmt| match ty_def_mod_stmt {
-						TypeDefinitionModuleDeclaration::Variable(declare_var) => {
-							Ok(Declaration::DeclareVariable(declare_var))
-						}
-						TypeDefinitionModuleDeclaration::Function(declare_func) => {
-							Ok(Declaration::DeclareFunction(declare_func))
-						}
-						TypeDefinitionModuleDeclaration::Class(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("class"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::Interface(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("interface"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::TypeAlias(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("type alias"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::Namespace(item) => Err(ParseError::new(
-							ParseErrors::InvalidDeclareItem("namespace"),
-							*item.get_position(),
-						)),
-						TypeDefinitionModuleDeclaration::LocalTypeAlias(_)
-						| TypeDefinitionModuleDeclaration::LocalVariableDeclaration(_)
-						| TypeDefinitionModuleDeclaration::Comment(_) => unreachable!(),
-					})
+				match reader.peek().ok_or_else(parse_lexing_error)?.0 {
+					TSXToken::Keyword(TSXKeyword::Let | TSXKeyword::Const | TSXKeyword::Var) => {
+						DeclareVariableDeclaration::from_reader_sub_declare(
+							reader,
+							state,
+							options,
+							Some(start),
+							decorators,
+						)
+						.map(Into::into)
+					}
+					TSXToken::Keyword(TSXKeyword::Class) => {
+						let mut class = ClassDeclaration::<StatementPosition>::from_reader(
+							reader, state, options,
+						)?;
+						class.name.declare = true;
+						class.position.start = start.0;
+						Ok(Declaration::Class(Decorated::new(decorators, class)))
+					}
+					TSXToken::Keyword(TSXKeyword::Function) => {
+						let mut function = StatementFunction::from_reader(reader, state, options)?;
+						function.name.declare = true;
+						function.position.start = start.0;
+						Ok(Declaration::Function(Decorated::new(decorators, function)))
+					}
+					TSXToken::Keyword(TSXKeyword::Type) => {
+						let mut alias = TypeAlias::from_reader(reader, state, options)?;
+						alias.name.declare = true;
+						alias.position.start = start.0;
+						Ok(Declaration::TypeAlias(alias))
+					}
+					_ => throw_unexpected_token_with_token(
+						reader.next().ok_or_else(parse_lexing_error)?,
+						&[
+							TSXToken::Keyword(TSXKeyword::Let),
+							TSXToken::Keyword(TSXKeyword::Const),
+							TSXToken::Keyword(TSXKeyword::Var),
+							TSXToken::Keyword(TSXKeyword::Function),
+							TSXToken::Keyword(TSXKeyword::Class),
+							TSXToken::Keyword(TSXKeyword::Type),
+						],
+					),
+				}
+			}
+			#[cfg(feature = "extras")]
+			TSXToken::Keyword(TSXKeyword::From) => {
+				ImportDeclaration::reversed_from_reader(reader, state, options).map(Into::into)
+			}
+			#[cfg(feature = "full-typescript")]
+			TSXToken::Keyword(TSXKeyword::Namespace) => {
+				crate::types::namespace::Namespace::from_reader(reader, state, options)
+					.map(Into::into)
 			}
 			_ => throw_unexpected_token_with_token(
 				reader.next().ok_or_else(parse_lexing_error)?,
@@ -291,25 +345,21 @@ impl crate::ASTNode for Declaration {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
 			Declaration::Variable(var) => var.to_string_from_buffer(buf, options, local),
 			Declaration::Class(cls) => cls.to_string_from_buffer(buf, options, local),
 			Declaration::Import(is) => is.to_string_from_buffer(buf, options, local),
 			Declaration::Export(es) => es.to_string_from_buffer(buf, options, local),
+			Declaration::Function(f) => f.to_string_from_buffer(buf, options, local),
 			Declaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			Declaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
 			Declaration::Enum(r#enum) => r#enum.to_string_from_buffer(buf, options, local),
-			// TODO should skip these under no types
-			Declaration::DeclareFunction(dfd) => dfd.to_string_from_buffer(buf, options, local),
 			Declaration::DeclareVariable(dvd) => dvd.to_string_from_buffer(buf, options, local),
-			Declaration::DeclareInterface(did) => {
-				buf.push_str("declare ");
-				did.to_string_from_buffer(buf, options, local);
-			}
+			#[cfg(feature = "full-typescript")]
+			Declaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
 		}
 	}
 
-	fn get_position(&self) -> &source_map::Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }

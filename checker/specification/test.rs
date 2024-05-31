@@ -2,7 +2,8 @@
 use std::{
 	collections::HashSet,
 	panic,
-	path::PathBuf,
+	path::{Path, PathBuf},
+	process,
 	sync::{Arc, Mutex},
 };
 
@@ -22,6 +23,10 @@ mod specification {
 // 	panic::set_hook(prev_hook);
 // 	result
 // }
+
+// TODO under cfg
+// const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+const SIMPLE_DTS: Option<&str> = None;
 
 /// Called by each test
 fn check_errors(
@@ -47,28 +52,39 @@ fn check_errors(
 	// });
 
 	// TODO could test these
-	let type_check_options = None;
+	let type_check_options = Default::default();
 
 	// eprintln!("{:?}", code);
 
 	// let result = panic::catch_unwind(|| {
+	eprintln!("{:?}", std::env::current_dir());
+	let definition_file_name: PathBuf = if SIMPLE_DTS.is_some() {
+		"./checker/definitions/simple.d.ts".into()
+	} else {
+		checker::INTERNAL_DEFINITION_FILE_PATH.into()
+	};
+	let type_definition_files = std::iter::once(definition_file_name.clone()).collect();
+
 	let result = checker::check_project::<_, EznoParser>(
-		vec![PathBuf::from("main.ts")],
-		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect(),
-		|path| {
-			if path == std::path::Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-				Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+		vec![PathBuf::from("main.tsx")],
+		type_definition_files,
+		|path: &Path| -> Option<Vec<u8>> {
+			if path == definition_file_name.as_path() {
+				Some(SIMPLE_DTS.unwrap().to_owned().into_bytes())
 			} else if code.len() == 1 {
-				Some(code[0].1.to_owned())
+				Some(code[0].1.to_owned().into())
 			} else {
-				code.iter().find_map(|(code_path, content)| {
-					(std::path::Path::new(code_path) == path)
-						.then_some(content.to_owned().to_owned())
-				})
+				code.iter()
+					.find_map(|(code_path, content)| {
+						(std::path::Path::new(code_path) == path)
+							.then_some(content.to_owned().to_owned())
+					})
+					.map(Into::into)
 			}
 		},
 		type_check_options,
 		(),
+		None,
 	);
 	// });
 

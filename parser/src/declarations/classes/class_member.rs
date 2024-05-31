@@ -1,29 +1,40 @@
 use std::fmt::Debug;
 
 use crate::{
-	errors::parse_lexing_error, functions::HeadingAndPosition, property_key::PublicOrPrivate,
+	derive_ASTNode,
+	errors::parse_lexing_error,
+	functions::{
+		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
+		ThisParameter,
+	},
+	property_key::PublicOrPrivate,
+	tokens::token_as_identifier,
 	visiting::Visitable,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
+	TSXToken, TypeAnnotation, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
-use crate::{
-	functions::{FunctionBased, MethodHeader},
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
-	TSXToken, TypeAnnotation, WithComment,
-};
-
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsStatic = bool;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum ClassMember {
 	Constructor(ClassConstructor),
 	Method(IsStatic, ClassFunction),
 	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
+	/// Really for interfaces but here
+	Indexer {
+		name: String,
+		indexer_type: TypeAnnotation,
+		return_type: TypeAnnotation,
+		is_readonly: bool,
+		position: Span,
+	},
 	Comment(String, bool, Span),
 }
 
@@ -35,11 +46,11 @@ pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
+	pub is_optional: bool,
 	pub key: WithComment<PropertyKey<PublicOrPrivate>>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub value: Option<Box<Expression>>,
@@ -47,13 +58,13 @@ pub struct ClassProperty {
 }
 
 impl ASTNode for ClassMember {
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
 			Self::Constructor(cst) => cst.get_position(),
 			Self::Method(_, mtd) => mtd.get_position(),
-			Self::Property(_, prop) => &prop.position,
+			Self::Property(_, prop) => prop.position,
 			Self::StaticBlock(blk) => blk.get_position(),
-			Self::Comment(.., pos) => pos,
+			Self::Indexer { position: pos, .. } | Self::Comment(.., pos) => *pos,
 		}
 	}
 
@@ -84,13 +95,37 @@ impl ASTNode for ClassMember {
 
 		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
+		if let Some(Token(TSXToken::OpenBracket, _)) = reader.peek() {
+			if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(2) {
+				let Token(_, start) = reader.next().unwrap();
+				let (name, _) = token_as_identifier(
+					reader.next().ok_or_else(parse_lexing_error)?,
+					"class indexer",
+				)?;
+				reader.expect_next(TSXToken::Colon)?;
+				let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
+				reader.expect_next(TSXToken::CloseBracket)?;
+				reader.expect_next(TSXToken::Colon)?;
+				let return_type = TypeAnnotation::from_reader(reader, state, options)?;
+				return Ok(ClassMember::Indexer {
+					name,
+					is_readonly: readonly_position.is_some(),
+					indexer_type,
+					position: start.union(return_type.get_position()),
+					return_type,
+				});
+			}
+		}
+
 		// TODO not great
 		let start = reader.peek().unwrap().1;
 
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
 		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses, _)) if readonly_position.is_none() => {
+			Some(Token(TSXToken::OpenParentheses | TSXToken::OpenChevron, _))
+				if readonly_position.is_none() =>
+			{
 				let function = ClassFunction::from_reader_with_config(
 					reader,
 					state,
@@ -104,13 +139,15 @@ impl ASTNode for ClassMember {
 				if !header.is_no_modifiers() {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
-				let member_type: Option<TypeAnnotation> = if let TSXToken::Colon = token {
-					reader.next();
-					let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-					Some(type_annotation)
-				} else {
-					None
-				};
+				let (member_type, is_optional) =
+					if let TSXToken::Colon | TSXToken::OptionalMember = token {
+						let is_optional = matches!(token, TSXToken::OptionalMember);
+						reader.next();
+						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+						(Some(type_annotation), is_optional)
+					} else {
+						(None, false)
+					};
 				let member_expression: Option<Expression> =
 					if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
 						reader.next();
@@ -123,7 +160,8 @@ impl ASTNode for ClassMember {
 					is_static,
 					ClassProperty {
 						is_readonly: readonly_position.is_some(),
-						position: *key.get_position(),
+						is_optional,
+						position: key.get_position(),
 						key,
 						type_annotation: member_type,
 						value: member_expression.map(Box::new),
@@ -143,7 +181,14 @@ impl ASTNode for ClassMember {
 		match self {
 			Self::Property(
 				is_static,
-				ClassProperty { is_readonly, key, type_annotation, value, position: _ },
+				ClassProperty {
+					is_readonly,
+					is_optional: _,
+					key,
+					type_annotation,
+					value,
+					position: _,
+				},
 			) => {
 				if *is_static {
 					buf.push_str("static ");
@@ -152,7 +197,9 @@ impl ASTNode for ClassMember {
 					buf.push_str("readonly ");
 				}
 				key.to_string_from_buffer(buf, options, local);
-				if let (true, Some(type_annotation)) = (options.include_types, type_annotation) {
+				if let (true, Some(type_annotation)) =
+					(options.include_type_annotations, type_annotation)
+				{
 					buf.push_str(": ");
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
@@ -187,6 +234,16 @@ impl ASTNode for ClassMember {
 					}
 				}
 			}
+			Self::Indexer { name, indexer_type, return_type, is_readonly: _, position: _ } => {
+				if options.include_type_annotations {
+					buf.push('[');
+					buf.push_str(name);
+					buf.push_str(": ");
+					indexer_type.to_string_from_buffer(buf, options, local);
+					buf.push_str("]: ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
 		}
 	}
 }
@@ -210,9 +267,15 @@ impl ClassFunction {
 }
 
 impl FunctionBased for ClassFunctionBase {
-	type Body = Block;
 	type Header = MethodHeader;
 	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = ();
+	type Body = FunctionBody;
+
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
@@ -270,11 +333,17 @@ impl FunctionBased for ClassFunctionBase {
 impl FunctionBased for ClassConstructorBase {
 	type Header = ();
 	type Name = ();
-	type Body = Block;
+	type Body = FunctionBody;
+	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
+	type ParameterVisibility = Option<crate::types::Visibility>;
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
+
+	fn has_body(body: &Self::Body) -> bool {
+		body.0.is_some()
+	}
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -317,3 +386,19 @@ impl FunctionBased for ClassConstructorBase {
 		None
 	}
 }
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const CLASS_CONSTRUCTOR_AND_FUNCTION_TYPES: &str = r"
+	export interface ClassConstructor extends FunctionBase {
+		body: FunctionBody,
+		parameters: FunctionParameters<[ThisParameter | null, SuperParameter | null], Visibility>,
+	}
+
+	export interface ClassFunction extends FunctionBase {
+		header: MethodHeader,
+		name: WithComment<PropertyKey<PublicOrPrivate>>
+		parameters: FunctionParameters<ThisParameter | null, null>,
+		body: FunctionBody,
+	}
+";

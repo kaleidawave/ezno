@@ -5,7 +5,7 @@ use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode};
 use parser::{Expression, Module, Statement};
 
-use crate::error_handling::emit_ezno_diagnostic;
+use crate::reporting::emit_diagnostics;
 use crate::utilities::print_to_cli;
 
 /// Run project repl using deno. (`deno` command must be in path)
@@ -21,15 +21,13 @@ pub(crate) struct ReplArguments {
 }
 
 #[allow(unused)]
-fn file_system_resolver(path: &Path) -> Option<String> {
+fn file_system_resolver(path: &Path) -> Option<Vec<u8>> {
 	// Cheaty
 	if path.to_str() == Some("BLANK") {
-		Some(String::new())
-	} else if path == Path::new(checker::INTERNAL_DEFINITION_FILE_PATH) {
-		Some(checker::INTERNAL_DEFINITION_FILE.to_owned())
+		Some(Vec::new())
 	} else {
 		match fs::read_to_string(path) {
-			Ok(source) => Some(source),
+			Ok(source) => Some(source.into()),
 			Err(_) => None,
 		}
 	}
@@ -52,9 +50,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 	let mut state = match state {
 		Ok(state) => state,
 		Err((diagnostics, fs)) => {
-			for diagnostic in diagnostics {
-				emit_ezno_diagnostic(diagnostic, &fs).unwrap();
-			}
+			emit_diagnostics(diagnostics, &fs, false).unwrap();
 			return;
 		}
 	};
@@ -82,7 +78,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let result = if input.trim_start().starts_with('{') {
 			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
 				Module {
-					span: *expression.get_position(),
+					span: expression.get_position(),
 					items: vec![Statement::Expression(expression.into()).into()],
 				}
 			})
@@ -93,7 +89,8 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_ezno_diagnostic((err, source).into(), state.get_fs_ref()).unwrap();
+				emit_diagnostics(std::iter::once((err, source).into()), state.get_fs_ref(), false)
+					.unwrap();
 				continue;
 			}
 		};
@@ -114,17 +111,13 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 
 		match result {
 			Ok((last_ty, diagnostics)) => {
-				for diagnostic in diagnostics {
-					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
-				}
+				emit_diagnostics(diagnostics, state.get_fs_ref(), false).unwrap();
 				if let Some(last_ty) = last_ty {
 					println!("{last_ty}");
 				}
 			}
 			Err(diagnostics) => {
-				for diagnostic in diagnostics {
-					emit_ezno_diagnostic(diagnostic, state.get_fs_ref()).unwrap();
-				}
+				emit_diagnostics(diagnostics, state.get_fs_ref(), false).unwrap();
 			}
 		}
 	}

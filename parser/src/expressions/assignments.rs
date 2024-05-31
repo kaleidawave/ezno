@@ -1,4 +1,7 @@
-use crate::{PropertyReference, TSXToken};
+use crate::{
+	ast::{object_literal::ObjectLiteralMember, FunctionArgument},
+	derive_ASTNode, PropertyKey, PropertyReference, TSXToken,
+};
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -8,16 +11,15 @@ use visitable_derive::Visitable;
 
 use crate::{
 	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, VariableFieldInSourceCode, WithComment,
+	ParseResult, WithComment,
 };
 
 use super::MultipleExpression;
 
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -34,8 +36,8 @@ pub enum VariableOrPropertyAccess {
 }
 
 impl ASTNode for VariableOrPropertyAccess {
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 
 	fn from_reader(
@@ -57,7 +59,16 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push_str(name);
 			}
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
-				parent.to_string_from_buffer(buf, options, local);
+				if let Expression::NumberLiteral(..)
+				| Expression::ObjectLiteral(..)
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesized()
+				{
+					buf.push('(');
+					parent.to_string_from_buffer(buf, options, local);
+					buf.push(')');
+				} else {
+					parent.to_string_from_buffer(buf, options, local);
+				}
 				buf.push('.');
 				if let PropertyReference::Standard { property, is_private } = property {
 					if *is_private {
@@ -114,13 +125,13 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 				} else {
 					Err(ParseError::new(
 						crate::ParseErrors::InvalidLHSAssignment,
-						*inner.get_position(),
+						inner.get_position(),
 					))
 				}
 			}
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
-				*expression.get_position(),
+				expression.get_position(),
 			)),
 		}
 	}
@@ -161,38 +172,44 @@ impl VariableOrPropertyAccess {
 	}
 }
 
-/// TODO should be different from `VariableFieldInSourceCode` here
 /// TODO visitable is current skipped...
-/// TODO marker
+///
+/// Includes [Destructuring assignment](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
-	ObjectDestructuring(
-		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
-	ArrayDestructuring(
-		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<VariableFieldInSourceCode>>>,
-		Span,
-	),
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
+	ArrayDestructuring(
+		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
+		Span,
+	),
+	ObjectDestructuring(
+		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
+		Span,
+	),
 }
 
-impl LHSOfAssignment {
-	#[must_use]
-	pub fn get_position(&self) -> &Span {
+impl ASTNode for LHSOfAssignment {
+	fn get_position(&self) -> Span {
 		match self {
 			LHSOfAssignment::ObjectDestructuring(_, pos)
-			| LHSOfAssignment::ArrayDestructuring(_, pos) => pos,
+			| LHSOfAssignment::ArrayDestructuring(_, pos) => *pos,
 			LHSOfAssignment::VariableOrPropertyAccess(var_prop_access) => {
 				var_prop_access.get_position()
 			}
 		}
 	}
 
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
+	fn from_reader(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &crate::ParseOptions,
+	) -> ParseResult<Self> {
+		Expression::from_reader(reader, state, options).and_then(TryInto::try_into)
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
@@ -216,8 +233,9 @@ impl LHSOfAssignment {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
-					if !at_end || matches!(member.get_ast_ref(), ArrayDestructuringField::None) {
+					if !at_end {
 						buf.push(',');
+						options.push_gap_optionally(buf);
 					}
 				}
 				buf.push(']');
@@ -225,6 +243,110 @@ impl LHSOfAssignment {
 			LHSOfAssignment::VariableOrPropertyAccess(variable_or_property_access) => {
 				variable_or_property_access.to_string_from_buffer(buf, options, local);
 			}
+		}
+	}
+}
+
+impl TryFrom<Expression> for LHSOfAssignment {
+	type Error = ParseError;
+
+	fn try_from(value: Expression) -> Result<Self, Self::Error> {
+		match value {
+			Expression::ArrayLiteral(inner, position) => {
+				let mut members = Vec::with_capacity(inner.len());
+				for member in inner {
+					let new_member = match member.0 {
+						Some(FunctionArgument::Comment { content, is_multiline: _, position }) => {
+							WithComment::PrefixComment(
+								content,
+								ArrayDestructuringField::None,
+								position,
+							)
+						}
+						Some(FunctionArgument::Spread(expression, span)) => {
+							let lhs: LHSOfAssignment = expression.try_into()?;
+							WithComment::None(ArrayDestructuringField::Spread(lhs, span))
+						}
+						Some(FunctionArgument::Standard(expression)) => {
+							WithComment::None(match expression {
+								Expression::Assignment { lhs, rhs, position: _ } => {
+									ArrayDestructuringField::Name(lhs, (), Some(rhs))
+								}
+								expression => {
+									ArrayDestructuringField::Name(expression.try_into()?, (), None)
+								}
+							})
+						}
+						None => WithComment::None(ArrayDestructuringField::None),
+					};
+					members.push(new_member);
+				}
+				Ok(Self::ArrayDestructuring(members, position))
+			}
+			Expression::ObjectLiteral(inner) => {
+				let mut members = Vec::with_capacity(inner.members.len());
+				for member in inner.members {
+					let new_member: ObjectDestructuringField<LHSOfAssignment> = match member {
+						ObjectLiteralMember::Spread(expression, pos) => {
+							ObjectDestructuringField::Spread(expression.try_into()?, pos)
+						}
+						ObjectLiteralMember::Shorthand(name, pos) => {
+							ObjectDestructuringField::Name(
+								crate::VariableIdentifier::Standard(name, pos),
+								(),
+								None,
+								pos,
+							)
+						}
+						ObjectLiteralMember::Property { assignment, key, position, value } => {
+							if assignment {
+								if let PropertyKey::Ident(name, pos, _) = key.get_ast() {
+									ObjectDestructuringField::Name(
+										crate::VariableIdentifier::Standard(name, pos),
+										(),
+										Some(Box::new(value)),
+										pos,
+									)
+								} else {
+									return Err(ParseError::new(
+										crate::ParseErrors::InvalidLHSAssignment,
+										position,
+									));
+								}
+							} else {
+								let (name, default_value) =
+									if let Expression::Assignment { lhs, rhs, position: _ } = value
+									{
+										(lhs, Some(rhs))
+									} else {
+										(value.try_into()?, None)
+									};
+
+								ObjectDestructuringField::Map {
+									from: key.get_ast(),
+									annotation: (),
+									name: WithComment::None(name),
+									default_value,
+									position,
+								}
+							}
+						}
+						ObjectLiteralMember::Method(_) => {
+							return Err(ParseError::new(
+								crate::ParseErrors::InvalidLHSAssignment,
+								inner.position,
+							))
+						}
+						ObjectLiteralMember::Comment(..) => {
+							continue;
+						}
+					};
+					members.push(WithComment::None(new_member));
+				}
+				Ok(Self::ObjectDestructuring(members, inner.position))
+			}
+			expression => VariableOrPropertyAccess::try_from(expression)
+				.map(LHSOfAssignment::VariableOrPropertyAccess),
 		}
 	}
 }

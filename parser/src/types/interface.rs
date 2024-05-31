@@ -1,25 +1,26 @@
 use crate::{
-	errors::parse_lexing_error, extensions::decorators::Decorated, functions::MethodHeader,
-	parse_bracketed, property_key::PublicOrPrivate, throw_unexpected_token_with_token,
-	to_string_bracketed, tokens::token_as_identifier,
+	derive_ASTNode, errors::parse_lexing_error, extensions::decorators::Decorated,
+	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
+	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	GenericTypeConstraint, NumberRepresentation, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXKeyword, TSXToken, TypeAnnotation, TypeDeclaration, WithComment,
+	ExpressionOrStatementPosition, NumberRepresentation, ParseErrors, ParseOptions, ParseResult,
+	PropertyKey, Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
+	WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
-#[derive(Debug, Clone, PartialEq, Eq, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct InterfaceDeclaration {
-	pub name: String,
+	pub is_declare: bool,
+	pub name: StatementPosition,
 	#[cfg(feature = "extras")]
 	pub is_nominal: bool,
-	pub type_parameters: Option<Vec<GenericTypeConstraint>>,
+	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
 	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
@@ -27,22 +28,12 @@ pub struct InterfaceDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum Optionality {
 	Default,
 	Optional,
 	// Will make existing optional fields required, whereas default does not change status
 	Required,
-}
-
-// Used around type aliases for inline rule thingies
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum TypeRule {
-	In,
-	InKeyOf,
 }
 
 impl ASTNode for InterfaceDeclaration {
@@ -58,32 +49,33 @@ impl ASTNode for InterfaceDeclaration {
 			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
 			.is_some();
 
-		// if let Some(Token(TSXToken::Keyword(TSXKeyword::Nominal), _)) = reader.peek() {
-		// 	Some((reader.next().unwrap().1))
-		// } else {
-		// 	None
-		// };
+		let name = StatementPosition::from_reader(reader, state, options)?;
+		let type_parameters = reader
+			.conditional_next(|token| *token == TSXToken::OpenChevron)
+			.is_some()
+			.then(|| {
+				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
+					.map(|(params, _)| params)
+			})
+			.transpose()?;
 
-		let TypeDeclaration { name, type_parameters, .. } =
-			TypeDeclaration::from_reader(reader, state, options)?;
-
-		let extends = if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek()
+		let extends = if reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
+			.is_some()
 		{
-			reader.next();
 			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 			let mut extends = vec![type_annotation];
-			if matches!(reader.peek(), Some(Token(TSXToken::Comma, _))) {
-				reader.next();
+			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
 				loop {
 					extends.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::Comma, _) => {
+					match reader.peek() {
+						Some(Token(TSXToken::Comma, _)) => {
 							reader.next();
 						}
-						Token(TSXToken::OpenBrace, _) => break,
-						token => {
+						Some(Token(TSXToken::OpenBrace, _)) | None => break,
+						_ => {
 							return throw_unexpected_token_with_token(
-								token,
+								reader.next().unwrap(),
 								&[TSXToken::Comma, TSXToken::OpenBrace],
 							)
 						}
@@ -100,6 +92,7 @@ impl ASTNode for InterfaceDeclaration {
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
 			name,
+			is_declare: false,
 			#[cfg(feature = "extras")]
 			is_nominal,
 			type_parameters,
@@ -115,22 +108,27 @@ impl ASTNode for InterfaceDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if options.include_types {
+		if options.include_type_annotations {
+			if self.name.is_declare() {
+				buf.push_str("declare ");
+			}
 			buf.push_str("interface ");
-			buf.push_str(&self.name);
+			self.name.identifier.to_string_from_buffer(buf, options, local);
 			if let Some(type_parameters) = &self.type_parameters {
 				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				options.push_gap_optionally(buf);
 			}
-			options.push_gap_optionally(buf);
 			if let Some(extends) = &self.extends {
 				buf.push_str(" extends ");
 				for (at_end, extends) in extends.iter().endiate() {
 					extends.to_string_from_buffer(buf, options, local);
 					if !at_end {
 						buf.push(',');
+						options.push_gap_optionally(buf);
 					}
 				}
 			}
+			options.push_gap_optionally(buf);
 			buf.push('{');
 			if options.pretty && !self.members.is_empty() {
 				buf.push_new_line();
@@ -146,26 +144,32 @@ impl ASTNode for InterfaceDeclaration {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
+/// For some reason mapped types can have a negated a readonly keyword
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MappedReadonlyKind {
+	Negated,
+	Always,
+	False,
+}
+
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
-#[derive(Debug, Clone, PartialEq, Eq, GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum InterfaceMember {
 	Method {
 		header: MethodHeader,
 		name: PropertyKey<PublicOrPrivate>,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		is_optional: bool,
-		#[cfg(feature = "extras")]
-		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Property {
@@ -188,28 +192,26 @@ pub enum InterfaceMember {
 	/// new (...params: any[]): HTMLElement
 	/// ```
 	Constructor {
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
-		#[cfg(feature = "extras")]
-		performs: Option<super::AnnotationPerforms>,
 		position: Span,
 	},
 	Caller {
+		type_parameters: Option<Vec<TypeParameter>>,
 		parameters: TypeAnnotationFunctionParameters,
-		type_parameters: Option<Vec<GenericTypeConstraint>>,
 		return_type: Option<TypeAnnotation>,
 		is_readonly: bool,
 		position: Span,
 	},
-	// Does exists on inline object reference
+	/// [For mapped types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
 	Rule {
 		parameter: String,
-		rule: TypeRule,
 		matching_type: Box<TypeAnnotation>,
+		as_type: Option<Box<TypeAnnotation>>,
 		optionality: Optionality,
-		is_readonly: bool,
+		is_readonly: MappedReadonlyKind,
 		output_type: Box<TypeAnnotation>,
 		position: Span,
 	},
@@ -240,9 +242,10 @@ impl ASTNode for InterfaceMember {
 						None
 					};
 				// TODO parameter.pos can be union'ed with itself
-				let position = readonly_position.as_ref().unwrap_or(&parameters.position).union(
-					return_type.as_ref().map_or(&parameters.position, ASTNode::get_position),
-				);
+				let position = readonly_position
+					.as_ref()
+					.unwrap_or(&parameters.position)
+					.union(return_type.as_ref().map_or(parameters.position, ASTNode::get_position));
 				Ok(InterfaceMember::Caller {
 					is_readonly: readonly_position.is_some(),
 					position,
@@ -264,7 +267,7 @@ impl ASTNode for InterfaceMember {
 						None
 					};
 				let position =
-					*return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
+					return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
 				Ok(InterfaceMember::Caller {
 					is_readonly: readonly_position.is_some(),
@@ -298,14 +301,7 @@ impl ASTNode for InterfaceMember {
 					None
 				};
 
-				#[cfg(feature = "extras")]
-				let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) = reader.peek() {
-					Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
-
-				let end = return_type.as_ref().map_or(&parameters.position, ASTNode::get_position);
+				let end = return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
 				let position = readonly_position.as_ref().unwrap_or(&new_span).union(end);
 
@@ -313,11 +309,36 @@ impl ASTNode for InterfaceMember {
 					is_readonly: readonly_position.is_some(),
 					position,
 					parameters,
-					#[cfg(feature = "extras")]
-					performs,
 					type_parameters,
 					return_type,
 				})
+			}
+			TSXToken::Subtract => {
+				// Little bit weird, but prevents a lot of duplication
+				let subtract_pos = reader.next().unwrap().get_span();
+				let inner = Self::from_reader(reader, state, options)?;
+				if let Self::Rule {
+					parameter,
+					matching_type,
+					as_type,
+					optionality,
+					is_readonly: MappedReadonlyKind::Always,
+					output_type,
+					position,
+				} = inner
+				{
+					Ok(Self::Rule {
+						parameter,
+						matching_type,
+						as_type,
+						optionality,
+						is_readonly: MappedReadonlyKind::Negated,
+						output_type,
+						position,
+					})
+				} else {
+					Err(crate::ParseError::new(ParseErrors::ExpectRule, subtract_pos))
+				}
 			}
 			token if token.is_comment() => {
 				let token = reader.next().unwrap();
@@ -381,21 +402,21 @@ impl ASTNode for InterfaceMember {
 										});
 									}
 									Token(TSXToken::Keyword(TSXKeyword::In), _) => {
-										let rule = if reader
-											.conditional_next(|token| {
-												matches!(
-													token,
-													TSXToken::Keyword(TSXKeyword::KeyOf)
-												)
-											})
-											.is_some()
-										{
-											TypeRule::InKeyOf
-										} else {
-											TypeRule::In
-										};
 										let matching_type =
 											TypeAnnotation::from_reader(reader, state, options)?;
+
+										let next_is_as = reader.conditional_next(|t| {
+											matches!(t, TSXToken::Keyword(TSXKeyword::As))
+										});
+
+										let as_type = if next_is_as.is_some() {
+											Some(Box::new(TypeAnnotation::from_reader_with_config(
+												reader, state, options, None, None,
+											)?))
+										} else {
+											None
+										};
+
 										reader.expect_next(TSXToken::CloseBracket)?;
 										// TODO the -?: ?: : stuff '-?:' should be a token
 										let token = reader.next().ok_or_else(parse_lexing_error)?;
@@ -427,11 +448,15 @@ impl ASTNode for InterfaceMember {
 										return Ok(InterfaceMember::Rule {
 											parameter: name,
 											optionality,
-											is_readonly: readonly_position.is_some(),
+											is_readonly: if readonly_position.is_some() {
+												MappedReadonlyKind::Always
+											} else {
+												MappedReadonlyKind::False
+											},
 											matching_type: Box::new(matching_type),
-											rule,
 											output_type: Box::new(output_type),
 											position,
+											as_type,
 										});
 									}
 									token => {
@@ -458,7 +483,7 @@ impl ASTNode for InterfaceMember {
 					(property_key, type_parameters.map(|(tp, _)| tp))
 				};
 
-				let start = readonly_position.as_ref().unwrap_or_else(|| name.get_position());
+				let start = readonly_position.unwrap_or_else(|| name.get_position());
 
 				// TODO a little weird as only functions can have type parameters:
 				match reader.next().ok_or_else(parse_lexing_error)? {
@@ -483,15 +508,6 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						#[cfg(feature = "extras")]
-						let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) =
-							reader.peek()
-						{
-							Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-						} else {
-							None
-						};
-
 						Ok(InterfaceMember::Method {
 							header,
 							name,
@@ -500,8 +516,6 @@ impl ASTNode for InterfaceMember {
 							return_type,
 							is_optional: false,
 							position,
-							#[cfg(feature = "extras")]
-							performs,
 						})
 					}
 					Token(TSXToken::QuestionMark, _) => {
@@ -524,15 +538,6 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						#[cfg(feature = "extras")]
-						let performs = if let Some(Token(TSXToken::Keyword(TSXKeyword::Performs), _)) =
-							reader.peek()
-						{
-							Some(super::AnnotationPerforms::from_reader(reader, state, options)?)
-						} else {
-							None
-						};
-
 						Ok(InterfaceMember::Method {
 							header,
 							name,
@@ -541,8 +546,6 @@ impl ASTNode for InterfaceMember {
 							is_optional: true,
 							position,
 							return_type,
-							#[cfg(feature = "extras")]
-							performs,
 						})
 					}
 					Token(TSXToken::Colon, _) => {
@@ -622,8 +625,7 @@ impl ASTNode for InterfaceMember {
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
-					buf.push(':');
-					options.push_gap_optionally(buf);
+					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}
 			}
@@ -635,20 +637,94 @@ impl ASTNode for InterfaceMember {
 				buf.push_str(name.as_str());
 				buf.push(':');
 				indexer_type.to_string_from_buffer(buf, options, local);
-				buf.push(']');
-				buf.push(':');
-				options.push_gap_optionally(buf);
+				buf.push_str("]: ");
 				return_type.to_string_from_buffer(buf, options, local);
 			}
-			InterfaceMember::Constructor { .. } => todo!(),
-			InterfaceMember::Caller { .. } => todo!(),
-			InterfaceMember::Rule { .. } => todo!(),
-			InterfaceMember::Comment(_, _is_multiline, _) => todo!(),
+			InterfaceMember::Constructor {
+				parameters,
+				type_parameters,
+				return_type,
+				is_readonly,
+				position: _,
+			} => {
+				if *is_readonly {
+					buf.push_str("readonly ");
+				}
+				buf.push_str("new ");
+				if let Some(ref type_parameters) = type_parameters {
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				}
+				parameters.to_string_from_buffer(buf, options, local);
+				if let Some(ref return_type) = return_type {
+					buf.push_str(": ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
+			InterfaceMember::Caller {
+				parameters,
+				type_parameters,
+				return_type,
+				is_readonly,
+				position: _,
+			} => {
+				if *is_readonly {
+					buf.push_str("readonly ");
+				}
+				if let Some(ref type_parameters) = type_parameters {
+					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				}
+				parameters.to_string_from_buffer(buf, options, local);
+				if let Some(ref return_type) = return_type {
+					buf.push_str(": ");
+					return_type.to_string_from_buffer(buf, options, local);
+				}
+			}
+			InterfaceMember::Rule {
+				is_readonly,
+				matching_type,
+				optionality,
+				output_type,
+				as_type,
+				parameter,
+				position: _,
+			} => {
+				buf.push_str(match is_readonly {
+					MappedReadonlyKind::Negated => "-readonly ",
+					MappedReadonlyKind::Always => "readonly ",
+					MappedReadonlyKind::False => "",
+				});
+				buf.push('[');
+				buf.push_str(parameter.as_str());
+				buf.push_str(" in ");
+				matching_type.to_string_from_buffer(buf, options, local);
+				if let Some(as_type) = as_type {
+					buf.push_str(" as ");
+					as_type.to_string_from_buffer(buf, options, local);
+				}
+				buf.push(']');
+				buf.push_str(match optionality {
+					Optionality::Default => ": ",
+					Optionality::Optional => "?:",
+					Optionality::Required => "-?:",
+				});
+				output_type.to_string_from_buffer(buf, options, local);
+			}
+			InterfaceMember::Comment(c, is_multiline, _) => {
+				if *is_multiline {
+					buf.push_str("/*");
+					buf.push_str(c);
+					buf.push_str("*/");
+				} else {
+					buf.push_str("//");
+					buf.push_str(c);
+					buf.push_new_line();
+				}
+			}
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 }
 

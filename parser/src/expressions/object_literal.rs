@@ -1,12 +1,7 @@
-use derive_partial_eq_extras::PartialEqExtras;
-use iterator_endiate::EndiateIteratorExt;
-use std::fmt::Debug;
-use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
-use visitable_derive::Visitable;
-
 use crate::{
+	derive_ASTNode,
 	errors::parse_lexing_error,
-	functions::{FunctionBased, HeadingAndPosition, MethodHeader},
+	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	throw_unexpected_token_with_token,
 	visiting::Visitable,
@@ -14,24 +9,35 @@ use crate::{
 	TSXToken, Token, TokenReader, WithComment,
 };
 
-#[derive(Debug, Clone, Eq, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+use derive_partial_eq_extras::PartialEqExtras;
+use std::fmt::Debug;
+use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
+use visitable_derive::Visitable;
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEqExtras)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span, VariableId)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[get_field_by_type_target(Span)]
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
-	Property(WithComment<PropertyKey<AlwaysPublic>>, Expression, Span),
+	Property {
+		key: WithComment<PropertyKey<AlwaysPublic>>,
+		/// Makes object destructuring syntax a subset of object literal syntax
+		assignment: bool,
+		value: Expression,
+		position: Span,
+	},
 	Method(ObjectLiteralMethod),
+	Comment(String, bool, Span),
 }
 
 impl crate::Visitable for ObjectLiteralMember {
@@ -43,9 +49,10 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::Shorthand(_, _)
-			| ObjectLiteralMember::Property(_, _, _)
-			| ObjectLiteralMember::Spread(_, _) => {}
+			ObjectLiteralMember::Shorthand(..)
+			| ObjectLiteralMember::Property { .. }
+			| ObjectLiteralMember::Spread(..)
+			| ObjectLiteralMember::Comment(..) => {}
 			ObjectLiteralMember::Method(method) => method.visit(visitors, data, options, chain),
 		}
 	}
@@ -58,9 +65,10 @@ impl crate::Visitable for ObjectLiteralMember {
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
 		match self {
-			ObjectLiteralMember::Property(_, _, _)
-			| ObjectLiteralMember::Spread(_, _)
-			| ObjectLiteralMember::Shorthand(_, _) => {}
+			ObjectLiteralMember::Shorthand(..)
+			| ObjectLiteralMember::Property { .. }
+			| ObjectLiteralMember::Spread(..)
+			| ObjectLiteralMember::Comment(..) => {}
 			ObjectLiteralMember::Method(method) => method.visit_mut(visitors, data, options, chain),
 		}
 	}
@@ -70,10 +78,23 @@ impl crate::Visitable for ObjectLiteralMember {
 pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const OBJECT_LITERAL_METHOD_TYPE: &str = r"
+	export interface ObjectLiteralMethod extends FunctionBase {
+		header: MethodHeader,
+		body: Block,
+		name: WithComment<PropertyKey<AlwaysPublic>>,
+		parameters: FunctionParameters<ThisParameter | null, null>
+	}
+";
+
 impl FunctionBased for ObjectLiteralMethodBase {
 	type Name = WithComment<PropertyKey<AlwaysPublic>>;
 	type Header = MethodHeader;
 	type Body = Block;
+	type LeadingParameter = Option<ThisParameter>;
+	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
@@ -131,8 +152,8 @@ impl FunctionBased for ObjectLiteralMethodBase {
 impl Eq for ObjectLiteralMember {}
 
 impl ASTNode for ObjectLiteral {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -150,17 +171,7 @@ impl ASTNode for ObjectLiteral {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		buf.push('{');
-		options.push_gap_optionally(buf);
-		for (at_end, member) in self.members.iter().endiate() {
-			member.to_string_from_buffer(buf, options, local);
-			if !at_end {
-				buf.push(',');
-				options.push_gap_optionally(buf);
-			}
-		}
-		options.push_gap_optionally(buf);
-		buf.push('}');
+		crate::to_string_bracketed(&self.members, ('{', '}'), buf, options, local);
 	}
 }
 
@@ -176,10 +187,12 @@ impl ObjectLiteral {
 			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
 				break;
 			}
-			members.push(ObjectLiteralMember::from_reader(reader, state, options)?);
+			let member = ObjectLiteralMember::from_reader(reader, state, options)?;
+			let is_comment = matches!(member, ObjectLiteralMember::Comment(..));
+			members.push(member);
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
-			} else {
+			} else if !is_comment {
 				break;
 			}
 		}
@@ -195,8 +208,11 @@ impl ASTNode for ObjectLiteralMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		// TODO this probably needs with comment here:
-		while reader.conditional_next(TSXToken::is_comment).is_some() {}
+		if reader.peek().map_or(false, |t| t.0.is_comment()) {
+			let (comment, is_multiline, span) =
+				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+			return Ok(Self::Comment(comment, is_multiline, span));
+		}
 
 		if let Some(Token(_, spread_start)) =
 			reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
@@ -232,17 +248,23 @@ impl ASTNode for ObjectLiteralMember {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Ident(name, position, ()) = key.get_ast() {
+					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						let token = reader.next().ok_or_else(parse_lexing_error)?;
 						throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 					}
 				} else {
-					reader.expect_next(TSXToken::Colon)?;
-					let expression = Expression::from_reader(reader, state, options)?;
-					let position = key.get_position().union(expression.get_position());
-					Ok(Self::Property(key, expression, position))
+					let token = reader.next().ok_or_else(parse_lexing_error)?;
+					let assignment = match token.0 {
+						TSXToken::Colon => false,
+						TSXToken::Assign => true,
+						_ => return throw_unexpected_token_with_token(token, &[TSXToken::Colon]),
+					};
+					// let assignment = if let
+					let value = Expression::from_reader(reader, state, options)?;
+					let position = key.get_position().union(value.get_position());
+					Ok(Self::Property { assignment, key, value, position })
 				}
 			}
 		}
@@ -255,11 +277,11 @@ impl ASTNode for ObjectLiteralMember {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Property(name, expression, _) => {
-				name.to_string_from_buffer(buf, options, local);
+			Self::Property { assignment: _, key, value, position: _ } => {
+				key.to_string_from_buffer(buf, options, local);
 				buf.push(':');
 				options.push_gap_optionally(buf);
-				expression.to_string_from_buffer(buf, options, local);
+				value.to_string_from_buffer(buf, options, local);
 			}
 			Self::Shorthand(name, ..) => {
 				buf.push_str(name.as_str());
@@ -271,13 +293,23 @@ impl ASTNode for ObjectLiteralMember {
 				buf.push_str("...");
 				spread_expr.to_string_from_buffer(buf, options, local);
 			}
+			Self::Comment(c, is_multiline, _) => {
+				if options.should_add_comment(c.starts_with('.')) {
+					if *is_multiline {
+						buf.push_str("/*");
+						buf.push_str(c);
+						buf.push_str("*/");
+					} else {
+						buf.push_str("//");
+						buf.push_str(c);
+						buf.push_new_line();
+					}
+				}
+			}
 		};
 	}
 
-	fn get_position(&self) -> &Span {
-		match self {
-			Self::Method(method) => method.get_position(),
-			Self::Shorthand(_, pos) | Self::Property(_, _, pos) | Self::Spread(_, pos) => pos,
-		}
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 }

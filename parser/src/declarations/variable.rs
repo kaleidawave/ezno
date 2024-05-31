@@ -3,9 +3,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	errors::parse_lexing_error, operators::COMMA_PRECEDENCE, throw_unexpected_token_with_token,
-	ASTNode, Expression, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader,
-	TypeAnnotation, VariableField, VariableFieldInSourceCode, WithComment,
+	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE,
+	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
+	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -26,9 +26,9 @@ pub trait DeclarationExpression:
 		local: crate::LocalToStringInformation,
 	);
 
-	fn get_decl_position(&self) -> Option<&Span>;
+	fn get_declaration_position(&self) -> Option<Span>;
 
-	fn as_option_expr_ref(&self) -> Option<&Expression>;
+	fn as_option_expression_ref(&self) -> Option<&Expression>;
 
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression>;
 }
@@ -66,11 +66,11 @@ impl DeclarationExpression for Option<Expression> {
 		}
 	}
 
-	fn get_decl_position(&self) -> Option<&Span> {
+	fn get_declaration_position(&self) -> Option<Span> {
 		self.as_ref().map(ASTNode::get_position)
 	}
 
-	fn as_option_expr_ref(&self) -> Option<&Expression> {
+	fn as_option_expression_ref(&self) -> Option<&Expression> {
 		self.as_ref()
 	}
 
@@ -105,11 +105,11 @@ impl DeclarationExpression for crate::Expression {
 		ASTNode::to_string_from_buffer(self, buf, options, local);
 	}
 
-	fn get_decl_position(&self) -> Option<&Span> {
+	fn get_declaration_position(&self) -> Option<Span> {
 		Some(ASTNode::get_position(self))
 	}
 
-	fn as_option_expr_ref(&self) -> Option<&Expression> {
+	fn as_option_expression_ref(&self) -> Option<&Expression> {
 		Some(self)
 	}
 
@@ -119,13 +119,12 @@ impl DeclarationExpression for crate::Expression {
 }
 
 /// Represents a name =
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
-	pub name: WithComment<VariableField<VariableFieldInSourceCode>>,
+	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub expression: TExpr,
 	pub position: Span,
@@ -137,9 +136,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let name = WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-			reader, state, options,
-		)?;
+		let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
 		let type_annotation = if reader
 			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
@@ -152,7 +149,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		let expression = TExpr::expression_from_reader(reader, state, options)?;
 		let position = name.get_position().union(
 			expression
-				.get_decl_position()
+				.get_declaration_position()
 				.or(type_annotation.as_ref().map(ASTNode::get_position))
 				.unwrap_or(name.get_position()),
 		);
@@ -167,33 +164,25 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		local: crate::LocalToStringInformation,
 	) {
 		self.name.to_string_from_buffer(buf, options, local);
-		if let (true, Some(type_annotation)) = (options.include_types, &self.type_annotation) {
+		if let (true, Some(type_annotation)) =
+			(options.include_type_annotations, &self.type_annotation)
+		{
 			buf.push_str(": ");
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
-		let available_space =
-			u32::from(options.max_line_length).checked_sub(buf.characters_on_current_line());
 
-		if let Some(e) = TExpr::as_option_expr_ref(&self.expression) {
-			let extends_limit = crate::is_node_over_length(e, options, local, available_space);
-			if extends_limit {
-				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
-			}
-		}
 		self.expression.expression_to_string_from_buffer(buf, options, local);
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }
 
-#[derive(Debug, Clone, PartialEqExtras, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
 #[partial_eq_ignore_types(Span)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum VariableDeclaration {
 	ConstDeclaration {
 		declarations: Vec<VariableDeclarationItem<Expression>>,
@@ -205,9 +194,8 @@ pub enum VariableDeclaration {
 	},
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Visitable)]
+#[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,
 	Let,
@@ -253,6 +241,15 @@ impl ASTNode for VariableDeclaration {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
 				let mut declarations = Vec::new();
 				loop {
+					// Some people like to have trailing comments in declarations ?
+					if reader.peek().is_some_and(|t| t.0.is_comment()) {
+						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+							break;
+						}
+						continue;
+					}
+
 					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
 						reader, state, options,
 					)?;
@@ -262,7 +259,7 @@ impl ASTNode for VariableDeclaration {
 					{
 						return Err(crate::ParseError::new(
 							crate::ParseErrors::DestructuringRequiresValue,
-							*value.name.get_ast_ref().get_position(),
+							value.name.get_ast_ref().get_position(),
 						));
 					}
 
@@ -282,6 +279,15 @@ impl ASTNode for VariableDeclaration {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
 				let mut declarations = Vec::new();
 				loop {
+					// Some people like to have trailing comments in declarations ?
+					if reader.peek().is_some_and(|t| t.0.is_comment()) {
+						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+							break;
+						}
+						continue;
+					}
+
 					let value =
 						VariableDeclarationItem::<Expression>::from_reader(reader, state, options)?;
 					declarations.push(value);
@@ -311,20 +317,40 @@ impl ASTNode for VariableDeclaration {
 					return;
 				}
 				buf.push_str("let ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 			VariableDeclaration::ConstDeclaration { declarations, .. } => {
 				if declarations.is_empty() {
 					return;
 				}
 				buf.push_str("const ");
-				declarations_to_string(declarations, buf, options, local);
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					declarations.iter(),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 		}
 	}
 
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 }
 
@@ -343,12 +369,18 @@ pub(crate) fn declarations_to_string<
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
+	separate_lines: bool,
 ) {
 	for (at_end, declaration) in declarations.iter().endiate() {
 		declaration.to_string_from_buffer(buf, options, local);
 		if !at_end {
 			buf.push(',');
-			options.push_gap_optionally(buf);
+			if separate_lines {
+				buf.push_new_line();
+				options.add_indent(local.depth + 1, buf);
+			} else {
+				options.push_gap_optionally(buf);
+			}
 		}
 	}
 }

@@ -8,13 +8,12 @@ use tokenizer_lib::{
 use visitable_derive::Visitable;
 
 use crate::{
-	tokens::token_as_identifier, ASTNode, Expression, ParseOptions, ParseResult, TSXToken,
-	Visitable,
+	derive_ASTNode, tokens::token_as_identifier, ASTNode, Expression, ParseOptions, ParseResult,
+	TSXToken, Visitable,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, PartialEq, Clone, Visitable)]
+#[apply(derive_ASTNode)]
 pub struct Decorator {
 	pub name: Vec<String>,
 	pub arguments: Option<Vec<Expression>>,
@@ -22,8 +21,8 @@ pub struct Decorator {
 }
 
 impl ASTNode for Decorator {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -108,10 +107,9 @@ impl Decorator {
 }
 
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
-#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,
 	pub on: T,
@@ -120,8 +118,8 @@ pub struct Decorated<T> {
 }
 
 impl<N: ASTNode> ASTNode for Decorated<N> {
-	fn get_position(&self) -> &Span {
-		self.get()
+	fn get_position(&self) -> Span {
+		*self.get()
 	}
 
 	fn from_reader(
@@ -151,7 +149,7 @@ impl<U: ASTNode> Decorated<U> {
 
 	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
 		let position =
-			decorators.first().map_or(on.get_position(), |d| &d.position).union(on.get_position());
+			decorators.first().map_or(on.get_position(), |d| d.position).union(on.get_position());
 		Self { decorators, on, position }
 	}
 

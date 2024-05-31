@@ -27,7 +27,7 @@ pub(crate) fn cast_as_string(cst: &Constant, strict_casts: bool) -> Result<Strin
 	if strict_casts && !matches!(cst, Constant::String(_)) {
 		return Err(());
 	}
-	Ok(cst.as_js_string())
+	Ok(cst.as_js_string().into_owned())
 }
 
 /// <https://tc39.es/ecma262/multipage/abstract-operations.html#sec-toboolean>
@@ -36,7 +36,7 @@ pub(crate) fn cast_as_string(cst: &Constant, strict_casts: bool) -> Result<Strin
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn cast_as_boolean(cst: &Constant, strict_casts: bool) -> Result<bool, ()> {
 	if strict_casts {
-		crate::utils::notify!("TODO assert boolean type here, maybe levels. Need to also return where can do collapsation");
+		crate::utilities::notify!("TODO assert boolean type here, maybe levels. Need to also return where can do collapsation");
 	}
 	Ok(match cst {
 		Constant::Number(number) => number.into_inner() != 0.,

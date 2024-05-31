@@ -1,5 +1,7 @@
+use source_map::SpanWithSource;
+
 use crate::{
-	context::facts::Publicity, events::Event, features::functions::ClassPropertiesToRegister,
+	events::Event, features::functions::ClassPropertiesToRegister, types::properties::Publicity,
 	CheckingData, Environment, PropertyValue, TypeId,
 };
 
@@ -43,11 +45,15 @@ pub struct RegisterClassPropertiesEvent {
 	pub class_prototype: TypeId,
 }
 
-fn _register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+fn _register_class_properties_for_later_application<
+	T: crate::ReadFromFS,
+	A: crate::ASTImplementation,
+>(
 	environment: &mut Environment,
 	class_prototype: TypeId,
-	properties: ClassPropertiesToRegister<'_, A>,
+	properties: ClassPropertiesToRegister<A>,
 	checking_data: &mut CheckingData<T, A>,
+	position: SpanWithSource,
 ) {
 	let scope = crate::Scope::Function(crate::context::environment::FunctionScope::Constructor {
 		extends: false,
@@ -65,6 +71,7 @@ fn _register_properties_into_store<T: crate::ReadFromFS, A: crate::ASTImplementa
 				class_prototype,
 				checking_data,
 				properties,
+				position,
 			);
 		},
 	);
@@ -81,9 +88,10 @@ pub(crate) fn register_properties_into_environment<
 	environment: &mut Environment,
 	on: TypeId,
 	checking_data: &mut CheckingData<T, A>,
-	properties: ClassPropertiesToRegister<A>,
+	ClassPropertiesToRegister { properties }: ClassPropertiesToRegister<A>,
+	position: SpanWithSource,
 ) {
-	for ClassValue { publicity, key, value } in properties.0 {
+	for ClassValue { publicity, key, value } in properties {
 		let value = if let Some(expression) = value {
 			PropertyValue::Value(A::synthesise_expression(
 				expression,
@@ -94,6 +102,6 @@ pub(crate) fn register_properties_into_environment<
 		} else {
 			PropertyValue::Value(TypeId::UNDEFINED_TYPE)
 		};
-		environment.facts.register_property(on, publicity, key, value, true, None);
+		environment.info.register_property(on, publicity, key, value, true, position);
 	}
 }

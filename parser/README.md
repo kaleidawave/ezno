@@ -6,7 +6,24 @@ Contains "string to AST" parser, AST definitions, AST back to text/string form m
 [![crates.io badge](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
 [![docs.rs badge](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
 
-Also checkout other parsers such as [swc](https://github.com/swc-project/swc), [rome](https://github.com/rome/tools), [oxc](https://github.com/web-infra-dev/oxc) and [boa](https://github.com/boa-dev/boa).
+```rs
+use ezno_parser::{ASTNode, Expression};
+
+fn main() {
+	let expressions = [
+		"4 + 2 * 5",
+		"4 * 2 + 5",
+		"4 * 2 * 5",
+		"console.log(4 * 2, t ? true : `Hi`) == 2 && 4 == 2",
+	];
+	for expression in expressions {
+		let expression = Expression::from_string(expression.to_owned(), Default::default());
+		println!("{expression:#?}");
+	}
+}
+```
+
+> Also checkout other parsers such as [boa](https://github.com/boa-dev/boa), [biome](https://github.com/biomejs/biome), [oxc](https://github.com/oxc-project/oxc) and [swc](https://github.com/swc-project/swc).
 
 ## Goals
 

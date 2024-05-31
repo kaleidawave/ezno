@@ -35,7 +35,8 @@ y.t<4, 2>(3);
 y.t<4, Array<5>>(3);
 a(y<2>(4));
 a.a?.(y<2>(4));
-a.a(...expr, y)
+a.a(...expr, y);
+a.a(...expr, y, /* something */)
     "
 	.trim();
 
@@ -63,5 +64,91 @@ const c = { async e() {
 	eprintln!("Module: {module:#?}");
 
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[test]
+fn arrays() {
+	let input = r"
+const a = [{ a: 5 }];
+const b = [...x, 7];
+const c = [/* hi */, 6]
+    "
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[test]
+fn regular_expressions() {
+	let input = r"
+const a = /something/;
+const b = /with global flag/g;
+const c = /escaped \//;
+const d = /in a set[=/]/
+    "
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[test]
+fn import_expression() {
+	let input = r#"
+const a = import("file");
+const b = import("some" + "expression");
+const c = import.meta;
+const d = import.meta.env;
+const helperPath = import.meta.resolve("./lib/helper.js")
+    "#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[cfg(feature = "extras")]
+#[test]
+fn jsx() {
+	// note the parser supports self closing tags with `<img>` and HTML comments
+	let input = r#"
+function Component(item) {
+	return <div>
+		<h1 class="heading">{item.heading}</h1>
+		<img src={item.image}>
+		<!-- Some comment -->
+		<p>
+			Something {item.content}
+		</p>
+		{/* hi */}
+		<button disabled>One line</button>
+	</div>
+}
+    "#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+
+	eprintln!("{input:?}");
+	eprintln!("{output:?}");
+
 	assert_eq!(output, input);
 }

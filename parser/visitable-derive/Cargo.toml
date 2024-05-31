@@ -2,7 +2,7 @@
 name = "ezno-parser-visitable-derive"
 description = "Derives 'Visitable' trait for Ezno AST"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
@@ -14,5 +14,5 @@ path = "macro.rs"
 proc-macro = true
 
 [dependencies]
-syn-helpers = "0.4.2"
+syn-helpers = "0.5"
 string-cases = "0.2"

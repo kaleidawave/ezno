@@ -1,14 +1,7 @@
 use crate::{
-	declarations::ClassDeclaration,
-	errors::parse_lexing_error,
-	functions::{self},
-	operators::{
-		AssociativityDirection, BinaryAssignmentOperator, UnaryPostfixAssignmentOperator,
-		UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE, FUNCTION_CALL_PRECEDENCE,
-		RELATION_PRECEDENCE,
-	},
-	parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	type_annotations::generic_arguments_from_reader_sub_open_angle,
+	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
+	errors::parse_lexing_error, functions, parse_bracketed, throw_unexpected_token_with_token,
+	to_string_bracketed, type_annotations::generic_arguments_from_reader_sub_open_angle,
 	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
 	ParseResult, Quoted, TSXKeyword,
 };
@@ -16,12 +9,17 @@ use crate::{
 use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
 	object_literal::ObjectLiteral,
+	operators::{
+		IncrementOrDecrement, Operator, ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE,
+		CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
+		CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE, MEMBER_ACCESS_PRECEDENCE,
+		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+	},
 };
 
-#[allow(clippy::wildcard_imports)]
 use super::{
-	operators::*, tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError,
-	ParseOptions, Span, TSXToken, Token, TokenReader, TypeAnnotation,
+	tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions,
+	Span, TSXToken, Token, TokenReader, TypeAnnotation,
 };
 
 #[cfg(feature = "extras")]
@@ -29,17 +27,24 @@ use crate::extensions::is_expression::{is_expression_from_reader_sub_is_keyword,
 
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
-use source_map::Nullable;
-use tokenizer_lib::sized_tokens::{TokenEnd, TokenReaderWithTokenEnds, TokenStart};
+use source_map::{Nullable, ToString};
+use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
 pub mod assignments;
 pub mod object_literal;
+pub mod operators;
 pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
 pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
+
+use operators::{
+	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, UnaryOperator,
+	UnaryPostfixAssignmentOperator, UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE,
+	FUNCTION_CALL_PRECEDENCE, RELATION_PRECEDENCE,
+};
 
 pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
@@ -49,12 +54,11 @@ use std::convert::{TryFrom, TryInto};
 /// Expression structures
 ///
 /// Comma is implemented as a [`BinaryOperator`]
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[visit_self]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
@@ -111,6 +115,7 @@ pub enum Expression {
 	SuperExpression(SuperReference, Span),
 	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
 	NewTarget(Span),
+	ImportMeta(Span),
 	DynamicImport {
 		path: Box<Expression>,
 		options: Option<Box<Expression>>,
@@ -133,14 +138,14 @@ pub enum Expression {
 	FunctionCall {
 		function: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
-		arguments: Vec<SpreadExpression>,
+		arguments: Vec<FunctionArgument>,
 		is_optional: bool,
 		position: Span,
 	},
 	ConstructorCall {
 		constructor: Box<Expression>,
 		type_arguments: Option<Vec<TypeAnnotation>>,
-		arguments: Option<Vec<SpreadExpression>>,
+		arguments: Option<Vec<FunctionArgument>>,
 		position: Span,
 	},
 	/// e.g `... ? ... ? ...`
@@ -158,13 +163,11 @@ pub enum Expression {
 	Null(Span),
 	Comment {
 		content: String,
-		/// Allowed to be `None` in trailing functions arguments and JSX for some reason
-		on: Option<Box<Expression>>,
+		on: Box<Expression>,
 		position: Span,
 		is_multiline: bool,
 		prefix: bool,
 	},
-	/// TODO under cfg
 	/// A start of a JSXNode
 	JSXRoot(JSXRoot),
 	/// Not to be confused with binary operator `is`
@@ -180,9 +183,8 @@ pub enum Expression {
 
 impl Eq for Expression {}
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(PartialEq, Debug, Clone)]
+#[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
 		property: String,
@@ -207,11 +209,16 @@ impl ASTNode for Expression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_using_precedence(buf, options, local, u8::MAX);
+		self.to_string_using_precedence(
+			buf,
+			options,
+			local,
+			ExpressionToStringArgument { on_left: false, parent_precedence: u8::MAX },
+		);
 	}
 
-	fn get_position(&self) -> &Span {
-		get_field_by_type::GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 }
 
@@ -253,20 +260,31 @@ impl Expression {
 				let res = value.parse::<NumberRepresentation>();
 				match res {
 					Ok(number) => Expression::NumberLiteral(number, position),
-					Err(_) => unreachable!("Could not parse {value}"),
+					Err(_) => {
+						// TODO this should never happen
+						return Err(ParseError::new(ParseErrors::InvalidNumberLiteral, position));
+					}
 				}
 			}
 			Token(TSXToken::RegexLiteral(pattern), start) => {
 				let mut position = start.with_length(pattern.len());
 				let flag_token =
 					reader.conditional_next(|t| matches!(t, TSXToken::RegexFlagLiteral(..)));
-				let flags =
-					if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) = flag_token {
-						position = position.union(start.get_end_after(flags.len()));
-						Some(flags)
-					} else {
-						None
-					};
+				let flags = if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) =
+					flag_token
+				{
+					if flags.contains(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'))
+					{
+						return Err(ParseError::new(
+							ParseErrors::InvalidRegexFlag,
+							start.with_length(flags.len()),
+						));
+					}
+					position = position.union(start.get_end_after(flags.len()));
+					Some(flags)
+				} else {
+					None
+				};
 				Expression::RegexLiteral { pattern, flags, position }
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::True), _) => {
@@ -278,25 +296,36 @@ impl Expression {
 			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => {
 				Expression::ThisReference(t.get_span())
 			}
-			Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
-				let _ = reader.expect_next(TSXToken::OpenParentheses)?;
-				let path = Expression::from_reader(reader, state, options)?;
-				if let Expression::StringLiteral(path, ..) = &path {
-					state.constant_imports.push(path.clone());
+			t @ Token(TSXToken::Keyword(TSXKeyword::Import), start) => {
+				let token = reader.next();
+				if let Some(Token(TSXToken::Dot, _)) = token {
+					let meta_start = reader.expect_next(TSXToken::Identifier("meta".into()))?;
+					Expression::ImportMeta(start.union(meta_start.get_end_after("meta".len())))
+				} else if let Some(Token(TSXToken::OpenParentheses, _)) = token {
+					let path = Expression::from_reader(reader, state, options)?;
+					if let Expression::StringLiteral(path, ..) = &path {
+						state.constant_imports.push(path.clone());
+					}
+
+					let options =
+						if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
+							Some(Box::new(Expression::from_reader(reader, state, options)?))
+						} else {
+							None
+						};
+					let end = reader.expect_next(TSXToken::CloseParentheses)?;
+					Expression::DynamicImport {
+						path: Box::new(path),
+						options,
+						position: start.union(end.get_end_after(1)),
+					}
+				} else if let Some(token) = token {
+					return throw_unexpected_token_with_token(
+						token,
+						&[TSXToken::Dot, TSXToken::OpenParentheses],
+					);
 				} else {
-					// TODO warning dynamic
-				}
-				let options = if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some()
-				{
-					Some(Box::new(Expression::from_reader(reader, state, options)?))
-				} else {
-					None
-				};
-				let end = reader.expect_next(TSXToken::OpenParentheses)?;
-				Expression::DynamicImport {
-					path: Box::new(path),
-					options,
-					position: start.union(end.get_end_after(1)),
+					return Err(ParseError::new(ParseErrors::LexingFailed, t.get_span()));
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Super), _) => {
@@ -364,126 +393,70 @@ impl Expression {
 				let position = s.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			}
-			t @ Token(TSXToken::OpenBracket, start) => {
-				let mut bracket_depth = 1;
-				// TODO this can be bad for large object literals, needs to exit if expression without =
-				let after_bracket = reader.scan(|token, _| match token {
-					TSXToken::OpenBracket => {
-						bracket_depth += 1;
-						false
-					}
-					TSXToken::CloseBracket => {
-						bracket_depth -= 1;
-						bracket_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = after_bracket {
-					if let TSXToken::Assign = token_type {
-						let (members, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-						let Token(_assignment, assignment_pos) = reader.next().unwrap();
-						let rhs = Expression::from_reader_with_precedence(
-							reader,
-							state,
-							options,
-							ASSIGNMENT_PRECEDENCE,
-							Some(assignment_pos),
-						)?;
-						let array_position = start.union(end);
-						Expression::Assignment {
-							position: array_position.union(rhs.get_position()),
-							lhs: LHSOfAssignment::ArrayDestructuring(members, array_position),
-							rhs: Box::new(rhs),
-						}
-					} else {
-						let (items, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
+			Token(TSXToken::OpenBracket, start) => {
+				let (items, end) = parse_bracketed::<ArrayElement>(
+					reader,
+					state,
+					options,
+					None,
+					TSXToken::CloseBracket,
+				)?;
 
-						Expression::ArrayLiteral(items, start.union(end))
-					}
-				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
-				}
+				Expression::ArrayLiteral(items, start.union(end))
 			}
-			t @ Token(TSXToken::OpenBrace, start) => {
-				let mut brace_depth = 1;
-				let after_brace = reader.scan(|token, _| match token {
-					TSXToken::OpenBrace => {
-						brace_depth += 1;
-						false
-					}
-					TSXToken::CloseBrace => {
-						brace_depth -= 1;
-						brace_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = after_brace {
-					if let TSXToken::Assign = token_type {
-						let (members, end) =
-							parse_bracketed(reader, state, options, None, TSXToken::CloseBrace)?;
-						let Token(_assignment, assignment_pos) = reader.next().unwrap();
-						let rhs = Box::new(Expression::from_reader_with_precedence(
-							reader,
-							state,
-							options,
-							ASSIGNMENT_PRECEDENCE,
-							Some(assignment_pos),
-						)?);
-						let object_position = start.union(end);
-						Expression::Assignment {
-							position: object_position.union(rhs.get_position()),
-							lhs: LHSOfAssignment::ObjectDestructuring(members, object_position),
-							rhs,
-						}
-					} else {
-						ObjectLiteral::from_reader_sub_open_curly(reader, state, options, start)
-							.map(Expression::ObjectLiteral)?
-					}
-				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
-				}
+			Token(TSXToken::OpenBrace, start) => {
+				ObjectLiteral::from_reader_sub_open_curly(reader, state, options, start)
+					.map(Expression::ObjectLiteral)?
 			}
 			t @ Token(TSXToken::OpenParentheses, start) => {
 				let mut parentheses_depth = 1;
-				let next = reader.scan(|token, _| match token {
-					TSXToken::OpenParentheses => {
-						parentheses_depth += 1;
-						false
-					}
-					TSXToken::CloseParentheses => {
-						parentheses_depth -= 1;
-						parentheses_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = next {
-					if let TSXToken::Arrow = token_type {
-						let arrow_function = ArrowFunction::from_reader_sub_open_paren(
-							reader, state, options, false, start,
-						)?;
-						Expression::ArrowFunction(arrow_function)
+				let is_arrow_function = if let Some(Token(
+					TSXToken::Keyword(..)
+					| TSXToken::Identifier(..)
+					| TSXToken::OpenBrace
+					| TSXToken::OpenBracket
+					| TSXToken::CloseParentheses
+					| TSXToken::Spread,
+					_,
+				)) = reader.peek()
+				{
+					let next = reader.scan(|token, _| match token {
+						TSXToken::OpenParentheses => {
+							parentheses_depth += 1;
+							false
+						}
+						TSXToken::CloseParentheses => {
+							parentheses_depth -= 1;
+							parentheses_depth == 0
+						}
+						_ => false,
+					});
+
+					if let Some(Token(token_type, _)) = next {
+						matches!(token_type, TSXToken::Arrow)
 					} else {
-						let parenthesize_expression =
-							MultipleExpression::from_reader(reader, state, options)?;
-						let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-						Expression::ParenthesizedExpression(
-							Box::new(parenthesize_expression),
-							start.union(end),
-						)
+						return Err(ParseError::new(
+							crate::ParseErrors::UnmatchedBrackets,
+							t.get_span(),
+						));
 					}
 				} else {
-					return Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						t.get_span(),
-					));
+					false
+				};
+
+				if is_arrow_function {
+					let arrow_function = ArrowFunction::from_reader_sub_open_paren(
+						reader, state, options, false, start,
+					)?;
+					Expression::ArrowFunction(arrow_function)
+				} else {
+					let parenthesize_expression =
+						MultipleExpression::from_reader(reader, state, options)?;
+					let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+					Expression::ParenthesizedExpression(
+						Box::new(parenthesize_expression),
+						start.union(end),
+					)
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::New), start) => {
@@ -544,17 +517,6 @@ impl Expression {
 				// TODO discern between multi-line here
 				let (content, is_multiline, position) = TSXToken::try_into_comment(t).unwrap();
 
-				if let Some(Token(TSXToken::CloseParentheses | TSXToken::JSXExpressionEnd, _)) =
-					reader.peek()
-				{
-					return Ok(Expression::Comment {
-						is_multiline,
-						content,
-						position,
-						on: None,
-						prefix: false,
-					});
-				}
 				let expression = Self::from_reader_with_precedence(
 					reader,
 					state,
@@ -567,7 +529,7 @@ impl Expression {
 					is_multiline,
 					content,
 					position,
-					on: Some(Box::new(expression)),
+					on: Box::new(expression),
 					prefix: true,
 				}
 			}
@@ -583,7 +545,7 @@ impl Expression {
 				Expression::TemplateLiteral(template_literal)
 			}
 			Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
-				// TODO fix
+				// TODO not great to recreate token, but that is how Rust works :)
 				let token = Token(TSXToken::Keyword(kw), start);
 				let (is_async, start, token) =
 					if let Token(TSXToken::Keyword(TSXKeyword::Async), start) = token {
@@ -610,81 +572,126 @@ impl Expression {
 						(name, position),
 						is_async,
 					)?;
-					return Ok(Expression::ArrowFunction(function));
-				}
+					Expression::ArrowFunction(function)
+				} else {
+					#[cfg(feature = "extras")]
+					{
+						use crate::functions::FunctionLocationModifier;
+						let (generator_keyword, token) =
+							if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
+								(Some(token.get_span()), reader.next().unwrap())
+							} else {
+								(None, token)
+							};
 
-				#[cfg(feature = "extras")]
-				{
-					use crate::functions::FunctionLocationModifier;
-					let (generator_keyword, token) =
-						if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
-							(Some(token.get_span()), reader.next().unwrap())
+						let (location, token) = match token {
+							Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
+								(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+							}
+							Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
+								(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
+							}
+							token => (None, token),
+						};
+
+						// Here because `token` (can't use `.expect_next()`)
+						let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
+						else {
+							return throw_unexpected_token_with_token(
+								token,
+								&[TSXToken::Keyword(TSXKeyword::Function)],
+							);
+						};
+
+						let function_end =
+							function_start.get_end_after(TSXKeyword::Function.length() as usize);
+
+						if generator_keyword.is_some() {
+							let position = start.union(function_end);
+
+							let header = FunctionHeader::ChadFunctionHeader {
+								is_async,
+								is_generator: true,
+								location,
+								position,
+							};
+
+							let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+								reader.peek()
+							{
+								None
+							} else {
+								let (token, span) =
+									token_as_identifier(reader.next().unwrap(), "function name")?;
+								Some(crate::VariableIdentifier::Standard(token, span))
+							};
+
+							FunctionBase::from_reader_with_header_and_name(
+								reader,
+								state,
+								options,
+								(Some(header.get_position().get_start()), header),
+								ExpressionPosition(name),
+							)
+							.map(Expression::ExpressionFunction)?
 						} else {
-							(None, token)
-						};
+							let generator_star_token_position = reader
+								.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+								.map(|token| token.get_span());
 
-					let (location, token) = match token {
-						Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
-							(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+							let end = generator_star_token_position
+								.as_ref()
+								.map_or(function_end, Span::get_end);
+
+							let header = FunctionHeader::VirginFunctionHeader {
+								position: start.union(end),
+								is_async,
+								location,
+								generator_star_token_position,
+							};
+
+							let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+								reader.peek()
+							{
+								None
+							} else {
+								let (token, span) =
+									token_as_identifier(reader.next().unwrap(), "function name")?;
+								Some(crate::VariableIdentifier::Standard(token, span))
+							};
+
+							FunctionBase::from_reader_with_header_and_name(
+								reader,
+								state,
+								options,
+								(Some(header.get_position().get_start()), header),
+								ExpressionPosition(name),
+							)
+							.map(Expression::ExpressionFunction)?
 						}
-						Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
-							(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
-						}
-						token => (None, token),
-					};
+					}
 
-					// Here because `token` (can't use `.expect_next()`)
-					let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
-					else {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Keyword(TSXKeyword::Function)],
-						);
-					};
-
-					let function_end =
-						function_start.get_end_after(TSXKeyword::Function.length() as usize);
-
-					if generator_keyword.is_some() {
-						let position = start.union(function_end);
-
-						let header = FunctionHeader::ChadFunctionHeader {
-							is_async,
-							is_generator: true,
-							location,
-							position,
+					#[cfg(not(feature = "extras"))]
+					{
+						let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
+							return throw_unexpected_token_with_token(
+								token,
+								&[TSXToken::Keyword(TSXKeyword::Function)],
+							);
 						};
 
-						let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
-						{
-							None
-						} else {
-							let (token, span) =
-								token_as_identifier(reader.next().unwrap(), "function name")?;
-							Some(crate::VariableIdentifier::Standard(token, span))
-						};
-
-						FunctionBase::from_reader_with_header_and_name(
-							reader,
-							state,
-							options,
-							(Some(header.get_position().get_start()), header),
-							ExpressionPosition(name),
-						)
-						.map(Expression::ExpressionFunction)?
-					} else {
 						let generator_star_token_position = reader
 							.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
 							.map(|token| token.get_span());
 
-						let end = generator_star_token_position
-							.as_ref()
-							.map_or(function_end, Span::get_end);
+						let position =
+							start.union(generator_star_token_position.as_ref().unwrap_or(
+								&start.with_length(TSXKeyword::Function.length() as usize),
+							));
 
 						let header = FunctionHeader::VirginFunctionHeader {
-							position: start.union(end),
+							position,
 							is_async,
-							location,
 							generator_star_token_position,
 						};
 
@@ -694,61 +701,18 @@ impl Expression {
 						} else {
 							let (token, span) =
 								token_as_identifier(reader.next().unwrap(), "function name")?;
+
 							Some(crate::VariableIdentifier::Standard(token, span))
 						};
-
 						FunctionBase::from_reader_with_header_and_name(
 							reader,
 							state,
 							options,
-							(Some(header.get_position().get_start()), header),
+							(Some(start), header),
 							ExpressionPosition(name),
 						)
 						.map(Expression::ExpressionFunction)?
 					}
-				}
-
-				#[cfg(not(feature = "extras"))]
-				{
-					let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
-						return throw_unexpected_token_with_token(
-							token,
-							&[TSXToken::Keyword(TSXKeyword::Function)],
-						);
-					};
-
-					let generator_star_token_position = reader
-						.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-						.map(|token| token.get_span());
-
-					let position = start.union(
-						generator_star_token_position
-							.as_ref()
-							.unwrap_or(&start.with_length(TSXKeyword::Function.length() as usize)),
-					);
-
-					let header = FunctionHeader::VirginFunctionHeader {
-						position,
-						is_async,
-						generator_star_token_position,
-					};
-
-					let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-						None
-					} else {
-						let (token, span) =
-							token_as_identifier(reader.next().unwrap(), "function name")?;
-
-						Some(crate::VariableIdentifier::Standard(token, span))
-					};
-					FunctionBase::from_reader_with_header_and_name(
-						reader,
-						state,
-						options,
-						(Some(start), header),
-						ExpressionPosition(name),
-					)
-					.map(Expression::ExpressionFunction)?
 				}
 			}
 			#[cfg(feature = "extras")]
@@ -797,7 +761,7 @@ impl Expression {
 				)?;
 				let position = start.union(rhs.get_position());
 				Self::SpecialOperators(
-					SpecialOperators::InExpression {
+					SpecialOperators::In {
 						lhs: InExpressionLHS::PrivateProperty(property_name),
 						rhs: Box::new(rhs),
 					},
@@ -838,8 +802,17 @@ impl Expression {
 						position,
 					}
 				} else {
-					// else if options.partial_syntax
+					if let TSXToken::Keyword(ref keyword) = token.0 {
+						if keyword.is_invalid_identifier() {
+							return Err(ParseError::new(
+								ParseErrors::ReservedIdentifier,
+								token.get_span(),
+							));
+						}
+					}
+
 					let (name, position) = token_as_identifier(token, "variable reference")?;
+
 					if options.interpolation_points && name == crate::marker::MARKER {
 						let marker_id = state.new_partial_point_marker(position.get_start());
 						Expression::Marker { marker_id, position }
@@ -851,13 +824,18 @@ impl Expression {
 							(name, position),
 							false,
 						)?;
-						return Ok(Expression::ArrowFunction(function));
+						Expression::ArrowFunction(function)
 					} else {
 						Expression::VariableReference(name, position)
 					}
 				}
 			}
 		};
+
+		// Operator precedence == 2, nothing can beat so
+		if let Expression::ArrowFunction(..) = first_expression {
+			return Ok(first_expression);
+		}
 
 		Self::from_reader_sub_first_expression(
 			reader,
@@ -876,7 +854,7 @@ impl Expression {
 		first_expression: Expression,
 	) -> ParseResult<Self> {
 		let mut top = first_expression;
-		loop {
+		while top.get_precedence() != 2 {
 			let Token(peeked_token, _peeked_pos) = &reader.peek().unwrap();
 
 			match peeked_token {
@@ -890,7 +868,7 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.next();
-					let condition_position = *top.get_position();
+					let condition_position = top.get_position();
 					let condition = Box::new(top);
 					let lhs = Box::new(Self::from_reader(reader, state, options)?);
 					reader.expect_next(TSXToken::Colon)?;
@@ -985,7 +963,6 @@ impl Expression {
 
 					let (property, position) = if options.partial_syntax && is_next_not_identifier {
 						let marker = state.new_partial_point_marker(accessor_position);
-						// TODO maybe just ""
 						(PropertyReference::Marker(marker), accessor_position.with_length(1))
 					} else {
 						let is_private =
@@ -1010,6 +987,10 @@ impl Expression {
 					{
 						return Ok(top);
 					}
+
+					let position = top.get_position();
+					let lhs: LHSOfAssignment = top.try_into()?;
+
 					let Token(_assignment, assignment_pos) = reader.next().unwrap();
 					let new_rhs = Self::from_reader_with_precedence(
 						reader,
@@ -1018,18 +999,33 @@ impl Expression {
 						parent_precedence,
 						Some(assignment_pos),
 					)?;
-					top = Expression::Assignment {
-						position: top.get_position().union(new_rhs.get_position()),
-						lhs: LHSOfAssignment::VariableOrPropertyAccess(top.try_into()?),
-						rhs: Box::new(new_rhs),
-					};
+
+					let position = position.union(new_rhs.get_position());
+
+					top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 				}
-				TSXToken::MultiLineComment(_) | TSXToken::Comment(_) => {
+				TSXToken::Comment(_) => {
+					// TODO while not comment
+					if reader.peek_n(1).is_some_and(|t| t.0.is_expression_postfix()) {
+						let (content, is_multiline, position) =
+							TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+						top = Expression::Comment {
+							content,
+							on: Box::new(top),
+							position,
+							is_multiline,
+							prefix: false,
+						};
+					} else {
+						return Ok(top);
+					}
+				}
+				TSXToken::MultiLineComment(_) => {
 					let (content, is_multiline, position) =
 						TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 					top = Expression::Comment {
 						content,
-						on: Some(Box::new(top)),
+						on: Box::new(top),
 						position,
 						is_multiline,
 						prefix: false,
@@ -1044,8 +1040,10 @@ impl Expression {
 						return Ok(top);
 					}
 
-					if cfg!(not(feature = "extras"))
-						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is))
+					if (cfg!(not(feature = "extras"))
+						&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is)))
+						|| (cfg!(not(feature = "full-typescript"))
+							&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::As)))
 					{
 						return Ok(top);
 					}
@@ -1055,24 +1053,38 @@ impl Expression {
 					let position = top.get_position().union(reference.get_position());
 
 					let special_operators = match token.0 {
-						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsExpression {
+						#[cfg(feature = "full-typescript")]
+						TSXToken::Keyword(TSXKeyword::As) => SpecialOperators::AsCast {
+							value: top.into(),
+							rhs: match reference {
+								// TODO temp :0
+								TypeAnnotation::Name(name, span) if name == "const" => {
+									TypeOrConst::Const(span)
+								}
+								reference => TypeOrConst::Type(Box::new(reference)),
+							},
+						},
+						TSXToken::Keyword(TSXKeyword::Satisfies) => SpecialOperators::Satisfies {
 							value: top.into(),
 							type_annotation: Box::new(reference),
 						},
-						TSXToken::Keyword(TSXKeyword::Satisfies) => {
-							SpecialOperators::SatisfiesExpression {
-								value: top.into(),
-								type_annotation: Box::new(reference),
-							}
-						}
 						#[cfg(feature = "extras")]
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::IsExpression {
+						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::Is {
 							value: top.into(),
 							type_annotation: Box::new(reference),
 						},
 						_ => unreachable!(),
 					};
 					top = Self::SpecialOperators(special_operators, position);
+				}
+				#[cfg(feature = "full-typescript")]
+				TSXToken::LogicalNot if options.type_annotations => {
+					let Token(_token, not_pos) = reader.next().unwrap();
+					let position = top.get_position().union(not_pos.get_end_after(1));
+					top = Self::SpecialOperators(
+						SpecialOperators::NonNullAssertion(Box::new(top)),
+						position,
+					);
 				}
 				TSXToken::Keyword(TSXKeyword::In) => {
 					if AssociativityDirection::LeftToRight
@@ -1091,7 +1103,7 @@ impl Expression {
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
-						SpecialOperators::InExpression {
+						SpecialOperators::In {
 							lhs: InExpressionLHS::Expression(Box::new(top)),
 							rhs: Box::new(rhs),
 						},
@@ -1115,19 +1127,18 @@ impl Expression {
 					)?;
 					let position = top.get_position().union(rhs.get_position());
 					top = Self::SpecialOperators(
-						SpecialOperators::InstanceOfExpression {
-							lhs: Box::new(top),
-							rhs: Box::new(rhs),
-						},
+						SpecialOperators::InstanceOf { lhs: Box::new(top), rhs: Box::new(rhs) },
 						position,
 					);
 				}
 				token => {
-					let token = if *token == TSXToken::OpenChevron {
+					// Splitting here side-steps some complaints the borrow checker has with passing
+					// a mutable reader here
+					let token = if let TSXToken::OpenChevron = token {
 						if is_generic_arguments(reader) {
 							let _ = reader.next();
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
-								reader, state, options, false,
+								reader, state, options, None,
 							)?;
 							let (arguments, end) = parse_bracketed(
 								reader,
@@ -1145,8 +1156,7 @@ impl Expression {
 							};
 							continue;
 						}
-						// TODO
-						&reader.peek().unwrap().0
+						&TSXToken::OpenChevron
 					} else {
 						token
 					};
@@ -1174,7 +1184,16 @@ impl Expression {
 						{
 							return Ok(top);
 						}
-						let Token(_, op_pos) = reader.next().unwrap();
+
+						let Token(token, op_pos) = reader.next().unwrap();
+
+						if !options.extra_operators && operator.is_non_standard() {
+							return Err(ParseError::new(
+								ParseErrors::NonStandardSyntaxUsedWithoutEnabled,
+								op_pos.with_length(token.length() as usize),
+							));
+						}
+
 						// Note precedence is already handled
 						let rhs = Self::from_reader_with_precedence(
 							reader,
@@ -1217,55 +1236,59 @@ impl Expression {
 				}
 			}
 		}
+
+		Ok(top)
 	}
 
 	#[must_use]
 	pub fn get_precedence(&self) -> u8 {
+		// TODO unsure about some of these
 		match self {
-            Self::NumberLiteral(..)
-            | Self::BooleanLiteral(..)
-            | Self::StringLiteral(..)
-            | Self::RegexLiteral { .. }
-            | Self::ArrayLiteral(..)
-            | Self::TemplateLiteral(..)
-            | Self::ParenthesizedExpression(..)
-            | Self::JSXRoot(..)
-            | Self::ArrowFunction(..)
-            | Self::ExpressionFunction(..)
-            | Self::Null(..)
-            | Self::ObjectLiteral(..)
-            | Self::VariableReference(..)
-            | Self::ThisReference(..)
-            | Self::SuperExpression(..)
-            | Self::NewTarget(..)
-            | Self::ClassExpression(..)
-            // TODO unsure about this one...?
-            | Self::DynamicImport { .. }
-            | Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO think this is true <-
-            Self::BinaryOperation { operator, .. } => operator.precedence(),
-            Self::UnaryOperation{ operator, .. } => operator.precedence(),
-            Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
-            Self::BinaryAssignmentOperation { operator, .. } => operator.precedence(),
-            Self::UnaryPrefixAssignmentOperation{ operator, .. } => operator.precedence(),
-            Self::UnaryPostfixAssignmentOperation{ operator, .. } => operator.precedence(),
-            Self::PropertyAccess { .. } => MEMBER_ACCESS_PRECEDENCE,
-            Self::FunctionCall { .. } => FUNCTION_CALL_PRECEDENCE,
-            Self::ConstructorCall { arguments: Some(_), .. } => CONSTRUCTOR_PRECEDENCE,
-            Self::ConstructorCall { arguments: None, .. } => {
-                CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE
-            }
-            Self::Index { .. } => INDEX_PRECEDENCE,
-            Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
-            Self::Comment { on: Some(ref on), .. } => {
-                on.get_precedence()
-            }
-            Self::Comment { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, // TODO unsure about this
+			Self::NumberLiteral(..)
+			| Self::BooleanLiteral(..)
+			| Self::StringLiteral(..)
+			| Self::RegexLiteral { .. }
+			| Self::ArrayLiteral(..)
+			| Self::TemplateLiteral(..)
+			| Self::ParenthesizedExpression(..)
+			| Self::JSXRoot(..)
+			| Self::ExpressionFunction(..)
+			| Self::Null(..)
+			| Self::ObjectLiteral(..)
+			| Self::VariableReference(..)
+			| Self::ThisReference(..)
+			| Self::SuperExpression(..)
+			| Self::NewTarget(..)
+			| Self::ClassExpression(..)
+			| Self::ImportMeta(..)
+			| Self::DynamicImport { .. }
+			| Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+			Self::BinaryOperation { operator, .. } => operator.precedence(),
+			Self::UnaryOperation { operator, .. } => operator.precedence(),
+			Self::Assignment { .. } => ASSIGNMENT_PRECEDENCE,
+			Self::BinaryAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::UnaryPrefixAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::UnaryPostfixAssignmentOperation { operator, .. } => operator.precedence(),
+			Self::PropertyAccess { .. } => MEMBER_ACCESS_PRECEDENCE,
+			Self::FunctionCall { .. } => FUNCTION_CALL_PRECEDENCE,
+			Self::ConstructorCall { arguments: Some(_), .. } => CONSTRUCTOR_PRECEDENCE,
+			Self::ConstructorCall { arguments: None, .. } => {
+				CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE
+			}
+			Self::ArrowFunction(..) => ARROW_FUNCTION_PRECEDENCE,
+			Self::Index { .. } => INDEX_PRECEDENCE,
+			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
+			Self::Comment { ref on, .. } => on.get_precedence(),
+			#[cfg(feature = "full-typescript")]
+			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => {
+				PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE
+			}
 			// All these are relational and have the same precedence
-            Self::SpecialOperators(..) => RELATION_PRECEDENCE,
+			Self::SpecialOperators(..) => RELATION_PRECEDENCE,
 			// TODO unsure about this one...?
 			#[cfg(feature = "extras")]
-            Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
-        }
+			Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+		}
 	}
 
 	pub(crate) fn to_string_using_precedence<T: source_map::ToString>(
@@ -1273,10 +1296,10 @@ impl Expression {
 		buf: &mut T,
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
-		_parent_precedence: u8,
+		local2: ExpressionToStringArgument,
 	) {
 		let self_precedence = self.get_precedence();
-		// let inverted = parent_precedence < self_precedence;
+		// let inverted = local2.parent_precedence < self_precedence;
 		// if inverted {
 		// 	buf.push('(');
 		// }
@@ -1302,7 +1325,13 @@ impl Expression {
 				}
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
-				lhs.to_string_using_precedence(buf, options, local, self_precedence);
+				lhs.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(self_precedence),
+				);
+				// TODO not great
 				if options.pretty
 					|| matches!(
 						(operator, &**lhs),
@@ -1327,6 +1356,7 @@ impl Expression {
 					buf.push(' ');
 				}
 				buf.push_str(operator.to_str());
+				// TODO not great
 				if options.pretty
 					|| matches!(
 						(operator, &**rhs),
@@ -1353,49 +1383,97 @@ impl Expression {
 					) {
 					buf.push(' ');
 				}
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				rhs.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(self_precedence),
+				);
 			}
 			Self::SpecialOperators(special, _) => match special {
-				SpecialOperators::AsExpression { value, type_annotation, .. }
-				| SpecialOperators::SatisfiesExpression { value, type_annotation, .. } => {
+				#[cfg(feature = "full-typescript")]
+				SpecialOperators::AsCast { value, rhs, .. } => {
 					value.to_string_from_buffer(buf, options, local);
-					if options.include_types {
-						buf.push_str(match special {
-							SpecialOperators::AsExpression { .. } => " as ",
-							SpecialOperators::SatisfiesExpression { .. } => " satisfies ",
-							_ => unreachable!(),
-						});
+					if options.include_type_annotations {
+						buf.push_str(" as ");
+						match rhs {
+							TypeOrConst::Type(type_annotation) => {
+								type_annotation.to_string_from_buffer(buf, options, local);
+							}
+							TypeOrConst::Const(_) => {
+								buf.push_str("const");
+							}
+						}
+					}
+				}
+				SpecialOperators::Satisfies { value, type_annotation, .. } => {
+					value.to_string_from_buffer(buf, options, local);
+					if options.include_type_annotations {
+						buf.push_str(" satisfies ");
 						type_annotation.to_string_from_buffer(buf, options, local);
 					}
 				}
-				SpecialOperators::InExpression { lhs, rhs } => {
+				SpecialOperators::In { lhs, rhs } => {
 					match lhs {
 						InExpressionLHS::PrivateProperty(property) => {
 							buf.push('#');
 							buf.push_str(property);
 						}
 						InExpressionLHS::Expression(lhs) => {
-							lhs.to_string_using_precedence(buf, options, local, self_precedence);
+							lhs.to_string_using_precedence(
+								buf,
+								options,
+								local,
+								local2.with_precedence(self_precedence),
+							);
 						}
 					}
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" in ");
-					rhs.to_string_using_precedence(buf, options, local, self_precedence);
+					rhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 				}
-				SpecialOperators::InstanceOfExpression { lhs, rhs } => {
-					lhs.to_string_using_precedence(buf, options, local, self_precedence);
+				SpecialOperators::InstanceOf { lhs, rhs } => {
+					lhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
 					// TODO whitespace can be dropped depending on LHS and RHS
 					buf.push_str(" instanceof ");
-					rhs.to_string_using_precedence(buf, options, local, self_precedence);
+					rhs.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
+				}
+				#[cfg(feature = "full-typescript")]
+				SpecialOperators::NonNullAssertion(on) => {
+					on.to_string_using_precedence(
+						buf,
+						options,
+						local,
+						local2.with_precedence(self_precedence),
+					);
+					if options.include_type_annotations {
+						buf.push('!');
+					}
 				}
 				#[cfg(feature = "extras")]
-				SpecialOperators::IsExpression { value, type_annotation, .. } => {
+				SpecialOperators::Is { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 			},
 			Self::UnaryOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
+				// TODO not great
 				if let (
 					UnaryOperator::Negation,
 					Expression::UnaryPrefixAssignmentOperation {
@@ -1421,19 +1499,31 @@ impl Expression {
 				{
 					buf.push(' ');
 				}
-				operand.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				operand.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::Assignment { lhs, rhs, .. } => {
+				let require_parenthesis =
+					matches!(lhs, LHSOfAssignment::ObjectDestructuring(..)) && local2.on_left;
+
+				if require_parenthesis {
+					buf.push('(');
+				}
 				lhs.to_string_from_buffer(buf, options, local);
 				buf.push_str(if options.pretty { " = " } else { "=" });
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				rhs.to_string_using_precedence(buf, options, local, right_argument);
+				if require_parenthesis {
+					buf.push(')');
+				}
 			}
 			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
 				options.push_gap_optionally(buf);
 				buf.push_str(operator.to_str());
 				options.push_gap_optionally(buf);
-				rhs.to_string_using_precedence(buf, options, local, self_precedence);
+				let right_argument = local2.with_precedence(self_precedence).on_right();
+				rhs.to_string_using_precedence(buf, options, local, right_argument);
 			}
 			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
@@ -1453,14 +1543,23 @@ impl Expression {
 			Self::NewTarget(..) => {
 				buf.push_str("new.target");
 			}
+			Self::ImportMeta(..) => {
+				buf.push_str("import.meta");
+			}
 			Self::DynamicImport { path, .. } => {
 				buf.push_str("import(");
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
+				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+					chain_to_string_from_buffer(self, buf, options, local);
+					return;
+				}
+
 				buf.add_mapping(&position.with_source(local.under));
 
+				// TODO number okay, others don't quite get?
 				if let Self::NumberLiteral(..) | Self::ObjectLiteral(..) | Self::ArrowFunction(..) =
 					parent.get_non_parenthesized()
 				{
@@ -1491,18 +1590,17 @@ impl Expression {
 			}
 			Self::ParenthesizedExpression(expr, _) => {
 				// TODO more expressions could be considered for parenthesis elision
-				if let MultipleExpression::Single(inner) = &**expr {
-					if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE {
-						inner.to_string_from_buffer(buf, options, local);
-						return;
-					}
+				if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
+				{
+					expr.to_string_on_left(buf, options, local);
+				} else {
+					buf.push('(');
+					expr.to_string_from_buffer(buf, options, local);
+					buf.push(')');
 				}
-				buf.push('(');
-				expr.to_string_from_buffer(buf, options, local);
-				buf.push(')');
 			}
 			Self::Index { indexee: expression, indexer, is_optional, .. } => {
-				expression.to_string_from_buffer(buf, options, local);
+				expression.to_string_using_precedence(buf, options, local, local2);
 				if *is_optional {
 					buf.push_str("?.");
 				}
@@ -1517,20 +1615,14 @@ impl Expression {
 					return;
 				}
 
-				if let Self::ArrowFunction(..) | Self::ObjectLiteral(..) =
-					function.get_non_parenthesized()
-				{
-					buf.push('(');
-					function.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					function.to_string_from_buffer(buf, options, local);
-				}
+				function.to_string_using_precedence(buf, options, local, local2);
 
 				if *is_optional {
 					buf.push_str("?.");
 				}
-				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) =
+					(options.include_type_annotations, type_arguments)
+				{
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				arguments_to_string(arguments, buf, options, local);
@@ -1538,7 +1630,9 @@ impl Expression {
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
 				constructor.to_string_from_buffer(buf, options, local);
-				if let (true, Some(type_arguments)) = (options.include_types, type_arguments) {
+				if let (true, Some(type_arguments)) =
+					(options.include_type_annotations, type_arguments)
+				{
 					to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
 				}
 				if let Some(arguments) = arguments {
@@ -1548,20 +1642,47 @@ impl Expression {
 					}
 				}
 			}
+			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
+			Self::ArrowFunction(arrow_function) => {
+				// `async () => {}` looks like async statement declaration when in declaration
+				if local2.on_left && arrow_function.header {
+					buf.push('(');
+				}
+				arrow_function.to_string_from_buffer(buf, options, local);
+				if local2.on_left && arrow_function.header {
+					buf.push(')');
+				}
+			}
+			Self::ExpressionFunction(function) => {
+				if local2.on_left {
+					buf.push('(');
+				}
+				function.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
+			}
 			Self::ArrayLiteral(values, _) => {
 				to_string_bracketed(values, ('[', ']'), buf, options, local);
 			}
-			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
 			Self::ObjectLiteral(object_literal) => {
-				object_literal.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push('(');
+				}
+				to_string_bracketed(&object_literal.members, ('{', '}'), buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
 			}
-			Self::ArrowFunction(arrow_function) => {
-				arrow_function.to_string_from_buffer(buf, options, local);
+			Self::ClassExpression(class) => {
+				if local2.on_left {
+					buf.push('(');
+				}
+				class.to_string_from_buffer(buf, options, local);
+				if local2.on_left {
+					buf.push(')');
+				}
 			}
-			Self::ExpressionFunction(function) => {
-				function.to_string_from_buffer(buf, options, local);
-			}
-			Self::ClassExpression(class) => class.to_string_from_buffer(buf, options, local),
 			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
 				if *prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
@@ -1574,9 +1695,7 @@ impl Expression {
 						buf.push_new_line();
 					}
 				}
-				if let Some(on) = on {
-					on.to_string_from_buffer(buf, options, local);
-				}
+				on.to_string_using_precedence(buf, options, local, local2);
 				if !prefix && options.should_add_comment(content.starts_with('*')) {
 					if *is_multiline {
 						buf.push_str("/*");
@@ -1590,41 +1709,66 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
-				template_literal.to_string_from_buffer(buf, options, local);
+				if let Some(tag) = &template_literal.tag {
+					tag.to_string_using_precedence(buf, options, local, local2);
+				}
+				buf.push('`');
+				for part in &template_literal.parts {
+					match part {
+						TemplateLiteralPart::Static(content) => {
+							buf.push_str_contains_new_line(content.as_str());
+						}
+						TemplateLiteralPart::Dynamic(expression) => {
+							buf.push_str("${");
+							expression.to_string_from_buffer(buf, options, local);
+							buf.push('}');
+						}
+					}
+				}
+				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
-				if let Self::ArrowFunction(..) | Self::ExpressionFunction(..) =
-					condition.get_non_parenthesized()
-				{
-					buf.push('(');
-					condition.to_string_using_precedence(
-						buf,
-						options,
-						local,
-						CONDITIONAL_TERNARY_PRECEDENCE,
-					);
-					buf.push(')');
+				let available_space = u32::from(options.max_line_length)
+					.saturating_sub(buf.characters_on_current_line());
+
+				let split_lines = crate::are_nodes_over_length(
+					[condition, truthy_result, falsy_result].iter().map(AsRef::as_ref),
+					options,
+					local,
+					Some(available_space),
+					true,
+				);
+				condition.to_string_using_precedence(
+					buf,
+					options,
+					local,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE),
+				);
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str("? ");
 				} else {
-					condition.to_string_using_precedence(
-						buf,
-						options,
-						local,
-						CONDITIONAL_TERNARY_PRECEDENCE,
-					);
+					buf.push_str(if options.pretty { " ? " } else { "?" });
 				}
-				buf.push_str(if options.pretty { " ? " } else { "?" });
 				truthy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
-					CONDITIONAL_TERNARY_PRECEDENCE,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
-				buf.push_str(if options.pretty { " : " } else { ":" });
+				if split_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					buf.push_str(": ");
+				} else {
+					buf.push_str(if options.pretty { " : " } else { ":" });
+				}
 				falsy_result.to_string_using_precedence(
 					buf,
 					options,
 					local,
-					CONDITIONAL_TERNARY_PRECEDENCE,
+					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
 			}
 			Self::Null(..) => buf.push_str("null"),
@@ -1666,11 +1810,27 @@ fn function_header_ish(
 			))
 }
 
-/// Represents expressions that can be `,`
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Clone, Copy)]
+pub(crate) struct ExpressionToStringArgument {
+	/// On left of statement
+	pub on_left: bool,
+	pub parent_precedence: u8,
+}
+
+impl ExpressionToStringArgument {
+	pub fn on_right(self) -> Self {
+		Self { on_left: false, parent_precedence: self.parent_precedence }
+	}
+
+	pub fn with_precedence(self, precedence: u8) -> Self {
+		Self { on_left: self.on_left, parent_precedence: precedence }
+	}
+}
+
+/// Represents expressions under the comma operator
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(untagged))]
 pub enum MultipleExpression {
 	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
 	Single(Expression),
@@ -1686,16 +1846,23 @@ impl MultipleExpression {
 		}
 	}
 
-	/// These are valid in expression position but are parsed different in statement mode
-	pub(crate) fn left_is_statement_like(&self) -> bool {
+	pub(crate) fn to_string_on_left<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
 		match self {
-			MultipleExpression::Multiple { lhs, .. } => lhs.left_is_statement_like(),
-			MultipleExpression::Single(e) => matches!(
-				e.get_non_parenthesized(),
-				Expression::ObjectLiteral(_)
-					| Expression::ExpressionFunction(_)
-					| Expression::ClassExpression(_)
-			),
+			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
+				lhs.to_string_on_left(buf, options, local);
+				buf.push(',');
+				rhs.to_string_from_buffer(buf, options, local);
+			}
+			MultipleExpression::Single(single) => {
+				let local2 =
+					ExpressionToStringArgument { on_left: true, parent_precedence: u8::MAX };
+				single.to_string_using_precedence(buf, options, local, local2);
+			}
 		}
 	}
 }
@@ -1739,9 +1906,9 @@ impl ASTNode for MultipleExpression {
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			MultipleExpression::Multiple { position, .. } => position,
+			MultipleExpression::Multiple { position, .. } => *position,
 			MultipleExpression::Single(expr) => expr.get_position(),
 		}
 	}
@@ -1804,35 +1971,37 @@ fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStar
 }
 
 pub(crate) fn arguments_to_string<T: source_map::ToString>(
-	nodes: &[SpreadExpression],
+	nodes: &[FunctionArgument],
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
-	let add_new_lines = if options.enforce_limit_length_limit() {
-		let mut acc = 0u16;
-		let available_space = u16::from(options.max_line_length);
-		for node in nodes {
-			acc += crate::get_length_of_node(node, options, local, i32::from(available_space));
-			if acc > available_space {
-				break;
-			}
-		}
-		acc > available_space
-	} else {
-		false
-	};
+	let add_new_lines = are_nodes_over_length(
+		nodes.iter(),
+		options,
+		local,
+		Some(u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line())),
+		true,
+	);
 	if add_new_lines {
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);
 	}
 	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
-		// Hack for arrays, this is just easier for generators
-		if let SpreadExpression::Spread(Expression::ArrayLiteral(items, _), _) = node {
-			for (at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter()) {
-				item.to_string_from_buffer(buf, options, local);
-				if !at_end {
+		// Hack for arrays, this is just easier for generators and ends up in a smaller output
+		if let FunctionArgument::Spread(Expression::ArrayLiteral(items, _), _) = node {
+			if items.is_empty() {
+				continue;
+			}
+			for (inner_at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter())
+			{
+				if item.0.is_none() {
+					buf.push_str("undefined");
+				} else {
+					item.to_string_from_buffer(buf, options, local);
+				}
+				if !inner_at_end {
 					buf.push(',');
 					options.push_gap_optionally(buf);
 				}
@@ -1857,57 +2026,65 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	buf.push(')');
 }
 
+/// Binary operations whose RHS are types rather than [Expression]s
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+pub enum SpecialOperators {
+	/// TS Only
+	Satisfies {
+		value: Box<Expression>,
+		type_annotation: Box<TypeAnnotation>,
+	},
+	In {
+		lhs: InExpressionLHS,
+		rhs: Box<Expression>,
+	},
+	InstanceOf {
+		lhs: Box<Expression>,
+		rhs: Box<Expression>,
+	},
+	#[cfg(feature = "extras")]
+	Is {
+		value: Box<Expression>,
+		type_annotation: Box<TypeAnnotation>,
+	},
+	#[cfg(feature = "full-typescript")]
+	NonNullAssertion(Box<Expression>),
+	#[cfg(feature = "full-typescript")]
+	AsCast {
+		value: Box<Expression>,
+		rhs: TypeOrConst,
+	},
+}
+
+#[cfg(feature = "full-typescript")]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+pub enum TypeOrConst {
+	Type(Box<TypeAnnotation>),
+	Const(Span),
+}
+
+#[apply(derive_ASTNode)]
+#[derive(PartialEqExtras, Debug, Clone, Visitable)]
+#[partial_eq_ignore_types(Span)]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
 }
 
-/// Binary operations whose RHS are types rather than [Expression]s
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum SpecialOperators {
-	/// TS Only
-	AsExpression {
-		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
-	},
-	/// TS Only
-	SatisfiesExpression {
-		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
-	},
-	InExpression {
-		lhs: InExpressionLHS,
-		rhs: Box<Expression>,
-	},
-	InstanceOfExpression {
-		lhs: Box<Expression>,
-		rhs: Box<Expression>,
-	},
-	#[cfg(feature = "extras")]
-	IsExpression {
-		value: Box<Expression>,
-		type_annotation: Box<TypeAnnotation>,
-	},
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub enum SpreadExpression {
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+pub enum FunctionArgument {
 	Spread(Expression, Span),
-	NonSpread(Expression),
+	Standard(Expression),
+	Comment { content: String, is_multiline: bool, position: Span },
 }
 
-impl ListItem for SpreadExpression {}
+impl ListItem for FunctionArgument {}
 
-impl ASTNode for SpreadExpression {
+impl ASTNode for FunctionArgument {
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -1924,31 +2101,47 @@ impl ASTNode for SpreadExpression {
 			t if t.is_comment() => {
 				let (content, is_multiline, position) =
 					TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+
+				// Function arguments, JSX interpolated expressions and array elements don't have to have a value
+				if let Some(Token(
+					TSXToken::CloseParentheses
+					| TSXToken::JSXExpressionEnd
+					| TSXToken::CloseBracket
+					| TSXToken::Comma,
+					_,
+				)) = reader.peek()
+				{
+					return Ok(Self::Comment { content, is_multiline, position });
+				}
+
 				let expr = Self::from_reader(reader, state, options)?;
 				let position = position.union(expr.get_position());
+
 				Ok(match expr {
-					SpreadExpression::Spread(expr, _end) => SpreadExpression::Spread(
+					FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
 						Expression::Comment {
 							content,
-							on: Some(Box::new(expr)),
+							on: Box::new(expr),
 							position,
 							is_multiline,
 							prefix: true,
 						},
 						position,
 					),
-					SpreadExpression::NonSpread(expr) => {
-						SpreadExpression::NonSpread(Expression::Comment {
+					FunctionArgument::Standard(expr) => {
+						FunctionArgument::Standard(Expression::Comment {
 							content,
-							on: Some(Box::new(expr)),
+							on: Box::new(expr),
 							position,
 							is_multiline,
 							prefix: true,
 						})
 					}
+					// TODO
+					c @ FunctionArgument::Comment { .. } => c,
 				})
 			}
-			_ => Ok(Self::NonSpread(Expression::from_reader(reader, state, options)?)),
+			_ => Ok(Self::Standard(Expression::from_reader(reader, state, options)?)),
 		}
 	}
 
@@ -1959,38 +2152,46 @@ impl ASTNode for SpreadExpression {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			SpreadExpression::Spread(expression, _) => {
+			FunctionArgument::Spread(expression, _) => {
 				buf.push_str("...");
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			SpreadExpression::NonSpread(expression) => {
+			FunctionArgument::Standard(expression) => {
 				expression.to_string_from_buffer(buf, options, local);
+			}
+			FunctionArgument::Comment { content, is_multiline, position: _ } => {
+				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+					buf.push_str("/*");
+					buf.push_str(content);
+					buf.push_str("*/");
+				}
 			}
 		}
 	}
 
-	fn get_position(&self) -> &Span {
+	fn get_position(&self) -> Span {
 		match self {
-			SpreadExpression::Spread(_, pos) => pos,
-			SpreadExpression::NonSpread(expr) => expr.get_position(),
+			FunctionArgument::Comment { position, .. } | FunctionArgument::Spread(_, position) => {
+				*position
+			}
+			FunctionArgument::Standard(expr) => expr.get_position(),
 		}
 	}
 }
 
-impl From<Expression> for SpreadExpression {
+impl From<Expression> for FunctionArgument {
 	fn from(value: Expression) -> Self {
-		SpreadExpression::NonSpread(value)
+		FunctionArgument::Standard(value)
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct ArrayElement(pub Option<SpreadExpression>);
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
+pub struct ArrayElement(pub Option<FunctionArgument>);
 
 impl ASTNode for ArrayElement {
-	fn get_position(&self) -> &Span {
-		self.0.as_ref().map_or(&Span::NULL, |s| s.get_position())
+	fn get_position(&self) -> Span {
+		self.0.as_ref().map_or(Span::NULL, ASTNode::get_position)
 	}
 
 	fn from_reader(
@@ -1998,7 +2199,7 @@ impl ASTNode for ArrayElement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		Ok(Self(Some(ASTNode::from_reader(reader, state, options)?)))
+		Ok(Self(Some(FunctionArgument::from_reader(reader, state, options)?)))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -2022,7 +2223,7 @@ impl Expression {
 	/// IIFE = immediate invoked function execution
 	#[must_use]
 	pub fn build_iife(block: Block) -> Self {
-		let position = *block.get_position();
+		let position = block.get_position();
 		Expression::FunctionCall {
 			function: Expression::ParenthesizedExpression(
 				Box::new(
@@ -2030,12 +2231,11 @@ impl Expression {
 						// TODO maybe async
 						header: false,
 						name: (),
-						parameters: crate::FunctionParameters {
+						parameters: crate::functions::FunctionParameters {
 							parameters: Default::default(),
 							rest_parameter: Default::default(),
 							position,
-							this_type: None,
-							super_type: None,
+							leading: (),
 						},
 						return_type: None,
 						type_parameters: None,
@@ -2080,46 +2280,144 @@ impl Expression {
 				// TODO could return a variant here...
 				self
 			}
-		} else if let Expression::Comment { on: Some(on), .. } = self {
+		} else if let Expression::Comment { on, .. } = self {
 			on.get_non_parenthesized()
 		} else {
 			self
 		}
 	}
-
-	/// For prettier printing
-	///
-	/// TODO temp
-	#[must_use]
-	pub fn is_small(&self) -> bool {
-		match self {
-			Self::NumberLiteral(..) | Self::BooleanLiteral(..) | Self::VariableReference(..) => {
-				true
-			}
-			Self::StringLiteral(value, ..) => value.len() < 8,
-			_ => false,
-		}
-	}
 }
 
 /// "super" cannot be used alone
+#[apply(derive_ASTNode)]
 #[derive(PartialEqExtras, Debug, Clone, Visitable)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum SuperReference {
-	Call { arguments: Vec<SpreadExpression> },
+	Call { arguments: Vec<FunctionArgument> },
 	PropertyAccess { property: String },
 	Index { indexer: Box<Expression> },
 }
 
+pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
+	original: &Expression,
+	buf: &mut T,
+	options: &crate::ToStringOptions,
+	local: crate::LocalToStringInformation,
+) {
+	let mut chain = Vec::new();
+
+	let split_between_lines = if options.enforce_limit_length_limit() {
+		let room =
+			u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line());
+
+		let mut buf = source_map::StringWithOptionalSourceMap {
+			source: String::new(),
+			source_map: None,
+			quit_after: Some(room as usize),
+			since_new_line: 0,
+		};
+		let mut over = false;
+		let mut cur = Some(original);
+		while let Some(node) = cur {
+			chain.push(node);
+			// Just measure the link in change (not the parent)
+			cur = match node {
+				Expression::PropertyAccess { parent, property, .. } => {
+					match property {
+						PropertyReference::Standard { property, .. } => buf.push_str(property),
+						PropertyReference::Marker(_) => {}
+					}
+					Some(parent)
+				}
+				Expression::Index { indexer, indexee, .. } => {
+					indexer.to_string_from_buffer(&mut buf, options, local);
+					Some(indexee)
+				}
+				Expression::FunctionCall { function, type_arguments, arguments, .. } => {
+					if let (true, Some(type_arguments)) =
+						(options.include_type_annotations, type_arguments)
+					{
+						to_string_bracketed(type_arguments, ('<', '>'), &mut buf, options, local);
+					}
+					arguments_to_string(arguments, &mut buf, options, local);
+					Some(function)
+				}
+				expression => {
+					expression.to_string_from_buffer(&mut buf, options, local);
+					None
+				}
+			};
+
+			if buf.should_halt() {
+				over = true;
+				// Continue to build chain
+			}
+		}
+		over
+	} else {
+		false
+	};
+
+	if split_between_lines && !chain.is_empty() {
+		let mut items = chain.into_iter().rev();
+		items.next().unwrap().to_string_from_buffer(buf, options, local);
+
+		for item in items {
+			// Just measure the link in change (not the parent)
+			match item {
+				Expression::PropertyAccess { property, is_optional, .. } => {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					if *is_optional {
+						buf.push_str("?.");
+					} else {
+						buf.push('.');
+					}
+					match property {
+						PropertyReference::Standard { property, is_private } => {
+							if *is_private {
+								buf.push('#');
+							}
+							buf.push_str(property);
+						}
+						PropertyReference::Marker(..) => {
+							assert!(options.expect_markers, "found marker");
+						}
+					}
+				}
+				Expression::Index { indexer, is_optional, .. } => {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+					if *is_optional {
+						buf.push_str("?.");
+					}
+					buf.push('[');
+					indexer.to_string_from_buffer(buf, options, local);
+					buf.push(']');
+				}
+				Expression::FunctionCall { type_arguments, arguments, is_optional, .. } => {
+					if *is_optional {
+						buf.push_str("?.");
+					}
+					if let (true, Some(type_arguments)) =
+						(options.include_type_annotations, type_arguments)
+					{
+						to_string_bracketed(type_arguments, ('<', '>'), buf, options, local);
+					}
+					arguments_to_string(arguments, buf, options, local);
+				}
+				_ => unreachable!(),
+			}
+		}
+	} else {
+		original.to_string_from_buffer(buf, options, local.do_not_pretty_print());
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{ASTNode, Expression, Expression::*, MultipleExpression};
-	use crate::{
-		assert_matches_ast, ast::SpreadExpression, operators::BinaryOperator, span,
-		NumberRepresentation, Quoted,
-	};
+	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
+	use crate::{assert_matches_ast, ast::FunctionArgument, span, NumberRepresentation, Quoted};
 
 	#[test]
 	fn literal() {
@@ -2181,7 +2479,7 @@ mod tests {
 	fn spread_function_argument() {
 		assert_matches_ast!(
 			"console.table(...a)",
-			FunctionCall { arguments: Deref @ [SpreadExpression::Spread(VariableReference(..), span!(14, 18))], .. }
+			FunctionCall { arguments: Deref @ [FunctionArgument::Spread(VariableReference(..), span!(14, 18))], .. }
 		);
 	}
 

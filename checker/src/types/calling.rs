@@ -1,37 +1,40 @@
-use source_map::{SourceId, SpanWithSource};
-use std::vec;
+use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
-	context::{invocation::CheckThings, CallCheckingBehavior, Environment, Logical},
-	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{application::ErrorsAndInfo, apply_event, Event, FinalEvent, RootReference},
-	features::{
-		constant_functions::{call_constant_function, ConstantFunctionError, ConstantOutput},
-		functions::{FunctionBehavior, ThisValue},
+	context::{
+		information::InformationChain, invocation::CheckThings, CallCheckingBehavior, Environment,
+		Logical, MissingOrToCalculate, PossibleLogical,
 	},
-	subtyping::{type_is_subtype, BasicEquality, SubTypeResult},
-	types::{functions::SynthesisedArgument, substitute, ObjectNature},
-	types::{FunctionType, Type},
-	FunctionId, SpecialExpressions, TypeId,
+	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
+	events::{application::ErrorsAndInfo, apply_events, ApplicationResult, Event, RootReference},
+	features::{
+		constant_functions::{
+			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
+		},
+		functions::{FunctionBehavior, ThisValue},
+		objects::{ObjectBuilder, SpecialObjects},
+	},
+	subtyping::{
+		type_is_subtype, type_is_subtype_with_generics, State, SubTypeResult, SubTypingMode,
+		SubTypingOptions,
+	},
+	types::{
+		functions::SynthesisedArgument, generics::substitution::SubstitutionArguments,
+		get_structure_arguments_based_on_object_constraint, substitute, FunctionEffect,
+		FunctionType, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
+	},
+	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
 
 use super::{
+	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 	get_constraint, is_type_constant,
-	poly_types::{
-		generic_type_arguments::StructureGenericArguments, FunctionTypeArguments, SeedingContext,
-	},
 	properties::PropertyKey,
-	Constructor, PolyNature, TypeStore,
+	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 };
 
 pub struct CallingInput {
-	pub called_with_new: CalledWithNew,
-	pub this_value: ThisValue,
-	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
-	pub call_site: SpanWithSource,
-}
-
-pub struct CallingInputWithoutThis {
+	/// Also depicts what happens with `this`
 	pub called_with_new: CalledWithNew,
 	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
 	pub call_site: SpanWithSource,
@@ -42,375 +45,588 @@ pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
 	pub expression: &'a A::Expression<'a>,
 }
 
+/// Intermediate type for calling a function
+///
+/// Generic arguments handled with `Logical::Implies`
+#[derive(Debug)]
+struct FunctionLike {
+	pub(crate) function: FunctionId,
+	/// For generic calls
+	pub(crate) from: Option<TypeId>,
+	/// From, maybe ignored if [`CalledWithNew`] overrides
+	pub(crate) this_value: ThisValue,
+}
+
+/// TODO *result* name bad
+pub struct CallingOutput {
+	pub called: Option<FunctionId>,
+	/// TODO should this be
+	pub result: Option<ApplicationResult>,
+	/// TODO is [`InfoDiagnostic`] the best type here?
+	pub warnings: Vec<InfoDiagnostic>,
+	pub special: Option<SpecialExpressions>,
+	// pub special: Option<SpecialExpressions>,
+	pub result_was_const_computation: bool,
+}
+
+pub struct BadCallOutput {
+	/// This might be from specialisation
+	pub returned_type: TypeId,
+	pub errors: Vec<FunctionCallingError>,
+}
+
+/// Also synthesise arguments in terms of expected types
 pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	ty: TypeId,
-	arguments: Vec<UnsynthesisedArgument<A>>,
+	arguments: &[UnsynthesisedArgument<A>],
 	input: CallingInput,
 	environment: &mut Environment,
 	checking_data: &mut crate::CheckingData<T, A>,
+	_expected: TypeId,
 ) -> (TypeId, Option<SpecialExpressions>) {
-	// TODO maybe could do lower down...?
-	let base_function = get_constraint(ty, &checking_data.types).unwrap_or(ty);
-
-	// TODO fails for ors
-	// TODO not great, gets parameters here, then
-	let arguments = if let Type::Function(f, _) | Type::FunctionReference(f) =
-		checking_data.types.get_type_by_id(base_function)
-	{
-		// TODO clone here bad
-		let parameters = checking_data.types.get_function_from_id(*f).parameters.clone();
-		arguments
-			.into_iter()
-			.enumerate()
-			.map(|(idx, argument)| {
-				let expected = parameters.parameters.get(idx).map_or(TypeId::ANY_TYPE, |p| {
-					get_constraint(p.ty, &checking_data.types).unwrap_or(p.ty)
-				});
-
-				SynthesisedArgument {
-					spread: argument.spread,
-					position: A::expression_position(argument.expression)
-						.with_source(environment.get_source()),
-					value: A::synthesise_expression(
-						argument.expression,
-						expected,
-						environment,
-						checking_data,
-					),
-				}
-			})
-			.collect()
-	} else {
-		arguments
-			.into_iter()
-			.map(|argument| SynthesisedArgument {
-				spread: argument.spread,
-				position: A::expression_position(argument.expression)
-					.with_source(environment.get_source()),
-				value: A::synthesise_expression(
-					argument.expression,
-					TypeId::ANY_TYPE,
-					environment,
-					checking_data,
-				),
-			})
-			.collect()
-	};
-
 	let call_site = input.call_site;
 
-	let result =
-		call_type(ty, arguments, input, environment, &mut CheckThings, &mut checking_data.types);
+	// input.this_value
+	let callable = get_logical_callable_from_type(ty, None, None, &checking_data.types);
 
-	match result {
-		Ok(FunctionCallResult {
-			returned_type,
-			warnings,
-			called: _,
-			special,
-			found_dependent_argument: _,
-		}) => {
-			for warning in warnings {
-				checking_data.diagnostics_container.add_info(
-					crate::diagnostics::Diagnostic::Position {
-						reason: warning.0,
-						position: call_site,
-						kind: crate::diagnostics::DiagnosticKind::Info,
-					},
+	match callable {
+		Ok(callable) => {
+			// crate::utilities::notify!("{:?}", callable);
+
+			// Fix as `.map` doesn't get this passed down
+			let parent_arguments = if let Logical::Pure(FunctionLike {
+				this_value: ThisValue::Passed(this_passed),
+				..
+			}) = callable
+			{
+				if let Type::Object(..) = checking_data.types.get_type_by_id(this_passed) {
+					if let Some(arguments) = get_structure_arguments_based_on_object_constraint(
+						this_passed,
+						environment,
+						&checking_data.types,
+					) {
+						crate::utilities::notify!("Here :)");
+						Some(arguments.clone())
+					} else {
+						let prototype = environment
+							.get_chain_of_info()
+							.find_map(|facts| facts.prototypes.get(&this_passed))
+							.copied();
+
+						if prototype.is_some_and(|prototype| {
+							checking_data.types.lookup_generic_map.contains_key(&prototype)
+						}) {
+							crate::utilities::notify!("Registering lookup for calling");
+
+							Some(GenericArguments::LookUp { on: this_passed })
+						} else {
+							None
+						}
+					}
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+
+			let (arguments, type_argument_restrictions) =
+				synthesise_argument_expressions_wrt_parameters(
+					&callable,
+					arguments,
+					(input.call_site_type_arguments, parent_arguments.as_ref()),
+					environment,
+					checking_data,
 				);
-			}
 
-			(returned_type, special)
-		}
-		Err(errors) => {
-			for error in errors {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::FunctionCallingError(error));
+			let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+			let result = call_logical(
+				callable,
+				input.called_with_new,
+				input.call_site,
+				type_argument_restrictions,
+				parent_arguments,
+				arguments,
+				environment,
+				&mut checking_data.types,
+				&mut check_things,
+			);
+
+			match result {
+				Ok(CallingOutput {
+					result,
+					warnings,
+					called: _,
+					special,
+					result_was_const_computation: _,
+				}) => {
+					for warning in warnings {
+						checking_data.diagnostics_container.add_info(
+							crate::diagnostics::Diagnostic::Position {
+								reason: warning.0,
+								position: call_site,
+								kind: crate::diagnostics::DiagnosticKind::Info,
+							},
+						);
+					}
+
+					// if thrown_type != TypeId::NEVER_TYPE {
+					// 	todo!()
+					// 	// environment.context_type.state.append_termination(FinalEvent::Throw {
+					// 	// 	thrown: thrown_type,
+					// 	// 	position: call_site,
+					// 	// });
+					// }
+
+					let returned_type = application_result_to_return_type(
+						result,
+						environment,
+						&mut checking_data.types,
+					);
+
+					(returned_type, special)
+				}
+				Err(error) => {
+					for error in error.errors {
+						checking_data
+							.diagnostics_container
+							.add_error(TypeCheckError::FunctionCallingError(error));
+					}
+					(error.returned_type, None)
+				}
 			}
+		}
+		Err(MissingOrToCalculate::Error) => (TypeId::ERROR_TYPE, None),
+		Err(MissingOrToCalculate::Infer { on: _ }) => {
+			todo!("function calling inference")
+		}
+		Err(MissingOrToCalculate::Proxy(..)) => {
+			todo!("calling proxy")
+		}
+		Err(MissingOrToCalculate::Missing) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::FunctionCallingError(
+				FunctionCallingError::NotCallable {
+					calling: TypeStringRepresentation::from_type_id(
+						ty,
+						environment,
+						&checking_data.types,
+						checking_data.options.debug_types,
+					),
+					call_site,
+				},
+			));
 			(TypeId::ERROR_TYPE, None)
 		}
 	}
 }
 
-/// TODO this and aliases kindof broken
-pub fn call_type<E: CallCheckingBehavior>(
+/// TODO also return partial result
+pub fn application_result_to_return_type(
+	result: Option<ApplicationResult>,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> TypeId {
+	if let Some(result) = result {
+		match result {
+			// TODO
+			ApplicationResult::Return { returned, position: _ } => returned,
+			ApplicationResult::Throw { thrown, position } => {
+				environment.throw_value(thrown, position);
+				TypeId::NEVER_TYPE
+			}
+			ApplicationResult::Yield {} => todo!("Create generator object"),
+			ApplicationResult::Or { on, truthy_result, otherwise_result } => {
+				let truthy_result =
+					application_result_to_return_type(Some(*truthy_result), environment, types);
+				let otherwise_result =
+					application_result_to_return_type(Some(*otherwise_result), environment, types);
+				types.new_conditional_type(on, truthy_result, otherwise_result)
+			}
+			ApplicationResult::Continue { .. } | ApplicationResult::Break { .. } => {
+				unreachable!("returning conditional or break (carry failed)")
+			}
+		}
+	} else {
+		TypeId::UNDEFINED_TYPE
+	}
+}
+
+/// In events
+pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
 	arguments: Vec<SynthesisedArgument>,
-	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
+	input: &CallingInput,
 	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
-) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	let never_or_error_type =
-		matches!(on, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(on).or_else(|| {
-			arguments.iter().find_map(|a| {
-				matches!(a.value, TypeId::ERROR_TYPE | TypeId::NEVER_TYPE).then_some(a.value)
-			})
-		});
+) -> Result<CallingOutput, BadCallOutput> {
+	// input.this_value,
+	let callable = get_logical_callable_from_type(on, None, None, types).ok();
+	try_call_logical(callable, input, arguments, None, top_environment, types, behavior, on)
+}
 
-	if let Some(never_or_error_type) = never_or_error_type {
-		crate::utils::notify!(
-			"Exiting earlier because of Never or Error being called or as argument"
-		);
-		return Ok(FunctionCallResult {
-			called: None,
-			returned_type: never_or_error_type,
-			warnings: Vec::new(),
-			special: None,
-			found_dependent_argument: false,
-		});
+/// This could possibly be done in one step
+fn get_logical_callable_from_type(
+	ty: TypeId,
+	on: Option<ThisValue>,
+	from: Option<TypeId>,
+	types: &TypeStore,
+) -> PossibleLogical<FunctionLike> {
+	if ty == TypeId::ERROR_TYPE {
+		return Err(MissingOrToCalculate::Error);
+	}
+	if ty == TypeId::ANY_TYPE {
+		return Err(MissingOrToCalculate::Infer { on: from.unwrap() });
 	}
 
-	if let Some(constraint) = get_constraint(on, types) {
-		create_generic_function_call(
-			constraint,
-			CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
-			arguments,
-			on,
-			top_environment,
-			behavior,
-			types,
-		)
-	} else {
-		let callable = get_logical_callable_from_type(on, types);
+	let le_ty = types.get_type_by_id(ty);
 
-		if let Some(logical) = callable {
-			let structure_generics = None;
-			call_logical(
-				logical,
-				types,
-				CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
-				structure_generics,
-				arguments,
-				top_environment,
-				behavior,
-			)
-		} else {
-			Err(vec![FunctionCallingError::NotCallable {
-				calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
-					on,
-					&top_environment.as_general_context(),
-					types,
-					false,
-				),
-				call_site,
-			}])
+	// crate::utilities::notify!("ty1={:?} ({:?})", le_ty, ty);
+
+	match le_ty {
+		Type::Class { .. } | Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => {
+			Err(MissingOrToCalculate::Missing)
+		}
+		Type::And(_, _) => todo!(),
+		Type::Or(left, right) => {
+			let left = get_logical_callable_from_type(*left, on, from, types);
+			let right = get_logical_callable_from_type(*right, on, from, types);
+			Ok(Logical::Or {
+				condition: TypeId::BOOLEAN_TYPE,
+				left: Box::new(left),
+				right: Box::new(right),
+			})
+		}
+		Type::AliasTo { to, name: _, parameters } => {
+			if parameters.is_some() {
+				todo!()
+			}
+			get_logical_callable_from_type(*to, on, from, types)
+		}
+		Type::FunctionReference(f) => {
+			let function = FunctionLike {
+				// TODO
+				function: *f,
+				from,
+				this_value: on.unwrap_or(ThisValue::UseParent),
+			};
+			Ok(Logical::Pure(function))
+		}
+		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+			let this_value = on.unwrap_or(*t);
+			let from = Some(from.unwrap_or(ty));
+			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }))
+		}
+		Type::SpecialObject(SpecialObjects::ClassConstructor { constructor, .. }) => {
+			Ok(Logical::Pure(FunctionLike {
+				from,
+				function: *constructor,
+				this_value: ThisValue::UseParent,
+			}))
+		}
+		Type::SpecialObject(so) => match so {
+			crate::features::objects::SpecialObjects::Proxy { .. } => todo!(),
+			_ => Err(MissingOrToCalculate::Missing),
+		},
+		Type::PartiallyAppliedGenerics(generic) => {
+			get_logical_callable_from_type(generic.on, on, from, types).map(|res| {
+				crate::utilities::notify!("Calling found {:?}", generic.arguments);
+				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
+			})
+		}
+		Type::Constructor(Constructor::Property { on, under: _, result, bind_this }) => {
+			crate::utilities::notify!("Passing {:?}", on);
+
+			let this_value = if *bind_this { ThisValue::Passed(*on) } else { ThisValue::UseParent };
+			let result =
+				get_logical_callable_from_type(*result, Some(this_value), Some(ty), types)?;
+
+			let and_then = get_constraint(*on, types).and_then(|c| {
+				if let Type::PartiallyAppliedGenerics(generic) = types.get_type_by_id(c) {
+					Some(generic.arguments.clone())
+				} else {
+					None
+				}
+			});
+
+			if let Some(antecedent) = and_then {
+				Ok(Logical::Implies { on: Box::new(result), antecedent })
+			} else {
+				Ok(result)
+			}
+		}
+		Type::RootPolyType(_) | Type::Constructor(_) => {
+			let constraint = get_constraint(ty, types).unwrap();
+			crate::utilities::notify!("Calling constructor / root poly type! {:?}", constraint);
+			get_logical_callable_from_type(constraint, on, Some(ty), types)
 		}
 	}
 }
 
-fn call_logical<E: CallCheckingBehavior>(
-	logical: Logical<(FunctionId, ThisValue)>,
-	types: &mut TypeStore,
-	CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site }: CallingInputWithoutThis,
-	structure_generics: Option<StructureGenericArguments>,
+#[allow(clippy::too_many_arguments)]
+fn try_call_logical<E: CallCheckingBehavior>(
+	callable: Option<Logical<FunctionLike>>,
+	input: &CallingInput,
 	arguments: Vec<SynthesisedArgument>,
-	environment: &mut Environment,
+	type_argument_restrictions: Option<TypeRestrictions>,
+	top_environment: &mut Environment,
+	types: &mut TypeStore,
 	behavior: &mut E,
-) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+	on: TypeId,
+) -> Result<CallingOutput, BadCallOutput> {
+	if let Some(logical) = callable {
+		call_logical(
+			logical,
+			input.called_with_new,
+			input.call_site,
+			type_argument_restrictions,
+			None,
+			arguments,
+			top_environment,
+			types,
+			behavior,
+		)
+	} else {
+		Err(BadCallOutput {
+			returned_type: TypeId::ERROR_TYPE,
+			errors: vec![FunctionCallingError::NotCallable {
+				calling: crate::diagnostics::TypeStringRepresentation::from_type_id(
+					on,
+					top_environment,
+					types,
+					behavior.debug_types(),
+				),
+				call_site: input.call_site,
+			}],
+		})
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn call_logical<E: CallCheckingBehavior>(
+	logical: Logical<FunctionLike>,
+	called_with_new: CalledWithNew,
+	call_site: SpanWithSource,
+	explicit_type_arguments: Option<CallSiteTypeArguments>,
+	structure_generics: Option<GenericArguments>,
+	arguments: Vec<SynthesisedArgument>,
+	top_environment: &mut Environment,
+	types: &mut TypeStore,
+	behavior: &mut E,
+) -> Result<CallingOutput, BadCallOutput> {
 	match logical {
-		Logical::Pure((func, this_value)) => {
-			if let Some(function_type) = types.functions.get(&func) {
-				function_type.clone().call(
-					CallingInput {
-						called_with_new,
-						this_value,
-						call_site_type_arguments,
-						call_site,
-					},
-					structure_generics,
+		Logical::Pure(function) => {
+			if let Some(function_type) = types.functions.get(&function.function) {
+				let function_type = function_type.clone();
+
+				let mut result = function_type.call(
+					called_with_new,
+					function.this_value,
+					call_site,
 					&arguments,
-					environment,
+					explicit_type_arguments,
+					structure_generics,
+					top_environment,
 					behavior,
 					types,
 					true,
-				)
+				)?;
+
+				// crate::utilities::notify!("result {:?} {:?}", result.called, result.returned_type);
+
+				// is poly
+				let is_poly_or_failed_const_call = matches!(
+					function_type.effect,
+					FunctionEffect::Unknown | FunctionEffect::InputOutput { .. }
+				) || (matches!(function_type.effect, FunctionEffect::Constant { .. } if !result.result_was_const_computation));
+
+				if is_poly_or_failed_const_call && function.from.is_some() {
+					let on = function.from.unwrap();
+
+					// if function_type.effect
+					// This should be okay, constant or IO functions don't mutate their arguments...?
+					if !matches!(
+						&function_type.effect,
+						FunctionEffect::Constant { .. } | FunctionEffect::InputOutput { .. }
+					) {
+						find_possible_mutations(&arguments, types, top_environment);
+					}
+
+					// match function_type.effect {
+					// 	FunctionEffect::SideEffects { .. } => unreachable!(),
+					// 	FunctionEffect::Constant { may_throw, .. }
+					// 	| FunctionEffect::InputOutput { may_throw, .. } => {
+					// 		if let Some(thrown_type) = may_throw {
+					// 			// TODO not top
+					// 			top_environment
+					// 				.context_type
+					// 				.state
+					// 				.append_termination(ApplicationResult::may_throw(thrown_type));
+					// 		}
+					// 	}
+					// 	FunctionEffect::Unknown => {
+					// 		top_environment
+					// 			.context_type
+					// 			.state
+					// 			.append_termination(ApplicationResult::may_throw(TypeId::ANY_TYPE));
+					// 	}
+					// }
+
+					let with = arguments.clone().into_boxed_slice();
+					let result_as_type = application_result_to_return_type(
+						result.result.take(),
+						top_environment,
+						types,
+					);
+					let reflects_dependency = if is_type_constant(result_as_type, types) {
+						None
+					} else {
+						let id = types.register_type(Type::Constructor(Constructor::Image {
+							on,
+							// TODO...
+							with: with.clone(),
+							result: result_as_type,
+						}));
+
+						Some(id)
+					};
+
+					result.result = Some(ApplicationResult::Return {
+						returned: reflects_dependency.unwrap_or(result_as_type),
+						position: call_site,
+					});
+
+					let possibly_thrown = if let FunctionEffect::InputOutput { may_throw, .. }
+					| FunctionEffect::Constant { may_throw, .. } = &function_type.effect
+					{
+						crate::utilities::notify!("Here");
+						*may_throw
+					} else {
+						None
+					};
+
+					behavior.get_latest_info(top_environment).events.push(Event::CallsType {
+						on,
+						with,
+						timing: crate::events::CallingTiming::Synchronous,
+						called_with_new,
+						reflects_dependency,
+						position: call_site,
+						possibly_thrown,
+					});
+				}
+
+				Ok(result)
 			} else {
-				todo!("recursive function type")
+				panic!()
 			}
 		}
-		Logical::Or { left: _, right: _ } => todo!(),
+		Logical::Or { condition: based_on, left, right } => {
+			if let (Ok(_left), Ok(_right)) = (*left, *right) {
+				// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
+				// 	top_environment,
+				// 	types,
+				// 	based_on,
+				// 	(left, right),
+				// 	(explicit_type_arguments, structure_generics, arguments),
+				// 	|top_environment, types, target, func, data| {
+				// 		let (explicit_type_arguments, structure_generics, arguments) = data;
+				// 		let result = call_logical(
+				// 			func,
+				// 			called_with_new,
+				// 			call_site,
+				// 			explicit_type_arguments.clone(),
+				// 			structure_generics.clone(),
+				// 			arguments.clone(),
+				// 			top_environment,
+				// 			types,
+				// 			target,
+				// 		);
+
+				// 		result.map(|result| {
+				// 			application_result_to_return_type(
+				// 				result.result,
+				// 				top_environment,
+				// 				types,
+				// 			)
+				// 		})
+				// 	},
+				// );
+				// let truthy_result = truthy_result?;
+				// let otherwise_result = otherwise_result?;
+				// // truthy_result.warnings.append(&mut otherwise_result.warnings);
+				// let _result =
+				// 	types.new_conditional_type(based_on, truthy_result, otherwise_result);
+
+				todo!();
+			// TODO combine information (merge)
+			// Ok(CallingOutput { called: None, result: Soe, warnings: (), special: (), result_was_const_computation: () })
+			} else {
+				// TODO inference and errors
+				let err = FunctionCallingError::NotCallable {
+					calling: TypeStringRepresentation::from_type_id(
+						based_on,
+						top_environment,
+						types,
+						false,
+					),
+					call_site,
+				};
+				Err(BadCallOutput { returned_type: TypeId::ERROR_TYPE, errors: vec![err] })
+			}
+		}
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
-			types,
-			CallingInputWithoutThis { called_with_new, call_site_type_arguments, call_site },
+			called_with_new,
+			call_site,
+			explicit_type_arguments,
 			Some(antecedent),
+			// this_value,
 			arguments,
-			environment,
+			top_environment,
+			types,
 			behavior,
 		),
 	}
 }
 
-fn get_logical_callable_from_type(
-	on: TypeId,
-	types: &TypeStore,
-) -> Option<Logical<(FunctionId, ThisValue)>> {
-	match types.get_type_by_id(on) {
-		Type::And(_, _) => todo!(),
-		Type::Or(left, right) => {
-			if let (Some(left), Some(right)) = (
-				get_logical_callable_from_type(*left, types),
-				get_logical_callable_from_type(*right, types),
-			) {
-				Some(Logical::Or { left: Box::new(left), right: Box::new(right) })
-			} else {
-				None
-			}
-		}
-		Type::Constructor(Constructor::StructureGenerics(generic)) => {
-			get_logical_callable_from_type(generic.on, types).map(|res| Logical::Implies {
-				on: Box::new(res),
-				antecedent: generic.arguments.clone(),
-			})
-		}
-		Type::RootPolyType(_) | Type::Constructor(_) => todo!(),
-
-		Type::AliasTo { to, name: _, parameters } => {
-			if parameters.is_some() {
-				todo!()
-			}
-			get_logical_callable_from_type(*to, types)
-		}
-		Type::Interface { .. } | Type::Constant(_) | Type::Object(_) => None,
-		Type::Function(f, t) => Some(Logical::Pure((*f, *t))),
-		// TODO not sure about `on`... also #98
-		Type::FunctionReference(f) => Some(Logical::Pure((*f, ThisValue::Passed(on)))),
-		Type::SpecialObject(_) => todo!(),
-	}
-}
-
-fn create_generic_function_call<E: CallCheckingBehavior>(
-	constraint: TypeId,
-	CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
-	arguments: Vec<SynthesisedArgument>,
-	on: TypeId,
-	top_environment: &mut Environment,
-	behavior: &mut E,
+fn find_possible_mutations(
+	arguments: &Vec<SynthesisedArgument>,
 	types: &mut TypeStore,
-) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
-	// crate::utils::notify!("On {:?}", types.get_type_by_id(constraint));
-
-	let result = call_type(
-		constraint,
-		// TODO clone
-		arguments.clone(),
-		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site },
-		top_environment,
-		behavior,
-		types,
-	)?;
-
-	// TODO temp position, this should be added in `call_type`. TODO if open poly...? or pure
-	let can_skip = if let Type::FunctionReference(f) = types.get_type_by_id(constraint) {
-		let func = types.functions.get(f).unwrap();
-		// TODO or some events that don't modify etc
-		func.constant_function.is_some()
-	} else {
-		false
-	};
-
-	if !can_skip {
-		for argument in &arguments {
-			// TODO need to do in a function
-			// All properties
-			// Functions free variables etc
-			// TODO if spread
-			match types.get_type_by_id(argument.value) {
-				Type::Interface { .. }
-				| Type::AliasTo { .. }
-				| Type::And(_, _)
-				| Type::Object(ObjectNature::AnonymousTypeAnnotation)
-				| Type::FunctionReference(_)
-				| Type::Or(_, _) => {
-					crate::utils::notify!("Unreachable");
-				}
-				Type::Constant(_) => {}
-				Type::RootPolyType(_) | Type::Constructor(_) => {
-					// All dependent anyway
-					crate::utils::notify!("TODO if any properties set etc");
-				}
-				Type::Function(_, _) => {
-					crate::utils::notify!("TODO record that function could be called");
-				}
-				Type::Object(ObjectNature::RealDeal) => {
-					top_environment.possibly_mutated_objects.insert(argument.value);
-					crate::utils::notify!("TODO record methods could be called here as well");
-				}
-				Type::SpecialObject(_) => {
-					crate::utils::notify!("TODO record stuff if mutable");
-				}
+	top_environment: &mut Environment,
+) {
+	for argument in arguments {
+		// TODO need to do in a function
+		// All properties
+		// Functions free variables etc
+		// TODO if spread
+		match types.get_type_by_id(argument.value) {
+			Type::Interface { .. }
+			| Type::Class { .. }
+			| Type::AliasTo { .. }
+			| Type::And(_, _)
+			| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+			| Type::FunctionReference(_)
+			| Type::PartiallyAppliedGenerics(_)
+			| Type::Or(_, _) => {
+				crate::utilities::notify!("Unreachable");
+			}
+			Type::Constant(_) => {}
+			Type::RootPolyType(_) | Type::Constructor(_) => {
+				// All dependent anyway
+				crate::utilities::notify!("TODO if any properties set etc");
+			}
+			Type::SpecialObject(SpecialObjects::Function(_, _)) => {
+				crate::utilities::notify!("TODO record that function could be called");
+			}
+			Type::Object(ObjectNature::RealDeal) => {
+				top_environment.possibly_mutated_objects.insert(argument.value);
+				crate::utilities::notify!("TODO record methods could be called here as well");
+			}
+			Type::SpecialObject(_) => {
+				crate::utilities::notify!("TODO record stuff if mutable");
 			}
 		}
-	}
-
-	let with = arguments.into_boxed_slice();
-
-	// Skip constant returned reflects types
-	if is_type_constant(result.returned_type, types) {
-		crate::utils::notify!("Adding calls type here");
-
-		behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
-			on,
-			with,
-			timing: crate::events::CallingTiming::Synchronous,
-			called_with_new, // Don't care about output.
-			reflects_dependency: None,
-			position: call_site,
-		});
-
-		Ok(result)
-	} else {
-		// TODO work this out
-		let is_open_poly = false;
-
-		let reflects_dependency = if is_open_poly {
-			None
-		} else {
-			// TODO does this need a recursive implementation?
-			let returned_type_space = if TypeId::VOID_TYPE == result.returned_type {
-				TypeId::ANY_TYPE
-			} else {
-				result.returned_type
-			};
-
-			if result.found_dependent_argument {
-				Some(returned_type_space)
-			} else {
-				let constructor = Constructor::Image {
-					// TODO on or to
-					on,
-					with: with.clone(),
-					result: returned_type_space,
-				};
-
-				let constructor_return = types.register_type(Type::Constructor(constructor));
-
-				Some(constructor_return)
-			}
-		};
-
-		// Event already added if dependent argument
-		if !result.found_dependent_argument {
-			behavior.get_latest_facts(top_environment).events.push(Event::CallsType {
-				on,
-				with,
-				timing: crate::events::CallingTiming::Synchronous,
-				called_with_new,
-				reflects_dependency,
-				position: call_site,
-			});
-		}
-
-		// TODO should wrap result in open poly
-		Ok(FunctionCallResult {
-			called: result.called,
-			returned_type: reflects_dependency.unwrap_or(result.returned_type),
-			warnings: result.warnings,
-			special: None,
-			found_dependent_argument: result.found_dependent_argument,
-		})
 	}
 }
 
@@ -446,103 +662,120 @@ pub enum FunctionCallingError {
 	TDZ {
 		error: TDZ,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
 	},
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 		/// Should be set
-		call_site: Option<SpanWithSource>,
+		call_site: SpanWithSource,
+	},
+	/// TODO WIP
+	UnconditionalThrow {
+		value: TypeStringRepresentation,
+		/// Should be set
+		call_site: SpanWithSource,
+	},
+	MismatchedThis {
+		expected: TypeStringRepresentation,
+		found: TypeStringRepresentation,
+		call_site: SpanWithSource,
+	},
+	CannotCatch {
+		catch: TypeStringRepresentation,
+		thrown: TypeStringRepresentation,
+		thrown_position: SpanWithSource,
 	},
 }
 
 pub struct InfoDiagnostic(pub String);
 
-/// TODO *result* name bad
-pub struct FunctionCallResult {
-	pub called: Option<FunctionId>,
-	pub returned_type: TypeId,
-	// TODO
-	pub warnings: Vec<InfoDiagnostic>,
-	pub special: Option<SpecialExpressions>,
-	pub found_dependent_argument: bool,
-}
-
 #[derive(Debug, Default, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum CalledWithNew {
+	/// With `new X(...)`;
 	New {
 		// [See new.target](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target), which contains a reference to what called new. This does not == this_type
 		on: TypeId,
 	},
-	SpecialSuperCall {
-		this_type: TypeId,
-	},
+	/// With `super(...)`
+	Super { this_type: TypeId },
 	#[default]
 	None,
 }
 
 impl FunctionType {
-	/// Calls the function
-	///
-	/// Returns warnings and errors
-	// Move references in a wrapping struct can be hard due to lifetimes
+	/// Calls the function and returns warnings and errors
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
-		CallingInput { called_with_new, this_value, call_site_type_arguments, call_site }: CallingInput,
-		parent_type_arguments: Option<StructureGenericArguments>,
+		called_with_new: CalledWithNew,
+		this_value: ThisValue,
+		call_site: SpanWithSource,
 		arguments: &[SynthesisedArgument],
+		call_site_type_arguments: Option<CallSiteTypeArguments>,
+		parent_arguments: Option<GenericArguments>,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
 		// This fixes recursive case of call_function
 		call_constant: bool,
-	) -> Result<FunctionCallResult, Vec<FunctionCallingError>> {
+	) -> Result<CallingOutput, BadCallOutput> {
 		// TODO check that parameters vary
 		if behavior.in_recursive_cycle(self.id) {
-			crate::utils::notify!("Encountered recursion");
-			return Ok(FunctionCallResult {
+			crate::utilities::notify!("Encountered recursion");
+			crate::utilities::notify!("TODO should be BadCallOutput");
+			let returned = types.new_error_type(self.return_type);
+			return Ok(CallingOutput {
 				called: Some(self.id),
-				returned_type: TypeId::ERROR_TYPE,
+				result: Some(ApplicationResult::Return { returned, position: call_site }),
 				warnings: Vec::new(),
 				// TODO ?
 				special: None,
-				found_dependent_argument: false,
+				result_was_const_computation: false,
 			});
 			// let reason = FunctionCallingError::Recursed(self.id, call_site);
 			// return Err(vec![reason])
 		}
 
-		if !environment.is_possibly_uncalled() {
+		if environment.is_always_run() {
 			types.called_functions.insert(self.id);
 		}
 
-		if let (Some(const_fn_ident), true) = (self.constant_function.as_deref(), call_constant) {
+		if let (FunctionEffect::Constant { identifier: ref const_fn_ident, .. }, true) =
+			(&self.effect, call_constant)
+		{
 			let has_dependent_argument =
-				arguments.iter().any(|arg| types.get_type_by_id(arg.value).is_dependent())
-					|| matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
+				arguments.iter().any(|arg| types.get_type_by_id(arg.value).is_dependent());
+
+			// || matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
 
 			let call_anyway = matches!(
-				const_fn_ident,
+				const_fn_ident.as_str(),
 				"debug_type"
 					| "debug_type_rust" | "print_type"
+					| "print_and_debug_type"
 					| "debug_effects" | "debug_effects_rust"
 					| "satisfies" | "is_dependent"
 					| "bind" | "create_proxy"
 			);
 
+			// TODO just for debugging. These have their constant things called every time AND queue an event
+			let is_independent = const_fn_ident.ends_with("independent");
+
 			// Most of the time don't call using constant function if an argument is dependent.
 			// But sometimes do for the cases above
-			if call_anyway || !has_dependent_argument {
+			if call_anyway || is_independent || !has_dependent_argument {
 				// TODO event
 				let result = call_constant_function(
 					const_fn_ident,
+					// TODO
 					this_value,
-					&call_site_type_arguments,
+					call_site_type_arguments.as_ref(),
 					arguments,
 					types,
 					environment,
+					call_site,
 				);
 
 				match result {
@@ -553,48 +786,50 @@ impl FunctionType {
 						} else {
 							None
 						};
-						return Ok(FunctionCallResult {
-							returned_type: value,
+						return Ok(CallingOutput {
+							result: Some(ApplicationResult::Return {
+								returned: value,
+								position: call_site,
+							}),
 							warnings: Default::default(),
 							called: None,
-							found_dependent_argument: false,
+							result_was_const_computation: !is_independent,
 							special,
 						});
 					}
 					Ok(ConstantOutput::Diagnostic(diagnostic)) => {
-						// crate::utils::notify!("Here, constant output");
-						return Ok(FunctionCallResult {
-							returned_type: TypeId::UNDEFINED_TYPE,
+						// crate::utilities::notify!("Here, constant output");
+						return Ok(CallingOutput {
+							result: None,
 							warnings: vec![InfoDiagnostic(diagnostic)],
 							called: None,
-							found_dependent_argument: false,
+							result_was_const_computation: !is_independent,
 							// TODO!!
 							special: Some(SpecialExpressions::Marker),
 						});
 					}
 					Err(ConstantFunctionError::NoLogicForIdentifier(name)) => {
 						let item = FunctionCallingError::NoLogicForIdentifier(name, call_site);
-						return Err(vec![item]);
+						return Err(BadCallOutput {
+							returned_type: types.new_error_type(self.return_type),
+							errors: vec![item],
+						});
 					}
 					Err(ConstantFunctionError::BadCall) => {
-						crate::utils::notify!(
+						crate::utilities::notify!(
 							"Constant function calling failed, non constant params"
 						);
 					}
 				}
 			} else if has_dependent_argument {
-				let with = arguments.to_vec().into_boxed_slice();
 				// TODO with cloned!!
-				let calling_input = CallingInput {
+				let call = self.call(
 					called_with_new,
 					this_value,
-					call_site_type_arguments,
 					call_site,
-				};
-				let call = self.call(
-					calling_input,
-					parent_type_arguments,
 					arguments,
+					call_site_type_arguments,
+					parent_arguments,
 					environment,
 					behavior,
 					types,
@@ -603,365 +838,415 @@ impl FunctionType {
 				);
 
 				if let Err(ref _err) = call {
-					crate::utils::notify!("Calling function with dependent argument failed");
+					crate::utilities::notify!("Calling function with dependent argument failed");
 				}
 
-				let result = call?.returned_type;
+				let result = call?.result;
 
-				// TODO pass down
-				let on = types.register_type(Type::Function(self.id, this_value));
-				let new_type =
-					Type::Constructor(Constructor::Image { on, with: with.clone(), result });
-
-				let ty = types.register_type(new_type);
-
-				behavior.get_latest_facts(environment).events.push(Event::CallsType {
-					on,
-					with: arguments.to_vec().into_boxed_slice(),
-					reflects_dependency: Some(ty),
-					timing: crate::events::CallingTiming::Synchronous,
-					called_with_new,
-					position: call_site,
-				});
-
-				return Ok(FunctionCallResult {
-					returned_type: ty,
+				return Ok(CallingOutput {
+					result,
 					warnings: Default::default(),
 					called: None,
 					special: None,
-					found_dependent_argument: true,
+					result_was_const_computation: false,
+					// TODO
 				});
 			}
 		}
 
 		let mut errors = ErrorsAndInfo::default();
 
-		// Type arguments of the function
-		let local_type_argument_as_restrictions: map_vec::Map<
-			TypeId,
-			Vec<(TypeId, SpanWithSource)>,
-		> = if let (Some(call_site_type_arguments), true) =
-			(call_site_type_arguments, E::CHECK_PARAMETERS)
-		{
-			self.synthesise_call_site_type_arguments(call_site_type_arguments, types, environment)
-		} else {
-			map_vec::Map::new()
+		let mut type_arguments = SubstitutionArguments {
+			parent: None,
+			arguments: crate::Map::default(),
+			closures: if let Some(GenericArguments::Closure(ref cs)) = parent_arguments {
+				cs.clone()
+			} else {
+				Default::default()
+			},
 		};
 
-		let mut seeding_context = SeedingContext {
-			type_arguments: map_vec::Map::new(),
-			type_restrictions: local_type_argument_as_restrictions,
-			locally_held_functions: map_vec::Map::new(),
-			argument_position_and_parameter_idx: (source_map::Nullable::NULL, 0),
-		};
-
-		match self.behavior {
-			FunctionBehavior::ArrowFunction { is_async: _ } => {}
-			FunctionBehavior::Method { free_this_id, .. } => {
-				let value_of_this = if let Some(value) = this_value.get_passed() {
-					value
-				} else {
-					crate::utils::notify!("method has no 'this' passed :?");
-					TypeId::UNDEFINED_TYPE
-				};
-
-				crate::utils::notify!("ft id {:?} & vot {:?}", free_this_id, value_of_this);
-
-				// TODO checking
-				seeding_context
-					.type_arguments
-					.insert(free_this_id, vec![(value_of_this, source_map::Nullable::NULL, 0)]);
-			}
-			FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
-				match called_with_new {
-					CalledWithNew::New { on: _ } => {
-						crate::utils::notify!("TODO set prototype");
-						// if let Some(prototype) = non_super_prototype {
-						// let this_ty = environment.create_this(prototype, types);
-						let value_of_this =
-							types.register_type(Type::Object(crate::types::ObjectNature::RealDeal));
-
-						seeding_context.type_arguments.insert(
-							// TODO
-							free_this_id,
-							vec![(value_of_this, source_map::Nullable::NULL, 0)],
-						);
-					}
-					CalledWithNew::SpecialSuperCall { this_type: _ } => todo!(),
-					CalledWithNew::None => {
-						// TODO
-						let value_of_this = this_value.get(environment, types, &call_site);
-
-						seeding_context.type_arguments.insert(
-							free_this_id,
-							vec![(value_of_this, source_map::Nullable::NULL, 0)],
-						);
-					}
-				}
-			}
-			FunctionBehavior::Constructor { non_super_prototype: _, this_object_type: _ } => {
-				if let CalledWithNew::None = called_with_new {
-					errors
-						.errors
-						.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
-				}
-			}
-		}
-
-		{
-			let import_new_argument = match called_with_new {
-				CalledWithNew::New { on } => on,
-				CalledWithNew::SpecialSuperCall { .. } => {
-					todo!()
-					// let ty = this_value.0;
-					// let on = crate::types::printing::print_type(
-					// 	ty,
-					// 	types,
-					// 	&environment.as_general_context(),
-					// 	true,
-					// );
-					// crate::utils::notify!("This argument {}", on);
-					// ty
-				}
-				// In spec == undefined
-				CalledWithNew::None => TypeId::UNDEFINED_TYPE,
-			};
-
-			// TODO on type arguments, not seeding context
-			seeding_context.type_arguments.insert(
-				TypeId::NEW_TARGET_ARG,
-				vec![(import_new_argument, source_map::Nullable::NULL, 0)],
-			);
-		}
-
-		let seeding_context = self.synthesise_arguments::<E>(
-			arguments,
-			seeding_context,
+		self.set_this_for_behavior(
+			called_with_new,
+			this_value,
+			&mut type_arguments.arguments,
 			environment,
 			types,
 			&mut errors,
-			&call_site,
+			call_site,
+			behavior,
 		);
 
-		let SeedingContext {
-			type_arguments: found,
-			type_restrictions,
-			locally_held_functions: _,
-			argument_position_and_parameter_idx: _,
-		} = seeding_context;
-
-		// take the found and inject back into what it resolved
-		let mut result_type_arguments = map_vec::Map::new();
-
-		for (item, values) in found {
-			// TODO only first ??
-			let (value, argument_position, param) =
-				values.into_iter().next().expect("no type argument ...?");
-
-			if let Some(restrictions_for_item) = type_restrictions.get(&item) {
-				for (restriction, restriction_position) in restrictions_for_item {
-					let mut behavior = BasicEquality {
-						add_property_restrictions: false,
-						position: *restriction_position,
-					};
-
-					let result =
-						type_is_subtype(*restriction, value, &mut behavior, environment, types);
-
-					if let SubTypeResult::IsNotSubType(_err) = result {
-						let argument_type = TypeStringRepresentation::from_type_id(
-							value,
-							&environment.as_general_context(),
-							types,
-							false,
-						);
-						let restriction_type = TypeStringRepresentation::from_type_id(
-							*restriction,
-							&environment.as_general_context(),
-							types,
-							false,
-						);
-
-						let restriction = Some((*restriction_position, restriction_type));
-						let synthesised_parameter = &self.parameters.parameters[param];
-						let parameter_type = TypeStringRepresentation::from_type_id(
-							synthesised_parameter.ty,
-							&environment.as_general_context(),
-							types,
-							false,
-						);
-
-						errors.errors.push(FunctionCallingError::InvalidArgumentType {
-							argument_type,
-							argument_position,
-							parameter_type,
-							parameter_position: synthesised_parameter.position,
-							restriction,
-						});
-					}
-				}
-			}
-
-			// TODO position is just the first
-			result_type_arguments.insert(item, (value, argument_position));
-		}
-
-		let mut type_arguments = FunctionTypeArguments {
-			structure_arguments: parent_type_arguments,
-			local_arguments: result_type_arguments,
-			closure_id: None,
-		};
+		self.assign_arguments_to_parameters::<E>(
+			arguments,
+			&mut type_arguments,
+			call_site_type_arguments.clone(),
+			parent_arguments.as_ref(),
+			environment,
+			types,
+			&mut errors,
+			call_site,
+			behavior,
+		);
 
 		if E::CHECK_PARAMETERS {
 			// TODO check free variables from inference
 		}
 
 		if !errors.errors.is_empty() {
-			return Err(errors.errors);
+			return Err(BadCallOutput {
+				returned_type: types.new_error_type(self.return_type),
+				errors: errors.errors,
+			});
 		}
 
-		// Evaluate effects directly into environment
-		let early_return = behavior.new_function_context(self.id, |target| {
-			type_arguments.closure_id = if self.closed_over_variables.is_empty() {
-				None
-			} else {
-				let closure_id = types.new_closure_id();
-				Some(closure_id)
-			};
+		let result = if let FunctionEffect::SideEffects {
+			events,
+			closed_over_variables,
+			free_variables: _,
+		} = &self.effect
+		{
+			behavior.new_function_context(self.id, |target| {
+				// crate::utilities::notify!("events: {:?}", events);
+				{
+					let substitution: &mut SubstitutionArguments = &mut type_arguments;
+					let errors: &mut ErrorsAndInfo = &mut errors;
+					if !closed_over_variables.0.is_empty() {
+						let closure_id = types.new_closure_id();
+						substitution.closures.push(closure_id);
 
-			let mut return_result = None;
+						crate::utilities::notify!("Setting closure variables");
 
-			// Apply events here
-			for event in self.effects.clone() {
-				let current_errors = errors.errors.len();
-				let result = apply_event(
-					event,
-					this_value,
-					&mut type_arguments,
-					environment,
-					target,
-					types,
-					&mut errors,
-				);
+						// Set closed over values
+						// TODO `this`
+						for (variable, value) in closed_over_variables.0.iter() {
+							let value = substitute(*value, substitution, environment, types);
+							environment
+								.info
+								.closure_current_values
+								.insert((closure_id, RootReference::Variable(*variable)), value);
 
-				// Adjust call sites. (because they aren't currently passed down)
-				for d in &mut errors.errors[current_errors..] {
-					if let FunctionCallingError::TDZ { call_site: ref mut c, .. } = d {
-						*c = Some(call_site);
-					} else if let FunctionCallingError::SetPropertyConstraint {
-						call_site: ref mut c,
-						..
-					} = d
-					{
-						*c = Some(call_site);
+							crate::utilities::notify!(
+								"in {:?} set {:?} to {:?}",
+								closure_id,
+								variable,
+								value
+							);
+						}
 					}
-				}
 
-				if let value @ Some(_) = result {
-					return_result = value;
-					break;
+					let current_errors = errors.errors.len();
+
+					// Apply events here
+					let result = apply_events(
+						events,
+						this_value,
+						substitution,
+						environment,
+						target,
+						types,
+						errors,
+						call_site,
+					);
+
+					// Adjust call sites. (because they aren't currently passed down)
+					for d in &mut errors.errors[current_errors..] {
+						if let FunctionCallingError::TDZ { call_site: ref mut c, .. }
+						| FunctionCallingError::SetPropertyConstraint {
+							call_site: ref mut c,
+							..
+						}
+						| FunctionCallingError::UnconditionalThrow {
+							call_site: ref mut c,
+							..
+						} = d
+						{
+							*c = call_site;
+						}
+					}
+
+					result
+				}
+			})
+		} else {
+			if let Some(_parent_arguments) = parent_arguments {
+				crate::utilities::notify!("TODO");
+			}
+			if let Some(ref call_site_type_arguments) = call_site_type_arguments {
+				for (k, (v, _)) in call_site_type_arguments.iter() {
+					type_arguments.arguments.insert(*k, *v);
 				}
 			}
 
-			if let Some(closure_id) = type_arguments.closure_id {
-				crate::utils::notify!("Setting closure variables");
+			crate::utilities::notify!(
+				"Substituting return type (no return) {:?}",
+				&type_arguments.arguments
+			);
 
-				// Set closed over values
-				self.closed_over_variables.iter().for_each(|(reference, value)| {
-					let value = substitute(*value, &mut type_arguments, environment, types);
-					environment
-						.facts
-						.closure_current_values
-						.insert((closure_id, reference.clone()), value);
-
-					crate::utils::notify!("in {:?} set {:?} to {:?}", closure_id, reference, value);
-				});
-			}
-
-			return_result
-		});
+			let returned = substitute(self.return_type, &type_arguments, environment, types);
+			Some(ApplicationResult::Return { returned, position: call_site })
+		};
 
 		if !errors.errors.is_empty() {
-			crate::utils::notify!("Got {} application errors", errors.errors.len());
-			return Err(errors.errors);
+			crate::utilities::notify!("Got {} application errors", errors.errors.len());
+			return Err(BadCallOutput {
+				returned_type: types.new_error_type(self.return_type),
+				errors: errors.errors,
+			});
 		}
 
+		// TODO what does super return?
 		if let CalledWithNew::New { .. } = called_with_new {
 			// TODO ridiculous early return primitive rule
 			match self.behavior {
 				FunctionBehavior::ArrowFunction { is_async: _ } => todo!(),
 				FunctionBehavior::Method { .. } => todo!(),
-				FunctionBehavior::Function { is_async: _, is_generator: _, free_this_id } => {
-					let new_instance_type = type_arguments
-						.local_arguments
-						.remove(&free_this_id)
-						.expect("no this argument7")
-						.0;
+				FunctionBehavior::Constructor { prototype: _, this_object_type }
+				| FunctionBehavior::Function {
+					is_async: _,
+					is_generator: _,
+					free_this_id: this_object_type,
+					..
+				} => {
+					let new_instance_type =
+						type_arguments.arguments.get(&this_object_type).expect("no this argument?");
 
-					return Ok(FunctionCallResult {
-						returned_type: new_instance_type,
+					// TODO if return type is primitive (or replace primitives with new_instance_type)
+					return Ok(CallingOutput {
+						result: Some(ApplicationResult::Return {
+							returned: *new_instance_type,
+							position: call_site,
+						}),
 						warnings: errors.warnings,
 						called: Some(self.id),
 						special: None,
-						found_dependent_argument: false,
-					});
-				}
-				FunctionBehavior::Constructor { non_super_prototype: _, this_object_type } => {
-					crate::utils::notify!("Registered this {:?}", this_object_type);
-					let new_instance_type = type_arguments
-						.local_arguments
-						.remove(&this_object_type)
-						.expect("no this argument7")
-						.0;
-
-					return Ok(FunctionCallResult {
-						returned_type: new_instance_type,
-						warnings: errors.warnings,
-						called: Some(self.id),
-						special: None,
-						found_dependent_argument: false,
+						result_was_const_computation: false,
 					});
 				}
 			}
 		}
 
-		let returned_type = if let Some(early_return) = early_return {
-			match early_return {
-				FinalEvent::Break { .. } | FinalEvent::Continue { .. } => {
-					unreachable!("function ended on continue / break")
-				}
-				FinalEvent::Throw { thrown: value, position } => {
-					behavior.get_latest_facts(environment).throw_value_in_facts(value, position);
-					TypeId::NEVER_TYPE
-				}
-				FinalEvent::Return { returned, returned_position: _ } => {
-					// set events should cover property specialisation here:
-					returned
-				}
-			}
-		} else {
-			crate::utils::notify!("Substituting return type (no return)");
-			substitute(self.return_type, &mut type_arguments, environment, types)
-		};
-
-		Ok(FunctionCallResult {
-			returned_type,
+		Ok(CallingOutput {
+			result,
 			warnings: errors.warnings,
+			// unconditional_exception,
 			called: Some(self.id),
 			special: None,
-			found_dependent_argument: false,
+			result_was_const_computation: false,
 		})
 	}
 
-	fn synthesise_arguments<E: CallCheckingBehavior>(
+	/// TODO set not using `type_arguments`
+	#[allow(clippy::too_many_arguments)]
+	fn set_this_for_behavior<E: CallCheckingBehavior>(
 		&self,
-		arguments: &[SynthesisedArgument],
-		mut seeding_context: SeedingContext,
+		called_with_new: CalledWithNew,
+		this_value: ThisValue,
+		type_arguments: &mut crate::Map<TypeId, TypeId>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		errors: &mut ErrorsAndInfo,
-		call_site: &source_map::BaseSpan<SourceId>,
-	) -> SeedingContext {
+		call_site: SpanWithSource,
+		behavior: &E,
+	) {
+		match self.behavior {
+			FunctionBehavior::ArrowFunction { .. } => {}
+			FunctionBehavior::Method { free_this_id, .. } => {
+				// TODO
+				let value_of_this = if let Some(value) = this_value.get_passed() {
+					value
+				} else {
+					crate::utilities::notify!(
+						"method has no 'this' passed :?. Passing `undefined` here"
+					);
+					TypeId::UNDEFINED_TYPE
+				};
+
+				let base_type = get_constraint(free_this_id, types).unwrap_or(free_this_id);
+
+				let mut state = State {
+					already_checked: Default::default(),
+					contributions: None,
+					mode: SubTypingMode::default(),
+					object_constraints: None,
+					others: Default::default(),
+				};
+
+				let type_is_subtype =
+					type_is_subtype(base_type, value_of_this, &mut state, environment, types);
+
+				if let SubTypeResult::IsNotSubType(_reason) = type_is_subtype {
+					errors.errors.push(FunctionCallingError::MismatchedThis {
+						expected: TypeStringRepresentation::from_type_id(
+							free_this_id,
+							environment,
+							types,
+							behavior.debug_types(),
+						),
+						found: TypeStringRepresentation::from_type_id(
+							value_of_this,
+							environment,
+							types,
+							behavior.debug_types(),
+						),
+						call_site,
+					});
+				}
+
+				crate::utilities::notify!(
+					"free this id {:?} & value of this {:?}",
+					free_this_id,
+					value_of_this
+				);
+
+				type_arguments.insert(free_this_id, value_of_this);
+			}
+			FunctionBehavior::Function {
+				is_async: _,
+				is_generator: _,
+				free_this_id,
+				prototype,
+			} => {
+				match called_with_new {
+					CalledWithNew::New { on: _ } => {
+						crate::utilities::notify!("TODO set prototype");
+						// if let Some(prototype) = non_super_prototype {
+						// let this_ty = environment.create_this(prototype, types);
+
+						let this_constraint = get_constraint(free_this_id, types);
+						// Check `this` has all prototype information
+						if let Some(this_constraint) = this_constraint {
+							let mut state = State {
+								already_checked: Default::default(),
+								mode: SubTypingMode::default(),
+								contributions: None,
+								object_constraints: None,
+								others: SubTypingOptions::default(),
+							};
+
+							let result = type_is_subtype(
+								this_constraint,
+								prototype,
+								&mut state,
+								environment,
+								types,
+							);
+
+							if let SubTypeResult::IsNotSubType(_reason) = result {
+								errors.errors.push(FunctionCallingError::MismatchedThis {
+									expected: TypeStringRepresentation::from_type_id(
+										this_constraint,
+										environment,
+										types,
+										behavior.debug_types(),
+									),
+									found: TypeStringRepresentation::from_type_id(
+										prototype,
+										environment,
+										types,
+										behavior.debug_types(),
+									),
+									call_site,
+								});
+							}
+						}
+
+						// TODO think so
+						let is_under_dyn = true;
+						let value_of_this = environment.info.new_object(
+							Some(prototype),
+							types,
+							call_site,
+							is_under_dyn,
+						);
+
+						type_arguments.insert(free_this_id, value_of_this);
+					}
+					CalledWithNew::Super { this_type } => {
+						type_arguments.insert(free_this_id, this_type);
+					}
+					CalledWithNew::None => {
+						// TODO
+						let value_of_this = this_value.get(environment, types, call_site);
+
+						type_arguments.insert(free_this_id, value_of_this);
+					}
+				}
+			}
+			FunctionBehavior::Constructor { prototype, this_object_type } => {
+				crate::utilities::notify!("Here {:?}", called_with_new);
+				match called_with_new {
+					CalledWithNew::None => {
+						errors
+							.errors
+							.push(FunctionCallingError::NeedsToBeCalledWithNewKeyword(call_site));
+					}
+					CalledWithNew::New { on: _ } => {
+						// TODO think so
+						let is_under_dyn = true;
+						crate::utilities::notify!(
+							"Creating new class object with prototype={:?}",
+							prototype
+						);
+						let value_of_this = environment.info.new_object(
+							Some(prototype),
+							types,
+							call_site,
+							is_under_dyn,
+						);
+
+						crate::utilities::notify!("Here with new");
+						type_arguments.insert(this_object_type, value_of_this);
+					}
+					CalledWithNew::Super { this_type } => {
+						crate::utilities::notify!(
+							"Setting this_object {:?} to {:?} in super call",
+							this_object_type,
+							this_type
+						);
+						type_arguments.insert(this_object_type, this_type);
+					}
+				}
+			}
+		}
+
+		{
+			let new_target_value = match called_with_new {
+				CalledWithNew::New { on } => on,
+				CalledWithNew::Super { .. } => {
+					crate::utilities::notify!("Get this type for super new.target");
+					TypeId::ERROR_TYPE
+					// let ty = this_value.0;
+					// let on = crate::types::printing::print_type(
+					// 	ty,
+					// 	types,
+					// 	environment,
+					// 	true,
+					// );
+					// crate::utilities::notify!("This argument {}", on);
+					// ty
+				}
+				// In spec, not `new` -> `new.target === undefined`
+				CalledWithNew::None => TypeId::UNDEFINED_TYPE,
+			};
+
+			type_arguments.insert(TypeId::NEW_TARGET_ARG, new_target_value);
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn assign_arguments_to_parameters<E: CallCheckingBehavior>(
+		&self,
+		arguments: &[SynthesisedArgument],
+		type_arguments: &mut SubstitutionArguments<'static>,
+		call_site_type_arguments: Option<CallSiteTypeArguments>,
+		parent: Option<&GenericArguments>,
+		environment: &mut Environment,
+		types: &mut TypeStore,
+		errors: &mut ErrorsAndInfo,
+		call_site: SpanWithSource,
+		behavior: &E,
+	) {
 		for (parameter_idx, parameter) in self.parameters.parameters.iter().enumerate() {
 			// TODO temp
 
@@ -970,41 +1255,43 @@ impl FunctionType {
 
 			if let Some(SynthesisedArgument { spread, value, position }) = argument {
 				if *spread {
-					crate::utils::notify!("TODO spread arguments");
+					crate::utilities::notify!("TODO spread arguments");
 				}
 
-				// TODO bad
-				seeding_context.argument_position_and_parameter_idx = (*position, parameter_idx);
-
-				// crate::utils::notify!(
-				// 	"param {}, arg {}",
-				// 	types.debug_type(parameter.ty),
-				// 	types.debug_type(*argument_type)
-				// );
-
 				if E::CHECK_PARAMETERS {
-					// crate::utils::notify!("Param {:?} :> {:?}", parameter.ty, *argument_type);
-					let result = type_is_subtype(
+					let result = check_parameter_type(
 						parameter.ty,
+						call_site_type_arguments.as_ref(),
+						parent,
 						*value,
-						&mut seeding_context,
+						type_arguments,
 						environment,
 						types,
 					);
 
 					if let SubTypeResult::IsNotSubType(_reasons) = result {
+						let type_arguments = Some(GenericChainLink::FunctionRoot {
+							parent_link: parent,
+							call_site_type_arguments: call_site_type_arguments.as_ref(),
+							type_arguments: &type_arguments.arguments,
+						});
+
+						// crate::utilities::notify!("Type arguments are {:?}", type_arguments);
+
 						errors.errors.push(FunctionCallingError::InvalidArgumentType {
-							parameter_type: TypeStringRepresentation::from_type_id(
+							parameter_type: TypeStringRepresentation::from_type_id_with_generics(
 								parameter.ty,
-								&environment.as_general_context(),
+								type_arguments,
+								environment,
 								types,
-								false,
+								behavior.debug_types(),
 							),
-							argument_type: TypeStringRepresentation::from_type_id(
+							argument_type: TypeStringRepresentation::from_type_id_with_generics(
 								*value,
-								&environment.as_general_context(),
+								type_arguments,
+								environment,
 								types,
-								false,
+								behavior.debug_types(),
 							),
 							parameter_position: parameter.position,
 							argument_position: *position,
@@ -1013,94 +1300,105 @@ impl FunctionType {
 					}
 				} else {
 					// Already checked so can set
-					seeding_context.set_id(parameter.ty, (*value, *position, parameter_idx), false);
+					type_arguments.arguments.insert(parameter.ty, *value);
 				}
-			} else if parameter.optional {
-				seeding_context.set_id(
-					parameter.ty,
-					(TypeId::UNDEFINED_TYPE, source_map::Nullable::NULL, parameter_idx),
-					false,
-				);
+			} else if parameter.is_optional {
+				type_arguments.arguments.insert(parameter.ty, TypeId::UNDEFINED_TYPE);
 			} else {
 				errors.errors.push(FunctionCallingError::MissingArgument {
 					parameter_position: parameter.position,
-					call_site: *call_site,
+					call_site,
 				});
 			}
-
-			// if let SubTypeResult::IsNotSubType(_reasons) = result {
-			// 	if auto_inserted_arg {
-			// 		todo!("different error");
-			// 	} else {
-			// 		errors.errors.push(FunctionCallingError::InvalidArgumentType {
-			// 			parameter_index: idx,
-			// 			argument_type: argument_type.into_owned(),
-			// 			parameter_type: parameter_type.clone(),
-			// 			parameter_pos: parameter.2.clone().unwrap(),
-			// 		});
-			// 	}
-			// }
-			// } else {
-			// 	errors.errors.push(FunctionCallingError::MissingArgument {
-			// 		parameter_pos: parameter.2.clone().unwrap(),
-			// 	});
-			// }
 		}
+
+		// Spread parameters here
 		if self.parameters.parameters.len() < arguments.len() {
 			if let Some(ref rest_parameter) = self.parameters.rest_parameter {
-				// TODO use object builder
-				let rest_parameter_array_type =
-					environment.facts.new_object(Some(TypeId::ARRAY_TYPE), types, true, false);
+				// TODO reuse synthesise_array literal logic (especially for spread items)
+				let mut basis = ObjectBuilder::new(
+					Some(TypeId::ARRAY_TYPE),
+					types,
+					rest_parameter.position,
+					&mut environment.info,
+				);
 
-				for (idx, argument) in
-					arguments.iter().enumerate().skip(self.parameters.parameters.len())
-				{
+				let mut count = 0;
+
+				for argument in arguments.iter().skip(self.parameters.parameters.len()) {
 					if E::CHECK_PARAMETERS {
-						let result = type_is_subtype(
+						let result = check_parameter_type(
 							rest_parameter.item_type,
+							call_site_type_arguments.as_ref(),
+							parent,
 							argument.value,
-							&mut seeding_context,
+							type_arguments,
 							environment,
 							types,
 						);
 
+						// TODO different diagnostic?
 						if let SubTypeResult::IsNotSubType(_reasons) = result {
+							let type_arguments = Some(GenericChainLink::FunctionRoot {
+								parent_link: parent,
+								call_site_type_arguments: call_site_type_arguments.as_ref(),
+								type_arguments: &type_arguments.arguments,
+							});
+
 							errors.errors.push(FunctionCallingError::InvalidArgumentType {
-								parameter_type: TypeStringRepresentation::from_type_id(
-									rest_parameter.item_type,
-									&environment.as_general_context(),
-									types,
-									false,
-								),
-								argument_type: TypeStringRepresentation::from_type_id(
+								parameter_type:
+									TypeStringRepresentation::from_type_id_with_generics(
+										rest_parameter.ty,
+										type_arguments,
+										environment,
+										types,
+										behavior.debug_types(),
+									),
+								argument_type: TypeStringRepresentation::from_type_id_with_generics(
 									argument.value,
-									&environment.as_general_context(),
+									type_arguments,
+									environment,
 									types,
-									false,
+									behavior.debug_types(),
 								),
-								argument_position: argument.position,
 								parameter_position: rest_parameter.position,
+								argument_position: argument.position,
 								restriction: None,
 							});
 						}
 					}
 
-					environment.facts.register_property(
-						rest_parameter_array_type,
-						crate::context::facts::Publicity::Public,
-						PropertyKey::from_usize(idx),
-						crate::PropertyValue::Value(argument.value),
-						true,
-						Some(argument.position),
+					{
+						let key = PropertyKey::from_usize(count);
+
+						basis.append(
+							environment,
+							crate::types::properties::Publicity::Public,
+							key,
+							crate::types::properties::PropertyValue::Value(argument.value),
+							argument.position,
+						);
+					}
+
+					count += 1;
+				}
+
+				{
+					let length = types.new_constant_type(crate::Constant::Number(
+						(count as f64).try_into().unwrap(),
+					));
+
+					basis.append(
+						environment,
+						crate::types::properties::Publicity::Public,
+						PropertyKey::String("length".into()),
+						crate::types::properties::PropertyValue::Value(length),
+						rest_parameter.position,
 					);
 				}
 
-				// TODO what does the 0 mean here?
-				seeding_context.set_id(
-					rest_parameter.ty,
-					(rest_parameter_array_type, source_map::Nullable::NULL, 0),
-					false,
-				);
+				let rest_parameter_array_type = basis.build_object();
+				type_arguments.arguments.insert(rest_parameter.ty, rest_parameter_array_type);
 			} else {
 				// TODO types.options.allow_extra_arguments
 				let mut left_over = arguments.iter().skip(self.parameters.parameters.len());
@@ -1121,55 +1419,296 @@ impl FunctionType {
 				} else {
 					first.position
 				};
-				errors.errors.push(FunctionCallingError::ExcessArguments { count, position });
+
+				if E::CHECK_PARAMETERS {
+					errors.errors.push(FunctionCallingError::ExcessArguments { count, position });
+				}
 			}
 		}
-		seeding_context
+
+		// Set restrictions as arguments IF not set already. So can
+		if let Some(_call_site_type_arguments) = call_site_type_arguments {
+			crate::utilities::notify!("TODO type_arguments.covariants");
+			// for (on, (arg, _)) in call_site_type_arguments {
+			// 	if type_arguments.arguments.get(&on).is_none() {
+			// 		type_arguments.arguments.insert(on, arg)
+			// 	}
+			// }
+		}
+	}
+}
+
+fn check_parameter_type(
+	parameter_ty: TypeId,
+	call_site_type_arguments: Option<&CallSiteTypeArguments>,
+	parent: Option<&GenericArguments>,
+	argument_ty: TypeId,
+	type_arguments: &mut SubstitutionArguments,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> SubTypeResult {
+	// crate::utilities::notify!("Argument is {:?}, parent generics {:?}", value, parent);
+
+	// TODO properties
+	let contributions = Contributions {
+		parent,
+		call_site_type_arguments,
+		staging_covariant: Default::default(),
+		staging_contravariant: Default::default(),
+	};
+
+	// TODO WIP
+	let mut state = State {
+		already_checked: Vec::new(),
+		mode: Default::default(),
+		contributions: Some(contributions),
+		others: SubTypingOptions { allow_errors: true },
+		object_constraints: None,
+	};
+
+	let result = type_is_subtype_with_generics(
+		(parameter_ty, GenericChain::None),
+		(argument_ty, GenericChain::None),
+		&mut state,
+		environment,
+		types,
+	);
+
+	if result.is_subtype() {
+		// mut parameter_constraint_request,
+		let Contributions { staging_covariant, staging_contravariant, .. } =
+			state.contributions.unwrap();
+
+		for (on, (value, _)) in staging_covariant.iter() {
+			crate::utilities::notify!("TODO pick highest covariant?");
+			if let Some(value) = type_arguments.arguments.get_mut(on) {
+				*value = types.new_or_type(*value, *value);
+			} else {
+				type_arguments.arguments.insert(*on, *value);
+			}
+		}
+
+		for (idx, (on, (value, depth))) in staging_contravariant.iter().enumerate() {
+			// This is TSC behavior
+			// If there exists another argument that is in a deeper than the current don't add it
+			// TODO only if explicit generic
+			let is_weaker =
+				staging_contravariant.iter().enumerate().any(|(idx2, (on2, (_, other_depth)))| {
+					(on == on2) && idx != idx2 && depth < other_depth
+				});
+
+			if is_weaker {
+				crate::utilities::notify!("Here skipping as weaker");
+				continue;
+			}
+
+			// TODO maybe this should have entry api
+			let value = value.clone().into_type(types);
+			if let Some(existing) = type_arguments.arguments.get_mut(on) {
+				crate::utilities::notify!("Here");
+				*existing = types.new_or_type(*existing, value);
+			} else {
+				type_arguments.arguments.insert(*on, value);
+			}
+		}
 	}
 
-	fn synthesise_call_site_type_arguments(
-		&self,
+	// environment.context_type.requests.append(&mut parameter_constraint_request);
+
+	result
+}
+
+#[allow(clippy::type_complexity)]
+fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTImplementation>(
+	callable: &Logical<FunctionLike>,
+	arguments: &[UnsynthesisedArgument<A>],
+	(call_site_type_arguments, parent_arguments): (
+		Option<Vec<(TypeId, SpanWithSource)>>,
+		Option<&GenericArguments>,
+	),
+	environment: &mut Environment,
+	checking_data: &mut crate::CheckingData<T, A>,
+) -> (Vec<SynthesisedArgument>, Option<TypeRestrictions>) {
+	fn synthesise_call_site_type_argument_hints(
+		type_parameters: &GenericTypeParameters,
 		call_site_type_arguments: Vec<(TypeId, SpanWithSource)>,
 		types: &crate::types::TypeStore,
 		environment: &mut Environment,
-	) -> map_vec::Map<TypeId, Vec<(TypeId, SpanWithSource)>> {
-		if let Some(ref typed_parameters) = self.type_parameters {
-			typed_parameters
-				.0
-				.iter()
-				.zip(call_site_type_arguments)
-				.map(|(param, (ty, position))| {
-					if let Type::RootPolyType(PolyNature::Generic { eager_fixed, .. }) =
-						types.get_type_by_id(param.id)
-					{
-						let mut basic_subtyping =
-							BasicEquality { add_property_restrictions: false, position };
+	) -> TypeRestrictions {
+		crate::utilities::notify!("call_site_type_arguments {:?}", call_site_type_arguments);
 
-						let type_is_subtype = type_is_subtype(
-							*eager_fixed,
-							ty,
-							&mut basic_subtyping,
-							environment,
-							types,
-						);
-
-						match type_is_subtype {
-							SubTypeResult::IsSubType => {}
-							SubTypeResult::IsNotSubType(_) => {
-								todo!("generic argument does not match restriction")
-							}
-						}
-					} else {
-						todo!();
-						// crate::utils::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
+		type_parameters
+			.0
+			.iter()
+			.zip(call_site_type_arguments)
+			.map(|(param, (ty, position))| {
+				if let Type::RootPolyType(PolyNature::FunctionGeneric { eager_fixed, .. }) =
+					types.get_type_by_id(param.type_id)
+				{
+					let mut state = State {
+						already_checked: Default::default(),
+						mode: SubTypingMode::default(),
+						contributions: None,
+						others: Default::default(),
+						object_constraints: None,
 					};
+					let type_is_subtype =
+						type_is_subtype(*eager_fixed, ty, &mut state, environment, types);
 
-					(param.id, vec![(ty, position)])
+					if let SubTypeResult::IsNotSubType(_) = type_is_subtype {
+						todo!("generic argument does not match restriction")
+					}
+				} else {
+					todo!();
+					// crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
+				};
+
+				(param.type_id, (ty, position))
+			})
+			.collect()
+	}
+
+	match callable {
+		Logical::Pure(function) => {
+			let function = checking_data.types.get_function_from_id(function.function);
+
+			let type_arguments_restrictions =
+				if let (Some(ref type_parameters), Some(call_site_type_arguments)) =
+					(&function.type_parameters, call_site_type_arguments)
+				{
+					Some(synthesise_call_site_type_argument_hints(
+						type_parameters,
+						call_site_type_arguments,
+						&checking_data.types,
+						environment,
+					))
+				} else {
+					None
+				};
+
+			let parameters = function.parameters.clone();
+
+			let type_arguments = if type_arguments_restrictions.is_some()
+				|| parent_arguments.is_some()
+			{
+				let mut arguments = type_arguments_restrictions.clone().unwrap_or_default();
+				match parent_arguments {
+					Some(GenericArguments::LookUp { on }) => {
+						// TODO copied from somewhere
+						let prototype = environment
+							.get_chain_of_info()
+							.find_map(|env| env.prototypes.get(on))
+							.unwrap();
+
+						crate::utilities::notify!(
+							"Here calculating lookup argument {:?}",
+							prototype
+						);
+						let map =
+							checking_data.types.lookup_generic_map.get(prototype).unwrap().clone();
+
+						for (under, lookup) in map.iter() {
+							let entries = lookup.calculate_lookup(environment, *on);
+							let mut iter = entries.into_iter();
+							let mut ty = iter.next().unwrap();
+							for other in iter {
+								ty = checking_data.types.new_or_type(ty, other);
+							}
+
+							arguments.insert(*under, (ty, BaseSpan::NULL));
+						}
+					}
+					Some(GenericArguments::ExplicitRestrictions(ers)) => {
+						arguments.extend(ers.iter().map(|(k, v)| (*k, *v)));
+					}
+					Some(GenericArguments::Closure(..)) | None => {}
+				}
+
+				Some(arguments)
+			} else {
+				None
+			};
+
+			let arguments = arguments
+				.iter()
+				.enumerate()
+				.map(|(idx, argument)| {
+					let expected_type = parameters.get_parameter_type_at_index(idx).map_or(
+						TypeId::ANY_TYPE,
+						|(parameter_type, _)| {
+							// crate::utilities::notify!("(pairing explicit generics for) Generic parameter = {:?}", parameter_type);
+
+							let ty = checking_data.types.get_type_by_id(parameter_type);
+							let parameter_type = if let Type::RootPolyType(
+								PolyNature::Parameter { fixed_to },
+							) = ty
+							{
+								*fixed_to
+							} else {
+								// crate::utilities::notify!(
+								// 	"Parameter is not `PolyNature::Parameter`? {:?}",
+								// 	ty
+								// );
+								parameter_type
+							};
+
+							if let Some(arguments) = type_arguments.clone() {
+								// Unfortunately this seems the best way to pass down to expected type
+								checking_data.types.register_type(Type::PartiallyAppliedGenerics(
+									PartiallyAppliedGenerics {
+										on: parameter_type,
+										arguments: GenericArguments::ExplicitRestrictions(
+											arguments,
+										),
+									},
+								))
+							} else {
+								parameter_type
+							}
+						},
+					);
+
+					let value = A::synthesise_expression(
+						argument.expression,
+						expected_type,
+						environment,
+						checking_data,
+					);
+
+					let position = A::expression_position(argument.expression)
+						.with_source(environment.get_source());
+
+					SynthesisedArgument { spread: argument.spread, position, value }
 				})
-				.collect()
-		} else {
-			crate::utils::notify!("Call site arguments on function without typed parameters...");
-			map_vec::Map::new()
+				.collect();
+
+			(arguments, type_arguments_restrictions)
 		}
+		Logical::Implies { on, antecedent } => synthesise_argument_expressions_wrt_parameters(
+			on,
+			arguments,
+			// TODO chain
+			(call_site_type_arguments, Some(antecedent)),
+			environment,
+			checking_data,
+		),
+		Logical::Or { .. } => (
+			arguments
+				.iter()
+				.map(|argument| SynthesisedArgument {
+					spread: argument.spread,
+					position: A::expression_position(argument.expression)
+						.with_source(environment.get_source()),
+					value: A::synthesise_expression(
+						argument.expression,
+						// TODO union
+						TypeId::ANY_TYPE,
+						environment,
+						checking_data,
+					),
+				})
+				.collect(),
+			None,
+		),
 	}
 }

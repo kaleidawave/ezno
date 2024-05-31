@@ -4,49 +4,51 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, parse_bracketed, throw_unexpected_token,
-	tokens::token_as_identifier, ASTNode, ListItem, Marker, ParseOptions, ParseResult,
-	ParsingState, Quoted, TSXKeyword, TSXToken, VariableIdentifier,
+	ast::object_literal::ObjectLiteral, derive_ASTNode, errors::parse_lexing_error,
+	parse_bracketed, throw_unexpected_token, tokens::token_as_identifier, ASTNode, ListItem,
+	Marker, ParseOptions, ParseResult, ParsingState, Quoted, TSXKeyword, TSXToken,
+	VariableIdentifier,
 };
 use visitable_derive::Visitable;
 
 use super::ImportLocation;
 
 /// Side effects is represented under the Parts variant where the vector is empty
-#[derive(Debug, Clone, PartialEq, Eq, Visitable)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportPart>>),
 	All { under: VariableIdentifier },
 }
 
-/// TODO a few more thing needed here
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
+	#[cfg(feature = "full-typescript")]
 	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
+	pub with: Option<ObjectLiteral>,
 	pub position: Span,
 	#[cfg(feature = "extras")]
 	pub reversed: bool,
 }
 
-/// TODO default
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+/// TODO `default` should have its own variant?
+#[derive(Debug, Clone, PartialEq)]
+#[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
 	Quoted(String, Quoted),
+	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(Marker<Self>),
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportExportName>"))] Marker<Self>,
+	),
 }
 
 impl ImportExportName {
@@ -94,13 +96,21 @@ impl ASTNode for ImportDeclaration {
 
 		let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
+		let with = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::With)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
+			#[cfg(feature = "full-typescript")]
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,
+			with,
 			position: out.start.union(end),
 			#[cfg(feature = "extras")]
 			reversed: false,
@@ -114,7 +124,9 @@ impl ASTNode for ImportDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("import");
-		if self.is_type_annotation_import_only && options.include_types {
+
+		#[cfg(feature = "full-typescript")]
+		if self.is_type_annotation_import_only && options.include_type_annotations {
 			buf.push_str(" type");
 		}
 
@@ -166,8 +178,8 @@ impl ASTNode for ImportDeclaration {
 		self.from.to_string_from_buffer(buf);
 	}
 
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 
@@ -184,10 +196,17 @@ impl ImportDeclaration {
 
 		let out = parse_import_specifier_and_parts(reader, state, options)?;
 
+		let with = reader
+			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Assert)))
+			.is_some()
+			.then(|| ObjectLiteral::from_reader(reader, state, options))
+			.transpose()?;
+
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
+			with,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
 			from,
@@ -250,7 +269,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 	let peek = reader.peek();
 	let (items, end) = if let Some(Token(TSXToken::Multiply, _)) = peek {
 		reader.next();
-		let _as = reader.expect_next(TSXToken::Keyword(TSXKeyword::As))?;
+		state.expect_keyword(reader, TSXKeyword::As)?;
 		let under = VariableIdentifier::from_reader(reader, state, options)?;
 		let end = under.get_position().get_end();
 		(ImportedItems::All { under }, end)
@@ -281,22 +300,33 @@ pub(crate) fn parse_import_specifier_and_parts(
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
-#[derive(Debug, Clone, PartialEq, Eq, Visitable, GetFieldByType)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ImportPart {
 	Name(VariableIdentifier),
-	NameWithAlias { name: String, alias: ImportExportName, position: Span },
-	PrefixComment(String, Option<Box<Self>>, Span),
-	PostfixComment(Box<Self>, String, Span),
+	NameWithAlias {
+		name: String,
+		alias: ImportExportName,
+		position: Span,
+	},
+	PrefixComment(
+		String,
+		#[cfg_attr(target_family = "wasm", tsify(type = "ImportPart | null"))] Option<Box<Self>>,
+		Span,
+	),
+	PostfixComment(
+		#[cfg_attr(target_family = "wasm", tsify(type = "ImportPart"))] Box<Self>,
+		String,
+		Span,
+	),
 }
 
 impl ListItem for ImportPart {}
 
 impl ASTNode for ImportPart {
-	fn get_position(&self) -> &Span {
-		GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
 	}
 
 	// TODO also single line comments here
@@ -324,6 +354,7 @@ impl ASTNode for ImportPart {
 					let (ident, pos) = token_as_identifier(token, "import alias")?;
 					(ImportExportName::Reference(ident), pos)
 				};
+
 			let mut value = match alias {
 				ImportExportName::Quoted(..) => {
 					let _ = state.expect_keyword(reader, TSXKeyword::As)?;
@@ -335,8 +366,7 @@ impl ASTNode for ImportPart {
 					Self::NameWithAlias { name, alias, position }
 				}
 				ImportExportName::Reference(reference) => {
-					if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek() {
-						reader.next();
+					if state.optionally_expect_keyword(reader, TSXKeyword::As).is_some() {
 						let (name, pos) = token_as_identifier(
 							reader.next().ok_or_else(parse_lexing_error)?,
 							"import name",
@@ -351,10 +381,10 @@ impl ASTNode for ImportPart {
 						Self::Name(VariableIdentifier::Standard(reference, alias_pos))
 					}
 				}
-				ImportExportName::Marker(_id) => {
-					todo!("marker id change")
-					// Self::Name(VariableIdentifier::Marker(id, pos))
-				}
+				ImportExportName::Marker(id) => Self::Name(VariableIdentifier::Marker(
+					Marker(id.0, Default::default()),
+					alias_pos,
+				)),
 			};
 			while let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
 				let Some(Token(TSXToken::MultiLineComment(c), start)) = reader.next() else {

@@ -2,13 +2,13 @@ use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement, ASTNode, TSXKeyword, TSXToken,
+	ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode, TSXKeyword,
+	TSXToken,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct WhileStatement {
 	pub condition: MultipleExpression,
 	pub inner: BlockOrSingleStatement,
@@ -16,8 +16,8 @@ pub struct WhileStatement {
 }
 
 impl ASTNode for WhileStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -49,11 +49,9 @@ impl ASTNode for WhileStatement {
 	}
 }
 
-/// TODO what about a do statement
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct DoWhileStatement {
 	pub condition: MultipleExpression,
 	// TODO unsure about true here
@@ -62,8 +60,8 @@ pub struct DoWhileStatement {
 }
 
 impl ASTNode for DoWhileStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -73,11 +71,12 @@ impl ASTNode for DoWhileStatement {
 	) -> Result<Self, crate::ParseError> {
 		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		let _ = reader.expect_next(TSXToken::Keyword(TSXKeyword::While))?;
+		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		reader.expect_next(TSXToken::CloseParentheses)?;
-		Ok(Self { position: start.union(inner.get_position()), condition, inner })
+		let position =
+			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
+		Ok(Self { condition, inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

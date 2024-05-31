@@ -1,15 +1,21 @@
+//! Contains logic for mathematical, bitwise and logical operators
+
 use derive_enum_from_into::EnumFrom;
-use source_map::SpanWithSource;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	features::conditional::new_conditional_context,
 	types::{
 		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
-		StructureGenerics, TypeStore,
+		PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
 
+use super::objects::SpecialObjects;
+
+/// For these **binary** operations both operands are synthesised
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum MathematicalAndBitwise {
 	Add,
@@ -56,19 +62,18 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 			match result {
 				Ok(result) => result,
 				Err(_err) => {
-					let ctx = &environment.as_general_context();
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::InvalidMathematicalOrBitwiseOperation {
 							operator,
 							lhs: TypeStringRepresentation::from_type_id(
 								lhs,
-								ctx,
+								environment,
 								&checking_data.types,
 								false,
 							),
 							rhs: TypeStringRepresentation::from_type_id(
 								rhs,
-								ctx,
+								environment,
 								&checking_data.types,
 								false,
 							),
@@ -130,6 +135,7 @@ pub fn evaluate_mathematical_operation(
 					let lhs = cast_as_number(c1, strict_casts).unwrap_or(f64::NAN);
 					let rhs = cast_as_number(c2, strict_casts).unwrap_or(f64::NAN);
 					// TODO hopefully Rust implementation is the same as JS
+					#[allow(clippy::cast_possible_truncation)]
 					let value = match operator {
 						MathematicalAndBitwise::Add => unreachable!(),
 						MathematicalAndBitwise::Subtract => lhs - rhs,
@@ -166,6 +172,10 @@ pub fn evaluate_mathematical_operation(
 		}
 	}
 
+	if lhs == TypeId::ERROR_TYPE || rhs == TypeId::ERROR_TYPE {
+		return Ok(TypeId::ERROR_TYPE);
+	}
+
 	let is_dependent =
 		types.get_type_by_id(lhs).is_dependent() || types.get_type_by_id(rhs).is_dependent();
 
@@ -178,7 +188,8 @@ pub fn evaluate_mathematical_operation(
 	attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 }
 
-/// Not canonical / reducible
+/// Not canonical / reducible form of [`CanonicalEqualityAndInequality`].
+/// (for examples `a > b` is equivalent to `b < a` (after side effects) and `a !== b` is equivalent to `!(a === b)`)
 #[derive(Clone, Copy, Debug)]
 pub enum EqualityAndInequality {
 	StrictEqual,
@@ -187,11 +198,11 @@ pub enum EqualityAndInequality {
 	NotEqual,
 	GreaterThan,
 	LessThan,
-	LessThanEqual,
-	GreaterThanEqual,
+	LessThanOrEqual,
+	GreaterThanOrEqual,
 }
 
-/// Canonical / irreducible
+/// Canonical / irreducible form of [`EqualityAndInequality`].
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum CanonicalEqualityAndInequality {
 	StrictEqual,
@@ -207,7 +218,7 @@ pub fn evaluate_equality_inequality_operation(
 ) -> Result<TypeId, ()> {
 	match operator {
 		EqualityAndInequality::StrictEqual => {
-			// crate::utils::notify!("{:?} === {:?}", lhs, rhs);
+			// crate::utilities::notify!("{:?} === {:?}", lhs, rhs);
 
 			let is_dependent = types.get_type_by_id(lhs).is_dependent()
 				|| types.get_type_by_id(rhs).is_dependent();
@@ -225,7 +236,11 @@ pub fn evaluate_equality_inequality_operation(
 			match attempt_constant_equality(lhs, rhs, types) {
 				Ok(ty) => Ok(ty),
 				Err(()) => {
-					unreachable!("should have been caught by above")
+					unreachable!(
+						"should have been caught `is_dependent` above, {:?} === {:?}",
+						types.get_type_by_id(lhs),
+						types.get_type_by_id(rhs)
+					)
 				}
 			}
 		}
@@ -269,7 +284,7 @@ pub fn evaluate_equality_inequality_operation(
 						Type::Constant(Constant::Number(lt)),
 					) = (types.get_type_by_id(*op_rhs), operator, types.get_type_by_id(rhs))
 					{
-						crate::utils::notify!("Shifted LT");
+						crate::utilities::notify!("Shifted LT");
 						lhs = *op_lhs;
 						rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
 					}
@@ -284,11 +299,42 @@ pub fn evaluate_equality_inequality_operation(
 
 			attempt_less_than(lhs, rhs, types, strict_casts)
 		}
+		// equal OR less than
+		EqualityAndInequality::LessThanOrEqual => {
+			let equality_result = evaluate_equality_inequality_operation(
+				lhs,
+				&EqualityAndInequality::StrictEqual,
+				rhs,
+				types,
+				strict_casts,
+			)?;
+
+			if equality_result == TypeId::TRUE {
+				Ok(equality_result)
+			} else if equality_result == TypeId::FALSE {
+				evaluate_equality_inequality_operation(
+					lhs,
+					&EqualityAndInequality::LessThan,
+					rhs,
+					types,
+					strict_casts,
+				)
+			} else {
+				let less_than_result = evaluate_equality_inequality_operation(
+					lhs,
+					&EqualityAndInequality::LessThan,
+					rhs,
+					types,
+					strict_casts,
+				)?;
+				Ok(new_logical_or_type(equality_result, less_than_result, types))
+			}
+		}
 		EqualityAndInequality::StrictNotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::StrictEqual,
 				lhs,
+				&EqualityAndInequality::StrictEqual,
+				rhs,
 				types,
 				strict_casts,
 			)?;
@@ -300,14 +346,14 @@ pub fn evaluate_equality_inequality_operation(
 			)
 		}
 		EqualityAndInequality::Equal => {
-			crate::utils::notify!("TODO equal operator");
+			crate::utilities::notify!("TODO equal operator");
 			Err(())
 		}
 		EqualityAndInequality::NotEqual => {
 			let equality_result = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::Equal,
 				lhs,
+				&EqualityAndInequality::Equal,
+				rhs,
 				types,
 				strict_casts,
 			)?;
@@ -318,6 +364,7 @@ pub fn evaluate_equality_inequality_operation(
 				strict_casts,
 			)
 		}
+		// Swap operands!
 		EqualityAndInequality::GreaterThan => evaluate_equality_inequality_operation(
 			rhs,
 			&EqualityAndInequality::LessThan,
@@ -325,39 +372,10 @@ pub fn evaluate_equality_inequality_operation(
 			types,
 			strict_casts,
 		),
-		EqualityAndInequality::LessThanEqual => {
-			let lhs = evaluate_equality_inequality_operation(
-				rhs,
-				&EqualityAndInequality::StrictEqual,
-				lhs,
-				types,
-				strict_casts,
-			)?;
-
-			if lhs == TypeId::TRUE {
-				Ok(lhs)
-			} else if lhs == TypeId::FALSE {
-				evaluate_equality_inequality_operation(
-					rhs,
-					&EqualityAndInequality::LessThan,
-					lhs,
-					types,
-					strict_casts,
-				)
-			} else {
-				let rhs = evaluate_equality_inequality_operation(
-					rhs,
-					&EqualityAndInequality::LessThan,
-					lhs,
-					types,
-					strict_casts,
-				)?;
-				Ok(new_logical_or_type(lhs, rhs, types))
-			}
-		}
-		EqualityAndInequality::GreaterThanEqual => evaluate_equality_inequality_operation(
+		// Swap operands!
+		EqualityAndInequality::GreaterThanOrEqual => evaluate_equality_inequality_operation(
 			rhs,
-			&EqualityAndInequality::LessThanEqual,
+			&EqualityAndInequality::LessThanOrEqual,
 			lhs,
 			types,
 			strict_casts,
@@ -366,9 +384,10 @@ pub fn evaluate_equality_inequality_operation(
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Logical {
+pub enum LogicalOperator {
 	And,
 	Or,
+	/// TODO is this canocial?
 	NullCoalescing,
 }
 
@@ -378,49 +397,53 @@ pub fn evaluate_logical_operation_with_expression<
 	T: crate::ReadFromFS,
 	A: crate::ASTImplementation,
 >(
-	lhs: TypeId,
-	operator: Logical,
+	lhs: (TypeId, Span),
+	operator: LogicalOperator,
 	rhs: &'a A::Expression<'a>,
 	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
 ) -> Result<TypeId, ()> {
 	match operator {
-		Logical::And => Ok(environment.new_conditional_context(
+		LogicalOperator::And => Ok(new_conditional_context(
+			environment,
 			lhs,
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			},
-			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
+			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 			checking_data,
 		)),
-		Logical::Or => Ok(environment.new_conditional_context(
+		LogicalOperator::Or => Ok(new_conditional_context(
+			environment,
 			lhs,
-			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs,
+			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 			}),
 			checking_data,
 		)),
-		Logical::NullCoalescing => {
+		LogicalOperator::NullCoalescing => {
 			let is_lhs_null = evaluate_equality_inequality_operation(
-				lhs,
+				lhs.0,
 				&EqualityAndInequality::StrictEqual,
 				TypeId::NULL_TYPE,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			)?;
-			Ok(environment.new_conditional_context(
-				is_lhs_null,
+			Ok(new_conditional_context(
+				environment,
+				(is_lhs_null, lhs.1),
 				|env: &mut Environment, data: &mut CheckingData<T, A>| {
 					A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
 				},
-				Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs),
+				Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 				checking_data,
 			))
 		}
 	}
 }
 
+/// `typeof` and some others done elsewhere
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
 	LogicalNot,
@@ -434,6 +457,10 @@ pub fn evaluate_pure_unary_operator(
 	types: &mut TypeStore,
 	strict_casts: bool,
 ) -> Result<TypeId, ()> {
+	if operand == TypeId::ERROR_TYPE {
+		return Ok(operand);
+	}
+
 	match operator {
 		PureUnary::LogicalNot => {
 			if let Decidable::Known(value) = is_type_truthy_falsy(operand, types) {
@@ -468,42 +495,40 @@ pub fn evaluate_pure_unary_operator(
 	}
 }
 
+/// Returns whether lhs and rhs are always equal or never equal. TODO more
+///
+/// TODO return decidable.
 fn attempt_constant_equality(
 	lhs: TypeId,
 	rhs: TypeId,
 	types: &mut TypeStore,
 ) -> Result<TypeId, ()> {
-	let are_equal =
-		if lhs == rhs {
-			true
+	let are_equal = if lhs == rhs {
+		true
+	} else {
+		let lhs = types.get_type_by_id(lhs);
+		let rhs = types.get_type_by_id(rhs);
+		if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
+			cst1 == cst2
+		} else if let (Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..)), _)
+		| (_, Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..))) = (lhs, rhs)
+		{
+			// Same objects and functions always have same type id. Poly case doesn't occur here
+			false
+		}
+		// Temp fix for closures
+		else if let (
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: on_lhs, .. }),
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: on_rhs, .. }),
+		) = (lhs, rhs)
+		{
+			// TODO does this work?
+			return attempt_constant_equality(*on_lhs, *on_rhs, types);
 		} else {
-			let lhs = types.get_type_by_id(lhs);
-			let rhs = types.get_type_by_id(rhs);
-			if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
-				cst1 == cst2
-			} else if let (Type::Object(..) | Type::Function(..), _)
-			| (_, Type::Object(..) | Type::Function(..)) = (lhs, rhs)
-			{
-				// Same objects and functions always have same type id. Poly case doesn't occur here
-				false
-			}
-			// Temp fix for closures
-			else if let (
-				Type::Constructor(crate::types::Constructor::StructureGenerics(
-					StructureGenerics { on: on_lhs, .. },
-				)),
-				Type::Constructor(crate::types::Constructor::StructureGenerics(
-					StructureGenerics { on: on_rhs, .. },
-				)),
-			) = (lhs, rhs)
-			{
-				// TODO does this work?
-				return attempt_constant_equality(*on_lhs, *on_rhs, types);
-			} else {
-				crate::utils::notify!("{:?} === {:?} is apparently false", lhs, rhs);
-				return Err(());
-			}
-		};
+			crate::utilities::notify!("{:?} === {:?} is apparently false", lhs, rhs);
+			return Err(());
+		}
+	};
 
 	Ok(types.new_constant_type(Constant::Boolean(are_equal)))
 }

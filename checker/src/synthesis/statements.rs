@@ -1,11 +1,15 @@
 use super::{
 	expressions::synthesise_multiple_expression, synthesise_block,
-	type_annotations::synthesise_type_annotation, variables::register_variable,
+	variables::synthesise_variable_declaration_item,
 };
 use crate::{
-	context::{Scope, VariableRegisterArguments},
+	context::Scope,
 	diagnostics::TypeCheckError,
-	features::iteration::{synthesise_iteration, IterationBehavior},
+	features::{
+		conditional::new_conditional_context,
+		exceptions::new_try_context,
+		iteration::{synthesise_iteration, IterationBehavior},
+	},
 	synthesis::EznoParser,
 	CheckingData, Environment, TypeId,
 };
@@ -26,6 +30,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
+	let position = statement.get_position().with_source(environment.get_source());
 	match statement {
 		Statement::Expression(expression) => {
 			synthesise_multiple_expression(
@@ -36,21 +41,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::Return(return_statement) => {
-			let returned = if let Some(ref expression) = return_statement.0 {
-				// TODO expecting based of expected return type
-				synthesise_multiple_expression(
-					expression,
-					environment,
-					checking_data,
-					TypeId::ANY_TYPE,
-				)
-			} else {
-				TypeId::UNDEFINED_TYPE
-			};
-
-			let position = return_statement.1.with_source(environment.get_source());
-
-			environment.return_value(returned, position);
+			environment.return_value(
+				&crate::context::environment::Returnable::Statement(
+					return_statement.0.as_ref(),
+					return_statement.1,
+				),
+				checking_data,
+			);
 		}
 		Statement::If(if_statement) => {
 			fn run_condition<T: crate::ReadFromFS>(
@@ -60,6 +57,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) {
+				let condition_pos = current.0.get_position();
 				let condition = synthesise_multiple_expression(
 					current.0,
 					environment,
@@ -67,8 +65,9 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 					TypeId::ANY_TYPE,
 				);
 
-				environment.new_conditional_context(
-					condition,
+				new_conditional_context(
+					environment,
+					(condition, condition_pos),
 					|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
 						synthesise_block_or_single_statement(current.1, env, data);
 					},
@@ -117,6 +116,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 			},
+			position,
 		),
 		Statement::DoWhileLoop(stmt) => synthesise_iteration(
 			IterationBehavior::DoWhile(&stmt.condition),
@@ -126,13 +126,15 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			|environment, checking_data| {
 				synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 			},
+			position,
 		),
 		Statement::ForLoop(stmt) => match &stmt.condition {
 			parser::statements::ForLoopCondition::ForOf {
+				is_await: _,
 				keyword: _,
 				variable,
 				of,
-				position: _,
+				position,
 			} => {
 				synthesise_iteration(
 					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
@@ -146,13 +148,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 							checking_data,
 						);
 					},
+					position.with_source(environment.get_source()),
 				);
 			}
 			parser::statements::ForLoopCondition::ForIn {
 				keyword: _,
 				variable,
 				r#in,
-				position: _,
+				position,
 			} => {
 				synthesise_iteration(
 					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
@@ -166,13 +169,14 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 							checking_data,
 						);
 					},
+					position.with_source(environment.get_source()),
 				);
 			}
 			parser::statements::ForLoopCondition::Statements {
 				initialiser,
 				condition,
 				afterthought,
-				position: _,
+				position,
 			} => synthesise_iteration(
 				IterationBehavior::For { initialiser, condition, afterthought },
 				information.and_then(|info| info.label),
@@ -181,6 +185,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				|environment, checking_data| {
 					synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 				},
+				position.with_source(environment.get_source()),
 			),
 		},
 		Statement::Block(ref block) => {
@@ -216,7 +221,6 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::Labelled { position: _, name, statement } => {
 			// Labels on invalid statements is caught at parse time
-
 			synthesise_statement(
 				statement,
 				Some(StatementInformation { label: Some(name.clone()) }),
@@ -224,59 +228,35 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				checking_data,
 			);
 		}
-		Statement::VarVariable(_) => {
-			checking_data.raise_unimplemented_error(
-				"var variables statements",
-				statement.get_position().with_source(environment.get_source()),
-			);
-		}
-		Statement::TryCatch(stmt) => {
-			let thrown_type: TypeId =
-				environment.new_try_context(checking_data, |environment, checking_data| {
-					synthesise_block(&stmt.try_inner.0, environment, checking_data);
-				});
-
-			if let Some(ref catch_block) = stmt.catch_inner {
-				// TODO catch when never
-				environment.new_lexical_environment_fold_into_parent(
-					crate::Scope::Block {},
-					checking_data,
-					|environment, checking_data| {
-						if let Some((clause, ty_annotation)) = &stmt.exception_var {
-							let catch_variable_type = ty_annotation.as_ref().map(|annotation| {
-								synthesise_type_annotation(annotation, environment, checking_data)
-							});
-
-							// TODO subtype thrown here with catch_variable_type
-
-							register_variable(
-								clause.get_ast_ref(),
-								environment,
-								checking_data,
-								VariableRegisterArguments {
-									// TODO catch variable constant option
-									constant: true,
-									space: catch_variable_type,
-									initial_value: Some(thrown_type),
-								},
-							);
-						}
-						synthesise_block(&catch_block.0, environment, checking_data);
-					},
-				);
+		Statement::VarVariable(stmt) => {
+			for declaration in &stmt.declarations {
+				synthesise_variable_declaration_item(declaration, environment, checking_data, None);
 			}
 		}
+		Statement::TryCatch(stmt) => new_try_context(
+			&stmt.try_inner,
+			stmt.catch_inner.as_ref().map(|inner| {
+				(
+					inner,
+					stmt.exception_var.as_ref().map(|(var, ty)| (var.get_ast_ref(), ty.as_ref())),
+				)
+			}),
+			stmt.finally_inner.as_ref(),
+			environment,
+			checking_data,
+		),
 		// TODO do these higher up in the block. To set relevant information
 		Statement::Comment(s, _) if s.starts_with("@ts") => {
-			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
 		}
 		Statement::MultiLineComment(s, _) if s.starts_with('*') => {
-			crate::utils::notify!("acknowledge '@ts-ignore' and other comments");
+			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
 		}
 		Statement::Comment(..)
 		| Statement::MultiLineComment(..)
 		| Statement::Debugger(_)
-		| Statement::Empty(_) => {}
+		| Statement::Empty(_)
+		| Statement::AestheticSemiColon(_) => {}
 	}
 }
 

@@ -34,8 +34,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
@@ -66,15 +66,23 @@ jobs:
                 edges {
                   node {
                     sponsor {
-                      login
+                      name
                     }
                   }
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.login) | join(", ")')
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
           
-          echo "sponsors=$SPONSORS" >> $GITHUB_OUTPUT
+          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
+
+          CONTRIBUTORS=$(
+            gh pr list --search "-author:@me" --state merged --json author 
+            | jq 'map(.author.name) | unique | join(",")'
+          )
+
+          echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
+
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,7 +94,8 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
-          SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
+          SPONSORS: ${{ steps.get-sponsors.outputs.SPONSORS }}
+          CONTRIBUTORS: ${{ steps.get-sponsors.outputs.CONTRIBUTORS }}
 
       - name: Add WASM to rustup
         if: ${{ inputs.ezno-version != 'none' }}
@@ -95,7 +104,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: ${{ inputs.ezno-version != 'none' }}
         with:
-          packages: wasm-bindgen-cli@0.2.89
+          packages: wasm-pack@0.12.1
 
       - name: Set NPM package version & build
         id: set-npm-version

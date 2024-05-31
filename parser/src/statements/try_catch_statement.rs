@@ -1,17 +1,17 @@
 use crate::{
-	ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation, VariableField,
-	VariableFieldInSourceCode, WithComment,
+	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation,
+	VariableField, WithComment,
 };
 use source_map::Span;
 use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
-pub type ExceptionVarField = WithComment<VariableField<VariableFieldInSourceCode>>;
+#[cfg_attr(target_family = "wasm", tsify::declare)]
+pub type ExceptionVarField = WithComment<VariableField>;
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct TryCatchStatement {
 	pub try_inner: Block,
 	pub catch_inner: Option<Block>,
@@ -21,8 +21,8 @@ pub struct TryCatchStatement {
 }
 
 impl ASTNode for TryCatchStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -38,15 +38,13 @@ impl ASTNode for TryCatchStatement {
 
 		// Optional `catch` clause
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Catch), _)) = reader.peek() {
-			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Else);
+			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
 
 			// Optional exception variable field `catch (e)`
 			if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
 				reader.expect_next(TSXToken::OpenParentheses)?;
 				let variable_field =
-					WithComment::<VariableField<VariableFieldInSourceCode>>::from_reader(
-						reader, state, options,
-					)?;
+					WithComment::<VariableField>::from_reader(reader, state, options)?;
 
 				// Optional type reference `catch (e: type)`
 				let mut exception_var_type: Option<TypeAnnotation> = None;

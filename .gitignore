@@ -4,8 +4,9 @@ target
 /private
 .vscode
 .env
-/checker/examples
+**/examples/private*.rs
 build
 node_modules
 /TODO.txt
 checker/specification/Cargo.lock
+checker/definitions/es5.d.ts

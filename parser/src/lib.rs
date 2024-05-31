@@ -12,8 +12,6 @@ pub mod generator_helpers;
 mod lexer;
 pub mod marker;
 mod modules;
-pub mod operators;
-pub mod parameters;
 pub mod property_key;
 pub mod statements;
 mod tokens;
@@ -24,6 +22,7 @@ pub mod visiting;
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
 pub use declarations::Declaration;
+use functions::FunctionBody;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -37,15 +36,14 @@ pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
 pub use lexer::{lex_script, LexerOptions};
-pub use modules::{Module, TypeDefinitionModule, TypeDefinitionModuleDeclaration};
-pub use parameters::{FunctionParameters, Parameter, SpreadParameter};
+pub use modules::Module;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
 pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
-	type_declarations::{self, GenericTypeConstraint, TypeDeclaration},
+	type_declarations::{self, TypeParameter},
 };
 pub use variable_fields::*;
 pub(crate) use visiting::{
@@ -54,17 +52,30 @@ pub(crate) use visiting::{
 
 use tokenizer_lib::{
 	sized_tokens::{SizedToken, TokenEnd},
-	Token, TokenReader, TokenTrait,
+	Token, TokenReader,
 };
 
 pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
 
 use std::{borrow::Cow, str::FromStr};
 
+use crate::errors::parse_lexing_error;
+
+#[macro_use]
+extern crate macro_rules_attribute;
+
+attribute_alias! {
+	// Warning: can produce errors when used with other macro attributes. Always put this attribute first
+	// TODO #[derive(Debug, Clone)] and maybe some others
+	#[apply(derive_ASTNode!)] =
+		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
+		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
+}
+
 /// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode!)]
 pub enum Quoted {
 	Single,
 	Double,
@@ -85,31 +96,38 @@ impl Quoted {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ParseOptions {
 	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
 	pub jsx: bool,
-	/// only type annotations
+	/// allow type annotations
 	pub type_annotations: bool,
+	/// just definition file
+	pub type_definition_module: bool,
 	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
 	/// Parses decorators on items
 	pub decorators: bool,
 	/// Skip **all** comments from the AST
 	pub comments: Comments,
-	/// See [crate::extensions::is_expression::IsExpression]
+	/// See [`crate::extensions::is_expression::IsExpression`]
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
 	pub custom_function_headers: bool,
 	/// TODO temp for seeing how channel performs
 	pub buffer_size: usize,
-	/// TODO temp for seeing how channel performs
-	///
-	/// Has no effect on WASM
+	/// Has no effect on WASM. Increase for deeply nested AST structures
 	pub stack_size: Option<usize>,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
 	/// For the generator
 	pub interpolation_points: bool,
+	/// Extra
+	pub destructuring_type_annotation: bool,
+	/// Extra
+	pub extra_operators: bool,
+	/// For formatting
+	pub retain_blank_lines: bool,
 	/// For LSP
 	pub partial_syntax: bool,
 }
@@ -128,6 +146,7 @@ impl ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: true,
 			comments: Comments::All,
 			decorators: true,
@@ -139,6 +158,9 @@ impl ParseOptions {
 			// Only used in the AST-generator
 			interpolation_points: false,
 			partial_syntax: true,
+			destructuring_type_annotation: true,
+			extra_operators: true,
+			retain_blank_lines: true,
 		}
 	}
 }
@@ -149,6 +171,7 @@ impl Default for ParseOptions {
 		Self {
 			jsx: true,
 			type_annotations: true,
+			type_definition_module: false,
 			special_jsx_attributes: false,
 			comments: Comments::All,
 			decorators: true,
@@ -159,6 +182,9 @@ impl Default for ParseOptions {
 			record_keyword_positions: false,
 			interpolation_points: false,
 			partial_syntax: false,
+			destructuring_type_annotation: false,
+			extra_operators: false,
+			retain_blank_lines: false,
 		}
 	}
 }
@@ -167,6 +193,7 @@ impl Default for ParseOptions {
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ToStringOptions {
 	/// Does not include whitespace minification
 	pub pretty: bool,
@@ -174,8 +201,8 @@ pub struct ToStringOptions {
 	pub trailing_semicolon: bool,
 	/// Single statements get put on the same line as their parent statement
 	pub single_statement_on_new_line: bool,
-	/// Include type annotation syntax
-	pub include_types: bool,
+	/// Include type annotations (and additional TypeScript) syntax
+	pub include_type_annotations: bool,
 	/// TODO unsure about this
 	pub include_decorators: bool,
 	pub comments: Comments,
@@ -195,7 +222,7 @@ impl Default for ToStringOptions {
 	fn default() -> Self {
 		ToStringOptions {
 			pretty: true,
-			include_types: false,
+			include_type_annotations: false,
 			single_statement_on_new_line: true,
 			include_decorators: false,
 			comments: Comments::All,
@@ -219,10 +246,10 @@ impl ToStringOptions {
 		}
 	}
 
-	/// With typescript type syntax
+	/// With TypeScript type syntax
 	#[must_use]
 	pub fn typescript() -> Self {
-		ToStringOptions { include_types: true, ..Default::default() }
+		ToStringOptions { include_type_annotations: true, ..Default::default() }
 	}
 
 	/// Whether to include comment in source
@@ -251,6 +278,7 @@ impl ToStringOptions {
 
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub enum Comments {
 	#[default]
 	All,
@@ -263,16 +291,34 @@ pub enum Comments {
 pub struct LocalToStringInformation {
 	under: SourceId,
 	depth: u8,
+	should_try_pretty_print: bool,
 }
 
 impl LocalToStringInformation {
 	pub(crate) fn next_level(self) -> LocalToStringInformation {
-		LocalToStringInformation { under: self.under, depth: self.depth + 1 }
+		LocalToStringInformation {
+			under: self.under,
+			depth: self.depth + 1,
+			should_try_pretty_print: self.should_try_pretty_print,
+		}
 	}
 
-	/// TODO for bundling
-	pub(crate) fn _change_source(self, new: SourceId) -> LocalToStringInformation {
-		LocalToStringInformation { under: new, depth: self.depth }
+	/// For printing source maps after bundling
+	pub(crate) fn change_source(self, new: SourceId) -> LocalToStringInformation {
+		LocalToStringInformation {
+			under: new,
+			depth: self.depth,
+			should_try_pretty_print: self.should_try_pretty_print,
+		}
+	}
+
+	/// Prevents recursion & other excess
+	pub(crate) fn do_not_pretty_print(self) -> LocalToStringInformation {
+		LocalToStringInformation {
+			under: self.under,
+			depth: self.depth,
+			should_try_pretty_print: false,
+		}
 	}
 }
 
@@ -296,12 +342,12 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
-	fn get_position(&self) -> &Span;
+	fn get_position(&self) -> Span;
 
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		options: &crate::ParseOptions,
 	) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -317,7 +363,11 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		self.to_string_from_buffer(
 			&mut buf,
 			options,
-			LocalToStringInformation { under: source_map::Nullable::NULL, depth: 0 },
+			LocalToStringInformation {
+				under: source_map::Nullable::NULL,
+				depth: 0,
+				should_try_pretty_print: true,
+			},
 		);
 		buf.source
 	}
@@ -330,7 +380,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
@@ -375,7 +425,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	options: ParseOptions,
 	script: &str,
 	offset: Option<u32>,
-) -> Result<(T, ParsingState), ParseError> {
+) -> ParseResult<(T, ParsingState)> {
 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
 	let lex_result = lexer::lex_script(script, &mut queue, &options.get_lex_options(), offset);
 
@@ -400,14 +450,14 @@ pub fn lex_and_parse_script<T: ASTNode>(
 pub(crate) fn throw_unexpected_token<T>(
 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
 }
 
 pub(crate) fn throw_unexpected_token_with_token<T>(
 	token: Token<TSXToken, TokenStart>,
 	expected: &[TSXToken],
-) -> Result<T, ParseError> {
+) -> ParseResult<T> {
 	let position = token.get_span();
 	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
 }
@@ -499,8 +549,7 @@ impl KeywordPositions {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum NumberSign {
 	/// Also implies non negative/missing
 	Positive,
@@ -541,8 +590,7 @@ impl std::fmt::Display for NumberSign {
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum NumberRepresentation {
 	Infinity,
 	NegativeInfinity,
@@ -717,6 +765,7 @@ impl std::fmt::Display for NumberRepresentation {
 	}
 }
 
+// TODO not great
 impl PartialEq for NumberRepresentation {
 	fn eq(&self, other: &Self) -> bool {
 		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
@@ -748,8 +797,12 @@ impl std::ops::Neg for NumberRepresentation {
 				NumberRepresentation::Octal { sign: sign.neg(), value }
 			}
 			NumberRepresentation::Number(n) => NumberRepresentation::Number(n.neg()),
-			NumberRepresentation::Exponential { .. } => todo!(),
-			NumberRepresentation::BigInt(_, _) => todo!(),
+			NumberRepresentation::Exponential { sign, value, exponent } => {
+				NumberRepresentation::Exponential { sign: sign.neg(), value, exponent }
+			}
+			NumberRepresentation::BigInt(sign, value) => {
+				NumberRepresentation::BigInt(sign.neg(), value)
+			}
 		}
 	}
 }
@@ -765,7 +818,7 @@ impl NumberRepresentation {
 				format!("{sign}0x{value:x}")
 			}
 			NumberRepresentation::Bin { sign, value, .. } => {
-				format!("{sign}0b{value}")
+				format!("{sign}0b{value:b}")
 			}
 			NumberRepresentation::Octal { sign, value } => {
 				format!("{sign}0o{value:o}")
@@ -782,8 +835,10 @@ impl NumberRepresentation {
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
 pub trait ExpressionOrStatementPosition:
-	Clone + std::fmt::Debug + Sync + Send + PartialEq + Eq + 'static
+	Clone + std::fmt::Debug + Sync + Send + PartialEq + 'static
 {
+	type FunctionBody: ASTNode;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -795,43 +850,61 @@ pub trait ExpressionOrStatementPosition:
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier>;
 
 	fn as_option_str(&self) -> Option<&str> {
-		if let Some(VariableIdentifier::Standard(name, _)) = self.as_option_variable_identifier() {
-			Some(name)
+		if let Some(identifier) = self.as_option_variable_identifier() {
+			identifier.as_option_str()
 		} else {
 			None
 		}
 	}
+
+	fn has_function_body(body: &Self::FunctionBody) -> bool;
+
+	fn is_declare(&self) -> bool;
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-pub struct StatementPosition(pub VariableIdentifier);
+#[derive(Debug, PartialEq, Clone)]
+#[apply(derive_ASTNode)]
+pub struct StatementPosition {
+	pub identifier: VariableIdentifier,
+	pub declare: bool,
+}
 
 impl ExpressionOrStatementPosition for StatementPosition {
+	type FunctionBody = FunctionBody;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		VariableIdentifier::from_reader(reader, state, options).map(Self)
+		VariableIdentifier::from_reader(reader, state, options)
+			.map(|identifier| Self { identifier, declare: false })
 	}
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
-		Some(&self.0)
+		Some(&self.identifier)
 	}
 
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
-		Some(&mut self.0)
+		Some(&mut self.identifier)
+	}
+
+	fn has_function_body(body: &Self::FunctionBody) -> bool {
+		body.0.is_some()
+	}
+
+	fn is_declare(&self) -> bool {
+		self.declare
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[derive(Debug, PartialEq, Clone)]
+#[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
 impl ExpressionOrStatementPosition for ExpressionPosition {
+	type FunctionBody = Block;
+
 	fn from_reader(
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 		state: &mut crate::ParsingState,
@@ -858,6 +931,14 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	fn as_option_variable_identifier_mut(&mut self) -> Option<&mut VariableIdentifier> {
 		self.0.as_mut()
 	}
+
+	fn has_function_body(_: &Self::FunctionBody) -> bool {
+		true
+	}
+
+	fn is_declare(&self) -> bool {
+		false
+	}
 }
 
 pub trait ListItem: Sized {
@@ -883,32 +964,20 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if let Some(token) = reader.conditional_next(|token| *token == end) {
-			return Ok((nodes, token.get_end()));
-		}
-
 		if let Some(empty) = T::EMPTY {
-			// TODO bad. Because [/* hi */, x] is valid. Need to adjust the scan tokenizer reader API
-			let mut is_comma = false;
-			let _ = reader.scan(|t, _| {
-				if t.is_skippable() {
-					false
-				} else if let TSXToken::Comma = t {
-					is_comma = true;
-					true
-				} else {
-					true
+			let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
+			if matches!(next, TSXToken::Comma) || *next == end {
+				if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
+					nodes.push(empty);
 				}
-			});
-			if is_comma {
-				while let Some(token) = reader.next() {
-					if let TSXToken::Comma = token.0 {
-						break;
-					}
+				let Token(token, s) = reader.next().unwrap();
+				if token == end {
+					return Ok((nodes, s.get_end_after(token.length() as usize)));
 				}
-				nodes.push(empty);
 				continue;
 			}
+		} else if let Some(token) = reader.conditional_next(|token| *token == end) {
+			return Ok((nodes, token.get_end()));
 		}
 
 		let node = T::from_reader(reader, state, options)?;
@@ -997,53 +1066,99 @@ fn receiver_to_tokens(
 	})
 }
 
-/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc
-///
-/// TODO delimiter
+/// *`to_strings`* items surrounded in `{`, `[`, `(`, etc. Defaults to `,` as delimiter
 pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
-	brackets: (char, char),
+	(left_bracket, right_bracket): (char, char),
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	buf.push(brackets.0);
+	const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
+	let large =
+		are_nodes_over_length(nodes.iter(), options, local, Some(MAX_INLINE_OBJECT_LITERAL), true);
+
+	buf.push(left_bracket);
+	let inner_local = if large {
+		local.next_level()
+	} else {
+		if left_bracket == '{' {
+			options.push_gap_optionally(buf);
+		}
+		local
+	};
 	for (at_end, node) in nodes.iter().endiate() {
-		node.to_string_from_buffer(buf, options, local);
+		if large {
+			buf.push_new_line();
+			options.add_indent(inner_local.depth, buf);
+		}
+		node.to_string_from_buffer(buf, options, inner_local);
 		if !at_end {
 			buf.push(',');
 			options.push_gap_optionally(buf);
 		}
 	}
-	buf.push(brackets.1);
+	if large {
+		buf.push_new_line();
+		options.add_indent(local.depth, buf);
+	} else if left_bracket == '{' {
+		options.push_gap_optionally(buf);
+	}
+	buf.push(right_bracket);
 }
 
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+///
+/// Also returns the line difference
 pub(crate) fn expect_semi_colon(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	line_starts: &source_map::LineStarts,
-	prev: u32,
-) -> ParseResult<()> {
+	statement_end: u32,
+	record_new_lines: bool,
+) -> ParseResult<usize> {
 	if let Some(token) = reader.peek() {
 		let Token(kind, start) = token;
-		// eprintln!("{:?} {:?} {:?}", prev, next, line_starts);
-		if let TSXToken::CloseBrace | TSXToken::EOS = kind {
-			Ok(())
-		} else if !matches!(kind, TSXToken::SemiColon)
-			&& line_starts.byte_indexes_on_different_lines(prev as usize, start.0 as usize)
+
+		if let TSXToken::CloseBrace
+		| TSXToken::EOS
+		| TSXToken::Comment(..)
+		| TSXToken::MultiLineComment(..) = kind
 		{
-			Ok(())
+			Ok(line_starts
+				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
+				.saturating_sub(1))
+		} else if let TSXToken::SemiColon = kind {
+			let Token(_, semicolon_end) = reader.next().unwrap();
+			let Token(kind, next) = reader.peek().unwrap();
+			if record_new_lines {
+				let byte_indexes_crosses_lines = line_starts
+					.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
+
+				// TODO WIP
+				if let TSXToken::EOS = kind {
+					Ok(byte_indexes_crosses_lines)
+				} else {
+					Ok(byte_indexes_crosses_lines.saturating_sub(1))
+				}
+			} else {
+				Ok(0)
+			}
 		} else {
-			reader.expect_next(TSXToken::SemiColon).map(|_| ()).map_err(Into::into)
+			let line_difference = line_starts
+				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
+			if line_difference == 0 {
+				throw_unexpected_token(reader, &[TSXToken::SemiColon])
+			} else {
+				Ok(line_difference - 1)
+			}
 		}
 	} else {
-		Ok(())
+		Ok(0)
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[apply(derive_ASTNode)]
 pub enum VariableKeyword {
 	Const,
 	Let,
@@ -1086,49 +1201,40 @@ impl VariableKeyword {
 ///
 /// Conditionally computes the node length
 /// Does nothing under pretty == false or no max line length
-pub fn is_node_over_length<T: ASTNode>(
-	e: &T,
+pub fn are_nodes_over_length<'a, T: ASTNode>(
+	nodes: impl Iterator<Item = &'a T>,
 	options: &ToStringOptions,
 	local: crate::LocalToStringInformation,
 	// None = 'no space'
 	available_space: Option<u32>,
+	// Whether just to consider the amount on the line or the entire object
+	total: bool,
 ) -> bool {
-	use source_map::ToString;
-
-	if options.enforce_limit_length_limit() {
-		if available_space.is_none() {
-			return true;
-		}
+	if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+		let room = available_space.map_or(options.max_line_length as usize, |s| s as usize);
 		let mut buf = source_map::StringWithOptionalSourceMap {
 			source: String::new(),
 			source_map: None,
-			quit_after: available_space.map(|s| s as usize),
+			quit_after: Some(room),
 			since_new_line: 0,
 		};
-		e.to_string_from_buffer(&mut buf, options, local);
+		for node in nodes {
+			node.to_string_from_buffer(&mut buf, options, local);
 
-		// If is halted, then went over
-		buf.should_halt()
+			let length = if total {
+				buf.source.len()
+			} else {
+				buf.source.find('\n').unwrap_or(buf.source.len())
+			};
+			let is_over = length > room;
+			if is_over {
+				return is_over;
+			}
+		}
+		false
 	} else {
 		false
 	}
-}
-
-fn get_length_of_node<T: ASTNode>(
-	e: &T,
-	options: &ToStringOptions,
-	local: LocalToStringInformation,
-	available_space: i32,
-) -> u16 {
-	// TODO swap under "release" mode
-	let mut buf = source_map::StringWithOptionalSourceMap {
-		source: String::new(),
-		source_map: None,
-		quit_after: Some(available_space as usize),
-		since_new_line: 0,
-	};
-	e.to_string_from_buffer(&mut buf, options, local);
-	buf.source.len() as u16
 }
 
 /// Re-exports or generator and general use
@@ -1139,8 +1245,8 @@ pub mod ast {
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
-			FunctionBase, FunctionHeader, FunctionParameters, MethodHeader, Parameter,
-			ParameterData, SpreadParameter,
+			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,
+			Parameter, ParameterData, SpreadParameter,
 		},
 		statements::*,
 		Block, Decorated, ExpressionPosition, NumberRepresentation, PropertyKey,

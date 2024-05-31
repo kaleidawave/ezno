@@ -9,7 +9,7 @@ use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition, SourceId, StatementOrDeclaration,
 };
 
-use crate::check::CheckingOutputWithoutDiagnostics;
+use crate::build::CheckingOutputWithoutDiagnostics;
 
 /// A transformer that optimises expression code
 /// - Removes dead functions
@@ -29,16 +29,17 @@ impl VisitorMut<Expression, CheckingOutputWithoutDiagnostics> for ExpressionOpti
 				// TODO properties and even entire object
 				for item in literal.members.iter_mut() {
 					if let ObjectLiteralMember::Method(method) = item {
-						let position = *method.get_position();
+						let position = method.get_position();
 						let function_id = FunctionId(chain.get_module(), position.start);
 						if !data.is_function_called(function_id) {
 							// Make it null for now to not break `Object.keys`
-							let name = method.name.clone();
-							*item = ObjectLiteralMember::Property(
-								name,
-								Expression::Null(position),
+							let key = method.name.clone();
+							*item = ObjectLiteralMember::Property {
+								key,
+								assignment: false,
+								value: Expression::Null(position),
 								position,
-							);
+							};
 						}
 					}
 				}
@@ -47,14 +48,14 @@ impl VisitorMut<Expression, CheckingOutputWithoutDiagnostics> for ExpressionOpti
 				if !data
 					.is_function_called(FunctionId(chain.get_module(), func.get_position().start))
 				{
-					*item = Expression::Null(*func.get_position());
+					*item = Expression::Null(func.get_position());
 				}
 			}
 			Expression::ExpressionFunction(func) => {
 				if !data
 					.is_function_called(FunctionId(chain.get_module(), func.get_position().start))
 				{
-					*item = Expression::Null(*func.get_position());
+					*item = Expression::Null(func.get_position());
 				}
 			}
 			Expression::ClassExpression(cls) => {
@@ -95,7 +96,7 @@ impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for Statemen
 						*declaration = parser::Declaration::Variable(
 							parser::declarations::VariableDeclaration::LetDeclaration {
 								declarations: Vec::new(),
-								position: *func.get_position(),
+								position: func.get_position(),
 							},
 						)
 					}
@@ -106,13 +107,14 @@ impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for Statemen
 				parser::Declaration::Import(_) => {
 					// TODO imported items
 				}
+				parser::Declaration::Export(_) => {
+					// TODO exported items
+				}
 				parser::Declaration::Enum(_)
 				| parser::Declaration::Interface(_)
 				| parser::Declaration::TypeAlias(_)
 				| parser::Declaration::DeclareVariable(_)
-				| parser::Declaration::DeclareFunction(_)
-				| parser::Declaration::DeclareInterface(_)
-				| parser::Declaration::Export(_) => {}
+				| parser::Declaration::Namespace(_) => {}
 			}
 		}
 	}
@@ -133,6 +135,7 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 					*is_static,
 					ClassProperty {
 						is_readonly: false,
+						is_optional: false,
 						key: func.name.clone(),
 						type_annotation: None,
 						value: Some(Box::new(Expression::Null(func.position))),

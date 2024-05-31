@@ -1,8 +1,10 @@
 use std::{collections::HashSet, io::Write};
 
 use ezno_parser::{
+	ast::{InterfaceDeclaration, TypeAlias},
 	visiting::{VisitOptions, Visitors},
-	ASTNode, Declaration, Module, StatementOrDeclaration,
+	ASTNode, Declaration, Decorated, Module, StatementOrDeclaration, StatementPosition,
+	VariableIdentifier,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,11 +66,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		// TODO quick fix to also register interface and type alias names to prevent conflicts
 		for item in module.items {
 			match item {
-				StatementOrDeclaration::Declaration(Declaration::TypeAlias(t)) => {
-					names.insert(t.type_name.name.clone());
+				StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
+					name: StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
+					..
+				})) => {
+					names.insert(s.clone());
 				}
-				StatementOrDeclaration::Declaration(Declaration::Interface(i)) => {
-					names.insert(i.on.name.clone());
+				StatementOrDeclaration::Declaration(Declaration::Interface(Decorated {
+					on:
+						InterfaceDeclaration {
+							name:
+								StatementPosition {
+									identifier: VariableIdentifier::Standard(s, _), ..
+								},
+							..
+						},
+					..
+				})) => {
+					names.insert(s.clone());
 				}
 				_ => {}
 			}
@@ -85,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
-	eprintln!("{:?} blocks", final_blocks.len());
+	// eprintln!("Generated {:?} blocks", final_blocks.len());
 
 	if let Some(out) = out {
 		let mut out = std::fs::File::create(out).expect("Cannot open file");

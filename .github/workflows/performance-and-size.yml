@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -29,47 +29,66 @@ jobs:
         with:
           packages: hyperfine
 
+      # For displaying line count in file
+      - name: Download scc
+        run: |
+          mkdir scc
+          cd scc
+          gh release download v3.1.0 -R boyter/scc -p '*Linux_x86_64.tar.gz' -O scc.tar.gz
+          tar -xf scc.tar.gz
+          chmod +x scc
+          pwd >> $GITHUB_PATH
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Build Ezno
         run: cargo build --release
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - name: Download files
-        run: |
-          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-
       - name: Run checker performance
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md demo.ts
+          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
+          echo "::info::Finished file generation"
+
+          LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
 
           echo "<details>
           <summary>Input</summary>
 
           \`\`\`ts
-          " >> $GITHUB_STEP_SUMMARY
-          cat demo.ts >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`
+          // $LINES_OF_CODE lines of TypeScript generated from specification.md
+          // this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
+          $(cat ./demo.ts)
+          \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          # Printing diagnostics, so turn colors off for GH Summary
-          NO_COLOR=1
-        
+          echo "::info::Wrote code to summary"
+          
           echo "<details>
           <summary>Diagnostics</summary>
-
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
-          ./target/release/ezno check demo.ts --timings &>> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`
+          
+          \`\`\`
+          $(./target/release/ezno check demo.ts --timings 2>&1 || true)
+          \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
           
           echo "### Checking
-          \`\`\`shell" >> $GITHUB_STEP_SUMMARY
-          hyperfine './target/release/ezno check demo.ts' >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          \`\`\`shell
+          $(hyperfine -i './target/release/ezno check demo.ts')
+          \`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "::group::Comparing printing of diagnostics"
+          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --compact-diagnostics' './target/release/ezno check demo.ts --count-diagnostics'
+          echo "::endgroup::"
+        
+          echo "::group::cargo tree"
+          cargo tree
+          echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
         shell: bash
@@ -80,7 +99,11 @@ jobs:
           )
 
           for url in "${strings[@]}"; do
-              curl $url > input.js
+              curl -sS $url > input.js
+              echo "--- debug: $url ---"
               cargo run -p ezno-parser --example parse input.js --timings --render-timings
+              echo "--- release: $url ---"
               cargo run -p ezno-parser --release --example parse input.js --timings --render-timings
+
+              hyperfine "./target/debug/examples/parse input.js" "./target/release/examples/parse input.js"
           done

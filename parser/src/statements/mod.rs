@@ -6,6 +6,7 @@ mod while_statement;
 
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
+	derive_ASTNode,
 	tokens::token_as_identifier,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
@@ -18,25 +19,23 @@ use super::{
 	TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
-pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitializer};
+pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementinitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
 pub use try_catch_statement::TryCatchStatement;
 use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
-/// A statement
+/// A statement. See [Declaration]s and [StatementAndDeclaration] for more
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[try_into_references(&, &mut)]
 #[partial_eq_ignore_types(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub enum Statement {
 	Expression(MultipleExpression),
 	/// { ... } statement
 	Block(Block),
-	// TODO as keyword
 	Debugger(Span),
 	// Loops and "condition-aries"
 	If(IfStatement),
@@ -47,8 +46,9 @@ pub enum Statement {
 	TryCatch(TryCatchStatement),
 	// Control flow
 	Return(ReturnStatement),
-	// TODO maybe an actual label struct:
+	// TODO maybe an actual label struct instead of `Option<String>`
 	Continue(Option<String>, Span),
+	// TODO maybe an actual label struct instead of `Option<String>`
 	Break(Option<String>, Span),
 	/// e.g `throw ...`
 	Throw(ThrowStatement),
@@ -61,27 +61,26 @@ pub enum Statement {
 		statement: Box<Statement>,
 	},
 	VarVariable(VarVariableStatement),
-	// TODO position
 	Empty(Span),
+	/// Lol
+	AestheticSemiColon(Span),
 }
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
+#[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
 
 impl Eq for Statement {}
 
 impl ASTNode for Statement {
-	fn get_position(&self) -> &Span {
-		get_field_by_type::GetFieldByType::get(self)
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
 	}
 
 	fn from_reader(
@@ -89,15 +88,18 @@ impl ASTNode for Statement {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		// Labeled statements
 		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
 			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
 			if statement.requires_semi_colon() {
-				crate::expect_semi_colon(
+				let _ = crate::expect_semi_colon(
 					reader,
 					&state.line_starts,
 					statement.get_position().start,
+					// TODO
+					false,
 				)?;
 			}
 			// TODO statement.can_be_labelled()
@@ -200,7 +202,9 @@ impl ASTNode for Statement {
 					unreachable!()
 				}
 			}
-			TSXToken::SemiColon => Ok(Statement::Empty(reader.next().unwrap().get_span())),
+			TSXToken::SemiColon => {
+				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
@@ -216,9 +220,8 @@ impl ASTNode for Statement {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Statement::Empty(..) => {
-				buf.push(';');
-			}
+			Statement::Empty(..) => {}
+			Statement::AestheticSemiColon(..) => buf.push(';'),
 			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
@@ -241,7 +244,18 @@ impl ASTNode for Statement {
 			Statement::MultiLineComment(comment, _) => {
 				if options.should_add_comment(comment.starts_with('*')) {
 					buf.push_str("/*");
-					buf.push_str_contains_new_line(comment.as_str());
+					if options.pretty {
+						// Perform indent correction
+						for (idx, line) in comment.split('\n').enumerate() {
+							if idx > 0 {
+								buf.push_new_line();
+							}
+							options.add_indent(local.depth, buf);
+							buf.push_str(line.trim());
+						}
+					} else {
+						buf.push_str_contains_new_line(comment.as_str());
+					}
 					buf.push_str("*/");
 				}
 			}
@@ -264,22 +278,20 @@ impl ASTNode for Statement {
 				}
 			}
 			Statement::Expression(val) => {
-				if val.left_is_statement_like() {
-					buf.push('(');
-					val.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				} else {
-					val.to_string_from_buffer(buf, options, local);
-				}
+				val.to_string_on_left(buf, options, local);
 			}
 			Statement::Labelled { name, statement, .. } => {
 				buf.push_str(name);
 				buf.push_str(": ");
 
-				// TODO new line?
-				statement.to_string_from_buffer(buf, options, local);
-				if statement.requires_semi_colon() {
+				if let Statement::Empty(..) = &**statement {
 					buf.push(';');
+				} else {
+					// TODO new line?
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
+						buf.push(';');
+					}
 				}
 			}
 			Statement::Throw(ThrowStatement(thrown_expression, _)) => {
@@ -312,18 +324,17 @@ impl Statement {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct VarVariableStatement {
 	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
 	pub position: Span,
 }
 
 impl ASTNode for VarVariableStatement {
-	fn get_position(&self) -> &Span {
-		&self.position
+	fn get_position(&self) -> Span {
+		self.position
 	}
 
 	fn from_reader(
@@ -341,7 +352,7 @@ impl ASTNode for VarVariableStatement {
 			{
 				return Err(crate::ParseError::new(
 					crate::ParseErrors::DestructuringRequiresValue,
-					*value.name.get_ast_ref().get_position(),
+					value.name.get_ast_ref().get_position(),
 				));
 			}
 			declarations.push(value);
@@ -364,7 +375,7 @@ impl ASTNode for VarVariableStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("var ");
-		declarations_to_string(&self.declarations, buf, options, local);
+		declarations_to_string(&self.declarations, buf, options, local, false);
 	}
 }
 

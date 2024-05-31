@@ -91,33 +91,33 @@ use crate::{ParseError, Quoted};
 pub enum TSXToken {
     Identifier(String),
     Keyword(TSXKeyword),
-    NumberLiteral(String), 
+    NumberLiteral(String),
     StringLiteral(String, Quoted),
     MultiLineComment(String), Comment(String),
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
     TemplateLiteralExpressionStart, TemplateLiteralExpressionEnd,
-    Comma, SemiColon, Colon, Dot, 
+    Comma, SemiColon, Colon, Dot,
     /// @
     At,
-    Spread, Assign, 
+    Spread, Assign,
     /// `=>`
     Arrow,
-    /// `(` 
-    OpenParentheses, 
-    /// `)` 
-    CloseParentheses, 
-    /// `{` 
-    OpenBrace, 
-    /// `}` 
-    CloseBrace, 
-    /// `[` 
-    OpenBracket, 
-    /// `]` 
-    CloseBracket, 
-    /// `<` 
-    OpenChevron, 
-    /// `>` 
+    /// `(`
+    OpenParentheses,
+    /// `)`
+    CloseParentheses,
+    /// `{`
+    OpenBrace,
+    /// `}`
+    CloseBrace,
+    /// `[`
+    OpenBracket,
+    /// `]`
+    CloseBracket,
+    /// `<`
+    OpenChevron,
+    /// `>`
     CloseChevron,
     Add, Subtract, Multiply, Divide,
     QuestionMark, Exponent, Modulo,
@@ -132,19 +132,19 @@ pub enum TSXToken {
     Equal, NotEqual, StrictEqual, StrictNotEqual,
     GreaterThanEqual, LessThanEqual,
     OptionalChain, OptionalCall, OptionalIndex, NullishCoalescing, NullishCoalescingAssign,
-    /// `?:` 
-    OptionalMember, 
-    /// '!:` 
-    NonOptionalMember, 
+    /// `?:`
+    OptionalMember,
+    /// `!:`
+    NonOptionalMember,
     /// For scripts thing
     HashTag,
     // JSX Tokens. Some like JSXComment are non standard
-    JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd, 
-    JSXClosingTagStart, 
-    /// This also covers the end of a token, thus no TSXToken::JSXClosingTagEnd
-    JSXClosingTagName(String), 
+    JSXOpeningTagStart, JSXTagName(String), JSXOpeningTagEnd,
+    JSXClosingTagStart,
+    /// This also covers the end of a token, thus no `TSXToken::JSXClosingTagEnd`
+    JSXClosingTagName(String),
     /// />
-    JSXSelfClosingTag, 
+    JSXSelfClosingTag,
     JSXAttributeKey(String), JSXAttributeAssign, JSXAttributeValue(String),
     JSXContent(String), JSXContentLineBreak,
     /// The start and end of expressions either as a node or a attribute
@@ -184,12 +184,12 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXAttributeKey(lit)
 			| TSXToken::JSXAttributeValue(lit)
 			| TSXToken::JSXContent(lit)
-			| TSXToken::JSXComment(lit)
 			| TSXToken::JSXTagName(lit)
 			| TSXToken::Identifier(lit)
 			| TSXToken::NumberLiteral(lit)
 			| TSXToken::RegexFlagLiteral(lit) => lit.len() as u32,
 
+			TSXToken::JSXComment(comment) => comment.len() as u32 + 7,
 			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
 			TSXToken::StringLiteral(comment, _) | TSXToken::Comment(comment) => {
 				comment.len() as u32 + 2
@@ -228,7 +228,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::JSXOpeningTagEnd
 			| TSXToken::JSXExpressionStart
 			| TSXToken::JSXExpressionEnd
-			| TSXToken::JSXAttributeAssign => 1,
+			| TSXToken::JSXAttributeAssign
+			| TSXToken::JSXClosingTagStart
+			| TSXToken::JSXContentLineBreak => 1,
 
 			TSXToken::AddAssign
 			| TSXToken::SubtractAssign
@@ -256,7 +258,8 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::BitwiseShiftLeft
 			| TSXToken::BitwiseShiftRight
 			| TSXToken::TemplateLiteralExpressionStart
-			| TSXToken::JSXFragmentStart => 2,
+			| TSXToken::JSXFragmentStart
+			| TSXToken::JSXSelfClosingTag => 2,
 
 			TSXToken::Spread
 			| TSXToken::StrictEqual
@@ -275,10 +278,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::BitwiseShiftRightUnsignedAssign => 4,
 
 			// Marker nodes with no length
-			TSXToken::JSXClosingTagStart
-			| TSXToken::JSXSelfClosingTag
-			| TSXToken::JSXContentLineBreak
-			| TSXToken::EOS => 0,
+			TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
 			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
@@ -290,7 +290,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 impl Eq for TSXToken {}
 
-#[derive(Debug, PartialEq, Eq, EnumVariantsStrings, Clone, Copy)]
+#[derive(Debug, PartialEq, EnumVariantsStrings, Clone, Copy)]
 #[enum_variants_strings_transform(transform = "lower_case")]
 #[rustfmt::skip]
 pub enum TSXKeyword {
@@ -299,16 +299,20 @@ pub enum TSXKeyword {
     Class, Function, Constructor,
     New, This, Super,
     Case, Yield, Return, Continue, Break,
-    Import, Export, Default, From,
+    Import, Export, Default, From, With,
     In, Of,
     TypeOf, InstanceOf, Void, Delete, 
+	/// For [import assertions](https://v8.dev/features/import-assertions) lol
+	Assert,
+	/// For [assertion function type annotations](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#assertion-functions) lol
+	Asserts,
     Debugger,
     Try, Catch, Finally, Throw,
     Async, Await,
     Static,
     Get, Set,
-    Extends, 
-    Null, 
+    Extends,
+    Null,
     True, False,
     // TS special keywords
     Abstract, Implements,
@@ -317,16 +321,19 @@ pub enum TSXKeyword {
     // TS publicity attributes
     Private, Public, Protected,
     // TS Keywords
-    As, Declare, Readonly, Infer, Is, Satisfies, Namespace, KeyOf,
+    As, Readonly, Satisfies, Declare, Namespace,
+	// TS & Ezno
+	Is,
+	Infer, KeyOf, Unique, Symbol,
 	// TODO unsure
 	#[cfg(feature = "extras")] Module,
     // Extra function modifiers
-    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker, 
+    #[cfg(feature = "extras")] Server, #[cfg(feature = "extras")] Worker,
     // Type declaration changes
     #[cfg(feature = "extras")] Nominal, #[cfg(feature = "extras")] Performs,
 
     #[cfg(feature = "extras")]
-    /// https://github.com/tc39/proposal-generator-arrow-functions#introduce-new-generator-keyword-for-both-function-and-arrow-function
+    /// <https://github.com/tc39/proposal-generator-arrow-functions#introduce-new-generator-keyword-for-both-function-and-arrow-function>
     Generator,
 
     #[cfg(feature = "extras")]
@@ -351,9 +358,28 @@ impl TSXKeyword {
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
 	}
+
+	#[rustfmt::skip]
+	pub(crate) fn is_invalid_identifier(self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Const | TSXKeyword::Var | TSXKeyword::If | TSXKeyword::Else | TSXKeyword::For
+				| TSXKeyword::While | TSXKeyword::Do | TSXKeyword::Switch | TSXKeyword::Class | TSXKeyword::Function
+				| TSXKeyword::New | TSXKeyword::Super | TSXKeyword::Case | TSXKeyword::Return | TSXKeyword::Continue
+				| TSXKeyword::Break | TSXKeyword::Import | TSXKeyword::Export | TSXKeyword::Default | TSXKeyword::In
+				| TSXKeyword::TypeOf | TSXKeyword::InstanceOf | TSXKeyword::Void | TSXKeyword::Delete
+				| TSXKeyword::Debugger | TSXKeyword::Try | TSXKeyword::Catch | TSXKeyword::Finally | TSXKeyword::Throw
+				| TSXKeyword::Extends | TSXKeyword::Enum
+		)
+	}
 }
 
 impl TSXToken {
+	#[must_use]
+	pub fn is_identifier_or_ident(&self) -> bool {
+		matches!(self, TSXToken::Identifier(_) | TSXToken::Keyword(_))
+	}
+
 	#[must_use]
 	pub fn is_comment(&self) -> bool {
 		matches!(self, TSXToken::Comment(_) | TSXToken::MultiLineComment(_))
@@ -379,8 +405,10 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
 				| TSXToken::Arrow
+				// for `const x = 2; /something/g`
+				| TSXToken::SemiColon
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
 				| TSXToken::JSXExpressionStart
@@ -389,11 +417,23 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
-				// for `const x = 2; /something/g`
-				| TSXToken::SemiColon
 				| TSXToken::Multiply
 				| TSXToken::Add
 				| TSXToken::Subtract
+				| TSXToken::Divide
+		) || self.is_assignment()
+	}
+
+	/// For trailing expression comments
+	#[must_use]
+	pub fn is_expression_postfix(&self) -> bool {
+		matches!(
+			self,
+			TSXToken::MultiLineComment(..)
+				| TSXToken::LogicalAnd
+				| TSXToken::LogicalOr
+				| TSXToken::Multiply
+				| TSXToken::Add | TSXToken::Subtract
 				| TSXToken::Divide
 		) || self.is_assignment()
 	}
@@ -455,13 +495,13 @@ impl TSXToken {
 	}
 }
 
-/// Some tokens can be used as names for variables, methods (eg 'get' in <Map>.get()). This function
+/// Some tokens can be used as names for variables, methods (eg 'get' in `Map.get()`). This function
 /// takes a [Token] and returns its name as a [String] and the location as a [Span]. Will throw [`ParseError`] if
 /// cannot convert token to string
 pub(crate) fn token_as_identifier(
 	token: Token<TSXToken, TokenStart>,
 	at_location: &str,
-) -> Result<(String, Span), ParseError> {
+) -> crate::ParseResult<(String, Span)> {
 	let position = token.get_span();
 	let name = match token.0 {
 		TSXToken::Identifier(value) => value,

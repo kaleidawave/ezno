@@ -1,79 +1,85 @@
-use std::{collections::HashMap, iter};
+use std::iter;
 
 use parser::{
 	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
 	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
-	StatementOrDeclaration, VariableIdentifier, WithComment,
+	StatementOrDeclaration, VariableIdentifier,
 };
 
 use crate::{
 	context::{Environment, VariableRegisterArguments},
 	features::{
-		functions::synthesise_hoisted_statement_function,
+		functions::{
+			synthesise_declare_statement_function, synthesise_hoisted_statement_function,
+			SynthesisableFunction,
+		},
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
+	},
+	synthesis::{
+		classes::register_statement_class_with_members,
+		type_annotations::get_annotation_from_declaration,
 	},
 	CheckingData, ReadFromFS, TypeId,
 };
 
-use super::{
-	functions::synthesise_function_annotation,
-	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
-	variables::register_variable,
-	EznoParser,
-};
+use super::{variables::register_variable, EznoParser};
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	let mut idx_to_types = HashMap::new();
-
-	// First stage
+	// First stage: imports and types
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
 				parser::Declaration::DeclareVariable(_)
-				| parser::Declaration::DeclareFunction(_)
-				| parser::Declaration::Class(_)
 				| parser::Declaration::Variable(_)
 				| parser::Declaration::Function(_) => {}
 				parser::Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
 					"enum",
 					r#enum.on.position.with_source(environment.get_source()),
 				),
-				parser::Declaration::DeclareInterface(interface) => {
-					// TODO any difference bc declare?
-					let ty = environment.new_interface(
-						&interface.name,
-						interface.is_nominal,
-						interface.type_parameters.as_deref(),
-						interface.extends.as_deref(),
-						interface.position.with_source(environment.get_source()),
-						checking_data,
-					);
-					idx_to_types.insert(interface.position.start, ty);
-				}
+				parser::Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+					"namespace",
+					ns.position.with_source(environment.get_source()),
+				),
 				parser::Declaration::Interface(interface) => {
-					let ty = environment.new_interface(
-						&interface.on.name,
+					let ty = environment.register_interface(
+						interface.on.name.as_option_str().unwrap_or_default(),
 						interface.on.is_nominal,
 						interface.on.type_parameters.as_deref(),
 						interface.on.extends.as_deref(),
 						interface.on.position.with_source(environment.get_source()),
 						checking_data,
 					);
-					idx_to_types.insert(interface.on.position.start, ty);
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(interface.on.get_position(), ty);
+				}
+				parser::Declaration::Class(class) => {
+					let ty = environment.register_class::<EznoParser>(
+						class.on.name.as_option_str().unwrap_or_default(),
+						class.on.type_parameters.as_deref(),
+						class.on.extends.as_deref(),
+						&mut checking_data.types,
+					);
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(class.on.get_position(), ty);
 				}
 				parser::Declaration::TypeAlias(alias) => {
-					environment.new_alias(
-						&alias.type_name.name,
-						alias.type_name.type_parameters.as_deref(),
-						&alias.type_expression,
-						*alias.get_position(),
+					let ty = environment.new_alias(
+						alias.name.as_option_str().unwrap_or_default(),
+						alias.parameters.as_deref(),
+						&alias.references,
+						alias.get_position(),
 						checking_data,
 					);
+					checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
 				}
 				parser::Declaration::Import(import) => {
 					let items = match &import.items {
@@ -152,21 +158,68 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									*type_definitions_only,
 								);
 							}
+							Exportable::Interface(interface) => {
+								let ty = environment.register_interface(
+									interface.name.as_option_str().unwrap_or_default(),
+									interface.is_nominal,
+									interface.type_parameters.as_deref(),
+									interface.extends.as_deref(),
+									interface.position.with_source(environment.get_source()),
+									checking_data,
+								);
+								checking_data
+									.local_type_mappings
+									.types_to_types
+									.push(interface.get_position(), ty);
+
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.scope
+								{
+									let name = interface
+										.name
+										.as_option_str()
+										.unwrap_or_default()
+										.to_owned();
+									exported.named_types.push((name, ty));
+								}
+							}
+							Exportable::Class(class) => {
+								let ty = environment.register_class::<EznoParser>(
+									class.name.as_option_str().unwrap_or_default(),
+									class.type_parameters.as_deref(),
+									class.extends.as_deref(),
+									&mut checking_data.types,
+								);
+								checking_data
+									.local_type_mappings
+									.types_to_types
+									.push(class.get_position(), ty);
+
+								if let crate::Scope::Module { ref mut exported, .. } =
+									environment.context_type.scope
+								{
+									exported.named_types.push((
+										class.name.as_option_str().unwrap_or_default().to_owned(),
+										ty,
+									));
+								}
+							}
 							Exportable::TypeAlias(alias) => {
-								let export = environment.new_alias::<_, EznoParser>(
-									&alias.type_name.name,
-									alias.type_name.type_parameters.as_deref(),
-									&alias.type_expression,
-									*alias.get_position(),
+								let ty = environment.new_alias::<_, EznoParser>(
+									alias.name.as_option_str().unwrap_or_default(),
+									alias.parameters.as_deref(),
+									&alias.references,
+									alias.get_position(),
 									checking_data,
 								);
 
 								if let crate::Scope::Module { ref mut exported, .. } =
 									environment.context_type.scope
 								{
-									exported
-										.named_types
-										.push((alias.type_name.name.clone(), export));
+									exported.named_types.push((
+										alias.name.as_option_str().unwrap_or_default().to_owned(),
+										ty,
+									));
 								}
 							}
 							// Other exported things are skipped
@@ -178,18 +231,38 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 		}
 	}
 
-	// Second stage
-	for item in items {
+	// Second stage: variables and function type hoisting
+	let mut second_items = items.iter().peekable();
+	while let Some(item) = second_items.next() {
 		match item {
 			StatementOrDeclaration::Statement(stmt) => {
-				if let Statement::VarVariable(_) = stmt {
-					checking_data.raise_unimplemented_error(
-						"var statement hoisting",
-						stmt.get_position().with_source(environment.get_source()),
-					);
+				if let Statement::VarVariable(stmt) = stmt {
+					for declaration in &stmt.declarations {
+						crate::utilities::notify!("declaration.name {:?}", declaration.name);
+						let constraint = get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
+						register_variable(
+							declaration.name.get_ast_ref(),
+							environment,
+							checking_data,
+							VariableRegisterArguments {
+								constant: false,
+								space: constraint,
+								// Important!
+								initial_value: Some(TypeId::UNDEFINED_TYPE),
+							},
+						);
+					}
 				}
 			}
 			StatementOrDeclaration::Declaration(dec) => match dec {
+				parser::Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+					"namespace",
+					ns.position.with_source(environment.get_source()),
+				),
 				parser::Declaration::Variable(declaration) => {
 					hoist_variable_declaration(declaration, environment, checking_data);
 				}
@@ -197,56 +270,110 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					if let Some(VariableIdentifier::Standard(name, ..)) =
 						func.on.name.as_option_variable_identifier()
 					{
-						environment.register_variable_handle_error(
-							name,
-							VariableRegisterArguments {
-								// TODO functions are constant references
-								constant: true,
-								space: None,
-								initial_value: None,
+						// Copied from classes hoisting
+						let (overloads, actual) = if func.on.body.0.is_none() {
+							let mut overloads = Vec::new();
+							let shape = super::functions::synthesise_shape(
+								&func.on,
+								environment,
+								checking_data,
+							);
+							overloads.push(shape);
+
+							// Read declarations until
+							while let Some(overload_declaration) = second_items.next_if(|t| {
+								matches!(
+									t, 
+									StatementOrDeclaration::Declaration( parser::Declaration::Function(func)) 
+									if func.on.name.as_option_str().is_some_and(|n| n == name) && !func.on.has_body())
+							}) {
+								let parser::StatementOrDeclaration::Declaration(
+									parser::Declaration::Function(func),
+								) = &overload_declaration
+								else {
+									unreachable!()
+								};
+								let shape = super::functions::synthesise_shape(
+									&func.on,
+									environment,
+									checking_data,
+								);
+								overloads.push(shape);
+							}
+
+							let upcoming = second_items.peek().and_then(|next| {
+								matches!(
+									next,
+									StatementOrDeclaration::Declaration( parser::Declaration::Function(func))
+									if
+										func.on.name.as_option_str().is_some_and(|n| n == name)
+										&& func.on.has_body()
+								)
+								.then_some(next)
+							});
+
+							if let Some(StatementOrDeclaration::Declaration(
+								Declaration::Function(func),
+							)) = upcoming
+							{
+								let actual = super::functions::synthesise_shape(
+									&func.on,
+									environment,
+									checking_data,
+								);
+								(overloads, actual)
+							} else if func.on.name.declare {
+								let actual = overloads.pop().unwrap();
+								(overloads, actual)
+							} else {
+								todo!("error that missing body or not declare")
+							}
+						} else {
+							let actual = super::functions::synthesise_shape(
+								&func.on,
+								environment,
+								checking_data,
+							);
+							(Vec::new(), actual)
+						};
+
+						let value = super::functions::build_overloaded_function(
+							crate::FunctionId(environment.get_source(), func.on.position.start),
+							crate::features::functions::FunctionBehavior::Function {
+								free_this_id: TypeId::ERROR_TYPE,
+								prototype: TypeId::ERROR_TYPE,
+								is_async: func.on.header.is_async(),
+								is_generator: func.on.header.is_generator(),
 							},
-							func.get_position().with_source(environment.get_source()),
+							overloads,
+							actual,
+							environment,
+							&mut checking_data.types,
 							&mut checking_data.diagnostics_container,
 						);
-					}
-				}
-				parser::Declaration::DeclareFunction(func) => {
-					// TODO abstract
-					let declared_at = func.position.with_source(environment.get_source());
-					let base = synthesise_function_annotation(
-						&func.type_parameters,
-						&func.parameters,
-						func.return_type.as_ref(),
-						environment,
-						checking_data,
-						func.performs.as_ref().into(),
-						&declared_at,
-						crate::features::functions::FunctionBehavior::ArrowFunction {
-							is_async: false,
-						},
-						None,
-					);
 
-					let base = checking_data.types.new_function_type_annotation(
-						base.type_parameters,
-						base.parameters,
-						base.return_type,
-						&declared_at,
-						base.effects,
-						base.constant_function,
-					);
+						let k = crate::VariableId(environment.get_source(), func.on.position.start);
+						checking_data
+							.local_type_mappings
+							.variables_to_constraints
+							.0
+							.insert(k, value);
 
-					environment.register_variable_handle_error(
-						func.name.as_str(),
-						VariableRegisterArguments {
+						let argument = VariableRegisterArguments {
 							// TODO functions are constant references
 							constant: true,
-							space: None,
-							initial_value: Some(base),
-						},
-						func.get_position().with_source(environment.get_source()),
-						&mut checking_data.diagnostics_container,
-					);
+							space: Some(value),
+							initial_value: Some(value),
+						};
+
+						environment.register_variable_handle_error(
+							name,
+							argument,
+							func.get_position().with_source(environment.get_source()),
+							&mut checking_data.diagnostics_container,
+							checking_data.options.record_all_assignments_and_reads,
+						);
+					}
 				}
 				parser::Declaration::Enum(r#enum) => {
 					checking_data.raise_unimplemented_error(
@@ -255,9 +382,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				parser::Declaration::Interface(interface) => {
-					let ty = idx_to_types.remove(&interface.on.position.start).unwrap();
+					let ty = *checking_data
+						.local_type_mappings
+						.types_to_types
+						.get(interface.on.get_position().start)
+						.unwrap();
+
 					super::interfaces::synthesise_signatures(
 						interface.on.type_parameters.as_deref(),
+						interface.on.extends.as_deref(),
 						&interface.on.members,
 						super::interfaces::OnToType(ty),
 						environment,
@@ -278,7 +411,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 
 						if constraint.is_none() {
-							crate::utils::notify!("constraint with no type?");
+							crate::utilities::notify!("constraint with no type?");
 						}
 
 						let value = constraint.unwrap_or(TypeId::ANY_TYPE);
@@ -305,22 +438,24 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 						match exported {
 							Exportable::Function(func) => {
-								let declared_at =
-									func.get_position().with_source(environment.get_source());
+								let declared_at = ASTNode::get_position(func)
+									.with_source(environment.get_source());
 
 								if let Some(VariableIdentifier::Standard(name, ..)) =
 									func.name.as_option_variable_identifier()
 								{
+									let argument = VariableRegisterArguments {
+										// TODO based on keyword
+										constant: true,
+										space: None,
+										initial_value: None,
+									};
 									environment.register_variable_handle_error(
 										name,
-										VariableRegisterArguments {
-											// TODO based on keyword
-											constant: true,
-											space: None,
-											initial_value: None,
-										},
+										argument,
 										declared_at,
 										&mut checking_data.diagnostics_container,
+										checking_data.options.record_all_assignments_and_reads,
 									);
 								}
 							}
@@ -329,35 +464,52 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								hoist_variable_declaration(declaration, environment, checking_data);
 							}
 							Exportable::Interface(interface) => {
-								let ty = idx_to_types.remove(&interface.position.start).unwrap();
+								let ty = *checking_data
+									.local_type_mappings
+									.types_to_types
+									.get(interface.get_position().start)
+									.unwrap();
+
 								super::interfaces::synthesise_signatures(
 									interface.type_parameters.as_deref(),
+									interface.extends.as_deref(),
 									&interface.members,
 									super::interfaces::OnToType(ty),
 									environment,
 									checking_data,
 								);
 							}
-							Exportable::TypeAlias(_)
-							| Exportable::Parts(..)
-							| Exportable::ImportAll { .. }
-							| Exportable::ImportParts { .. }
-							| Exportable::Class(_) => {}
+							Exportable::Class(class) => {
+								register_statement_class_with_members(
+									class,
+									environment,
+									checking_data,
+								);
+							}
+							Exportable::TypeAlias(_) | Exportable::ImportAll { .. } => {}
+							// TODO
+							Exportable::Parts(..) | Exportable::ImportParts { .. } => {
+								crate::utilities::notify!("TODO");
+							}
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
+					parser::declarations::ExportDeclaration::DefaultFunction { .. } => {
+						todo!()
+					}
 				},
-				parser::Declaration::Class(_)
-				| parser::Declaration::TypeAlias(_)
-				| parser::Declaration::DeclareInterface(_)
-				| parser::Declaration::Import(_) => {}
+				parser::Declaration::Class(class) => {
+					register_statement_class_with_members(&class.on, environment, checking_data);
+				}
+				parser::Declaration::TypeAlias(_) | parser::Declaration::Import(_) => {}
 			},
-			StatementOrDeclaration::Marker(_, _) => {}
+			StatementOrDeclaration::Imported { .. } | StatementOrDeclaration::Marker(_, _) => {}
 		}
 	}
 
 	// Third stage: functions
-	for item in items {
+	let mut third_stage_items = items.iter().peekable();
+	while let Some(item) = third_stage_items.next() {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
 				let variable_id =
@@ -369,15 +521,80 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
-				synthesise_hoisted_statement_function(
-					variable_id,
-					is_async,
-					is_generator,
-					location,
-					&function.on,
-					environment,
-					checking_data,
-				);
+				if function.on.name.declare {
+					let (overloaded, _last) = if function.on.has_body() {
+						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
+							if let StatementOrDeclaration::Declaration(Declaration::Function(
+								function,
+							)) = f
+							{
+								function.on.has_body()
+							} else {
+								false
+							}
+						});
+
+						if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+							function,
+						))) = last
+						{
+							(true, function)
+						} else {
+							// Some error with non-overloads
+							continue;
+						}
+					};
+
+					synthesise_declare_statement_function(
+						variable_id,
+						overloaded,
+						is_async,
+						is_generator,
+						location,
+						None,
+						&function.on,
+						environment,
+						checking_data,
+					);
+				} else {
+					let (overloaded, _last) = if function.on.has_body() {
+						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
+							if let StatementOrDeclaration::Declaration(Declaration::Function(
+								function,
+							)) = f
+							{
+								function.on.has_body()
+							} else {
+								false
+							}
+						});
+
+						if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+							function,
+						))) = last
+						{
+							(true, function)
+						} else {
+							// Some error with non-overloads
+							continue;
+						}
+					};
+
+					synthesise_hoisted_statement_function(
+						variable_id,
+						overloaded,
+						is_async,
+						is_generator,
+						location,
+						&function.on,
+						environment,
+						checking_data,
+					);
+				}
 			}
 			StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
 				on:
@@ -399,6 +616,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 				synthesise_hoisted_statement_function(
 					variable_id,
+					// TODO
+					false,
 					is_async,
 					is_generator,
 					location,
@@ -496,7 +715,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			position: _,
 		} => {
 			for declaration in declarations {
-				crate::utils::notify!("TODO constraint needed to be set for free variable!!!");
+				crate::utilities::notify!("TODO constraint needed to be set for free variable!!!");
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
@@ -532,43 +751,4 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 			}
 		}
 	}
-}
-
-fn get_annotation_from_declaration<
-	T: crate::ReadFromFS,
-	U: parser::declarations::variable::DeclarationExpression + 'static,
->(
-	declaration: &parser::declarations::VariableDeclarationItem<U>,
-	environment: &mut crate::context::Context<crate::context::Syntax<'_>>,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-) -> Option<TypeId> {
-	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
-		Some((
-			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().with_source(environment.get_source()),
-		))
-	}
-	// TODO only under config
-	else if let WithComment::PostfixComment(_item, possible_declaration, position) =
-		&declaration.name
-	{
-		comment_as_type_annotation(
-			possible_declaration,
-			&position.with_source(environment.get_source()),
-			environment,
-			checking_data,
-		)
-	} else {
-		None
-	};
-
-	if let Some((ty, span)) = result {
-		let get_position = declaration.get_position();
-		checking_data
-			.type_mappings
-			.variable_restrictions
-			.insert((environment.get_source(), get_position.start), (ty, span));
-	}
-
-	result.map(|(value, _span)| value)
 }

@@ -1,14 +1,17 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
-use super::facts::Facts;
-use crate::{events::FinalEvent, Environment, FunctionId};
+use super::information::LocalInformation;
+use crate::{events::ApplicationResult, types::TypeStore, Environment, FunctionId, TypeId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
 	// TODO
 	const CHECK_PARAMETERS: bool;
 
-	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts;
+	fn get_latest_info<'a>(
+		&'a mut self,
+		environment: &'a mut Environment,
+	) -> &'a mut LocalInformation;
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool;
 
@@ -17,15 +20,25 @@ pub trait CallCheckingBehavior {
 		function_id: FunctionId,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T;
+
+	fn debug_types(&self) -> bool {
+		false
+	}
 }
 
-pub struct CheckThings;
+/// Top level. Evaluating directly, rather than deep in event application
+pub struct CheckThings {
+	pub debug_types: bool,
+}
 
 impl CallCheckingBehavior for CheckThings {
 	const CHECK_PARAMETERS: bool = true;
 
-	fn get_latest_facts<'a>(&'a mut self, environment: &'a mut Environment) -> &'a mut Facts {
-		&mut environment.facts
+	fn get_latest_info<'a>(
+		&'a mut self,
+		environment: &'a mut Environment,
+	) -> &'a mut LocalInformation {
+		&mut environment.info
 	}
 
 	fn in_recursive_cycle(&self, _function_id: FunctionId) -> bool {
@@ -41,12 +54,21 @@ impl CallCheckingBehavior for CheckThings {
 		let mut target = InvocationContext(vec![InvocationKind::Function(function_id)]);
 		cb(&mut target)
 	}
+
+	fn debug_types(&self) -> bool {
+		self.debug_types
+	}
 }
 
 pub struct InvocationContext(Vec<InvocationKind>);
 
+/// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
-	Conditional(Facts),
+	Conditional(LocalInformation),
+	/// *Unconditional*
+	///
+	/// TODO does this need [`LocalInformation`]??
+	AlwaysTrue,
 	Function(FunctionId),
 	LoopIteration,
 }
@@ -54,18 +76,23 @@ pub(crate) enum InvocationKind {
 impl CallCheckingBehavior for InvocationContext {
 	const CHECK_PARAMETERS: bool = false;
 
-	fn get_latest_facts<'b>(&'b mut self, environment: &'b mut Environment) -> &'b mut Facts {
+	fn get_latest_info<'b>(
+		&'b mut self,
+		environment: &'b mut Environment,
+	) -> &'b mut LocalInformation {
 		self.0
 			.iter_mut()
 			.rev()
-			.find_map(|kind| {
-				if let InvocationKind::Conditional(facts) = kind {
-					Some(facts)
-				} else {
-					None
-				}
-			})
-			.unwrap_or(&mut environment.facts)
+			.find_map(
+				|kind| {
+					if let InvocationKind::Conditional(info) = kind {
+						Some(info)
+					} else {
+						None
+					}
+				},
+			)
+			.unwrap_or(&mut environment.info)
 	}
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
@@ -90,17 +117,27 @@ impl InvocationContext {
 		InvocationContext(Vec::new())
 	}
 
-	pub(crate) fn new_conditional_target(
+	fn new_conditional_target<T>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<FinalEvent>,
-	) -> (Facts, Option<FinalEvent>) {
-		self.0.push(InvocationKind::Conditional(Facts::default()));
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
+	) -> (LocalInformation, T) {
+		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
 		let result = cb(self);
-		if let Some(InvocationKind::Conditional(facts)) = self.0.pop() {
-			(facts, result)
+		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {
+			(info, result)
 		} else {
 			unreachable!()
 		}
+	}
+
+	pub(crate) fn new_unconditional_target(
+		&mut self,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<ApplicationResult>,
+	) -> Option<ApplicationResult> {
+		self.0.push(InvocationKind::AlwaysTrue);
+		let result = cb(self);
+		self.0.pop();
+		result
 	}
 
 	pub(crate) fn new_loop_iteration<T>(
@@ -117,7 +154,49 @@ impl InvocationContext {
 		let depth =
 			self.0.iter().filter(|p| matches!(p, InvocationKind::LoopIteration)).count() as u8;
 		// TODO can this every go > 1
-		crate::utils::notify!("Iteration depth {}", depth);
+		crate::utilities::notify!("Iteration depth {}", depth);
 		depth
+	}
+
+	pub(crate) fn in_unconditional(&self) -> bool {
+		self.0.iter().any(|mem| matches!(mem, InvocationKind::AlwaysTrue))
+	}
+
+	/// TODO maybe take result -> R
+	/// TODO move to trait
+	pub(crate) fn evaluate_conditionally<I, T, R>(
+		&mut self,
+		top_environment: &mut Environment,
+		types: &mut TypeStore,
+		_condition: TypeId,
+		(input_left, input_right): (T, T),
+		mut data: I,
+		cb: impl for<'a> Fn(
+			&'a mut Environment,
+			&'a mut TypeStore,
+			&'a mut InvocationContext,
+			T,
+			&'a mut I,
+		) -> R,
+	) -> (I, (R, R)) {
+		let (_truthy_info, truthy_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_left, &mut data)
+			});
+
+		let (_otherwise_info, otherwise_result) =
+			self.new_conditional_target(|target: &mut InvocationContext| {
+				cb(top_environment, types, target, input_right, &mut data)
+			});
+
+		// TODO all things that are
+		// - variable and property values (these aren't read from events)
+		// - immutable, mutable, prototypes etc
+		let _info = self.get_latest_info(top_environment);
+
+		// TODO
+		// merge_info(top_environment, info, condition, truthy_info, Some(otherwise_info), types);
+
+		(data, (truthy_result, otherwise_result))
 	}
 }

@@ -18,7 +18,7 @@ use derive_finite_automaton::{
 pub struct LexerOptions {
 	/// Whether to append tokens when lexing. If false will just ignore
 	pub comments: Comments,
-	/// Whether to parse JSX. TypeScripts `<number> 2` breaks the lexer so this can be disabled to allow
+	/// Whether to parse JSX. TypeScript's `<number> 2` breaks the lexer so this can be disabled to allow
 	/// for that syntax
 	pub lex_jsx: bool,
 	/// TODO temp
@@ -48,6 +48,7 @@ fn is_number_delimiter(chr: char) -> bool {
 			| '%' | '=' | ':'
 			| '<' | '>' | '?'
 			| '"' | '\'' | '`'
+			| '#'
 	)
 }
 
@@ -88,19 +89,12 @@ pub fn lex_script(
 		AttributeKey,
 		AttributeEqual,
 		AttributeValue(JSXAttributeValueDelimiter),
-		Comment(JSXCommentState),
+		Comment,
 		Content,
 		/// For script and style tags
 		LiteralContent {
 			last_char_was_open_chevron: bool,
 		},
-	}
-
-	#[derive(PartialEq, Debug)]
-	enum JSXCommentState {
-		None,
-		FirstDash,
-		SecondDash,
 	}
 
 	#[derive(PartialEq, Debug)]
@@ -183,16 +177,9 @@ pub fn lex_script(
 	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
 	let mut expect_expression = true;
 
-	/// Returns a span at the current end position. Used for throwing errors
-	macro_rules! current_position {
-		() => {
-			TokenStart::new(start as u32 + offset)
-		};
-	}
-
 	macro_rules! return_err {
 		($err:expr) => {{
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return Err((
 				$err,
 				Span {
@@ -206,6 +193,8 @@ pub fn lex_script(
 	}
 
 	for (idx, chr) in script.char_indices() {
+		// dbg!(chr, &state);
+
 		// Sets current parser state and updates start track
 		macro_rules! set_state {
 			($s:expr) => {{
@@ -354,8 +343,9 @@ pub fn lex_script(
 							// Note not = as don't want to include chr
 							let num_slice = &script[start..idx];
 							if num_slice.trim_end() == "."
-								|| num_slice
-									.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+								|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+								|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+									&& num_slice.ends_with(['e', 'E', 'b', 'B']))
 							{
 								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 							}
@@ -476,7 +466,7 @@ pub fn lex_script(
 				ref mut in_set,
 			} => {
 				if *after_last_slash {
-					if !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y') {
+					if !chr.is_alphabetic() {
 						if start != idx {
 							push_token!(TSXToken::RegexFlagLiteral(script[start..idx].to_owned()));
 						}
@@ -508,6 +498,9 @@ pub fn lex_script(
 						']' if *in_set => {
 							*in_set = false;
 						}
+						'\n' => {
+							return_err!(LexingErrors::ExpectedEndToRegexLiteral);
+						}
 						_ => {
 							*escaped = false;
 						}
@@ -534,16 +527,18 @@ pub fn lex_script(
 
 					start = idx + 1;
 					state = LexingState::None;
+					expect_expression = true;
 					continue;
 				}
 				'`' if !*escaped => {
-					if idx > start + 1 {
+					if idx > start {
 						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
 					}
 					start = idx;
 					push_token!(TSXToken::TemplateLiteralEnd);
 					start = idx + 1;
 					state = LexingState::None;
+					expect_expression = false;
 					continue;
 				}
 				'\\' => {
@@ -624,11 +619,11 @@ pub fn lex_script(
 						'/' if start + 1 == idx => {
 							*direction = JSXTagNameDirection::Closing;
 						}
-						// Comment
+						// HTML comments!!!
 						'!' if start + 1 == idx => {
-							*jsx_state = JSXLexingState::Comment(JSXCommentState::None);
+							*jsx_state = JSXLexingState::Comment;
 						}
-						// Non tag name character
+						// Non-tag name character
 						chr => {
 							if *direction == JSXTagNameDirection::Closing {
 								return_err!(LexingErrors::ExpectedJSXEndTag);
@@ -636,6 +631,7 @@ pub fn lex_script(
 							let tag_name = script[start..idx].trim();
 							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
 							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
+							start = idx;
 							*tag_depth += 1;
 							match chr {
 								'/' if *is_self_closing_tag => {
@@ -895,26 +891,24 @@ pub fn lex_script(
 						}
 					}
 					// TODO this will allow for <!--> as a valid comment
-					JSXLexingState::Comment(ref mut comment_state) => match (&comment_state, chr) {
-						(JSXCommentState::None, '-') => {
-							*comment_state = JSXCommentState::FirstDash;
-						}
-						(JSXCommentState::FirstDash, '-') => {
-							*comment_state = JSXCommentState::SecondDash;
-						}
-						(JSXCommentState::SecondDash, '>') => {
+					JSXLexingState::Comment => {
+						if idx - start < 4 {
+							if chr != '-' {
+								return_err!(LexingErrors::ExpectedDashInComment);
+							}
+						} else if chr == '>' && script[..idx].ends_with("--") {
 							push_token!(TSXToken::JSXComment(
 								script[(start + 4)..(idx - 2)].to_owned()
 							));
+							start = idx + 1;
 							if *tag_depth == 0 {
 								set_state!(LexingState::None);
-								continue;
+							} else {
+								*jsx_state = JSXLexingState::Content;
 							}
+							continue;
 						}
-						_ => {
-							*comment_state = JSXCommentState::None;
-						}
-					},
+					}
 				}
 			}
 			LexingState::None => {}
@@ -1047,10 +1041,12 @@ pub fn lex_script(
 
 	// If source ends while there is still a parsing state
 	match state {
-		LexingState::Number(..) => {
+		LexingState::Number(literal_type) => {
 			// Just `.` or ends with combination token
 			if script[start..].trim_end() == "."
-				|| script.ends_with(['e', 'E', 'b', 'B', 'x', 'X', 'o', 'O', '_', '-'])
+				|| script.ends_with(['x', 'X', 'o', 'O', '_', '-'])
+				|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
+					&& script.ends_with(['e', 'E', 'b', 'B']))
 			{
 				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
 			}
@@ -1077,7 +1073,7 @@ pub fn lex_script(
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
 				GetNextResult::InvalidCharacter(err) => {
-					sender.push(Token(TSXToken::EOS, current_position!()));
+					sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 					return_err!(LexingErrors::UnexpectedCharacter(err));
 				}
 			}
@@ -1089,29 +1085,38 @@ pub fn lex_script(
 			));
 		}
 		LexingState::String { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		LexingState::MultiLineComment { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
 		}
-		LexingState::RegexLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
-			return_err!(LexingErrors::ExpectedEndToRegexLiteral);
+		// This is okay as the state is not cleared until it finds flags.
+		LexingState::RegexLiteral { after_last_slash, .. } => {
+			if after_last_slash {
+				sender.push(Token(
+					TSXToken::RegexFlagLiteral(script[start..].to_owned()),
+					TokenStart::new(start as u32 + offset),
+				));
+				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
+			} else {
+				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
+				return_err!(LexingErrors::ExpectedEndToRegexLiteral);
+			}
 		}
 		LexingState::JSXLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToJSXLiteral);
 		}
 		LexingState::TemplateLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, current_position!()));
+			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}
 	}
 
-	sender.push(Token(TSXToken::EOS, current_position!()));
+	sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 
 	Ok(())
 }
