@@ -284,10 +284,10 @@ pub enum FunctionBehavior {
 	Function {
 		/// This points the general `this` object.
 		/// When calling with:
-		/// - `new`: an arguments should set with (this_this_id, *new object*)
+		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
 		/// - regularly: bound argument, else parent `this` (I think)
 		free_this_id: TypeId,
-		///
+		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
 		prototype: TypeId,
 		is_async: bool,
 		/// Cannot be called with `new` if true

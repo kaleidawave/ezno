@@ -62,7 +62,7 @@ pub struct CallingOutput {
 	pub called: Option<FunctionId>,
 	/// TODO should this be
 	pub result: Option<ApplicationResult>,
-	/// TODO is InfoDiagnostic the best type here?
+	/// TODO is [`InfoDiagnostic`] the best type here?
 	pub warnings: Vec<InfoDiagnostic>,
 	pub special: Option<SpecialExpressions>,
 	// pub special: Option<SpecialExpressions>,

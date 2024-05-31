@@ -543,9 +543,24 @@ fn print_type_into_buf<C: InformationChain>(
 							buf.push_str(": ");
 							print_type_into_buf(value, buf, cycles, args, types, info, debug);
 						}
-						PropertyValue::Getter(_) => todo!(),
-						PropertyValue::Setter(_) => todo!(),
-						PropertyValue::Deleted => todo!(),
+						PropertyValue::Getter(_) => {
+							print_property_key_into_buf(
+								&key, buf, cycles, args, types, info, debug,
+							);
+							buf.push_str(": (getter)");
+						}
+						PropertyValue::Setter(_) => {
+							print_property_key_into_buf(
+								&key, buf, cycles, args, types, info, debug,
+							);
+							buf.push_str(": (setter)");
+						}
+						PropertyValue::Deleted => {
+							print_property_key_into_buf(
+								&key, buf, cycles, args, types, info, debug,
+							);
+							buf.push_str(": never");
+						}
 						PropertyValue::ConditionallyExists { on: _, truthy } => {
 							if let PropertyValue::Value(value) = *truthy {
 								print_property_key_into_buf(
