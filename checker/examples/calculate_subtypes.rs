@@ -1,21 +1,25 @@
 use ezno_checker::{
-	context::information::Publicity,
 	features::objects::ObjectBuilder,
-	subtyping::{type_is_subtype, State, SubTypingOptions},
-	types::{generics::contributions::Contributions, properties::PropertyKey, TypeStore},
+	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypingOptions},
+	types::{
+		generics::contributions::Contributions,
+		properties::{PropertyKey, Publicity},
+		TypeStore,
+	},
 	Constant, Environment, PropertyValue, RootContext, TypeId,
 };
+use source_map::Nullable;
 
 fn main() {
 	let root = RootContext::new_with_primitive_references();
 	let mut environment = root.new_testing_context();
 	let mut types = TypeStore::default();
 
-	basics(&environment, &mut types);
+	basics(&mut environment, &mut types);
 	contributions(&mut environment, &mut types)
 }
 
-fn basics(environment: &Environment, types: &mut TypeStore) {
+fn basics(environment: &mut Environment, types: &mut TypeStore) {
 	let five = types.new_constant_type(Constant::Number(5f64.try_into().unwrap()));
 
 	let string_or_number = types.new_or_type(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE);
@@ -23,35 +27,19 @@ fn basics(environment: &Environment, types: &mut TypeStore) {
 	eprintln!("--- basics ---");
 
 	{
-		let result = type_is_subtype(
-			TypeId::NUMBER_TYPE,
-			five,
-			&mut State::variable_object(),
-			&environment,
-			&types,
-		);
+		let result = type_is_subtype_object(TypeId::NUMBER_TYPE, five, environment, types);
 
 		eprintln!("number :> 5 {result:?}")
 	}
 	{
-		let result = type_is_subtype(
-			TypeId::NUMBER_TYPE,
-			TypeId::STRING_TYPE,
-			&mut State::variable_object(),
-			&environment,
-			&types,
-		);
+		let result =
+			type_is_subtype_object(TypeId::NUMBER_TYPE, TypeId::STRING_TYPE, environment, types);
 
 		eprintln!("number :> string {result:?}")
 	}
 	{
-		let result = type_is_subtype(
-			string_or_number,
-			TypeId::STRING_TYPE,
-			&mut State::variable_object(),
-			&environment,
-			&types,
-		);
+		let result =
+			type_is_subtype_object(string_or_number, TypeId::STRING_TYPE, environment, types);
 
 		eprintln!("string | number :> string {result:?}")
 	}
@@ -73,7 +61,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 		inner.clone(),
 		PropertyValue::Value(generic_parameter.type_id),
 		false,
-		None,
+		source_map::SpanWithSource::NULL,
 	);
 
 	let or = types.new_or_type(generic_parameter.type_id, object);
@@ -82,8 +70,19 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 	let five = types.new_constant_type(Constant::Number(5f64.try_into().unwrap()));
 
 	let five_obj = {
-		let mut basis = ObjectBuilder::new(None, types, &mut environment.info);
-		basis.append(environment, Publicity::Public, inner, PropertyValue::Value(five), None);
+		let mut basis = ObjectBuilder::new(
+			None,
+			types,
+			source_map::SpanWithSource::NULL,
+			&mut environment.info,
+		);
+		basis.append(
+			environment,
+			Publicity::Public,
+			inner,
+			PropertyValue::Value(five),
+			source_map::SpanWithSource::NULL,
+		);
 		basis.build_object()
 	};
 
@@ -94,7 +93,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 			already_checked: Default::default(),
 			mode: Default::default(),
 			contributions: Some(contributions),
-			others: SubTypingOptions::standard(),
+			others: SubTypingOptions::default(),
 			object_constraints: None,
 		};
 		let result = type_is_subtype(parameter, five_obj, &mut state, &environment, &types);

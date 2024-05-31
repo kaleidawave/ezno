@@ -1569,6 +1569,8 @@ try {
 } catch (err) {
 	err satisfies string
 }
+
+console.log("Error caught!")
 ```
 
 - Expected string, found 2
@@ -1585,6 +1587,8 @@ try {
 } catch (err) {
 	err satisfies string
 }
+
+console.log("Error caught!")
 ```
 
 - Expected string, found 3
@@ -1599,6 +1603,8 @@ try {
 } catch (err: string) {
     console.log(err)
 }
+
+console.log("Error caught!")
 ```
 
 - Cannot catch type string because the try block throws 3
@@ -1616,6 +1622,7 @@ function exceptionToResult(cb: () => number) {
 
 exceptionToResult(() => 6) satisfies 6;
 exceptionToResult(() => { throw 12 }) satisfies 8;
+console.log("Error caught!")
 ```
 
 - Expected 8, found 12
@@ -1631,7 +1638,8 @@ function exceptionToResult(cb: () => number) {
     }
 }
 
-exceptionToResult(() => { throw "not a number" })
+exceptionToResult(() => { throw "not a number" });
+console.log("Error caught!")
 ```
 
 - Cannot throw "not a number" in block that expects number
@@ -1646,6 +1654,7 @@ function exceptionToResult(s: string) {
         return e
     }
 }
+console.log("Error caught!")
 ```
 
 - Cannot catch type number because the try block throws SyntaxError

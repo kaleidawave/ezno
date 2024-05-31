@@ -1,5 +1,7 @@
 //! Exception checking is enabled by events
 
+use source_map::{Nullable, SpanWithSource};
+
 use crate::{
 	context::VariableRegisterArguments,
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
@@ -30,7 +32,7 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		let mut thrown_type_acc = Decidable::Known(TypeId::NEVER_TYPE);
 
 		// TODO should events be removed?
-		for event in &try_block_environment.info.events {
+		for event in &mut try_block_environment.info.events {
 			// TODO possible getters
 			if let Event::CallsType { possibly_thrown, .. } = event {
 				if let Some(thrown) = possibly_thrown {
@@ -51,6 +53,12 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				crate::utilities::notify!("TODO unknown");
 			} else if let Event::FinalEvent(FinalEvent::Throw { thrown, position: _ }) = event {
 				thrown_type_acc = Decidable::Known(*thrown);
+				// TODO temp
+				*event = Event::RegisterVariable {
+					name: Default::default(),
+					position: SpanWithSource::NULL,
+					initial_value: None,
+				};
 				break;
 			}
 		}
