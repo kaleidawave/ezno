@@ -148,12 +148,13 @@ impl LocalInformation {
 		self.frozen.extend(other.frozen.iter().clone());
 	}
 
+	#[must_use]
 	pub fn is_halted(&self) -> bool {
 		if let Some(last) = self.events.last() {
 			if let Event::FinalEvent(_) = last {
 				true
 			} else {
-				// TODO others here
+				crate::utilities::notify!("TODO ifs others");
 				false
 			}
 		} else {
@@ -190,18 +191,17 @@ pub fn merge_info(
 	types: &mut TypeStore,
 	position: SpanWithSource,
 ) {
-	onto.events.push(Event::Conditionally {
-		condition,
-		truthy_events: truthy.events.len() as u32,
-		otherwise_events: otherwise.as_ref().map_or(0, |f| f.events.len() as u32),
-		position,
-	});
+	let truthy_events = truthy.events.len() as u32;
+	let otherwise_events = otherwise.as_ref().map_or(0, |f| f.events.len() as u32);
+	onto.events.push(Event::Conditionally { condition, truthy_events, otherwise_events, position });
 
 	onto.events.append(&mut truthy.events);
 	if let Some(ref mut otherwise) = otherwise {
 		crate::utilities::notify!("truthy {:?} otherwise {:?}", truthy.events, otherwise.events);
 		onto.events.append(&mut otherwise.events);
 	}
+
+	onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
 
 	// TODO don't need to do above some scope
 	for (var, true_value) in truthy.variable_current_value {

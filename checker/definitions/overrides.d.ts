@@ -31,7 +31,8 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            delete this[this.length];
+            // TODO this currently breaks value?
+            // delete this[this.length];
             return value
         }
     }
@@ -267,7 +268,6 @@ declare class Console {
 
 declare const console: Console;
 
-
 declare class Error {
     message: string
 
@@ -277,8 +277,9 @@ declare class Error {
     }
 }
 
-declare class SyntaxError extends Error { }
-
+declare class SyntaxError extends Error {
+    constructor() { super("syntax error") }
+}
 
 declare class JSON {
     // TODO any temp
@@ -317,29 +318,29 @@ declare class Object {
     //     return n
     // }
 
-    // static keys(on: object): Array<string> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push(key);
-    //     }
-    //     return keys
-    // }
+    static keys(on: { [s: string]: any }): Array<string> {
+        const keys: Array<string> = [];
+        for (const key in on) {
+            keys.push(key);
+        }
+        return keys
+    }
 
-    // static values(on: object): Array<string> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push(on[key]);
-    //     }
-    //     return keys
-    // }
+    static values(on: { [s: string]: any }): Array<any> {
+        const values: Array<any> = [];
+        for (const key in on) {
+            values.push(on[key]);
+        }
+        return values
+    }
 
-    // static entries(on: object): Array<[string, any]> {
-    //     const keys = [];
-    //     for (const key in on) {
-    //         keys.push([key, on[key]]);
-    //     }
-    //     return keys
-    // }
+    static entries(on: { [s: string]: any }): Array<[string, any]> {
+        const entries: Array<[string, any]> = [];
+        for (const key in on) {
+            entries.push([key, on[key]]);
+        }
+        return entries
+    }
 
     // static fromEntries(iterator: any): object {
     //     const obj = {};

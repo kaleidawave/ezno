@@ -44,7 +44,7 @@ pub enum FunctionEffect {
 		closed_over_variables: ClosedOverVariables,
 	},
 	Constant {
-		/// used to pick which function to calling in constant_functions
+		/// used to pick which function to calling in `constant_functions`
 		///
 		/// in the future this may need to have a prefix
 		identifier: String,

@@ -298,8 +298,14 @@ pub(crate) fn call_constant_function(
 			}
 		}
 		// TODO
-		"json:parse" => Err(ConstantFunctionError::BadCall),
-		"json:stringify" => Err(ConstantFunctionError::BadCall),
+		"json:parse" => {
+			crate::utilities::notify!("TODO json:parse");
+			Err(ConstantFunctionError::BadCall)
+		}
+		"json:stringify" => {
+			crate::utilities::notify!("TODO json:stringify");
+			Err(ConstantFunctionError::BadCall)
+		}
 		// "satisfies" => {
 		// 	let ty = arguments
 		// 		.first()

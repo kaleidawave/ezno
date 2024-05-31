@@ -16,7 +16,7 @@ use crate::{
 	},
 	subtyping::type_is_subtype,
 	types::{
-		calling::FunctionCallingError,
+		calling::{self, FunctionCallingError},
 		functions::SynthesisedArgument,
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
@@ -33,7 +33,7 @@ pub struct ErrorsAndInfo {
 	pub warnings: Vec<crate::types::calling::InfoDiagnostic>,
 }
 
-/// type_arguments are mutable to add new ones during lookup etc
+/// `type_arguments` are mutable to add new ones during lookup etc
 ///
 /// because `events` are flat the iteration here is a little bit unintuitive
 #[must_use]
@@ -41,19 +41,20 @@ pub struct ErrorsAndInfo {
 pub(crate) fn apply_events(
 	events: &[Event],
 	this_value: ThisValue,
-	type_arguments: &mut SubstitutionArguments,
+	mut type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
-	errors: &mut ErrorsAndInfo,
+	mut errors: &mut ErrorsAndInfo,
 	call_site: SpanWithSource,
 ) -> Option<ApplicationResult> {
-	// WIP
 	let mut trailing = None::<(TypeId, ApplicationResult)>;
 
 	let mut idx = 0;
 	while idx < events.len() {
-		match &events[idx] {
+		let event = &events[idx];
+		// crate::utilities::notify!("Running single {:?}", event);
+		match &event {
 			Event::ReadsReference { reference, reflects_dependency, position } => {
 				if let Some(id) = reflects_dependency {
 					let value = match reference {
@@ -81,6 +82,11 @@ pub(crate) fn apply_events(
 						RootReference::This => this_value.get(top_environment, types, *position),
 					};
 					type_arguments.set_during_application(*id, value);
+					// crate::utilities::notify!(
+					// 	"Setting free variable argument {:?} here {:?}",
+					// 	*id,
+					// 	type_arguments.arguments
+					// );
 				}
 			}
 			Event::SetsVariable(variable, value, position) => {
@@ -124,9 +130,9 @@ pub(crate) fn apply_events(
 				) else {
 					// TODO getters can fail here
 					panic!(
-						"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
-						print_type(on, types, top_environment, true)
-					);
+								"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
+								print_type(on, types, top_environment, true)
+							);
 				};
 
 				if let Some(id) = reflects_dependency {
@@ -229,13 +235,13 @@ pub(crate) fn apply_events(
 							};
 
 							errors.errors.push(
-								crate::types::calling::FunctionCallingError::SetPropertyConstraint {
-									property_type: property_constraint,
-									value_type,
-									assignment_position: *position,
-									call_site,
-								},
-							);
+										crate::types::calling::FunctionCallingError::SetPropertyConstraint {
+											property_type: property_constraint,
+											value_type,
+											assignment_position: *position,
+											call_site,
+										},
+									);
 						} else {
 							unreachable!()
 						}
@@ -282,11 +288,20 @@ pub(crate) fn apply_events(
 						match result {
 							Ok(mut result) => {
 								errors.warnings.append(&mut result.warnings);
+
+								if let Some(ApplicationResult::Throw { .. }) = result.result {
+									// TODO conditional here
+									return result.result;
+								}
+
 								if let Some(reflects_dependency) = reflects_dependency {
-									type_arguments.set_during_application(
-										*reflects_dependency,
-										result.returned_type,
+									let as_type = calling::application_result_to_return_type(
+										result.result,
+										top_environment,
+										types,
 									);
+									type_arguments
+										.set_during_application(*reflects_dependency, as_type);
 								}
 
 								// if result.thrown_type != TypeId::NEVER_TYPE {
@@ -351,12 +366,12 @@ pub(crate) fn apply_events(
 						} else {
 							(offset + truthy_events, offset + truthy_events + otherwise_events)
 						};
-						let events_to_run = &events[start as usize..end as usize];
-						crate::utilities::notify!(
-							"(start, end) = {:?}, {:?}",
-							(start, end),
-							events_to_run
-						);
+						let events_to_run = &events[start..end];
+						// crate::utilities::notify!(
+						// 	"(start, end) = {:?}, {:?}",
+						// 	(start, end),
+						// 	events_to_run
+						// );
 						let result =
 							target.new_unconditional_target(|target: &mut InvocationContext| {
 								apply_events(
@@ -384,83 +399,73 @@ pub(crate) fn apply_events(
 						let otherwise_events_slice = &events
 							[(offset + truthy_events)..(offset + truthy_events + otherwise_events)];
 
-						let (truthy_result, otherwise_result) = target.evaluate_conditionally(
-							top_environment,
-							types,
-							condition,
-							(truthy_events_slice, otherwise_events_slice),
-							(type_arguments, errors),
-							|top_environment, types, target, input, data| {
-								let (type_arguments, errors) = data;
-								apply_events(
-									input,
-									this_value,
-									type_arguments,
-									top_environment,
-									target,
-									types,
-									errors,
-									*position,
-								)
-							},
-						);
+						let (data, (truthy_result, otherwise_result)) = target
+							.evaluate_conditionally(
+								top_environment,
+								types,
+								condition,
+								(truthy_events_slice, otherwise_events_slice),
+								(type_arguments, errors),
+								|top_environment, types, target, input, data| {
+									let (type_arguments, errors) = data;
+									apply_events(
+										input,
+										this_value,
+										type_arguments,
+										top_environment,
+										target,
+										types,
+										errors,
+										*position,
+									)
+								},
+							);
 
-						return if truthy_result.is_none() && otherwise_result.is_none() {
-							None
-						} else {
-							Some(ApplicationResult::Or {
-								on: condition,
-								truthy_result: truthy_result.map(Box::new),
-								otherwise_result: otherwise_result.map(Box::new),
-							})
-						};
+						(type_arguments, errors) = data;
+
+						match (truthy_result, otherwise_result) {
+							(Some(truthy_result), Some(otherwise_result)) => {
+								return Some(ApplicationResult::Or {
+									on: condition,
+									truthy_result: Box::new(truthy_result),
+									otherwise_result: Box::new(otherwise_result),
+								});
+							}
+							(None, Some(right)) => {
+								let negated_condition = types.new_logical_negation_type(condition);
+								trailing = Some(match trailing {
+									Some((existing_condition, existing)) => (
+										negated_condition,
+										ApplicationResult::Or {
+											on: existing_condition,
+											truthy_result: Box::new(existing),
+											otherwise_result: Box::new(right),
+										},
+									),
+									None => (negated_condition, right),
+								});
+							}
+							(Some(left), None) => {
+								trailing = Some(match trailing {
+									Some((existing_condition, existing)) => (
+										condition,
+										ApplicationResult::Or {
+											on: existing_condition,
+											truthy_result: Box::new(existing),
+											otherwise_result: Box::new(left),
+										},
+									),
+									None => (condition, left),
+								});
+							}
+							(None, None) => {}
+						}
 					}
 				}
 				// Don't run condition again
 				// TODO there must be better way
-				idx += truthy_events + otherwise_events;
+				idx += truthy_events + otherwise_events + 1;
 			}
-			Event::FinalEvent(final_event) => {
-				return Some(match final_event {
-					FinalEvent::Break { carry, position } => ApplicationResult::Break {
-						// TODO is this correct?
-						carry: carry.saturating_sub(target.get_iteration_depth()),
-						position: *position,
-					},
-					FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
-						// TODO is this correct?
-						carry: carry.saturating_sub(target.get_iteration_depth()),
-						position: *position,
-					},
-					FinalEvent::Throw { thrown, position } => {
-						let substituted_thrown =
-							substitute(*thrown, type_arguments, top_environment, types);
-						if target.in_unconditional() {
-							let value = TypeStringRepresentation::from_type_id(
-								substituted_thrown,
-								// TODO is this okay?
-								top_environment,
-								types,
-								false,
-							);
-							errors.errors.push(FunctionCallingError::UnconditionalThrow {
-								value,
-								call_site,
-							});
-						}
-						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
-					}
-					FinalEvent::Return { returned, position } => {
-						let substituted_returned =
-							substitute(*returned, type_arguments, top_environment, types);
-						ApplicationResult::Return {
-							returned: substituted_returned,
-							position: *position,
-						}
-					}
-				});
-			}
-			// TODO Needs a position (or not?)
 			Event::CreateObject { referenced_in_scope_as, prototype, position } => {
 				// TODO
 				let is_under_dyn = true;
@@ -507,12 +512,26 @@ pub(crate) fn apply_events(
 				type_arguments.set_during_application(*referenced_in_scope_as, new_object_id);
 			}
 			Event::Iterate { kind, iterate_over, initial } => {
-				let initial = initial
-					.iter()
-					.map(|(id, value)| {
-						(*id, substitute(*value, type_arguments, top_environment, types))
-					})
-					.collect();
+				let closure_id = types.new_closure_id();
+				type_arguments.closures.push(closure_id);
+
+				crate::utilities::notify!("Setting closure variables");
+
+				// Set closed over values
+				// TODO `this`
+				for (variable, value) in initial.0.iter() {
+					let value = substitute(*value, type_arguments, top_environment, types);
+					let info = target.get_latest_info(top_environment);
+					info.closure_current_values
+						.insert((closure_id, RootReference::Variable(*variable)), value);
+
+					crate::utilities::notify!(
+						"in {:?} set {:?} to {:?}",
+						closure_id,
+						variable,
+						value
+					);
+				}
 
 				let kind = match kind {
 					IterationKind::Condition { under, postfix_condition } => {
@@ -535,11 +554,13 @@ pub(crate) fn apply_events(
 
 				let offset = idx + 1;
 
-				let _ = target.new_loop_iteration(|target| {
+				let () = target.new_loop_iteration(|target| {
+					let events = &events[offset..(offset + *iterate_over as usize)];
+					// crate::utilities::notify!("Running in iteration {:?}", events);
 					iteration::run_iteration_block(
 						kind,
-						&events[offset..(offset + *iterate_over as usize)],
-						iteration::InitialVariablesInput::Calculated(initial),
+						events,
+						iteration::RunBehavior::Run,
 						type_arguments,
 						top_environment,
 						target,
@@ -547,12 +568,12 @@ pub(crate) fn apply_events(
 						types,
 						// TODO iterator.position
 						call_site,
-					)
+					);
 				});
 				// if result.is_some() {
 				// 	return result;
 				// }
-				idx += *iterate_over as usize;
+				idx += *iterate_over as usize + 1;
 			}
 			Event::ExceptionTrap { investigate, handle, finally, trapped_type_id } => {
 				let (investigate, handle, finally) =
@@ -561,7 +582,7 @@ pub(crate) fn apply_events(
 				let offset = idx + 1;
 
 				let inner_result = apply_events(
-					&events[offset..(offset + investigate as usize)],
+					&events[offset..(offset + investigate)],
 					this_value,
 					type_arguments,
 					top_environment,
@@ -603,7 +624,7 @@ pub(crate) fn apply_events(
 										constraint,
 										thrown,
 										&mut state,
-										&top_environment,
+										top_environment,
 										types,
 									);
 
@@ -655,6 +676,58 @@ pub(crate) fn apply_events(
 				idx += total;
 			}
 			Event::RegisterVariable { .. } => {}
+			Event::EndOfControlFlow { .. } => {
+				crate::utilities::notify!("Shouldn't be here");
+			}
+			Event::FinalEvent(final_event) => {
+				let application_result = match final_event {
+					FinalEvent::Break { carry, position } => ApplicationResult::Break {
+						// TODO is this correct?
+						carry: carry.saturating_sub(target.get_iteration_depth()),
+						position: *position,
+					},
+					FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
+						// TODO is this correct?
+						carry: carry.saturating_sub(target.get_iteration_depth()),
+						position: *position,
+					},
+					FinalEvent::Throw { thrown, position } => {
+						let substituted_thrown =
+							substitute(*thrown, type_arguments, top_environment, types);
+						if target.in_unconditional() {
+							let value = TypeStringRepresentation::from_type_id(
+								substituted_thrown,
+								// TODO is this okay?
+								top_environment,
+								types,
+								false,
+							);
+							errors.errors.push(FunctionCallingError::UnconditionalThrow {
+								value,
+								call_site,
+							});
+						}
+						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
+					}
+					FinalEvent::Return { returned, position } => {
+						let substituted_returned =
+							substitute(*returned, type_arguments, top_environment, types);
+						ApplicationResult::Return {
+							returned: substituted_returned,
+							position: *position,
+						}
+					}
+				};
+				return Some(if let Some((on, trailing)) = trailing {
+					ApplicationResult::Or {
+						on,
+						truthy_result: Box::new(trailing),
+						otherwise_result: Box::new(application_result),
+					}
+				} else {
+					application_result
+				});
+			}
 		}
 		idx += 1;
 	}
@@ -665,9 +738,10 @@ pub(crate) fn apply_events(
 ///
 /// - TODO more might need covering
 /// - TODO `_this_value` is not being used
+#[allow(clippy::used_underscore_binding)]
 pub(crate) fn apply_events_unknown(
 	events: &[Event],
-	this_value: ThisValue,
+	_this_value: ThisValue,
 	type_arguments: &mut SubstitutionArguments,
 	environment: &mut Environment,
 	target: &mut InvocationContext,
@@ -691,10 +765,10 @@ pub(crate) fn apply_events_unknown(
 						.insert(*variable, *reflects_dependency);
 				}
 			}
-			Event::Getter { reflects_dependency, on, under, publicity, position, bind_this } => {
+			Event::Getter { reflects_dependency, .. } => {
 				// Evaluates getters
-				if let Some(reflects_dependency) = reflects_dependency {
-					crate::utilities::notify!("Run getters");
+				if let Some(_reflects_dependency) = reflects_dependency {
+					crate::utilities::notify!("Run getters ???");
 					// let on = substitute(on, type_arguments, environment, types);
 					// let under = match under {
 					// 	under @ PropertyKey::String(_) => under,
@@ -715,18 +789,20 @@ pub(crate) fn apply_events_unknown(
 					// )
 				}
 			}
-			Event::SetsVariable(variable, value, _) => {
-				crate::utilities::notify!("Here");
-				let new_value = crate::types::get_constraint(*value, types)
-					.map(|value| {
-						types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(
-							value,
-						)))
-					})
-					.unwrap_or(*value);
+			Event::SetsVariable(variable, _value, _) => {
+				// crate::utilities::notify!("Here");
+				// let new_value =
+				// 	crate::types::get_constraint(*value, types).map_or(*value, |value| {
+				// 		types.register_type(Type::RootPolyType(crate::types::PolyNature::Open(
+				// 			value,
+				// 		)))
+				// 	});
 
-				// Don't like this but I think it is okay
-				environment.info.variable_current_value.insert(*variable, new_value);
+				crate::utilities::notify!("Here");
+				environment.possibly_mutated_variables.insert(*variable);
+
+				// // Don't like this but I think it is okay
+				// environment.info.variable_current_value.insert(*variable, new_value);
 			}
 			Event::Setter { on, under, new, initialization: _, publicity, position } => {
 				let on = substitute(*on, type_arguments, environment, types);
@@ -743,7 +819,7 @@ pub(crate) fn apply_events_unknown(
 					PropertyValue::Getter(_)
 					| PropertyValue::Setter(_)
 					| PropertyValue::Deleted => new.clone(),
-					PropertyValue::ConditionallyExists { on, truthy } => todo!(),
+					PropertyValue::ConditionallyExists { .. } => todo!(),
 				};
 				let under = match under {
 					under @ PropertyKey::String(_) => under.clone(),
@@ -771,7 +847,7 @@ pub(crate) fn apply_events_unknown(
 				// TODO think this is correct...?
 				apply_events_unknown(
 					truthy_events_slice,
-					this_value,
+					_this_value,
 					type_arguments,
 					environment,
 					target,
@@ -779,7 +855,7 @@ pub(crate) fn apply_events_unknown(
 				);
 				apply_events_unknown(
 					otherwise_events_slice,
-					this_value,
+					_this_value,
 					type_arguments,
 					environment,
 					target,
@@ -787,14 +863,11 @@ pub(crate) fn apply_events_unknown(
 				);
 				idx += truthy_events + otherwise_events;
 			}
-			Event::CreateObject { .. } => {}
-			Event::FinalEvent(FinalEvent::Return { .. }) => {}
-			Event::FinalEvent(FinalEvent::Throw { .. }) => {}
-			Event::FinalEvent(FinalEvent::Break { .. }) => {
-				// TODO conditionally
+			Event::CreateObject { .. } => {
+				crate::utilities::notify!("Creating object");
 			}
-			Event::FinalEvent(FinalEvent::Continue { .. }) => {
-				// TODO conditionally
+			Event::FinalEvent(..) => {
+				crate::utilities::notify!("final events");
 			}
 			Event::Iterate { .. } => {
 				// This should be fine?
@@ -813,7 +886,10 @@ pub(crate) fn apply_events_unknown(
 			Event::ExceptionTrap { .. } => {
 				crate::utilities::notify!("Exception trap anytime");
 			}
-			Event::RegisterVariable { name, position, initial_value } => todo!(),
+			Event::EndOfControlFlow { .. } => {
+				crate::utilities::notify!("Shouldn't be here");
+			}
+			Event::RegisterVariable { .. } => {}
 		}
 		idx += 1;
 	}

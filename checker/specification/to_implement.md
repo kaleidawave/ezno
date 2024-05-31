@@ -32,20 +32,6 @@ map("string", Math.sin)
 
 > Because `Math.sin` set T to number
 
-#### Calling on or type
-
-```ts
-type Func1 = () => 3;
-type Func2 = () => 2;
-function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
-	return func()
-}
-
-print_type(callFunc)
-```
-
-- Expected "a" | "b" | "c" found "d"
-
 #### Simple array map
 
 ```ts
@@ -69,6 +55,43 @@ print_type(mapper)
 ```
 
 - TODO
+
+#### Function calling
+
+#### Calling on or type
+
+```ts
+type Func1 = () => 3;
+type Func2 = () => 2;
+function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
+	return func()
+}
+
+print_type(callFunc)
+```
+
+- Expected "a" | "b" | "c" found "d"
+
+#### Getter and setter through function
+
+> TODO subtyping
+
+```ts
+let t = 0;
+function x(a: { b: string }) {
+    // TODO what happens here
+    const b = a.b;
+
+    a.b = 4;
+}
+
+x({ set b(v) { t = v } })
+print_type(t)
+
+x({ get b() { return 2 } })
+```
+
+- Expected string, found 5
 
 ### Imports
 
@@ -316,6 +339,20 @@ function x*() {
 > TODO effects, different traps and `Object.defineProperty`
 
 ### Collections
+
+#### `Array.fill`
+
+```ts
+const array1 = [1, 2, 3, 4];
+
+array1.fill(0, 2, 4) satisfies [1, 2, 0, 0];
+
+array1.fill(5, 1) satisfies [1, 5, 5, 5];
+
+array1.fill(6) satisfies [1, 1, 1, 1];
+```
+
+- Expected [1, 1, 1, 1] found [6, 6, 6, 6]
 
 #### `some` and `every`
 
@@ -677,3 +714,185 @@ const x: Required<{ a?: number }> = { a: 3 },
 ```
 
 - Cannot assign { } to required
+
+### Readonly and `as const`
+
+> TODO constrained inference
+
+#### Readonly parameter
+
+```ts
+function x(p: readonly { a: string }) {
+    p.a = 5;
+}
+```
+
+- Cannot assign to immutable property
+
+### Closures
+
+#### TDZ
+
+```ts
+function func() {
+    return function () { return closedOverVariable }
+    let closedOverVariable = 2;
+}
+```
+
+- Unreachable statement
+- Function contains unreachable closed over variable 'closedOverVariable'
+
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number
+
+### Exceptions and `try-catch-finally`
+
+#### Conditional throw
+
+> This emits a warning if a throw was created in a conditional branch
+
+```ts
+// no complex numbers :(
+function checkedLn(x: number) {
+    if (x > 0) {
+        return Math.log(x)
+    } else {
+        throw new Exception("Cannot log long string")
+    }
+}
+
+// Fine
+try { checkedLn(Math.E ** 3) satisfies 3 } catch {}
+// Will throw
+try { checkedLn(-5) } catch {}
+```
+
+- Conditional 'Exception' was thrown in function
+
+### Broken
+
+> Was working, now not
+
+#### `find` and `includes`
+
+> TODO other arguments (index and `this`). and poly
+
+```ts
+[1, 2, 3].find(x => x % 2 === 0) satisfies 4;
+
+// [1, 2, 3].includes(6) satisfies string;
+```
+
+- Expected 4, found 2
+<!-- - Expected string, found false -->
+
+#### Conditional return type inference
+
+```ts
+function func(a: boolean) {
+	if (a) {
+		return 2
+	}
+}
+
+func satisfies (a: boolean) => 5;
+```
+
+- Expected (a: boolean) => 5, found (a: boolean) => 2 | undefined
+
+#### *Inconclusive* conditional update
+
+```ts
+declare var value: string;
+let a: string | number = 0;
+
+function conditional(v: string) {
+	if (v === "value") {
+		a = "hi"
+	}
+}
+conditional(value);
+a satisfies string;
+```
+
+- Expected string, found "hi" | 0
+
+#### Break with label
+
+```ts
+let a: number = 0;
+let result;
+
+top: while (a++ < 10) {
+	let b: number = 0;
+	while (b++ < 10) {
+		if (a === 3 && b === 2) {
+			result = a * b;
+			break top
+		}
+	}
+}
+
+a satisfies string;
+result satisfies boolean;
+```
+
+- Expected string, found 3
+- Expected boolean, found 6

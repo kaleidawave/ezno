@@ -750,27 +750,29 @@ where
 		self.0.iter_mut().rev().find_map(|(key, value)| (want == key).then_some(value))
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = &(K, V)> + ExactSizeIterator {
+	#[must_use]
+	pub fn iter(&self) -> impl ExactSizeIterator<Item = &(K, V)> {
 		self.0.iter()
 	}
 
-	pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)> + ExactSizeIterator {
+	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
 		self.0.iter_mut()
 	}
 
-	pub fn values(&self) -> impl Iterator<Item = &V> + ExactSizeIterator {
+	#[must_use]
+	pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
 		self.0.iter().map(|(_, v)| v)
 	}
 
 	/// *assumes `id` not already inside*
 	pub fn insert(&mut self, id: K, value: V) {
-		self.0.push((id, value))
+		self.0.push((id, value));
 	}
-
+	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
-
+	#[must_use]
 	pub fn len(&self) -> usize {
 		self.0.len()
 	}
@@ -798,6 +800,6 @@ impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
 
 impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
 	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
-		self.0.extend(iter)
+		self.0.extend(iter);
 	}
 }

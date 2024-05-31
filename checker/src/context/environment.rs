@@ -2,6 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+	context::get_on_ctx,
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError,
 		TypeStringRepresentation, TDZ,
@@ -30,9 +31,9 @@ use crate::{
 };
 
 use super::{
-	get_on_ctx, get_value_of_variable, information::InformationChain, invocation::CheckThings,
-	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
-	GeneralContext, SetPropertyError,
+	get_value_of_variable, information::InformationChain, invocation::CheckThings, AssignmentError,
+	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
+	SetPropertyError,
 };
 
 pub type ContextLocation = Option<String>;
@@ -756,7 +757,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		requests: impl Iterator<Item = (TypeId, TypeId)>,
 	) {
-		self.context_type.requests.extend(requests)
+		self.context_type.requests.extend(requests);
 	}
 
 	/// TODO decidable & private?
@@ -895,8 +896,9 @@ impl<'a> Environment<'a> {
 		checking_data: &mut CheckingData<U, A>,
 	) -> Result<VariableWithValue, TypeId> {
 		let (in_root, crossed_boundary, og_var) = {
-			let this = self.get_variable_unbound(name);
-			if let Some((in_root, crossed_boundary, og_var)) = this {
+			let variable_information = self.get_variable_unbound(name);
+			// crate::utilities::notify!("{:?} returned {:?}", name, variable_information);
+			if let Some((in_root, crossed_boundary, og_var)) = variable_information {
 				(in_root, crossed_boundary, og_var.clone())
 			} else {
 				checking_data.diagnostics_container.add_error(
@@ -913,31 +915,34 @@ impl<'a> Environment<'a> {
 
 		let reference = RootReference::Variable(og_var.get_id());
 
-		if let VariableOrImport::Variable { context: Some(ref context), .. } = og_var {
-			if let Some(ref current_context) = self.parents_iter().find_map(|a| {
-				if let GeneralContext::Syntax(syn) = a {
-					syn.context_type.location.clone()
-				} else {
-					None
-				}
-			}) {
-				if current_context != context {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::VariableNotDefinedInContext {
-							variable: name,
-							expected_context: context,
-							current_context: current_context.clone(),
-							position,
-						},
-					);
-					return Err(TypeId::ERROR_TYPE);
-				}
-			}
-		}
+		// TODO context checking here
+		// {
+		// 	if let VariableOrImport::Variable { context: Some(ref context), .. } = og_var {
+		// 		if let Some(ref current_context) = self.parents_iter().find_map(|a| {
+		// 			if let GeneralContext::Syntax(syn) = a {
+		// 				syn.context_type.location.clone()
+		// 			} else {
+		// 				None
+		// 			}
+		// 		}) {
+		// 			if current_context != context {
+		// 				checking_data.diagnostics_container.add_error(
+		// 					TypeCheckError::VariableNotDefinedInContext {
+		// 						variable: name,
+		// 						expected_context: context,
+		// 						current_context: current_context.clone(),
+		// 						position,
+		// 					},
+		// 				);
+		// 				return Err(TypeId::ERROR_TYPE);
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		// let treat_as_in_same_scope = (og_var.is_constant && self.is_immutable(current_value));
 
-		// TODO in_root temp fix
+		// TODO in_root temp fix to treat those as constant (so Math works in functions)
 		if let (Some(_boundary), false) = (crossed_boundary, in_root) {
 			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
@@ -992,15 +997,23 @@ impl<'a> Environment<'a> {
 				VariableMutability::Mutable { reassignment_constraint } => {
 					// TODO is there a nicer way to do this
 					// Look for reassignments
+					let variable_id = og_var.get_id();
+
+					// `break`s here VERY IMPORTANT
 					for ctx in self.parents_iter() {
-						if let Some(value) =
-							get_on_ctx!(ctx.info.variable_current_value.get(&og_var.get_id()))
-						{
-							return Ok(VariableWithValue(og_var.clone(), *value));
-						}
-						let is_dynamic = matches!(ctx, GeneralContext::Syntax(s) if s.context_type.scope.is_dynamic_boundary().is_some());
-						if is_dynamic {
-							break;
+						if let GeneralContext::Syntax(s) = ctx {
+							if s.possibly_mutated_variables.contains(&variable_id) {
+								break;
+							}
+							if let Some(value) =
+								get_on_ctx!(ctx.info.variable_current_value.get(&variable_id))
+							{
+								return Ok(VariableWithValue(og_var.clone(), *value));
+							}
+
+							if s.context_type.scope.is_dynamic_boundary().is_some() {
+								break;
+							}
 						}
 					}
 
@@ -1013,26 +1026,31 @@ impl<'a> Environment<'a> {
 				}
 			};
 
-			// TODO temp position
-			let mut value = None;
-
-			for event in &self.info.events {
-				// TODO explain why don't need to detect sets
-				if let Event::ReadsReference {
-					reference: other_reference,
-					reflects_dependency: Some(dep),
-					position: _,
-				} = event
-				{
-					if reference == *other_reference {
-						value = Some(dep);
-						break;
+			let mut reused_reference = None;
+			{
+				let mut reversed_events = self.info.events.iter().rev();
+				while let Some(event) = reversed_events.next() {
+					if let Event::ReadsReference {
+						reference: other_reference,
+						reflects_dependency: Some(dependency),
+						position: _,
+					} = event
+					{
+						if reference == *other_reference {
+							reused_reference = Some(*dependency);
+							break;
+						}
+					} else if let Event::EndOfControlFlow(count) = event {
+						// Important to skip control flow nodes
+						for _ in 0..=(*count) {
+							reversed_events.next();
+						}
 					}
 				}
 			}
 
-			let type_id = if let Some(value) = value {
-				*value
+			let ty = if let Some(value) = reused_reference {
+				value
 			} else {
 				// TODO dynamic ?
 				let ty = Type::RootPolyType(crate::types::PolyNature::FreeVariable {
@@ -1057,7 +1075,7 @@ impl<'a> Environment<'a> {
 				ty
 			};
 
-			Ok(VariableWithValue(og_var.clone(), type_id))
+			Ok(VariableWithValue(og_var.clone(), ty))
 		} else {
 			// TODO recursively in
 			if let VariableOrImport::MutableImport { of, constant: false, import_specified_at: _ } =
@@ -1158,8 +1176,12 @@ impl<'a> Environment<'a> {
 
 					// Add the expected return type instead here
 					// if it fell through to another then it could be bad
-					let returned = checking_data.types.new_error_type(expected);
-					let final_event = FinalEvent::Return { returned, position: returned_position };
+					crate::utilities::notify!("Here {:?}", expected);
+					let expected_return = checking_data.types.new_error_type(expected);
+					let final_event = FinalEvent::Return {
+						returned: expected_return,
+						position: returned_position,
+					};
 					self.info.events.push(final_event.into());
 					return;
 				}

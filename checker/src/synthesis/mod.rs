@@ -191,7 +191,7 @@ impl crate::ASTImplementation for EznoParser {
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
-		synthesise_block(&block.0, environment, checking_data)
+		synthesise_block(&block.0, environment, checking_data);
 	}
 }
 

@@ -259,8 +259,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					output_type,
 					position,
 				} => {
-					// TODO WIP
-					let to = TypeId::ANY_TYPE;
+					let matching_type =
+						synthesise_type_annotation(matching_type, environment, checking_data);
 
 					let (key, value) = {
 						// TODO special scope here
@@ -268,7 +268,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
-								eager_fixed: to,
+								eager_fixed: matching_type,
 							},
 						));
 						environment.named_types.insert(parameter.clone(), parameter_type);

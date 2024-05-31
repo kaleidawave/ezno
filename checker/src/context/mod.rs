@@ -81,7 +81,7 @@ pub enum GeneralContext<'a> {
 
 /// Specifies where a variable exists
 ///
-/// TODO is ContextId going to be used in the future?
+/// TODO is `ContextId` going to be used in the future?
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub struct Boundary(pub(crate) ContextId);
@@ -174,6 +174,7 @@ pub struct Context<T: ContextType> {
 
 	/// When a objects `TypeId` is in here getting a property returns a constructor rather than
 	pub possibly_mutated_objects: HashSet<TypeId>,
+	pub possibly_mutated_variables: HashSet<VariableId>,
 
 	// pub (crate) info: info,
 	pub info: LocalInformation,
@@ -374,9 +375,15 @@ impl<T: ContextType> Context<T> {
 							} => *value,
 						},
 						// TODO
-						VariableOrImport::MutableImport { .. } => TypeId::ERROR_TYPE,
+						VariableOrImport::MutableImport { .. } => {
+							crate::utilities::notify!("TODO MutableImport");
+							TypeId::ERROR_TYPE
+						}
 						// TODO
-						VariableOrImport::ConstantImport { .. } => TypeId::ERROR_TYPE,
+						VariableOrImport::ConstantImport { .. } => {
+							crate::utilities::notify!("TODO ConstantImport");
+							TypeId::ERROR_TYPE
+						}
 					}
 				})
 			}
@@ -387,6 +394,8 @@ impl<T: ContextType> Context<T> {
 	/// Similar to [`Context::get_this_unbound`]
 	///
 	/// First `bool` is whether this variable is on [`Context<Root>`]
+	///
+	/// **NOTE THIS IS RECURSIVE. Each step can append information**
 	fn get_variable_unbound(
 		&self,
 		variable_name: &str,
@@ -400,11 +409,14 @@ impl<T: ContextType> Context<T> {
 		let local_variable = self.variables.get(variable_name);
 		if let Some(local) = local_variable {
 			let is_root = self.context_type.get_parent().is_none();
-			Some((is_root, None, local))
+			let is_mutated = self.possibly_mutated_variables.contains(&local.get_id());
+			let boundary = is_mutated.then_some(Boundary(self.context_id));
+			Some((is_root, boundary, local))
 		} else {
 			let parent = self.context_type.get_parent()?;
-			let (is_root, parent_boundary, var) =
-				get_on_ctx!(parent.get_variable_unbound(variable_name))?;
+			let var_name = get_on_ctx!(parent.get_variable_unbound(variable_name));
+			// This trailing question does a lot of heavy lifting
+			let (is_root, parent_boundary, found_var) = var_name?;
 
 			/* Sometimes the top might not be dynamic (example below) so adding that here.
 			```
@@ -423,20 +435,23 @@ impl<T: ContextType> Context<T> {
 			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
 				if !self
 					.get_chain_of_info()
-					.any(|info| info.variable_current_value.contains_key(&var.get_id()))
+					.any(|info| info.variable_current_value.contains_key(&found_var.get_id()))
 				{
 					// Cannot use yet in loop
 					return None;
 				}
 			}
 
-			let boundary = if is_dynamic_boundary.is_some() && parent_boundary.is_none() {
-				let boundary = Boundary(get_on_ctx!(parent.context_id));
-				Some(boundary)
+			let record_as_free = (is_dynamic_boundary.is_some() && parent_boundary.is_none())
+				|| self.possibly_mutated_variables.contains(&found_var.get_id());
+
+			let boundary = if record_as_free {
+				Some(Boundary(get_on_ctx!(parent.context_id)))
 			} else {
 				parent_boundary
 			};
-			Some((is_root, boundary, var))
+
+			Some((is_root, boundary, found_var))
 		}
 	}
 
@@ -504,6 +519,7 @@ impl<T: ContextType> Context<T> {
 			variable_names: Default::default(),
 			info: Default::default(),
 			possibly_mutated_objects: Default::default(),
+			possibly_mutated_variables: Default::default(),
 		}
 	}
 
@@ -546,6 +562,7 @@ impl<T: ContextType> Context<T> {
 			deferred_function_constraints,
 			mut info,
 			possibly_mutated_objects,
+			possibly_mutated_variables,
 		} = new_environment;
 
 		// if let Some(self_state) = self.context_type.get_state_mut() {
@@ -557,6 +574,7 @@ impl<T: ContextType> Context<T> {
 
 		self.variable_names.extend(variable_names);
 		self.possibly_mutated_objects.extend(possibly_mutated_objects);
+		self.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());
@@ -1156,7 +1174,7 @@ pub(crate) fn get_value_of_variable(
 	for fact in info.get_chain_of_info() {
 		let res = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
-				crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
+				// crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
 			})
 		} else {

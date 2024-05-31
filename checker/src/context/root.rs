@@ -96,6 +96,7 @@ impl RootContext {
 			can_reference_this: crate::context::CanReferenceThis::Yeah,
 			info,
 			possibly_mutated_objects: Default::default(),
+			possibly_mutated_variables: Default::default(),
 		}
 	}
 

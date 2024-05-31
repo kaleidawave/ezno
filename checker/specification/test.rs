@@ -25,7 +25,8 @@ mod specification {
 // }
 
 // TODO under cfg
-const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+// const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+const SIMPLE_DTS: Option<&str> = None;
 
 /// Called by each test
 fn check_errors(

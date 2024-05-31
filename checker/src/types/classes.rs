@@ -45,7 +45,7 @@ pub struct RegisterClassPropertiesEvent {
 	pub class_prototype: TypeId,
 }
 
-fn register_class_properties_for_later_application<
+fn _register_class_properties_for_later_application<
 	T: crate::ReadFromFS,
 	A: crate::ASTImplementation,
 >(

@@ -32,10 +32,10 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 			}
 		}
 
-		// if environment.context_type.state.is_it_so_over() {
-		// 	crate::utilities::notify!("{:?}", environment.context_type.state);
-		// 	break;
-		// }
+		// TODO conditionals and more etc
+		if environment.info.is_halted() {
+			break;
+		}
 	}
 
 	for element in elements.filter(|e| {

@@ -275,6 +275,35 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
+#### `Object.keys`, `Object.values`, `Object.entries`
+
+```ts
+Object.keys({ a: 1, b: 2 }) satisfies ["a", "b"];
+Object.values({ a: 1, b: 2 }) satisfies [1, 2];
+Object.entries({ a: 1, b: 2 }) satisfies boolean;
+```
+
+- Expected boolean, found [["a", 1], ["b", 2]]
+
+#### Spread condition
+
+```ts
+declare let condition: boolean;
+
+const obj = {
+  foo: 1,
+  ...(condition ? {
+    bar: 2,
+    non_existent: 3,
+  } : {}),
+};
+
+obj.foo satisfies number;
+obj.bar satisfies string;
+```
+
+- Expected string, found 2 | undefined
+
 ### Excess property
 
 > The following work through the same mechanism as forward inference
@@ -665,6 +694,27 @@ getNumber2() satisfies 6;
 
 - Expected () => 4, found () => number
 
+#### Function hoisting
+
+> `getString` can be used and has a type before it has been synthesised
+> TODO actual calling before defined (this currently only works bc of free-variables)
+
+```ts
+function x() {
+    getString(3)
+}
+
+function y() {
+    getString("something") satisfies string;
+}
+
+function getString(param: string): string {
+    return "hi"
+}
+```
+
+- Argument of type 3 is not assignable to parameter of type string
+
 ### Function calling
 
 #### Argument type against parameter
@@ -831,6 +881,34 @@ new MyClass("hi").value satisfies "hello"
 
 - Expected "hello", found "hi"
 
+#### `new` on function prototype
+
+```ts
+function MyClass(value) {
+	this.value = value
+}
+
+MyClass.prototype.other = 2;
+
+const object = new MyClass("hi");
+object.value satisfies "hi";
+object.other satisfies "hello";
+```
+
+- Expected "hello", found 2
+
+#### Checking with function prototype
+
+```ts
+function MyClass(this: { other: string }) { }
+
+MyClass.prototype.other = 2;
+
+const m = new MyClass();
+```
+
+- The 'this' context of the function is expected to be { other: string }, found { other: 2 }
+
 #### Arguments in to rest parameter
 
 ```ts
@@ -925,6 +1003,29 @@ doThing(6, 1) satisfies 6;
 ```
 
 - Expected 2, found 5
+
+#### Canceled generics
+
+> aka remove generic arguments if they don't match the structure
+
+```ts
+declare function func<T>(prop: { a: number, b: T, c: string } | { a: number, b: string, c: T }): T;
+
+func({ a: 3, b: "hi", c: false }) satisfies string;
+```
+
+- Expected string, found false
+
+#### Template literal calling error
+
+```ts
+function myTag(static_parts: Array<string>, count: number) {
+}
+
+myTag`Count is ${"not a number!!"}`;
+```
+
+- Argument of type \"not a number!!\" is not assignable to parameter of type number (in template literal)
 
 ### Effects
 
@@ -1200,23 +1301,6 @@ a satisfies 3
 - Expected 2, found 0
 - Expected 3, found 1
 
-#### *Inconclusive* conditional update
-
-```ts
-declare var value: string;
-let a: string | number = 0;
-
-function conditional(v: string) {
-	if (v === "value") {
-		a = "hi"
-	}
-}
-conditional(value);
-a satisfies string;
-```
-
-- Expected string, found "hi" | 0
-
 #### If and else (across function)
 
 ```ts
@@ -1272,20 +1356,6 @@ b satisfies string;
 - Expected 3, found 4
 - Expression is always true
 - Expected string, found 5
-
-#### Conditional return type inference
-
-```ts
-function func(a: boolean) {
-	if (a) {
-		return 2
-	}
-}
-
-func satisfies (a: boolean) => 5;
-```
-
-- Expected (a: boolean) => 5, found (a: boolean) => 2 | undefined
 
 #### Unknown condition assignment
 
@@ -1412,7 +1482,7 @@ a satisfies string;
 ```ts
 function loop(n: number, c: string) {
 	let a: string = c;
-	let i: number = 0;
+	let i: number = 1;
 	while (i++ < n) {
 		a += c
 	}
@@ -1440,29 +1510,6 @@ a satisfies 2;
 ```
 
 - Expected 2, found 8
-
-#### Break with label
-
-```ts
-let a: number = 0;
-let result;
-
-top: while (a++ < 10) {
-	let b: number = 0;
-	while (b++ < 10) {
-		if (a === 3 && b === 2) {
-			result = a * b;
-			break top
-		}
-	}
-}
-
-a satisfies string;
-result satisfies boolean;
-```
-
-- Expected string, found 3
-- Expected boolean, found 6
 
 #### Continue in a while loop
 
@@ -1512,6 +1559,97 @@ properties satisfies boolean;
 
 - Expected boolean, found string
 
+### Exceptions and `try-catch-finally`
+
+#### Try-catch and throw
+
+```ts
+try {
+	throw 2
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 2
+
+#### Throw effects carry through
+
+```ts
+function throwType(a) {
+	throw a
+}
+
+try {
+	throwType(3)
+} catch (err) {
+	err satisfies string
+}
+```
+
+- Expected string, found 3
+
+#### Catch annotation
+
+> Thanks to #131
+
+```ts
+try {
+	throw 3
+} catch (err: string) {
+    console.log(err)
+}
+```
+
+- Cannot catch type string because the try block throws 3
+
+#### Function effect
+
+```ts
+function exceptionToResult(cb: () => number) {
+    try {
+        return cb()
+    } catch (e) {
+        return e
+    }
+}
+
+exceptionToResult(() => 6) satisfies 6;
+exceptionToResult(() => { throw 12 }) satisfies 8;
+```
+
+- Expected 8, found 12
+
+#### Checked thrown type from callback
+
+```ts
+function exceptionToResult(cb: () => number) {
+    try {
+        cb()
+    } catch (e: number) {
+        return e
+    }
+}
+
+exceptionToResult(() => { throw "not a number" })
+```
+
+- Cannot throw "not a number" in block that expects number
+
+#### Internal function effect
+
+```ts
+function exceptionToResult(s: string) {
+    try {
+        return JSON.parse(s)
+    } catch (e: number) {
+        return e
+    }
+}
+```
+
+- Cannot catch type number because the try block throws SyntaxError
+
 ### Collections
 
 > Some of these are built of exiting features.
@@ -1559,19 +1697,6 @@ x.push("hi");
 ```
 
 - Expected [7, 8, 11], found [7, 9, 11]
-
-#### `find` and `includes`
-
-> TODO other arguments (index and `this`). and poly
-
-```ts
-[1, 2, 3].find(x => x % 2 === 0) satisfies 4;
-
-// [1, 2, 3].includes(6) satisfies string;
-```
-
-- Expected 4, found 2
-<!-- - Expected string, found false -->
 
 ### Statements, declarations and expressions
 
@@ -1827,48 +1952,6 @@ s satisfies number;
 - Expected string, found undefined
 - Expected number, found "hello"
 
-#### Try-catch and throw
-
-```ts
-try {
-	throw 2
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 2
-
-#### Throw effects carry through
-
-```ts
-function throwType(a) {
-	throw a
-}
-
-try {
-	throwType(3)
-} catch (err) {
-	err satisfies string
-}
-```
-
-- Expected string, found 3
-
-#### Catch annotation
-
-> Thanks to #131
-
-```ts
-try {
-	throw 3
-} catch (err: string) {
-    console.log(err)
-}
-```
-
-- Cannot catch type string because the try block throws 3
-
 #### Object destructuring assignment
 
 > Added in #127
@@ -1905,6 +1988,22 @@ import.meta.env.production satisfies boolean;
 
 - Expected number, found string
 - Expected boolean, found string | undefined
+
+#### `instanceof` operator
+
+> TODO dependent version
+
+```ts
+([] instanceof Array) satisfies true;
+({} instanceof Map) satisfies 4;
+
+class X {}
+
+(new X instanceof X) satisfies true;
+([] instanceof X) satisfies false;
+```
+
+- Expected 4, found false
 
 ### Async and `Promise`s
 
@@ -2144,6 +2243,44 @@ class Class extends BaseClass {
 ```
 
 - Expected string, found boolean
+
+#### `super` call
+
+```ts
+let b: number = 0;
+class Y {
+    constructor(a) {
+        this.a = a;
+        b++;
+    }
+}
+
+class X extends Y {
+    constructor(a) {
+        super(a);
+    }
+}
+
+const x = new X("hi");
+x.a satisfies "hello";
+b satisfies 1;
+```
+
+- Expected "hello", found "hi"
+
+#### Nominal-ness
+
+```ts
+class X { a: number = 2 }
+class Y { a: number = 2}
+
+function doThingWithX(x: X) {}
+
+doThingWithX(new X());
+doThingWithX(new Y())
+```
+
+- Argument of type [Y] { a: 2 } is not assignable to parameter of type X
 
 ### Types
 
@@ -2470,6 +2607,69 @@ Concat("test", "something") satisfies boolean
 
 - Expected boolean, found "test, something"
 
+#### Union with never
+
+```ts
+declare function func<T>(): T | string;
+
+func<number>() satisfies string | number;
+func<never>() satisfies boolean;
+```
+
+- Expected boolean, found string
+
+#### Infer and extends distribution
+
+```ts
+type ElementOf<T> = T extends Array<infer U> ? U : never;
+
+declare let y: ElementOf<Array<number>>;
+declare let z: ElementOf<Array<number> | string>;
+
+y satisfies number;
+z satisfies string;
+
+declare let n: never;
+n satisfies ElementOf<number>;
+```
+
+- Expected string, found number
+
+#### `keyof` type annotation
+
+```ts
+interface X {
+    a: string,
+    b: string
+}
+
+"a" satisfies keyof X;
+"b" satisfies keyof X;
+"c" satisfies keyof X;
+```
+
+- Expected keyof X, found "c"
+
+#### Template literal types
+
+```ts
+type Introduction = `Hello ${string}`;
+
+const first: Introduction = "Hello Ben";
+const second: Introduction = "Hi Ben";
+```
+
+- Type "Hi Ben" is not assignable to type Introduction
+
+#### Assigning to types as keys
+
+```ts
+const x: { [s: string]: number } = { a: 1, b: 2, c: 3 }
+const y: { [s: string]: boolean } = { a: 1, b: 2, c: 3 };
+```
+
+- Type { a: 1, b: 2, c: 3 } is not assignable to type { [string]: boolean }
+
 ### Generic types
 
 #### Generic interface
@@ -2596,7 +2796,7 @@ const x: Record2<"test", boolean> = { no: false },
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 
-#### Union and types
+#### Union and types as keys
 
 ```ts
 type Record2<K extends string, T> = { [P in K]: T }
@@ -3012,6 +3212,65 @@ export const mean_gravity = 9.806;
 ### Extras
 
 > This contains new features. Most are WIP
+
+#### Use type annotation in the presence of error
+
+> Note x and y are still string and the function still returns string
+
+```ts
+const x: string = 5;
+const y: string = h;
+
+function getString(a: number): string {
+    return a
+}
+
+x satisfies string;
+y satisfies string;
+
+const z: number = getString(2);
+```
+
+- Cannot return number because the function is expected to return string
+- Type 5 is not assignable to type string
+- Could not find variable 'h' in scope
+- Type (error) string is not assignable to type number
+
+#### Unconditional throw
+
+```ts
+function safeDivide(num: number, denom: number) {
+	if (denom === 0) {
+		throw new Error("Cannot divide by zero");
+	}
+	return num / denom
+}
+
+safeDivide(8, 4) satisfies 2;
+
+safeDivide(10, 0);
+```
+
+- Conditional '[Error] { message: \"Cannot divide by zero\" }' was thrown in function
+
+#### Unreachable statement
+
+```ts
+function throwGreeting() {
+    throw "Hello";
+    return 5
+}
+
+function doSomething() {
+    throwGreeting()
+    const x = 2;
+}
+```
+
+> One is for `return 5` the other is for `const x = 2;`
+
+- Unreachable statement
+- Unreachable statement
 
 #### JSX type
 

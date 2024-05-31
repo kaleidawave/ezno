@@ -424,7 +424,7 @@ impl TypeStore {
 	}
 
 	/// *Dangerous* . TODO WIP
-	pub(crate) fn set_inferred_constraint(&mut self, ty: TypeId, constraint: TypeId) {
+	pub(crate) fn _set_inferred_constraint(&mut self, ty: TypeId, constraint: TypeId) {
 		if let Some(Type::RootPolyType(PolyNature::Parameter { fixed_to })) =
 			self.types.get_mut(ty.0 as usize)
 		{

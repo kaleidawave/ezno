@@ -208,7 +208,9 @@ fn print_type_into_buf<C: InformationChain>(
 					GenericArguments::Closure(closures) => {
 						write!(buf, "<Closures {closures:?}>").unwrap();
 					}
-					_ => {}
+					GenericArguments::LookUp { on } => {
+						write!(buf, "<LookUp {on:?}>").unwrap();
+					}
 				}
 			} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
 				types.get_type_by_id(*on)
@@ -227,12 +229,11 @@ fn print_type_into_buf<C: InformationChain>(
 						}
 						buf.push('>');
 					}
-					GenericArguments::Closure(..) => {}
-					_ => {}
+					GenericArguments::Closure(..) | GenericArguments::LookUp { .. } => {}
 				}
 			} else {
-				let into = arguments.clone().into();
-				let args = GenericChainLink::append(ty, args.as_ref(), &into);
+				let new_arguments = arguments.clone();
+				let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 			}
 		}
@@ -295,8 +296,8 @@ fn print_type_into_buf<C: InformationChain>(
 				} else if let Some(Type::PartiallyAppliedGenerics(sgs)) =
 					get_constraint(*on, types).map(|ty| types.get_type_by_id(ty))
 				{
-					let into = sgs.arguments.clone().into();
-					let args = GenericChainLink::append(ty, args.as_ref(), &into);
+					let new_arguments = sgs.arguments.clone();
+					let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				} else {
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
@@ -704,7 +705,7 @@ pub fn debug_effects<C: InformationChain>(
 
 	while idx < events.len() {
 		for _ in 0..depth {
-			buf.push_str("\t");
+			buf.push('\t');
 		}
 		let event = &events[idx];
 		match event {
@@ -805,7 +806,7 @@ pub fn debug_effects<C: InformationChain>(
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, types, info, debug);
 				buf.push_str(" then \n");
-				let events_if_true = &events[(idx + 1)..(idx + truthy_events as usize + 1)];
+				let events_if_true = &events[(idx + 1)..=(idx + truthy_events)];
 				debug_effects(buf, events_if_true, types, info, depth + 1, debug);
 				if otherwise_events != 0 {
 					let start = idx + truthy_events + 1;
@@ -843,6 +844,9 @@ pub fn debug_effects<C: InformationChain>(
 			Event::ExceptionTrap { .. } => todo!(),
 			Event::RegisterVariable { .. } => {
 				buf.push_str("register variable");
+			}
+			Event::EndOfControlFlow(_) => {
+				buf.push_str("end");
 			}
 		}
 		buf.push('\n');

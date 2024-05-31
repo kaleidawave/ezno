@@ -2,8 +2,12 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::invocation::CheckThings,
+	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
-	types::{calling::CallingInput, cast_as_string, SynthesisedArgument, TypeStore},
+	types::{
+		calling::{application_result_to_return_type, CallingInput},
+		cast_as_string, SynthesisedArgument, TypeStore,
+	},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
 
@@ -133,9 +137,16 @@ where
 			&mut check_things,
 			&mut checking_data.types,
 		) {
-			Ok(res) => res.returned_type,
-			Err(_) => {
-				todo!("Template literal tag Calling error")
+			Ok(res) => {
+				application_result_to_return_type(res.result, environment, &mut checking_data.types)
+			}
+			Err(error) => {
+				error.errors.into_iter().for_each(|error| {
+					checking_data
+						.diagnostics_container
+						.add_error(TypeCheckError::TemplateLiteralError(error));
+				});
+				error.returned_type
 			}
 		}
 	} else {

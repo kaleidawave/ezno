@@ -67,7 +67,7 @@ impl Reference {
 		}
 	}
 
-	/// is_empty => for when edit in progress in playground / LSP
+	/// `is_empty` => for when edit in progress in playground / LSP
 	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		match self {

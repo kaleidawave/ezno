@@ -1,3 +1,5 @@
+//! More code at [`crate::context`] and [`Environment`]
+
 use source_map::{Span, SpanWithSource};
 
 use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};

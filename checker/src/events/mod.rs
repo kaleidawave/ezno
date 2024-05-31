@@ -6,7 +6,7 @@ pub(crate) mod application;
 
 use crate::{
 	context::get_on_ctx,
-	features::iteration::IterationKind,
+	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
 		calling::CalledWithNew,
 		functions::SynthesisedArgument,
@@ -98,7 +98,7 @@ pub enum Event {
 	Iterate {
 		kind: IterationKind,
 		/// Contains initial values that the iteration runs over. Without, initial iterations can't access anything...?
-		initial: InitialVariables,
+		initial: ClosedOverVariables,
 		/// TODO for of and in variants here:
 		// condition: TypeId,
 		iterate_over: u32,
@@ -148,6 +148,9 @@ pub enum Event {
 		/// `None` for `let x;`
 		initial_value: Option<TypeId>,
 	},
+
+	/// TODO was trying to avoid
+	EndOfControlFlow(u32),
 }
 
 #[derive(Debug, Copy, Clone, binary_serialize_derive::BinarySerializable)]
@@ -216,7 +219,7 @@ pub enum CallingTiming {
 
 /// This doesn't cover unconditional thrown from internal functions
 ///
-/// Similar to [FinalEvent] but includes different information + or
+/// Similar to [`FinalEvent`] but includes different information + or
 /// `break` and `continue` don't apply for function returns (but do for iteration and conditionals)
 #[derive(Debug)]
 pub enum ApplicationResult {
@@ -244,7 +247,7 @@ pub enum ApplicationResult {
 	/// One of these is `Some`.
 	Or {
 		on: TypeId,
-		truthy_result: Option<Box<ApplicationResult>>,
-		otherwise_result: Option<Box<ApplicationResult>>,
+		truthy_result: Box<ApplicationResult>,
+		otherwise_result: Box<ApplicationResult>,
 	},
 }

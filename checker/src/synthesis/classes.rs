@@ -60,8 +60,6 @@ pub(super) fn synthesise_class_declaration<
 	let existing_id =
 		checking_data.local_type_mappings.types_to_types.get_exact(class.position).copied();
 
-	crate::utilities::notify!("existing_id={:?}", existing_id);
-
 	// Will leak hoisted properties on existing class ...?
 	let class_prototype = if let Some(existing_id) = existing_id {
 		existing_id
@@ -138,7 +136,11 @@ pub(super) fn synthesise_class_declaration<
 				let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
-					get_internal_function_effect_from_decorators(&member.decorators, name, &environment)
+					get_internal_function_effect_from_decorators(
+						&member.decorators,
+						name,
+						environment,
+					)
 				} else {
 					None
 				};
@@ -218,7 +220,7 @@ pub(super) fn synthesise_class_declaration<
 	// TODO abstract
 	let constructor = if let Some((decorators, constructor)) = class_constructor {
 		let internal_marker = if is_declare {
-			get_internal_function_effect_from_decorators(decorators, "TODO", &environment)
+			get_internal_function_effect_from_decorators(decorators, "TODO", environment)
 		} else {
 			None
 		};
@@ -265,7 +267,11 @@ pub(super) fn synthesise_class_declaration<
 					let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
 						(is_declare, method.name.get_ast_ref())
 					{
-						get_internal_function_effect_from_decorators(&member.decorators, name, &environment)
+						get_internal_function_effect_from_decorators(
+							&member.decorators,
+							name,
+							environment,
+						)
 					} else {
 						None
 					};

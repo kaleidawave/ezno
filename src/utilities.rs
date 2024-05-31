@@ -1,7 +1,4 @@
-use std::{
-	fmt::Arguments,
-	path::{Path, PathBuf},
-};
+use std::fmt::Arguments;
 
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {

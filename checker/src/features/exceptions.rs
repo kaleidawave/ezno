@@ -5,11 +5,12 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, FinalEvent, Trapped},
 	subtyping::type_is_subtype_object,
-	CheckingData, Environment, Scope, Type, TypeId,
+	CheckingData, Decidable, Environment, Scope, Type, TypeId,
 };
 
 /// TODO
 /// - `finally`
+#[allow(clippy::type_complexity)]
 pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	try_block: &'a A::Block<'a>,
 	catch_block: Option<(
@@ -23,26 +24,34 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let (thrown_type, mut throw_events) = {
 		let mut try_block_environment = environment.new_lexical_environment(Scope::TryBlock {});
 
-		A::synthesise_block(&try_block, &mut try_block_environment, checking_data);
+		A::synthesise_block(try_block, &mut try_block_environment, checking_data);
 		crate::utilities::notify!("TODO also get possible impure functions");
 
-		let mut thrown_type_acc = TypeId::NEVER_TYPE;
+		let mut thrown_type_acc = Decidable::Known(TypeId::NEVER_TYPE);
 
 		// TODO should events be removed?
 		for event in &try_block_environment.info.events {
 			// TODO possible getters
 			if let Event::CallsType { possibly_thrown, .. } = event {
 				if let Some(thrown) = possibly_thrown {
-					thrown_type_acc = checking_data.types.new_or_type(thrown_type_acc, *thrown);
+					thrown_type_acc =
+						Decidable::Unknown(if let Decidable::Unknown(existing) = thrown_type_acc {
+							checking_data.types.new_or_type(existing, *thrown)
+						} else {
+							*thrown
+						});
 				} else {
-					crate::utilities::notify!("Maybe not never if not pure");
+					crate::utilities::notify!(
+						"Maybe not never if not pure. Decidable::Unknown(Unknown)"
+					);
 				}
 			} else if let Event::Conditionally { .. } = event {
-				crate::utilities::notify!("TODO");
+				crate::utilities::notify!("TODO unknown");
 			} else if let Event::Iterate { .. } = event {
-				crate::utilities::notify!("TODO");
+				crate::utilities::notify!("TODO unknown");
 			} else if let Event::FinalEvent(FinalEvent::Throw { thrown, position: _ }) = event {
-				thrown_type_acc = checking_data.types.new_or_type(thrown_type_acc, *thrown);
+				thrown_type_acc = Decidable::Known(*thrown);
+				break;
 			}
 		}
 
@@ -55,7 +64,7 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	};
 
 	if let Some((catch_block, exception_variable)) = catch_block {
-		if thrown_type == TypeId::NEVER_TYPE {
+		if let Decidable::Known(TypeId::NEVER_TYPE) = thrown_type {
 			crate::utilities::notify!("warning");
 		}
 
@@ -63,12 +72,17 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 		// Important that this is declared in the same one as the block
 		let constraint = if let Some((clause, ty_annotation)) = exception_variable {
+			crate::utilities::notify!("{:?}", thrown_type);
+
 			let catch_variable_type = if let Some(ty_annotation) = ty_annotation {
 				let catch_type_id = A::synthesise_type_annotation(
 					ty_annotation,
 					&mut catch_block_environment,
 					checking_data,
 				);
+				let thrown_type = match thrown_type {
+					Decidable::Known(ty) | Decidable::Unknown(ty) => ty,
+				};
 				check_catch_type(
 					ty_annotation,
 					catch_type_id,
@@ -82,11 +96,12 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			};
 
 			// TODO only conditional
-			let throw_variable_type = checking_data.types.register_type(Type::RootPolyType(
-				crate::types::PolyNature::CatchVariable(
-					catch_variable_type.unwrap_or(TypeId::ANY_TYPE),
-				),
-			));
+			let throw_variable_type = match thrown_type {
+				Decidable::Known(ty) => ty,
+				Decidable::Unknown(like) => checking_data.types.register_type(Type::RootPolyType(
+					crate::types::PolyNature::CatchVariable(catch_variable_type.unwrap_or(like)),
+				)),
+			};
 
 			let arguments = VariableRegisterArguments {
 				// TODO catch variable constant option
@@ -107,7 +122,7 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			None
 		};
 
-		A::synthesise_block(&catch_block, &mut catch_block_environment, checking_data);
+		A::synthesise_block(catch_block, &mut catch_block_environment, checking_data);
 
 		let mut catch_events = catch_block_environment.info.events;
 

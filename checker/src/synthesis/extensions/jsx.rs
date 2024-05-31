@@ -6,6 +6,7 @@ use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
 
 use crate::{
 	context::invocation::CheckThings,
+	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
@@ -229,9 +230,18 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		&mut check_things,
 		&mut checking_data.types,
 	) {
-		Ok(res) => res.returned_type,
-		Err(_) => {
-			todo!("JSX Calling error")
+		Ok(res) => crate::types::calling::application_result_to_return_type(
+			res.result,
+			environment,
+			&mut checking_data.types,
+		),
+		Err(error) => {
+			error.errors.into_iter().for_each(|error| {
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::JSXCallingError(error));
+			});
+			error.returned_type
 		}
 	}
 

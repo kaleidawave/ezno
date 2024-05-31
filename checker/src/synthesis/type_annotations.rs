@@ -77,10 +77,9 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
 		TypeAnnotation::Name(name, pos) => match name.as_str() {
-			"any" => TypeId::ANY_TYPE,
+			// TODO differentiate? see #137
+			"any" | "unknown" => TypeId::ANY_TYPE,
 			"never" => TypeId::NEVER_TYPE,
-			// TODO differentiate?
-			"unknown" => TypeId::ANY_TYPE,
 			"this" => todo!(), // environment.get_value_of_this(&mut checking_data.types),
 			"self" => TypeId::ANY_INFERRED_FREE_THIS,
 			name => {
@@ -421,6 +420,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				annotation.get_position().with_source(environment.get_source()),
 			);
 
+			// TODO this should be anonymous object type
 			obj.build_object()
 		}
 		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
@@ -439,15 +439,14 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::TypeOf(item, position) => {
 			let reference = synthesise_access_to_reference(item, environment, checking_data);
-			match environment.get_reference_constraint(reference) {
-				Some(value) => value,
-				None => {
-					checking_data.raise_unimplemented_error(
-						"throw error for annotation",
-						position.with_source(environment.get_source()),
-					);
-					TypeId::ERROR_TYPE
-				}
+			if let Some(value) = environment.get_reference_constraint(reference) {
+				value
+			} else {
+				checking_data.raise_unimplemented_error(
+					"throw error for annotation",
+					position.with_source(environment.get_source()),
+				);
+				TypeId::ERROR_TYPE
 			}
 		}
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {

@@ -1,19 +1,17 @@
-use std::{
-	borrow::Cow,
-	collections::{hash_map::Entry, HashMap},
-};
+use std::{borrow::Cow, collections::hash_map::Entry};
 
 use source_map::{SourceId, SpanWithSource};
 
 use crate::{
 	context::{
 		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
-		get_on_ctx, get_value_of_variable,
+		get_on_ctx,
 		information::{merge_info, LocalInformation},
 		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, FinalEvent, RootReference},
+	features::create_closed_over_references,
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
@@ -26,8 +24,8 @@ use crate::{
 		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
 		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, ReadFromFS, Scope,
-	Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, Map, ReadFromFS,
+	Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -105,6 +103,7 @@ pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplement
 	checking_data.types.new_function_type(function_type)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	variable_id: crate::VariableId,
 	overloaded: bool,
@@ -454,7 +453,7 @@ impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
 }
 
 #[derive(Clone, Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub struct ClosedOverVariables(pub(crate) HashMap<VariableId, TypeId>);
+pub struct ClosedOverVariables(pub(crate) Map<VariableId, TypeId>);
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
 pub struct ClosureId(pub(crate) u32);
@@ -858,50 +857,16 @@ where
 
 		function.body(&mut function_environment, checking_data);
 
-		let iter = function_environment.context_type.closed_over_references.iter();
-
-		let closes_over: HashMap<_, _> = iter
-			.map(|reference| {
-				match reference {
-					RootReference::Variable(on) => {
-						let get_value_of_variable = get_value_of_variable(
-							&function_environment,
-							*on,
-							None::<
-								&crate::types::generics::substitution::SubstitutionArguments<
-									'static,
-								>,
-							>,
-						);
-						let ty = if let Some(value) = get_value_of_variable {
-							value
-						} else {
-							// TODO think we are getting rid of this
-							// let name = function_environment.get_variable_name(*on);
-							// checking_data.diagnostics_container.add_error(
-							// 	TypeCheckError::UnreachableVariableClosedOver(
-							// 		name.to_string(),
-							// 		function
-							// 			.get_position()
-							// 			.with_source(base_environment.get_source()),
-							// 	),
-							// );
-
-							// `TypeId::ERROR_TYPE` is also okay
-							TypeId::NEVER_TYPE
-						};
-						(*on, ty)
-					}
-					// TODO unsure
-					RootReference::This => todo!(),
-				}
-			})
-			.collect();
-
-		let closes_over = ClosedOverVariables(closes_over);
+		let closes_over = create_closed_over_references(
+			&function_environment.context_type.closed_over_references,
+			&function_environment,
+		);
 
 		let Syntax {
-			free_variables, closed_over_references: function_closes_over, requests, ..
+			free_variables,
+			closed_over_references: function_closes_over,
+			requests: _,
+			..
 		} = function_environment.context_type;
 
 		let returned = if function.has_body() {
@@ -937,21 +902,21 @@ where
 		let variable_names = function_environment.variable_names;
 
 		{
-			let mut _back_requests = HashMap::<(), ()>::new();
-			for (on, to) in requests.into_iter() {
-				let type_to_alter = checking_data.types.get_type_by_id(on);
-				if let Type::RootPolyType(
-					PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
-				) = type_to_alter
-				{
-					checking_data.types.set_inferred_constraint(on, to);
-				} else if let Type::Constructor(constructor) = type_to_alter {
-					crate::utilities::notify!("TODO constructor {:?}", constructor);
-				} else {
-					crate::utilities::notify!("TODO {:?}", type_to_alter);
-				}
-				crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
-			}
+			// let mut _back_requests = HashMap::<(), ()>::new();
+			// for (on, to) in requests {
+			// 	let type_to_alter = checking_data.types.get_type_by_id(on);
+			// 	if let Type::RootPolyType(
+			// 		PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
+			// 	) = type_to_alter
+			// 	{
+			// 		checking_data.types.set_inferred_constraint(on, to);
+			// 	} else if let Type::Constructor(constructor) = type_to_alter {
+			// 		crate::utilities::notify!("TODO constructor {:?}", constructor);
+			// 	} else {
+			// 		crate::utilities::notify!("TODO {:?}", type_to_alter);
+			// 	}
+			// 	crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
+			// }
 		}
 
 		// TODO this fixes properties being lost during printing and subtyping

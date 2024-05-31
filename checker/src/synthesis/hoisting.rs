@@ -522,23 +522,29 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				});
 
 				if function.on.name.declare {
-					let (overloaded, _last) = if !function.on.has_body() {
-						// let mut overloaded = false;
-						let mut last = function;
-						while let Some(StatementOrDeclaration::Declaration(
-							Declaration::Function(next_function),
-						)) = third_stage_items.next_if(|item| {
-							matches!(
-								item,
-								StatementOrDeclaration::Declaration(Declaration::Function(next_function))
-								if next_function.on.get_name() == function.on.get_name()
-							)
-						}) {
-							last = next_function;
-						}
-						(true, last)
-					} else {
+					let (overloaded, _last) = if function.on.has_body() {
 						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
+							if let StatementOrDeclaration::Declaration(Declaration::Function(
+								function,
+							)) = f
+							{
+								function.on.has_body()
+							} else {
+								false
+							}
+						});
+
+						if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+							function,
+						))) = last
+						{
+							(true, function)
+						} else {
+							// Some error with non-overloads
+							continue;
+						}
 					};
 
 					synthesise_declare_statement_function(
@@ -553,15 +559,17 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data,
 					);
 				} else {
-					let (overloaded, _last) = if !function.on.has_body() {
-						let last = third_stage_items.find_map(|f| {
+					let (overloaded, _last) = if function.on.has_body() {
+						(false, function)
+					} else {
+						let last = third_stage_items.find(|f| {
 							if let StatementOrDeclaration::Declaration(Declaration::Function(
 								function,
 							)) = f
 							{
-								function.on.has_body().then_some(f)
+								function.on.has_body()
 							} else {
-								None
+								false
 							}
 						});
 
@@ -574,8 +582,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							// Some error with non-overloads
 							continue;
 						}
-					} else {
-						(false, function)
 					};
 
 					synthesise_hoisted_statement_function(

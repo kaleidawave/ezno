@@ -1,5 +1,4 @@
-use source_map::{BaseSpan, Nullable, SourceId, SpanWithSource};
-use std::vec;
+use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
 	context::{
@@ -62,7 +61,7 @@ struct FunctionLike {
 pub struct CallingOutput {
 	pub called: Option<FunctionId>,
 	/// TODO should this be
-	pub returned_type: TypeId,
+	pub result: Option<ApplicationResult>,
 	/// TODO is InfoDiagnostic the best type here?
 	pub warnings: Vec<InfoDiagnostic>,
 	pub special: Option<SpecialExpressions>,
@@ -155,7 +154,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 
 			match result {
 				Ok(CallingOutput {
-					returned_type,
+					result,
 					warnings,
 					called: _,
 					special,
@@ -178,6 +177,12 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 					// 	// 	position: call_site,
 					// 	// });
 					// }
+
+					let returned_type = application_result_to_return_type(
+						result,
+						environment,
+						&mut checking_data.types,
+					);
 
 					(returned_type, special)
 				}
@@ -212,6 +217,37 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			));
 			(TypeId::ERROR_TYPE, None)
 		}
+	}
+}
+
+/// TODO also return partial result
+pub fn application_result_to_return_type(
+	result: Option<ApplicationResult>,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> TypeId {
+	if let Some(result) = result {
+		match result {
+			// TODO
+			ApplicationResult::Return { returned, position: _ } => returned,
+			ApplicationResult::Throw { thrown, position } => {
+				environment.throw_value(thrown, position);
+				TypeId::NEVER_TYPE
+			}
+			ApplicationResult::Yield {} => todo!("Create generator object"),
+			ApplicationResult::Or { on, truthy_result, otherwise_result } => {
+				let truthy_result =
+					application_result_to_return_type(Some(*truthy_result), environment, types);
+				let otherwise_result =
+					application_result_to_return_type(Some(*otherwise_result), environment, types);
+				types.new_conditional_type(on, truthy_result, otherwise_result)
+			}
+			ApplicationResult::Continue { .. } | ApplicationResult::Break { .. } => {
+				unreachable!("returning conditional or break (carry failed)")
+			}
+		}
+	} else {
+		TypeId::UNDEFINED_TYPE
 	}
 }
 
@@ -314,7 +350,7 @@ fn get_logical_callable_from_type(
 			});
 
 			if let Some(antecedent) = and_then {
-				Ok(Logical::Implies { on: Box::new(result), antecedent: antecedent.into() })
+				Ok(Logical::Implies { on: Box::new(result), antecedent })
 			} else {
 				Ok(result)
 			}
@@ -437,26 +473,34 @@ fn call_logical<E: CallCheckingBehavior>(
 					// }
 
 					let with = arguments.clone().into_boxed_slice();
-					let reflects_dependency = if is_type_constant(result.returned_type, types) {
+					let result_as_type = application_result_to_return_type(
+						result.result.take(),
+						top_environment,
+						types,
+					);
+					let reflects_dependency = if is_type_constant(result_as_type, types) {
 						None
 					} else {
 						let id = types.register_type(Type::Constructor(Constructor::Image {
 							on,
 							// TODO...
 							with: with.clone(),
-							result: result.returned_type,
+							result: result_as_type,
 						}));
-
-						result.returned_type = id;
 
 						Some(id)
 					};
+
+					result.result = Some(ApplicationResult::Return {
+						returned: reflects_dependency.unwrap_or(result_as_type),
+						position: call_site,
+					});
 
 					let possibly_thrown = if let FunctionEffect::InputOutput { may_throw, .. }
 					| FunctionEffect::Constant { may_throw, .. } = &function_type.effect
 					{
 						crate::utilities::notify!("Here");
-						may_throw.clone()
+						*may_throw
 					} else {
 						None
 					};
@@ -478,54 +522,57 @@ fn call_logical<E: CallCheckingBehavior>(
 			}
 		}
 		Logical::Or { condition: based_on, left, right } => {
-			match (*left, *right) {
-				(Ok(left), Ok(right)) => {
-					let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
+			if let (Ok(_left), Ok(_right)) = (*left, *right) {
+				// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
+				// 	top_environment,
+				// 	types,
+				// 	based_on,
+				// 	(left, right),
+				// 	(explicit_type_arguments, structure_generics, arguments),
+				// 	|top_environment, types, target, func, data| {
+				// 		let (explicit_type_arguments, structure_generics, arguments) = data;
+				// 		let result = call_logical(
+				// 			func,
+				// 			called_with_new,
+				// 			call_site,
+				// 			explicit_type_arguments.clone(),
+				// 			structure_generics.clone(),
+				// 			arguments.clone(),
+				// 			top_environment,
+				// 			types,
+				// 			target,
+				// 		);
+
+				// 		result.map(|result| {
+				// 			application_result_to_return_type(
+				// 				result.result,
+				// 				top_environment,
+				// 				types,
+				// 			)
+				// 		})
+				// 	},
+				// );
+				// let truthy_result = truthy_result?;
+				// let otherwise_result = otherwise_result?;
+				// // truthy_result.warnings.append(&mut otherwise_result.warnings);
+				// let _result =
+				// 	types.new_conditional_type(based_on, truthy_result, otherwise_result);
+
+				todo!();
+			// TODO combine information (merge)
+			// Ok(CallingOutput { called: None, result: Soe, warnings: (), special: (), result_was_const_computation: () })
+			} else {
+				// TODO inference and errors
+				let err = FunctionCallingError::NotCallable {
+					calling: TypeStringRepresentation::from_type_id(
+						based_on,
 						top_environment,
 						types,
-						based_on,
-						(left, right),
-						(explicit_type_arguments, structure_generics, arguments),
-						|top_environment, types, target, func, data| {
-							let (explicit_type_arguments, structure_generics, arguments) = data;
-							call_logical(
-								func,
-								called_with_new,
-								call_site,
-								explicit_type_arguments.clone(),
-								structure_generics.clone(),
-								arguments.clone(),
-								top_environment,
-								types,
-								target,
-							)
-						},
-					);
-					let mut truthy_result = truthy_result?;
-					let mut otherwise_result = otherwise_result?;
-					truthy_result.warnings.append(&mut otherwise_result.warnings);
-					truthy_result.returned_type = types.new_conditional_type(
-						based_on,
-						truthy_result.returned_type,
-						otherwise_result.returned_type,
-					);
-
-					// TODO combine information (merge)
-					Ok(truthy_result)
-				}
-				_ => {
-					// TODO inference and errors
-					let err = FunctionCallingError::NotCallable {
-						calling: TypeStringRepresentation::from_type_id(
-							based_on,
-							top_environment,
-							types,
-							false,
-						),
-						call_site,
-					};
-					Err(BadCallOutput { returned_type: TypeId::ERROR_TYPE, errors: vec![err] })
-				}
+						false,
+					),
+					call_site,
+				};
+				Err(BadCallOutput { returned_type: TypeId::ERROR_TYPE, errors: vec![err] })
 			}
 		}
 		Logical::Implies { on, antecedent } => call_logical(
@@ -677,9 +724,11 @@ impl FunctionType {
 		// TODO check that parameters vary
 		if behavior.in_recursive_cycle(self.id) {
 			crate::utilities::notify!("Encountered recursion");
+			crate::utilities::notify!("TODO should be BadCallOutput");
+			let returned = types.new_error_type(self.return_type);
 			return Ok(CallingOutput {
 				called: Some(self.id),
-				returned_type: TypeId::ERROR_TYPE,
+				result: Some(ApplicationResult::Return { returned, position: call_site }),
 				warnings: Vec::new(),
 				// TODO ?
 				special: None,
@@ -738,7 +787,10 @@ impl FunctionType {
 							None
 						};
 						return Ok(CallingOutput {
-							returned_type: value,
+							result: Some(ApplicationResult::Return {
+								returned: value,
+								position: call_site,
+							}),
 							warnings: Default::default(),
 							called: None,
 							result_was_const_computation: !is_independent,
@@ -748,7 +800,7 @@ impl FunctionType {
 					Ok(ConstantOutput::Diagnostic(diagnostic)) => {
 						// crate::utilities::notify!("Here, constant output");
 						return Ok(CallingOutput {
-							returned_type: TypeId::UNDEFINED_TYPE,
+							result: None,
 							warnings: vec![InfoDiagnostic(diagnostic)],
 							called: None,
 							result_was_const_computation: !is_independent,
@@ -789,10 +841,10 @@ impl FunctionType {
 					crate::utilities::notify!("Calling function with dependent argument failed");
 				}
 
-				let result = call?.returned_type;
+				let result = call?.result;
 
 				return Ok(CallingOutput {
-					returned_type: result,
+					result,
 					warnings: Default::default(),
 					called: None,
 					special: None,
@@ -848,33 +900,27 @@ impl FunctionType {
 			});
 		}
 
-		let returned_type = if let FunctionEffect::SideEffects {
+		let result = if let FunctionEffect::SideEffects {
 			events,
 			closed_over_variables,
 			free_variables: _,
 		} = &self.effect
 		{
-			let result = behavior.new_function_context(self.id, |target| {
-				crate::utilities::notify!("events: {:?}", events);
+			behavior.new_function_context(self.id, |target| {
+				// crate::utilities::notify!("events: {:?}", events);
 				{
 					let substitution: &mut SubstitutionArguments = &mut type_arguments;
 					let errors: &mut ErrorsAndInfo = &mut errors;
-					let this_closure_id = if closed_over_variables.0.is_empty() {
-						None
-					} else {
-						crate::utilities::notify!("Here");
+					if !closed_over_variables.0.is_empty() {
 						let closure_id = types.new_closure_id();
 						substitution.closures.push(closure_id);
-						Some(closure_id)
-					};
 
-					if let Some(closure_id) = this_closure_id {
 						crate::utilities::notify!("Setting closure variables");
 
 						// Set closed over values
 						// TODO `this`
-						for (variable, value) in &closed_over_variables.0 {
-							let value = substitute(*value, &substitution, environment, types);
+						for (variable, value) in closed_over_variables.0.iter() {
+							let value = substitute(*value, substitution, environment, types);
 							environment
 								.info
 								.closure_current_values
@@ -893,7 +939,7 @@ impl FunctionType {
 
 					// Apply events here
 					let result = apply_events(
-						&events,
+						events,
 						this_value,
 						substitution,
 						environment,
@@ -921,48 +967,14 @@ impl FunctionType {
 
 					result
 				}
-			});
-
-			// TODO top environment?
-			if let Some(result) = result {
-				crate::utilities::notify!("returned {:?}", result);
-				fn application_result_to_return(
-					result: ApplicationResult,
-					types: &mut TypeStore,
-				) -> TypeId {
-					match result {
-						// TODO
-						ApplicationResult::Return { returned, position: _ } => returned,
-						ApplicationResult::Throw { thrown: _, position: _ } => TypeId::NEVER_TYPE,
-						ApplicationResult::Yield {} => todo!("Create object"),
-						ApplicationResult::Or { on, truthy_result, otherwise_result } => {
-							let truthy_result = truthy_result
-								.map_or(TypeId::UNDEFINED_TYPE, |result| {
-									application_result_to_return(*result, types)
-								});
-							let otherwise_result = otherwise_result
-								.map_or(TypeId::UNDEFINED_TYPE, |result| {
-									application_result_to_return(*result, types)
-								});
-							types.new_conditional_type(on, truthy_result, otherwise_result)
-						}
-						ApplicationResult::Continue { .. } | ApplicationResult::Break { .. } => {
-							unreachable!()
-						}
-					}
-				}
-
-				application_result_to_return(result, types)
-			} else {
-				TypeId::UNDEFINED_TYPE
-			}
+			})
 		} else {
 			if let Some(_parent_arguments) = parent_arguments {
 				crate::utilities::notify!("TODO");
 			}
 			if let Some(ref call_site_type_arguments) = call_site_type_arguments {
 				for (k, (v, _)) in call_site_type_arguments.iter() {
-					type_arguments.arguments.insert(*k, *v)
+					type_arguments.arguments.insert(*k, *v);
 				}
 			}
 
@@ -971,9 +983,8 @@ impl FunctionType {
 				&type_arguments.arguments
 			);
 
-			let return_type = substitute(self.return_type, &type_arguments, environment, types);
-
-			return_type
+			let returned = substitute(self.return_type, &type_arguments, environment, types);
+			Some(ApplicationResult::Return { returned, position: call_site })
 		};
 
 		if !errors.errors.is_empty() {
@@ -1002,7 +1013,10 @@ impl FunctionType {
 
 					// TODO if return type is primitive (or replace primitives with new_instance_type)
 					return Ok(CallingOutput {
-						returned_type: *new_instance_type,
+						result: Some(ApplicationResult::Return {
+							returned: *new_instance_type,
+							position: call_site,
+						}),
 						warnings: errors.warnings,
 						called: Some(self.id),
 						special: None,
@@ -1013,7 +1027,7 @@ impl FunctionType {
 		}
 
 		Ok(CallingOutput {
-			returned_type,
+			result,
 			warnings: errors.warnings,
 			// unconditional_exception,
 			called: Some(self.id),
@@ -1022,7 +1036,7 @@ impl FunctionType {
 		})
 	}
 
-	/// TODO set not using type_arguments
+	/// TODO set not using `type_arguments`
 	#[allow(clippy::too_many_arguments)]
 	fn set_this_for_behavior<E: CallCheckingBehavior>(
 		&self,
@@ -1504,6 +1518,7 @@ fn check_parameter_type(
 	result
 }
 
+#[allow(clippy::type_complexity)]
 fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTImplementation>(
 	callable: &Logical<FunctionLike>,
 	arguments: &[UnsynthesisedArgument<A>],
@@ -1585,9 +1600,12 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							.find_map(|env| env.prototypes.get(on))
 							.unwrap();
 
-						crate::utilities::notify!("Hopefully here {:?}", prototype);
+						crate::utilities::notify!(
+							"Here calculating lookup argument {:?}",
+							prototype
+						);
 						let map =
-							checking_data.types.lookup_generic_map.get(&prototype).unwrap().clone();
+							checking_data.types.lookup_generic_map.get(prototype).unwrap().clone();
 
 						for (under, lookup) in map.iter() {
 							let entries = lookup.calculate_lookup(environment, *on);
@@ -1600,11 +1618,10 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							arguments.insert(*under, (ty, BaseSpan::NULL));
 						}
 					}
-					Some(GenericArguments::Closure(..)) => {}
 					Some(GenericArguments::ExplicitRestrictions(ers)) => {
-						arguments.extend(ers.iter().map(|(k, v)| (*k, *v)))
+						arguments.extend(ers.iter().map(|(k, v)| (*k, *v)));
 					}
-					None => {}
+					Some(GenericArguments::Closure(..)) | None => {}
 				}
 
 				Some(arguments)
@@ -1671,7 +1688,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			on,
 			arguments,
 			// TODO chain
-			(call_site_type_arguments, Some(&antecedent)),
+			(call_site_type_arguments, Some(antecedent)),
 			environment,
 			checking_data,
 		),

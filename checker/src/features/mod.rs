@@ -22,7 +22,9 @@ pub mod variables;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::information::InformationChain,
+	context::{get_value_of_variable, information::InformationChain, ClosedOverReferencesInScope},
+	events::RootReference,
+	features::functions::ClosedOverVariables,
 	types::{get_constraint, PartiallyAppliedGenerics, TypeStore},
 	CheckingData, Environment, Type, TypeId,
 };
@@ -82,7 +84,7 @@ fn extends_prototype(lhs: TypeId, rhs: TypeId, information: &impl InformationCha
 			};
 		}
 	}
-	return false;
+	false
 }
 
 pub fn instance_of_operator(
@@ -194,4 +196,47 @@ fn get_promise_value(constraint: TypeId, types: &TypeStore) -> Option<TypeId> {
 	} else {
 		None
 	}
+}
+
+/// For function synthesis and
+pub(crate) fn create_closed_over_references(
+	closed_over_references: &ClosedOverReferencesInScope,
+	current_environment: &Environment,
+) -> ClosedOverVariables {
+	ClosedOverVariables(
+		closed_over_references
+			.iter()
+			.map(|reference| {
+				match reference {
+					RootReference::Variable(on) => {
+						let c = None::<
+							&crate::types::generics::substitution::SubstitutionArguments<'static>,
+						>;
+						let get_value_of_variable =
+							get_value_of_variable(current_environment, *on, c);
+						let ty = if let Some(value) = get_value_of_variable {
+							value
+						} else {
+							// TODO think we are getting rid of this
+							// let name = function_environment.get_variable_name(*on);
+							// checking_data.diagnostics_container.add_error(
+							// 	TypeCheckError::UnreachableVariableClosedOver(
+							// 		name.to_string(),
+							// 		function
+							// 			.get_position()
+							// 			.with_source(base_environment.get_source()),
+							// 	),
+							// );
+
+							// `TypeId::ERROR_TYPE` is also okay
+							TypeId::NEVER_TYPE
+						};
+						(*on, ty)
+					}
+					// TODO unsure
+					RootReference::This => todo!(),
+				}
+			})
+			.collect(),
+	)
 }

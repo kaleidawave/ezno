@@ -1057,7 +1057,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 									key.clone(),
 									PropertyValue::Value(value),
 									position,
-								)
+								);
 							}
 						} else {
 							crate::utilities::notify!("Here");
@@ -1070,7 +1070,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 										on: *condition,
 										truthy: Box::new(value),
 									},
-									member_position.clone(),
+									member_position,
 								);
 							}
 							let negation =
@@ -1085,8 +1085,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 										on: negation,
 										truthy: Box::new(value),
 									},
-									member_position.clone(),
-								)
+									member_position,
+								);
 							}
 						}
 					}

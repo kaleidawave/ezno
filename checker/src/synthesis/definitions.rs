@@ -148,7 +148,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					TypeCheckWarning::InvalidOrUnimplementedDefinitionFileItem(
 						item.get_position().with_source(environment.get_source()),
 					),
-				)
+				);
 			}
 		}
 	}
@@ -231,7 +231,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 						{
 							Some(
 								environment
-									.get_type_from_name(&identifier)
+									.get_type_from_name(identifier)
 									.expect("could not find thrown type"),
 							)
 						} else {

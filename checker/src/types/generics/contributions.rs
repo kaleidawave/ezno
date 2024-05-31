@@ -18,7 +18,7 @@ pub type Depth = u8;
 #[derive(Debug, Clone)]
 pub enum CovariantContribution {
 	TypeId(TypeId),
-	SliceOf(Box<Self>, (u32, u32)),
+	// SliceOf(Box<Self>, (u32, u32)),
 	PropertyKey(PropertyKey<'static>),
 }
 
@@ -26,11 +26,11 @@ impl CovariantContribution {
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
 			CovariantContribution::TypeId(ty) => ty,
-			CovariantContribution::SliceOf(inner, _) => {
-				let inner = inner.into_type(types);
-				// TODO slice
-				inner
-			}
+			// CovariantContribution::SliceOf(inner, _) => {
+			// 	let inner = inner.into_type(types);
+			// 	crate::utilities::notify!("TODO as slice");
+			// 	inner
+			// }
 			CovariantContribution::PropertyKey(p) => p.into_type(types),
 		}
 	}
@@ -67,6 +67,7 @@ pub struct Contributions<'a> {
 
 impl<'a> Contributions<'a> {
 	/// TODO return position?
+	#[must_use]
 	pub fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {
 		let cstr = self.call_site_type_arguments.and_then(|ta| ta.get(&under).map(|(c, _pos)| *c));
 		if let cstr @ Some(_) = cstr {

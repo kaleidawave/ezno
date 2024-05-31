@@ -52,8 +52,6 @@ impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
 	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
-	/// Don't know what to do here
-	pub const HMM_ERROR: TypeId = TypeId::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
@@ -179,7 +177,7 @@ pub enum PolyNature {
 	RecursiveFunction(FunctionId, TypeId),
 	/// ```ts
 	/// } catch (error) {
-	/// 		 ^^^^^
+	///          ^^^^^
 	/// }
 	/// ```
 	CatchVariable(TypeId),
@@ -209,6 +207,7 @@ impl PolyNature {
 		)
 	}
 
+	#[must_use]
 	pub fn try_get_constraint(&self) -> Option<TypeId> {
 		match self {
 			PolyNature::Parameter { fixed_to: to }
@@ -559,11 +558,10 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
 		Type::RootPolyType(nature) => Some(
 			*(match nature {
-				PolyNature::Parameter { fixed_to } => fixed_to,
-				PolyNature::MappedGeneric { name: _, eager_fixed } => eager_fixed,
-				PolyNature::FunctionGeneric { name: _, eager_fixed } => eager_fixed,
-				PolyNature::Error(ty) => ty,
-				PolyNature::Open(ty) => ty,
+				PolyNature::Parameter { fixed_to }
+				| PolyNature::MappedGeneric { name: _, eager_fixed: fixed_to }
+				| PolyNature::FunctionGeneric { name: _, eager_fixed: fixed_to } => fixed_to,
+				PolyNature::Error(ty) | PolyNature::Open(ty) => ty,
 				PolyNature::FreeVariable { reference: _, based_on } => based_on,
 				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
 				PolyNature::StructureGeneric { constrained, .. } => {

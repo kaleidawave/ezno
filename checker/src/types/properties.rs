@@ -13,9 +13,10 @@ use crate::{
 	},
 	subtyping::{State, SubTypeResult},
 	types::{
-		calling::FunctionCallingError, generics::generic_type_arguments::GenericArguments,
-		get_constraint, substitute, FunctionType, GenericChain, GenericChainLink, ObjectNature,
-		PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
+		calling::{self, FunctionCallingError},
+		generics::generic_type_arguments::GenericArguments,
+		get_constraint, get_larger_type, substitute, FunctionType, GenericChain, GenericChainLink,
+		ObjectNature, PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
 	},
 	Constant, Environment, LocalInformation, TypeId,
 };
@@ -34,7 +35,7 @@ pub enum PropertyKind {
 }
 
 /// TODO explain usage
-/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_properties
+/// For [private properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_properties)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, binary_serialize_derive::BinarySerializable)]
 pub enum Publicity {
 	Private,
@@ -126,6 +127,7 @@ impl<'a> PropertyKey<'a> {
 	}
 
 	/// For quick things
+	#[must_use]
 	pub fn is_equal_to(&self, key: &str) -> bool {
 		match self {
 			PropertyKey::String(s) => s == key,
@@ -334,7 +336,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							}
 							Type::FunctionReference(_) => {
 								let ty = if let Some(arguments) =
-									generics.and_then(|chain| chain.get_value()).cloned()
+									generics.and_then(super::GenericChainLink::get_value).cloned()
 								{
 									// assert!(chain.parent.is_none());
 									types.register_type(Type::PartiallyAppliedGenerics(
@@ -409,7 +411,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							true,
 						);
 						match call {
-							Ok(res) => Some((PropertyKind::Getter, res.returned_type)),
+							Ok(res) => {
+								let application_result = calling::application_result_to_return_type(
+									res.result,
+									environment,
+									types,
+								);
+								Some((PropertyKind::Getter, application_result))
+							}
 							Err(_) => {
 								todo!()
 							}
@@ -421,7 +430,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						if let PropertyValue::Value(value) = *truthy {
 							let value =
 								types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE);
-							return Some((PropertyKind::Direct, value));
+							Some((PropertyKind::Direct, value))
 						} else {
 							todo!()
 						}
@@ -456,8 +465,11 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 				.ok()
 				.flatten(),
 			Logical::Implies { on: log_on, antecedent } => {
-				let generics =
-					GenericChainLink::append(TypeId::HMM_ERROR, generics.as_ref(), &antecedent);
+				let generics = GenericChainLink::append(
+					TypeId::UNIMPLEMENTED_ERROR_TYPE,
+					generics.as_ref(),
+					&antecedent,
+				);
 				resolve_property_on_logical(
 					*log_on,
 					on,
@@ -1002,7 +1014,8 @@ pub(crate) fn get_property_unbound(
 					(publicity, under, under_type_arguments);
 
 				// TODO conditional for conditional?
-				let mut acc = ();
+				// let _acc = ();
+
 				// 'rev' is important
 				for (publicity, key, value) in on_properties.iter().rev() {
 					if *publicity != required_publicity {
@@ -1184,7 +1197,7 @@ pub(crate) fn get_property_unbound(
 				let on_type_arguments = crate::types::GenericChainLink::append(
 					on,
 					on_type_arguments.as_ref(),
-					&arguments,
+					arguments,
 				);
 
 				crate::utilities::notify!("{:?}", on_type_arguments);
@@ -1195,10 +1208,7 @@ pub(crate) fn get_property_unbound(
 					info_chain,
 					types,
 				)
-				.map(|fact| Logical::Implies {
-					on: Box::new(fact),
-					antecedent: arguments.clone().into(),
-				})
+				.map(|fact| Logical::Implies { on: Box::new(fact), antecedent: arguments.clone() })
 			})
 		}
 		Type::Constructor(crate::types::Constructor::ConditionalResult {
@@ -1391,17 +1401,16 @@ pub(crate) fn get_property_unbound(
 
 /// Does lhs equal want
 /// Aka is `want_key in { [lhs_key]: ... }`
-#[allow(clippy::if_same_then_else)]
-fn key_matches(
+pub(crate) fn key_matches(
 	(key, key_type_arguments): (&PropertyKey<'_>, GenericChain),
 	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
 	types: &TypeStore,
 ) -> bool {
-	crate::utilities::notify!(
-		"Have {:?} want {:?}",
-		(key, key_type_arguments),
-		(want, want_type_arguments)
-	);
+	// crate::utilities::notify!(
+	// 	"Key equality: have {:?} want {:?}",
+	// 	(key, key_type_arguments),
+	// 	(want, want_type_arguments)
+	// );
 
 	match (key, want) {
 		(PropertyKey::String(left), PropertyKey::String(right)) => left == right,
@@ -1417,7 +1426,7 @@ fn key_matches(
 				);
 			}
 			let want_ty = types.get_type_by_id(*want);
-			crate::utilities::notify!("key_ty={:?}", want_ty);
+			crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
 			if let Type::Or(lhs, rhs) = want_ty {
 				key_matches(
 					(key, key_type_arguments),
@@ -1468,24 +1477,41 @@ fn key_matches(
 				);
 			}
 
+			if let Type::Or(l, r) = key_type {
+				return key_matches(
+					(&PropertyKey::Type(*l), key_type_arguments),
+					(want, want_type_arguments),
+					types,
+				) || key_matches(
+					(&PropertyKey::Type(*r), key_type_arguments),
+					(want, want_type_arguments),
+					types,
+				);
+			}
+
 			// TODO WIP
 			if key == TypeId::ANY_TYPE {
 				true
 			} else if let Type::Constant(Constant::String(ks)) = key_type {
 				ks == s
-			} else if key == TypeId::BOOLEAN_TYPE && (s == "true" || s == "false") {
-				true
-			} else if key == TypeId::NUMBER_TYPE && s.parse::<usize>().is_ok() {
-				true
-			} else if key == TypeId::STRING_TYPE && s.parse::<usize>().is_err() {
-				true
+			} else if key == TypeId::BOOLEAN_TYPE {
+				s == "true" || s == "false"
+			} else if key == TypeId::NUMBER_TYPE {
+				s.parse::<usize>().is_ok()
+			} else if key == TypeId::STRING_TYPE {
+				s.parse::<usize>().is_err()
 			} else {
 				false
 			}
 		}
 		(PropertyKey::Type(left), PropertyKey::Type(right)) => {
+			crate::utilities::notify!(
+				"{:?} {:?}",
+				types.get_type_by_id(*left),
+				types.get_type_by_id(*right)
+			);
 			// TODO subtyping
-			left == right
+			*left == get_larger_type(*right, types)
 		}
 	}
 }
@@ -1536,6 +1562,6 @@ pub fn get_properties_on_single_type(
 		| Type::Constant(_)
 		| Type::AliasTo { .. }
 		| Type::FunctionReference(_)
-		| Type::And(_, _)) => panic!("Cannot get all properties on {:?}", t),
+		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
 	}
 }

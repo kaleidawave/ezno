@@ -45,13 +45,15 @@ impl<'a> SubstitutionArguments<'a> {
 		self.arguments.insert(ty, value);
 	}
 
+	#[must_use]
 	pub fn get_argument(&self, id: TypeId) -> Option<TypeId> {
 		self.arguments
 			.get(&id)
-			.cloned()
+			.copied()
 			.or_else(|| self.parent.and_then(|parent| parent.get_argument(id)))
 	}
 
+	#[must_use]
 	pub(crate) fn new_arguments_for_use_in_loop() -> SubstitutionArguments<'static> {
 		SubstitutionArguments {
 			parent: None,
@@ -181,7 +183,7 @@ pub(crate) fn substitute(
 			types.new_or_type(lhs, rhs)
 		}
 		Type::RootPolyType(nature) => {
-			if let PolyNature::Open(_) = nature {
+			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
 			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
 				nature
@@ -548,7 +550,7 @@ fn compute_extends_rule(
 			others: SubTypingOptions::default(),
 		};
 		let result =
-			crate::subtyping::type_is_subtype(extends, item, &mut state, &environment, types);
+			crate::subtyping::type_is_subtype(extends, item, &mut state, environment, types);
 
 		if result.is_subtype() {
 			// Add infer types
