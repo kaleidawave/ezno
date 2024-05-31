@@ -1,0 +1,49 @@
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: 'Inter', sans-serif;
+    padding: 48px;
+    display: flex;
+    flex-direction: column;
+    /* This should be 100vh, but I don't know CSS layouts */
+    min-height: 70vh;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+main {
+    flex-grow: 1;
+}
+
+.diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-left: 26px;
+    font-family: monospace;
+    font-size: 16px;
+}
+
+a {
+    color: rgb(255, 217, 80);
+}
+
+a:visited {
+    color: coral;
+}
+
+hr {
+    margin: 40px 0;
+}
+
+@media (max-width: 700px) {
+    header {
+        flex-direction: column;
+    }
+}
