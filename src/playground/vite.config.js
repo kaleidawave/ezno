@@ -5,7 +5,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["ezno"]
   },
-  base: "/playground",
+  base: "/ezno/playground",
   build: {
     outDir: "dist/playground"
   },
