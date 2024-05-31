@@ -7,7 +7,7 @@ body {
     display: flex;
     flex-direction: column;
     /* This should be 100vh, but I don't know CSS layouts */
-    min-height: 90vh;
+    min-height: 70vh;
 }
 
 header {
@@ -40,4 +40,10 @@ a:visited {
 
 hr {
     margin: 40px 0;
+}
+
+@media (max-width: 700px) {
+    header {
+        flex-direction: column;
+    }
 }

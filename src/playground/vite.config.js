@@ -5,5 +5,12 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["ezno"]
   },
+  base: "/playground",
+  build: {
+    outDir: "dist/playground"
+  },
+  server: {
+    fs: { strict: false }
+  },
   // assetsInclude: ["./node_modules/ezno/dist/shared/*.wasm"]
 })

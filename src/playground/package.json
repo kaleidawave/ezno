@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^5.0.8"
+    "vite": "^5.2.12"
   },
   "dependencies": {
     "@codemirror/commands": "^6.3.3",
@@ -20,7 +20,7 @@
     "@codemirror/view": "^6.23.0",
     "@lezer/highlight": "^1.2.0",
     "@lezer/javascript": "^1.4.13",
-    "ezno": "^0.0.19",
+    "ezno": "=0.0.21",
     "lz-string": "^1.5.0"
   }
 }

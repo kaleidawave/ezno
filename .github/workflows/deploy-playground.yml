@@ -8,18 +8,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    - uses: actions/setup-node@v3
+    - uses: actions/setup-node@v4
       with:
         node-version: 18
 
-    - run: npm run build
+    - name: build
+      run: |
+        npm i
+        npm run build
       working-directory: src/playground
 
     - name: Deploy to GitHub Pages
       if: success()
-      uses: crazy-max/ghaction-github-pages@v2
+      uses: crazy-max/ghaction-github-pages@v4
       with:
         target_branch: gh-pages
         build_dir: src/playground/dist
