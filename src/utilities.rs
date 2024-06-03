@@ -26,16 +26,15 @@ pub(crate) fn print_info() {
 	{
 		const SPONSORS_URL: &str = "https://github.com/sponsors/kaleidawave";
 
-		print_to_cli(format_args!("With thanks to:"));
+		print_to_cli_with_break_after(format_args!(
+			"With thanks to all supporters of the project including:"
+		));
 		print_to_cli(format_args!(
 			"  Contributors (join them @ https://github.com/kaleidawave/ezno/issues):"
 		));
 		wrap_with_ident(contributors);
 		print_to_cli(format_args!("  Sponsors (join them @ {SPONSORS_URL}):"));
 		wrap_with_ident(sponsors);
-		print_to_cli_with_break_after(format_args!(
-			"  and all the believers in me and the project ✨"
-		));
 	}
 }
 
@@ -46,12 +45,16 @@ fn wrap_with_ident(input: &str) {
 	for part in input.split(',') {
 		buf.push_str(part);
 		buf.push_str(", ");
-		if buf.len() > 30 {
+		if buf.len() > 40 {
 			print_to_cli(format_args!("{INDENT}{buf}"));
 			buf.clear();
 		}
 	}
-	print_to_cli_with_break_after(format_args!("{INDENT}{buf}"));
+	if !buf.is_empty() {
+		print_to_cli_with_break_after(format_args!("{INDENT}{buf}"));
+	} else {
+		print_to_cli(format_args!("\n"))
+	}
 }
 
 /// Adds and extra new line afterwards

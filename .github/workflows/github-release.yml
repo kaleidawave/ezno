@@ -61,18 +61,18 @@ jobs:
                 edges {
                   node {
                     sponsor {
-                      name
+                      name, login
                     }
                   }
                 }
               }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name) | join(",")')
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",") | join(",")')
           
           echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
 
           CONTRIBUTORS=$(
-            gh pr list --search "-author:@me" --state merged --json author | jq 'map(.author.name) | unique | join(",")' --raw-output
+            gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
           )
 
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT

@@ -95,7 +95,7 @@ pub(crate) struct BuildArguments {
 	/// enable non standard library
 	#[argh(switch)]
 	pub non_standard_library: bool,
-	/// enable optimising transforms (warning can break code)
+	/// enable optimising transforms (warning can currently break code)
 	#[argh(switch)]
 	pub optimise: bool,
 
@@ -241,16 +241,23 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 
 			// TODO
-			let default_builders = EznoParsePostCheckVisitors {
-				expression_visitors_mut: vec![Box::new(
-					crate::transformers::optimisations::ExpressionOptimiser,
-				)],
+			let mut default_builders = EznoParsePostCheckVisitors {
+				expression_visitors_mut: vec![],
 				statement_visitors_mut: vec![Box::new(
 					crate::transformers::optimisations::StatementOptimiser,
 				)],
 				variable_visitors_mut: Default::default(),
 				block_visitors_mut: Default::default(),
 			};
+
+			if build_config.optimise {
+				default_builders
+					.expression_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
+				default_builders
+					.statement_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
+			}
 
 			let input_paths = vec![build_config.input];
 
@@ -301,8 +308,11 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			);
 			match res {
 				Ok(module) => {
-					let options =
-						ToStringOptions { trailing_semicolon: true, ..Default::default() };
+					let options = ToStringOptions {
+						trailing_semicolon: true,
+						include_type_annotations: true,
+						..Default::default()
+					};
 					let _ = fs::write(path.clone(), module.to_string(&options));
 					print_to_cli(format_args!("Formatted {} 🎉", path.display()));
 					ExitCode::SUCCESS
