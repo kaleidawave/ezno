@@ -8,6 +8,7 @@ use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
 	derive_ASTNode,
 	tokens::token_as_identifier,
+	ParseError, ParseErrors,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -19,7 +20,7 @@ use super::{
 	TSXKeyword, TSXToken, Token, TokenReader,
 };
 use crate::errors::parse_lexing_error;
-pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementinitialiser};
+pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
 pub use try_catch_statement::TryCatchStatement;
@@ -362,10 +363,19 @@ impl ASTNode for VarVariableStatement {
 				break;
 			}
 		}
-		Ok(VarVariableStatement {
-			position: start.union(declarations.last().unwrap().get_position()),
-			declarations,
-		})
+
+		let position = if let Some(last) = declarations.last() {
+			start.union(last.get_position())
+		} else {
+			let position = start.with_length(3);
+			if options.partial_syntax {
+				position
+			} else {
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			}
+		};
+
+		Ok(VarVariableStatement { position, declarations })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

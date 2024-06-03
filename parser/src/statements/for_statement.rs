@@ -68,7 +68,7 @@ impl ASTNode for ForLoopStatement {
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
-pub enum ForLoopStatementinitialiser {
+pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
 	Expression(MultipleExpression),
@@ -92,7 +92,7 @@ pub enum ForLoopCondition {
 		position: Span,
 	},
 	Statements {
-		initialiser: Option<ForLoopStatementinitialiser>,
+		initialiser: Option<ForLoopStatementInitialiser>,
 		condition: Option<MultipleExpression>,
 		afterthought: Option<MultipleExpression>,
 		position: Span,
@@ -165,26 +165,26 @@ impl ASTNode for ForLoopCondition {
 						peek
 					{
 						let declaration = VariableDeclaration::from_reader(reader, state, options)?;
-						Some(ForLoopStatementinitialiser::VariableDeclaration(declaration))
+						Some(ForLoopStatementInitialiser::VariableDeclaration(declaration))
 					} else if let Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) = peek {
 						let stmt = VarVariableStatement::from_reader(reader, state, options)?;
-						Some(ForLoopStatementinitialiser::VarStatement(stmt))
+						Some(ForLoopStatementInitialiser::VarStatement(stmt))
 					} else if let Some(Token(TSXToken::SemiColon, _)) = peek {
 						None
 					} else {
 						let expr = MultipleExpression::from_reader(reader, state, options)?;
-						Some(ForLoopStatementinitialiser::Expression(expr))
+						Some(ForLoopStatementInitialiser::Expression(expr))
 					};
 
 				let semi_colon_one = reader.expect_next(TSXToken::SemiColon)?;
 				let start = initialiser.as_ref().map_or(semi_colon_one, |init| match init {
-					ForLoopStatementinitialiser::VariableDeclaration(item) => {
+					ForLoopStatementInitialiser::VariableDeclaration(item) => {
 						item.get_position().get_start()
 					}
-					ForLoopStatementinitialiser::VarStatement(item) => {
+					ForLoopStatementInitialiser::VarStatement(item) => {
 						item.get_position().get_start()
 					}
-					ForLoopStatementinitialiser::Expression(item) => {
+					ForLoopStatementInitialiser::Expression(item) => {
 						item.get_position().get_start()
 					}
 				});
@@ -314,19 +314,19 @@ impl ASTNode for ForLoopCondition {
 }
 
 fn initialiser_to_string<T: source_map::ToString>(
-	initialiser: &ForLoopStatementinitialiser,
+	initialiser: &ForLoopStatementInitialiser,
 	buf: &mut T,
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
 	match initialiser {
-		ForLoopStatementinitialiser::VariableDeclaration(stmt) => {
+		ForLoopStatementInitialiser::VariableDeclaration(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
-		ForLoopStatementinitialiser::Expression(expr) => {
+		ForLoopStatementInitialiser::Expression(expr) => {
 			expr.to_string_from_buffer(buf, options, local);
 		}
-		ForLoopStatementinitialiser::VarStatement(stmt) => {
+		ForLoopStatementInitialiser::VarStatement(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
 	}

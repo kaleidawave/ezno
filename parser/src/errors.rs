@@ -32,84 +32,7 @@ pub enum ParseErrors<'a> {
 	NonStandardSyntaxUsedWithoutEnabled,
 	ExpectRule,
 	InvalidRegexFlag,
-}
-
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub enum LexingErrors {
-	SecondDecimalPoint,
-	NumberLiteralCannotHaveDecimalPoint,
-	NumberLiteralBaseSpecifierMustPrecededWithZero,
-	InvalidCharacterInJSXTag(char),
-	UnbalancedJSXClosingTags,
-	ExpectedClosingAngleAtEndOfSelfClosingTag,
-	InvalidCharacterInAttributeKey(char),
-	UnexpectedCharacter(derive_finite_automaton::InvalidCharacter),
-	EmptyAttributeName,
-	ExpectedJSXEndTag,
-	NewLineInStringLiteral,
-	ExpectedEndToMultilineComment,
-	ExpectedEndToStringLiteral,
-	UnexpectedEndToNumberLiteral,
-	InvalidNumeralItemBecauseOfLiteralKind,
-	ExpectedEndToRegexLiteral,
-	ExpectedEndToJSXLiteral,
-	ExpectedEndToTemplateLiteral,
-	InvalidExponentUsage,
-	InvalidUnderscore,
-	CannotLoadLargeFile(usize),
-	ExpectedDashInComment,
-}
-
-impl Display for LexingErrors {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			LexingErrors::SecondDecimalPoint => {
-				f.write_str("Second decimal point found in number literal")
-			}
-			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
-				f.write_str("Number literal with specified base cannot have decimal point")
-			}
-			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
-				f.write_str("Number literal base character must be proceeded with a zero")
-			}
-			LexingErrors::InvalidCharacterInJSXTag(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX tag")
-			}
-			LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag => {
-				f.write_str("Expected closing angle at end of self closing JSX tag")
-			}
-			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX attribute name")
-			}
-			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
-			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
-			LexingErrors::NewLineInStringLiteral => {
-				f.write_str("String literals cannot contain new lines")
-			}
-			LexingErrors::ExpectedEndToMultilineComment => {
-				f.write_str("Unclosed multiline comment")
-			}
-			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
-			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
-			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
-			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
-			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
-			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
-			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
-			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
-			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
-			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
-				f.write_str("Invalid item in binary, hex or octal literal")
-			}
-			LexingErrors::CannotLoadLargeFile(size) => {
-				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
-			}
-			LexingErrors::ExpectedDashInComment => {
-				f.write_str("JSX comments must have two dashes after `<!` start")
-			}
-		}
-	}
+	ExpectedDeclaration,
 }
 
 impl<'a> Display for ParseErrors<'a> {
@@ -202,6 +125,87 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::InvalidRegexFlag => {
 				write!(f, "Regexp flags must be one of 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
+			}
+			ParseErrors::ExpectedDeclaration => {
+				write!(f, "Expected identifier after variable declaration keyword")
+			}
+		}
+	}
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub enum LexingErrors {
+	SecondDecimalPoint,
+	NumberLiteralCannotHaveDecimalPoint,
+	NumberLiteralBaseSpecifierMustPrecededWithZero,
+	InvalidCharacterInJSXTag(char),
+	UnbalancedJSXClosingTags,
+	ExpectedClosingAngleAtEndOfSelfClosingTag,
+	InvalidCharacterInAttributeKey(char),
+	UnexpectedCharacter(derive_finite_automaton::InvalidCharacter),
+	EmptyAttributeName,
+	ExpectedJSXEndTag,
+	NewLineInStringLiteral,
+	ExpectedEndToMultilineComment,
+	ExpectedEndToStringLiteral,
+	UnexpectedEndToNumberLiteral,
+	InvalidNumeralItemBecauseOfLiteralKind,
+	ExpectedEndToRegexLiteral,
+	ExpectedEndToJSXLiteral,
+	ExpectedEndToTemplateLiteral,
+	InvalidExponentUsage,
+	InvalidUnderscore,
+	CannotLoadLargeFile(usize),
+	ExpectedDashInComment,
+}
+
+impl Display for LexingErrors {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			LexingErrors::SecondDecimalPoint => {
+				f.write_str("Second decimal point found in number literal")
+			}
+			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
+				f.write_str("Number literal with specified base cannot have decimal point")
+			}
+			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
+				f.write_str("Number literal base character must be proceeded with a zero")
+			}
+			LexingErrors::InvalidCharacterInJSXTag(chr) => {
+				write!(f, "Invalid character {chr:?} in JSX tag")
+			}
+			LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag => {
+				f.write_str("Expected closing angle at end of self closing JSX tag")
+			}
+			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
+				write!(f, "Invalid character {chr:?} in JSX attribute name")
+			}
+			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
+			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
+			LexingErrors::NewLineInStringLiteral => {
+				f.write_str("String literals cannot contain new lines")
+			}
+			LexingErrors::ExpectedEndToMultilineComment => {
+				f.write_str("Unclosed multiline comment")
+			}
+			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
+			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
+			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
+			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
+			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
+			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
+			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
+			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
+			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
+			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
+				f.write_str("Invalid item in binary, hex or octal literal")
+			}
+			LexingErrors::CannotLoadLargeFile(size) => {
+				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
+			}
+			LexingErrors::ExpectedDashInComment => {
+				f.write_str("JSX comments must have two dashes after `<!` start")
 			}
 		}
 	}
