@@ -37,6 +37,11 @@ pub struct TypeCheckOptions {
 
 	/// Can be used for linting
 	pub record_all_assignments_and_reads: bool,
+
+	/// Technically the `i` in `for (let i = 0; i < ...)` can be reassigned to `any` type. But this behavior isn't great
+	/// and adds work for the inference engine. So this instead picks a basic type instead. This will
+	/// raise errors in valid javascript
+	pub infer_sensible_constraints_in_for_loops: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -52,6 +57,7 @@ impl Default for TypeCheckOptions {
 			store_type_mappings: false,
 			lsp_mode: false,
 			record_all_assignments_and_reads: false,
+			infer_sensible_constraints_in_for_loops: true,
 			// TODO false at some point hopefully!
 			allow_cast: true,
 		}

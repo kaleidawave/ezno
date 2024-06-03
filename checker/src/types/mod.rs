@@ -638,7 +638,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	}
 }
 
-fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
+/// Returns the constraint or base of a constant for a type. Otherwise just return the type
+pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	if let Some(poly_base) = get_constraint(on, types) {
 		poly_base
 	} else if let Type::Constant(cst) = types.get_type_by_id(on) {

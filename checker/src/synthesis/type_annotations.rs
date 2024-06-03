@@ -80,7 +80,13 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// TODO differentiate? see #137
 			"any" | "unknown" => TypeId::ANY_TYPE,
 			"never" => TypeId::NEVER_TYPE,
-			"this" => todo!(), // environment.get_value_of_this(&mut checking_data.types),
+			"this" => {
+				checking_data.raise_unimplemented_error(
+					"this annotation",
+					pos.with_source(environment.get_source()),
+				);
+				TypeId::ERROR_TYPE
+			}
 			"self" => TypeId::ANY_INFERRED_FREE_THIS,
 			name => {
 				if let Some(ty) = environment.get_type_from_name(name) {
@@ -376,7 +382,7 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				&mut environment.info,
 			);
 
-			for (idx, TupleLiteralElement(spread, member, _)) in members.iter().enumerate() {
+			for (idx, TupleLiteralElement(spread, member, pos)) in members.iter().enumerate() {
 				// TODO binder name under data...?
 				match spread {
 					TupleElementKind::Standard => {
@@ -400,10 +406,16 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						);
 					}
 					TupleElementKind::Optional => {
-						todo!()
+						checking_data.raise_unimplemented_error(
+							"optional tuple member",
+							pos.with_source(environment.get_source()),
+						);
 					}
 					TupleElementKind::Spread => {
-						todo!();
+						checking_data.raise_unimplemented_error(
+							"spread tuple member",
+							pos.with_source(environment.get_source()),
+						);
 					}
 				}
 			}

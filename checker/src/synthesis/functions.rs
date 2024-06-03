@@ -534,9 +534,18 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 							parser::PropertyKey::Ident(ident, _, _) => {
 								buf.push_str(ident);
 							}
-							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),
-							parser::PropertyKey::NumberLiteral(_, _) => todo!(),
-							parser::PropertyKey::Computed(_, _) => todo!(),
+							parser::PropertyKey::StringLiteral(s, _, _) => {
+								buf.push('"');
+								buf.push_str(s);
+								buf.push('"');
+							}
+							parser::PropertyKey::NumberLiteral(n, _) => {
+								buf.push_str(n.clone().as_js_string().as_str());
+							}
+							parser::PropertyKey::Computed(_, _) => {
+								// TODO maybe could do better here?
+								buf.push_str("[...]");
+							}
 						}
 						buf.push_str(": ");
 						buf.push_str(&variable_field_to_string(name.get_ast_ref()));

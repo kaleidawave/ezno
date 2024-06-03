@@ -285,7 +285,14 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 		VariableField::Object(items, _) => {
 			for item in items {
 				match item.get_ast_ref() {
-					ObjectDestructuringField::Spread(_, _) => todo!(),
+					ObjectDestructuringField::Spread(_, pos) => {
+						// TODO collect previous. Then recursive apply stuff
+						checking_data.raise_unimplemented_error(
+							"spread object destructuring",
+							pos.with_source(environment.get_source()),
+						);
+						continue;
+					}
 					ObjectDestructuringField::Name(name, _, default_value, _) => {
 						let position = name.get_position().with_source(environment.get_source());
 						let id = crate::VariableId(environment.get_source(), position.start);

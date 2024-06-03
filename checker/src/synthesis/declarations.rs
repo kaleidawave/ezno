@@ -131,8 +131,12 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			parser::declarations::ExportDeclaration::DefaultFunction { .. } => {
-				todo!()
+			parser::declarations::ExportDeclaration::DefaultFunction { position, .. } => {
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+						position: position.with_source(environment.get_source()),
+					},
+				);
 			}
 		},
 	}

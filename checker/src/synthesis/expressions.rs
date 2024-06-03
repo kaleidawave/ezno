@@ -29,6 +29,7 @@ use crate::{
 	},
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
+		get_larger_type,
 		printing::{print_property_key, print_type},
 		properties::{get_properties_on_single_type, get_property_unbound, PropertyKey},
 		Constructor,
@@ -110,19 +111,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
-				element.0.as_ref().map(|element| match element {
+				element.0.as_ref().and_then(|element| match element {
 					FunctionArgument::Standard(element) => {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
 							synthesise_expression(element, environment, checking_data, expecting);
-						(
-							PropertyKey::from_usize(match idx {
-								Decidable::Known(idx) => *idx,
-								Decidable::Unknown(_) => todo!(),
-							}),
-							expression_type,
-						)
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						Some((property, expression_type))
 					}
 					FunctionArgument::Spread(_expr, position) => {
 						{
@@ -132,15 +137,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							);
 						}
 						crate::utilities::notify!("Skipping spread");
-						(
-							PropertyKey::from_usize(match idx {
-								Decidable::Known(idx) => *idx,
-								Decidable::Unknown(_) => todo!(),
-							}),
-							TypeId::ERROR_TYPE,
-						)
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						Some((property, TypeId::ERROR_TYPE))
 					}
-					FunctionArgument::Comment { .. } => todo!(),
+					FunctionArgument::Comment { .. } => None,
 				})
 			}
 
@@ -302,7 +311,24 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::UnaryOperation { operand, operator, position } => {
 			match operator {
 				UnaryOperator::Plus => {
-					todo!("cast to number")
+					let operand_type = synthesise_expression(
+						operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
+					);
+					return if get_larger_type(operand_type, &checking_data.types)
+						== TypeId::NUMBER_TYPE
+					{
+						// TODO add warning here
+						operand_type
+					} else {
+						checking_data.raise_unimplemented_error(
+							"Unary plus operator",
+							position.with_source(environment.get_source()),
+						);
+						TypeId::ERROR_TYPE
+					};
 				}
 				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
 					let operand_type = synthesise_expression(
@@ -468,7 +494,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 
 			match operator {
-				UnaryPrefixAssignmentOperator::Invert => todo!(),
+				UnaryPrefixAssignmentOperator::Invert => {
+					checking_data.raise_unimplemented_error(
+						"Invert operator",
+						position.with_source(environment.get_source()),
+					);
+					return TypeId::ERROR_TYPE;
+				}
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
 					return environment.assign_to_assignable_handle_errors(
 						lhs,
@@ -620,15 +652,29 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 						Instance::RValue(result)
 					}
-					SuperReference::PropertyAccess { property: _ } => todo!(),
-					SuperReference::Index { indexer: _ } => todo!(),
+					SuperReference::PropertyAccess { property: _ } => {
+						checking_data.raise_unimplemented_error(
+							"Property access on super",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::ERROR_TYPE;
+					}
+					SuperReference::Index { indexer: _ } => {
+						checking_data.raise_unimplemented_error(
+							"Index on super",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::ERROR_TYPE;
+					}
 				}
 			} else {
 				crate::utilities::notify!("TODO error");
 				Instance::RValue(TypeId::ERROR_TYPE)
 			}
 		}
-		Expression::NewTarget(..) => todo!(),
+		Expression::NewTarget(..) => {
+			return TypeId::NEW_TARGET_ARG;
+		}
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
 			let on = synthesise_expression(function, environment, checking_data, TypeId::ANY_TYPE);
 
@@ -818,10 +864,20 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&mut checking_data.types,
 				))
 			}
-			SpecialOperators::NonNullAssertion(_) => todo!(),
+			SpecialOperators::NonNullAssertion(_) => {
+				checking_data.raise_unimplemented_error(
+					"Non null assertion",
+					position.with_source(environment.get_source()),
+				);
+				return TypeId::ERROR_TYPE;
+			}
 			SpecialOperators::Is { value: _, type_annotation: _ } => {
 				// Special non-standard
-				todo!()
+				checking_data.raise_unimplemented_error(
+					"is expression",
+					position.with_source(environment.get_source()),
+				);
+				return TypeId::ERROR_TYPE;
 			}
 		},
 		Expression::ImportMeta(_) => {
@@ -938,7 +994,9 @@ fn call_function<T: crate::ReadFromFS>(
 					FunctionArgument::Standard(e) => {
 						UnsynthesisedArgument { spread: false, expression: e }
 					}
-					FunctionArgument::Comment { .. } => todo!(),
+					FunctionArgument::Comment { .. } => {
+						todo!("can't get expression")
+					}
 				})
 				.collect::<Vec<_>>()
 		})

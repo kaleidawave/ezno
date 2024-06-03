@@ -482,7 +482,13 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 						let actual = overloads.pop().unwrap();
 						(overloads, actual)
 					} else {
-						todo!("error that missing body")
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+								position: ASTNode::get_position(method)
+									.with_source(environment.get_source()),
+							},
+						);
+						return;
 					}
 				} else {
 					let actual = synthesise_shape(method, environment, checking_data);

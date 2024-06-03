@@ -8,6 +8,7 @@ use parser::{
 
 use crate::{
 	context::{Environment, VariableRegisterArguments},
+	diagnostics::TypeCheckError,
 	features::{
 		functions::{
 			synthesise_declare_statement_function, synthesise_hoisted_statement_function,
@@ -95,7 +96,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									position: *position,
 								}
 							}
-							VariableIdentifier::Marker(_, _) => todo!(),
+							VariableIdentifier::Marker(_, _) => {
+								// TODO I think this is best
+								continue;
+							}
 						},
 					};
 					let default_import = import.default.as_ref().and_then(|default_identifier| {
@@ -126,7 +130,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									Some(VariableIdentifier::Standard(name, position)) => {
 										ImportKind::All { under: name, position: *position }
 									}
-									Some(VariableIdentifier::Marker(_, _)) => todo!(),
+									Some(VariableIdentifier::Marker(_, _)) => {
+										// TODO
+										continue;
+									}
 									None => ImportKind::Everything,
 								};
 
@@ -282,10 +289,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 
 							// Read declarations until
 							while let Some(overload_declaration) = second_items.next_if(|t| {
-								matches!(
-									t, 
-									StatementOrDeclaration::Declaration( parser::Declaration::Function(func)) 
-									if func.on.name.as_option_str().is_some_and(|n| n == name) && !func.on.has_body())
+								matches!( t, StatementOrDeclaration::Declaration( parser::Declaration::Function(func)) if func.on.name.as_option_str().is_some_and(|n| n == name) && !func.on.has_body())
 							}) {
 								let parser::StatementOrDeclaration::Declaration(
 									parser::Declaration::Function(func),
@@ -326,7 +330,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								let actual = overloads.pop().unwrap();
 								(overloads, actual)
 							} else {
-								todo!("error that missing body or not declare")
+								checking_data.diagnostics_container.add_error(
+									TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+										position: func
+											.get_position()
+											.with_source(environment.get_source()),
+									},
+								);
+								continue;
 							}
 						} else {
 							let actual = super::functions::synthesise_shape(
@@ -494,8 +505,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						}
 					}
 					parser::declarations::ExportDeclaration::Default { .. } => {}
-					parser::declarations::ExportDeclaration::DefaultFunction { .. } => {
-						todo!()
+					parser::declarations::ExportDeclaration::DefaultFunction {
+						position, ..
+					} => {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+								position: position.with_source(environment.get_source()),
+							},
+						);
+						continue;
 					}
 				},
 				parser::Declaration::Class(class) => {
@@ -658,7 +676,10 @@ fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<N
 				value: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Marker(_) => todo!(),
+					parser::declarations::ImportExportName::Marker(_) => {
+						// TODO I think okay
+						return None;
+					}
 				},
 				r#as: name,
 				position: *position,
@@ -690,7 +711,9 @@ pub(super) fn export_part_to_name_pair(
 				r#as: match alias {
 					parser::declarations::ImportExportName::Reference(item)
 					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Marker(_) => todo!(),
+					parser::declarations::ImportExportName::Marker(_) => {
+						return None;
+					}
 				},
 				position: *position,
 			})

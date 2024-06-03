@@ -168,8 +168,18 @@ impl crate::ASTImplementation for EznoParser {
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(declaration, environment, checking_data, false);
 			}
-			parser::statements::ForLoopStatementinitialiser::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementinitialiser::Expression(_) => todo!(),
+			parser::statements::ForLoopStatementinitialiser::VarStatement(stmt) => {
+				checking_data.raise_unimplemented_error(
+					"var in for statement initiliser",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			parser::statements::ForLoopStatementinitialiser::Expression(expr) => {
+				checking_data.raise_unimplemented_error(
+					"expression as for statement initiliser",
+					expr.get_position().with_source(environment.get_source()),
+				);
+			}
 		}
 	}
 
@@ -209,7 +219,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		ParserPropertyKey::NumberLiteral(number, _) => {
+		ParserPropertyKey::NumberLiteral(number, pos) => {
 			let result = f64::try_from(number.clone());
 			match result {
 				Ok(v) => {
@@ -223,7 +233,13 @@ pub(super) fn parser_property_key_to_checker_property_key<
 					}
 				}
 				// TODO
-				Err(()) => todo!(),
+				Err(()) => {
+					checking_data.raise_unimplemented_error(
+						"big int as property key",
+						pos.with_source(environment.get_source()),
+					);
+					PropertyKey::Type(TypeId::ERROR_TYPE)
+				}
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

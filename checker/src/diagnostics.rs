@@ -423,6 +423,9 @@ pub(crate) enum TypeCheckError<'a> {
 		base: TypeStringRepresentation,
 		overload: TypeStringRepresentation,
 	},
+	FunctionWithoutBodyNotAllowedHere {
+		position: source_map::BaseSpan<parser::SourceId>,
+	},
 }
 
 impl From<TypeCheckError<'_>> for Diagnostic {
@@ -740,6 +743,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					)],
 					position: overload_position,
 					kind,
+				},
+				TypeCheckError::FunctionWithoutBodyNotAllowedHere { position } => {
+					Diagnostic::Position {
+						reason: "Function without body not allowed here".to_owned(),
+						position,
+						kind,
+					}
 				}
 			}
 	}
