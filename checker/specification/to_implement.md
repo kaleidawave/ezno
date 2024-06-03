@@ -633,44 +633,6 @@ function optionalNumber(n: number | undefined): string {
 
 - Cannot return string, found number | 2
 
-#### Equality
-
-```ts
-declare let a: string;
-if (a === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Condition as a function
-
-```ts
-declare let a: string;
-
-const equalsHi = (p: string) => p === "hi";
-
-if (equalsHi(a)) {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Passed around
-
-```ts
-declare let a: string;
-
-const b = a;
-if (b === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
 ### Mapped types
 
 #### Specialisation
