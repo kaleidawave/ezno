@@ -1593,19 +1593,18 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::FunctionCallingError(
 									FunctionCallingError::ExcessTypeArguments {
-										count: call_site_type_arguments.len(),
+										count: call_site_type_arguments.len()
+											- type_parameters.0.len(),
 									},
 								),
 							);
-							None
-						} else {
-							Some(synthesise_call_site_type_argument_hints(
-								type_parameters,
-								call_site_type_arguments,
-								&checking_data.types,
-								environment,
-							))
 						}
+						Some(synthesise_call_site_type_argument_hints(
+							type_parameters,
+							call_site_type_arguments,
+							&checking_data.types,
+							environment,
+						))
 					}
 
 					_ => None,
