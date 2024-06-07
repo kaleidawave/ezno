@@ -647,6 +647,9 @@ pub enum FunctionCallingError {
 		count: usize,
 		position: SpanWithSource,
 	},
+	ExcessTypeArguments {
+		count: usize,
+	},
 	NotCallable {
 		calling: TypeStringRepresentation,
 		call_site: SpanWithSource,
@@ -1573,17 +1576,39 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			let function = checking_data.types.get_function_from_id(function.function);
 
 			let type_arguments_restrictions =
-				if let (Some(ref type_parameters), Some(call_site_type_arguments)) =
-					(&function.type_parameters, call_site_type_arguments)
-				{
-					Some(synthesise_call_site_type_argument_hints(
-						type_parameters,
-						call_site_type_arguments,
-						&checking_data.types,
-						environment,
-					))
-				} else {
-					None
+				match (&function.type_parameters, call_site_type_arguments) {
+					(None, Some(call_site_type_arguments)) => {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::FunctionCallingError(
+								FunctionCallingError::ExcessTypeArguments {
+									count: call_site_type_arguments.len(),
+								},
+							),
+						);
+
+						None
+					}
+					(Some(ref type_parameters), Some(call_site_type_arguments)) => {
+						if call_site_type_arguments.len() > type_parameters.0.len() {
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::FunctionCallingError(
+									FunctionCallingError::ExcessTypeArguments {
+										count: call_site_type_arguments.len(),
+									},
+								),
+							);
+							None
+						} else {
+							Some(synthesise_call_site_type_argument_hints(
+								type_parameters,
+								call_site_type_arguments,
+								&checking_data.types,
+								environment,
+							))
+						}
+					}
+
+					_ => None,
 				};
 
 			let parameters = function.parameters.clone();

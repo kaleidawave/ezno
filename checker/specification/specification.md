@@ -2749,6 +2749,27 @@ unwrap(16) satisfies 16;
 
 - Expected string, found 5
 
+
+#### Excess generic arguments
+
+```ts
+declare function unwrap<T>(a: T | { item: T }): T;
+
+unwrap<string, number>("something");
+```
+
+- Excess type argument
+
+#### Passing generic type to non-generic function
+
+```ts
+declare function unwrap(a: string | { item: string }): string;
+
+unwrap<string>("something");
+```
+
+- Excess type argument
+
 #### Across alias
 
 ```ts

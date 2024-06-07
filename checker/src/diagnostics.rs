@@ -928,6 +928,11 @@ fn function_calling_error_diagnostic(
 		FunctionCallingError::ExcessArguments { count: _, position } => {
 			Diagnostic::Position { reason: format!("Excess argument{context}"), position, kind }
 		}
+
+		FunctionCallingError::ExcessTypeArguments { .. } => {
+			Diagnostic::Global { reason: format!("Excess type argument{context}"), kind }
+		}
+
 		FunctionCallingError::NotCallable { calling, call_site } => Diagnostic::Position {
 			reason: format!("Cannot call type {calling}{context}"),
 			position: call_site,

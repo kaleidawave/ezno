@@ -877,6 +877,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 							FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
 								todo!()
 							}
+							FunctionCallingError::ExcessTypeArguments { .. } => todo!(),
 							FunctionCallingError::CyclicRecursion(_, _) => todo!(),
 							FunctionCallingError::TDZ { .. } => todo!(),
 							FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
