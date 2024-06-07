@@ -302,7 +302,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.info.object_constraints.insert(ty, parameter_constraint);
+		// environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
@@ -381,14 +381,6 @@ fn synthesise_function_parameters<
 
 			let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-			// TODO parameter_constraint is stateless to reduce redundancy
-			if !matches!(
-				parameter_constraint,
-				TypeId::NUMBER_TYPE | TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE
-			) {
-				environment.info.object_constraints.insert(ty, parameter_constraint);
-			}
-
 			let (optional, variable_ty) = match &parameter.additionally {
 				Some(ParameterData::WithDefaultValue(expression)) => {
 					let out = synthesise_function_default_value(
@@ -457,7 +449,7 @@ fn synthesise_function_parameters<
 
 		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.info.object_constraints.insert(variable_ty, parameter_constraint);
+		// environment.info.object_constraints.insert(variable_ty, parameter_constraint);
 
 		register_variable(
 			&rest_parameter.name,

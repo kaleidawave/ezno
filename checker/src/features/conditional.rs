@@ -44,11 +44,16 @@ where
 		let Context {
 			context_type: Syntax { free_variables, closed_over_references, .. },
 			info,
+			possibly_mutated_objects,
+			possibly_mutated_variables,
 			..
 		} = truthy_environment;
 
 		environment.context_type.free_variables.extend(free_variables);
 		environment.context_type.closed_over_references.extend(closed_over_references);
+
+		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
+		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		(result, info)
 	};
@@ -64,11 +69,16 @@ where
 		let Context {
 			context_type: Syntax { free_variables, closed_over_references, .. },
 			info,
+			possibly_mutated_objects,
+			possibly_mutated_variables,
 			..
 		} = falsy_environment;
 
 		environment.context_type.free_variables.extend(free_variables);
 		environment.context_type.closed_over_references.extend(closed_over_references);
+
+		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
+		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		(result, Some(info))
 	} else {

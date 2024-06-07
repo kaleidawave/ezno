@@ -12,7 +12,7 @@ use crate::{
 	features::{
 		functions::ThisValue,
 		iteration::{self, IterationKind},
-		objects::SpecialObjects,
+		objects::SpecialObject,
 	},
 	subtyping::type_is_subtype,
 	types::{
@@ -28,9 +28,17 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct ErrorsAndInfo {
+pub struct CallingDiagnostics {
 	pub errors: Vec<crate::types::calling::FunctionCallingError>,
-	pub warnings: Vec<crate::types::calling::InfoDiagnostic>,
+	pub warnings: Vec<crate::diagnostics::TypeCheckWarning>,
+	pub info: Vec<crate::diagnostics::InfoDiagnostic>,
+}
+
+pub(crate) struct ApplicationInput {
+	pub(crate) this_value: ThisValue,
+	pub(crate) call_site: SpanWithSource,
+	/// From above, not log
+	pub(crate) max_inline: u16,
 }
 
 /// `type_arguments` are mutable to add new ones during lookup etc
@@ -40,13 +48,12 @@ pub struct ErrorsAndInfo {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_events(
 	events: &[Event],
-	this_value: ThisValue,
+	input: &ApplicationInput,
 	mut type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
-	mut errors: &mut ErrorsAndInfo,
-	call_site: SpanWithSource,
+	mut errors: &mut CallingDiagnostics,
 ) -> Option<ApplicationResult> {
 	let mut trailing = None::<(TypeId, ApplicationResult)>;
 
@@ -73,13 +80,15 @@ pub(crate) fn apply_events(
 												.to_owned(),
 											position: *position,
 										},
-										call_site,
+										call_site: input.call_site,
 									},
 								);
 								TypeId::ERROR_TYPE
 							}
 						}
-						RootReference::This => this_value.get(top_environment, types, *position),
+						RootReference::This => {
+							input.this_value.get(top_environment, types, *position)
+						}
 					};
 					type_arguments.set_during_application(*id, value);
 					// crate::utilities::notify!(
@@ -239,7 +248,7 @@ pub(crate) fn apply_events(
 											property_type: property_constraint,
 											value_type,
 											assignment_position: *position,
-											call_site,
+											call_site: input.call_site,
 										},
 									);
 						} else {
@@ -272,15 +281,16 @@ pub(crate) fn apply_events(
 
 				match timing {
 					CallingTiming::Synchronous => {
+						let input = crate::types::calling::CallingInput {
+							called_with_new: *called_with_new,
+							// TODO:
+							call_site: source_map::Nullable::NULL,
+							max_inline: input.max_inline,
+						};
 						let result = crate::types::calling::call_type(
 							on,
 							with,
-							&crate::types::calling::CallingInput {
-								called_with_new: *called_with_new,
-								call_site_type_arguments: None,
-								// TODO:
-								call_site: source_map::Nullable::NULL,
-							},
+							input,
 							top_environment,
 							target,
 							types,
@@ -376,13 +386,12 @@ pub(crate) fn apply_events(
 							target.new_unconditional_target(|target: &mut InvocationContext| {
 								apply_events(
 									events_to_run,
-									this_value,
+									input,
 									type_arguments,
 									top_environment,
 									target,
 									types,
 									errors,
-									*position,
 								)
 							});
 
@@ -403,20 +412,19 @@ pub(crate) fn apply_events(
 							.evaluate_conditionally(
 								top_environment,
 								types,
-								condition,
+								(condition, *position),
 								(truthy_events_slice, otherwise_events_slice),
 								(type_arguments, errors),
-								|top_environment, types, target, input, data| {
+								|top_environment, types, target, events, data| {
 									let (type_arguments, errors) = data;
 									apply_events(
+										events,
 										input,
-										this_value,
 										type_arguments,
 										top_environment,
 										target,
 										types,
 										errors,
-										*position,
 									)
 								},
 							);
@@ -470,25 +478,27 @@ pub(crate) fn apply_events(
 				// TODO
 				let is_under_dyn = true;
 
-				let new_object_id =
-					match prototype {
-						PrototypeArgument::Yeah(prototype) => {
-							let prototype =
-								substitute(*prototype, type_arguments, top_environment, types);
-							target.get_latest_info(top_environment).new_object(
-								Some(prototype),
-								types,
-								*position,
-								is_under_dyn,
-							)
-						}
-						PrototypeArgument::None => target
-							.get_latest_info(top_environment)
-							.new_object(None, types, *position, is_under_dyn),
-						PrototypeArgument::Function(id) => types.register_type(
-							crate::Type::SpecialObject(SpecialObjects::Function(*id, this_value)),
-						),
-					};
+				let new_object_id = match prototype {
+					PrototypeArgument::Yeah(prototype) => {
+						let prototype =
+							substitute(*prototype, type_arguments, top_environment, types);
+						target.get_latest_info(top_environment).new_object(
+							Some(prototype),
+							types,
+							*position,
+							is_under_dyn,
+						)
+					}
+					PrototypeArgument::None => target.get_latest_info(top_environment).new_object(
+						None,
+						types,
+						*position,
+						is_under_dyn,
+					),
+					PrototypeArgument::Function(id) => types.register_type(
+						crate::Type::SpecialObject(SpecialObject::Function(*id, input.this_value)),
+					),
+				};
 
 				// TODO conditionally if any properties are structurally generic
 				// let new_object_id_with_curried_arguments =
@@ -560,14 +570,13 @@ pub(crate) fn apply_events(
 					iteration::run_iteration_block(
 						kind,
 						events,
+						input,
 						iteration::RunBehavior::Run,
 						type_arguments,
 						top_environment,
 						target,
 						errors,
 						types,
-						// TODO iterator.position
-						call_site,
 					);
 				});
 				// if result.is_some() {
@@ -583,13 +592,12 @@ pub(crate) fn apply_events(
 
 				let inner_result = apply_events(
 					&events[offset..(offset + investigate)],
-					this_value,
+					input,
 					type_arguments,
 					top_environment,
 					target,
 					types,
 					errors,
-					call_site,
 				);
 
 				if let Some(result) = inner_result {
@@ -655,13 +663,12 @@ pub(crate) fn apply_events(
 
 							let result = apply_events(
 								handler,
-								this_value,
+								input,
 								type_arguments,
 								top_environment,
 								target,
 								types,
 								errors,
-								call_site,
 							);
 
 							if result.is_some() {
@@ -702,10 +709,12 @@ pub(crate) fn apply_events(
 								types,
 								false,
 							);
-							errors.errors.push(FunctionCallingError::UnconditionalThrow {
-								value,
-								call_site,
-							});
+							let warning =
+								crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
+									value,
+									call_site: input.call_site,
+								};
+							errors.warnings.push(warning);
 						}
 						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
 					}

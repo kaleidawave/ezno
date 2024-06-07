@@ -5,7 +5,7 @@ use source_map::{Nullable, SpanWithSource};
 use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId, ThisValue},
-		objects::SpecialObjects,
+		objects::SpecialObject,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -82,7 +82,7 @@ pub(crate) fn substitute(
 			id
 		}
 		// Closures for objects
-		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
+		Type::SpecialObject(SpecialObject::ClassConstructor { .. })
 		| Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
 			if arguments.closures.is_empty() {
@@ -114,12 +114,12 @@ pub(crate) fn substitute(
 				}))
 			}
 		}
-		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+		Type::SpecialObject(SpecialObject::Function(f, t)) => {
 			// Substitute the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::SpecialObject(SpecialObjects::Function(
+				types.register_type(Type::SpecialObject(SpecialObject::Function(
 					function_id,
 					passed,
 				)))
@@ -163,11 +163,11 @@ pub(crate) fn substitute(
 			}))
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			SpecialObjects::Promise { .. } => todo!(),
-			SpecialObjects::Generator { .. } => todo!(),
-			SpecialObjects::Proxy { .. } => todo!(),
-			SpecialObjects::RegularExpression(_) => todo!(),
-			SpecialObjects::Import(_) => todo!(),
+			SpecialObject::Promise { .. } => todo!(),
+			SpecialObject::Generator { .. } => todo!(),
+			SpecialObject::Proxy { .. } => todo!(),
+			SpecialObject::RegularExpression(_) => todo!(),
+			SpecialObject::Import(_) => todo!(),
 			_ => unreachable!(),
 		},
 		Type::And(lhs, rhs) => {
@@ -214,6 +214,7 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
+				let operand = substitute(operand, arguments, environment, types);
 				match evaluate_pure_unary_operator(
 					operator, operand, types,
 					// Restrictions should have been made ahead of time

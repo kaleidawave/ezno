@@ -919,21 +919,28 @@ where
 			// }
 		}
 
-		// TODO this fixes properties being lost during printing and subtyping
-		for (on, properties) in info.current_properties {
-			match base_environment.info.current_properties.entry(on) {
-				Entry::Occupied(_occupied) => {}
-				Entry::Vacant(vacant) => {
-					vacant.insert(properties);
+		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
+		{
+			for (k, v) in info.prototypes.iter() {
+				base_environment.info.prototypes.insert(*k, *v);
+			}
+
+			for (on, properties) in info.current_properties {
+				match base_environment.info.current_properties.entry(on) {
+					Entry::Occupied(_occupied) => {}
+					Entry::Vacant(vacant) => {
+						vacant.insert(properties);
+					}
 				}
 			}
-		}
 
-		for (on, properties) in info.closure_current_values {
-			match base_environment.info.closure_current_values.entry(on) {
-				Entry::Occupied(_occupied) => {}
-				Entry::Vacant(vacant) => {
-					vacant.insert(properties);
+			// TODO explain
+			for (on, properties) in info.closure_current_values {
+				match base_environment.info.closure_current_values.entry(on) {
+					Entry::Occupied(_occupied) => {}
+					Entry::Vacant(vacant) => {
+						vacant.insert(properties);
+					}
 				}
 			}
 		}

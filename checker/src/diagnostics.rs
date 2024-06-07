@@ -283,6 +283,7 @@ pub(crate) enum TypeCheckError<'a> {
 	FunctionCallingError(FunctionCallingError),
 	JSXCallingError(FunctionCallingError),
 	TemplateLiteralError(FunctionCallingError),
+	SuperCallError(FunctionCallingError),
 	PropertyDoesNotExist {
 		on: TypeStringRepresentation,
 		property: PropertyRepresentation,
@@ -317,19 +318,6 @@ pub(crate) enum TypeCheckError<'a> {
 		file: &'a str,
 		importing: &'a str,
 		position: SpanWithSource,
-	},
-	InvalidJSXAttribute {
-		attribute_name: String,
-		attribute_type: TypeStringRepresentation,
-		value_type: TypeStringRepresentation,
-		// TODO
-		attribute_type_site: (),
-		value_site: SpanWithSource,
-	},
-	InvalidJSXInterpolatedValue {
-		interpolation_site: SpanWithSource,
-		expected: TypeStringRepresentation,
-		found: TypeStringRepresentation,
 	},
 	/// for the `satisfies` keyword
 	NotSatisfied {
@@ -460,6 +448,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
 				TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
 				TypeCheckError::TemplateLiteralError(error) => function_calling_error_diagnostic(error, kind, " (in template literal)"),
+				TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, " (in super call)"),
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
@@ -507,19 +496,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 							kind,
 						}
 					}
-				},
-				TypeCheckError::InvalidJSXAttribute {
-					attribute_name,
-					attribute_type,
-					value_type,
-					attribute_type_site: _variable_site,
-					value_site,
-				} => Diagnostic::Position {
-					reason: format!(
-						"Type {attribute_name} is not assignable to {value_type} attribute of type {attribute_type}",
-					),
-					position: value_site,
-					kind,
 				},
 				TypeCheckError::ReturnedTypeDoesNotMatch {
 					annotation_position,
@@ -583,11 +559,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				TypeCheckError::InvalidJSXInterpolatedValue {
-					interpolation_site: _,
-					expected: _,
-					found: _,
-				} => todo!(),
 				TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
 					Diagnostic::Position {
 						reason: "Rest parameter annotation should be array type".to_owned(),
@@ -785,6 +756,12 @@ pub enum TypeCheckWarning {
 		position: SpanWithSource,
 	},
 	InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+	/// TODO WIP
+	ConditionalExceptionInvoked {
+		value: TypeStringRepresentation,
+		/// Should be set
+		call_site: SpanWithSource,
+	},
 	Unreachable(SpanWithSource),
 }
 
@@ -849,9 +826,21 @@ impl From<TypeCheckWarning> for Diagnostic {
 			TypeCheckWarning::Unreachable(position) => {
 				Diagnostic::Position { reason: "Unreachable statement".to_owned(), position, kind }
 			}
+			TypeCheckWarning::ConditionalExceptionInvoked { value, call_site } => {
+				Diagnostic::Position {
+					reason: format!("Conditional '{value}' was thrown in function"),
+					position: call_site,
+					kind,
+				}
+			}
 		}
 	}
 }
+
+/// Only for internal things
+///
+/// WIP
+pub struct InfoDiagnostic(pub String, pub SpanWithSource);
 
 #[derive(Debug)]
 pub struct CannotFindTypeError<'a>(pub &'a str);
@@ -992,11 +981,6 @@ fn function_calling_error_diagnostic(
 				format!("Type {value_type} does not meet property constraint {property_type}"),
 				assignment_position,
 			)],
-		},
-		FunctionCallingError::UnconditionalThrow { value, call_site } => Diagnostic::Position {
-			reason: format!("Conditional '{value}' was thrown in function{context}"),
-			position: call_site,
-			kind,
 		},
 		FunctionCallingError::MismatchedThis { call_site, expected, found } => {
 			Diagnostic::Position {

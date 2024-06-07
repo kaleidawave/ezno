@@ -11,7 +11,7 @@ use crate::{
 	events::{Event, FinalEvent},
 	features::{
 		functions::ThisValue,
-		objects::{Proxy, SpecialObjects},
+		objects::{Proxy, SpecialObject},
 	},
 	types::{
 		generics::generic_type_arguments::GenericArguments,
@@ -404,7 +404,7 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 		}
 		Type::FunctionReference(func_id)
-		| Type::SpecialObject(SpecialObjects::Function(func_id, _)) => {
+		| Type::SpecialObject(SpecialObject::Function(func_id, _)) => {
 			let func = types.functions.get(func_id).unwrap();
 			if debug {
 				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
@@ -420,7 +420,7 @@ fn print_type_into_buf<C: InformationChain>(
 				} else {
 					write!(buf, "{:?} ", func.effect).unwrap();
 				}
-				if let Type::SpecialObject(SpecialObjects::Function(_, ThisValue::Passed(p))) =
+				if let Type::SpecialObject(SpecialObject::Function(_, ThisValue::Passed(p))) =
 					r#type
 				{
 					buf.push_str(", this ");
@@ -582,9 +582,9 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			SpecialObjects::Promise { events: () } => todo!(),
-			SpecialObjects::Generator { position: () } => todo!(),
-			SpecialObjects::Proxy(Proxy { handler, over }) => {
+			SpecialObject::Promise { events: () } => todo!(),
+			SpecialObject::Generator { position: () } => todo!(),
+			SpecialObject::Proxy(Proxy { handler, over }) => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
 				print_type_into_buf(*over, buf, cycles, args, types, info, debug);
@@ -592,7 +592,7 @@ fn print_type_into_buf<C: InformationChain>(
 				print_type_into_buf(*handler, buf, cycles, args, types, info, debug);
 				buf.push_str(" ]");
 			}
-			SpecialObjects::Import(exports) => {
+			SpecialObject::Import(exports) => {
 				buf.push_str("{ ");
 				for (not_at_end, (key, (variable, mutability))) in exports.named.iter().nendiate() {
 					buf.push_str(key);
@@ -612,13 +612,13 @@ fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObjects::RegularExpression(exp) => {
+			SpecialObject::RegularExpression(exp) => {
 				buf.push('/');
 				buf.push_str(exp);
 				buf.push('/');
 			}
-			SpecialObjects::Function(..) => unreachable!(),
-			SpecialObjects::ClassConstructor { name, prototype, constructor: _ } => {
+			SpecialObject::Function(..) => unreachable!(),
+			SpecialObject::ClassConstructor { name, prototype, constructor: _ } => {
 				if debug {
 					write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
 				} else {

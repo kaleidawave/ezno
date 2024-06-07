@@ -15,6 +15,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: bool,
+	infer_constraint: bool,
 ) {
 	match declaration {
 		VariableDeclaration::ConstDeclaration { declarations, .. } => {
@@ -24,6 +25,7 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 					environment,
 					checking_data,
 					exported.then_some(VariableMutability::Constant),
+					infer_constraint,
 				);
 			}
 		}
@@ -37,11 +39,13 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 						.map(|(first, _)| *first);
 					VariableMutability::Mutable { reassignment_constraint: restriction }
 				});
+
 				synthesise_variable_declaration_item(
 					variable_declaration,
 					environment,
 					checking_data,
 					exported,
+					infer_constraint,
 				);
 			}
 		}
@@ -55,7 +59,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 ) {
 	match declaration {
 		Declaration::Variable(declaration) => {
-			synthesise_variable_declaration(declaration, environment, checking_data, false);
+			synthesise_variable_declaration(declaration, environment, checking_data, false, false);
 		}
 		Declaration::Class(class) => {
 			synthesise_class_declaration(&class.on, environment, checking_data);
@@ -76,7 +80,13 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 						synthesise_class_declaration(class, environment, checking_data);
 					}
 					parser::declarations::export::Exportable::Variable(variable) => {
-						synthesise_variable_declaration(variable, environment, checking_data, true);
+						synthesise_variable_declaration(
+							variable,
+							environment,
+							checking_data,
+							true,
+							false,
+						);
 					}
 					parser::declarations::export::Exportable::Parts(parts) => {
 						for part in parts {

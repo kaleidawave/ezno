@@ -154,7 +154,7 @@ impl LocalInformation {
 			if let Event::FinalEvent(_) = last {
 				true
 			} else {
-				crate::utilities::notify!("TODO ifs others");
+				// crate::utilities::notify!("TODO ifs others");
 				false
 			}
 		} else {
@@ -170,6 +170,17 @@ pub trait InformationChain {
 impl InformationChain for LocalInformation {
 	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
 		std::iter::once(self)
+	}
+}
+
+pub struct ModuleInformation<'a> {
+	pub top: &'a LocalInformation,
+	pub module: &'a LocalInformation,
+}
+
+impl<'a> InformationChain for ModuleInformation<'a> {
+	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
+		IntoIterator::into_iter([self.top, self.module])
 	}
 }
 

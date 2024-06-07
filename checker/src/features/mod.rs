@@ -29,7 +29,7 @@ use crate::{
 	CheckingData, Environment, Type, TypeId,
 };
 
-use self::objects::SpecialObjects;
+use self::objects::SpecialObject;
 
 /// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
@@ -60,7 +60,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
-		} else if let crate::Type::SpecialObject(SpecialObjects::Function(..)) = ty {
+		} else if let crate::Type::SpecialObject(SpecialObject::Function(..)) = ty {
 			types.new_constant_type(crate::Constant::String("function".to_owned()))
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
 			types.new_constant_type(crate::Constant::String("object".to_owned()))
@@ -98,7 +98,7 @@ pub fn instance_of_operator(
 		todo!()
 	} else {
 		let rhs_prototype =
-			if let Type::SpecialObject(SpecialObjects::ClassConstructor { prototype, .. }) =
+			if let Type::SpecialObject(SpecialObject::ClassConstructor { prototype, .. }) =
 				types.get_type_by_id(rhs)
 			{
 				*prototype

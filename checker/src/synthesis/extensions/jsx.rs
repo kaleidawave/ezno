@@ -233,12 +233,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let calling_input = CallingInput {
 		called_with_new: crate::types::calling::CalledWithNew::None,
 		call_site: position,
-		call_site_type_arguments: None,
+		max_inline: checking_data.options.max_inline_count,
 	};
 	match call_type(
 		jsx_function,
 		args,
-		&calling_input,
+		calling_input,
 		environment,
 		&mut check_things,
 		&mut checking_data.types,

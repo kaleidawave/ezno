@@ -166,7 +166,14 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementinitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
-				synthesise_variable_declaration(declaration, environment, checking_data, false);
+				synthesise_variable_declaration(
+					declaration,
+					environment,
+					checking_data,
+					false,
+					// IMPORTANT!
+					checking_data.options.infer_sensible_constraints_in_for_loops,
+				);
 			}
 			parser::statements::ForLoopStatementinitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
@@ -291,7 +298,7 @@ impl StatementOrExpressionVariable for ExpressionPosition {
 
 /// For the REPL in Ezno's CLI
 pub mod interactive {
-	use std::{collections::HashSet, mem, path::PathBuf};
+	use std::{mem, path::PathBuf};
 
 	use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
@@ -311,7 +318,7 @@ pub mod interactive {
 	impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		pub fn new(
 			resolver: &'a T,
-			type_definition_files: HashSet<PathBuf>,
+			type_definition_files: Vec<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let mut checking_data =

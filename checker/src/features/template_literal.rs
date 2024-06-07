@@ -132,12 +132,12 @@ where
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			call_site: position,
-			call_site_type_arguments: None,
+			max_inline: checking_data.options.max_inline_count
 		};
 		match crate::types::calling::call_type(
 			tag,
 			arguments,
-			&input,
+			input,
 			environment,
 			&mut check_things,
 			&mut checking_data.types,

@@ -4,11 +4,10 @@ use std::collections::HashMap;
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
-	call_type_handle_errors,
-	context::environment::FunctionScope,
+	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
-	types::calling::CallingInput,
+	types::calling::{call_type, CallingInput},
 	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
@@ -30,6 +29,7 @@ pub struct FunctionType {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionEffect {
+	/// Has synthesised events
 	SideEffects {
 		/// Note that a function can still be considered to be 'pure' and have a non-empty vector of events
 		events: Vec<Event>,
@@ -55,6 +55,7 @@ pub enum FunctionEffect {
 		identifier: String,
 		may_throw: Option<TypeId>,
 	},
+	/// Such as a callback
 	Unknown,
 }
 
@@ -114,16 +115,26 @@ impl FunctionType {
 					let input = CallingInput {
 						call_site: BaseSpan::NULL,
 						called_with_new,
-						call_site_type_arguments: None,
+						max_inline: checking_data.options.max_inline_count,
 					};
-					let _ = call_type_handle_errors(
+					let result = call_type(
 						extends,
-						&[],
+						Vec::new(),
 						input,
 						environment,
-						checking_data,
-						TypeId::ANY_TYPE,
+						&mut CheckThings { debug_types: checking_data.options.debug_types },
+						&mut checking_data.types,
 					);
+					match result {
+						Ok(_) => {}
+						Err(error) => {
+							error.errors.into_iter().for_each(|error| {
+								checking_data.diagnostics_container.add_error(
+									crate::diagnostics::TypeCheckError::SuperCallError(error),
+								);
+							});
+						}
+					}
 				}
 
 				crate::types::classes::register_properties_into_environment(

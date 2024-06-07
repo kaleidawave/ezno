@@ -5,14 +5,19 @@ use crate::{
 		information::InformationChain, invocation::CheckThings, CallCheckingBehavior, Environment,
 		Logical, MissingOrToCalculate, PossibleLogical,
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation, TDZ},
-	events::{application::ErrorsAndInfo, apply_events, ApplicationResult, Event, RootReference},
+	diagnostics::{
+		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
+	},
+	events::{
+		application::{ApplicationInput, CallingDiagnostics},
+		apply_events, ApplicationResult, Event, RootReference,
+	},
 	features::{
 		constant_functions::{
 			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
 		},
 		functions::{FunctionBehavior, ThisValue},
-		objects::{ObjectBuilder, SpecialObjects},
+		objects::{ObjectBuilder, SpecialObject},
 	},
 	subtyping::{
 		type_is_subtype, type_is_subtype_with_generics, State, SubTypeResult, SubTypingMode,
@@ -33,11 +38,15 @@ use super::{
 	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 };
 
+/// Other information to do with calling
+#[derive(Clone, Copy)]
 pub struct CallingInput {
 	/// Also depicts what happens with `this`
 	pub called_with_new: CalledWithNew,
-	pub call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
 	pub call_site: SpanWithSource,
+
+	/// An option to invocation
+	pub max_inline: u16,
 }
 
 pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
@@ -62,8 +71,8 @@ pub struct CallingOutput {
 	pub called: Option<FunctionId>,
 	/// TODO should this be
 	pub result: Option<ApplicationResult>,
-	/// TODO is [`InfoDiagnostic`] the best type here?
-	pub warnings: Vec<InfoDiagnostic>,
+	pub warnings: Vec<TypeCheckWarning>,
+	pub info: Vec<InfoDiagnostic>,
 	pub special: Option<SpecialExpressions>,
 	// pub special: Option<SpecialExpressions>,
 	pub result_was_const_computation: bool,
@@ -78,6 +87,7 @@ pub struct BadCallOutput {
 /// Also synthesise arguments in terms of expected types
 pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	ty: TypeId,
+	call_site_type_arguments: Option<Vec<(TypeId, SpanWithSource)>>,
 	arguments: &[UnsynthesisedArgument<A>],
 	input: CallingInput,
 	environment: &mut Environment,
@@ -134,7 +144,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				synthesise_argument_expressions_wrt_parameters(
 					&callable,
 					arguments,
-					(input.call_site_type_arguments, parent_arguments.as_ref()),
+					(call_site_type_arguments, parent_arguments.as_ref()),
 					environment,
 					checking_data,
 				);
@@ -142,11 +152,8 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 			let result = call_logical(
 				callable,
-				input.called_with_new,
-				input.call_site,
-				type_argument_restrictions,
-				parent_arguments,
-				arguments,
+				(arguments, type_argument_restrictions, parent_arguments),
+				input,
 				environment,
 				&mut checking_data.types,
 				&mut check_things,
@@ -156,27 +163,23 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				Ok(CallingOutput {
 					result,
 					warnings,
+					info,
 					called: _,
 					special,
 					result_was_const_computation: _,
 				}) => {
 					for warning in warnings {
+						checking_data.diagnostics_container.add_warning(warning);
+					}
+					for InfoDiagnostic(message, position) in info {
 						checking_data.diagnostics_container.add_info(
 							crate::diagnostics::Diagnostic::Position {
-								reason: warning.0,
-								position: call_site,
+								reason: message,
+								position,
 								kind: crate::diagnostics::DiagnosticKind::Info,
 							},
 						);
 					}
-
-					// if thrown_type != TypeId::NEVER_TYPE {
-					// 	todo!()
-					// 	// environment.context_type.state.append_termination(FinalEvent::Throw {
-					// 	// 	thrown: thrown_type,
-					// 	// 	position: call_site,
-					// 	// });
-					// }
 
 					let returned_type = application_result_to_return_type(
 						result,
@@ -255,7 +258,7 @@ pub fn application_result_to_return_type(
 pub(crate) fn call_type<E: CallCheckingBehavior>(
 	on: TypeId,
 	arguments: Vec<SynthesisedArgument>,
-	input: &CallingInput,
+	input: CallingInput,
 	top_environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
@@ -312,12 +315,12 @@ fn get_logical_callable_from_type(
 			};
 			Ok(Logical::Pure(function))
 		}
-		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+		Type::SpecialObject(SpecialObject::Function(f, t)) => {
 			let this_value = on.unwrap_or(*t);
 			let from = Some(from.unwrap_or(ty));
 			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }))
 		}
-		Type::SpecialObject(SpecialObjects::ClassConstructor { constructor, .. }) => {
+		Type::SpecialObject(SpecialObject::ClassConstructor { constructor, .. }) => {
 			Ok(Logical::Pure(FunctionLike {
 				from,
 				function: *constructor,
@@ -325,7 +328,7 @@ fn get_logical_callable_from_type(
 			}))
 		}
 		Type::SpecialObject(so) => match so {
-			crate::features::objects::SpecialObjects::Proxy { .. } => todo!(),
+			crate::features::objects::SpecialObject::Proxy { .. } => todo!(),
 			_ => Err(MissingOrToCalculate::Missing),
 		},
 		Type::PartiallyAppliedGenerics(generic) => {
@@ -366,7 +369,7 @@ fn get_logical_callable_from_type(
 #[allow(clippy::too_many_arguments)]
 fn try_call_logical<E: CallCheckingBehavior>(
 	callable: Option<Logical<FunctionLike>>,
-	input: &CallingInput,
+	input: CallingInput,
 	arguments: Vec<SynthesisedArgument>,
 	type_argument_restrictions: Option<TypeRestrictions>,
 	top_environment: &mut Environment,
@@ -377,11 +380,8 @@ fn try_call_logical<E: CallCheckingBehavior>(
 	if let Some(logical) = callable {
 		call_logical(
 			logical,
-			input.called_with_new,
-			input.call_site,
-			type_argument_restrictions,
-			None,
-			arguments,
+			(arguments, type_argument_restrictions, None),
+			input,
 			top_environment,
 			types,
 			behavior,
@@ -405,11 +405,12 @@ fn try_call_logical<E: CallCheckingBehavior>(
 #[allow(clippy::too_many_arguments)]
 fn call_logical<E: CallCheckingBehavior>(
 	logical: Logical<FunctionLike>,
-	called_with_new: CalledWithNew,
-	call_site: SpanWithSource,
-	explicit_type_arguments: Option<CallSiteTypeArguments>,
-	structure_generics: Option<GenericArguments>,
-	arguments: Vec<SynthesisedArgument>,
+	(arguments, explicit_type_arguments, structure_generics): (
+		Vec<SynthesisedArgument>,
+		Option<CallSiteTypeArguments>,
+		Option<GenericArguments>,
+	),
+	input: CallingInput,
 	top_environment: &mut Environment,
 	types: &mut TypeStore,
 	behavior: &mut E,
@@ -420,12 +421,8 @@ fn call_logical<E: CallCheckingBehavior>(
 				let function_type = function_type.clone();
 
 				let mut result = function_type.call(
-					called_with_new,
-					function.this_value,
-					call_site,
-					&arguments,
-					explicit_type_arguments,
-					structure_generics,
+					(function.this_value, &arguments, explicit_type_arguments, structure_generics),
+					input,
 					top_environment,
 					behavior,
 					types,
@@ -493,7 +490,7 @@ fn call_logical<E: CallCheckingBehavior>(
 
 					result.result = Some(ApplicationResult::Return {
 						returned: reflects_dependency.unwrap_or(result_as_type),
-						position: call_site,
+						position: input.call_site,
 					});
 
 					let possibly_thrown = if let FunctionEffect::InputOutput { may_throw, .. }
@@ -509,9 +506,9 @@ fn call_logical<E: CallCheckingBehavior>(
 						on,
 						with,
 						timing: crate::events::CallingTiming::Synchronous,
-						called_with_new,
+						called_with_new: input.called_with_new,
 						reflects_dependency,
-						position: call_site,
+						position: input.call_site,
 						possibly_thrown,
 					});
 				}
@@ -570,19 +567,15 @@ fn call_logical<E: CallCheckingBehavior>(
 						types,
 						false,
 					),
-					call_site,
+					call_site: input.call_site,
 				};
 				Err(BadCallOutput { returned_type: TypeId::ERROR_TYPE, errors: vec![err] })
 			}
 		}
 		Logical::Implies { on, antecedent } => call_logical(
 			*on,
-			called_with_new,
-			call_site,
-			explicit_type_arguments,
-			Some(antecedent),
-			// this_value,
-			arguments,
+			(arguments, explicit_type_arguments, Some(antecedent)),
+			input,
 			top_environment,
 			types,
 			behavior,
@@ -616,7 +609,7 @@ fn find_possible_mutations(
 				// All dependent anyway
 				crate::utilities::notify!("TODO if any properties set etc");
 			}
-			Type::SpecialObject(SpecialObjects::Function(_, _)) => {
+			Type::SpecialObject(SpecialObject::Function(_, _)) => {
 				crate::utilities::notify!("TODO record that function could be called");
 			}
 			Type::Object(ObjectNature::RealDeal) => {
@@ -671,12 +664,6 @@ pub enum FunctionCallingError {
 		/// Should be set
 		call_site: SpanWithSource,
 	},
-	/// TODO WIP
-	UnconditionalThrow {
-		value: TypeStringRepresentation,
-		/// Should be set
-		call_site: SpanWithSource,
-	},
 	MismatchedThis {
 		expected: TypeStringRepresentation,
 		found: TypeStringRepresentation,
@@ -688,8 +675,6 @@ pub enum FunctionCallingError {
 		thrown_position: SpanWithSource,
 	},
 }
-
-pub struct InfoDiagnostic(pub String);
 
 #[derive(Debug, Default, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum CalledWithNew {
@@ -706,15 +691,15 @@ pub enum CalledWithNew {
 
 impl FunctionType {
 	/// Calls the function and returns warnings and errors
-	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn call<E: CallCheckingBehavior>(
 		&self,
-		called_with_new: CalledWithNew,
-		this_value: ThisValue,
-		call_site: SpanWithSource,
-		arguments: &[SynthesisedArgument],
-		call_site_type_arguments: Option<CallSiteTypeArguments>,
-		parent_arguments: Option<GenericArguments>,
+		(this_value, arguments, call_site_type_arguments, parent_arguments): (
+			ThisValue,
+			&[SynthesisedArgument],
+			Option<CallSiteTypeArguments>,
+			Option<GenericArguments>,
+		),
+		input: CallingInput,
 		environment: &mut Environment,
 		behavior: &mut E,
 		types: &mut crate::TypeStore,
@@ -728,8 +713,9 @@ impl FunctionType {
 			let returned = types.new_error_type(self.return_type);
 			return Ok(CallingOutput {
 				called: Some(self.id),
-				result: Some(ApplicationResult::Return { returned, position: call_site }),
-				warnings: Vec::new(),
+				result: Some(ApplicationResult::Return { returned, position: input.call_site }),
+				warnings: Default::default(),
+				info: Default::default(),
 				// TODO ?
 				special: None,
 				result_was_const_computation: false,
@@ -775,7 +761,7 @@ impl FunctionType {
 					arguments,
 					types,
 					environment,
-					call_site,
+					input.call_site,
 				);
 
 				match result {
@@ -789,9 +775,10 @@ impl FunctionType {
 						return Ok(CallingOutput {
 							result: Some(ApplicationResult::Return {
 								returned: value,
-								position: call_site,
+								position: input.call_site,
 							}),
 							warnings: Default::default(),
+							info: Default::default(),
 							called: None,
 							result_was_const_computation: !is_independent,
 							special,
@@ -801,15 +788,17 @@ impl FunctionType {
 						// crate::utilities::notify!("Here, constant output");
 						return Ok(CallingOutput {
 							result: None,
-							warnings: vec![InfoDiagnostic(diagnostic)],
+							warnings: Default::default(),
+							info: vec![InfoDiagnostic(diagnostic, input.call_site)],
 							called: None,
 							result_was_const_computation: !is_independent,
-							// TODO!!
+							// WIP!!
 							special: Some(SpecialExpressions::Marker),
 						});
 					}
 					Err(ConstantFunctionError::NoLogicForIdentifier(name)) => {
-						let item = FunctionCallingError::NoLogicForIdentifier(name, call_site);
+						let item =
+							FunctionCallingError::NoLogicForIdentifier(name, input.call_site);
 						return Err(BadCallOutput {
 							returned_type: types.new_error_type(self.return_type),
 							errors: vec![item],
@@ -824,12 +813,8 @@ impl FunctionType {
 			} else if has_dependent_argument {
 				// TODO with cloned!!
 				let call = self.call(
-					called_with_new,
-					this_value,
-					call_site,
-					arguments,
-					call_site_type_arguments,
-					parent_arguments,
+					(this_value, arguments, call_site_type_arguments, parent_arguments),
+					input,
 					environment,
 					behavior,
 					types,
@@ -845,6 +830,7 @@ impl FunctionType {
 
 				return Ok(CallingOutput {
 					result,
+					info: Default::default(),
 					warnings: Default::default(),
 					called: None,
 					special: None,
@@ -854,7 +840,7 @@ impl FunctionType {
 			}
 		}
 
-		let mut errors = ErrorsAndInfo::default();
+		let mut errors = CallingDiagnostics::default();
 
 		let mut type_arguments = SubstitutionArguments {
 			parent: None,
@@ -867,13 +853,13 @@ impl FunctionType {
 		};
 
 		self.set_this_for_behavior(
-			called_with_new,
+			input.called_with_new,
 			this_value,
 			&mut type_arguments.arguments,
 			environment,
 			types,
 			&mut errors,
-			call_site,
+			input.call_site,
 			behavior,
 		);
 
@@ -885,7 +871,7 @@ impl FunctionType {
 			environment,
 			types,
 			&mut errors,
-			call_site,
+			input.call_site,
 			behavior,
 		);
 
@@ -910,7 +896,7 @@ impl FunctionType {
 				// crate::utilities::notify!("events: {:?}", events);
 				{
 					let substitution: &mut SubstitutionArguments = &mut type_arguments;
-					let errors: &mut ErrorsAndInfo = &mut errors;
+					let errors: &mut CallingDiagnostics = &mut errors;
 					if !closed_over_variables.0.is_empty() {
 						let closure_id = types.new_closure_id();
 						substitution.closures.push(closure_id);
@@ -936,17 +922,21 @@ impl FunctionType {
 					}
 
 					let current_errors = errors.errors.len();
+					let current_warnings = errors.warnings.len();
 
 					// Apply events here
 					let result = apply_events(
 						events,
-						this_value,
+						&ApplicationInput {
+							this_value,
+							call_site: input.call_site,
+							max_inline: input.max_inline,
+						},
 						substitution,
 						environment,
 						target,
 						types,
 						errors,
-						call_site,
 					);
 
 					// Adjust call sites. (because they aren't currently passed down)
@@ -955,13 +945,18 @@ impl FunctionType {
 						| FunctionCallingError::SetPropertyConstraint {
 							call_site: ref mut c,
 							..
+						} = d
+						{
+							*c = input.call_site;
 						}
-						| FunctionCallingError::UnconditionalThrow {
+					}
+					for d in &mut errors.warnings[current_warnings..] {
+						if let TypeCheckWarning::ConditionalExceptionInvoked {
 							call_site: ref mut c,
 							..
 						} = d
 						{
-							*c = call_site;
+							*c = input.call_site;
 						}
 					}
 
@@ -984,7 +979,7 @@ impl FunctionType {
 			);
 
 			let returned = substitute(self.return_type, &type_arguments, environment, types);
-			Some(ApplicationResult::Return { returned, position: call_site })
+			Some(ApplicationResult::Return { returned, position: input.call_site })
 		};
 
 		if !errors.errors.is_empty() {
@@ -996,7 +991,7 @@ impl FunctionType {
 		}
 
 		// TODO what does super return?
-		if let CalledWithNew::New { .. } = called_with_new {
+		if let CalledWithNew::New { .. } = input.called_with_new {
 			// TODO ridiculous early return primitive rule
 			match self.behavior {
 				FunctionBehavior::ArrowFunction { is_async: _ } => todo!(),
@@ -1015,9 +1010,10 @@ impl FunctionType {
 					return Ok(CallingOutput {
 						result: Some(ApplicationResult::Return {
 							returned: *new_instance_type,
-							position: call_site,
+							position: input.call_site,
 						}),
 						warnings: errors.warnings,
+						info: errors.info,
 						called: Some(self.id),
 						special: None,
 						result_was_const_computation: false,
@@ -1029,7 +1025,7 @@ impl FunctionType {
 		Ok(CallingOutput {
 			result,
 			warnings: errors.warnings,
-			// unconditional_exception,
+			info: errors.info,
 			called: Some(self.id),
 			special: None,
 			result_was_const_computation: false,
@@ -1045,7 +1041,7 @@ impl FunctionType {
 		type_arguments: &mut crate::Map<TypeId, TypeId>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
-		errors: &mut ErrorsAndInfo,
+		errors: &mut CallingDiagnostics,
 		call_site: SpanWithSource,
 		behavior: &E,
 	) {
@@ -1243,7 +1239,7 @@ impl FunctionType {
 		parent: Option<&GenericArguments>,
 		environment: &mut Environment,
 		types: &mut TypeStore,
-		errors: &mut ErrorsAndInfo,
+		errors: &mut CallingDiagnostics,
 		call_site: SpanWithSource,
 		behavior: &E,
 	) {

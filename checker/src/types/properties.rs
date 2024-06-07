@@ -9,11 +9,11 @@ use crate::{
 	events::Event,
 	features::{
 		functions::{FunctionBehavior, ThisValue},
-		objects::{Proxy, SpecialObjects},
+		objects::{Proxy, SpecialObject},
 	},
 	subtyping::{State, SubTypeResult},
 	types::{
-		calling::{self, FunctionCallingError},
+		calling::{self, CallingInput, FunctionCallingError},
 		generics::generic_type_arguments::GenericArguments,
 		get_constraint, get_larger_type, substitute, FunctionType, GenericChain, GenericChainLink,
 		ObjectNature, PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
@@ -322,14 +322,14 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Value(value) => {
 						let ty = types.get_type_by_id(value);
 						match ty {
-							Type::SpecialObject(SpecialObjects::Function(func, _state)) => {
+							Type::SpecialObject(SpecialObject::Function(func, _state)) => {
 								let this_value = if bind_this {
 									ThisValue::Passed(on)
 								} else {
 									ThisValue::UseParent
 								};
 								let func = types.register_type(Type::SpecialObject(
-									SpecialObjects::Function(*func, this_value),
+									SpecialObject::Function(*func, this_value),
 								));
 
 								Some((PropertyKind::Direct, func))
@@ -373,12 +373,12 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 								arguments,
 							}) => {
 								// TODO not great... need less overhead
-								if let Type::SpecialObject(SpecialObjects::Function(f, _p)) =
+								if let Type::SpecialObject(SpecialObject::Function(f, _p)) =
 									types.get_type_by_id(*sg_on)
 								{
 									let arguments = arguments.clone();
 									let f = types.register_type(Type::SpecialObject(
-										SpecialObjects::Function(*f, ThisValue::Passed(on)),
+										SpecialObject::Function(*f, ThisValue::Passed(on)),
 									));
 									let ty = types.register_type(Type::PartiallyAppliedGenerics(
 										PartiallyAppliedGenerics { on: f, arguments },
@@ -397,14 +397,22 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						}
 					}
 					PropertyValue::Getter(getter) => {
+						let input = CallingInput {
+							called_with_new: CalledWithNew::None,
+							// TODO
+							call_site: source_map::Nullable::NULL,
+							// TODO
+							max_inline: 0,
+						};
 						let call = getter.call(
-							CalledWithNew::None,
-							ThisValue::Passed(on),
-							source_map::Nullable::NULL,
-							&[],
-							None,
-							// TODO structure generics
-							None,
+							(
+								ThisValue::Passed(on),
+								&[],
+								None,
+								// TODO structure generics
+								None,
+							),
+							input,
 							environment,
 							behavior,
 							types,
@@ -565,7 +573,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							}))
 						}
 						// Don't need to set this here. It is picked up from `on` during lookup
-						Type::SpecialObject(SpecialObjects::Function(..))
+						Type::SpecialObject(SpecialObject::Function(..))
 						| Type::FunctionReference(..)
 						| Type::AliasTo { .. }
 						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
@@ -713,7 +721,18 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 	// }
 
 	// if E::CHECK_PARAMETERS {
-	if let Some(constraint) = environment.get_object_constraint(on) {
+	let constraint = environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
+	if let Some(constraint) = constraint {
+		// crate::utilities::notify!("constraint={:?}", types.get_type_by_id(constraint));
+
+		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::READONLY_RESTRICTION,
+			..
+		}) = types.get_type_by_id(constraint)
+		{
+			return Err(SetPropertyError::NotWriteable);
+		}
+
 		let property_constraint =
 			get_property_unbound((constraint, None), (publicity, under, None), environment, types);
 
@@ -739,20 +758,6 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 			// TODO property value is readonly
 			// TODO state is writeable etc?
 			// TODO document difference with context.writeable
-			match &property_constraint {
-				Logical::Pure(PropertyValue::Value(p)) => {
-					if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-						on: TypeId::READONLY_RESTRICTION,
-						..
-					}) = types.get_type_by_id(*p)
-					{
-						return Err(SetPropertyError::NotWriteable);
-					}
-				}
-				Logical::Pure(_) => {}
-				Logical::Or { .. } => todo!(),
-				Logical::Implies { .. } => todo!(),
-			}
 
 			match new {
 				PropertyValue::Value(value) => {
@@ -880,9 +885,6 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 							FunctionCallingError::CyclicRecursion(_, _) => todo!(),
 							FunctionCallingError::TDZ { .. } => todo!(),
 							FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
-							FunctionCallingError::UnconditionalThrow { .. } => {
-								todo!()
-							}
 							FunctionCallingError::MismatchedThis { .. } => {
 								todo!()
 							}
@@ -969,13 +971,19 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				},
 			};
 			let result = setter.call(
-				CalledWithNew::None,
-				ThisValue::Passed(on),
-				setter_position,
-				&[arg],
-				None,
-				// TODO structure generics
-				None,
+				(
+					ThisValue::Passed(on),
+					&[arg],
+					None,
+					// TODO structure generics
+					None,
+				),
+				CallingInput {
+					called_with_new: CalledWithNew::None,
+					call_site: setter_position,
+					// TODO
+					max_inline: 0,
+				},
 				environment,
 				behavior,
 				types,
@@ -1061,7 +1069,7 @@ pub(crate) fn get_property_unbound(
 	}
 
 	match types.get_type_by_id(on) {
-		Type::SpecialObject(SpecialObjects::Function(function_id, _)) => info_chain
+		Type::SpecialObject(SpecialObject::Function(function_id, _)) => info_chain
 			.get_chain_of_info()
 			.find_map(|info| {
 				resolver(
@@ -1334,7 +1342,7 @@ pub(crate) fn get_property_unbound(
 					Err(crate::context::MissingOrToCalculate::Missing)
 				}
 			}),
-		Type::SpecialObject(SpecialObjects::ClassConstructor { .. }) | Type::Class { .. } => {
+		Type::SpecialObject(SpecialObject::ClassConstructor { .. }) | Type::Class { .. } => {
 			info_chain
 				.get_chain_of_info()
 				.find_map(|env| {
@@ -1381,19 +1389,19 @@ pub(crate) fn get_property_unbound(
 					types,
 				)
 			}),
-		Type::SpecialObject(SpecialObjects::Promise { .. }) => {
+		Type::SpecialObject(SpecialObject::Promise { .. }) => {
 			todo!()
 		}
-		Type::SpecialObject(SpecialObjects::Import(..)) => {
+		Type::SpecialObject(SpecialObject::Import(..)) => {
 			todo!()
 		}
-		Type::SpecialObject(SpecialObjects::Proxy(proxy)) => {
+		Type::SpecialObject(SpecialObject::Proxy(proxy)) => {
 			Err(crate::context::MissingOrToCalculate::Proxy(*proxy))
 		}
-		Type::SpecialObject(SpecialObjects::Generator { .. }) => {
+		Type::SpecialObject(SpecialObject::Generator { .. }) => {
 			todo!()
 		}
-		Type::SpecialObject(SpecialObjects::RegularExpression(..)) => {
+		Type::SpecialObject(SpecialObject::RegularExpression(..)) => {
 			todo!()
 		}
 	}
@@ -1426,7 +1434,7 @@ pub(crate) fn key_matches(
 				);
 			}
 			let want_ty = types.get_type_by_id(*want);
-			crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
+			// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
 			if let Type::Or(lhs, rhs) = want_ty {
 				key_matches(
 					(key, key_type_arguments),

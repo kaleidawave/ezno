@@ -21,7 +21,7 @@ use crate::{
 	features::{
 		assignments::Reference,
 		functions::ClosureChain,
-		objects::{Proxy, SpecialObjects},
+		objects::{Proxy, SpecialObject},
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
@@ -950,7 +950,7 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObjects::Function(..)) =
+			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
 				types.get_type_by_id(variable_ty)
 			{
 				variable_ty
@@ -1024,6 +1024,7 @@ impl<T: ContextType> Context<T> {
 			})
 	}
 
+	/// WIP for tree shaking
 	pub(crate) fn is_always_run(&self) -> bool {
 		!self.parents_iter().any(|ctx| {
 			if let GeneralContext::Syntax(s) = ctx {
@@ -1157,8 +1158,11 @@ pub enum MissingOrToCalculate {
 
 pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
 
+/// WIP
 pub enum SetPropertyError {
 	NotWriteable,
+	Readonly,
+	AssigningToTuple,
 	DoesNotMeetConstraint {
 		property_constraint: TypeStringRepresentation,
 		reason: crate::types::subtyping::NonEqualityReason,

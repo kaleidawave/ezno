@@ -1,7 +1,7 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
-	use std::{collections::HashSet, fs, path::Path, time::Instant};
+	use std::{fs, path::Path, time::Instant};
 
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
@@ -30,7 +30,9 @@ fn main() {
 	} else {
 		ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
 	};
-	let type_definition_files = HashSet::from_iter([definition_file]);
+
+	let entry_points = vec![path.to_path_buf()];
+	let type_definition_files = vec![definition_file];
 
 	let options = TypeCheckOptions {
 		debug_types,
@@ -39,7 +41,7 @@ fn main() {
 	};
 
 	let result = check_project::<_, synthesis::EznoParser>(
-		vec![path.to_path_buf()],
+		entry_points,
 		type_definition_files,
 		resolver,
 		options,

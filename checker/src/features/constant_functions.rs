@@ -12,7 +12,7 @@ use crate::{
 	Constant, Environment, TypeId,
 };
 
-use super::{functions::ThisValue, objects::SpecialObjects};
+use super::{functions::ThisValue, objects::SpecialObject};
 
 // TODO ...
 pub(crate) enum ConstantOutput {
@@ -202,8 +202,8 @@ pub(crate) fn call_constant_function(
 
 			let get_type_by_id = types.get_type_by_id(ty);
 			if let Type::SpecialObject(
-				SpecialObjects::Function(func, _)
-				| SpecialObjects::ClassConstructor { constructor: func, .. },
+				SpecialObject::Function(func, _)
+				| SpecialObject::ClassConstructor { constructor: func, .. },
 			)
 			| Type::FunctionReference(func) = get_type_by_id
 			{
@@ -239,7 +239,7 @@ pub(crate) fn call_constant_function(
 			let first_argument = arguments.first();
 			if let (
 				Some(
-					Type::SpecialObject(SpecialObjects::Function(func, _))
+					Type::SpecialObject(SpecialObject::Function(func, _))
 					| Type::FunctionReference(func),
 				),
 				Some(this_ty),
@@ -247,7 +247,7 @@ pub(crate) fn call_constant_function(
 			{
 				let type_id =
 					this_ty.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let value = types.register_type(Type::SpecialObject(SpecialObjects::Function(
+				let value = types.register_type(Type::SpecialObject(SpecialObject::Function(
 					*func,
 					ThisValue::Passed(type_id),
 				)));
@@ -287,7 +287,7 @@ pub(crate) fn call_constant_function(
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading
 				let value = types.register_type(Type::SpecialObject(
-					crate::features::objects::SpecialObjects::Proxy(Proxy {
+					crate::features::objects::SpecialObject::Proxy(Proxy {
 						handler: trap.non_spread_type().expect("single type"),
 						over: object.non_spread_type().expect("single type"),
 					}),

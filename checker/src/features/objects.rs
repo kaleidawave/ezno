@@ -48,7 +48,7 @@ impl ObjectBuilder {
 
 /// These are objects (`typeof * = "object"`) but have special behavior
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum SpecialObjects {
+pub enum SpecialObject {
 	/// Hold state of the runtime
 	Promise { events: () },
 	/// Hold state of the runtime

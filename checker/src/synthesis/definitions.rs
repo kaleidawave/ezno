@@ -135,6 +135,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Statement(
 				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
 			) => {}
+			StatementOrDeclaration::Statement(Statement::MultiLineComment(..)) => {
+				crate::utilities::notify!("TODO add information to item?");
+			}
 			item => {
 				crate::utilities::notify!("unknown {:?}", item);
 				checking_data.diagnostics_container.add_warning(

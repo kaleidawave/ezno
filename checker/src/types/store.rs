@@ -7,7 +7,7 @@ use crate::{
 	context::Logical,
 	features::{
 		functions::{ClosureId, FunctionBehavior},
-		objects::SpecialObjects,
+		objects::SpecialObject,
 	},
 	types::{FunctionType, PolyNature, Type},
 	Environment, FunctionId, TypeId,
@@ -38,11 +38,6 @@ pub struct TypeStore {
 	///
 	/// TODO is there a faster alternative to a [`HashMap`] like how [`Type`]s are stored in a [`Vec`]
 	pub(crate) functions: HashMap<FunctionId, FunctionType>,
-
-	// TODO
-	pub(crate) _dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
-	// TODO
-	pub(crate) _specialisations: HashMap<TypeId, Vec<TypeId>>,
 
 	/// can be used for tree shaking
 	pub called_functions: HashSet<FunctionId>,
@@ -128,9 +123,7 @@ impl Default for TypeStore {
 		Self {
 			types,
 			lookup_generic_map,
-			functions: HashMap::new(),
-			_dependent_dependencies: Default::default(),
-			_specialisations: Default::default(),
+			functions: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
 			interface_extends: Default::default(),
@@ -324,7 +317,7 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::SpecialObject(SpecialObjects::Function(id, Default::default())))
+		self.register_type(Type::SpecialObject(SpecialObject::Function(id, Default::default())))
 	}
 
 	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
@@ -374,7 +367,7 @@ impl TypeStore {
 	/// TODO flags
 	pub fn new_regex(&mut self, pattern: String) -> TypeId {
 		self.register_type(Type::SpecialObject(
-			crate::features::objects::SpecialObjects::RegularExpression(pattern),
+			crate::features::objects::SpecialObject::RegularExpression(pattern),
 		))
 	}
 
@@ -447,7 +440,7 @@ impl TypeStore {
 	) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObjects::ClassConstructor {
+		self.register_type(Type::SpecialObject(SpecialObject::ClassConstructor {
 			name,
 			constructor: id,
 			prototype: constructs,

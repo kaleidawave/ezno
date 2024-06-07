@@ -14,7 +14,7 @@ use crate::{
 			AssignmentKind, Reference,
 		},
 		modules::Exported,
-		objects::SpecialObjects,
+		objects::SpecialObject,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
@@ -968,7 +968,7 @@ impl<'a> Environment<'a> {
 							let ty = checking_data.types.get_type_by_id(current_value);
 
 							// TODO temp
-							if let Type::SpecialObject(SpecialObjects::Function(..)) = ty {
+							if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
 								crate::utilities::notify!(
@@ -1326,5 +1326,7 @@ fn set_property_error_to_type_check_error(
 				assignment_position: assignment_span,
 			})
 		}
+		SetPropertyError::Readonly => todo!(),
+		SetPropertyError::AssigningToTuple => todo!(),
 	}
 }

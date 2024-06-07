@@ -48,7 +48,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T; // | undefined;
 
     length: number;
 
@@ -70,54 +70,66 @@ declare class Array<T> {
     }
 
     // // TODO this argument
-    map<U>(cb: (t: T, i?: number) => U): Array<U> {
-        const { length } = this, mapped: Array<U> = [];
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            mapped.push(cb(value, i++))
-        }
-        return mapped;
-    }
+    // map<U>(cb: (t: T, i?: number) => U): Array<U> {
+    //     const { length } = this, mapped: Array<U> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         mapped.push(cb(value, i++))
+    //     }
+    //     return mapped;
+    // }
+
+    // // // TODO any is debatable
+    // filter(cb: (t: T, i?: number) => any): Array<T> {
+    //     const { length } = this, filtered: Array<T> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             filtered.push(value)
+    //         }
+    //     }
+    //     return filtered;
+    // }
 
     // // TODO any is debatable
-    filter(cb: (t: T, i?: number) => any): Array<T> {
-        const { length } = this, filtered: Array<T> = [];
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                filtered.push(value)
-            }
-        }
-        return filtered;
-    }
+    // find(cb: (t: T, i?: number) => any): T | undefined {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             return value
+    //         }
+    //     }
+    // }
 
-    // TODO any is debatable
-    find(cb: (t: T, i?: number) => any): T | undefined {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                return value
-            }
-        }
-    }
+    // // TODO any is debatable
+    // every(cb: (t: T, i?: number) => any): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (!cb(value, i++)) {
+    //             return false
+    //         }
+    //     }
+    //     // Vacuous truth
+    //     return true
+    // }
 
-    // TODO any is debatable
-    every(cb: (t: T, i?: number) => any): boolean {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (!cb(value, i++)) {
-                return false
-            }
-        }
-        // Vacuous truth
-        return true
-    }
+    // includes(looking_for: T): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i++];
+    //         if (value === looking_for) {
+    //             return true
+    //         }
+    //     }
+    //     return false
+    // }
 
     // some(cb: (t: T, i?: number) => any): boolean {
     //     const { length } = this;
@@ -131,30 +143,40 @@ declare class Array<T> {
     //     return false
     // }
 
-    join(joiner: string = ","): string {
-        const { length } = this;
-        let i: number = 1;
-        if (length === 0) {
-            return ""
-        }
-        let s: string = "" + this[0];
-        while (i < length) {
-            s += joiner;
-            s += this[i++];
-        }
-        return s
-    }
+    // join(joiner: string = ","): string {
+    //     const { length } = this;
+    //     let i: number = 1;
+    //     if (length === 0) {
+    //         return ""
+    //     }
+    //     let s: string = "" + this[0];
+    //     while (i < length) {
+    //         s += joiner;
+    //         s += this[i++];
+    //     }
+    //     return s
+    // }
 
-    at(index: number) {
-        if (index < 0) {
-            return this[index + this.length]
-        } else {
-            return this[index]
-        }
-    }
+    // at(index: number) {
+    //     if (index < 0) {
+    //         return this[index + this.length]
+    //     } else {
+    //         return this[index]
+    //     }
+    // }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
+
+/**
+ * Exclude from T those types that are assignable to U
+ */
+type Exclude<T, U> = T extends U ? never : T;
+
+/**
+ * Extract from T those types that are assignable to U
+ */
+type Extract<T, U> = T extends U ? T : never;
 
 declare class Map<T, U> {
     #keys: Array<T> = [];

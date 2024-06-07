@@ -631,6 +631,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							&checking_data.types,
 							position.with_source(environment.get_source()),
 						);
+						// TODO this gives normal errors. Maybe add something about super here
 						let (result, special) = call_function(
 							super_type,
 							CalledWithNew::Super { this_type },
@@ -772,7 +773,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::AsCast { value, rhs } => {
 				let to_cast = synthesise_expression(value, environment, checking_data, expecting);
 
-				if checking_data.options.allow_cast {
+				if checking_data.options.allow_type_casts {
 					match rhs {
 						TypeOrConst::Type(type_annotation) => {
 							let cast_to = synthesise_type_annotation(
@@ -971,7 +972,7 @@ fn call_function<T: crate::ReadFromFS>(
 	call_site: parser::Span,
 	expected: TypeId,
 ) -> (TypeId, Option<SpecialExpressions>) {
-	let generic_type_arguments = type_arguments.as_ref().map(|type_arguments| {
+	let call_site_type_arguments = type_arguments.as_ref().map(|type_arguments| {
 		type_arguments
 			.iter()
 			.map(|generic_type_argument| {
@@ -1004,11 +1005,12 @@ fn call_function<T: crate::ReadFromFS>(
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
+		call_site_type_arguments,
 		&arguments,
 		CallingInput {
 			called_with_new,
 			call_site: call_site.with_source(environment.get_source()),
-			call_site_type_arguments: generic_type_arguments,
+			max_inline: checking_data.options.max_inline_count,
 		},
 		environment,
 		checking_data,

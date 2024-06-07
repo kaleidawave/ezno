@@ -4,7 +4,7 @@ use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	context::{information::InformationChain, Environment, GeneralContext, Logical},
-	features::objects::SpecialObjects,
+	features::objects::SpecialObject,
 	types::{
 		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 		printing::print_type,
@@ -385,7 +385,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 	match left_ty {
 		Type::FunctionReference(left_func)
-		| Type::SpecialObject(SpecialObjects::Function(left_func, _)) => subtype_function(
+		| Type::SpecialObject(SpecialObject::Function(left_func, _)) => subtype_function(
 			(*left_func, base_structure_arguments),
 			(right_ty, ty, ty_structure_arguments),
 			state,
@@ -989,7 +989,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					environment,
 					types,
 				),
-				Type::SpecialObject(SpecialObjects::Function(..)) => {
+				Type::SpecialObject(SpecialObject::Function(..)) => {
 					crate::utilities::notify!("TODO implement function checking");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -1099,14 +1099,14 @@ fn subtype_function(
 	crate::utilities::notify!("Subtyping a function");
 
 	let right_func = if let Type::FunctionReference(right_func)
-	| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+	| Type::SpecialObject(SpecialObject::Function(right_func, _)) = right_ty
 	{
 		right_func
 	} else if let Some(constraint) = get_constraint(ty, types) {
 		// TODO explain why get_constraint early breaks a bunch of tests
 		let right_ty = types.get_type_by_id(constraint);
 		if let Type::FunctionReference(right_func)
-		| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+		| Type::SpecialObject(SpecialObject::Function(right_func, _)) = right_ty
 		{
 			right_func
 		} else {

@@ -3,7 +3,7 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	features::objects::{ObjectBuilder, SpecialObjects},
+	features::objects::{ObjectBuilder, SpecialObject},
 	types::properties::{get_properties_on_single_type, Publicity},
 	Constant, Environment, Type, TypeId,
 };
@@ -100,7 +100,7 @@ pub(crate) fn create_object_for_type(
 				call_site,
 			);
 		}
-		Type::SpecialObject(SpecialObjects::Function(..)) => todo!(),
+		Type::SpecialObject(SpecialObject::Function(..)) => todo!(),
 		Type::FunctionReference(..) => todo!(),
 		Type::Object(_) => {
 			let value = crate::PropertyValue::Value(

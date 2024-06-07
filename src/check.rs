@@ -11,9 +11,9 @@ pub fn check<T: crate::ReadFromFS>(
 	type_check_options: checker::TypeCheckOptions,
 ) -> CheckOutput<checker::synthesis::EznoParser> {
 	let definitions = if let Some(tdm) = type_definition_module {
-		HashSet::from_iter(std::iter::once(tdm.into()))
+		vec![tdm.into()]
 	} else {
-		HashSet::from_iter(std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()))
+		vec![checker::INTERNAL_DEFINITION_FILE_PATH.into()]
 	};
 
 	let read_from_fs =

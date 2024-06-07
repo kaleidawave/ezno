@@ -11,7 +11,7 @@ use crate::{
 		ClosedOverReferencesInScope,
 	},
 	events::{
-		application::{apply_events_unknown, ErrorsAndInfo},
+		application::{apply_events_unknown, ApplicationInput, CallingDiagnostics},
 		apply_events, ApplicationResult, Event, FinalEvent, RootReference,
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
@@ -52,6 +52,12 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	loop_body: impl FnOnce(&mut Environment, &mut CheckingData<T, A>),
 	position: SpanWithSource,
 ) {
+	let application_input = ApplicationInput {
+		this_value: super::functions::ThisValue::UseParent,
+		call_site: position,
+		max_inline: checking_data.options.max_inline_count,
+	};
+
 	match behavior {
 		IterationBehavior::While(condition) => {
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
@@ -94,18 +100,18 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_info,
 			);
 
-			let mut errors_and_info = ErrorsAndInfo::default();
+			let mut errors_and_info = CallingDiagnostics::default();
 
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
+				&application_input,
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
 				&mut errors_and_info,
 				&mut checking_data.types,
-				position,
 			);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
@@ -115,14 +121,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			// TODO for other blocks
 			for warning in errors_and_info.warnings {
-				checking_data.diagnostics_container.add_info(
-					crate::diagnostics::Diagnostic::Position {
-						reason: warning.0,
-						// TODO temp
-						position: source_map::Nullable::NULL,
-						kind: crate::diagnostics::DiagnosticKind::Info,
-					},
-				);
+				checking_data.diagnostics_container.add_warning(warning);
 			}
 		}
 		IterationBehavior::DoWhile(condition) => {
@@ -170,6 +169,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				&events,
+				&application_input,
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -177,7 +177,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
-				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -298,6 +297,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
+				&application_input,
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -305,7 +305,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
-				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -344,6 +343,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			run_iteration_block(
 				IterationKind::Properties { on, variable },
 				&events,
+				&application_input,
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
@@ -351,7 +351,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				// TODO shouldn't be needed
 				&mut Default::default(),
 				&mut checking_data.types,
-				position,
 			);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -405,17 +404,14 @@ pub enum RunBehavior {
 pub(crate) fn run_iteration_block(
 	condition: IterationKind,
 	events: &[Event],
+	input: &ApplicationInput,
 	initial: RunBehavior,
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	invocation_context: &mut InvocationContext,
-	errors: &mut ErrorsAndInfo,
+	errors: &mut CallingDiagnostics,
 	types: &mut TypeStore,
-	position: SpanWithSource,
 ) {
-	/// TODO via config and per line
-	const MAX_ITERATIONS: usize = 100;
-
 	let mut s = String::new();
 	debug_effects(&mut s, events, types, top_environment, 0, true);
 	crate::utilities::notify!("Applying:\n{}", s);
@@ -437,7 +433,10 @@ pub(crate) fn run_iteration_block(
 
 			let non_exorbitant_amount_of_iterations = under
 				.and_then(|under| under.calculate_iterations(types).ok())
-				.and_then(|iterations| (iterations < MAX_ITERATIONS).then_some(iterations));
+				.and_then(|iterations| {
+					let events_to_be_applied = iterations * events.len();
+					(events_to_be_applied < input.max_inline as usize).then_some(iterations)
+				});
 
 			if let Some(mut iterations) = non_exorbitant_amount_of_iterations {
 				// These bodies always run at least once. TODO is there a better way?
@@ -465,12 +464,12 @@ pub(crate) fn run_iteration_block(
 					invocation_context,
 					iterations,
 					events,
+					input,
 					type_arguments,
 					top_environment,
 					types,
 					errors,
 					|_, _| {},
-					position,
 				);
 			} else {
 				evaluate_unknown_iteration_for_loop(
@@ -492,6 +491,7 @@ pub(crate) fn run_iteration_block(
 					invocation_context,
 					properties.len(),
 					events,
+					input,
 					type_arguments,
 					top_environment,
 					types,
@@ -504,7 +504,6 @@ pub(crate) fn run_iteration_block(
 
 						n += 1;
 					},
-					position,
 				);
 			} else {
 				evaluate_unknown_iteration_for_loop(
@@ -527,26 +526,25 @@ fn run_iteration_loop(
 	invocation_context: &mut InvocationContext,
 	iterations: usize,
 	events: &[Event],
+	input: &ApplicationInput,
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut crate::context::Context<crate::context::Syntax>,
 	types: &mut TypeStore,
-	errors: &mut ErrorsAndInfo,
+	errors: &mut CallingDiagnostics,
 	// For `for in` (TODO for of)
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
-	position: SpanWithSource,
 ) {
 	invocation_context.new_loop_iteration(|invocation_context| {
 		for _ in 0..iterations {
 			each_iteration(type_arguments, types);
 			let result = apply_events(
 				events,
-				crate::features::functions::ThisValue::UseParent,
+				input,
 				type_arguments,
 				top_environment,
 				invocation_context,
 				types,
 				errors,
-				position,
 			);
 
 			if let Some(result) = result {

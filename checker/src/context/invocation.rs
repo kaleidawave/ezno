@@ -1,7 +1,12 @@
 //! When a function is called (or a group of events like function such as a iteration block) it creates a mini-environment for which events are applied into
 
+use source_map::SpanWithSource;
+
 use super::information::LocalInformation;
-use crate::{events::ApplicationResult, types::TypeStore, Environment, FunctionId, TypeId};
+use crate::{
+	context::information::merge_info, events::ApplicationResult, types::TypeStore, Environment,
+	FunctionId, TypeId,
+};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -168,7 +173,7 @@ impl InvocationContext {
 		&mut self,
 		top_environment: &mut Environment,
 		types: &mut TypeStore,
-		_condition: TypeId,
+		(condition, condition_position): (TypeId, SpanWithSource),
 		(input_left, input_right): (T, T),
 		mut data: I,
 		cb: impl for<'a> Fn(
@@ -179,12 +184,12 @@ impl InvocationContext {
 			&'a mut I,
 		) -> R,
 	) -> (I, (R, R)) {
-		let (_truthy_info, truthy_result) =
+		let (truthy_info, truthy_result) =
 			self.new_conditional_target(|target: &mut InvocationContext| {
 				cb(top_environment, types, target, input_left, &mut data)
 			});
 
-		let (_otherwise_info, otherwise_result) =
+		let (otherwise_info, otherwise_result) =
 			self.new_conditional_target(|target: &mut InvocationContext| {
 				cb(top_environment, types, target, input_right, &mut data)
 			});
@@ -192,10 +197,42 @@ impl InvocationContext {
 		// TODO all things that are
 		// - variable and property values (these aren't read from events)
 		// - immutable, mutable, prototypes etc
-		let _info = self.get_latest_info(top_environment);
+		// let info = self.get_latest_info(top_environment);
 
-		// TODO
-		// merge_info(top_environment, info, condition, truthy_info, Some(otherwise_info), types);
+		if self.0.iter().any(|x| matches!(x, InvocationKind::Conditional(_))) {
+			todo!("nested, get latest")
+		// let local_information = &mut top_environment.info;
+		// match top_environment.context_type.parent {
+		// 	crate::GeneralContext::Syntax(env) => {
+		// 		merge_info(
+		// 			env,
+		// 			local_information,
+		// 			condition,
+		// 			truthy_info,
+		// 			Some(otherwise_info),
+		// 			types,
+		// 			condition_position,
+		// 		);
+		// 	}
+		// 	crate::GeneralContext::Root(_) => todo!(),
+		// }
+		} else {
+			let local_information = &mut top_environment.info;
+			match top_environment.context_type.parent {
+				crate::GeneralContext::Syntax(env) => {
+					merge_info(
+						env,
+						local_information,
+						condition,
+						truthy_info,
+						Some(otherwise_info),
+						types,
+						condition_position,
+					);
+				}
+				crate::GeneralContext::Root(_) => todo!(),
+			}
+		}
 
 		(data, (truthy_result, otherwise_result))
 	}

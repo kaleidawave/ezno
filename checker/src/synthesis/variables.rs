@@ -9,10 +9,10 @@ use super::expressions::synthesise_expression;
 use crate::{
 	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation},
-	features::variables::{get_new_register_argument_under, VariableMutability},
+	features::variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		printing,
+		get_larger_type, printing,
 		properties::{PropertyKey, Publicity},
 	},
 	CheckingData, Environment, TypeId,
@@ -174,6 +174,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
+	infer_constraint: bool,
 ) {
 	// This is only added if there is an annotation, so can be None
 	let get_position = variable_declaration.get_position();
@@ -207,6 +208,22 @@ pub(super) fn synthesise_variable_declaration_item<
 			} else {
 				value_ty
 			}
+		} else if infer_constraint {
+			let constraint = get_larger_type(value_ty, &checking_data.types);
+
+			if let VariableField::Name(n) = variable_declaration.name.get_ast_ref() {
+				if let VariableOrImport::Variable {
+					mutability: VariableMutability::Mutable { reassignment_constraint },
+					..
+				} = environment.variables.get_mut(n.as_option_str().unwrap_or_default()).unwrap()
+				{
+					let _ = reassignment_constraint.insert(constraint);
+				}
+			} else {
+				todo!()
+			}
+
+			value_ty
 		} else {
 			value_ty
 		}

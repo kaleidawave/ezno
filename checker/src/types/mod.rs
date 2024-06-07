@@ -14,6 +14,7 @@ use derive_debug_extras::DebugExtras;
 
 pub(crate) use generics::substitution::*;
 
+pub use crate::features::objects::SpecialObject;
 pub(crate) use casts::*;
 use source_map::SpanWithSource;
 pub use store::TypeStore;
@@ -22,10 +23,7 @@ pub use terms::Constant;
 use crate::{
 	context::information::InformationChain,
 	events::RootReference,
-	features::{
-		objects::SpecialObjects,
-		operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
-	},
+	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	Decidable, FunctionId,
 };
 
@@ -143,7 +141,7 @@ pub enum Type {
 
 	/// Technically could be just a function but...
 	Object(ObjectNature),
-	SpecialObject(SpecialObjects),
+	SpecialObject(SpecialObject),
 }
 
 /// TODO difference between untyped and typed parameters and what about parameter based for any
@@ -594,8 +592,11 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 					Some(TypeId::NUMBER_TYPE)
 				}
 			}
-			Constructor::UnaryOperator { operand: _, operator: _ } => {
-				todo!()
+			Constructor::UnaryOperator { operand: _, operator } => {
+				Some(match operator {
+					PureUnary::LogicalNot => TypeId::BOOLEAN_TYPE,
+					PureUnary::Negation | PureUnary::BitwiseNot => TypeId::NUMBER_TYPE,
+				})
 				// if *constraint == TypeId::ANY_TYPE && mutable_context {
 				// 	let (operand, operator) = (operand.clone(), operator.clone());
 				// 	let constraint = to(self, data);

@@ -66,7 +66,7 @@ where
 
 pub use source_map::{self, SourceId, Span};
 
-use crate::subtyping::State;
+use crate::{context::information::ModuleInformation, subtyping::State};
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -411,16 +411,16 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
 		let source = self.module_contents.get_source_at_path(path.as_ref())?;
-		self.modules.get(&source).expect("no module").get_instance_at_position(pos).map(
-			|instance| {
-				crate::types::printing::print_type(
-					instance.get_value_on_ref(),
-					&self.types,
-					&self.top_level_information,
-					debug,
-				)
-			},
-		)
+		let module = &self.modules.get(&source).expect("no module");
+
+		module.get_instance_at_position(pos).map(|instance| {
+			crate::types::printing::print_type(
+				instance.get_value_on_ref(),
+				&self.types,
+				&ModuleInformation { top: &self.top_level_information, module: &module.info },
+				debug,
+			)
+		})
 	}
 
 	#[must_use]
@@ -437,7 +437,10 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 					crate::types::printing::print_type(
 						instance.get_value_on_ref(),
 						&self.types,
-						&self.top_level_information,
+						&ModuleInformation {
+							top: &self.top_level_information,
+							module: &module.info,
+						},
 						debug,
 					),
 					SpanWithSource { start: range.start, end: range.end, source },
@@ -470,7 +473,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	resolver: T,
 	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
@@ -515,7 +518,13 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			match module {
 				Ok(module) => {
-					root.new_module_context(source, module, &mut checking_data);
+					let evaluate_exports = checking_data.options.evaluate_exports;
+
+					let module = root.new_module_context(source, module, &mut checking_data);
+
+					if evaluate_exports {
+						module.exported.clone().evaluate_generally(&root, &mut checking_data.types);
+					}
 				}
 				Err(err) => {
 					checking_data.diagnostics_container.add_error(err);
@@ -584,7 +593,7 @@ pub(crate) struct Cache {
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	root: &mut RootContext,
 	checking_data: &mut CheckingData<T, A>,
 ) {
@@ -688,11 +697,7 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
-	add_definition_files_to_root(
-		HashSet::from_iter([on.to_path_buf()]),
-		&mut root,
-		&mut checking_data,
-	);
+	add_definition_files_to_root(vec![on.to_path_buf()], &mut root, &mut checking_data);
 
 	assert!(
 		!checking_data.diagnostics_container.has_error(),
