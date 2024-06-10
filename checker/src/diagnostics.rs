@@ -929,8 +929,8 @@ fn function_calling_error_diagnostic(
 			Diagnostic::Position { reason: format!("Excess argument{context}"), position, kind }
 		}
 
-		FunctionCallingError::ExcessTypeArguments { .. } => {
-			Diagnostic::Global { reason: format!("Excess type argument{context}"), kind }
+		FunctionCallingError::ExcessTypeArguments { count: _ , position } => {
+			Diagnostic::Position { reason: format!("Excess type argument{context}"), position, kind }
 		}
 
 		FunctionCallingError::NotCallable { calling, call_site } => Diagnostic::Position {
