@@ -647,7 +647,13 @@ pub enum FunctionCallingError {
 		count: usize,
 		position: SpanWithSource,
 	},
+
+	FunctionAcceptsNoTypeArguments {
+		position: SpanWithSource,
+	},
+
 	ExcessTypeArguments {
+		expected_count: usize,
 		count: usize,
 		position: SpanWithSource,
 	},
@@ -1582,8 +1588,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						let first_excess_type_parameter = &call_site_type_arguments[0];
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::FunctionCallingError(
-								FunctionCallingError::ExcessTypeArguments {
-									count: call_site_type_arguments.len(),
+								FunctionCallingError::FunctionAcceptsNoTypeArguments {
 									position: first_excess_type_parameter.1,
 								},
 							),
@@ -1610,8 +1615,8 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::FunctionCallingError(
 									FunctionCallingError::ExcessTypeArguments {
-										count: provided_parameters_length
-											- expected_parameters_length,
+										expected_count: expected_parameters_length,
+										count: provided_parameters_length,
 										position: error_position,
 									},
 								),

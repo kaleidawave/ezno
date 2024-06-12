@@ -2758,7 +2758,7 @@ declare function unwrap<T>(a: T | { item: T }): T;
 unwrap<string, number>("something");
 ```
 
-- Excess type argument
+- Expected 1 type argument(s), but got 2
 
 #### Passing generic type to non-generic function
 
@@ -2768,7 +2768,7 @@ declare function unwrap(a: string | { item: string }): string;
 unwrap<string>("something");
 ```
 
-- Excess type argument
+- Cannot pass a type argument to a non-generic function
 
 #### Across alias
 
