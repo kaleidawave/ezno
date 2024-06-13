@@ -89,9 +89,9 @@ pub(crate) struct BuildArguments {
 	/// enable optimising transforms (warning can currently break code)
 	#[argh(switch)]
 	pub optimise: bool,
-	/// maximum diagnostics to print
+	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
 	#[argh(option, default = "MaxDiagnostics::default()")]
-	pub maximum_diagnostics: MaxDiagnostics,
+	pub max_diagnostics: MaxDiagnostics,
 
 	#[cfg(not(target_family = "wasm"))]
 	/// whether to display compile times
@@ -121,9 +121,9 @@ pub(crate) struct CheckArguments {
 	/// compact diagnostics
 	#[argh(switch)]
 	pub compact_diagnostics: bool,
-	/// maximum diagnostics to print
+	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
 	#[argh(option, default = "MaxDiagnostics::default()")]
-	pub maximum_diagnostics: MaxDiagnostics,
+	pub max_diagnostics: MaxDiagnostics,
 }
 
 /// Formats file in-place
@@ -197,7 +197,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				definition_file,
 				timings,
 				compact_diagnostics,
-				maximum_diagnostics,
+				max_diagnostics,
 			} = check_arguments;
 
 			#[cfg(not(target_family = "wasm"))]
@@ -219,7 +219,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			};
 
 			if diagnostics.has_error() {
-				if let MaxDiagnostics::FixedTo(0) = maximum_diagnostics {
+				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 					let count = diagnostics.into_iter().count();
 					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
@@ -227,7 +227,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						diagnostics,
 						&module_contents,
 						compact_diagnostics,
-						maximum_diagnostics,
+						max_diagnostics,
 					)
 					.unwrap();
 				}
@@ -238,7 +238,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					diagnostics,
 					&module_contents,
 					compact_diagnostics,
-					maximum_diagnostics,
+					max_diagnostics,
 				)
 				.unwrap();
 				print_to_cli(format_args!("No type errors found 🎉"));
@@ -298,7 +298,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						diagnostics,
 						&fs,
 						compact_diagnostics,
-						build_config.maximum_diagnostics,
+						build_config.max_diagnostics,
 					)
 					.unwrap();
 					print_to_cli(format_args!("Project built successfully 🎉"));
@@ -309,7 +309,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						diagnostics,
 						&fs,
 						compact_diagnostics,
-						build_config.maximum_diagnostics,
+						build_config.max_diagnostics,
 					)
 					.unwrap();
 					ExitCode::FAILURE
@@ -419,9 +419,12 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
 	match glob::glob(&input) {
 		Ok(files) => {
-			let files = files.into_iter().collect::<Result<Vec<PathBuf>, glob::GlobError>>().map_err(|err| {
-				eprintln!("{err:?}");
-			})?;
+			let files = files
+				.into_iter()
+				.collect::<Result<Vec<PathBuf>, glob::GlobError>>()
+				.map_err(|err| {
+					eprintln!("{err:?}");
+				})?;
 
 			if files.is_empty() {
 				eprintln!("Input {input:?} matched no files");

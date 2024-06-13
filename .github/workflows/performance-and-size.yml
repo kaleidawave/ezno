@@ -60,10 +60,6 @@ jobs:
           $(hyperfine -i './target/release/ezno check demo.ts')
           \`\`\`" >> $GITHUB_STEP_SUMMARY
 
-          echo "::group::Comparing printing of diagnostics"
-          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --compact-diagnostics' './target/release/ezno check demo.ts --count-diagnostics'
-          echo "::endgroup::"
-
           echo "<details>
           <summary>Input</summary>
 
@@ -81,7 +77,7 @@ jobs:
           <summary>Diagnostics</summary>
           
           \`\`\`
-          $(./target/release/ezno check demo.ts --timings 2>&1 || true)
+          $(./target/release/ezno check demo.ts --timings --max-diagnostics all 2>&1 || true)
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
