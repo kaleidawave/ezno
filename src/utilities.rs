@@ -89,6 +89,31 @@ pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
 	io::Write::flush(&mut io::stdout()).unwrap();
 }
 
+#[derive(Debug)]
+pub(crate) enum MaxDiagnostics {
+	All,
+	FixedTo(u16),
+}
+
+impl argh::FromArgValue for MaxDiagnostics {
+	fn from_arg_value(value: &str) -> Result<Self, String> {
+		if value == "all" {
+			Ok(Self::All)
+		} else {
+			match std::str::FromStr::from_str(value) {
+				Ok(value) => Ok(Self::FixedTo(value)),
+				Err(reason) => Err(reason.to_string()),
+			}
+		}
+	}
+}
+
+impl Default for MaxDiagnostics {
+	fn default() -> Self {
+		Self::FixedTo(30)
+	}
+}
+
 // yes i implemented it only using `native_tls`...
 // TODO or(..., debug_assertions)
 #[cfg(not(target_family = "wasm"))]

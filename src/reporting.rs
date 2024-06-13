@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
 	term::{
@@ -8,6 +10,8 @@ use codespan_reporting::{
 };
 
 use checker::source_map::{MapFileStore, PathMap, SourceId};
+
+use crate::utilities::MaxDiagnostics;
 
 fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
@@ -76,11 +80,16 @@ fn checker_diagnostic_to_codespan_diagnostic(
 	}
 }
 
-pub(crate) fn emit_diagnostics<T: PathMap>(
-	diagnostics: impl IntoIterator<Item = checker::Diagnostic>,
+pub(crate) fn emit_diagnostics<T: PathMap, I>(
+	diagnostics: I,
 	fs: &MapFileStore<T>,
 	compact: bool,
-) -> Result<(), codespan_reporting::files::Error> {
+	maximum: MaxDiagnostics,
+) -> Result<(), codespan_reporting::files::Error>
+where
+	I: IntoIterator<Item = checker::Diagnostic>,
+	I::IntoIter: ExactSizeIterator,
+{
 	// TODO custom here
 	let config = Config {
 		display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
@@ -91,6 +100,13 @@ pub(crate) fn emit_diagnostics<T: PathMap>(
 	let mut writer = BufferedStandardStream::stderr(ColorChoice::Auto);
 
 	let files = fs.into_code_span_store();
+	let diagnostics = diagnostics.into_iter();
+	let count = diagnostics.len();
+	let maximum = match maximum {
+		MaxDiagnostics::All => usize::MAX,
+		MaxDiagnostics::FixedTo(n) => n as usize,
+	};
+	let diagnostics = diagnostics.into_iter().take(maximum);
 
 	for diagnostic in diagnostics {
 		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic, compact);
@@ -106,6 +122,11 @@ pub(crate) fn emit_diagnostics<T: PathMap>(
 
 		#[cfg(not(target_family = "wasm"))]
 		emit(&mut writer, &config, &files, &diagnostic)?;
+	}
+
+	if count > maximum {
+		writer.flush().unwrap();
+		eprintln!("... and {difference} other errors and warnings", difference = count - maximum);
 	}
 
 	Ok(())

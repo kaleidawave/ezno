@@ -5,7 +5,7 @@ use std::{
 
 use checker::{DiagnosticsContainer, TypeCheckOptions};
 use parser::{
-	source_map::{MapFileStore, WithPathMap},
+	source_map::{MapFileStore, SourceMap, WithPathMap},
 	ToStringOptions,
 };
 
@@ -13,7 +13,7 @@ use parser::{
 pub struct Output {
 	pub output_path: PathBuf,
 	pub content: String,
-	pub mappings: String,
+	pub mappings: SourceMap,
 }
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
@@ -39,6 +39,8 @@ pub struct FailedBuildOutput {
 pub struct BuildConfig {
 	#[cfg_attr(target_family = "wasm", serde(default))]
 	pub strip_whitespace: bool,
+	#[cfg_attr(target_family = "wasm", serde(default))]
+	pub source_maps: bool,
 }
 
 pub type EznoParsePostCheckVisitors =
@@ -63,7 +65,7 @@ impl CheckingOutputWithoutDiagnostics {
 }
 
 pub fn build<T: crate::ReadFromFS>(
-	input_paths: Vec<PathBuf>,
+	entry_points: Vec<PathBuf>,
 	fs_resolver: &T,
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
@@ -73,7 +75,8 @@ pub fn build<T: crate::ReadFromFS>(
 	// TODO parse options + non_standard_library & non_standard_syntax
 	let type_check_options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
 
-	let result = crate::check(input_paths, fs_resolver, type_definition_module, type_check_options);
+	let result =
+		crate::check(entry_points, fs_resolver, type_definition_module, type_check_options);
 
 	let mut data = CheckingOutputWithoutDiagnostics {
 		module_contents: result.module_contents,
@@ -114,13 +117,15 @@ pub fn build<T: crate::ReadFromFS>(
 				ToStringOptions::default()
 			};
 
-			let content = parser::ASTNode::to_string(&module, &to_string_options);
+			// TODO under cfg
+
+			let (content, mappings) =
+				module.to_string_with_source_map(&to_string_options, source, &data.module_contents);
 
 			outputs.push(Output {
 				output_path: output_path.to_path_buf(),
 				content,
-				// TODO module.to_string_with_map
-				mappings: String::new(),
+				mappings: mappings.unwrap(),
 			})
 		}
 
