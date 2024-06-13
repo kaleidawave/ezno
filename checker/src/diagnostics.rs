@@ -879,6 +879,7 @@ pub struct CannotRedeclareVariable<'a> {
 	pub name: &'a str,
 }
 
+/// `context` is the what kind of a function call the error happened in. (for example tagged template literals or JSX)
 fn function_calling_error_diagnostic(
 	error: FunctionCallingError,
 	kind: crate::DiagnosticKind,
@@ -894,7 +895,7 @@ fn function_calling_error_diagnostic(
 		} => {
 			if let Some((restriction_pos, restriction)) = restriction {
 				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {restriction}{context}" ),
+					reason: format!("Argument of type {argument_type} is not assignable to parameter of type {restriction}{context}"),
 					position: argument_position,
 					labels: vec![(
 						format!("{parameter_type} was specialised with type {restriction}"),
@@ -904,7 +905,7 @@ fn function_calling_error_diagnostic(
 				}
 			} else {
 				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {parameter_type}{context}", ),
+					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {parameter_type}{context}"),
 					position: argument_position,
 					labels: vec![(
 						format!("Parameter has type {parameter_type}"),
@@ -928,21 +929,20 @@ fn function_calling_error_diagnostic(
 		FunctionCallingError::ExcessArguments { count: _, position } => {
 			Diagnostic::Position { reason: format!("Excess argument{context}"), position, kind }
 		}
-
-		FunctionCallingError::ExcessTypeArguments { expected_count, count , position } => {
-			Diagnostic::Position { 
+		FunctionCallingError::ExcessTypeArguments { expected_count, count, position } => {
+			let reason = if expected_count == 0 {
+				format!("Cannot pass a type argument to a non-generic function{context}")
+			} else if expected_count == 1 {
+				format!("Expected a type argument, but got {count}{context}")
+			} else {
+				format!("Expected {expected_count} type arguments, but got {count}{context}")
+			};
+			Diagnostic::Position {
 				position,
-				kind, 
-				reason: 
-					if expected_count == 0 {
-						format!("Cannot pass a type argument to a non-generic function{context}")
-					} 
-					else {
-						format!("Expected {expected_count} type argument(s), but got {count}{context}")
-					}
+				kind,
+				reason
 			}
 		}
-
 		FunctionCallingError::NotCallable { calling, call_site } => Diagnostic::Position {
 			reason: format!("Cannot call type {calling}{context}"),
 			position: call_site,
@@ -1005,7 +1005,7 @@ fn function_calling_error_diagnostic(
 		},
 		FunctionCallingError::MismatchedThis { call_site, expected, found } => {
 			Diagnostic::Position {
-				reason: format!( "The 'this' context of the function is expected to be {expected}, found {found}{context}" ),
+				reason: format!("The 'this' context of the function is expected to be {expected}, found {found}{context}"),
 				position: call_site,
 				kind,
 			}

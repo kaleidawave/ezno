@@ -2749,7 +2749,6 @@ unwrap(16) satisfies 16;
 
 - Expected string, found 5
 
-
 #### Excess generic arguments
 
 ```ts
