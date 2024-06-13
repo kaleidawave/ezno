@@ -136,6 +136,8 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		const EXPECTED_END: &str = "windows.exe";
 		#[cfg(target_os = "linux")]
 		const EXPECTED_END: &str = "linux";
+		#[cfg(target_os = "macos")]
+		const EXPECTED_END: &str = "macos";
 
 		let mut required_binary = None;
 		let mut version_name = None;
