@@ -15,4 +15,4 @@ syn-helpers = "0.5"
 
 [lib]
 path = "macro.rs"
-proc_macro = true
+proc-macro = true

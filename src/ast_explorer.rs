@@ -136,10 +136,13 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
-							.unwrap()
-					}
+					Err(err) => emit_diagnostics(
+						std::iter::once((err, source_id).into()),
+						&fs,
+						false,
+						crate::utilities::MaxDiagnostics::All,
+					)
+					.unwrap(),
 				}
 			}
 			ExplorerSubCommand::FullAST(cfg) => {
@@ -159,10 +162,13 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
-							.unwrap()
-					}
+					Err(err) => emit_diagnostics(
+						std::iter::once((err, source_id).into()),
+						&fs,
+						false,
+						crate::utilities::MaxDiagnostics::All,
+					)
+					.unwrap(),
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -179,10 +185,13 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
-					Err(err) => {
-						emit_diagnostics(std::iter::once((err, source_id).into()), &fs, false)
-							.unwrap()
-					}
+					Err(err) => emit_diagnostics(
+						std::iter::once((err, source_id).into()),
+						&fs,
+						false,
+						crate::utilities::MaxDiagnostics::All,
+					)
+					.unwrap(),
 				}
 			}
 			ExplorerSubCommand::Lexer(_) => {

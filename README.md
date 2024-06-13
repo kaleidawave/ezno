@@ -23,11 +23,11 @@ What Ezno is not
 - Smarter as a means to allow more *dynamic patterns*. Keep things simple!
 - A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it _could_ generate a lower level format using its event (side-effect) representation.
 
-Read more about Ezno:
+Read more about Ezno (in chronological order)
 - [Introducing Ezno](https://kaleidawave.github.io/posts/introducing-ezno/)
 - [Ezno in '23](https://kaleidawave.github.io/posts/ezno-23/)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
-- [The Quest Continues](https://kaleidawave.github.io/posts/the-quest-continues/)
+- [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
 
 ---
 

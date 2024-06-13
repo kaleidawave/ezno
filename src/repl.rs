@@ -50,7 +50,8 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 	let mut state = match state {
 		Ok(state) => state,
 		Err((diagnostics, fs)) => {
-			emit_diagnostics(diagnostics, &fs, false).unwrap();
+			emit_diagnostics(diagnostics, &fs, false, crate::utilities::MaxDiagnostics::All)
+				.unwrap();
 			return;
 		}
 	};
@@ -89,8 +90,13 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_diagnostics(std::iter::once((err, source).into()), state.get_fs_ref(), false)
-					.unwrap();
+				emit_diagnostics(
+					std::iter::once((err, source).into()),
+					state.get_fs_ref(),
+					false,
+					crate::utilities::MaxDiagnostics::All,
+				)
+				.unwrap();
 				continue;
 			}
 		};
@@ -111,13 +117,25 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 
 		match result {
 			Ok((last_ty, diagnostics)) => {
-				emit_diagnostics(diagnostics, state.get_fs_ref(), false).unwrap();
+				emit_diagnostics(
+					diagnostics,
+					state.get_fs_ref(),
+					false,
+					crate::utilities::MaxDiagnostics::All,
+				)
+				.unwrap();
 				if let Some(last_ty) = last_ty {
 					println!("{last_ty}");
 				}
 			}
 			Err(diagnostics) => {
-				emit_diagnostics(diagnostics, state.get_fs_ref(), false).unwrap();
+				emit_diagnostics(
+					diagnostics,
+					state.get_fs_ref(),
+					false,
+					crate::utilities::MaxDiagnostics::All,
+				)
+				.unwrap();
 			}
 		}
 	}

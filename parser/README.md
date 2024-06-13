@@ -35,7 +35,7 @@ fn main() {
    	- See expression identifiers can be used to bind information to
    	- Retain source positions for use in analysis diagnostics and generating source maps
    	- All AST should be visitable. Immutably to collect facts or mutable to transform/remove
-- Optionally via configuration extend the ECMAscript language definition
+- Optionally via configuration extend the *ECMAScript language definition*
    	- TypeScript type annotations
       		- Interfaces, enums and type alias statements
       		- Parameter, return type and variable annotations
