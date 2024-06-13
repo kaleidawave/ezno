@@ -5,12 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ezno Playground</title>
-    <!-- Vite doesn't rewrite them :( https://github.com/vitejs/vite/issues/7362 -->
-    <!-- Also maybe they should be in the parent directory? -->
-    <meta property="twitter:image" content="/ezno/playground/assets/banner.png">
-    <meta property="og:image" content="/ezno/playground/assets/banner.png">
-
     <link rel="stylesheet" href="assets/index.css">
+    <meta property="twitter:image" content="assets/banner.png">
+    <meta property="og:image" content="assets/banner.png">
     <link rel="icon" href="assets/ezno.svg">
 </head>
 
@@ -18,15 +15,11 @@
     <header>
         <img src="assets/ezno.svg" alt="EZNO" height="40px">
         <p>
-            Playground for the Ezno type checker.
-            <a href="https://kaleidawave.github.io/posts/the-quest-continues/#there-is-a-new-web-based-playground">See
-                the announcement post for examples</a>
-            and see <a
-               href="https://github.com/kaleidawave/ezno/blob/main/checker/specification/specification.md">specification.md</a>
-            for what Ezno supports.
-            This playground uses the <a href="https://www.npmjs.com/package/ezno">WASM JS build of Ezno</a>. The native
-            CLI tool can be <a href="https://github.com/kaleidawave/ezno/releases">downloaded from the latest
-                release</a>.
+            Playground for the Ezno type checker. See what Ezno supports <a
+               href="https://github.com/kaleidawave/ezno/blob/main/checker/specification/specification.md">in its
+                specification</a>.
+            This is built using the <a href="https://www.npmjs.com/package/ezno">WASM JS build</a>, the native CLI tool
+            can be <a href="https://github.com/kaleidawave/ezno/releases">downloaded from the latest release</a>.
         </p>
     </header>
     <main>
@@ -37,11 +30,6 @@
             </ol>
         </div>
         <button id="share">Share</button>
-        <details>
-            <summary>More:</summary>
-            <div id="version"></div>
-            <div id="time"></div>
-        </details>
     </main>
     <footer>
         <hr>
@@ -49,8 +37,7 @@
             If you encounter any issues, please document them <a href="https://github.com/kaleidawave/ezno/">on the GH
                 issue tracker</a>. If diagnostics don't update then a crash has occurred (check browser logs for
             reason). Editor built with <a
-               href="https://codemirror.net/">codemirror</a>. Saving/sharing system <a
-               href="https://www.val.town/v/kaleidawave/savedNamedPlaygrounds">on val.town</a>.
+               href="https://codemirror.net/">codemirror</a>
         </p>
     </footer>
     <script type="module" src="./main.js"></script>

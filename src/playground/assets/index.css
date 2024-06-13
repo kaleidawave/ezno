@@ -42,20 +42,6 @@ hr {
     margin: 40px 0;
 }
 
-button {
-    margin: 20px 0;
-    padding: 6px 20px;
-    font-family: inherit;
-    background: none;
-    color: inherit;
-    border: 3px solid white;
-    border-radius: 6px;
-}
-
-button:hover {
-    cursor: pointer;
-}
-
 @media (max-width: 700px) {
     header {
         flex-direction: column;
