@@ -37,7 +37,7 @@ pub fn experimental_build_wasm(
 		&fs_resolver,
 		None,
 		Path::new("out.js"),
-		&crate::build::BuildConfig { strip_whitespace: minify },
+		&crate::build::BuildConfig { strip_whitespace: minify, source_maps: false },
 		None,
 	);
 

@@ -13,6 +13,7 @@ use parser::{
 pub struct Output {
 	pub output_path: PathBuf,
 	pub content: String,
+	#[cfg_attr(target_family = "wasm", serde(skip_serializing))]
 	pub mappings: SourceMap,
 }
 

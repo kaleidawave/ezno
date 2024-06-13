@@ -125,8 +125,13 @@ where
 	}
 
 	if count > maximum {
+		#[cfg(not(target_family = "wasm"))]
 		writer.flush().unwrap();
-		eprintln!("... and {difference} other errors and warnings", difference = count - maximum);
+
+		crate::utilities::print_to_cli(format_args!(
+			"... and {difference} other errors and warnings",
+			difference = count - maximum
+		));
 	}
 
 	Ok(())
