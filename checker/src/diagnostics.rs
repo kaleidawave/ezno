@@ -933,7 +933,7 @@ fn function_calling_error_diagnostic(
 			let reason = if expected_count == 0 {
 				format!("Cannot pass a type argument to a non-generic function{context}")
 			} else if expected_count == 1 {
-				format!("Expected a type argument, but got {count}{context}")
+				format!("Expected 1 type argument, but got {count}{context}")
 			} else {
 				format!("Expected {expected_count} type arguments, but got {count}{context}")
 			};

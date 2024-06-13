@@ -2752,19 +2752,19 @@ unwrap(16) satisfies 16;
 #### Excess generic arguments
 
 ```ts
-declare function unwrap<T>(a: T | { item: T }): T;
+declare function generic<T>(a: T);
 
-unwrap<string, number>("something");
+generic<string, number>("something");
 ```
 
-- Expected 1 type argument(s), but got 2
+- Expected 1 type argument, but got 2
 
 #### Passing generic type to non-generic function
 
 ```ts
-declare function unwrap(a: string | { item: string }): string;
+declare function func();
 
-unwrap<string>("something");
+func<string>();
 ```
 
 - Cannot pass a type argument to a non-generic function
