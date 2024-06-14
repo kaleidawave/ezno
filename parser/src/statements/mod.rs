@@ -375,7 +375,7 @@ impl ASTNode for VarVariableStatement {
 			}
 		};
 
-		Ok(VarVariableStatement { position, declarations })
+		Ok(VarVariableStatement { declarations, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

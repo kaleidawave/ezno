@@ -389,7 +389,7 @@ mod structures {
 					// Just want variable names
 					None
 					// match property.get_ast_ref() {
-					// 	PropertyKey::Ident(ident, _, _)
+					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					// }
@@ -398,7 +398,7 @@ mod structures {
 					// Just want variable names
 					None
 					// match property.get_ast_ref() {
-					// 	PropertyKey::Ident(ident, _, _)
+					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					// }

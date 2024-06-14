@@ -672,7 +672,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 		let new_public = T::new_public();
 		(
 			MethodHeader::default(),
-			WithComment::None(PropertyKey::Ident(name.to_owned(), position, new_public)),
+			WithComment::None(PropertyKey::Identifier(name.to_owned(), position, new_public)),
 		)
 	} else {
 		(MethodHeader::from_reader(reader), WithComment::from_reader(reader, state, options)?)

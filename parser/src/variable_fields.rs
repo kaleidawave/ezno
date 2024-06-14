@@ -356,7 +356,7 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 				};
 
 				Ok(Self::Map { from: key, annotation, name, default_value, position })
-			} else if let PropertyKey::Ident(name, key_pos, _) = key {
+			} else if let PropertyKey::Identifier(name, key_pos, _) = key {
 				let default_value = reader
 					.conditional_next(|t| matches!(t, TSXToken::Assign))
 					.is_some()

@@ -22,9 +22,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 
-	// `parse -> print -> parse -> print` and compare difference (same as fuzzing process)
-	let double = args.iter().any(|item| item == "--double");
-
 	let print_ast = args.iter().any(|item| item == "--ast");
 
 	// double => pretty and render thus `|| double`
@@ -52,22 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		..ParseOptions::default()
 	};
 
-	// let parse_options = ParseOptions {
-	// 	stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
-	// 	jsx: false,
-	// 	type_annotations: false,
-	// 	retain_blank_lines: true,
-	// 	..Default::default()
-	// };
-
 	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
 
 	let source = std::fs::read_to_string(path.clone())?;
-
-	// let source = String::from_utf8([0x2f, 0x8, 0x2f, 0xa].to_vec()).unwrap();
-	// let source = "if (this) return; else switch (this) {\n}\n\n\n".to_string();
-	// let source = ";\n\n".to_string();
-	// let source = "{};;;".to_string();
 
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
@@ -86,17 +70,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if source_maps || render_output || double || render_timings {
 				let now = Instant::now();
 
-				// let to_string_options = ToStringOptions {
-				// 	expect_markers: true,
-				// 	include_type_annotations: type_annotations,
-				// 	pretty,
-				// 	comments: if pretty { Comments::All } else { Comments::None },
-				// 	// 60 is temp
-				// 	max_line_length: if pretty { 60 } else { u8::MAX },
-				// 	..Default::default()
-				// };
-
-				let to_string_options = ToStringOptions::default();
+				let to_string_options = ToStringOptions {
+					expect_markers: true,
+					include_type_annotations: type_annotations,
+					pretty,
+					comments: if pretty { Comments::All } else { Comments::None },
+					// 60 is temp
+					max_line_length: if pretty { 60 } else { u8::MAX },
+					..Default::default()
+				};
 
 				let (output, source_map) =
 					module.to_string_with_source_map(&to_string_options, source_id, &fs);
@@ -110,33 +92,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 				if render_output {
 					println!("{output}");
-				}
-
-				if double {
-					let result2 =
-						Module::from_string_with_options(output.clone(), parse_options, None);
-					return match result2 {
-						Ok((module2, _state)) => {
-							let output2 = module2
-								.to_string_with_source_map(&to_string_options, source_id, &fs)
-								.0;
-
-							if output == output2 {
-								eprintln!("{output:?} == {output2:?}");
-								eprintln!("re-parse was equal ✅");
-								Ok(())
-							} else {
-								eprintln!("{output:?} != {output2:?} (original = {source:?})");
-								eprintln!("initial   {:?}", module);
-								eprintln!("re-parsed {:?}", module2);
-								Err(Box::<dyn std::error::Error>::from("not equal"))
-							}
-						}
-						Err(parse_err) => {
-							eprintln!("error parsing output: {output:?} from {module:?}");
-							Err(Box::<dyn std::error::Error>::from(parse_err))
-						}
-					};
 				}
 			}
 

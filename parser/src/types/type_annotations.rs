@@ -350,7 +350,12 @@ impl ASTNode for TypeAnnotation {
 				}
 				buf.push('`');
 			}
-			Self::Symbol { .. } => buf.push_str("symbol"),
+			Self::Symbol { unique, .. } => {
+				if *unique {
+					buf.push_str("unique ");
+				}
+				buf.push_str("symbol");
+			}
 			Self::Extends { item, extends, .. } => {
 				item.to_string_from_buffer(buf, options, local);
 				buf.push_str(" extends ");
@@ -482,8 +487,8 @@ impl TypeAnnotation {
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Unique), _) => {
-				let sym_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
-				let position = t.get_span().union(sym_pos.with_length("symbol".len()));
+				let kw_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
+				let position = t.get_span().union(kw_pos.with_length("symbol".len()));
 				#[cfg(feature = "extras")]
 				let name =
 					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
@@ -496,7 +501,7 @@ impl TypeAnnotation {
 						},
 					);
 				Self::Symbol {
-					unique: false,
+					unique: true,
 					position,
 					#[cfg(feature = "extras")]
 					name,

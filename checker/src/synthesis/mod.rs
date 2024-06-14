@@ -206,7 +206,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 	perform_side_effect_computed: bool,
 ) -> PropertyKey<'static> {
 	match property_key {
-		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
+		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
 		ParserPropertyKey::NumberLiteral(number, _) => {

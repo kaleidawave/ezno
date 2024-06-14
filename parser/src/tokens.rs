@@ -417,6 +417,9 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
+				| TSXToken::BitwiseNot
+				| TSXToken::BitwiseAnd
+				| TSXToken::BitwiseOr
 				| TSXToken::Multiply
 				| TSXToken::Add
 				| TSXToken::Subtract

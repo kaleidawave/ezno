@@ -531,7 +531,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 					}
 					parser::ObjectDestructuringField::Map { from, name, .. } => {
 						match from {
-							parser::PropertyKey::Ident(ident, _, _) => {
+							parser::PropertyKey::Identifier(ident, _, _) => {
 								buf.push_str(ident);
 							}
 							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),

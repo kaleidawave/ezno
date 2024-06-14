@@ -300,7 +300,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						ObjectLiteralMember::Property { assignment, key, position, value } => {
 							if assignment {
-								if let PropertyKey::Ident(name, pos, _) = key.get_ast() {
+								if let PropertyKey::Identifier(name, pos, _) = key.get_ast() {
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
 										(),
