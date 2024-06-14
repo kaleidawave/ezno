@@ -873,6 +873,7 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 							| FunctionCallingError::NoLogicForIdentifier(..)
 							| FunctionCallingError::NotCallable { .. }
 							| FunctionCallingError::ExcessArguments { .. }
+							| FunctionCallingError::ExcessTypeArguments { .. }
 							| FunctionCallingError::MissingArgument { .. } => unreachable!(),
 							FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
 								todo!()
