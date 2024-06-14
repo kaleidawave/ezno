@@ -31,19 +31,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 		while let Some(line) = lines.next() {
 			if line.starts_with("```ts") {
-				let mut indented_code = lines
+				let code = lines
 					.by_ref()
 					.take_while(|line| !line.starts_with("```"))
-					.fold("\t".to_owned(), |mut a, s| {
+					.fold(String::new(), |mut a, s| {
 						a.push_str(s);
-						a.push_str("\n\t");
+						a.push_str("\n");
 						a
 					});
 
-				debug_assert_eq!(indented_code.pop(), Some('\t'));
-
-				if !filters.iter().any(|filter| indented_code.contains(filter)) {
-					blocks.push((std::mem::take(&mut current), indented_code));
+				if !filters.iter().any(|filter| code.contains(filter)) {
+					blocks.push((std::mem::take(&mut current), code));
 				}
 			} else if let Some(header) = line.strip_prefix("#### ") {
 				current = header.to_owned();
@@ -118,16 +116,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 
+		// If available block add to that, otherwise create a new one
 		if let Some((items, block)) =
 			final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
 		{
 			items.extend(names.into_iter());
-			block.push_str("\n// ");
+			block.push_str("\n\t// ");
 			block.push_str(&header);
+			for line in code.lines() {
+				block.push_str("\n\t");
+				block.push_str(&line);
+			}
 			block.push('\n');
-			block.push_str(&code);
 		} else {
-			final_blocks.push((names, code));
+			let mut block = String::from("\t// ");
+			block.push_str(&header);
+			for line in code.lines() {
+				block.push_str("\n\t");
+				block.push_str(&line);
+			}
+			block.push('\n');
+			final_blocks.push((names, block));
 		}
 	}
 
