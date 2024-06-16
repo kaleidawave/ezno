@@ -12,6 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let path = args.first().ok_or("expected path to markdown file")?;
 
 	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
+	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
 
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
 		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
@@ -31,14 +32,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 		while let Some(line) = lines.next() {
 			if line.starts_with("```ts") {
-				let code = lines
-					.by_ref()
-					.take_while(|line| !line.starts_with("```"))
-					.fold(String::new(), |mut a, s| {
+				let code = lines.by_ref().take_while(|line| !line.starts_with("```")).fold(
+					String::new(),
+					|mut a, s| {
 						a.push_str(s);
 						a.push_str("\n");
 						a
-					});
+					},
+				);
 
 				if !filters.iter().any(|filter| code.contains(filter)) {
 					blocks.push((std::mem::take(&mut current), code));
@@ -121,16 +122,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
 		{
 			items.extend(names.into_iter());
-			block.push_str("\n\t// ");
-			block.push_str(&header);
+			if add_headers_as_comments {
+				block.push_str("\n\t// ");
+				block.push_str(&header);
+			}
 			for line in code.lines() {
 				block.push_str("\n\t");
 				block.push_str(&line);
 			}
+			// If the block is not terminated, it can change the parsing of the next one
+			if block.ends_with(')') {
+				block.push(';');
+			}
 			block.push('\n');
 		} else {
-			let mut block = String::from("\t// ");
-			block.push_str(&header);
+			let mut block = String::new();
+			if add_headers_as_comments {
+				block.push_str("\t// ");
+				block.push_str(&header);
+			}
 			for line in code.lines() {
 				block.push_str("\n\t");
 				block.push_str(&line);

@@ -369,11 +369,9 @@ mod structures {
 				ImmutableVariableOrProperty::ArrayDestructuringMember(_) => None,
 				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
 					match o.get_ast_ref() {
-						ObjectDestructuringField::Spread(
-							VariableField::Name(VariableIdentifier::Standard(a, _)),
-							_,
-						)
-						| ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => Some(a.as_str()),
+						ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => {
+							Some(a.as_str())
+						}
 						_ => None,
 					}
 				}

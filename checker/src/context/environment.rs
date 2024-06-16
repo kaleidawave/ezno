@@ -384,7 +384,7 @@ impl<'a> Environment<'a> {
 					}
 				}
 			}
-			Assignable::ObjectDestructuring(assignments) => {
+			Assignable::ObjectDestructuring(members, _spread) => {
 				debug_assert!(matches!(operator, AssignmentKind::Assign));
 
 				let rhs = A::synthesise_expression(
@@ -395,13 +395,13 @@ impl<'a> Environment<'a> {
 				);
 
 				self.assign_to_object_destructure_handle_errors(
-					assignments,
+					members,
 					rhs,
 					assignment_span,
 					checking_data,
 				)
 			}
-			Assignable::ArrayDestructuring(assignments) => {
+			Assignable::ArrayDestructuring(members, _spread) => {
 				debug_assert!(matches!(operator, AssignmentKind::Assign));
 
 				let rhs = A::synthesise_expression(
@@ -412,7 +412,7 @@ impl<'a> Environment<'a> {
 				);
 
 				self.assign_to_array_destructure_handle_errors(
-					assignments,
+					members,
 					rhs,
 					assignment_span,
 					checking_data,
@@ -463,14 +463,14 @@ impl<'a> Environment<'a> {
 				checking_data,
 				assignment_span,
 			),
-			Assignable::ObjectDestructuring(assignments) => self
+			Assignable::ObjectDestructuring(assignments, _spread) => self
 				.assign_to_object_destructure_handle_errors(
 					assignments,
 					rhs,
 					assignment_span,
 					checking_data,
 				),
-			Assignable::ArrayDestructuring(assignments) => self
+			Assignable::ArrayDestructuring(assignments, _spread) => self
 				.assign_to_array_destructure_handle_errors(
 					assignments,
 					rhs,
@@ -549,7 +549,6 @@ impl<'a> Environment<'a> {
 						checking_data,
 					);
 				}
-				AssignableObjectDestructuringField::Spread(_, _) => todo!(),
 			}
 		}
 

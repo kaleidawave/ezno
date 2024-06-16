@@ -33,6 +33,7 @@ pub enum ParseErrors<'a> {
 	ExpectRule,
 	InvalidRegexFlag,
 	ExpectedDeclaration,
+	CannotHaveRegularMemberAfterSpread,
 }
 
 impl<'a> Display for ParseErrors<'a> {
@@ -124,10 +125,13 @@ impl<'a> Display for ParseErrors<'a> {
 				write!(f, "'-' must be followed by a readonly rule")
 			}
 			ParseErrors::InvalidRegexFlag => {
-				write!(f, "Regexp flags must be one of 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
+				write!(f, "Regexp flags must be 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
 			}
 			ParseErrors::ExpectedDeclaration => {
 				write!(f, "Expected identifier after variable declaration keyword")
+			}
+			ParseErrors::CannotHaveRegularMemberAfterSpread => {
+				write!(f, "Cannot have regular member after spread")
 			}
 		}
 	}

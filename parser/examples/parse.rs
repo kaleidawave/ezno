@@ -24,9 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let print_ast = args.iter().any(|item| item == "--ast");
 
-	// double => pretty and render thus `|| double`
-	let render_output = args.iter().any(|item| item == "--render") || double;
-	let pretty = args.iter().any(|item| item == "--pretty") || double;
+	let render_output = args.iter().any(|item| item == "--render");
+	let pretty = args.iter().any(|item| item == "--pretty");
 
 	let now = Instant::now();
 
@@ -67,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if print_ast {
 				println!("{module:#?}");
 			}
-			if source_maps || render_output || double || render_timings {
+			if source_maps || render_output || render_timings {
 				let now = Instant::now();
 
 				let to_string_options = ToStringOptions {

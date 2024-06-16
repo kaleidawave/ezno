@@ -4,8 +4,8 @@ use iterator_endiate::EndiateIteratorExt;
 use parser::{
 	expressions::ExpressionOrBlock,
 	functions::{LeadingParameter, ParameterData},
-	ASTNode, Block, FunctionBased, Span, TypeAnnotation, TypeParameter, VariableField,
-	VariableIdentifier, WithComment,
+	ASTNode, Block, FunctionBased, Span, SpreadDestructuringField, TypeAnnotation, TypeParameter,
+	VariableField, VariableIdentifier, WithComment,
 };
 
 use crate::{
@@ -494,14 +494,10 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 				String::new()
 			}
 		}
-		VariableField::Array(items, _) => {
+		VariableField::Array { members, spread, .. } => {
 			let mut buf = String::from("[");
-			for (not_at_end, item) in items.iter().nendiate() {
-				match item.get_ast_ref() {
-					parser::ArrayDestructuringField::Spread(name, _) => {
-						buf.push_str("...");
-						buf.push_str(&variable_field_to_string(name));
-					}
+			for (not_at_end, member) in members.iter().nendiate() {
+				match member.get_ast_ref() {
 					parser::ArrayDestructuringField::Name(name, ..) => {
 						buf.push_str(&variable_field_to_string(name));
 					}
@@ -512,22 +508,24 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 					buf.push_str(", ");
 				}
 			}
+			if let Some(SpreadDestructuringField(name, _)) = spread {
+				if !members.is_empty() {
+					buf.push_str(", ");
+				}
+				buf.push_str("...");
+				buf.push_str(&variable_field_to_string(name));
+			}
 			buf.push(']');
-
 			buf
 		}
-		VariableField::Object(items, _) => {
+		VariableField::Object { members, spread, .. } => {
 			let mut buf = String::from("{");
-			for (not_at_end, item) in items.iter().nendiate() {
+			for (not_at_end, item) in members.iter().nendiate() {
 				match item.get_ast_ref() {
 					parser::ObjectDestructuringField::Name(name, ..) => {
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
 						}
-					}
-					parser::ObjectDestructuringField::Spread(name, _) => {
-						buf.push_str("...");
-						buf.push_str(&variable_field_to_string(name));
 					}
 					parser::ObjectDestructuringField::Map { from, name, .. } => {
 						match from {
@@ -546,6 +544,13 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 					buf.push_str(", ");
 				}
 			}
+			if let Some(SpreadDestructuringField(name, _)) = spread {
+				if !members.is_empty() {
+					buf.push_str(", ");
+				}
+				buf.push_str("...");
+				buf.push_str(&variable_field_to_string(name));
+			}
 			buf.push_str(" }");
 
 			buf
@@ -560,8 +565,12 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
 			VariableIdentifier::Marker(_, _) => String::new(),
 		},
-		VariableField::Array(_items, _) => "todo".to_owned(),
-		VariableField::Object(_, _) => "todo".to_owned(),
+		VariableField::Array { members: _, spread: _, position: _ } => {
+			"todo: VariableField::Array".to_owned()
+		}
+		VariableField::Object { members: _, spread: _, position: _ } => {
+			"todo: VariableField::Object".to_owned()
+		}
 	}
 }
 

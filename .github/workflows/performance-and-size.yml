@@ -50,8 +50,7 @@ jobs:
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --out ./demo.tsx
-          echo "::info::Finished file generation"
+          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
 
           LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.tsx | jq ".[0].Code")
 
@@ -65,7 +64,8 @@ jobs:
 
           \`\`\`tsx
           // $LINES_OF_CODE lines of TypeScript generated from specification.md
-          // this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
+          // this is not meant to accurately represent a program but instead give an idea 
+          // for how it scales across all the type checking features
           $(cat ./demo.tsx)
           \`\`\`
           </details>

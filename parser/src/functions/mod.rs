@@ -219,7 +219,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			.is_some()
 			.then(|| {
 				parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _)| params)
+					.map(|(params, _, _)| params)
 			})
 			.transpose()?;
 		let parameters = FunctionParameters::from_reader(reader, state, options)?;

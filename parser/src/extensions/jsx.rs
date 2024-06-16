@@ -441,7 +441,8 @@ impl JSXElement {
 			let end = if let Token(TSXToken::JSXClosingTagName(closing_tag_name), start) =
 				reader.next().ok_or_else(parse_lexing_error)?
 			{
-				let end = start.0 + closing_tag_name.len() as u32 + 2;
+				let end =
+					start.0 + u32::try_from(closing_tag_name.len()).expect("4GB tag name") + 2;
 				if closing_tag_name != tag_name {
 					return Err(ParseError::new(
 						crate::ParseErrors::ClosingTagDoesNotMatch {

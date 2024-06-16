@@ -384,7 +384,10 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	let (mut sender, mut reader) =
 		tokenizer_lib::ParallelTokenQueue::new_with_buffer_size(options.buffer_size);
 	let lex_options = options.get_lex_options();
+
+	#[allow(clippy::cast_possible_truncation)]
 	let length_of_source = script.len() as u32;
+
 	let mut thread = std::thread::Builder::new().name("AST parsing".into());
 	if let Some(stack_size) = options.stack_size {
 		thread = thread.stack_size(stack_size);
@@ -515,7 +518,7 @@ impl ParsingState {
 	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
 		let id = self.partial_points.len();
 		self.partial_points.push(at);
-		Marker(id as u8, Default::default())
+		Marker(u8::try_from(id).expect("more than 256 markers"), Default::default())
 	}
 }
 
@@ -525,6 +528,7 @@ pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
 
 impl KeywordPositions {
 	#[must_use]
+	#[allow(clippy::cast_possible_truncation)]
 	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
 		// binary search
 		let mut l: u32 = 0;
@@ -621,7 +625,10 @@ impl TryFrom<NumberRepresentation> for f64 {
 			NumberRepresentation::Number(value) => Ok(value),
 			NumberRepresentation::Hex { sign, value, .. }
 			| NumberRepresentation::Bin { sign, value, .. }
-			| NumberRepresentation::Octal { sign, value, .. } => Ok(sign.apply(value as f64)),
+			| NumberRepresentation::Octal { sign, value, .. } => {
+				// TODO `value as f64` can lose information? If so should return f64::INFINITY
+				Ok(sign.apply(value as f64))
+			}
 			NumberRepresentation::Exponential { sign, value, exponent } => {
 				Ok(sign.apply(value * 10f64.powi(exponent)))
 			}
@@ -942,10 +949,17 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 }
 
 pub trait ListItem: Sized {
+	type LAST;
+	const LAST_PREFIX: Option<TSXToken> = None;
 	const EMPTY: Option<Self> = None;
 
-	fn allow_comma_after(&self) -> bool {
-		true
+	#[allow(unused)]
+	fn parse_last_item(
+		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> ParseResult<Self::LAST> {
+		unreachable!("ListItem::LAST != ASTNode")
 	}
 }
 
@@ -958,7 +972,7 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	options: &ParseOptions,
 	start: Option<TSXToken>,
 	end: TSXToken,
-) -> ParseResult<(Vec<T>, TokenEnd)> {
+) -> ParseResult<(Vec<T>, Option<T::LAST>, TokenEnd)> {
 	if let Some(start) = start {
 		let _ = reader.expect_next(start)?;
 	}
@@ -972,31 +986,31 @@ pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 				}
 				let Token(token, s) = reader.next().unwrap();
 				if token == end {
-					return Ok((nodes, s.get_end_after(token.length() as usize)));
+					return Ok((nodes, None, s.get_end_after(token.length() as usize)));
 				}
 				continue;
 			}
 		} else if let Some(token) = reader.conditional_next(|token| *token == end) {
-			return Ok((nodes, token.get_end()));
+			return Ok((nodes, None, token.get_end()));
+		}
+
+		if T::LAST_PREFIX.is_some_and(|l| reader.peek().is_some_and(|Token(token, _)| *token == l))
+		{
+			let last = T::parse_last_item(reader, state, options)?;
+			let len = end.length() as usize;
+			let end = reader.expect_next(end)?.get_end_after(len);
+			return Ok((nodes, Some(last), end));
 		}
 
 		let node = T::from_reader(reader, state, options)?;
-		let allow_comma = T::allow_comma_after(&node);
 		nodes.push(node);
 
 		match reader.next().ok_or_else(errors::parse_lexing_error)? {
-			Token(TSXToken::Comma, s) => {
-				if !allow_comma {
-					return Err(ParseError::new(
-						crate::ParseErrors::TrailingCommaNotAllowedHere,
-						s.with_length(1),
-					));
-				}
-			}
+			Token(TSXToken::Comma, _) => {}
 			token => {
 				if token.0 == end {
 					let get_end = token.get_end();
-					return Ok((nodes, get_end));
+					return Ok((nodes, None, get_end));
 				}
 				let position = token.get_span();
 				return Err(ParseError::new(
@@ -1202,7 +1216,7 @@ impl VariableKeyword {
 /// Conditionally computes the node length
 /// Does nothing under pretty == false or no max line length
 pub fn are_nodes_over_length<'a, T: ASTNode>(
-	nodes: impl Iterator<Item = &'a T>,
+	nodes: impl ExactSizeIterator<Item = &'a T>,
 	options: &ToStringOptions,
 	local: crate::LocalToStringInformation,
 	// None = 'no space'
@@ -1216,16 +1230,14 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 			source: String::new(),
 			source_map: None,
 			quit_after: Some(room),
-			since_new_line: 0,
+			// Temp fix for considering delimiters to nodes
+			since_new_line: nodes.len().try_into().expect("4 billion nodes ?"),
 		};
+
 		for node in nodes {
 			node.to_string_from_buffer(&mut buf, options, local);
 
-			let length = if total {
-				buf.source.len()
-			} else {
-				buf.source.find('\n').unwrap_or(buf.source.len())
-			};
+			let length = if total { buf.source.len() } else { buf.since_new_line as usize };
 			let is_over = length > room;
 			if is_over {
 				return is_over;

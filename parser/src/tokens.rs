@@ -175,6 +175,7 @@ impl tokenizer_lib::TokenTrait for TSXToken {
 }
 
 impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
+	#[allow(clippy::cast_possible_truncation)]
 	fn length(&self) -> u32 {
 		match self {
 			TSXToken::Keyword(kw) => kw.length(),
@@ -355,6 +356,7 @@ impl TSXKeyword {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 
+	#[allow(clippy::cast_possible_truncation)]
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
 	}
