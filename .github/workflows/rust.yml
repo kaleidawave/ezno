@@ -222,12 +222,11 @@ jobs:
         run: |
           rustup install nightly
           rustup default nightly
-          rustup target add x86_64-unknown-linux-musl
       
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.parser == 'true'
         with:
-          packages: cargo-fuzz
+          packages: cargo-fuzz@0.11.2
 
       - name: Run fuzzing
         env:
