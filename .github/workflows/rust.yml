@@ -222,7 +222,8 @@ jobs:
         run: |
           rustup install nightly
           rustup default nightly
-
+          rustup target add x86_64-unknown-linux-musl
+      
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.parser == 'true'
         with:
@@ -234,9 +235,9 @@ jobs:
         if: steps.changes.outputs.parser == 'true'
         run: |
           if ${{ env.SHORT_CIRCUIT }}; then
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
           else
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
             
             if test -d fuzz/artifacts; then 
               find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 

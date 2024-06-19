@@ -55,6 +55,7 @@ fn main() {
 - Output
    	- Stripping type annotations can be stripped from output using `ToStringOptions { include_types: false, ..Default::default() }`
    	- Adding indentation under `pretty: true`, not adding whitespace for production builds
+   	- Setting `max_line_length` to a size to wrap certain structures
    	- Support for source map mapping generation
 
 ## Non-goals
