@@ -222,11 +222,15 @@ jobs:
         run: |
           rustup install nightly
           rustup default nightly
-      
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+
+      - name: Install cargo-fuzz
         if: steps.changes.outputs.parser == 'true'
-        with:
-          packages: cargo-fuzz@0.11.2
+        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
+      
+      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      #   if: steps.changes.outputs.parser == 'true'
+      #   with:
+      #     packages: cargo-fuzz@0.11.2
 
       - name: Run fuzzing
         env:
