@@ -295,6 +295,10 @@ pub struct LocalToStringInformation {
 }
 
 impl LocalToStringInformation {
+	pub fn new_under(under: SourceId) -> Self {
+		Self { under, depth: 0, should_try_pretty_print: true }
+	}
+
 	pub(crate) fn next_level(self) -> LocalToStringInformation {
 		LocalToStringInformation {
 			under: self.under,
@@ -360,15 +364,8 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	/// Returns structure as valid string
 	fn to_string(&self, options: &crate::ToStringOptions) -> String {
 		let mut buf = source_map::StringWithOptionalSourceMap::new(false);
-		self.to_string_from_buffer(
-			&mut buf,
-			options,
-			LocalToStringInformation {
-				under: source_map::Nullable::NULL,
-				depth: 0,
-				should_try_pretty_print: true,
-			},
-		);
+		let local = LocalToStringInformation::new_under(source_map::Nullable::NULL);
+		self.to_string_from_buffer(&mut buf, options, local);
 		buf.source
 	}
 }
