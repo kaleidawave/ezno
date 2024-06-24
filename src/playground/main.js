@@ -1,16 +1,18 @@
 import { EditorView, keymap, hoverTooltip } from "@codemirror/view";
 import { EditorState, Text } from "@codemirror/state";
 import { linter } from "@codemirror/lint";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, indentWithTab, toggleLineComment } from "@codemirror/commands";
 import { parser as jsParser } from "@lezer/javascript";
 import { tags } from "@lezer/highlight";
 import { HighlightStyle, syntaxHighlighting, LanguageSupport, LRLanguage } from "@codemirror/language";
 import { init as init_ezno, check_with_options, get_version } from "ezno";
-import lz from "lz-string";
+// import lz from "lz-string";
 
 const diagnosticsEntry = document.querySelector(".diagnostics");
 const editorParent = document.querySelector("#editor");
 const shareButton = document.querySelector("#share");
+
+const timeOutput = document.querySelector("#time");
 
 const myHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#C792EA' },
@@ -40,18 +42,15 @@ const STORE = "https://kaleidawave-savednamedplaygrounds.web.val.run"
 
 
 let text = "const x: 2 = 3;";
+let initialText = text;
 
 const { searchParams } = new URL(location);
-const code = searchParams.get("code");
 const id = searchParams.get("id");
 
-if (code) {
-  text = lz.decompressFromEncodedURIComponent(code);
-  setup()
-} else if (id) {
+if (id) {
   fetch(STORE + `?id=${id}`, { method: "GET" }).then(res => res.json()).then((result) => {
     if (result.content) {
-      text = result.content
+      initialText = text = result.content
       setup()
     } else if (result.error) {
       alert(`Error getting code for id '${result.error}'`)
@@ -70,9 +69,12 @@ async function setup() {
 
   function getLinter() {
     return linter((args) => {
-      text = args.state.doc.text.join("\n");
+      text = args.state.doc.text.toString();
       try {
+        const start = performance.now();
         currentState = check_with_options(ROOT_PATH, (_) => text, { lsp_mode: true, store_type_mappings: true });
+        const elapsed = performance.now() - start;
+        timeOutput.innerText = `Parsed & checked in ${Math.trunc(elapsed)}ms`;
 
         diagnosticsEntry.innerHTML = "";
         for (const diagnostic of currentState.diagnostics) {
@@ -141,9 +143,9 @@ async function setup() {
     state: EditorState.create({
       doc: Text.of([text]),
       extensions: [
-        keymap.of([...defaultKeymap, indentWithTab]),
+        keymap.of([...defaultKeymap, indentWithTab,]), //toggleLineComment
         EditorState.tabSize.of(4),
-        new LanguageSupport(LRLanguage.define({ parser: jsParser.configure({ dialect: "ts" }) }), [getLinter()]),
+        new LanguageSupport(LRLanguage.define({ parser: jsParser.configure({ dialect: "ts" }), languageData: { commentTokens: { line: "// " } } }), [getLinter()]),
         syntaxHighlighting(myHighlightStyle),
         getHover(),
         theme,
@@ -154,17 +156,15 @@ async function setup() {
 
   console.log("Editor ready")
   console.log(`Running ezno@${get_version()}`)
+  document.querySelector("#version").innerText = `Running ezno@${get_version()}`;
 
   shareButton.addEventListener("click", () => {
     const url = new URL(location);
-    const text = editor.state.doc.toString();
-    const lzCompressCode = lz.compressToEncodedURIComponent(text);
-    // TODO arbitrary length
-    console.debug(`lzCompressCode.length=${lzCompressCode.length}`);
-    if (lzCompressCode.length < 120) {
-      url.searchParams.set("code", lzCompressCode);
-      history.pushState({}, "", url);
-    } else {
+
+    if (text !== initialText) {
+      // This + `if` statement prevents spam
+      initialText = text;
+
       fetch(STORE, {
         method: "POST",
         body: JSON.stringify({ content: text })
@@ -172,11 +172,15 @@ async function setup() {
         if (result.id) {
           url.searchParams.set("id", result.id);
           history.pushState({}, "", url);
+          navigator.clipboard.writeText(url.toString()).then(() => {
+            alert("Share URL copied to clipboard")
+          });
         } else if (result.error) {
           alert(`Error sharing code '${result.error}'`)
         }
       })
+    } else {
+      alert("Sharing existing code")
     }
-    // TODO also copy to clipboard and popup
   })
 }
