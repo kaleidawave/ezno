@@ -10,7 +10,7 @@ use crate::{
 		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	events::{Event, FinalEvent, RootReference},
+	events::RootReference,
 	features::create_closed_over_references,
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
@@ -747,12 +747,12 @@ where
 								false,
 							);
 
-							let this_free_variable = checking_data.types.register_type(
-								Type::RootPolyType(PolyNature::FreeVariable {
-									reference: RootReference::This,
-									based_on: this_constraint,
-								}),
-							);
+							let ty = Type::RootPolyType(PolyNature::FreeVariable {
+								reference: RootReference::This,
+								based_on: this_constraint,
+							});
+
+							let this_free_variable = checking_data.types.register_type(ty);
 
 							(this_free_variable, this_constructed_object)
 						} else {
@@ -869,28 +869,6 @@ where
 			..
 		} = function_environment.context_type;
 
-		let returned = if function.has_body() {
-			if let Some(event) = function_environment.info.events.last() {
-				match event {
-					// TODO
-					Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => *returned,
-					Event::FinalEvent(FinalEvent::Throw { thrown: _, position: _ }) => {
-						TypeId::NEVER_TYPE
-					}
-					_ => {
-						crate::utilities::notify!("TODO might be others here");
-						TypeId::UNDEFINED_TYPE
-					}
-				}
-			} else {
-				TypeId::UNDEFINED_TYPE
-			}
-		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
-			ty
-		} else {
-			TypeId::UNDEFINED_TYPE
-		};
-
 		// crate::utilities::notify!(
 		// 	"closes_over {:?}, free_variable {:?}, in {:?}",
 		// 	closes_over,
@@ -900,6 +878,14 @@ where
 
 		let info = function_environment.info;
 		let variable_names = function_environment.variable_names;
+
+		let returned = if function.has_body() {
+			info.state.get_returned(&mut checking_data.types)
+		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
+			ty
+		} else {
+			TypeId::UNDEFINED_TYPE
+		};
 
 		{
 			// let mut _back_requests = HashMap::<(), ()>::new();

@@ -3,21 +3,25 @@
 
 use std::collections::HashMap;
 
-use source_map::SpanWithSource;
+use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
+	call_type_handle_errors,
 	context::{
-		environment::Label, invocation::InvocationContext, CallCheckingBehavior,
-		ClosedOverReferencesInScope,
+		environment::Label,
+		invocation::{CheckThings, InvocationContext},
+		CallCheckingBehavior, ClosedOverReferencesInScope,
 	},
 	events::{
-		application::{apply_events_unknown, ApplicationInput, CallingDiagnostics},
+		application::{ApplicationInput, CallingDiagnostics},
 		apply_events, ApplicationResult, Event, FinalEvent, RootReference,
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
-		printing::debug_effects, properties::get_properties_on_single_type, substitute,
-		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
+		printing::{debug_effects, print_type},
+		properties::get_properties_on_single_type,
+		substitute, Constructor, ObjectNature, PolyNature, SpecialObject, SubstitutionArguments,
+		TypeStore,
 	},
 	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
 };
@@ -72,7 +76,11 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					);
 
 					// TODO not always needed
-					add_break_event(condition, position, &mut environment.info.events);
+					add_loop_described_break_event(
+						condition,
+						position,
+						&mut environment.info.events,
+					);
 
 					loop_body(environment, checking_data);
 
@@ -142,7 +150,11 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					);
 
 					// TODO not always needed
-					add_break_event(condition, position, &mut environment.info.events);
+					add_loop_described_break_event(
+						condition,
+						position,
+						&mut environment.info.events,
+					);
 
 					condition
 				},
@@ -231,7 +243,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 									};
 
 									// TODO not always needed
-									add_break_event(
+									add_loop_described_break_event(
 										condition,
 										position,
 										&mut environment.info.events,
@@ -329,9 +341,11 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				checking_data,
 				|environment, checking_data| {
 					let arguments = crate::VariableRegisterArguments {
+						// TODO based on LHS
 						constant: true,
 						space: None,
 						initial_value: Some(variable),
+						allow_reregistration: false,
 					};
 					A::declare_and_assign_to_fields(lhs, environment, checking_data, arguments);
 					loop_body(environment, checking_data);
@@ -356,11 +370,87 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			// 	todo!("{early_return:?}")
 			// }
 		}
-		IterationBehavior::ForOf { lhs: _, rhs: _ } => todo!(),
+		IterationBehavior::ForOf { lhs: _, rhs } => {
+			let rhs_position = A::expression_position(rhs);
+			let rhs = A::synthesise_expression(rhs, TypeId::ANY_TYPE, environment, checking_data);
+
+			// TODO could shortcut (and reduce overhead possibly) if simple `Array`
+			let _iterator = {
+				crate::utilities::notify!("Here");
+				let get_property = crate::types::properties::get_property(
+					rhs,
+					crate::types::properties::Publicity::Public,
+					&crate::types::properties::PropertyKey::Type(TypeId::SYMBOL_ITERATOR),
+					None,
+					environment,
+					&mut CheckThings { debug_types: checking_data.options.debug_types },
+					&mut checking_data.types,
+					position,
+					true,
+				);
+				let iterator_generator = if let Some((_, ty)) = get_property {
+					ty
+				} else {
+					todo!("error + run block any with error")
+				};
+
+				let input = crate::types::calling::CallingInput {
+					called_with_new: crate::types::calling::CalledWithNew::None,
+					call_site: rhs_position.with_source(environment.get_source()),
+					max_inline: checking_data.options.max_inline_count,
+				};
+				call_type_handle_errors(
+					iterator_generator,
+					None,
+					&[],
+					input,
+					environment,
+					checking_data,
+					// TODO type with next etc
+					TypeId::ANY_TYPE,
+				)
+			};
+
+			let next_function = crate::types::properties::get_property(
+				rhs,
+				crate::types::properties::Publicity::Public,
+				&crate::types::properties::PropertyKey::String(std::borrow::Cow::Borrowed("next")),
+				None,
+				environment,
+				&mut CheckThings { debug_types: checking_data.options.debug_types },
+				&mut checking_data.types,
+				position,
+				true,
+			);
+
+			if let Some((_, func)) = next_function {
+				if let Type::SpecialObject(SpecialObject::Function(function_id, _)) =
+					checking_data.types.get_type_by_id(func)
+				{
+					let func = checking_data.types.get_function_from_id(*function_id);
+
+					let i = print_type(func.return_type, &checking_data.types, environment, true);
+					crate::utilities::notify!("Function returns {}", i);
+
+				// TODO analyse return type
+				// set free variable constraint
+				// run iteration thingy below
+				// each turn run the .next + ()
+				// call return at the end
+				} else {
+					crate::utilities::notify!("Not a function!");
+				}
+			}
+		}
 	}
 }
 
-fn add_break_event(condition: TypeId, position: SpanWithSource, events: &mut Vec<Event>) {
+/// Technically the max_iterations should make this obsolete
+fn add_loop_described_break_event(
+	condition: TypeId,
+	position: SpanWithSource,
+	events: &mut Vec<Event>,
+) {
 	let break_event =
 		Event::Conditionally { condition, truthy_events: 0, otherwise_events: 1, position };
 	events.push(break_event);
@@ -411,7 +501,7 @@ pub(crate) fn run_iteration_block(
 	invocation_context: &mut InvocationContext,
 	errors: &mut CallingDiagnostics,
 	types: &mut TypeStore,
-) {
+) -> Option<ApplicationResult> {
 	let mut s = String::new();
 	debug_effects(&mut s, events, types, top_environment, 0, true);
 	crate::utilities::notify!("Applying:\n{}", s);
@@ -470,7 +560,7 @@ pub(crate) fn run_iteration_block(
 					types,
 					errors,
 					|_, _| {},
-				);
+				)
 			} else {
 				evaluate_unknown_iteration_for_loop(
 					events,
@@ -481,9 +571,11 @@ pub(crate) fn run_iteration_block(
 					top_environment,
 					types,
 				);
+				None
 			}
 		}
 		IterationKind::Properties { on, variable } => {
+			// Or exact ...?. TODO split ors
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
 				let properties = get_properties_on_single_type(on, types, top_environment);
 				let mut n = 0;
@@ -504,7 +596,7 @@ pub(crate) fn run_iteration_block(
 
 						n += 1;
 					},
-				);
+				)
 			} else {
 				evaluate_unknown_iteration_for_loop(
 					events,
@@ -515,9 +607,25 @@ pub(crate) fn run_iteration_block(
 					top_environment,
 					types,
 				);
+				None
 			}
 		}
-		IterationKind::Iterator { .. } => todo!(),
+		IterationKind::Iterator { .. } => {
+			// if let Some(mut iterations) = non_exorbitant_amount_of_iterations {
+			// 	tod
+			// } else {
+			evaluate_unknown_iteration_for_loop(
+				events,
+				initial,
+				condition,
+				type_arguments,
+				invocation_context,
+				top_environment,
+				types,
+			);
+			None
+			// }
+		}
 	}
 }
 
@@ -533,7 +641,7 @@ fn run_iteration_loop(
 	errors: &mut CallingDiagnostics,
 	// For `for in` (TODO for of)
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
-) {
+) -> Option<ApplicationResult> {
 	invocation_context.new_loop_iteration(|invocation_context| {
 		for _ in 0..iterations {
 			each_iteration(type_arguments, types);
@@ -557,33 +665,20 @@ fn run_iteration_loop(
 						break;
 					}
 					ApplicationResult::Continue { carry, position } => {
-						let info = invocation_context.get_latest_info(top_environment);
-						info.events.push(FinalEvent::Continue { carry, position }.into());
-						// return ApplicationResult::Interrupt(FinalEvent::Continue {
-						// 	carry: carry - 1,
-						// 	position,
-						// })
+						return Some(ApplicationResult::Continue { carry: carry - 1, position });
 					}
 					ApplicationResult::Break { carry, position } => {
-						let info = invocation_context.get_latest_info(top_environment);
-						info.events.push(FinalEvent::Continue { carry, position }.into());
+						return Some(ApplicationResult::Break { carry: carry - 1, position });
 					}
-					ApplicationResult::Return { returned, position } => {
-						let info = invocation_context.get_latest_info(top_environment);
-						info.events.push(FinalEvent::Return { returned, position }.into());
-					}
-					ApplicationResult::Throw { thrown, position } => {
-						let info = invocation_context.get_latest_info(top_environment);
-						info.events.push(FinalEvent::Throw { thrown, position }.into());
-					}
-					ApplicationResult::Yield {} => todo!(),
-					ApplicationResult::Or { .. } => {
-						todo!("{:?}", result);
+					result => {
+						return Some(result);
 					}
 				}
 			}
 		}
-	});
+
+		None
+	})
 }
 
 fn evaluate_unknown_iteration_for_loop(
@@ -602,24 +697,42 @@ fn evaluate_unknown_iteration_for_loop(
 		}
 	};
 
-	// TODO can skip if at the end of a function
-	apply_events_unknown(
-		events,
-		super::functions::ThisValue::UseParent,
-		type_arguments,
-		top_environment,
-		invocation_context,
-		types,
-	);
+	let mut calling_diagnostics = CallingDiagnostics::default();
 
-	let get_latest_info = invocation_context.get_latest_info(top_environment);
-	get_latest_info.events.push(Event::Iterate {
-		kind,
-		initial,
-		iterate_over: events.len() as u32,
+	// Make rest of scope aware of changes under the loop
+	// TODO can skip if at the end of a function
+	let _res = invocation_context.new_unknown_target(|invocation_context| {
+		// TODO
+		let max_inline = 10;
+
+		let res = apply_events(
+			events,
+			&ApplicationInput {
+				this_value: super::functions::ThisValue::UseParent,
+				call_site: BaseSpan::NULL,
+				max_inline,
+			},
+			type_arguments,
+			top_environment,
+			invocation_context,
+			types,
+			&mut calling_diagnostics,
+		);
+
+		res
 	});
-	get_latest_info.events.extend(events.iter().cloned());
-	get_latest_info.events.push(Event::EndOfControlFlow(events.len() as u32));
+
+	// add event
+	{
+		let get_latest_info = invocation_context.get_latest_info(top_environment);
+		get_latest_info.events.push(Event::Iterate {
+			kind,
+			initial,
+			iterate_over: events.len() as u32,
+		});
+		get_latest_info.events.extend(events.iter().cloned());
+		get_latest_info.events.push(Event::EndOfControlFlow(events.len() as u32));
+	}
 }
 
 /// Denotes values at the end of a loop
@@ -826,4 +939,18 @@ fn calculate_result_of_loop(
 		}
 	}
 	Err(())
+}
+
+pub struct IteratorHelper {
+	_inner: crate::types::calling::Callable,
+}
+
+impl IteratorHelper {
+	pub fn from_type(_on: TypeId) -> Self {
+		todo!()
+	}
+
+	pub fn next(&self) -> Option<TypeId> {
+		todo!()
+	}
 }

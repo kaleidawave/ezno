@@ -125,7 +125,6 @@ impl Exported {
 						&mut environment,
 						&mut InvocationContext::new_empty(),
 						types,
-						false,
 					);
 
 					crate::utilities::notify!("Call result as well");
@@ -221,9 +220,11 @@ pub fn import_items<
 					constant: true,
 					initial_value: Some(TypeId::ERROR_TYPE),
 					space: None,
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
@@ -252,9 +253,11 @@ pub fn import_items<
 								constant: true,
 								space: None,
 								initial_value: Some(TypeId::ERROR_TYPE),
+								allow_reregistration: false,
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							&mut checking_data.local_type_mappings,
 							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
@@ -304,9 +307,11 @@ pub fn import_items<
 							constant: true,
 							space: None,
 							initial_value: Some(TypeId::ERROR_TYPE),
+							allow_reregistration: false,
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						&mut checking_data.local_type_mappings,
 						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
@@ -328,9 +333,11 @@ pub fn import_items<
 					constant: true,
 					space: None,
 					initial_value: Some(value),
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}

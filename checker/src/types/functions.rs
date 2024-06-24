@@ -118,7 +118,7 @@ impl FunctionType {
 						max_inline: checking_data.options.max_inline_count,
 					};
 					let result = call_type(
-						extends,
+						crate::types::calling::Callable::Type(extends),
 						Vec::new(),
 						input,
 						environment,

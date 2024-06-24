@@ -3,7 +3,7 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	context::{information::InformationChain, Environment, GeneralContext, Logical},
+	context::{information::InformationChain, GeneralContext, Logical},
 	features::objects::SpecialObject,
 	types::{
 		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
@@ -11,7 +11,7 @@ use crate::{
 		properties::{get_property_unbound, key_matches, Publicity},
 		GenericChainLink, ObjectNature, TypeStore,
 	},
-	Constant, PropertyValue, TypeId,
+	Constant, Environment, PropertyValue, TypeId,
 };
 
 use super::{
@@ -137,7 +137,7 @@ pub fn type_is_subtype_object(
 	let result = type_is_subtype(base_type, ty, &mut state, environment, types);
 
 	environment.add_object_constraints(state.object_constraints.unwrap().into_iter(), types);
-	// TODO environment.add_inferred_constraints(x, types);
+	// TODO information.add_inferred_constraints(x, types);
 
 	result
 }
@@ -150,14 +150,14 @@ pub fn type_is_subtype(
 	base_type: TypeId,
 	ty: TypeId,
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	type_is_subtype_with_generics(
 		(base_type, GenericChain::None),
 		(ty, GenericChain::None),
 		state,
-		environment,
+		information,
 		types,
 	)
 }
@@ -215,15 +215,15 @@ pub(crate) fn type_is_subtype_with_generics(
 	(base_type, base_structure_arguments): (TypeId, GenericChain),
 	(ty, ty_structure_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	{
 		let debug = true;
 		crate::utilities::notify!(
 			"Checking {} :>= {}",
-			print_type(base_type, types, environment, debug),
-			print_type(ty, types, environment, debug)
+			print_type(base_type, types, information, debug),
+			print_type(ty, types, information, debug)
 		);
 	}
 
@@ -256,7 +256,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				(base_type, base_structure_arguments),
 				(*left, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
@@ -265,7 +265,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(base_type, base_structure_arguments),
 					(right, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			} else {
@@ -281,7 +281,7 @@ pub(crate) fn type_is_subtype_with_generics(
 		// 		*left,
 		// 		ty_structure_arguments,
 		// 		state,
-		// 		environment,
+		// 		information,
 		// 		types,
 		// 		mode,
 		// 		already_checked
@@ -296,7 +296,7 @@ pub(crate) fn type_is_subtype_with_generics(
 		// 			right,
 		// 			ty_structure_arguments,
 		// 			state,
-		// 			environment,
+		// 			information,
 		// 			types,
 		// 			mode,
 		// 			already_checked
@@ -310,12 +310,12 @@ pub(crate) fn type_is_subtype_with_generics(
 				return if state.others.allow_errors && *to == TypeId::ANY_TYPE {
 					SubTypeResult::IsSubType
 				} else {
-					type_is_subtype(base_type, *to, state, environment, types)
+					type_is_subtype(base_type, *to, state, information, types)
 				};
 			}
 
 			if let Some(args) =
-				ty_structure_arguments.and_then(|tas| tas.get_argument(ty, environment, types))
+				ty_structure_arguments.and_then(|tas| tas.get_argument(ty, information, types))
 			{
 				// TODO what
 				for arg in args {
@@ -323,7 +323,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(base_type, base_structure_arguments),
 						(arg, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 
@@ -364,7 +364,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(base_type, base_structure_arguments),
 					(right_arg, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				);
 
@@ -389,7 +389,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			(*left_func, base_structure_arguments),
 			(right_ty, ty, ty_structure_arguments),
 			state,
-			environment,
+			information,
 			types,
 		),
 		Type::Constant(lhs) => {
@@ -418,11 +418,11 @@ pub(crate) fn type_is_subtype_with_generics(
 				(base_type, base_structure_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 
-			// let _left = print_type(base_type, types, environment, true);
+			// let _left = print_type(base_type, types, information, true);
 
 			// crate::utilities::notify!("Left object {}", left);
 
@@ -439,7 +439,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				(*left, base_structure_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
@@ -448,7 +448,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(right, base_structure_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			} else {
@@ -464,7 +464,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				(*left, base_structure_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
@@ -475,7 +475,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(right, base_structure_arguments),
 						(ty, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 				}
@@ -488,7 +488,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(right, base_structure_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
@@ -500,7 +500,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 			// TODO little weird, handing two very different cases beside each other. Might introduce bugs.. :(
 			let base_argument_for_current = base_structure_arguments
-				.and_then(|args| args.get_argument(base_type, environment, types));
+				.and_then(|args| args.get_argument(base_type, information, types));
 
 			if let Some(args) = base_argument_for_current {
 				// TODO what
@@ -509,7 +509,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(arg, base_structure_arguments),
 						(ty, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 
@@ -531,7 +531,7 @@ pub(crate) fn type_is_subtype_with_generics(
 								(under, GenericChain::None),
 								(ty, ty_structure_arguments),
 								state,
-								environment,
+								information,
 								types,
 							)
 						} else if let Some(constraint) = nature.try_get_constraint() {
@@ -539,7 +539,7 @@ pub(crate) fn type_is_subtype_with_generics(
 								(constraint, GenericChain::None),
 								(ty, ty_structure_arguments),
 								state,
-								environment,
+								information,
 								types,
 							)
 						} else {
@@ -608,7 +608,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(constraint, base_structure_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
@@ -645,7 +645,7 @@ pub(crate) fn type_is_subtype_with_generics(
 									(*lv, base_structure_arguments),
 									(*rv, ty_structure_arguments),
 									state,
-									environment,
+									information,
 									types,
 								);
 								if let err @ SubTypeResult::IsNotSubType(_) = argument_is_subtype {
@@ -658,7 +658,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					}
 				} else if let Type::Object(super::ObjectNature::RealDeal) = right_ty {
 					let prototype =
-						environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty));
+						information.get_chain_of_info().find_map(|info| info.prototypes.get(&ty));
 
 					crate::utilities::notify!("prototype is {:?}", prototype);
 
@@ -667,9 +667,9 @@ pub(crate) fn type_is_subtype_with_generics(
 							// TODO no vec
 							let backing_type =
 								arguments.get_structure_restriction(*argument).unwrap();
-							for value in lookup.calculate_lookup(environment, ty) {
+							for value in lookup.calculate_lookup(information, ty) {
 								let type_is_subtype =
-									type_is_subtype(backing_type, value, state, environment, types);
+									type_is_subtype(backing_type, value, state, information, types);
 								if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype {
 									return e;
 								}
@@ -691,7 +691,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 				crate::utilities::notify!(
 					"Array type is {}",
-					print_type(backing_type, types, environment, false)
+					print_type(backing_type, types, information, false)
 				);
 
 				// TODO temp fix for general parameters
@@ -704,7 +704,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					// };
 
 					// TODO don't create vec
-					// for value in lookup_restriction.calculate_lookup(environment) {
+					// for value in lookup_restriction.calculate_lookup(information) {
 
 					// }
 
@@ -729,7 +729,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(left_arg, base_structure_arguments),
 						(right_arg, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					)
 				} else {
@@ -746,7 +746,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(*on, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
@@ -826,7 +826,7 @@ pub(crate) fn type_is_subtype_with_generics(
 									&PropertyKey::Type(under),
 									ty_structure_arguments,
 								),
-								environment,
+								information,
 								types,
 							);
 							if let Ok(property) = property {
@@ -838,7 +838,7 @@ pub(crate) fn type_is_subtype_with_generics(
 											(property, base_structure_arguments),
 											(ty, ty_structure_arguments),
 											state,
-											environment,
+											information,
 											types,
 										);
 									}
@@ -863,7 +863,7 @@ pub(crate) fn type_is_subtype_with_generics(
 							&PropertyKey::String(std::borrow::Cow::Borrowed(s)),
 							ty_structure_arguments,
 						),
-						environment,
+						information,
 						types,
 					);
 					if get_property_unbound.is_ok() {
@@ -886,7 +886,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(*to, base_structure_arguments),
 						(rhs_constant.get_backing_type_id(), ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					)
 				} else {
@@ -907,7 +907,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				(*to, base_structure_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 		}
@@ -923,7 +923,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			Type::Object(..) => {
 				// WIP Nominal-ness for #128
 				if let Some(prototype) =
-					environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty))
+					information.get_chain_of_info().find_map(|info| info.prototypes.get(&ty))
 				{
 					if *prototype == base_type {
 						SubTypeResult::IsSubType
@@ -942,7 +942,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(base_type, base_structure_arguments),
 					right,
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
@@ -986,7 +986,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					(base_type, base_structure_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				),
 				Type::SpecialObject(SpecialObject::Function(..)) => {
@@ -1011,7 +1011,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					// 	*left,
 					// 	ty_arguments.as_deref(),
 					// 	state,
-					// 	environment,
+					// 	information,
 					// 	types,
 					// );
 					// if let SubTypeResult::IsSubType = left {
@@ -1020,7 +1020,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					// 		right,
 					// 		ty_arguments,
 					// 		state,
-					// 		environment,
+					// 		information,
 					// 		types,
 					// 	)
 					// } else {
@@ -1036,7 +1036,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						(base_type, base_structure_arguments),
 						(*on, append),
 						state,
-						environment,
+						information,
 						types,
 					)
 				}
@@ -1047,7 +1047,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 				Type::Constructor(..) | Type::RootPolyType(..) => {
 					let arg = base_structure_arguments
-						.and_then(|args| args.get_argument(base_type, environment, types));
+						.and_then(|args| args.get_argument(base_type, information, types));
 
 					if let Some(args) = arg {
 						for arg in args {
@@ -1055,7 +1055,7 @@ pub(crate) fn type_is_subtype_with_generics(
 								(arg, base_structure_arguments),
 								(ty, ty_structure_arguments),
 								state,
-								environment,
+								information,
 								types,
 							);
 
@@ -1075,7 +1075,7 @@ pub(crate) fn type_is_subtype_with_generics(
 							(base_type, base_structure_arguments),
 							(to, ty_structure_arguments),
 							state,
-							environment,
+							information,
 							types,
 						)
 					}
@@ -1093,7 +1093,7 @@ fn subtype_function(
 	(left_func, base_type_arguments): (crate::FunctionId, GenericChain),
 	(right_ty, ty, right_type_arguments): (&Type, TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	crate::utilities::notify!("Subtyping a function");
@@ -1132,13 +1132,13 @@ fn subtype_function(
 					(right_param_ty, right_type_arguments),
 					(lhs_param.ty, base_type_arguments),
 					state,
-					environment,
+					information,
 					types,
 				);
 
 				if let err @ SubTypeResult::IsNotSubType(_) = result {
-					let lhs = print_type(right_param_ty, types, environment, true);
-					let rhs = print_type(lhs_param.ty, types, environment, true);
+					let lhs = print_type(right_param_ty, types, information, true);
+					let rhs = print_type(lhs_param.ty, types, information, true);
 					crate::utilities::notify!(
 						"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
 						rhs,
@@ -1170,7 +1170,7 @@ fn subtype_function(
 			(left_func.return_type, base_type_arguments),
 			(right_func.return_type, right_type_arguments),
 			state,
-			environment,
+			information,
 			types,
 		);
 
@@ -1186,7 +1186,7 @@ fn subtype_properties(
 	(base_type, base_type_arguments): (TypeId, GenericChain),
 	(ty, right_type_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	// TODO this will cause problems
@@ -1203,12 +1203,12 @@ fn subtype_properties(
 	// }
 
 	let mut property_errors = Vec::new();
-	let reversed_flattened_properties_on_on = environment
+	let reversed_flattened_properties_on_base = information
 		.get_chain_of_info()
 		.filter_map(|info| info.current_properties.get(&base_type).map(|v| v.iter().rev()))
 		.flatten();
 
-	for (publicity, key, lhs_property) in reversed_flattened_properties_on_on {
+	for (publicity, key, lhs_property) in reversed_flattened_properties_on_base {
 		// crate::utilities::notify!(
 		// 	"key {:?} with base_type_arguments={:?}",
 		// 	key,
@@ -1232,7 +1232,7 @@ fn subtype_properties(
 			(lhs_property, base_type_arguments),
 			(ty, right_type_arguments),
 			state,
-			environment,
+			information,
 			types,
 		);
 
@@ -1263,7 +1263,7 @@ fn subtype_properties(
 				(*extends, base_type_arguments),
 				(ty, right_type_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 		} else {
@@ -1285,7 +1285,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 	(lhs_property, base_type_arguments): (&PropertyValue, GenericChain),
 	(ty, right_type_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> Result<(), PropertyError> {
 	match lhs_property {
@@ -1306,7 +1306,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 			// Fix for mapped types and where { [x: string]: ... } etc
 			if let PropertyKey::Type(TypeId::STRING_TYPE | TypeId::NUMBER_TYPE) = key {
 				if let Type::Object(..) = types.get_type_by_id(ty) {
-					let reversed_flattened_properties_on_on = environment
+					let reversed_flattened_properties_on_on = information
 						.get_chain_of_info()
 						.filter_map(|info| info.current_properties.get(&ty).map(|v| v.iter().rev()))
 						.flatten();
@@ -1323,7 +1323,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 								(*lhs_value, base_type_arguments),
 								(Logical::Pure(rhs_property.clone()), right_type_arguments),
 								state,
-								environment,
+								information,
 								types,
 							);
 							if let SubTypeResult::IsNotSubType(err) = res {
@@ -1346,7 +1346,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 				let property = get_property_unbound(
 					(ty, right_type_arguments),
 					(publicity, key, base_type_arguments),
-					environment,
+					information,
 					types,
 				);
 
@@ -1356,7 +1356,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 							(*lhs_value, base_type_arguments),
 							(rhs_value, right_type_arguments),
 							state,
-							environment,
+							information,
 							types,
 						);
 						match res {
@@ -1375,7 +1375,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 			}
 		}
 		PropertyValue::Getter(getter) => {
-			let res = get_property_unbound((ty, None), (publicity, key, None), environment, types);
+			let res = get_property_unbound((ty, None), (publicity, key, None), information, types);
 			crate::utilities::notify!("looking for {:?} found {:?}", key, res);
 
 			match res {
@@ -1384,7 +1384,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 						(getter.return_type, base_type_arguments),
 						(res, right_type_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 					match res {
@@ -1400,10 +1400,28 @@ fn check_lhs_property_is_super_type_of_rhs(
 				Err(..) => Err(PropertyError::Missing),
 			}
 		}
-		PropertyValue::Setter(_) => todo!(),
+		PropertyValue::Setter(_) => {
+			let rhs = get_property_unbound((ty, None), (publicity, key, None), information, types);
+
+			match rhs {
+				Ok(ok) => {
+					crate::utilities::notify!("Set vs {:?}", ok);
+					Ok(())
+				}
+				Err(err) => match err {
+					crate::context::MissingOrToCalculate::Missing
+					| crate::context::MissingOrToCalculate::Error => {
+						// This should be okay? Maybe warning, but I think it is okay
+						Ok(())
+					}
+					crate::context::MissingOrToCalculate::Infer { on: _ } => todo!(),
+					crate::context::MissingOrToCalculate::Proxy(_) => todo!(),
+				},
+			}
+		}
 		PropertyValue::Deleted => {
 			// TODO WIP
-			let res = get_property_unbound((ty, None), (publicity, key, None), environment, types);
+			let res = get_property_unbound((ty, None), (publicity, key, None), information, types);
 			if res.is_ok() {
 				// TODO the opposite of missing
 				Err(PropertyError::Missing)
@@ -1417,7 +1435,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 				let property = get_property_unbound(
 					(ty, right_type_arguments),
 					(publicity, key, base_type_arguments),
-					environment,
+					information,
 					types,
 				);
 				if let Ok(property) = property {
@@ -1432,7 +1450,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 						(*lhs_value, base_type_arguments),
 						(property, right_type_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 
@@ -1460,7 +1478,7 @@ fn check_logical_property(
 	(base, base_type_arguments): (TypeId, GenericChain),
 	(rhs_property, right_type_arguments): (Logical<PropertyValue>, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	match rhs_property {
@@ -1468,9 +1486,9 @@ fn check_logical_property(
 			let rhs_type = rhs_property.as_set_type();
 			// crate::utilities::notify!(
 			// 	"Checking {} with {}, against {}, left={:?}",
-			// 	print_type(key, types, environment, true),
-			// 	print_type(property, types, environment, true),
-			// 	print_type(rhs_type, types, environment, true),
+			// 	print_type(key, types, information, true),
+			// 	print_type(property, types, information, true),
+			// 	print_type(rhs_type, types, information, true),
 			// 	base_type_arguments
 			// );
 
@@ -1478,7 +1496,7 @@ fn check_logical_property(
 				(base, base_type_arguments),
 				(rhs_type, right_type_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 		}
@@ -1487,7 +1505,7 @@ fn check_logical_property(
 			(base, GenericChainLink::append(base, base_type_arguments.as_ref(), &antecedent)),
 			(*on, right_type_arguments),
 			state,
-			environment,
+			information,
 			types,
 		),
 	}
@@ -1499,7 +1517,7 @@ pub fn type_is_subtype_of_property(
 	(property, property_generics): (&Logical<PropertyValue>, GenericChain),
 	ty: TypeId,
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	match property {
@@ -1507,31 +1525,34 @@ pub fn type_is_subtype_of_property(
 			(prop.as_set_type(), property_generics),
 			(ty, GenericChain::None),
 			state,
-			environment,
+			information,
 			types,
 		),
-		Logical::Or { .. } => {
-			todo!()
-			// let left_result = type_is_subtype_of_property(
-			// 	left,
-			// 	property_generics,
-			// 	ty,
-			// 	state,
-			// 	environment,
-			// 	types,
-			// );
-			// if let SubTypeResult::IsSubType = left_result {
-			// 	left_result
-			// } else {
-			// 	type_is_subtype_of_property(
-			// 		right,
-			// 		property_generics,
-			// 		ty,
-			// 		state,
-			// 		environment,
-			// 		types,
-			// 	)
-			// }
+		Logical::Or { condition: _, left, right } => {
+			let left_result = if let Ok(left) = &**left {
+				type_is_subtype_of_property(
+					(left, property_generics),
+					ty,
+					state,
+					information,
+					types,
+				)
+			} else {
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			};
+			if let SubTypeResult::IsSubType = left_result {
+				left_result
+			} else if let Ok(right) = &**right {
+				type_is_subtype_of_property(
+					(right, property_generics),
+					ty,
+					state,
+					information,
+					types,
+				)
+			} else {
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
 		}
 		Logical::Implies { on, antecedent } => type_is_subtype_of_property(
 			(
@@ -1544,14 +1565,14 @@ pub fn type_is_subtype_of_property(
 			),
 			ty,
 			state,
-			environment,
+			information,
 			types,
 		),
 	}
 }
 
 impl NonEqualityReason {
-	pub(crate) fn _into_error_message(self, _environment: &GeneralContext) -> Vec<String> {
+	pub(crate) fn _into_error_message(self, _information: &GeneralContext) -> Vec<String> {
 		match self {
 			NonEqualityReason::GenericParameterMismatch
 			| NonEqualityReason::MissingParameter

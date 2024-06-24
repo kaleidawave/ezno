@@ -282,7 +282,7 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"proxy:constructor" => {
+		"Proxy:constructor" => {
 			crate::utilities::notify!("Here creating proxy");
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading
@@ -297,13 +297,16 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
+		"RegExp:constructor" => {
+			todo!()
+		}
 		// TODO
-		"json:parse" => {
-			crate::utilities::notify!("TODO json:parse");
+		"JSON:parse" => {
+			crate::utilities::notify!("TODO JSON:parse");
 			Err(ConstantFunctionError::BadCall)
 		}
-		"json:stringify" => {
-			crate::utilities::notify!("TODO json:stringify");
+		"JSON:stringify" => {
+			crate::utilities::notify!("TODO JSON:stringify");
 			Err(ConstantFunctionError::BadCall)
 		}
 		// "satisfies" => {

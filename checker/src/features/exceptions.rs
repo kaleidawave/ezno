@@ -116,6 +116,8 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				constant: true,
 				space: catch_variable_type,
 				initial_value: Some(throw_variable_type),
+				// :>)
+				allow_reregistration: true,
 			};
 
 			A::declare_and_assign_to_fields(

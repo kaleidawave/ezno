@@ -1,22 +1,4 @@
 //! Logic for getting [`TypeId`] from [`parser::TypeAnnotation`]s
-//!
-//! ### There are several behaviors for type references depending on their position:
-//! #### Sources:
-//! - Type reference of any source variable declarations is a [`crate::TypeConstraint`]
-//! - Type references in parameters are [`crate::TypeConstraint`]s
-//! - Type references in returns types are also [`crate::TypeConstraint`]s, because ezno uses the body to get the return
-//! type
-//!
-//! #### Declarations
-//! - Type reference in any declaration or return type is a internal type [`crate::Type::InternalObjectReference`]
-//!     - Return types need to know whether they return a unique object (todo don't know any examples)
-//! or a new object. e.g. `Array.from`
-//! - Parameters shouldn't do generic resolving
-//!
-//! ### Treatment of `any`
-//! - Any has no properties because it is a union of all the types. It also means that it could be be `{}`
-//! - To allow for compat it treats it as inferred generic **so it can get properties off of it**. Would be better
-//! to allow this as a condition in the future
 
 use std::convert::TryInto;
 
@@ -52,7 +34,7 @@ use crate::{
 /// Example errors:
 /// - Reference to generic without generic types
 /// - Reference to non generic with generic types
-pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
+pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 	annotation: &TypeAnnotation,
 	// TODO shouldn't be mutable. Currently required because of checking just generic specialisation
 	environment: &mut Environment,
@@ -539,14 +521,17 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			acc
 		}
 		TypeAnnotation::Infer { name, extends, position: _ } => {
-			if extends.is_some() {
-				crate::utilities::notify!("TODO");
-			}
+			let extends = if let Some(ref extends) = extends {
+				synthesise_type_annotation(extends, environment, checking_data)
+			} else {
+				TypeId::ANY_TYPE
+			};
+
 			if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =
 				environment.context_type.scope
 			{
 				let infer_type = checking_data.types.register_type(Type::RootPolyType(
-					crate::types::PolyNature::InferGeneric { name: name.clone() },
+					crate::types::PolyNature::InferGeneric { name: name.clone(), extends },
 				));
 
 				let existing = infer_parameters.insert(name.clone(), infer_type);
@@ -580,12 +565,19 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// ));
 			// checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Symbol { position, .. } => {
-			checking_data.raise_unimplemented_error(
-				"symbol annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
+		TypeAnnotation::Symbol { name, unique: _unique, position: _ } => {
+			// TODO what does unique do?
+			if let Some(name) = name {
+				// TODO existing names
+				if name == "iterator" {
+					TypeId::SYMBOL_ITERATOR
+				} else {
+					crate::utilities::notify!("New symbol:{}", name);
+					checking_data.types.new_constant_type(Constant::Symbol { key: name.clone() })
+				}
+			} else {
+				TypeId::SYMBOL_TYPE
+			}
 		}
 		TypeAnnotation::Asserts(_, position) => {
 			// TODO construct condition for never

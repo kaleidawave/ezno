@@ -76,6 +76,7 @@ pub(crate) enum InvocationKind {
 	AlwaysTrue,
 	Function(FunctionId),
 	LoopIteration,
+	Unknown,
 }
 
 impl CallCheckingBehavior for InvocationContext {
@@ -120,6 +121,21 @@ impl InvocationContext {
 	/// TODO temp for loop unrolling
 	pub(crate) fn new_empty() -> Self {
 		InvocationContext(Vec::new())
+	}
+
+	pub(crate) fn in_unknown(&self) -> bool {
+		self.0.iter().any(|c| matches!(c, InvocationKind::Unknown))
+	}
+
+	/// WIP
+	pub(crate) fn new_unknown_target<T>(
+		&mut self,
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
+	) -> T {
+		self.0.push(InvocationKind::Unknown);
+		let result = cb(self);
+		self.0.pop();
+		result
 	}
 
 	fn new_conditional_target<T>(
@@ -230,7 +246,9 @@ impl InvocationContext {
 						condition_position,
 					);
 				}
-				crate::GeneralContext::Root(_) => todo!(),
+				crate::GeneralContext::Root(_) => {
+					crate::utilities::notify!("Top environment is root?");
+				}
 			}
 		}
 

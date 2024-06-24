@@ -28,6 +28,9 @@ pub struct TypeMappings {
 	pub types_to_types: RangeMap<TypeId>,
 	pub import_statements_to_pointing_path: RangeMap<PathBuf>,
 
+	/// For places where there are two `var` statements in
+	pub var_aliases: HashMap<u32, VariableId>,
+
 	/// Variable restriction. Cached after hoisting pass. TODO temp needs tidy
 	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, SpanWithSource)>,
 	/// Temp

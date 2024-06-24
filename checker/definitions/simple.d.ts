@@ -5,6 +5,8 @@ declare function print_type<T>(...args: Array<T>): void
 @Constant
 declare function debug_type<T>(...args: Array<T>): void
 @Constant
+declare function debug_type_independent<T>(...args: Array<T>): void
+@Constant
 declare function print_and_debug_type<T>(...args: Array<T>): void
 @Constant
 declare function print_constraint(t: any): void
@@ -48,7 +50,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T; // | undefined;
+    [index: number]: T | undefined;
 
     length: number;
 
@@ -62,9 +64,7 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            // TODO this breaks things
-            // delete this[this.length];
-            // debug_type_rust_independent(value);
+            delete this[this.length];
             return value
         }
     }
@@ -166,6 +166,32 @@ declare class Array<T> {
     // }
 }
 
+declare class Map<K, V> {
+    #keys: Array<K>;
+    #values: Array<V>;
+
+    constructor() {
+        this.#keys = []
+        this.#values = []
+    }
+
+    get(key: K): V | undefined {
+        // return this.#keys;
+        const { length } = this.#keys;
+        for (let i = 0; i < length; i++) {
+            const s = length - 1 - i;
+            if (this.#keys[s] === key) {
+                return this.#values[s]
+            }
+        }
+    }
+
+    set(key: K, value: V) {
+        this.#keys.push(key);
+        this.#values.push(value);
+    }
+}
+
 type Record<K extends string, T> = { [P in K]: T }
 
 /**
@@ -177,11 +203,6 @@ type Exclude<T, U> = T extends U ? never : T;
  * Extract from T those types that are assignable to U
  */
 type Extract<T, U> = T extends U ? T : never;
-
-declare class Map<T, U> {
-    #keys: Array<T> = [];
-    #value: Array<T> = [];
-}
 
 declare class Math {
     @Constant
@@ -196,12 +217,15 @@ declare class Math {
     static sqrt(x: number): number;
     @Constant
     static cbrt(x: number): number;
+    @Constant
+    static log(x: number): number;
 
     // TODO newer method
     @Constant
     static trunc(x: number): number;
 
     static PI: 3.141592653589793
+    static E: 2.718281828459045
 }
 
 @Primitive("string")
@@ -260,11 +284,11 @@ declare class SyntaxError extends Error {
 
 declare class JSON {
     // TODO any temp
-    @Constant("json:parse", SyntaxError)
+    @Constant("JSON:parse", SyntaxError)
     static parse(input: string): any;
 
     // TODO any temp
-    @Constant("json:stringify")
+    @Constant("JSON:stringify")
     static stringify(input: any): string;
 }
 
@@ -272,9 +296,9 @@ declare class Function {
     bind(this_ty: any): Function;
 }
 
-declare class Symbols {
+declare class Symbol {
     // TODO temp
-    iterator: 199
+    static iterator: unique symbol "iterator"
 }
 
 declare class Proxy {
@@ -295,29 +319,29 @@ declare class Object {
     //     return n
     // }
 
-    static keys(on: { [s: string]: any }): Array<string> {
-        const keys: Array<string> = [];
-        for (const key in on) {
-            keys.push(key);
-        }
-        return keys
-    }
+    // static keys(on: { [s: string]: any }): Array<string> {
+    //     const keys: Array<string> = [];
+    //     for (const key in on) {
+    //         keys.push(key);
+    //     }
+    //     return keys
+    // }
 
-    static values(on: { [s: string]: any }): Array<any> {
-        const values: Array<any> = [];
-        for (const key in on) {
-            values.push(on[key]);
-        }
-        return values
-    }
+    // static values(on: { [s: string]: any }): Array<any> {
+    //     const values: Array<any> = [];
+    //     for (const key in on) {
+    //         values.push(on[key]);
+    //     }
+    //     return values
+    // }
 
-    static entries(on: { [s: string]: any }): Array<[string, any]> {
-        const entries: Array<[string, any]> = [];
-        for (const key in on) {
-            entries.push([key, on[key]]);
-        }
-        return entries
-    }
+    // static entries(on: { [s: string]: any }): Array<[string, any]> {
+    //     const entries: Array<[string, any]> = [];
+    //     for (const key in on) {
+    //         entries.push([key, on[key]]);
+    //     }
+    //     return entries
+    // }
 
     // static fromEntries(iterator: any): object {
     //     const obj = {};
@@ -327,7 +351,20 @@ declare class Object {
     //     }
     //     return obj
     // }
+
+    // static assign(iterator: any): object {
+    // }
 }
+
+declare class RegExp {
+    @Constant("RegExp:constructor")
+        constructor(s: string)
+}
+
+// WIP
+// interface SymbolImplementations {
+//     [Symbol.iterator]: () => { next(): { value: any, done: boolean } }
+// }
 
 // TODO wip
 declare function JSXH(tag: string, attributes: any, children?: any) {

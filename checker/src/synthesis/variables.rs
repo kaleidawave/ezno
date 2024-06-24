@@ -4,6 +4,7 @@ use parser::{
 	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField,
 	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
 };
+use source_map::{Nullable, SpanWithSource};
 
 use super::expressions::synthesise_expression;
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		get_larger_type, printing,
-		properties::{PropertyKey, Publicity},
+		properties::{get_properties_on_single_type, PropertyKey, Publicity},
 	},
 	CheckingData, Environment, TypeId,
 };
@@ -26,20 +27,12 @@ pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>
 ) {
 	match name {
 		parser::VariableIdentifier::Standard(name, pos) => {
-			if let Some(reassignment_constraint) = argument.space {
-				let id = crate::VariableId(environment.get_source(), pos.start);
-				checking_data
-					.local_type_mappings
-					.variables_to_constraints
-					.0
-					.insert(id, reassignment_constraint);
-			}
-
 			environment.register_variable_handle_error(
 				name,
 				argument,
 				pos.with_source(environment.get_source()),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
@@ -100,6 +93,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 			}
 		}
 		parser::VariableField::Object { members, spread, .. } => {
+			let mut taken_members = spread.is_some().then(Vec::<Cow<str>>::new);
+
 			for field in members {
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, _type, ..) => {
@@ -107,6 +102,9 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							VariableIdentifier::Standard(ref name, _) => name,
 							VariableIdentifier::Marker(_, _) => "?",
 						};
+						if let Some(ref mut taken_members) = taken_members {
+							taken_members.push(Cow::Borrowed(name));
+						}
 						let key = PropertyKey::String(Cow::Borrowed(name));
 						let argument = get_new_register_argument_under(
 							&argument,
@@ -136,6 +134,14 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							checking_data,
 							false,
 						);
+						if let Some(ref mut taken_members) = taken_members {
+							match key {
+								PropertyKey::String(ref s) => taken_members.push(s.clone()),
+								PropertyKey::Type(_) => {
+									crate::utilities::notify!("Cannot remove type");
+								}
+							}
+						}
 						let argument = get_new_register_argument_under(
 							&argument,
 							&key,
@@ -147,17 +153,50 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 					}
 				}
 			}
-			if let Some(SpreadDestructuringField(variable, _position)) = spread {
+			if let (Some(taken_members), Some(SpreadDestructuringField(variable, _position))) =
+				(taken_members, spread)
+			{
+				// TODO
+				let initial_value = argument.initial_value;
+
+				let space = if let Some(space) = argument.space {
+					let rest = checking_data.types.new_anonymous_interface_type();
+					for (publicity, key, property) in
+						get_properties_on_single_type(space, &checking_data.types, environment)
+					{
+						if let PropertyKey::String(ref s) = key {
+							if taken_members.contains(s) {
+								continue;
+							}
+						}
+
+						environment.info.register_property(
+							rest,
+							publicity,
+							key,
+							property,
+							false,
+							SpanWithSource::NULL,
+						);
+					}
+					Some(rest)
+				} else {
+					None
+				};
+
+				let argument = VariableRegisterArguments {
+					constant: argument.constant,
+					space,
+					initial_value,
+					allow_reregistration: argument.allow_reregistration,
+				};
+
 				register_variable(
 					variable,
 					environment,
 					checking_data,
 					// TODO
-					VariableRegisterArguments {
-						constant: argument.constant,
-						space: argument.space,
-						initial_value: argument.initial_value,
-					},
+					argument,
 				);
 			}
 		}
@@ -247,8 +286,15 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 ) {
 	match item {
 		VariableField::Name(name) => {
-			let get_position = name.get_position();
-			let id = crate::VariableId(environment.get_source(), get_position.start);
+			let position = name.get_position();
+			let id = if let Some(aliases) =
+				checking_data.local_type_mappings.var_aliases.get(&position.start)
+			{
+				*aliases
+			} else {
+				crate::VariableId(environment.get_source(), position.start)
+			};
+
 			environment.register_initial_variable_declaration_value(id, value);
 
 			if let Some(mutability) = exported {

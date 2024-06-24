@@ -236,7 +236,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		max_inline: checking_data.options.max_inline_count,
 	};
 	match call_type(
-		jsx_function,
+		crate::types::calling::Callable::Type(jsx_function),
 		args,
 		calling_input,
 		environment,

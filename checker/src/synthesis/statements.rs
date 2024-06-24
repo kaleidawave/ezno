@@ -217,7 +217,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				TypeId::ANY_TYPE,
 			);
 			let thrown_position = stmt.1.with_source(environment.get_source());
-			environment.throw_value(thrown_value, thrown_position);
+			environment.throw_value(thrown_value, thrown_position, &mut checking_data.types);
 		}
 		Statement::Labelled { position: _, name, statement } => {
 			// Labels on invalid statements is caught at parse time

@@ -296,6 +296,110 @@ impl StatementOrExpressionVariable for ExpressionPosition {
 	}
 }
 
+pub mod definition_file {
+	use iterator_endiate::EndiateIteratorExt;
+	use parser::ExpressionOrStatementPosition;
+
+	use crate::{
+		types::{printing, GenericChain},
+		FunctionId,
+	};
+
+	pub fn build_definition_file(result: &crate::CheckOutput<super::EznoParser>, buf: &mut String) {
+		for (source_id, module) in result.modules.iter() {
+			for item in &module.content.items {
+				match item {
+					parser::StatementOrDeclaration::Declaration(parser::Declaration::Export(
+						decorated,
+					)) => match &decorated.on {
+						parser::ast::ExportDeclaration::Variable { exported, position: _ } => {
+							match exported {
+								parser::ast::export::Exportable::Class(_) => todo!(),
+								parser::ast::export::Exportable::Function(func) => {
+									let expected = result.types.get_function_from_id(FunctionId(
+										*source_id,
+										parser::ASTNode::get_position(func).start,
+									));
+									buf.push_str("export default function ");
+									buf.push_str(func.name.as_option_str().unwrap_or_default());
+									buf.push('(');
+									for (not_at_end, param) in
+										expected.parameters.parameters.iter().nendiate()
+									{
+										buf.push_str(&param.name);
+										buf.push_str(": ");
+										printing::print_type_into_buf(
+											param.ty,
+											buf,
+											&mut Default::default(),
+											GenericChain::None,
+											&result.types,
+											&module.info,
+											false,
+										);
+										if not_at_end {
+											buf.push_str(", ");
+										}
+									}
+									buf.push(')');
+									buf.push_str(": ");
+									printing::print_type_into_buf(
+										expected.return_type,
+										buf,
+										&mut Default::default(),
+										GenericChain::None,
+										&result.types,
+										&module.info,
+										false,
+									);
+									buf.push_str(";\n");
+								}
+								parser::ast::export::Exportable::Variable(_) => todo!(),
+								parser::ast::export::Exportable::Interface(item) => {
+									buf.push_str("export default ");
+									todo!("{item:?}");
+									// item.to_string_from_buffer(buf, &ToStringOptions::typescript(), LocalToStringInformation { under:  })
+								}
+								parser::ast::export::Exportable::TypeAlias(item) => {
+									buf.push_str("export default ");
+									todo!("{item:?}");
+									// item.to_string_from_buffer(buf, &ToStringOptions::typescript(), LocalToStringInformation { under:  })
+								}
+								parser::ast::export::Exportable::Parts(_) => todo!(),
+								parser::ast::export::Exportable::ImportAll { .. } => {
+									todo!()
+								}
+								parser::ast::export::Exportable::ImportParts { .. } => todo!(),
+							}
+						}
+						parser::ast::ExportDeclaration::Default { .. } => todo!(),
+						parser::ast::ExportDeclaration::DefaultFunction { .. } => todo!(),
+					},
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::Interface(_),
+					) => {
+						todo!()
+					}
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::TypeAlias(_),
+					) => {
+						todo!()
+					}
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::DeclareVariable(..),
+					) => {}
+					parser::StatementOrDeclaration::Declaration(parser::Declaration::Class(..)) => {
+					}
+					parser::StatementOrDeclaration::Statement(
+						parser::Statement::MultiLineComment(..),
+					) => {}
+					_ => {}
+				}
+			}
+		}
+	}
+}
+
 /// For the REPL in Ezno's CLI
 pub mod interactive {
 	use std::{mem, path::PathBuf};

@@ -245,7 +245,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Statement(stmt) => {
 				if let Statement::VarVariable(stmt) = stmt {
 					for declaration in &stmt.declarations {
-						crate::utilities::notify!("declaration.name {:?}", declaration.name);
 						let constraint = get_annotation_from_declaration(
 							declaration,
 							environment,
@@ -260,6 +259,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								space: constraint,
 								// Important!
 								initial_value: Some(TypeId::UNDEFINED_TYPE),
+								// `var` declarations can be redeclared!
+								allow_reregistration: true,
 							},
 						);
 					}
@@ -330,6 +331,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								let actual = overloads.pop().unwrap();
 								(overloads, actual)
 							} else {
+								// TODO what about `checking_data.options.lsp_mode`?
 								checking_data.diagnostics_container.add_error(
 									TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 										position: func
@@ -375,6 +377,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							constant: true,
 							space: Some(value),
 							initial_value: Some(value),
+							allow_reregistration: false,
 						};
 
 						environment.register_variable_handle_error(
@@ -382,6 +385,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							argument,
 							func.get_position().with_source(environment.get_source()),
 							&mut checking_data.diagnostics_container,
+							&mut checking_data.local_type_mappings,
 							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
@@ -440,6 +444,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								constant: true,
 								space: None,
 								initial_value: Some(ty),
+								allow_reregistration: false,
 							},
 						);
 					}
@@ -456,8 +461,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									func.name.as_option_variable_identifier()
 								{
 									let argument = VariableRegisterArguments {
-										// TODO based on keyword
 										constant: true,
+										allow_reregistration: false,
 										space: None,
 										initial_value: None,
 									};
@@ -466,6 +471,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										argument,
 										declared_at,
 										&mut checking_data.diagnostics_container,
+										&mut checking_data.local_type_mappings,
 										checking_data.options.record_all_assignments_and_reads,
 									);
 								}
@@ -751,6 +757,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 						space: constraint,
 						// Value set later
 						initial_value: None,
+						allow_reregistration: false,
 					},
 				);
 			}
@@ -769,6 +776,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 						space: constraint,
 						// Value set later
 						initial_value: None,
+						allow_reregistration: false,
 					},
 				);
 			}

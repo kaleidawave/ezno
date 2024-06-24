@@ -1,8 +1,5 @@
 use checker::CheckOutput;
-use std::{
-	collections::HashSet,
-	path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub fn check<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,

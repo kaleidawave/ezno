@@ -4,10 +4,7 @@ use super::TypeId;
 
 /// Terms
 /// TODO:
-/// - `IntoProof`
 /// - `BigInt` (<https://github.com/rust-num/num-bigint>)
-/// - Separate `NotNull` term, and implement js subtyping
-///
 /// TODO unsure about some of these
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Constant {
@@ -62,7 +59,7 @@ impl Constant {
 			Constant::Boolean(_) => TypeId::BOOLEAN_TYPE,
 			Constant::Undefined => TypeId::UNDEFINED_TYPE,
 			Constant::Null => TypeId::NULL_TYPE,
-			Constant::Symbol { .. } => todo!(),
+			Constant::Symbol { .. } => TypeId::SYMBOL_TYPE,
 		}
 	}
 }

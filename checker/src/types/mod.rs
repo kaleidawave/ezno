@@ -72,7 +72,9 @@ impl TypeId {
 
 	pub const OBJECT_TYPE: Self = Self(12);
 	pub const FUNCTION_TYPE: Self = Self(13);
+	/// This points to the RegExp prototype
 	pub const REGEXP_TYPE: Self = Self(14);
+	/// This points to the ???
 	pub const SYMBOL_TYPE: Self = Self(15);
 
 	/// For more direct stuff and the rules
@@ -95,8 +97,9 @@ impl TypeId {
 	pub const READONLY_RESTRICTION: Self = Self(25);
 
 	pub const IMPORT_META: Self = Self(26);
+	pub const SYMBOL_ITERATOR: Self = Self(27);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 27;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 28;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -157,8 +160,8 @@ pub enum PolyNature {
 	Parameter { fixed_to: TypeId },
 	/// This is on a structure (`class`, `interface` and `type` alias)
 	StructureGeneric { name: String, constrained: bool },
-	/// From `infer U`
-	InferGeneric { name: String },
+	/// From `infer U`.
+	InferGeneric { name: String, extends: TypeId },
 	/// For explicit generics (or on external definitions)
 	FunctionGeneric { name: String, eager_fixed: TypeId },
 	/// For mapped types
@@ -557,6 +560,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		Type::RootPolyType(nature) => Some(
 			*(match nature {
 				PolyNature::Parameter { fixed_to }
+				| PolyNature::InferGeneric { extends: fixed_to, .. }
 				| PolyNature::MappedGeneric { name: _, eager_fixed: fixed_to }
 				| PolyNature::FunctionGeneric { name: _, eager_fixed: fixed_to } => fixed_to,
 				PolyNature::Error(ty) | PolyNature::Open(ty) => ty,
@@ -570,7 +574,6 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 					}
 				}
 				PolyNature::CatchVariable(constraint) => constraint,
-				PolyNature::InferGeneric { .. } => return Some(TypeId::ANY_TYPE),
 			}),
 		),
 		Type::Constructor(constructor) => match constructor.clone() {
@@ -615,7 +618,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
-				crate::utilities::notify!("Here, result of a property get");
+				// crate::utilities::notify!("Here, result of a property get");
 				Some(result)
 			}
 			Constructor::ConditionalResult { result_union, .. } => {
@@ -742,5 +745,16 @@ pub(crate) fn get_structure_arguments_based_on_object_constraint<'a, C: Informat
 		}
 	} else {
 		None
+	}
+}
+
+pub(crate) fn tuple_like(ty: TypeId, types: &TypeStore, environment: &crate::Environment) -> bool {
+	// TODO should be `ObjectNature::AnonymousObjectType` or something else
+	if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(ty) {
+		environment
+			.get_chain_of_info()
+			.any(|info| info.prototypes.get(&ty).is_some_and(|p| *p == TypeId::ARRAY_TYPE))
+	} else {
+		false
 	}
 }

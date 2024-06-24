@@ -65,7 +65,7 @@ pub fn print_type_with_type_arguments(
 }
 
 /// Recursion safe + reuses buffer
-fn print_type_into_buf<C: InformationChain>(
+pub fn print_type_into_buf<C: InformationChain>(
 	ty: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
@@ -140,9 +140,13 @@ fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(name);
 				}
 			}
-			PolyNature::InferGeneric { name } => {
+			PolyNature::InferGeneric { name, extends } => {
 				buf.push_str("infer ");
 				buf.push_str(name);
+				if *extends != TypeId::ANY_TYPE {
+					buf.push_str(" extends ");
+					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
+				}
 			}
 			PolyNature::FreeVariable { based_on: to, .. } => {
 				if debug {
@@ -480,34 +484,43 @@ fn print_type_into_buf<C: InformationChain>(
 		Type::Object(kind) => {
 			if debug {
 				if let ObjectNature::RealDeal = kind {
-					write!(buf, "[obj {}]", ty.0).unwrap();
+					write!(buf, "[obj {}] ", ty.0).unwrap();
 				} else {
-					write!(buf, "[aol {}]", ty.0).unwrap();
+					write!(buf, "[aol {}] ", ty.0).unwrap();
 				}
 			}
 			let prototype =
 				info.get_chain_of_info().find_map(|info| info.prototypes.get(&ty).copied());
 
 			if let Some(TypeId::ARRAY_TYPE) = prototype {
-				if let Some(n) = get_array_length(info, ty, types) {
-					buf.push('[');
-					for i in 0..(n.into_inner() as usize) {
-						if i != 0 {
-							buf.push_str(", ");
-						}
-						let value = get_simple_value(info, ty, &PropertyKey::from_usize(i), types);
+				match get_array_length(info, ty, types) {
+					Ok(n) => {
+						buf.push('[');
+						for i in 0..(n.into_inner() as usize) {
+							if i != 0 {
+								buf.push_str(", ");
+							}
+							let value =
+								get_simple_value(info, ty, &PropertyKey::from_usize(i), types);
 
-						if let Some(value) = value {
-							print_type_into_buf(value, buf, cycles, args, types, info, debug);
-						} else {
-							// TODO sometimes the above is not always `None` as `None` can occur for complex keys...
-							buf.push_str("*empty*");
+							if let Some(value) = value {
+								print_type_into_buf(value, buf, cycles, args, types, info, debug);
+							} else {
+								// TODO sometimes the above is not always `None` as `None` can occur for complex keys...
+								buf.push_str("*empty*");
+							}
 						}
+						buf.push(']');
 					}
-					buf.push(']');
-				} else {
-					// TODO get property
-					write!(buf, "Array").unwrap();
+					Err(n) => {
+						if let Some(n) = n {
+							crate::utilities::notify!("Printing array with length={:?}", n);
+						} else {
+							crate::utilities::notify!("Printing array with no length");
+						}
+						// TODO get property
+						write!(buf, "Array").unwrap();
+					}
 				}
 			} else {
 				if let Some(prototype) = prototype {
@@ -518,8 +531,13 @@ fn print_type_into_buf<C: InformationChain>(
 				} else {
 					// crate::utilities::notify!("no P on {:?} during print", id);
 				}
-				buf.push_str("{ ");
 				let properties = get_properties_on_single_type(ty, types, info);
+				if properties.is_empty() {
+					buf.push_str("{}");
+					return;
+				}
+
+				buf.push_str("{ ");
 				for (not_at_end, (publicity, key, value)) in properties.into_iter().nendiate() {
 					if let Publicity::Private = publicity {
 						buf.push('#');
@@ -582,8 +600,8 @@ fn print_type_into_buf<C: InformationChain>(
 			}
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			SpecialObject::Promise { events: () } => todo!(),
-			SpecialObject::Generator { position: () } => todo!(),
+			SpecialObject::Promise { .. } => todo!(),
+			SpecialObject::Generator { .. } => todo!(),
 			SpecialObject::Proxy(Proxy { handler, over }) => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
@@ -655,13 +673,13 @@ fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	types: &TypeStore,
-) -> Option<ordered_float::NotNan<f64>> {
+) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
 	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
-	let id = get_simple_value(ctx, on, &length_property, types)?;
+	let id = get_simple_value(ctx, on, &length_property, types).ok_or(None)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
-		Some(*n)
+		Ok(*n)
 	} else {
-		None
+		Err(Some(id))
 	}
 }
 
@@ -768,6 +786,8 @@ pub fn debug_effects<C: InformationChain>(
 							info,
 							debug,
 						);
+					} else {
+						write!(buf, "{:?}", new).unwrap();
 					}
 				} else {
 					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
@@ -792,6 +812,8 @@ pub fn debug_effects<C: InformationChain>(
 							info,
 							debug,
 						);
+					} else {
+						write!(buf, "{:?}", new).unwrap();
 					}
 				}
 			}
@@ -801,11 +823,19 @@ pub fn debug_effects<C: InformationChain>(
 				reflects_dependency,
 				timing,
 				called_with_new: _,
-				position: _,
+				call_site: _,
 				possibly_thrown: _,
 			} => {
 				buf.push_str("call ");
-				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
+				match on {
+					crate::types::calling::Callable::Fixed(function) => {
+						write!(buf, " {id:?} ", id = function).unwrap();
+					}
+					crate::types::calling::Callable::Type(on) => {
+						let mut cycles = HashSet::new();
+						print_type_into_buf(*on, buf, &mut cycles, args, types, info, debug);
+					}
+				}
 				write!(buf, " into {reflects_dependency:?} ",).unwrap();
 				buf.push_str(match timing {
 					crate::events::CallingTiming::Synchronous => "now",

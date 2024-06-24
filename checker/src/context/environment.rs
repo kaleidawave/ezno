@@ -2,7 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::get_on_ctx,
+	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError,
 		TypeStringRepresentation, TDZ,
@@ -665,62 +665,64 @@ impl<'a> Environment<'a> {
 
 		if let Some((_, boundary, variable)) = variable_in_map {
 			match variable {
-				VariableOrImport::Variable { mutability, declared_at, context: _ } => {
-					match mutability {
-						VariableMutability::Constant => {
-							Err(AssignmentError::Constant(*declared_at))
+				VariableOrImport::Variable {
+					mutability,
+					declared_at,
+					context: _,
+					allow_reregistration: _,
+				} => match mutability {
+					VariableMutability::Constant => Err(AssignmentError::Constant(*declared_at)),
+					VariableMutability::Mutable { reassignment_constraint } => {
+						let variable = variable.clone();
+						let variable_site = *declared_at;
+						let variable_id = variable.get_id();
+
+						if boundary.is_none()
+							&& !self
+								.get_chain_of_info()
+								.any(|info| info.variable_current_value.contains_key(&variable_id))
+						{
+							return Err(AssignmentError::TDZ(TDZ {
+								position: assignment_position,
+								variable_name: variable_name.to_owned(),
+							}));
 						}
-						VariableMutability::Mutable { reassignment_constraint } => {
-							let variable = variable.clone();
-							let variable_site = *declared_at;
-							let variable_id = variable.get_id();
 
-							if boundary.is_none()
-								&& !self.get_chain_of_info().any(|info| {
-									info.variable_current_value.contains_key(&variable_id)
-								}) {
-								return Err(AssignmentError::TDZ(TDZ {
-									position: assignment_position,
-									variable_name: variable_name.to_owned(),
-								}));
-							}
-
-							if let Some(reassignment_constraint) = *reassignment_constraint {
-								let result = type_is_subtype_object(
-									reassignment_constraint,
-									new_type,
-									self,
-									types,
-								);
-
-								if let SubTypeResult::IsNotSubType(_mismatches) = result {
-									return Err(AssignmentError::DoesNotMeetConstraint {
-										variable_type: TypeStringRepresentation::from_type_id(
-											reassignment_constraint,
-											self,
-											types,
-											false,
-										),
-										value_type: TypeStringRepresentation::from_type_id(
-											new_type, self, types, false,
-										),
-										variable_site,
-										value_site: assignment_position,
-									});
-								}
-							}
-
-							self.info.events.push(Event::SetsVariable(
-								variable_id,
+						if let Some(reassignment_constraint) = *reassignment_constraint {
+							let result = type_is_subtype_object(
+								reassignment_constraint,
 								new_type,
-								assignment_position,
-							));
-							self.info.variable_current_value.insert(variable_id, new_type);
+								self,
+								types,
+							);
 
-							Ok(new_type)
+							if let SubTypeResult::IsNotSubType(_mismatches) = result {
+								return Err(AssignmentError::DoesNotMeetConstraint {
+									variable_type: TypeStringRepresentation::from_type_id(
+										reassignment_constraint,
+										self,
+										types,
+										false,
+									),
+									value_type: TypeStringRepresentation::from_type_id(
+										new_type, self, types, false,
+									),
+									variable_site,
+									value_site: assignment_position,
+								});
+							}
 						}
+
+						self.info.events.push(Event::SetsVariable(
+							variable_id,
+							new_type,
+							assignment_position,
+						));
+						self.info.variable_current_value.insert(variable_id, new_type);
+
+						Ok(new_type)
 					}
-				}
+				},
 				VariableOrImport::MutableImport { .. }
 				| VariableOrImport::ConstantImport { .. } => {
 					Err(AssignmentError::Constant(assignment_position))
@@ -1106,8 +1108,18 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
+	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource, types: &mut TypeStore) {
 		let final_event = FinalEvent::Throw { thrown, position };
+
+		// WIP
+		let final_return =
+			if let ReturnState::Rolling { under, returned: rolling_returning } = self.info.state {
+				types.new_conditional_type(under, rolling_returning, TypeId::NEVER_TYPE)
+			} else {
+				TypeId::NEVER_TYPE
+			};
+		self.info.state = ReturnState::Finished(final_return);
+
 		self.info.events.push(final_event.into());
 	}
 
@@ -1187,8 +1199,20 @@ impl<'a> Environment<'a> {
 			}
 		}
 
-		let final_event = FinalEvent::Return { returned, position: returned_position };
-		self.info.events.push(final_event.into());
+		{
+			let final_event = FinalEvent::Return { returned, position: returned_position };
+			self.info.events.push(final_event.into());
+
+			// WIP
+			let final_return = if let ReturnState::Rolling { under, returned: rolling_returning } =
+				self.info.state
+			{
+				checking_data.types.new_conditional_type(under, rolling_returning, returned)
+			} else {
+				returned
+			};
+			self.info.state = ReturnState::Finished(final_return);
+		}
 	}
 
 	pub fn add_continue(
@@ -1245,9 +1269,7 @@ impl<'a> Environment<'a> {
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
-			publicity,
-			under,
-			PropertyValue::Value(new),
+			(publicity, under, PropertyValue::Value(new)),
 			self,
 			&mut CheckThings { debug_types: options.debug_types },
 			types,

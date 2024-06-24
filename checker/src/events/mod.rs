@@ -8,7 +8,7 @@ use crate::{
 	context::get_on_ctx,
 	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
-		calling::CalledWithNew,
+		calling::{Callable, CalledWithNew},
 		functions::SynthesisedArgument,
 		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeId,
@@ -79,13 +79,13 @@ pub enum Event {
 	},
 	/// This includes closed over variables, anything dependent
 	CallsType {
-		on: TypeId,
+		on: Callable,
 		with: Box<[SynthesisedArgument]>,
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
 		possibly_thrown: Option<TypeId>,
-		position: SpanWithSource,
+		call_site: SpanWithSource,
 	},
 	/// Run events conditionally
 	Conditionally {

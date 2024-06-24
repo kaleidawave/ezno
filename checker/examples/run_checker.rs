@@ -49,6 +49,13 @@ fn main() {
 		None,
 	);
 
+	if args.iter().any(|arg| arg == "--export") {
+		eprintln!("Export:");
+		let mut buf = String::new();
+		synthesis::definition_file::build_definition_file(&result, &mut buf);
+		eprintln!("{buf}");
+	}
+
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
 		for (type_id, item) in result.types.into_vec_temp() {

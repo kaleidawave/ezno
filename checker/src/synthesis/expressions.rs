@@ -1028,6 +1028,11 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	let mut object_builder =
 		ObjectBuilder::new(None, &mut checking_data.types, position, &mut environment.info);
 
+	{
+		let ty = print_type(expected, &checking_data.types, environment, true);
+		crate::utilities::notify!("expected in obj={}", ty);
+	}
+
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
 		match member {
@@ -1048,7 +1053,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 						);
 
 						for (_, key, value) in get_properties_on_type {
-							// TODO evaluate getters & check enumerability
+							// TODO evaluate getters & check whether enumerable
 							object_builder.append(
 								environment,
 								Publicity::Public,

@@ -108,13 +108,10 @@ pub(super) fn synthesise_class_declaration<
 	for member in &class.members {
 		match &member.on {
 			ClassMember::Method(false, method) => {
-				let publicity = match method.name.get_ast_ref() {
-					ParserPropertyKey::Identifier(
-						_,
-						_,
-						parser::property_key::PublicOrPrivate::Private,
-					) => Publicity::Private,
-					_ => Publicity::Public,
+				let publicity = if method.name.get_ast_ref().is_private() {
+					Publicity::Private
+				} else {
+					Publicity::Public
 				};
 
 				let property_key = parser_property_key_to_checker_property_key(
@@ -178,13 +175,10 @@ pub(super) fn synthesise_class_declaration<
 				);
 			}
 			ClassMember::Property(false, property) => {
-				let publicity = match property.key.get_ast_ref() {
-					ParserPropertyKey::Identifier(
-						_,
-						_,
-						parser::property_key::PublicOrPrivate::Private,
-					) => Publicity::Private,
-					_ => Publicity::Public,
+				let publicity = if property.key.get_ast_ref().is_private() {
+					Publicity::Private
+				} else {
+					Publicity::Public
 				};
 				let key = parser_property_key_to_checker_property_key(
 					property.key.get_ast_ref(),
@@ -255,13 +249,10 @@ pub(super) fn synthesise_class_declaration<
 		for member in &class.members {
 			match &member.on {
 				ClassMember::Method(true, method) => {
-					let publicity_kind = match method.name.get_ast_ref() {
-						ParserPropertyKey::Identifier(
-							_,
-							_,
-							parser::property_key::PublicOrPrivate::Private,
-						) => Publicity::Private,
-						_ => Publicity::Public,
+					let publicity = if method.name.get_ast_ref().is_private() {
+						Publicity::Private
+					} else {
+						Publicity::Public
 					};
 
 					let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
@@ -310,7 +301,7 @@ pub(super) fn synthesise_class_declaration<
 
 					environment.info.register_property(
 						class_variable_type,
-						publicity_kind,
+						publicity,
 						key,
 						property,
 						// TODO
@@ -320,13 +311,10 @@ pub(super) fn synthesise_class_declaration<
 					);
 				}
 				ClassMember::Property(true, property) => {
-					let publicity_kind = match property.key.get_ast_ref() {
-						ParserPropertyKey::Identifier(
-							_,
-							_,
-							parser::property_key::PublicOrPrivate::Private,
-						) => Publicity::Private,
-						_ => Publicity::Public,
+					let publicity = if property.key.get_ast_ref().is_private() {
+						Publicity::Private
+					} else {
+						Publicity::Public
 					};
 
 					let value = if let Some(ref value) = property.value {
@@ -345,7 +333,7 @@ pub(super) fn synthesise_class_declaration<
 
 					environment.info.register_property(
 						class_variable_type,
-						publicity_kind,
+						publicity,
 						static_property_keys.pop().unwrap(),
 						PropertyValue::Value(value),
 						// TODO
@@ -396,6 +384,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				// No value yet, classes are equiv to `const`
 				initial_value: None,
 				space: None,
+				allow_reregistration: false,
 			},
 		);
 	}
@@ -449,13 +438,8 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					overloads.push(shape);
 
 					// Read declarations until
-					while let Some(overload_declaration) = members_iter.next_if(|t| {
-						matches!(
-							&t.on, 
-							ClassMember::Method(is_static, m) 
-							if initial_is_static == is_static 
-							&& m.name == method.name 
-							&& !m.has_body())
+					while let Some(overload_declaration) = members_iter.next_if(|dec_mem| {
+						next_key_matches(&dec_mem.on, method.name.get_ast_ref(), *initial_is_static)
 					}) {
 						let ClassMember::Method(_, method) = &overload_declaration.on else {
 							unreachable!()
@@ -465,14 +449,8 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					}
 
 					let upcoming = members_iter.peek().and_then(|next| {
-						matches!(
-							&next.on,
-							ClassMember::Method(is_static, m)
-							if initial_is_static == is_static
-							&& m.name == method.name
-							&& m.has_body()
-						)
-						.then_some(&next.on)
+						next_key_matches(&next.on, method.name.get_ast_ref(), *initial_is_static)
+							.then_some(&next.on)
 					});
 
 					if let Some(ClassMember::Method(_, method)) = upcoming {
@@ -518,7 +496,12 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 
 				environment.info.register_property(
 					class_type,
-					Publicity::Public,
+					// TODO
+					if method.name.get_ast_ref().is_private() {
+						Publicity::Private
+					} else {
+						Publicity::Public
+					},
 					under,
 					PropertyValue::Value(value),
 					false,
@@ -539,7 +522,11 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				};
 				environment.info.register_property(
 					class_type,
-					Publicity::Public,
+					if property.key.get_ast_ref().is_private() {
+						Publicity::Private
+					} else {
+						Publicity::Public
+					},
 					under,
 					PropertyValue::Value(value),
 					false,
@@ -608,5 +595,19 @@ fn get_extends_as_simple_type<T: crate::ReadFromFS>(
 		}
 	} else {
 		None
+	}
+}
+
+fn next_key_matches(
+	member: &ClassMember,
+	initial_name: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
+	initial_is_static: bool,
+) -> bool {
+	if let ClassMember::Method(is_static, method) = member {
+		initial_is_static == *is_static
+			&& method.name.get_ast_ref() == initial_name
+			&& !method.has_body()
+	} else {
+		false
 	}
 }

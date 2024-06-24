@@ -110,6 +110,7 @@ impl Default for TypeStore {
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
 			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
+			Type::Constant(crate::Constant::Symbol { key: "iterator".to_owned() }),
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -302,6 +303,16 @@ impl TypeStore {
 			operand,
 		});
 		self.register_type(ty)
+	}
+
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_and_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, right, TypeId::FALSE)
+	}
+
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_or_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, TypeId::TRUE, right)
 	}
 
 	pub fn new_closure_id(&mut self) -> ClosureId {

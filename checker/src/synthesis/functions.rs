@@ -257,6 +257,8 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 						constant: false,
 						space: Some(parameter_constraint),
 						initial_value: Some(ty),
+						// :<)
+						allow_reregistration: true,
 					},
 				);
 			};
@@ -311,9 +313,12 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				constant: false,
 				space: Some(parameter_constraint),
 				initial_value: Some(ty),
+				// :<)
+				allow_reregistration: true,
 			},
 			rest_parameter.position.with_source(environment.get_source()),
 			&mut checking_data.diagnostics_container,
+			&mut checking_data.local_type_mappings,
 			checking_data.options.record_all_assignments_and_reads,
 		);
 
@@ -405,6 +410,8 @@ fn synthesise_function_parameters<
 					constant: false,
 					space: Some(parameter_constraint),
 					initial_value: Some(variable_ty),
+					// :<)
+					allow_reregistration: true,
 				},
 			);
 
@@ -460,6 +467,8 @@ fn synthesise_function_parameters<
 				constant: false,
 				space: Some(parameter_constraint),
 				initial_value: Some(variable_ty),
+				// :<)
+				allow_reregistration: true,
 			},
 		);
 

@@ -56,8 +56,6 @@ print_type(mapper)
 
 - TODO
 
-#### Function calling
-
 #### Calling on or type
 
 ```ts
@@ -92,6 +90,15 @@ x({ get b() { return 2 } })
 ```
 
 - Expected string, found 5
+
+#### Spread object constraint
+
+```ts
+let { a, ...x }: { a: number, b: string } =  { a: "hi", b: "hello" };
+x = 1;
+```
+
+- 1 is not assignable to { b: string }
 
 ### Imports
 

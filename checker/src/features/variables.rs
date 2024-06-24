@@ -28,6 +28,7 @@ pub enum VariableOrImport {
 		/// be turned into a [`VariableId`]
 		declared_at: SpanWithSource,
 		context: ContextLocation,
+		allow_reregistration: bool,
 	},
 	MutableImport {
 		of: VariableId,
@@ -186,5 +187,10 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 			.map_or(TypeId::ERROR_TYPE, Instance::get_value)
 	});
 
-	VariableRegisterArguments { constant: on.constant, space, initial_value }
+	VariableRegisterArguments {
+		constant: on.constant,
+		space,
+		initial_value,
+		allow_reregistration: on.allow_reregistration,
+	}
 }

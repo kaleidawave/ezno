@@ -72,12 +72,13 @@ impl RootContext {
 
 		let mut info = crate::LocalInformation::default();
 
-		// Add undefined
+		// Add undefined as a variable
 		let variables = {
 			let variable_or_import = VariableOrImport::Variable {
 				mutability: crate::features::variables::VariableMutability::Constant,
 				declared_at: source_map::Nullable::NULL,
 				context: None,
+				allow_reregistration: false,
 			};
 			let undefined_id = variable_or_import.get_id();
 			let variables = [("undefined".to_owned(), variable_or_import)];

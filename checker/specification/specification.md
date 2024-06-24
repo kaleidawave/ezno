@@ -46,10 +46,10 @@ a satisfies number
 #### Variable references does not exist
 
 ```ts
-const a = c
+non_existent
 ```
 
-- Could not find variable 'c' in scope
+- Could not find variable 'non_existent' in scope
 
 #### Assigning before declaration
 
@@ -327,9 +327,14 @@ interface MyObject { property: string }
 function process(param: MyObject) {}
 
 process({ property: "hello", another: 2 });
+
+function func<T>(a: T) { }
+
+func<MyObject>({ property: "hello", "something else": 2 })
 ```
 
 - 'another' is not a property of MyObject
+- 'something else' is not a property of MyObject
 
 #### Excess property at return type
 
@@ -511,17 +516,6 @@ function func(): string {
 
 - Cannot return 2 because the function is expected to return string
 
-#### *Inferred* return type
-
-```ts
-function func() {
-	return 2
-}
-func satisfies () => string
-```
-
-- Expected () => string, found () => 2
-
 #### Set property on dependent observed
 
 ```ts
@@ -548,18 +542,6 @@ func satisfies (a: number, b: number) => boolean;
 
 - Expected (a: string, b: number) => string, found (a: string, b: number) => boolean
 - Expected (a: number, b: number) => boolean, found (a: string, b: number) => boolean
-
-#### Function that throws returns never
-
-```ts
-function myThrow() {
-	throw "err!"
-}
-
-myThrow satisfies string;
-```
-
-- Expected string, found () => never
 
 #### Return generics mismatch
 
@@ -1695,14 +1677,16 @@ x.push("hi");
 
 - Argument of type \"hi\" is not assignable to parameter of type number
 
-#### `map` and `filter`
+#### Array map
 
 > TODO other arguments (index and `this`)
 
 ```ts
 [6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
 
-[1, 2, 3].filter(x => x % 2 === 0) satisfies [2];
+declare let a: Array<string>;
+
+a.map(s => s.length) satisfies Array<number>
 ```
 
 - Expected [7, 8, 11], found [7, 9, 11]
@@ -2578,6 +2562,18 @@ interface Z extends X, Y {
 
 - Expected Z, found { a: "", b: 4, c: "hello" }
 - Expected Z, found { c: "hi" }
+
+#### `never` subtyping
+
+```ts
+function getSpecialNumber(): number {
+	throw "to implement!"
+}
+
+getSpecialNumber satisfies string;
+```
+
+- Expected string, found () => number
 
 #### Specialisation of return for declare functions
 

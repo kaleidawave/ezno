@@ -50,9 +50,9 @@ impl ObjectBuilder {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum SpecialObject {
 	/// Hold state of the runtime
-	Promise { events: () },
+	Promise { from: FunctionId, position: TypeId },
 	/// Hold state of the runtime
-	Generator { position: () },
+	Generator { from: FunctionId, position: TypeId },
 	/// Needs overrides for calling, getting etc
 	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state

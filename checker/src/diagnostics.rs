@@ -220,20 +220,29 @@ impl TypeStringRepresentation {
 				crate::PropertyValue::Deleted => todo!(),
 				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
 			},
-			crate::context::Logical::Or { .. } => {
-				todo!()
-				// let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
-				// let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+			crate::context::Logical::Or { condition, left, right } => {
+				let left_right = (*left, *right);
+				if let (Ok(left), Ok(right)) = left_right {
+					let left = Self::from_property_constraint(left, None, ctx, types, debug_mode);
+					let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
 
-				// #[allow(irrefutable_let_patterns)]
-				// if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
-				// 	(left, right)
-				// {
-				// 	l.push_str(&r);
-				// 	TypeStringRepresentation::Type(l)
-				// } else {
-				// 	unreachable!()
-				// }
+					#[allow(irrefutable_let_patterns)]
+					if let (
+						TypeStringRepresentation::Type(mut l),
+						TypeStringRepresentation::Type(r),
+					) = (left, right)
+					{
+						crate::utilities::notify!("Here?");
+						l.push_str(" | ");
+						l.push_str(&r);
+						TypeStringRepresentation::Type(l)
+					} else {
+						unreachable!()
+					}
+				} else {
+					crate::utilities::notify!("Here {:?} base on {:?}", left_right, condition);
+					TypeStringRepresentation::Type("TODO".to_owned())
+				}
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {

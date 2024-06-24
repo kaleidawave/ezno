@@ -59,18 +59,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				// TODO
 				let perform_side_effect_computed = true;
 				(
-					if matches!(
-						key,
-						parser::PropertyKey::Identifier(
-							_,
-							_,
-							parser::property_key::PublicOrPrivate::Private
-						)
-					) {
-						Publicity::Private
-					} else {
-						Publicity::Public
-					},
+					if key.is_private() { Publicity::Private } else { Publicity::Public },
 					parser_property_key_to_checker_property_key(
 						key,
 						environment,
@@ -79,10 +68,6 @@ impl SynthesiseInterfaceBehavior for OnToType {
 					),
 				)
 			}
-			// ParserPropertyKeyType::ObjectProperty(key) => (
-			// 	Publicity::Public,
-			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
-			// ),
 			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
 		let ty = match value {
