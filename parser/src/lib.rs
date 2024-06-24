@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(clippy::new_without_default, clippy::too_many_lines)]
+#![warn(clippy::must_use_candidate)]
 
 mod block;
 mod comments;
@@ -295,12 +296,13 @@ pub struct LocalToStringInformation {
 }
 
 impl LocalToStringInformation {
+	#[must_use]
 	pub fn new_under(under: SourceId) -> Self {
 		Self { under, depth: 0, should_try_pretty_print: true }
 	}
 
-	pub(crate) fn next_level(self) -> LocalToStringInformation {
-		LocalToStringInformation {
+	pub(crate) fn next_level(self) -> Self {
+		Self {
 			under: self.under,
 			depth: self.depth + 1,
 			should_try_pretty_print: self.should_try_pretty_print,
@@ -308,8 +310,8 @@ impl LocalToStringInformation {
 	}
 
 	/// For printing source maps after bundling
-	pub(crate) fn change_source(self, new: SourceId) -> LocalToStringInformation {
-		LocalToStringInformation {
+	pub(crate) fn change_source(self, new: SourceId) -> Self {
+		Self {
 			under: new,
 			depth: self.depth,
 			should_try_pretty_print: self.should_try_pretty_print,
@@ -317,12 +319,8 @@ impl LocalToStringInformation {
 	}
 
 	/// Prevents recursion & other excess
-	pub(crate) fn do_not_pretty_print(self) -> LocalToStringInformation {
-		LocalToStringInformation {
-			under: self.under,
-			depth: self.depth,
-			should_try_pretty_print: false,
-		}
+	pub(crate) fn do_not_pretty_print(self) -> Self {
+		Self { under: self.under, depth: self.depth, should_try_pretty_print: false }
 	}
 }
 

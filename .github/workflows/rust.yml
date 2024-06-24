@@ -223,15 +223,17 @@ jobs:
           rustup install nightly
           rustup default nightly
 
+      # Current `cargo-fuzz` is broken: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2171431210
+      # However `cargo install --git ...` does work below
+      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      #   if: steps.changes.outputs.parser == 'true'
+      #   with:
+      #     packages: cargo-fuzz
+
       - name: Install cargo-fuzz
         if: steps.changes.outputs.parser == 'true'
         run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
       
-      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
-      #   if: steps.changes.outputs.parser == 'true'
-      #   with:
-      #     packages: cargo-fuzz@0.11.2
-
       - name: Run fuzzing
         env:
           SHORT_CIRCUIT: true
