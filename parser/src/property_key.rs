@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
-	fn parse_ident(
+	fn parse_identifier(
 		first: Token<TSXToken, crate::TokenStart>,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self)>;
@@ -37,7 +37,7 @@ pub struct AlwaysPublic;
 // ";
 
 impl PropertyKeyKind for AlwaysPublic {
-	fn parse_ident(
+	fn parse_identifier(
 		first: Token<TSXToken, crate::TokenStart>,
 		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self)> {
@@ -68,7 +68,7 @@ pub enum PublicOrPrivate {
 // ";
 
 impl PropertyKeyKind for PublicOrPrivate {
-	fn parse_ident(
+	fn parse_identifier(
 		first: Token<TSXToken, crate::TokenStart>,
 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	) -> ParseResult<(String, Span, Self)> {
@@ -95,7 +95,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 #[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
-	Ident(String, Span, T),
+	Identifier(String, Span, T),
 	StringLiteral(String, Quoted, Span),
 	NumberLiteral(NumberRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
@@ -105,7 +105,7 @@ pub enum PropertyKey<T: PropertyKeyKind> {
 impl<U: PropertyKeyKind> PropertyKey<U> {
 	pub fn is_private(&self) -> bool {
 		match self {
-			PropertyKey::Ident(_, _, p) => U::is_private(p),
+			PropertyKey::Identifier(_, _, p) => U::is_private(p),
 			_ => false,
 		}
 	}
@@ -114,7 +114,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
 		match self {
-			PropertyKey::Ident(name, _, _) | PropertyKey::StringLiteral(name, _, _) => {
+			PropertyKey::Identifier(name, _, _) | PropertyKey::StringLiteral(name, _, _) => {
 				name == other
 			}
 			PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => false,
@@ -151,8 +151,8 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 					// TODO could add marker?
 					Self::from_reader(reader, state, options)
 				} else {
-					let (name, position, private) = U::parse_ident(token, reader)?;
-					Ok(Self::Ident(name, position, private))
+					let (name, position, private) = U::parse_identifier(token, reader)?;
+					Ok(Self::Identifier(name, position, private))
 				}
 			}
 		}
@@ -165,7 +165,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			Self::Ident(ident, _pos, _) => buf.push_str(ident.as_str()),
+			Self::Identifier(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
 			Self::StringLiteral(string, quoted, _) => {
 				buf.push(quoted.as_char());

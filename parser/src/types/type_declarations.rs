@@ -18,7 +18,9 @@ pub struct TypeParameter {
 	pub is_constant: bool,
 }
 
-impl ListItem for TypeParameter {}
+impl ListItem for TypeParameter {
+	type LAST = ();
+}
 
 impl ASTNode for TypeParameter {
 	fn from_reader(

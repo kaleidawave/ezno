@@ -38,10 +38,10 @@ const b: string = a
 ```ts
 let a = 2
 a = "hello world"
-let b: boolean = a
+a satisfies number
 ```
 
-- Type "hello world" is not assignable to type boolean
+- Expected number, found "hello world"
 
 #### Variable references does not exist
 

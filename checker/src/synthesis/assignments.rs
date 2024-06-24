@@ -9,7 +9,7 @@ use crate::{
 	context::Environment,
 	features::assignments::{
 		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
-		Reference,
+		AssignableSpread, Reference,
 	},
 	synthesis::expressions::synthesise_expression,
 	types::properties::{PropertyKey, Publicity},
@@ -35,11 +35,11 @@ impl SynthesiseToAssignable for LHSOfAssignment {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Assignable<super::EznoParser> {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(items, _) => {
-				synthesise_object_to_reference(items, environment, checking_data)
+			LHSOfAssignment::ObjectDestructuring { members, spread, position: _ } => {
+				synthesise_object_to_reference(members, spread, environment, checking_data)
 			}
-			LHSOfAssignment::ArrayDestructuring(items, _) => {
-				synthesise_array_to_reference(items, environment, checking_data)
+			LHSOfAssignment::ArrayDestructuring { members, spread, position: _ } => {
+				synthesise_array_to_reference(members, spread, environment, checking_data)
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(access) => Assignable::Reference(
 				synthesise_access_to_reference(access, environment, checking_data),
@@ -55,11 +55,11 @@ impl SynthesiseToAssignable for VariableField {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Assignable<super::EznoParser> {
 		match self {
-			VariableField::Object(items, _) => {
-				synthesise_object_to_reference(items, environment, checking_data)
+			VariableField::Object { members, spread, position: _ } => {
+				synthesise_object_to_reference(members, spread, environment, checking_data)
 			}
-			VariableField::Array(items, _) => {
-				synthesise_array_to_reference(items, environment, checking_data)
+			VariableField::Array { members, spread, position: _ } => {
+				synthesise_array_to_reference(members, spread, environment, checking_data)
 			}
 			VariableField::Name(ident) => Assignable::Reference(match ident {
 				VariableIdentifier::Standard(name, position) => Reference::Variable(
@@ -79,6 +79,7 @@ fn synthesise_object_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ObjectDestructuringField<U>>],
+	spread: &Option<parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -97,16 +98,6 @@ fn synthesise_object_to_reference<
 						default_value: default_value.clone(),
 						position: position.with_source(environment.get_source()),
 					}
-				}
-				parser::ObjectDestructuringField::Spread(name, position) => {
-					AssignableObjectDestructuringField::Spread(
-						SynthesiseToAssignable::synthesise_to_assignable(
-							name,
-							environment,
-							checking_data,
-						),
-						position.with_source(environment.get_source()),
-					)
 				}
 				parser::ObjectDestructuringField::Map {
 					from,
@@ -135,6 +126,16 @@ fn synthesise_object_to_reference<
 				}
 			})
 			.collect(),
+		spread.as_ref().map(|spread| {
+			AssignableSpread(
+				Box::new(SynthesiseToAssignable::synthesise_to_assignable(
+					&*spread.0,
+					environment,
+					checking_data,
+				)),
+				spread.1.with_source(environment.get_source()),
+			)
+		}),
 	)
 }
 
@@ -143,6 +144,7 @@ fn synthesise_array_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ArrayDestructuringField<U>>],
+	spread: &Option<parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -150,16 +152,6 @@ fn synthesise_array_to_reference<
 		items
 			.iter()
 			.map(|item| match item.get_ast_ref() {
-				parser::ArrayDestructuringField::Spread(name, position) => {
-					AssignableArrayDestructuringField::Spread(
-						SynthesiseToAssignable::synthesise_to_assignable(
-							name,
-							environment,
-							checking_data,
-						),
-						position.with_source(environment.get_source()),
-					)
-				}
 				parser::ArrayDestructuringField::Name(name, _, default_value) => {
 					AssignableArrayDestructuringField::Name(
 						SynthesiseToAssignable::synthesise_to_assignable(
@@ -180,6 +172,16 @@ fn synthesise_array_to_reference<
 				parser::ArrayDestructuringField::None => AssignableArrayDestructuringField::None,
 			})
 			.collect(),
+		spread.as_ref().map(|spread| {
+			AssignableSpread(
+				Box::new(SynthesiseToAssignable::synthesise_to_assignable(
+					&*spread.0,
+					environment,
+					checking_data,
+				)),
+				spread.1.with_source(environment.get_source()),
+			)
+		}),
 	)
 }
 

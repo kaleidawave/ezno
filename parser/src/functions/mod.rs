@@ -219,7 +219,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			.is_some()
 			.then(|| {
 				parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _)| params)
+					.map(|(params, _, _)| params)
 			})
 			.transpose()?;
 		let parameters = FunctionParameters::from_reader(reader, state, options)?;
@@ -672,7 +672,7 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 		let new_public = T::new_public();
 		(
 			MethodHeader::default(),
-			WithComment::None(PropertyKey::Ident(name.to_owned(), position, new_public)),
+			WithComment::None(PropertyKey::Identifier(name.to_owned(), position, new_public)),
 		)
 	} else {
 		(MethodHeader::from_reader(reader), WithComment::from_reader(reader, state, options)?)

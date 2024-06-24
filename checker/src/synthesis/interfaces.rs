@@ -61,7 +61,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				(
 					if matches!(
 						key,
-						parser::PropertyKey::Ident(
+						parser::PropertyKey::Identifier(
 							_,
 							_,
 							parser::property_key::PublicOrPrivate::Private

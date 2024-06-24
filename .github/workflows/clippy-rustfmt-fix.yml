@@ -1,0 +1,37 @@
+name: Run automated fixes on current branch
+
+on:
+  workflow_dispatch
+
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run automated fixes
+        run: |
+          cargo clippy --fix
+          cargo fmt
+
+      - name: Commit
+        run: |
+          git add .
+          git commit -m "Run clippy --fix & formatting"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        
+          git push
