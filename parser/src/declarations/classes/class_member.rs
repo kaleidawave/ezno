@@ -322,7 +322,7 @@ impl FunctionBased for ClassFunctionBase {
 	}
 
 	fn get_name(name: &Self::Name) -> Option<&str> {
-		if let PropertyKey::Ident(name, ..) = name.get_ast_ref() {
+		if let PropertyKey::Identifier(name, ..) = name.get_ast_ref() {
 			Some(name.as_str())
 		} else {
 			None

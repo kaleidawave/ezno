@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use parser::{
 	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField,
-	ObjectDestructuringField, VariableField, VariableIdentifier,
+	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
 };
 
 use super::expressions::synthesise_expression;
@@ -62,24 +62,27 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 		parser::VariableField::Name(variable) => {
 			register_variable_identifier(variable, environment, checking_data, argument);
 		}
-		parser::VariableField::Array(items, _) => {
-			for (idx, field) in items.iter().enumerate() {
+		parser::VariableField::Array { members, spread, position: _ } => {
+			if let Some(_spread) = spread {
+				todo!()
+			}
+			for (idx, field) in members.iter().enumerate() {
 				match field.get_ast_ref() {
-					ArrayDestructuringField::Spread(variable, _pos) => {
-						// TODO
-						let argument = VariableRegisterArguments {
-							constant: argument.constant,
-							space: argument.space,
-							initial_value: argument.initial_value,
-						};
-						register_variable(
-							variable,
-							environment,
-							checking_data,
-							// TODO
-							argument,
-						);
-					}
+					// ArrayDestructuringField::Spread(variable, _pos) => {
+					// 	// TODO
+					// 	let argument = VariableRegisterArguments {
+					// 		constant: argument.constant,
+					// 		space: argument.space,
+					// 		initial_value: argument.initial_value,
+					// 	};
+					// 	register_variable(
+					// 		variable,
+					// 		environment,
+					// 		checking_data,
+					// 		// TODO
+					// 		argument,
+					// 	);
+					// }
 					ArrayDestructuringField::Name(name, _type, _initial_value) => {
 						// TODO account for spread in `idx`
 						let key = PropertyKey::from_usize(idx);
@@ -96,8 +99,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		parser::VariableField::Object(items, _) => {
-			for field in items {
+		parser::VariableField::Object { members, spread, .. } => {
+			for field in members {
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, _type, ..) => {
 						let name = match variable {
@@ -117,19 +120,6 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							environment,
 							checking_data,
 							argument,
-						);
-					}
-					ObjectDestructuringField::Spread(variable, _) => {
-						register_variable(
-							variable,
-							environment,
-							checking_data,
-							// TODO
-							VariableRegisterArguments {
-								constant: argument.constant,
-								space: argument.space,
-								initial_value: argument.initial_value,
-							},
 						);
 					}
 					ObjectDestructuringField::Map {
@@ -156,6 +146,19 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						register_variable(name.get_ast_ref(), environment, checking_data, argument);
 					}
 				}
+			}
+			if let Some(SpreadDestructuringField(variable, _position)) = spread {
+				register_variable(
+					variable,
+					environment,
+					checking_data,
+					// TODO
+					VariableRegisterArguments {
+						constant: argument.constant,
+						space: argument.space,
+						initial_value: argument.initial_value,
+					},
+				);
 			}
 		}
 	}
@@ -266,10 +269,10 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array(_items, pos) => {
+		VariableField::Array { members: _, spread: _, position } => {
 			checking_data.raise_unimplemented_error(
 				"destructuring array (needs iterator)",
-				pos.with_source(environment.get_source()),
+				position.with_source(environment.get_source()),
 			);
 			// for (idx, item) in items.iter().enumerate() {
 			// 	match item.get_ast_ref() {
@@ -299,17 +302,9 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// 		ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
 			//   }
 		}
-		VariableField::Object(items, _) => {
-			for item in items {
-				match item.get_ast_ref() {
-					ObjectDestructuringField::Spread(_, pos) => {
-						// TODO collect previous. Then recursive apply stuff
-						checking_data.raise_unimplemented_error(
-							"spread object destructuring",
-							pos.with_source(environment.get_source()),
-						);
-						continue;
-					}
+		VariableField::Object { members, spread, .. } => {
+			for member in members {
+				match member.get_ast_ref() {
 					ObjectDestructuringField::Name(name, _, default_value, _) => {
 						let position = name.get_position().with_source(environment.get_source());
 						let id = crate::VariableId(environment.get_source(), position.start);
@@ -458,6 +453,9 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						);
 					}
 				}
+			}
+			if let Some(_spread) = spread {
+				todo!()
 			}
 		}
 	}

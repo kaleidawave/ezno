@@ -369,11 +369,9 @@ mod structures {
 				ImmutableVariableOrProperty::ArrayDestructuringMember(_) => None,
 				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
 					match o.get_ast_ref() {
-						ObjectDestructuringField::Spread(
-							VariableField::Name(VariableIdentifier::Standard(a, _)),
-							_,
-						)
-						| ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => Some(a.as_str()),
+						ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => {
+							Some(a.as_str())
+						}
 						_ => None,
 					}
 				}
@@ -389,7 +387,7 @@ mod structures {
 					// Just want variable names
 					None
 					// match property.get_ast_ref() {
-					// 	PropertyKey::Ident(ident, _, _)
+					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					// }
@@ -398,7 +396,7 @@ mod structures {
 					// Just want variable names
 					None
 					// match property.get_ast_ref() {
-					// 	PropertyKey::Ident(ident, _, _)
+					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
 					// }

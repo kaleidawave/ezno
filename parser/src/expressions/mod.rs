@@ -343,7 +343,7 @@ impl Expression {
 						)
 					}
 					Token(TSXToken::OpenParentheses, _) => {
-						let (arguments, end_pos) = parse_bracketed(
+						let (arguments, _, end_pos) = parse_bracketed(
 							reader,
 							state,
 							options,
@@ -394,7 +394,7 @@ impl Expression {
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			}
 			Token(TSXToken::OpenBracket, start) => {
-				let (items, end) = parse_bracketed::<ArrayElement>(
+				let (items, _, end) = parse_bracketed::<ArrayElement>(
 					reader,
 					state,
 					options,
@@ -480,7 +480,7 @@ impl Expression {
 						.conditional_next(|token| *token == TSXToken::OpenChevron)
 						.is_some()
 					{
-						let (generic_arguments, end_pos) =
+						let (generic_arguments, _, end_pos) =
 							parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 						(Some(generic_arguments), end_pos)
 					} else {
@@ -492,7 +492,7 @@ impl Expression {
 						.is_some()
 					{
 						parse_bracketed(reader, state, options, None, TSXToken::CloseParentheses)
-							.map(|(args, end)| (Some(args), end))?
+							.map(|(args, _, end)| (Some(args), end))?
 					} else {
 						// TODO are type arguments not allowed...?
 						(None, end)
@@ -889,7 +889,7 @@ impl Expression {
 					}
 					let next = reader.next().unwrap();
 					let is_optional = matches!(next.0, TSXToken::OptionalCall);
-					let (arguments, end) =
+					let (arguments, _, end) =
 						parse_bracketed(reader, state, options, None, TSXToken::CloseParentheses)?;
 					let position = top.get_position().union(end);
 					top = Expression::FunctionCall {
@@ -1140,7 +1140,7 @@ impl Expression {
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
 								reader, state, options, None,
 							)?;
-							let (arguments, end) = parse_bracketed(
+							let (arguments, _, end) = parse_bracketed(
 								reader,
 								state,
 								options,
@@ -1504,7 +1504,7 @@ impl Expression {
 			}
 			Self::Assignment { lhs, rhs, .. } => {
 				let require_parenthesis =
-					matches!(lhs, LHSOfAssignment::ObjectDestructuring(..)) && local2.on_left;
+					matches!(lhs, LHSOfAssignment::ObjectDestructuring { .. }) && local2.on_left;
 
 				if require_parenthesis {
 					buf.push('(');
@@ -1663,6 +1663,55 @@ impl Expression {
 				}
 			}
 			Self::ArrayLiteral(values, _) => {
+				// Fix, see: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2169621017
+				if options.pretty && options.enforce_limit_length_limit() {
+					const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
+
+					let values_are_all_booleans_or_numbers =
+						values.first().and_then(ArrayElement::inner_ref).is_some_and(|e| {
+							matches!(
+								e,
+								Expression::BooleanLiteral(..) | Expression::NumberLiteral(..)
+							)
+						}) && values.iter().all(|e| {
+							e.inner_ref().is_some_and(|e| {
+								matches!(
+									e,
+									Expression::BooleanLiteral(..) | Expression::NumberLiteral(..)
+								)
+							})
+						}) && are_nodes_over_length(
+							values.iter(),
+							options,
+							local,
+							Some(MAX_INLINE_OBJECT_LITERAL),
+							true,
+						);
+
+					if values_are_all_booleans_or_numbers {
+						buf.push('[');
+						let inner_local = local.next_level();
+						buf.push_new_line();
+						options.add_indent(inner_local.depth, buf);
+						for (at_end, node) in
+							iterator_endiate::EndiateIteratorExt::endiate(values.iter())
+						{
+							if buf.characters_on_current_line() > MAX_INLINE_OBJECT_LITERAL {
+								buf.push_new_line();
+								options.add_indent(inner_local.depth, buf);
+							}
+							node.to_string_from_buffer(buf, options, inner_local);
+							if !at_end {
+								buf.push(',');
+								options.push_gap_optionally(buf);
+							}
+						}
+						buf.push_new_line();
+						options.add_indent(local.depth, buf);
+						buf.push(']');
+						return;
+					};
+				}
 				to_string_bracketed(values, ('[', ']'), buf, options, local);
 			}
 			Self::ObjectLiteral(object_literal) => {
@@ -1977,6 +2026,11 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	local: crate::LocalToStringInformation,
 ) {
 	buf.push('(');
+	if nodes.is_empty() {
+		buf.push(')');
+		return;
+	}
+
 	let add_new_lines = are_nodes_over_length(
 		nodes.iter(),
 		options,
@@ -1984,6 +2038,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		Some(u32::from(options.max_line_length).saturating_sub(buf.characters_on_current_line())),
 		true,
 	);
+
 	if add_new_lines {
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);
@@ -2082,7 +2137,9 @@ pub enum FunctionArgument {
 	Comment { content: String, is_multiline: bool, position: Span },
 }
 
-impl ListItem for FunctionArgument {}
+impl ListItem for FunctionArgument {
+	type LAST = ();
+}
 
 impl ASTNode for FunctionArgument {
 	fn from_reader(
@@ -2214,8 +2271,25 @@ impl ASTNode for ArrayElement {
 	}
 }
 
+impl ArrayElement {
+	/// For utility purposes! Loses spread information
+	#[must_use]
+	pub fn inner_ref(&self) -> Option<&Expression> {
+		if let Some(ref inner) = self.0 {
+			match inner {
+				FunctionArgument::Spread(expr, _) | FunctionArgument::Standard(expr) => Some(expr),
+				FunctionArgument::Comment { .. } => None,
+			}
+		} else {
+			None
+		}
+	}
+}
+
 impl ListItem for ArrayElement {
 	const EMPTY: Option<Self> = Some(Self(None));
+
+	type LAST = ();
 }
 
 // Utils for Expression

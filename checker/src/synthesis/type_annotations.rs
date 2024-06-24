@@ -538,7 +538,10 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 			acc
 		}
-		TypeAnnotation::Infer(name, _pos) => {
+		TypeAnnotation::Infer { name, extends, position: _ } => {
+			if extends.is_some() {
+				crate::utilities::notify!("TODO");
+			}
 			if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =
 				environment.context_type.scope
 			{

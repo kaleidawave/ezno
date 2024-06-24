@@ -10,8 +10,8 @@ use super::operations::{LogicalOperator, MathematicalAndBitwise};
 /// A single or multiple items to assign to
 pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
-	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
+	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>, Option<AssignableSpread<A>>),
+	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>, Option<AssignableSpread<A>>),
 }
 
 /// TODO Can this use lifetimes?
@@ -29,12 +29,14 @@ pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 		default_value: Option<Box<A::Expression<'static>>>,
 		position: SpanWithSource,
 	},
-	/// `{ ...x }`
-	Spread(Assignable<A>, SpanWithSource),
 }
 
+pub struct AssignableSpread<A: crate::ASTImplementation>(
+	pub Box<Assignable<A>>,
+	pub SpanWithSource,
+);
+
 pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
-	Spread(Assignable<A>, SpanWithSource),
 	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
 	Comment { content: String, is_multiline: bool, position: SpanWithSource },
 	None,

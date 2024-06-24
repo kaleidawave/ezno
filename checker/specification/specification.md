@@ -38,10 +38,10 @@ const b: string = a
 ```ts
 let a = 2
 a = "hello world"
-let b: boolean = a
+a satisfies number
 ```
 
-- Type "hello world" is not assignable to type boolean
+- Expected number, found "hello world"
 
 #### Variable references does not exist
 
@@ -2748,6 +2748,26 @@ unwrap(16) satisfies 16;
 ```
 
 - Expected string, found 5
+
+#### Excess generic arguments
+
+```ts
+declare function generic<T>(a: T);
+
+generic<string, number>("something");
+```
+
+- Expected 1 type argument, but got 2
+
+#### Passing generic type to non-generic function
+
+```ts
+declare function func();
+
+func<string>();
+```
+
+- Cannot pass a type argument to a non-generic function
 
 #### Across alias
 

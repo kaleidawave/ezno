@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io::Write};
+use std::{collections::HashSet, io::Write, path::PathBuf};
 
 use ezno_parser::{
 	ast::{InterfaceDeclaration, TypeAlias},
@@ -8,9 +8,18 @@ use ezno_parser::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let mut args = std::env::args().skip(1);
-	let path = args.next().ok_or("expected path to markdown file")?;
-	let out = args.next();
+	let args = std::env::args().skip(1).collect::<Vec<_>>();
+	let path = args.first().ok_or("expected path to markdown file")?;
+
+	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
+	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
+
+	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
+		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
+	});
+	let out_file = args
+		.windows(2)
+		.find_map(|item| matches!(item[0].as_str(), "--out").then_some(item[1].clone()));
 
 	let content = std::fs::read_to_string(&path)?;
 
@@ -18,24 +27,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let blocks = if path.ends_with(".md") {
 		let mut blocks = Vec::new();
-
 		let mut lines = content.lines();
+		let mut current = String::default();
+
 		while let Some(line) = lines.next() {
 			if line.starts_with("```ts") {
-				let mut indented_code = lines
-					.by_ref()
-					.take_while(|line| !line.starts_with("```"))
-					.fold("\t".to_owned(), |mut a, s| {
+				let code = lines.by_ref().take_while(|line| !line.starts_with("```")).fold(
+					String::new(),
+					|mut a, s| {
 						a.push_str(s);
-						a.push_str("\n\t");
+						a.push_str("\n");
 						a
-					});
+					},
+				);
 
-				debug_assert_eq!(indented_code.pop(), Some('\t'));
-
-				if !filters.iter().any(|filter| indented_code.contains(filter)) {
-					blocks.push(indented_code);
+				if !filters.iter().any(|filter| code.contains(filter)) {
+					blocks.push((std::mem::take(&mut current), code));
 				}
+			} else if let Some(header) = line.strip_prefix("#### ") {
+				current = header.to_owned();
 			}
 		}
 		blocks
@@ -43,8 +53,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		todo!("parse module, split by statement braced")
 	};
 
+	if let Some((under, extension)) = into_files_directory_and_extension {
+		let under = PathBuf::from(under);
+		for (header, code) in blocks {
+			let mut name = heading_to_rust_identifier(&header);
+			name.push_str(".");
+			name.push_str(&extension);
+			let mut file = std::fs::File::create(under.join(name))?;
+			// Fix for FLow
+			let code =
+				if replace_satisfies_with_as { code.replace(" satisfies ", " as ") } else { code };
+			for line in code.lines() {
+				writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+			}
+		}
+		return Ok(());
+	}
+
+	// Else bundle into one, bound in arrow functions to prevent namespace collision
 	let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
-	for code in blocks {
+	for (header, code) in blocks {
 		let module = Module::from_string(code.clone(), Default::default()).map_err(Box::new)?;
 
 		let mut names = HashSet::new();
@@ -89,29 +117,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 
+		// If available block add to that, otherwise create a new one
 		if let Some((items, block)) =
 			final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
 		{
 			items.extend(names.into_iter());
-			block.push_str("\n");
-			block.push_str(&code);
+			if add_headers_as_comments {
+				block.push_str("\n\t// ");
+				block.push_str(&header);
+			}
+			for line in code.lines() {
+				block.push_str("\n\t");
+				block.push_str(&line);
+			}
+			// If the block is not terminated, it can change the parsing of the next one
+			if block.ends_with(')') {
+				block.push(';');
+			}
+			block.push('\n');
 		} else {
-			final_blocks.push((names, code));
+			let mut block = String::new();
+			if add_headers_as_comments {
+				block.push_str("\t// ");
+				block.push_str(&header);
+			}
+			for line in code.lines() {
+				block.push_str("\n\t");
+				block.push_str(&line);
+			}
+			block.push('\n');
+			final_blocks.push((names, block));
 		}
 	}
 
 	// eprintln!("Generated {:?} blocks", final_blocks.len());
 
-	if let Some(out) = out {
-		let mut out = std::fs::File::create(out).expect("Cannot open file");
+	if let Some(out) = out_file {
+		let mut out = std::fs::File::create(out)?;
 		for (_items, block) in final_blocks {
-			writeln!(out, "() => {{\n{block}}};\n").unwrap();
+			writeln!(out, "() => {{\n{block}}};\n")?;
 		}
 	} else {
 		let mut out = std::io::stdout();
 		for (_items, block) in final_blocks {
 			// eprintln!("block includes: {items:?}\n{block}\n---");
-			writeln!(out, "() => {{\n{block}}};\n").unwrap();
+			writeln!(out, "() => {{\n{block}}};\n")?;
 		}
 	}
 
@@ -136,4 +186,11 @@ impl<'a>
 			data.insert(name.to_owned());
 		}
 	}
+}
+
+fn heading_to_rust_identifier(heading: &str) -> String {
+	heading
+		.replace([' ', '-', '/', '&', '.', '+'], "_")
+		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
+		.to_lowercase()
 }

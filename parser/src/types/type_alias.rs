@@ -29,7 +29,7 @@ impl ASTNode for TypeAlias {
 			.is_some()
 			.then(|| {
 				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _)| params)
+					.map(|(params, _, _)| params)
 			})
 			.transpose()?;
 

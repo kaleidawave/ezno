@@ -50,18 +50,23 @@ jobs:
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md ./demo.ts
-          echo "::info::Finished file generation"
+          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
 
-          LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.ts | jq ".[0].Code")
+          LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.tsx | jq ".[0].Code")
+
+          echo "### Checking
+          \`\`\`shell
+          $(hyperfine -i './target/release/ezno check demo.tsx')
+          \`\`\`" >> $GITHUB_STEP_SUMMARY
 
           echo "<details>
           <summary>Input</summary>
 
-          \`\`\`ts
+          \`\`\`tsx
           // $LINES_OF_CODE lines of TypeScript generated from specification.md
-          // this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
-          $(cat ./demo.ts)
+          // this is not meant to accurately represent a program but instead give an idea 
+          // for how it scales across all the type checking features
+          $(cat ./demo.tsx)
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
@@ -72,23 +77,10 @@ jobs:
           <summary>Diagnostics</summary>
           
           \`\`\`
-          $(./target/release/ezno check demo.ts --timings 2>&1 || true)
+          $(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
-          
-          echo "### Checking
-          \`\`\`shell
-          $(hyperfine -i './target/release/ezno check demo.ts')
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
-
-          echo "::group::Comparing printing of diagnostics"
-          hyperfine -i './target/release/ezno check demo.ts' './target/release/ezno check demo.ts --compact-diagnostics' './target/release/ezno check demo.ts --count-diagnostics'
-          echo "::endgroup::"
-        
-          echo "::group::cargo tree"
-          cargo tree
-          echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
         shell: bash

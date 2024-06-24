@@ -109,7 +109,7 @@ pub(super) fn synthesise_class_declaration<
 		match &member.on {
 			ClassMember::Method(false, method) => {
 				let publicity = match method.name.get_ast_ref() {
-					ParserPropertyKey::Ident(
+					ParserPropertyKey::Identifier(
 						_,
 						_,
 						parser::property_key::PublicOrPrivate::Private,
@@ -133,7 +133,7 @@ pub(super) fn synthesise_class_declaration<
 					}
 				};
 
-				let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
+				let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
 					get_internal_function_effect_from_decorators(
@@ -179,7 +179,7 @@ pub(super) fn synthesise_class_declaration<
 			}
 			ClassMember::Property(false, property) => {
 				let publicity = match property.key.get_ast_ref() {
-					ParserPropertyKey::Ident(
+					ParserPropertyKey::Identifier(
 						_,
 						_,
 						parser::property_key::PublicOrPrivate::Private,
@@ -256,7 +256,7 @@ pub(super) fn synthesise_class_declaration<
 			match &member.on {
 				ClassMember::Method(true, method) => {
 					let publicity_kind = match method.name.get_ast_ref() {
-						ParserPropertyKey::Ident(
+						ParserPropertyKey::Identifier(
 							_,
 							_,
 							parser::property_key::PublicOrPrivate::Private,
@@ -264,7 +264,7 @@ pub(super) fn synthesise_class_declaration<
 						_ => Publicity::Public,
 					};
 
-					let internal_marker = if let (true, ParserPropertyKey::Ident(name, _, _)) =
+					let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
 						(is_declare, method.name.get_ast_ref())
 					{
 						get_internal_function_effect_from_decorators(
@@ -321,7 +321,7 @@ pub(super) fn synthesise_class_declaration<
 				}
 				ClassMember::Property(true, property) => {
 					let publicity_kind = match property.key.get_ast_ref() {
-						ParserPropertyKey::Ident(
+						ParserPropertyKey::Identifier(
 							_,
 							_,
 							parser::property_key::PublicOrPrivate::Private,

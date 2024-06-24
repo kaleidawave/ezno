@@ -640,6 +640,12 @@ pub enum FunctionCallingError {
 		count: usize,
 		position: SpanWithSource,
 	},
+
+	ExcessTypeArguments {
+		expected_count: usize,
+		count: usize,
+		position: SpanWithSource,
+	},
 	NotCallable {
 		calling: TypeStringRepresentation,
 		call_site: SpanWithSource,
@@ -1569,17 +1575,56 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			let function = checking_data.types.get_function_from_id(function.function);
 
 			let type_arguments_restrictions =
-				if let (Some(ref type_parameters), Some(call_site_type_arguments)) =
-					(&function.type_parameters, call_site_type_arguments)
-				{
-					Some(synthesise_call_site_type_argument_hints(
-						type_parameters,
-						call_site_type_arguments,
-						&checking_data.types,
-						environment,
-					))
-				} else {
-					None
+				match (&function.type_parameters, call_site_type_arguments) {
+					(None, Some(call_site_type_arguments)) => {
+						let first_excess_type_parameter = &call_site_type_arguments[0];
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::FunctionCallingError(
+								FunctionCallingError::ExcessTypeArguments {
+									expected_count: 0,
+									count: call_site_type_arguments.len(),
+									position: first_excess_type_parameter.1,
+								},
+							),
+						);
+
+						None
+					}
+					(Some(ref function_type_parameters), Some(call_site_type_arguments)) => {
+						let expected_parameters_length = function_type_parameters.0.len();
+						let provided_parameters_length = call_site_type_arguments.len();
+						if provided_parameters_length > expected_parameters_length {
+							let first_excess_type_parameter =
+								&call_site_type_arguments[expected_parameters_length];
+							let last_excess_type_parameter = call_site_type_arguments
+								.last()
+								.unwrap_or(first_excess_type_parameter);
+
+							let error_position = first_excess_type_parameter
+								.1
+								.without_source()
+								.union(last_excess_type_parameter.1.without_source())
+								.with_source(first_excess_type_parameter.1.source);
+
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::FunctionCallingError(
+									FunctionCallingError::ExcessTypeArguments {
+										expected_count: expected_parameters_length,
+										count: provided_parameters_length,
+										position: error_position,
+									},
+								),
+							);
+						}
+						Some(synthesise_call_site_type_argument_hints(
+							function_type_parameters,
+							call_site_type_arguments,
+							&checking_data.types,
+							environment,
+						))
+					}
+
+					_ => None,
 				};
 
 			let parameters = function.parameters.clone();

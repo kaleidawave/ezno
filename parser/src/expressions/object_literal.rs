@@ -141,7 +141,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	}
 
 	fn get_name(name: &Self::Name) -> Option<&str> {
-		if let PropertyKey::Ident(name, ..) = name.get_ast_ref() {
+		if let PropertyKey::Identifier(name, ..) = name.get_ast_ref() {
 			Some(name.as_str())
 		} else {
 			None
@@ -248,7 +248,7 @@ impl ASTNode for ObjectLiteralMember {
 					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 				}
 				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Ident(name, position, _) = key.get_ast() {
+					if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
 						Ok(Self::Shorthand(name, position))
 					} else {
 						let token = reader.next().ok_or_else(parse_lexing_error)?;

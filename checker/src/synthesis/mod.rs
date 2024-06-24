@@ -57,7 +57,7 @@ impl crate::ASTImplementation for EznoParser {
 
 	type VariableField<'_a> = parser::VariableField;
 
-	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementinitialiser;
+	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementInitialiser;
 
 	fn module_from_string(
 		// TODO remove
@@ -163,7 +163,7 @@ impl crate::ASTImplementation for EznoParser {
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
 		match for_loop_initialiser {
-			parser::statements::ForLoopStatementinitialiser::VariableDeclaration(declaration) => {
+			parser::statements::ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(
@@ -175,13 +175,13 @@ impl crate::ASTImplementation for EznoParser {
 					checking_data.options.infer_sensible_constraints_in_for_loops,
 				);
 			}
-			parser::statements::ForLoopStatementinitialiser::VarStatement(stmt) => {
+			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",
 					stmt.get_position().with_source(environment.get_source()),
 				);
 			}
-			parser::statements::ForLoopStatementinitialiser::Expression(expr) => {
+			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
 				checking_data.raise_unimplemented_error(
 					"expression as for statement initiliser",
 					expr.get_position().with_source(environment.get_source()),
@@ -223,7 +223,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 	perform_side_effect_computed: bool,
 ) -> PropertyKey<'static> {
 	match property_key {
-		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Ident(value, ..) => {
+		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
 		ParserPropertyKey::NumberLiteral(number, pos) => {
