@@ -1183,11 +1183,12 @@ pub(crate) fn get_value_of_variable(
 
 		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		// TODO WIP narrowing
-
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			return Some(res);
+			let narrowed_value =
+				info.get_chain_of_info().find_map(|info| info.narrowed_values.get(&res).copied());
+
+			return Some(narrowed_value.unwrap_or(res));
 		}
 	}
 	None
