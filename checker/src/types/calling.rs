@@ -33,7 +33,7 @@ use crate::{
 
 use super::{
 	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
-	get_constraint, is_type_constant,
+	get_constraint,
 	properties::PropertyKey,
 	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 };
@@ -168,18 +168,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 					special,
 					result_was_const_computation: _,
 				}) => {
-					for warning in warnings {
-						checking_data.diagnostics_container.add_warning(warning);
-					}
-					for InfoDiagnostic(message, position) in info {
-						checking_data.diagnostics_container.add_info(
-							crate::diagnostics::Diagnostic::Position {
-								reason: message,
-								position,
-								kind: crate::diagnostics::DiagnosticKind::Info,
-							},
-						);
-					}
+					add_diagnostics(info, warnings, &mut checking_data.diagnostics_container);
 
 					let returned_type = application_result_to_return_type(
 						result,
@@ -220,6 +209,23 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			));
 			(TypeId::ERROR_TYPE, None)
 		}
+	}
+}
+
+pub(crate) fn add_diagnostics(
+	info: Vec<InfoDiagnostic>,
+	warnings: Vec<TypeCheckWarning>,
+	diagnostics_container: &mut crate::DiagnosticsContainer,
+) {
+	for warning in warnings {
+		diagnostics_container.add_warning(warning);
+	}
+	for InfoDiagnostic(message, position) in info {
+		diagnostics_container.add_info(crate::diagnostics::Diagnostic::Position {
+			reason: message,
+			position,
+			kind: crate::diagnostics::DiagnosticKind::Info,
+		});
 	}
 }
 
@@ -269,7 +275,6 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 ) -> Result<CallingOutput, BadCallOutput> {
-	// input.this_value,
 	match on {
 		Callable::Fixed(on) => {
 			// TODO
@@ -438,6 +443,7 @@ fn call_logical<E: CallCheckingBehavior>(
 				{
 					let has_dependent_argument =
 						arguments.iter().any(|arg| types.get_type_by_id(arg.value).is_dependent());
+
 					// || matches!(this_value, ThisValue::Passed(ty) if types.get_type_by_id(ty).is_dependent());
 
 					// crate::utilities::notify!(
@@ -445,31 +451,33 @@ fn call_logical<E: CallCheckingBehavior>(
 					// 	has_dependent_argument
 					// );
 
+					// TODO just for debugging. These have their constant things called every time AND queue an event
+					let is_independent_function = const_fn_ident.ends_with("independent");
+
 					let call_anyway = const_fn_ident.starts_with("debug")
 						|| const_fn_ident.starts_with("print")
+						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),
 							"satisfies" | "is_dependent" | "bind" | "create_proxy"
 						);
 
-					// TODO just for debugging. These have their constant things called every time AND queue an event
-					let is_independent = const_fn_ident.ends_with("independent");
+					// {
+					// 	let arguments = arguments
+					// 		.iter()
+					// 		.map(|a| types.get_type_by_id(a.value))
+					// 		.collect::<Vec<_>>();
 
-					{
-						let arguments = arguments
-							.iter()
-							.map(|a| types.get_type_by_id(a.value))
-							.collect::<Vec<_>>();
-
-						crate::utilities::notify!(
-							"E::CHECK_PARAMETERS={:?} args= {:?}",
-							E::CHECK_PARAMETERS,
-							arguments
-						);
-					}
+					// 	crate::utilities::notify!(
+					// 		"E::CHECK_PARAMETERS={:?}, args={:?}, ident={:?}",
+					// 		E::CHECK_PARAMETERS,
+					// 		arguments,
+					// 		const_fn_ident
+					// 	);
+					// }
 
 					// For debugging only
-					if is_independent && E::CHECK_PARAMETERS {
+					if is_independent_function && E::CHECK_PARAMETERS {
 						let function_id = function.function;
 						let value = Event::CallsType {
 							on: Callable::Fixed(function.function),
@@ -522,18 +530,17 @@ fn call_logical<E: CallCheckingBehavior>(
 									warnings: Default::default(),
 									info: Default::default(),
 									called: None,
-									result_was_const_computation: !is_independent,
+									result_was_const_computation: !is_independent_function,
 									special,
 								});
 							}
 							Ok(ConstantOutput::Diagnostic(diagnostic)) => {
-								// crate::utilities::notify!("Here, constant output");
 								return Ok(CallingOutput {
 									result: None,
 									warnings: Default::default(),
 									info: vec![InfoDiagnostic(diagnostic, input.call_site)],
 									called: None,
-									result_was_const_computation: !is_independent,
+									result_was_const_computation: !is_independent_function,
 									// WIP!!
 									special: Some(SpecialExpressions::Marker),
 								});
@@ -642,7 +649,8 @@ fn call_logical<E: CallCheckingBehavior>(
 						top_environment,
 						types,
 					);
-					let reflects_dependency = if is_type_constant(result_as_type, types) {
+					let reflects_dependency = if types.get_type_by_id(result_as_type).is_constant()
+					{
 						None
 					} else {
 						let id = types.register_type(Type::Constructor(Constructor::Image {
@@ -664,7 +672,7 @@ fn call_logical<E: CallCheckingBehavior>(
 					let possibly_thrown = if let FunctionEffect::InputOutput { may_throw, .. }
 					| FunctionEffect::Constant { may_throw, .. } = &function_type.effect
 					{
-						crate::utilities::notify!("Here");
+						crate::utilities::notify!("Constant / input output: may_throw");
 						*may_throw
 					} else {
 						None
@@ -752,6 +760,7 @@ fn call_logical<E: CallCheckingBehavior>(
 			types,
 			behavior,
 		),
+		Logical::BasedOnKey { .. } => todo!(),
 	}
 }
 
@@ -1821,5 +1830,6 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 				.collect(),
 			None,
 		),
+		Logical::BasedOnKey { .. } => todo!(),
 	}
 }

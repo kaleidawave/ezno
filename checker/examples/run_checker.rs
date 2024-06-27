@@ -37,6 +37,7 @@ fn main() {
 	let options = TypeCheckOptions {
 		debug_types,
 		record_all_assignments_and_reads: true,
+		max_inline_count: 600,
 		..Default::default()
 	};
 

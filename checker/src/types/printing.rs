@@ -1,5 +1,4 @@
 use iterator_endiate::EndiateIteratorExt;
-use source_map::{Nullable, SpanWithSource};
 use std::collections::HashSet;
 
 use super::{properties::PropertyKey, GenericChain, PolyNature, Type, TypeId, TypeStore};
@@ -95,15 +94,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
+			PolyNature::MappedGeneric { name, eager_fixed } => {
+				if debug {
+					write!(buf, "[mg {} {}]", ty.0, name).unwrap();
+				}
+				print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);
+			}
 			PolyNature::FunctionGeneric { name, .. }
-			| PolyNature::MappedGeneric { name, .. }
 			| PolyNature::StructureGeneric { name, constrained: _ } => {
 				if let Some(structure_args) =
 					args.and_then(|args| args.get_argument(ty, info, types))
 				{
 					if debug {
 						if let PolyNature::FunctionGeneric { .. } = nature {
-							write!(buf, "[fg {} {}, =]", ty.0, name).unwrap();
+							write!(buf, "[fg {} {}]", ty.0, name).unwrap();
 						}
 					}
 					for (more, arg) in structure_args.iter().nendiate() {
@@ -114,12 +118,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 				} else {
 					if debug {
-						if let PolyNature::FunctionGeneric { eager_fixed, .. }
-						| PolyNature::MappedGeneric { eager_fixed, .. } = nature
-						{
+						if let PolyNature::FunctionGeneric { eager_fixed, .. } = nature {
 							let key = match nature {
 								PolyNature::FunctionGeneric { .. } => "fg",
-								PolyNature::MappedGeneric { .. } => "mg",
 								_ => "??",
 							};
 							write!(buf, "[{key} {}, @ ", ty.0).unwrap();
@@ -249,13 +250,26 @@ pub fn print_type_into_buf<C: InformationChain>(
 				otherwise_result,
 				result_union: _,
 			} => {
-				if debug {
-					write!(buf, "?#{} ", ty.0).unwrap();
+				// TODO nested on constructor
+				let is_standard_generic = matches!(
+					types.get_type_by_id(*condition),
+					Type::RootPolyType(
+						PolyNature::InferGeneric { .. }
+							| PolyNature::MappedGeneric { .. }
+							| PolyNature::FunctionGeneric { .. }
+							| PolyNature::StructureGeneric { .. }
+					)
+				);
+
+				if debug || is_standard_generic {
+					if debug {
+						write!(buf, "?#{} ", ty.0).unwrap();
+					}
 					print_type_into_buf(*condition, buf, cycles, args, types, info, debug);
-					buf.push_str("? ");
+					buf.push_str(" ? ");
 				}
 				print_type_into_buf(*truthy_result, buf, cycles, args, types, info, debug);
-				buf.push_str(if debug { " : " } else { " | " });
+				buf.push_str(if debug || is_standard_generic { " : " } else { " | " });
 				print_type_into_buf(*otherwise_result, buf, cycles, args, types, info, debug);
 			}
 			Constructor::KeyOf(on) => {
@@ -330,7 +344,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*operand, buf, cycles, args, types, info, debug);
 				}
 				Constructor::TypeOperator(to) => {
-					write!(buf, "TypeOperator = {to:?}").unwrap();
+					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}
 				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
 					item,
@@ -383,12 +397,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 		| Type::AliasTo { to: _, name, parameters: _ }) => {
 			if debug {
 				write!(buf, "{name}#{}", ty.0).unwrap();
+				if let Type::AliasTo { to, .. } = t {
+					buf.push_str(" to ");
+					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				}
 			} else {
 				buf.push_str(name);
-			}
-			if let (true, Type::AliasTo { to, .. }) = (debug, t) {
-				buf.push_str(" to ");
-				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			// TODO
 			// if let (true, Some(parameters)) = (debug, parameters) {
@@ -543,15 +557,15 @@ pub fn print_type_into_buf<C: InformationChain>(
 						buf.push('#');
 					}
 
-					let root;
-					let args = if let Some((id, to)) = key.mapped_generic_id(types) {
-						let mut map = crate::Map::default();
-						map.insert(id, (to, SpanWithSource::NULL));
-						root = GenericArguments::ExplicitRestrictions(map);
-						Some(GenericChainLink::append_to_link(id, args.as_ref(), &root))
-					} else {
-						args
-					};
+					// let root;
+					// let args = if let Some((id, to)) = key.mapped_generic_id(types) {
+					// 	let mut map = crate::Map::default();
+					// 	map.insert(id, (to, SpanWithSource::NULL));
+					// 	root = GenericArguments::ExplicitRestrictions(map);
+					// 	Some(GenericChainLink::append_to_link(id, args.as_ref(), &root))
+					// } else {
+					// 	args
+					// };
 
 					match value {
 						PropertyValue::Value(value) => {
@@ -893,6 +907,14 @@ pub fn debug_effects<C: InformationChain>(
 			Event::EndOfControlFlow(_) => {
 				buf.push_str("end");
 			}
+			Event::Miscellaneous(misc) => match misc {
+				crate::events::MiscellaneousEvents::Has { .. } => {
+					buf.push_str("Has");
+				}
+				crate::events::MiscellaneousEvents::Delete { .. } => {
+					buf.push_str("Delete");
+				}
+			},
 		}
 		buf.push('\n');
 		idx += 1;

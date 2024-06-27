@@ -124,6 +124,31 @@ impl LocalInformation {
 		&self.events
 	}
 
+	/// Use features::delete_property
+	pub(crate) fn delete_property(
+		&mut self,
+		on: TypeId,
+		(publicity, key): (Publicity, PropertyKey<'static>),
+		position: SpanWithSource,
+		option: Option<TypeId>,
+	) {
+		// on_default() okay because might be in a nested context.
+		// entry empty does not mean no properties, just no properties set on this level
+		self.current_properties.entry(on).or_default().push((
+			publicity,
+			key.clone(),
+			PropertyValue::Deleted,
+		));
+
+		self.events.push(Event::Miscellaneous(crate::events::MiscellaneousEvents::Delete {
+			on,
+			publicity,
+			under: key,
+			into: option,
+			position,
+		}));
+	}
+
 	pub(crate) fn new_object(
 		&mut self,
 		prototype: Option<TypeId>,
@@ -240,15 +265,23 @@ pub fn merge_info(
 ) {
 	let truthy_events = truthy.events.len() as u32;
 	let otherwise_events = otherwise.as_ref().map_or(0, |f| f.events.len() as u32);
-	onto.events.push(Event::Conditionally { condition, truthy_events, otherwise_events, position });
 
-	onto.events.append(&mut truthy.events);
-	if let Some(ref mut otherwise) = otherwise {
-		// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
-		onto.events.append(&mut otherwise.events);
+	if truthy_events + otherwise_events != 0 {
+		onto.events.push(Event::Conditionally {
+			condition,
+			truthy_events,
+			otherwise_events,
+			position,
+		});
+
+		onto.events.append(&mut truthy.events);
+		if let Some(ref mut otherwise) = otherwise {
+			// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
+			onto.events.append(&mut otherwise.events);
+		}
+
+		onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
 	}
-
-	onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
 
 	// TODO don't need to do above some scope
 	for (var, true_value) in truthy.variable_current_value {

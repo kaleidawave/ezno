@@ -5,6 +5,7 @@ use crate::{
 };
 use source_map::Span;
 
+/// For top level checking
 pub fn new_conditional_context<T, A, R>(
 	environment: &mut Environment,
 	(condition, position): (TypeId, Span),
@@ -102,16 +103,8 @@ where
 				position,
 			);
 		}
-		crate::GeneralContext::Root(root) => {
-			merge_info(
-				root,
-				&mut environment.info,
-				condition,
-				truthy_info,
-				falsy_info,
-				&mut checking_data.types,
-				position,
-			);
+		crate::GeneralContext::Root(_root) => {
+			crate::utilities::notify!("Should not be merging into root");
 		}
 	}
 

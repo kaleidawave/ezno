@@ -23,9 +23,10 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{get_value_of_variable, information::InformationChain, ClosedOverReferencesInScope},
+	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	features::functions::ClosedOverVariables,
-	types::{get_constraint, PartiallyAppliedGenerics, TypeStore},
+	types::{get_constraint, properties, PartiallyAppliedGenerics, TypeStore},
 	CheckingData, Environment, Type, TypeId,
 };
 
@@ -239,4 +240,152 @@ pub(crate) fn create_closed_over_references(
 			})
 			.collect(),
 	)
+}
+
+pub struct CannotDeleteFromError {
+	pub constraint: TypeStringRepresentation,
+	pub position: SpanWithSource,
+}
+
+/// WIP
+pub fn delete_operator(
+	(publicity, under): (properties::Publicity, properties::PropertyKey<'_>),
+	rhs: TypeId,
+	position: SpanWithSource,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> Result<TypeId, CannotDeleteFromError> {
+	crate::utilities::notify!("Queue event");
+
+	let existing = properties::has_property((publicity, &under), rhs, environment, types);
+
+	{
+		let constraint =
+			environment.get_object_constraint(rhs).or_else(|| get_constraint(rhs, types));
+
+		if let Some(constraint) = constraint {
+			let constraint_type = types.get_type_by_id(constraint);
+			crate::utilities::notify!("constraint={:?}", constraint_type);
+
+			if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::READONLY_RESTRICTION,
+				..
+			}) = constraint_type
+			{
+				let constraint =
+					TypeStringRepresentation::from_type_id(constraint, environment, types, false);
+				return Err(CannotDeleteFromError { constraint, position });
+			}
+
+			// Array indices deletion currently broken
+			let skip = constraint == TypeId::ARRAY_TYPE
+				|| matches!(
+					constraint_type,
+					Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: TypeId::ARRAY_TYPE,
+						..
+					})
+				) || {
+				let get_prototype = environment.get_prototype(constraint);
+				crate::utilities::notify!("{:?}", get_prototype);
+				get_prototype == TypeId::ARRAY_TYPE
+			};
+
+			if !skip {
+				let property_constraint = properties::get_property_unbound(
+					(constraint, None),
+					(publicity, &under, None),
+					environment,
+					types,
+				);
+
+				if let Ok(property_constraint) = property_constraint {
+					crate::utilities::notify!("property_constraint {:?}", property_constraint);
+					match property_constraint {
+						crate::Logical::Pure(n) => match n {
+							crate::PropertyValue::Value(_)
+							| crate::PropertyValue::Getter(_)
+							| crate::PropertyValue::Setter(_) => {
+								crate::utilities::notify!(
+									"Cannot delete property because of constraint"
+								);
+								let constraint = TypeStringRepresentation::from_type_id(
+									constraint,
+									environment,
+									types,
+									false,
+								);
+								return Err(CannotDeleteFromError { constraint, position });
+							}
+							crate::PropertyValue::Deleted => {
+								crate::utilities::notify!("Here?");
+							}
+							crate::PropertyValue::ConditionallyExists { .. } => {
+								crate::utilities::notify!("OKAY!!!");
+							}
+						},
+						crate::Logical::Or { .. } => todo!(),
+						crate::Logical::Implies { .. } => todo!(),
+						crate::Logical::BasedOnKey { .. } => todo!(),
+					}
+				}
+			}
+		}
+	}
+
+	// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
+
+	// crate::utilities::notify!(
+	// 	"Re-assignment constraint {}, prop={} {:?}",
+	// 	print_type(constraint, types, environment, true),
+	// 	print_type(under, types, environment, true),
+	// 	property_constraint
+	// );
+
+	// TODO not great
+	let dependency = if get_constraint(rhs, types).is_some() {
+		Some(types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
+			crate::types::TypeOperator::HasProperty(rhs, under.into_owned()),
+		))))
+	} else {
+		None
+	};
+
+	environment.info.delete_property(rhs, (publicity, under.into_owned()), position, dependency);
+
+	Ok(dependency.unwrap_or(existing))
+}
+
+pub fn in_operator(
+	(publicity, under): (properties::Publicity, &properties::PropertyKey<'_>),
+	rhs: TypeId,
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> TypeId {
+	let result = properties::has_property((publicity, under), rhs, environment, types);
+
+	// TODO if any
+	if get_constraint(rhs, types).is_some() {
+		let dependency =
+			types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
+				crate::types::TypeOperator::HasProperty(rhs, under.into_owned()),
+			)));
+
+		{
+			let ty = crate::types::printing::print_type(result, types, environment, true);
+			crate::utilities::notify!("ty={:?}, dependency={:?}", ty, dependency);
+		}
+
+		environment.info.events.push(crate::events::Event::Miscellaneous(
+			crate::events::MiscellaneousEvents::Has {
+				on: rhs,
+				publicity,
+				under: under.into_owned(),
+				into: dependency,
+			},
+		));
+		dependency
+	} else {
+		result
+	}
 }

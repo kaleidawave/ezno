@@ -5,6 +5,7 @@
 use crate::{
 	context::{environment::Label, information::InformationChain},
 	diagnostics,
+	features::CannotDeleteFromError,
 	types::{
 		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
 		GenericChainLink,
@@ -260,6 +261,7 @@ impl TypeStringRepresentation {
 					debug_mode,
 				)
 			}
+			crate::Logical::BasedOnKey { .. } => todo!(),
 		}
 	}
 }
@@ -292,7 +294,9 @@ pub(crate) enum TypeCheckError<'a> {
 	FunctionCallingError(FunctionCallingError),
 	JSXCallingError(FunctionCallingError),
 	TemplateLiteralError(FunctionCallingError),
+	/// From calling super
 	SuperCallError(FunctionCallingError),
+	/// When accessing
 	PropertyDoesNotExist {
 		on: TypeStringRepresentation,
 		property: PropertyRepresentation,
@@ -307,6 +311,7 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	CouldNotFindType(&'a str, SpanWithSource),
 	TypeHasNoGenericParameters(String, SpanWithSource),
+	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
 	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
@@ -318,35 +323,29 @@ pub(crate) enum TypeCheckError<'a> {
 		annotation_position: SpanWithSource,
 		returned_position: SpanWithSource,
 	},
-	// TODO are these the same errors?
-	TypeIsNotIndexable(TypeStringRepresentation),
-	TypeIsNotIterable(TypeStringRepresentation),
-	// This could be a syntax error but that is difficult to type...
+	/// This could be a syntax error but that is difficult to type...
 	NonTopLevelExport(SpanWithSource),
 	FieldNotExported {
 		file: &'a str,
 		importing: &'a str,
 		position: SpanWithSource,
 	},
-	/// for the `satisfies` keyword
+	/// For the `satisfies` keyword
 	NotSatisfied {
 		at: SpanWithSource,
 		expected: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
-	// catch type is not compatible with thrown type
+	/// Catch type is not compatible with thrown type
 	CatchTypeDoesNotMatch {
 		at: SpanWithSource,
 		expected: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
+	/// Something the checker does not supported
 	Unsupported {
 		thing: &'static str,
 		at: SpanWithSource,
-	},
-	ReDeclaredVariable {
-		name: &'a str,
-		position: SpanWithSource,
 	},
 	InvalidDefaultParameter {
 		at: SpanWithSource,
@@ -359,9 +358,6 @@ pub(crate) enum TypeCheckError<'a> {
 		function_type: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
-	StatementsNotRun {
-		between: SpanWithSource,
-	},
 	CannotRedeclareVariable {
 		name: String,
 		position: SpanWithSource,
@@ -372,7 +368,6 @@ pub(crate) enum TypeCheckError<'a> {
 		argument: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
-	NotDefinedOperator(&'static str, SpanWithSource),
 	PropertyNotWriteable(SpanWithSource),
 	NotTopLevelImport(SpanWithSource),
 	DoubleDefaultExport(SpanWithSource),
@@ -388,7 +383,6 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	TypeNeedsTypeArguments(&'a str, SpanWithSource),
-	CannotFindType(&'a str, SpanWithSource),
 	TypeAlreadyDeclared {
 		name: String,
 		position: SpanWithSource,
@@ -421,8 +415,9 @@ pub(crate) enum TypeCheckError<'a> {
 		overload: TypeStringRepresentation,
 	},
 	FunctionWithoutBodyNotAllowedHere {
-		position: source_map::BaseSpan<parser::SourceId>,
+		position: SpanWithSource,
 	},
+	CannotDeleteProperty(CannotDeleteFromError),
 }
 
 impl From<TypeCheckError<'_>> for Diagnostic {
@@ -554,8 +549,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
-				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
-				TypeCheckError::TypeIsNotIterable(_) => todo!(),
 				TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 					reason: "Cannot export at not top level".to_owned(),
 					position,
@@ -580,13 +573,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: at,
 					kind,
 				},
-				TypeCheckError::ReDeclaredVariable { name, position } => {
-					Diagnostic::Position {
-						reason: format!("Cannot declare variable {name}"),
-						position,
-						kind,
-					}
-				}
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
@@ -596,11 +582,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						"{function_constraint} constraint on function does not match synthesised form {function_type}",
 					),
 					position,
-					kind,
-				},
-				TypeCheckError::StatementsNotRun { between } => Diagnostic::Position {
-					reason: "Statements are never run".to_owned(),
-					position: between,
 					kind,
 				},
 				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
@@ -615,11 +596,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				TypeCheckError::NotDefinedOperator(op, position) => Diagnostic::Position {
-					reason: format!("Operator not typed {op}"),
-					position,
-					kind,
-				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
 					reason: "Property not writeable".into(),
 					position,
@@ -663,11 +639,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				},
 				TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
 					reason: format!("Type {ty} requires type arguments"),
-					position,
-					kind,
-				},
-				TypeCheckError::CannotFindType(ty, position) => Diagnostic::Position {
-					reason: format!("Cannot find type {ty}"),
 					position,
 					kind,
 				},
@@ -727,6 +698,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::FunctionWithoutBodyNotAllowedHere { position } => {
 					Diagnostic::Position {
 						reason: "Function without body not allowed here".to_owned(),
+						position,
+						kind,
+					}
+				}
+				TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
+					Diagnostic::Position {
+						reason: format!("Cannot delete from object constrained to {constraint}"),
 						position,
 						kind,
 					}

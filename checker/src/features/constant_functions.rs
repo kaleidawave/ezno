@@ -270,13 +270,8 @@ pub(crate) fn call_constant_function(
 		}
 		"getPrototypeOf" => {
 			if let Some(first) = arguments.first() {
-				crate::utilities::notify!("TODO walk up chain");
-				let prototype = environment
-					.info
-					.prototypes
-					.get(&first.non_spread_type().unwrap())
-					.copied()
-					.unwrap_or(TypeId::NULL_TYPE);
+				let on = first.non_spread_type().unwrap();
+				let prototype = environment.get_prototype(on);
 				Ok(ConstantOutput::Value(prototype))
 			} else {
 				Err(ConstantFunctionError::BadCall)

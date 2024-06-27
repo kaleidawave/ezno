@@ -25,6 +25,7 @@ use crate::{
 			function_to_property, register_arrow_function, register_expression_function,
 			synthesise_function, GetterSetter,
 		},
+		in_operator,
 		variables::VariableWithValue,
 	},
 	types::{
@@ -402,16 +403,31 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								TypeId::ANY_TYPE,
 							);
 							match property {
-								parser::PropertyReference::Standard {
-									property,
-									is_private: _is_private,
-								} => {
-									let result = environment.delete_property(
+								parser::PropertyReference::Standard { property, is_private } => {
+									let publicity = if *is_private {
+										Publicity::Private
+									} else {
+										Publicity::Public
+									};
+									let property =
+										PropertyKey::String(Cow::Owned(property.clone()));
+
+									let position = position.with_source(environment.get_source());
+									match crate::features::delete_operator(
+										(publicity, property),
 										on,
-										&PropertyKey::String(Cow::Owned(property.clone())),
-										parent.get_position().with_source(environment.get_source()),
-									);
-									return if result { TypeId::TRUE } else { TypeId::FALSE };
+										position,
+										environment,
+										&mut checking_data.types,
+									) {
+										Ok(result) => Instance::RValue(result),
+										Err(err) => {
+											checking_data.diagnostics_container.add_error(
+												TypeCheckError::CannotDeleteProperty(err),
+											);
+											return TypeId::ERROR_TYPE;
+										}
+									}
 								}
 								parser::PropertyReference::Marker(_) => {
 									crate::utilities::notify!("Deleting property marker found");
@@ -433,13 +449,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								TypeId::ANY_TYPE,
 							);
 
+							let position = position.with_source(environment.get_source());
 							let property = PropertyKey::from_type(indexer, &checking_data.types);
-							let result = environment.delete_property(
+							match crate::features::delete_operator(
+								(Publicity::Public, property),
 								being_indexed,
-								&property,
-								indexee.get_position().with_source(environment.get_source()),
-							);
-							return if result { TypeId::TRUE } else { TypeId::FALSE };
+								position,
+								environment,
+								&mut checking_data.types,
+							) {
+								Ok(result) => Instance::RValue(result),
+								Err(err) => {
+									checking_data
+										.diagnostics_container
+										.add_error(TypeCheckError::CannotDeleteProperty(err));
+									return TypeId::ERROR_TYPE;
+								}
+							}
 						}
 						_ => {
 							crate::utilities::notify!("Deleting non property raise warning");
@@ -837,23 +863,29 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				return value;
 			}
 			SpecialOperators::In { lhs, rhs } => {
-				let lhs = match lhs {
-					parser::expressions::InExpressionLHS::PrivateProperty(_) => {
-						checking_data.raise_unimplemented_error(
-							"in on private",
-							position.with_source(environment.get_source()),
-						);
-						return TypeId::ERROR_TYPE;
+				let (publicity, key) = match lhs {
+					parser::expressions::InExpressionLHS::PrivateProperty(key) => {
+						(Publicity::Private, PropertyKey::String(Cow::Borrowed(&key)))
 					}
 					parser::expressions::InExpressionLHS::Expression(lhs) => {
-						synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE)
+						let key = synthesise_expression(
+							lhs,
+							environment,
+							checking_data,
+							TypeId::ANY_TYPE,
+						);
+						(Publicity::Public, PropertyKey::from_type(key, &checking_data.types))
 					}
 				};
-				let rhs = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
-				let result = environment
-					.property_in(rhs, &PropertyKey::from_type(lhs, &checking_data.types));
 
-				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
+				let rhs = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+
+				Instance::RValue(in_operator(
+					(publicity, &key),
+					rhs,
+					environment,
+					&mut checking_data.types,
+				))
 			}
 			SpecialOperators::InstanceOf { lhs, rhs } => {
 				let lhs = synthesise_expression(lhs, environment, checking_data, expecting);
@@ -1028,10 +1060,10 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	let mut object_builder =
 		ObjectBuilder::new(None, &mut checking_data.types, position, &mut environment.info);
 
-	{
-		let ty = print_type(expected, &checking_data.types, environment, true);
-		crate::utilities::notify!("expected in obj={}", ty);
-	}
+	// {
+	// 	let ty = print_type(expected, &checking_data.types, environment, true);
+	// 	crate::utilities::notify!("expected in obj={}", ty);
+	// }
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
@@ -1125,7 +1157,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 								);
 							}
 						} else {
-							crate::utilities::notify!("Here");
+							// crate::utilities::notify!("Here in conditional spread");
+
 							for (_, key, value) in truthy_properties {
 								object_builder.append(
 									environment,

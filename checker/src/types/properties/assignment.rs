@@ -32,88 +32,99 @@ pub fn set_property<E: CallCheckingBehavior>(
 	// 	return Err(SetPropertyError::NotWriteable);
 	// }
 
-	// if E::CHECK_PARAMETERS {
-	let constraint = environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
-	if let Some(constraint) = constraint {
-		// crate::utilities::notify!("constraint={:?}", types.get_type_by_id(constraint));
+	// Doing this regardless of E::CHECK_PARAMETERS is how #18 works
 
-		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::READONLY_RESTRICTION,
-			..
-		}) = types.get_type_by_id(constraint)
-		{
-			return Err(SetPropertyError::NotWriteable);
-		}
+	{
+		let constraint =
+			environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
 
-		let property_constraint =
-			get_property_unbound((constraint, None), (publicity, under, None), environment, types);
+		if let Some(constraint) = constraint {
+			// crate::utilities::notify!("constraint={:?}", types.get_type_by_id(constraint));
 
-		// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
+			if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::READONLY_RESTRICTION,
+				..
+			}) = types.get_type_by_id(constraint)
+			{
+				return Err(SetPropertyError::NotWriteable);
+			}
 
-		// crate::utilities::notify!(
-		// 	"Re-assignment constraint {}, prop={} {:?}",
-		// 	print_type(constraint, types, environment, true),
-		// 	print_type(under, types, environment, true),
-		// 	property_constraint
-		// );
+			let property_constraint = get_property_unbound(
+				(constraint, None),
+				(publicity, under, None),
+				environment,
+				types,
+			);
 
-		if let Ok(property_constraint) = property_constraint {
-			// TODO ...?
-			let mut state = State {
-				already_checked: Default::default(),
-				mode: Default::default(),
-				contributions: Default::default(),
-				others: Default::default(),
-				object_constraints: Default::default(),
-			};
+			// crate::utilities::notify!("Property constraint .is_some() {:?}", property_constraint.is_some());
 
-			// TODO property value is readonly
-			// TODO state is writeable etc?
-			// TODO document difference with context.writeable
+			// crate::utilities::notify!(
+			// 	"Re-assignment constraint {}, prop={} {:?}",
+			// 	print_type(constraint, types, environment, true),
+			// 	print_type(under, types, environment, true),
+			// 	property_constraint
+			// );
 
-			match new {
-				PropertyValue::Value(value) => {
-					let result = crate::subtyping::type_is_subtype_of_property(
-						(&property_constraint, None),
-						value,
-						&mut state,
-						environment,
-						types,
-					);
-					if let SubTypeResult::IsNotSubType(reason) = result {
-						let is_modifying_tuple_length = under.is_equal_to("length")
-							&& tuple_like(constraint, types, environment);
+			if let Ok(property_constraint) = property_constraint {
+				// TODO ...?
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: Default::default(),
+					object_constraints: Default::default(),
+				};
 
-						crate::utilities::notify!(
-							"is_modifying_tuple_length={:?}",
-							is_modifying_tuple_length
+				// TODO property value is readonly
+				// TODO state is writeable etc?
+				// TODO document difference with context.writeable
+
+				match new {
+					PropertyValue::Value(value) => {
+						let result = crate::subtyping::type_is_subtype_of_property(
+							(&property_constraint, None),
+							value,
+							&mut state,
+							environment,
+							types,
 						);
+						if let SubTypeResult::IsNotSubType(reason) = result {
+							let is_modifying_tuple_length = under.is_equal_to("length")
+								&& tuple_like(constraint, types, environment);
 
-						return Err(SetPropertyError::DoesNotMeetConstraint {
-							property_constraint: TypeStringRepresentation::from_property_constraint(
+							crate::utilities::notify!(
+								"is_modifying_tuple_length={:?}",
+								is_modifying_tuple_length
+							);
+
+							let property_constraint =
+								TypeStringRepresentation::from_property_constraint(
+									property_constraint,
+									None,
+									environment,
+									types,
+									false,
+								);
+							return Err(SetPropertyError::DoesNotMeetConstraint {
 								property_constraint,
-								None,
-								environment,
-								types,
-								false,
-							),
-							reason,
-						});
+								reason,
+							});
+						}
+					}
+					PropertyValue::Getter(_) => todo!(),
+					PropertyValue::Setter(_) => todo!(),
+					PropertyValue::Deleted => todo!(),
+					PropertyValue::ConditionallyExists { truthy: ref _truthy, .. } => {
+						crate::utilities::notify!("Here assigning to conditional. TODO recursive");
 					}
 				}
-				PropertyValue::Getter(_) => todo!(),
-				PropertyValue::Setter(_) => todo!(),
-				PropertyValue::Deleted => todo!(),
-				PropertyValue::ConditionallyExists { truthy: ref _truthy, .. } => {
-					crate::utilities::notify!("Here assigning to conditional. TODO recursive");
-				}
+			} else {
+				// TODO does not exist warning
+				// return Err(SetPropertyError::DoesNotMeetConstraint(
+				// 	new.as_get_type(),
+				// 	todo!("no property"),
+				// ));
 			}
-		} else {
-			// TODO does not exist warning
-			// return Err(SetPropertyError::DoesNotMeetConstraint(
-			// 	new.as_get_type(),
-			// 	todo!("no property"),
-			// ));
 		}
 	}
 
@@ -227,6 +238,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 					position: setter_position,
 				});
 			}
+			Logical::BasedOnKey { .. } => todo!(),
 		}
 	} else {
 		// TODO abstract

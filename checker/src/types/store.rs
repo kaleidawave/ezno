@@ -92,12 +92,6 @@ impl Default for TypeStore {
 				// TODO
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			// TODO Symbols, needs Constant::Symbol
-			Type::AliasTo {
-				name: "SymbolToPrimitive".into(),
-				to: TypeId::ANY_TYPE,
-				parameters: None,
-			},
 			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
@@ -111,6 +105,60 @@ impl Default for TypeStore {
 			},
 			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
 			Type::Constant(crate::Constant::Symbol { key: "iterator".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "asyncIterator".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "hasInstance".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "toPrimitive".to_owned() }),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "S".into(),
+				// TODO to string...
+				constrained: true,
+			}),
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Uppercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Lowercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Capitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Uncapitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			// Yeah
+			Type::AliasTo {
+				to: TypeId::T_TYPE,
+				name: "NoInfer".into(),
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "T".into(),
+				// TODO to number...
+				constrained: true,
+			}),
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "MultipleOf".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -368,6 +416,7 @@ impl TypeStore {
 				Logical::Pure(ty) => ty.as_get_type(),
 				Logical::Or { .. } => todo!(),
 				Logical::Implies { .. } => todo!(),
+				Logical::BasedOnKey { .. } => todo!(),
 			}
 		} else {
 			crate::utilities::notify!("Error: no index on type annotation");

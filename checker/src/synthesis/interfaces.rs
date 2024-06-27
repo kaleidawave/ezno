@@ -21,7 +21,7 @@ use super::{
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
+		key: InterfaceKey,
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
@@ -31,16 +31,16 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 	fn interface_type(&self) -> Option<TypeId>;
 }
 
+pub(crate) enum InterfaceKey<'a> {
+	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
+	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
+	Type(TypeId),
+}
+
 pub(crate) enum InterfaceValue {
 	Function(FunctionType, GetterSetter),
 	Value(TypeId),
 	Optional(TypeId),
-}
-
-pub(crate) enum ParserPropertyKeyType<'a> {
-	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
-	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
-	Type(TypeId),
 }
 
 pub(crate) struct OnToType(pub(crate) TypeId);
@@ -48,14 +48,14 @@ pub(crate) struct OnToType(pub(crate) TypeId);
 impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
+		key: InterfaceKey,
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
 		position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
-			ParserPropertyKeyType::ClassProperty(key) => {
+			InterfaceKey::ClassProperty(key) => {
 				// TODO
 				let perform_side_effect_computed = true;
 				(
@@ -68,7 +68,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 					),
 				)
 			}
-			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
+			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
 		let ty = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {
@@ -159,7 +159,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
+						InterfaceKey::ClassProperty(name),
 						InterfaceValue::Function(function, getter),
 						checking_data,
 						environment,
@@ -190,7 +190,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					};
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
+						InterfaceKey::ClassProperty(name),
 						value,
 						checking_data,
 						environment,
@@ -208,7 +208,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
+						InterfaceKey::Type(key),
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,
@@ -244,37 +244,45 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					output_type,
 					position,
 				} => {
+					// For mapped types: https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
+
 					let matching_type =
 						synthesise_type_annotation(matching_type, environment, checking_data);
 
 					let (key, value) = {
 						// TODO special scope here
-						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let mut sub_environment =
+							environment.new_lexical_environment(Scope::Block {});
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
 								eager_fixed: matching_type,
 							},
 						));
-						environment.named_types.insert(parameter.clone(), parameter_type);
+						sub_environment.named_types.insert(parameter.clone(), parameter_type);
 
 						let key = if let Some(as_type) = as_type {
-							synthesise_type_annotation(as_type, &mut environment, checking_data)
+							synthesise_type_annotation(as_type, &mut sub_environment, checking_data)
 						} else {
 							parameter_type
 						};
 
 						let value = synthesise_type_annotation(
 							output_type,
-							&mut environment,
+							&mut sub_environment,
 							checking_data,
 						);
+
+						environment
+							.info
+							.current_properties
+							.extend(sub_environment.info.current_properties);
 
 						(key, value)
 					};
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
+						InterfaceKey::Type(key),
 						InterfaceValue::Value(value),
 						checking_data,
 						environment,

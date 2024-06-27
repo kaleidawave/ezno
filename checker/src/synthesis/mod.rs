@@ -210,6 +210,62 @@ impl crate::ASTImplementation for EznoParser {
 	) {
 		synthesise_block(&block.0, environment, checking_data);
 	}
+
+	fn expression_quick_lookup<'a>(
+		expression: &'a Self::Expression<'a>,
+		environment: &Environment,
+		types: &crate::types::TypeStore,
+	) -> TypeId {
+		match expression {
+			parser::Expression::NumberLiteral(_, _) => TypeId::NUMBER_TYPE,
+			parser::Expression::StringLiteral(_, _, _) => TypeId::STRING_TYPE,
+			parser::Expression::BooleanLiteral(_, _) => TypeId::BOOLEAN_TYPE,
+			parser::Expression::RegexLiteral { .. } => TypeId::REGEXP_TYPE,
+			parser::Expression::ArrayLiteral(_, _) => TypeId::ERROR_TYPE,
+			parser::Expression::ObjectLiteral(_) => todo!(),
+			parser::Expression::TemplateLiteral(_) => todo!(),
+			parser::Expression::ParenthesizedExpression(inner, _) => match &**inner {
+				parser::ast::MultipleExpression::Multiple { .. } => todo!(),
+				parser::ast::MultipleExpression::Single(inner) => {
+					Self::expression_quick_lookup(inner, environment, types)
+				}
+			},
+			parser::Expression::BinaryOperation { .. } => todo!(),
+			parser::Expression::SpecialOperators(_, _) => todo!(),
+			parser::Expression::UnaryOperation { .. } => todo!(),
+			parser::Expression::Assignment { .. } => todo!(),
+			parser::Expression::BinaryAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::UnaryPrefixAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::UnaryPostfixAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::VariableReference(_, _) => todo!(),
+			parser::Expression::ThisReference(_) => todo!(),
+			parser::Expression::SuperExpression(_, _) => todo!(),
+			parser::Expression::NewTarget(_) => todo!(),
+			parser::Expression::ImportMeta(_) => todo!(),
+			parser::Expression::DynamicImport { .. } => todo!(),
+			parser::Expression::PropertyAccess { .. } => {
+				todo!()
+			}
+			parser::Expression::Index { .. } => todo!(),
+			parser::Expression::FunctionCall { .. } => todo!(),
+			parser::Expression::ConstructorCall { .. } => todo!(),
+			parser::Expression::ConditionalTernary { .. } => todo!(),
+			parser::Expression::ArrowFunction(_) => todo!(),
+			parser::Expression::ExpressionFunction(_) => todo!(),
+			parser::Expression::ClassExpression(_) => todo!(),
+			parser::Expression::Null(_) => TypeId::NULL_TYPE,
+			parser::Expression::Comment { .. }
+			| parser::Expression::JSXRoot(_)
+			| parser::Expression::IsExpression(_)
+			| parser::Expression::Marker { .. } => TypeId::ERROR_TYPE,
+		}
+	}
 }
 
 /// `perform_side_effect_computed` is used for hoisting

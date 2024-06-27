@@ -71,6 +71,11 @@ pub enum SpecialObject {
 }
 
 /// Properties of handler called (`over` passed as first argument)
+///
+/// Has traps for `getPrototypeOf()`, `setPrototypeOf()`, `isExtensible()`,
+/// `preventExtensions()`, `getOwnPropertyDescriptor()`, `defineProperty()`, `has()`,
+/// `get()`, `set()`, `deleteProperty()`, `ownKeys()` and function methods
+/// `apply()` and `construct()`
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct Proxy {
 	pub over: TypeId,

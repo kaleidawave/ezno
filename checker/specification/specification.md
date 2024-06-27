@@ -854,7 +854,7 @@ toUpperCase();
 #### Calling `new` on a function
 
 ```ts
-function MyClass(value) {
+function MyClass(this: { set value(a: any) }, value) {
 	this.value = value
 }
 
@@ -2284,7 +2284,7 @@ type X = number;
 const a: Y = 2;
 ```
 
-- Cannot find type Y
+- Could not find type 'Y'
 
 #### Type shadowing
 

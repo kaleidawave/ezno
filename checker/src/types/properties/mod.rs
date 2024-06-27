@@ -6,8 +6,13 @@ pub use assignment::set_property;
 
 use super::{Type, TypeStore};
 use crate::{
-	types::{get_larger_type, FunctionType, GenericChain, PolyNature},
-	Constant, TypeId,
+	context::information::InformationChain,
+	subtyping::{slice_matches_type, SubTypingOptions},
+	types::{
+		generics::contributions::{self, Contributions},
+		properties, FunctionType, GenericChain, PolyNature,
+	},
+	Constant, Environment, Logical, TypeId,
 };
 use std::borrow::Cow;
 
@@ -134,24 +139,23 @@ impl<'a> PropertyKey<'a> {
 		}
 	}
 
-	pub(crate) fn mapped_generic_id(&self, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+	pub(crate) fn substitute(
+		&self,
+		type_arguments: &super::SubstitutionArguments,
+		top_environment: &Environment,
+		types: &mut TypeStore,
+	) -> Self {
 		match self {
-			PropertyKey::String(_) => None,
-			PropertyKey::Type(ty) => {
-				let get_type_by_id = types.get_type_by_id(*ty);
-				if let Type::RootPolyType(super::PolyNature::MappedGeneric {
-					eager_fixed, ..
-				}) = get_type_by_id
-				{
-					Some((*ty, *eager_fixed))
-				} else {
-					None
-				}
+			PropertyKey::Type(under) => {
+				let ty = super::substitute(*under, type_arguments, top_environment, types);
+				PropertyKey::from_type(ty, types)
 			}
+			under @ PropertyKey::String(_) => under.clone(),
 		}
 	}
 }
 
+// WIP quick hack for static property keys under < 10
 static NUMBERS: &str = "0123456789";
 
 impl<'a> PropertyKey<'a> {
@@ -213,21 +217,21 @@ impl PropertyValue {
 	}
 }
 
+/// TODO can their be multiple contributions
+pub type KeyArgument = (TypeId, (contributions::CovariantContribution, u8));
+
 /// Does lhs equal want
 /// Aka is `want_key in { [lhs_key]: ... }`
+///
+/// This is very much like [type_is_subtype] but for keys
 pub(crate) fn key_matches(
 	(key, key_type_arguments): (&PropertyKey<'_>, GenericChain),
 	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
+	info_chain: &impl InformationChain,
 	types: &TypeStore,
-) -> bool {
-	// crate::utilities::notify!(
-	// 	"Key equality: have {:?} want {:?}",
-	// 	(key, key_type_arguments),
-	// 	(want, want_type_arguments)
-	// );
-
+) -> (bool, Option<KeyArgument>) {
 	match (key, want) {
-		(PropertyKey::String(left), PropertyKey::String(right)) => left == right,
+		(PropertyKey::String(left), PropertyKey::String(right)) => (left == right, None),
 		(PropertyKey::String(s), PropertyKey::Type(want)) => {
 			if let Some(substituted_key) =
 				want_type_arguments.and_then(|args| args.get_single_argument(*want))
@@ -236,21 +240,28 @@ pub(crate) fn key_matches(
 				return key_matches(
 					(key, key_type_arguments),
 					(&PropertyKey::Type(substituted_key), want_type_arguments),
+					info_chain,
 					types,
 				);
 			}
 			let want_ty = types.get_type_by_id(*want);
 			// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
 			if let Type::Or(lhs, rhs) = want_ty {
-				key_matches(
+				// TODO
+				let matches = key_matches(
 					(key, key_type_arguments),
 					(&PropertyKey::Type(*lhs), key_type_arguments),
-					types,
-				) || key_matches(
-					(key, key_type_arguments),
-					(&PropertyKey::Type(*rhs), key_type_arguments),
+					info_chain,
 					types,
 				)
+				.0 || key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(*rhs), key_type_arguments),
+					info_chain,
+					types,
+				)
+				.0;
+				(matches, None)
 			} else if let Type::RootPolyType(PolyNature::MappedGeneric {
 				eager_fixed: to, ..
 			})
@@ -259,83 +270,115 @@ pub(crate) fn key_matches(
 				key_matches(
 					(key, key_type_arguments),
 					(&PropertyKey::Type(*to), want_type_arguments),
+					info_chain,
 					types,
 				)
 			} else if let Type::Constant(c) = want_ty {
 				crate::utilities::notify!("{:?}", c);
 				// TODO
-				*s == c.as_js_string()
+				(*s == c.as_js_string(), None)
 			} else {
-				false
+				(false, None)
 			}
 		}
 		(PropertyKey::Type(key), PropertyKey::String(s)) => {
+			crate::utilities::notify!(
+				"Key equality: have {:?} want {:?}",
+				(key, key_type_arguments),
+				(want, want_type_arguments)
+			);
 			if let Some(substituted_key) =
 				key_type_arguments.and_then(|args| args.get_single_argument(*key))
 			{
 				return key_matches(
 					(&PropertyKey::Type(substituted_key), key_type_arguments),
 					(want, want_type_arguments),
+					info_chain,
 					types,
 				);
 			}
 
 			let key = *key;
-			let key_type = types.get_type_by_id(key);
-
-			if let Type::RootPolyType(PolyNature::MappedGeneric { eager_fixed: to, .. }) = key_type
-			{
-				crate::utilities::notify!("Special behavior?");
-				return key_matches(
-					(&PropertyKey::Type(*to), key_type_arguments),
-					(want, want_type_arguments),
-					types,
-				);
-			}
-
-			if let Type::AliasTo { to, .. } = key_type {
-				return key_matches(
-					(&PropertyKey::Type(*to), key_type_arguments),
-					(want, want_type_arguments),
-					types,
-				);
-			}
-
-			if let Type::Or(l, r) = key_type {
-				return key_matches(
-					(&PropertyKey::Type(*l), key_type_arguments),
-					(want, want_type_arguments),
-					types,
-				) || key_matches(
-					(&PropertyKey::Type(*r), key_type_arguments),
-					(want, want_type_arguments),
-					types,
-				);
-			}
-
-			// TODO WIP
+			// First some special bases just for property keys
 			if key == TypeId::ANY_TYPE {
-				true
-			} else if let Type::Constant(Constant::String(ks)) = key_type {
-				ks == s
+				(true, None)
 			} else if key == TypeId::BOOLEAN_TYPE {
-				s == "true" || s == "false"
+				(s == "true" || s == "false", None)
 			} else if key == TypeId::NUMBER_TYPE {
-				s.parse::<usize>().is_ok()
+				(s.parse::<usize>().is_ok(), None)
 			} else if key == TypeId::STRING_TYPE {
-				s.parse::<usize>().is_err()
+				(s.parse::<usize>().is_err(), None)
 			} else {
-				false
+				slice_matches_type((key, key_type_arguments), s.as_ref(), info_chain, types)
 			}
 		}
 		(PropertyKey::Type(left), PropertyKey::Type(right)) => {
-			// crate::utilities::notify!(
-			// 	"{:?} {:?}",
-			// 	types.get_type_by_id(*left),
-			// 	types.get_type_by_id(*right)
-			// );
-			// TODO subtyping
-			*left == *right || *left == get_larger_type(*right, types)
+			let mut state = crate::types::subtyping::State {
+				already_checked: Default::default(),
+				mode: Default::default(),
+				contributions: Some(Contributions::default()),
+				object_constraints: Default::default(),
+				others: SubTypingOptions::default(),
+			};
+			let result = crate::types::subtyping::type_is_subtype(
+				*left, *right, &mut state, info_chain, types,
+			);
+
+			let mut contributions = state.contributions.unwrap();
+			crate::utilities::notify!(
+				"TODO contributions {:?}",
+				&contributions.staging_contravariant
+			);
+
+			let pop = contributions.staging_contravariant.0.pop();
+			(result.is_subtype(), pop)
 		}
+	}
+}
+
+/// WIP
+pub(crate) fn has_property(
+	(publicity, key): (properties::Publicity, &properties::PropertyKey<'_>),
+	rhs: TypeId,
+	information: &impl InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
+	let result =
+		properties::get_property_unbound((rhs, None), (publicity, key, None), information, &types);
+
+	crate::utilities::notify!("Has got {:?} on {:?}", result, rhs);
+
+	match result {
+		Ok(result) => match result {
+			Logical::Pure(_) => TypeId::TRUE,
+			Logical::Or { .. } => {
+				crate::utilities::notify!("or or implies `in`");
+				TypeId::ERROR_TYPE
+			}
+			Logical::Implies { .. } => {
+				crate::utilities::notify!("or or implies `in`");
+				TypeId::ERROR_TYPE
+			}
+			Logical::BasedOnKey { .. } => {
+				crate::utilities::notify!("mapped in");
+				TypeId::ERROR_TYPE
+			}
+		},
+		Err(err) => match err {
+			crate::context::MissingOrToCalculate::Missing => {
+				crate::utilities::notify!("If on poly this could be conditional");
+				TypeId::FALSE
+			}
+			crate::context::MissingOrToCalculate::Error => {
+				types.new_error_type(TypeId::BOOLEAN_TYPE)
+			}
+			crate::context::MissingOrToCalculate::Infer { .. } => {
+				types.new_error_type(TypeId::BOOLEAN_TYPE)
+			}
+			crate::context::MissingOrToCalculate::Proxy(_) => {
+				crate::utilities::notify!("`has` on proxy");
+				types.new_error_type(TypeId::BOOLEAN_TYPE)
+			}
+		},
 	}
 }

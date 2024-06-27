@@ -25,13 +25,15 @@ a satisfies string;
 
 #### Break with label
 
+> Note the numbers here, if they are larger they break over the `max_inline` limit and get different results below
+
 ```ts
 let a: number = 0;
 let result;
 
-top: while (a++ < 10) {
+top: while (a++ < 8) {
 	let b: number = 0;
-	while (b++ < 10) {
+	while (b++ < 8) {
 		if (a === 3 && b === 2) {
 			result = a * b;
 			break top
@@ -59,10 +61,10 @@ interface X { a: number, b: string, c: string }
 
 const x: Pick<X, "a"> = { a: 5 };
 
-({ b: "string" }) satisfies Pick<X, "a">;
+"hi" satisfies Pick<X, "a">;
 ```
 
-- TODO
+- Expected number, found "hi"
 
 #### Optional
 
@@ -89,6 +91,22 @@ const x: Required<{ a?: number }> = { a: 3 },
 ```
 
 - Cannot assign { } to required
+
+#### `as` rewrite
+
+```ts
+type PrefixKeys<T> = {
+    [P in keyof T as `property_${T}`]: T[P];
+};
+
+interface X { a: number };
+
+declare let x: PrefixKeys<X>;
+print_type(x.property_a)
+print_type(x.property_b)
+```
+
+- TODO
 
 ### Readonly and `as const`
 
@@ -268,14 +286,14 @@ obj.prop;
 > Weird annotation here is to work around [#165](https://github.com/kaleidawave/ezno/issues/165)
 
 ```ts
-function createNew(cb: { f<T>(t: T) => { a: T }}["f"]) {
+function createNew(cb: { f<T>(t: T): { a: T }}["f"]) {
 	return cb(4)
 }
 
 createNew satisfies string;
 ```
 
-- Expected string, found { a: 4 }
+- Expected string, found (cb: \<T\>(t: T) => { a: T }) => { a: 4 }
 
 #### Builder pattern
 
@@ -389,9 +407,13 @@ type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
 
 ```ts
 type GetPrefix<P, S> = S extends `${P}${infer T}` ? T : S;
+
+declare let a: GetPrefix<"Hello ", "Ben">;
+
+a satisfies boolean;
 ```
 
-- ?
+- Expected boolean, found "Ben"
 
 #### `infer ... extends ...`
 
@@ -429,9 +451,14 @@ TODO
 #### Out of order generics
 
 ```ts
+function func<T>(cb: (t: T) => number, value: T) {
+
+}
+
+func(cb => { cb satisfies boolean }, "hi")
 ```
 
-- ?
+- Expected boolean, found "hi"
 
 #### Known symbol inference & checking
 
@@ -449,6 +476,8 @@ class X {
 
 #### Un-delete-able property
 
+> TODO in a function as well
+
 ```ts
 const x: { a?: number } = { a: 4 };
 // Fine
@@ -459,13 +488,62 @@ const y: { a: number } = { a: 4 };
 delete y.a;
 ```
 
-- Cannot delete 'a' from { a: number }
+- Cannot delete from object constrained to { a: number }
+
+#### TSC string intrinsics
+
+```ts
+const a: Uppercase<"something" |"hi"> = "HI"
+const b: Uppercase<string> = "hi"
+```
+
+- Type \"hi\" is not assignable to type Uppercase\<string\>
+
+#### Ezno intrinsics
+
+```ts
+const a: MultipleOf<2> = 5
+const b: MultipleOf<2> = 4
+```
+
+- Type 5 is not assignable to type MultipleOf\<2\>
+
+#### `NoInfer`
+
+```ts
+declare function func<T>(a: T, b: NoInfer<T>): T;
+
+func("hi", "hello") satisfies number;
+```
+
+> but not `| "hello"` !!!
+
+- Expected number, found "hi"
+
+#### Function and class name
+
+> TODO should also check that it is readonly
+
+```ts
+function x() {
+
+}
+
+class X {
+
+}
+
+x.name satisfies "x"
+X.name satisfies "Y"
+```
+
+- Expected "Y", found "X"
 
 ### Collections
 
 #### Mutation
 
-> This is part of [assignment mismatch](#assignment-mismatch)
+> This is part of [assignment mismatch](https://github.com/kaleidawave/ezno/issues/18)
 
 ```ts
 function fakeRead(a: Array<string | number>) {
@@ -538,7 +616,7 @@ new Array({})
 
 - ?
 
-#### Array concat and spread push
+#### Array `concat` and spread push
 
 ```ts
 concat()
@@ -634,16 +712,20 @@ simple satisfies () => number;
 #### Conditional
 
 ```ts
-function t<T extends boolean>(condition: T) {
+function func<T extends boolean>(condition: T) {
 	if (condition) {
 		return 4
 	} else {
-		return 4
+		return 3
 	}
 }
+
+func satisfies string;
 ```
 
-- ?
+> There are some issues around printing here, when to include the generic etc
+
+- Expected string, found \<T\>(condition: T) => T ? 4 : 3
 
 #### Early return
 

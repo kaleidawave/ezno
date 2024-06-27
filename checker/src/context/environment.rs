@@ -761,51 +761,6 @@ impl<'a> Environment<'a> {
 		self.context_type.requests.extend(requests);
 	}
 
-	/// TODO decidable & private?
-	#[must_use]
-	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
-		self.get_chain_of_info().any(|info| match info.current_properties.get(&on) {
-			Some(v) => {
-				v.iter().any(
-					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
-				)
-			}
-			None => false,
-		})
-	}
-
-	/// TODO decidable & private?
-	pub fn delete_property(
-		&mut self,
-		on: TypeId,
-		property: &PropertyKey,
-		position: SpanWithSource,
-	) -> bool {
-		let existing = self.property_in(on, property);
-
-		let under = property.into_owned();
-
-		// on_default() okay because might be in a nested context.
-		// entry empty does not mean no properties, just no properties set on this level
-		self.info.current_properties.entry(on).or_default().push((
-			Publicity::Public,
-			under.clone(),
-			PropertyValue::Deleted,
-		));
-
-		// TODO Event::Delete. Dependent result based on in
-		self.info.events.push(Event::Setter {
-			on,
-			under,
-			new: PropertyValue::Deleted,
-			initialization: false,
-			publicity: Publicity::Public,
-			position,
-		});
-
-		existing
-	}
-
 	pub(crate) fn get_parent(&self) -> GeneralContext {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syn) => GeneralContext::Syntax(syn),

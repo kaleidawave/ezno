@@ -2,7 +2,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{properties::PropertyKey, GenericChain, TypeRestrictions, TypeStore},
+	types::{GenericChain, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
@@ -17,21 +17,30 @@ pub type Depth = u8;
 /// This is something that is generated inferred during subtyping
 #[derive(Debug, Clone)]
 pub enum CovariantContribution {
+	/// Note this can reference array
 	TypeId(TypeId),
-	// SliceOf(Box<Self>, (u32, u32)),
-	PropertyKey(PropertyKey<'static>),
+	SliceOf(Box<Self>, (u32, u32)),
+	String(String),
 }
 
 impl CovariantContribution {
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
 			CovariantContribution::TypeId(ty) => ty,
-			// CovariantContribution::SliceOf(inner, _) => {
-			// 	let inner = inner.into_type(types);
-			// 	crate::utilities::notify!("TODO as slice");
-			// 	inner
-			// }
-			CovariantContribution::PropertyKey(p) => p.into_type(types),
+			CovariantContribution::SliceOf(inner, (start, end)) => {
+				let inner = inner.into_type(types);
+				if let crate::Type::Constant(crate::types::Constant::String(s)) =
+					types.get_type_by_id(inner)
+				{
+					let slice: String = s.chars().skip(start as usize).take(end as usize).collect();
+					types.new_constant_type(crate::Constant::String(slice))
+				} else {
+					todo!("slice type")
+				}
+			}
+			CovariantContribution::String(slice) => {
+				types.new_constant_type(crate::Constant::String(slice))
+			}
 		}
 	}
 }

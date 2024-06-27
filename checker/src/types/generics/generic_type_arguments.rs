@@ -11,6 +11,8 @@ use crate::{
 use std::fmt::Debug;
 
 /// These are curried between structures
+///
+/// It is also part of [GenericChainLink]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum GenericArguments {
 	/// This is from a specialised result

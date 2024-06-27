@@ -68,6 +68,14 @@ impl RootContext {
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 			("Literal".to_owned(), TypeId::LITERAL_RESTRICTION),
 			("Readonly".to_owned(), TypeId::READONLY_RESTRICTION),
+			("Uppercase".to_owned(), TypeId::STRING_UPPERCASE),
+			("Lowercase".to_owned(), TypeId::STRING_LOWERCASE),
+			("Capitalize".to_owned(), TypeId::STRING_CAPITALIZE),
+			("Uncapitalize".to_owned(), TypeId::STRING_UNCAPITALIZE),
+			("NoInfer".to_owned(), TypeId::NOINFER),
+			("LessThan".to_owned(), TypeId::LESS_THAN),
+			("GreaterThan".to_owned(), TypeId::GREATER_THAN),
+			("MultipleOf".to_owned(), TypeId::MULTIPLE_OF),
 		]);
 
 		let mut info = crate::LocalInformation::default();

@@ -150,6 +150,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				Logical::Pure(_) => todo!(),
 				Logical::Or { .. } => todo!(),
 				Logical::Implies { .. } => todo!(),
+				Logical::BasedOnKey { .. } => todo!(),
 			}
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {

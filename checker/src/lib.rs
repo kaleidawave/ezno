@@ -161,6 +161,15 @@ pub trait ASTImplementation: Sized {
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
+	/// This is for inference
+	///
+	/// Return [TypeId::ERROR_TYPE] if cannot find
+	fn expression_quick_lookup<'a>(
+		expression: &'a Self::Expression<'a>,
+		environment: &Environment,
+		types: &TypeStore,
+	) -> TypeId;
+
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
 	fn type_annotation_position<'a>(annotation: &'a Self::TypeAnnotation<'a>) -> Span;
@@ -486,7 +495,11 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
 	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
+
+	// TODO if env === hide definition file
+	// crate::utilities::set_debug_mode(false);
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
+	// crate::utilities::set_debug_mode(true);
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {

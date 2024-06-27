@@ -21,7 +21,7 @@ use crate::{
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
-		properties::{get_property, set_property, PropertyKey, PropertyValue},
+		properties::{get_property, set_property, PropertyValue},
 		substitute, PartiallyAppliedGenerics, TypeId, TypeStore,
 	},
 	Decidable, Environment, Type,
@@ -83,6 +83,9 @@ pub(crate) fn apply_events(
 								.variable_current_value
 								.insert(*variable, *id);
 						}
+
+						// Think this is correct
+						type_arguments.set_during_application(*id, *id);
 					} else {
 						let value = match reference {
 							RootReference::Variable(id) => {
@@ -125,6 +128,11 @@ pub(crate) fn apply_events(
 				} else {
 					let new_value = substitute(*value, type_arguments, top_environment, types);
 
+					// There is probably a way to speed this up. For example `Environment` could have a range?
+					// This also doesn't work around conditionals
+					let in_above_environment =
+						top_environment.variables.values().any(|var| var.get_id() == *variable);
+
 					// TODO temp assigns to many contexts, which is bad.
 					// Closures should have an indicator of what they close over #56
 					let info = target.get_latest_info(top_environment);
@@ -133,7 +141,10 @@ pub(crate) fn apply_events(
 							.insert((*id, RootReference::Variable(*variable)), new_value);
 					}
 
-					info.events.push(Event::SetsVariable(*variable, new_value, *position));
+					if !in_above_environment {
+						info.events.push(Event::SetsVariable(*variable, new_value, *position));
+					}
+
 					info.variable_current_value.insert(*variable, new_value);
 				}
 			}
@@ -143,13 +154,7 @@ pub(crate) fn apply_events(
 
 				// crate::utilities::notify!("was {:?} now {:?}", was, on);
 
-				let under = match under {
-					PropertyKey::Type(under) => {
-						let ty = substitute(*under, type_arguments, top_environment, types);
-						PropertyKey::from_type(ty, types)
-					}
-					under @ PropertyKey::String(_) => under.clone(),
-				};
+				let under = under.substitute(type_arguments, top_environment, types);
 
 				let Some((_, value)) = get_property(
 					on,
@@ -186,13 +191,7 @@ pub(crate) fn apply_events(
 					// TODO maybe needs to be returned back up, rather than set here?
 					top_environment.possibly_mutated_objects.insert(on, TypeId::ANY_TYPE);
 				} else {
-					let under = match under {
-						PropertyKey::Type(under) => {
-							let ty = substitute(*under, type_arguments, top_environment, types);
-							PropertyKey::from_type(ty, types)
-						}
-						under @ PropertyKey::String(_) => under.clone(),
-					};
+					let under = under.substitute(type_arguments, top_environment, types);
 
 					let new = match new {
 						PropertyValue::Value(new) => PropertyValue::Value(substitute(
@@ -205,13 +204,7 @@ pub(crate) fn apply_events(
 						PropertyValue::Getter(_) => todo!(),
 						PropertyValue::Setter(_) => todo!(),
 						// TODO this might be a different thing at some point
-						PropertyValue::Deleted => {
-							top_environment.delete_property(on, &under, *position);
-							idx += 1;
-							// Logic below handles setting a property. So skip here
-							continue;
-						}
-						PropertyValue::ConditionallyExists { .. } => {
+						PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
 							unreachable!()
 						}
 					};
@@ -303,7 +296,7 @@ pub(crate) fn apply_events(
 				let on = match on {
 					calling::Callable::Fixed(fixed) => {
 						// TODO specialise this?
-						crate::utilities::notify!("Calling here");
+						// crate::utilities::notify!("Calling fixed here");
 						calling::Callable::Fixed(fixed.clone())
 					}
 					calling::Callable::Type(on) => calling::Callable::Type(substitute(
@@ -416,6 +409,7 @@ pub(crate) fn apply_events(
 				let (truthy_events, otherwise_events) =
 					(*truthy_events as usize, *otherwise_events as usize);
 				let offset = idx + 1;
+
 				match fixed_result {
 					Decidable::Known(result) => {
 						let (start, end) = if result {
@@ -731,8 +725,48 @@ pub(crate) fn apply_events(
 			}
 			Event::RegisterVariable { .. } => {}
 			Event::EndOfControlFlow { .. } => {
-				crate::utilities::notify!("Shouldn't be here");
+				crate::utilities::notify!("Shouldn't be applying `Event::EndOfControlFlow`");
 			}
+			Event::Miscellaneous(misc) => match misc {
+				super::MiscellaneousEvents::Has { on, publicity, under, into } => {
+					let on = substitute(*on, type_arguments, top_environment, types);
+					let under = under.substitute(type_arguments, top_environment, types);
+
+					let has = crate::features::in_operator(
+						(*publicity, &under),
+						on,
+						top_environment,
+						types,
+					);
+
+					type_arguments.arguments.insert(*into, has);
+				}
+				super::MiscellaneousEvents::Delete { on, publicity, under, into, position } => {
+					let on = substitute(*on, type_arguments, top_environment, types);
+					let under = under.substitute(type_arguments, top_environment, types);
+
+					match crate::features::delete_operator(
+						(*publicity, under),
+						on,
+						*position,
+						top_environment,
+						types,
+					) {
+						Ok(result) => {
+							if let Some(into) = into {
+								type_arguments.arguments.insert(*into, result);
+							}
+						}
+						Err(_) => {
+							crate::utilities::notify!("Raise error here");
+
+							if let Some(into) = into {
+								type_arguments.arguments.insert(*into, TypeId::ERROR_TYPE);
+							}
+						}
+					}
+				}
+			},
 			Event::FinalEvent(final_event) => {
 				let application_result = match final_event {
 					FinalEvent::Break { carry, position } => ApplicationResult::Break {

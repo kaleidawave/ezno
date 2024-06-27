@@ -1,16 +1,20 @@
 static IS_DEBUG_MODE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 #[allow(clippy::manual_is_variant_and)]
 pub(crate) fn is_debug_mode() -> bool {
-	*IS_DEBUG_MODE.lock().unwrap().get_or_insert_with(|| {
-		std::env::var("EZNO_DEBUG").map(|value| !value.is_empty()).unwrap_or_default()
-	})
+	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
+		*IS_DEBUG_MODE.lock().unwrap().get_or_insert_with(|| {
+			std::env::var("EZNO_DEBUG").map(|value| !value.is_empty()).unwrap_or_default()
+		})
+	} else {
+		false
+	}
 }
 
-#[cfg(any(not(debug_assertions), target_arch = "wasm32"))]
-pub(crate) fn is_debug_mode() -> bool {
-	false
+pub(crate) fn set_debug_mode(value: bool) {
+	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
+		let _ = *IS_DEBUG_MODE.lock().unwrap().insert(value);
+	}
 }
 
 /// For `notify!` macro below

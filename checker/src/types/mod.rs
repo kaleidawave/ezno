@@ -45,7 +45,7 @@ pub type LookUpGenericMap = crate::Map<TypeId, LookUpGeneric>;
 #[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
 pub struct TypeId(pub(crate) u16);
 
-// TODO ids as macro as to not do in [crate::RootEnvironment]
+/// TODO ids as macro as to not do in [crate::context::RootContext]
 impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
@@ -91,15 +91,63 @@ impl TypeId {
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
 	pub const NEW_TARGET_ARG: Self = Self(22);
 
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(23);
+	pub const LITERAL_RESTRICTION: Self = Self(23);
+	pub const READONLY_RESTRICTION: Self = Self(24);
 
-	pub const LITERAL_RESTRICTION: Self = Self(24);
-	pub const READONLY_RESTRICTION: Self = Self(25);
+	pub const IMPORT_META: Self = Self(25);
 
-	pub const IMPORT_META: Self = Self(26);
-	pub const SYMBOL_ITERATOR: Self = Self(27);
+	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator
+	pub const SYMBOL_ITERATOR: Self = Self(26);
+	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(27);
+	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(28);
+	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(29);
 
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 28;
+	// TSC intrinsics
+	pub const STRING_GENERIC: Self = Self(30);
+	pub const STRING_UPPERCASE: Self = Self(31);
+	pub const STRING_LOWERCASE: Self = Self(32);
+	pub const STRING_CAPITALIZE: Self = Self(33);
+	pub const STRING_UNCAPITALIZE: Self = Self(34);
+	pub const NOINFER: Self = Self(35);
+
+	// Ezno intrinsics
+
+	/// Used in [Self::LESS_THAN], [Self::LESS_THAN] and [Self::MULTIPLE_OF]
+	pub const NUMBER_GENERIC: Self = Self(36);
+	pub const LESS_THAN: Self = Self(37);
+	pub const GREATER_THAN: Self = Self(38);
+	pub const MULTIPLE_OF: Self = Self(39);
+
+	/// Above +1 (because [TypeId] starts at zero). Used to assert that the above is all correct
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 40;
+}
+
+impl TypeId {
+	pub fn tsc_string_intrinsic(self) -> bool {
+		matches!(
+			self,
+			Self::STRING_UPPERCASE
+				| Self::STRING_LOWERCASE
+				| Self::STRING_CAPITALIZE
+				| Self::STRING_UNCAPITALIZE
+		)
+	}
+
+	pub fn is_intrinsic(self) -> bool {
+		self.tsc_string_intrinsic()
+			|| self.ezno_number_intrinsic()
+			|| matches!(
+				self,
+				TypeId::LITERAL_RESTRICTION | TypeId::READONLY_RESTRICTION | TypeId::NOINFER
+			)
+	}
+
+	pub fn ezno_number_intrinsic(self) -> bool {
+		matches!(self, Self::LESS_THAN | Self::GREATER_THAN | Self::MULTIPLE_OF)
+	}
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -216,32 +264,13 @@ impl PolyNature {
 			| PolyNature::MappedGeneric { eager_fixed: to, .. }
 			| PolyNature::FreeVariable { based_on: to, .. }
 			| PolyNature::RecursiveFunction(_, to)
+			| PolyNature::InferGeneric { extends: to, .. }
 			| PolyNature::CatchVariable(to)
 			| PolyNature::Open(to)
 			| PolyNature::Error(to) => Some(*to),
-			PolyNature::StructureGeneric { .. } | PolyNature::InferGeneric { .. } => None,
+			PolyNature::StructureGeneric { .. } => None,
 		}
 	}
-}
-
-// TODO
-#[must_use]
-pub fn is_primitive(ty: TypeId, _types: &TypeStore) -> bool {
-	if matches!(ty, TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
-		return true;
-	}
-	false
-}
-
-/// not full constant but
-#[must_use]
-pub fn is_type_constant(ty: TypeId, types: &TypeStore) -> bool {
-	// TODO `Type::SpecialObject(..)` might cause issues
-	matches!(ty, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE)
-		|| matches!(
-			types.get_type_by_id(ty),
-			Type::Constant(..) | Type::Object(ObjectNature::RealDeal) | Type::SpecialObject(..)
-		)
 }
 
 /// TODO split
@@ -254,6 +283,7 @@ pub enum ObjectNature {
 }
 
 impl Type {
+	/// These can be referenced by `<...>``
 	pub(crate) fn get_parameters(&self) -> Option<Vec<TypeId>> {
 		if let Type::Class { parameters, .. }
 		| Type::Interface { parameters, .. }
@@ -266,7 +296,7 @@ impl Type {
 	}
 
 	/// TODO return is poly
-	pub(crate) fn is_dependent(&self) -> bool {
+	pub fn is_dependent(&self) -> bool {
 		#[allow(clippy::match_same_arms)]
 		match self {
 			// TODO
@@ -285,16 +315,24 @@ impl Type {
 		}
 	}
 
-	pub(crate) fn is_operator(&self) -> bool {
+	pub fn is_operator(&self) -> bool {
 		matches!(self, Self::And(..) | Self::Or(..))
 	}
 
-	fn is_nominal(&self) -> bool {
+	pub fn is_nominal(&self) -> bool {
 		matches!(self, Self::Class { .. } | Self::Interface { nominal: true, .. })
+	}
+
+	pub fn is_constant(&self) -> bool {
+		matches!(
+			self,
+			Self::Constant(..) | Self::Object(ObjectNature::RealDeal) | Self::SpecialObject(..)
+		)
 	}
 }
 
-/// - Note that no || etc. This is handled using [`Constructor::ConditionalResult`]
+/// - Some of these can be specialised, others are only created via event specialisation
+/// - Note that no || and && etc. This is handled using [`Constructor::ConditionalResult`]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
 	// TODO separate add?
@@ -376,6 +414,7 @@ pub enum TypeOperator {
 	PrototypeOf(TypeId),
 	/// The `typeof` unary operator
 	TypeOf(TypeId),
+	HasProperty(TypeId, properties::PropertyKey<'static>),
 }
 
 /// TODO instance of?
@@ -439,7 +478,7 @@ pub enum GenericChainLink<'a> {
 	},
 	FunctionRoot {
 		parent_link: Option<&'a GenericArguments>,
-		call_site_type_arguments: Option<&'a crate::Map<TypeId, (TypeId, SpanWithSource)>>,
+		call_site_type_arguments: Option<&'a TypeRestrictions>,
 		type_arguments: &'a crate::Map<TypeId, TypeId>,
 	},
 }
@@ -513,6 +552,42 @@ impl<'a> GenericChainLink<'a> {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
 				})
 				.or_else(|| type_arguments.get(&on).copied()),
+		}
+	}
+
+	/// For building up [SubstitutionArguments] from a generic chain
+	pub(crate) fn extend_arguments(&self, arguments: &mut SubstitutionArguments<'static>) {
+		match self {
+			GenericChainLink::Link { from: _, parent_link, value } => {
+				match value {
+					GenericArguments::ExplicitRestrictions(n) => {
+						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)))
+					}
+					GenericArguments::Closure(n) => arguments.closures.extend(n.iter().copied()),
+					GenericArguments::LookUp { .. } => todo!(),
+				}
+				if let Some(parent_link) = parent_link {
+					parent_link.extend_arguments(arguments)
+				}
+			}
+			GenericChainLink::FunctionRoot {
+				parent_link,
+				call_site_type_arguments: _,
+				type_arguments,
+			} => {
+				arguments.arguments.extend(type_arguments.iter().map(|(k, v)| (*k, *v)));
+				if let Some(value) = parent_link {
+					match value {
+						GenericArguments::ExplicitRestrictions(n) => {
+							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)))
+						}
+						GenericArguments::Closure(n) => {
+							arguments.closures.extend(n.iter().copied())
+						}
+						GenericArguments::LookUp { .. } => todo!(),
+					}
+				}
+			}
 		}
 	}
 }
