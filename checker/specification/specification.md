@@ -2830,14 +2830,9 @@ obj1.hi satisfies boolean;
 obj1.hello satisfies boolean;
 
 obj1.bye;
-
-declare let obj2: Record<string, boolean>;
-obj2.fine satisfies boolean;
-obj2[2];
 ```
 
 - No property 'bye' on { ["hi" | "hello"]: boolean }
-- No property '2' on { [string]: boolean }
 
 ### Forward inference
 

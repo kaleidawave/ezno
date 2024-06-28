@@ -15,7 +15,7 @@ use crate::{
 	types::{
 		generics::generic_type_arguments::GenericArguments,
 		get_constraint,
-		properties::{get_properties_on_single_type, get_property_unbound, Publicity},
+		properties::{get_properties_on_single_type, get_property_unbound, AccessMode, Publicity},
 		Constructor, FunctionEffect, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
 		TypeRelationOperator,
 	},
@@ -296,7 +296,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				// 	}
 				// }
 			}
-			Constructor::Property { on, under, result, bind_this: _ } => {
+			Constructor::Property { on, under, result, mode: _ } => {
 				if crate::types::is_explicit_generic(*on, types) {
 					print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 					buf.push('[');
@@ -360,13 +360,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(" -> ");
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
-				Constructor::Property { on, under, result, bind_this } => {
+				Constructor::Property { on, under, result, mode } => {
 					buf.push('(');
 					print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 					buf.push_str(")[");
 					print_property_key_into_buf(under, buf, cycles, args, types, info, debug);
 					buf.push(']');
-					if !bind_this {
+					if let AccessMode::DoNotBindThis = mode {
 						buf.push_str(" no bind");
 					};
 					buf.push_str(" = ");
@@ -769,7 +769,7 @@ pub fn debug_effects<C: InformationChain>(
 				reflects_dependency,
 				publicity: _,
 				position: _,
-				bind_this: _,
+				mode: _,
 			} => {
 				buf.push_str("read ");
 				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
@@ -801,7 +801,7 @@ pub fn debug_effects<C: InformationChain>(
 							debug,
 						);
 					} else {
-						write!(buf, "{:?}", new).unwrap();
+						write!(buf, "{new:?}").unwrap();
 					}
 				} else {
 					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
@@ -827,7 +827,7 @@ pub fn debug_effects<C: InformationChain>(
 							debug,
 						);
 					} else {
-						write!(buf, "{:?}", new).unwrap();
+						write!(buf, "{new:?}").unwrap();
 					}
 				}
 			}
@@ -842,8 +842,8 @@ pub fn debug_effects<C: InformationChain>(
 			} => {
 				buf.push_str("call ");
 				match on {
-					crate::types::calling::Callable::Fixed(function) => {
-						write!(buf, " {id:?} ", id = function).unwrap();
+					crate::types::calling::Callable::Fixed(function, _) => {
+						write!(buf, " {function:?} ").unwrap();
 					}
 					crate::types::calling::Callable::Type(on) => {
 						let mut cycles = HashSet::new();

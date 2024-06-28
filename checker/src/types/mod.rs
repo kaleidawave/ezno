@@ -24,6 +24,7 @@ use crate::{
 	context::information::InformationChain,
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
+	types::properties::AccessMode,
 	Decidable, FunctionId,
 };
 
@@ -45,7 +46,7 @@ pub type LookUpGenericMap = crate::Map<TypeId, LookUpGeneric>;
 #[derive(PartialEq, Eq, Clone, Copy, DebugExtras, Hash)]
 pub struct TypeId(pub(crate) u16);
 
-/// TODO ids as macro as to not do in [crate::context::RootContext]
+/// TODO ids as macro as to not do in [`crate::context::RootContext`]
 impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
@@ -72,7 +73,7 @@ impl TypeId {
 
 	pub const OBJECT_TYPE: Self = Self(12);
 	pub const FUNCTION_TYPE: Self = Self(13);
-	/// This points to the RegExp prototype
+	/// This points to the `RegExp` prototype
 	pub const REGEXP_TYPE: Self = Self(14);
 	/// This points to the ???
 	pub const SYMBOL_TYPE: Self = Self(15);
@@ -96,13 +97,13 @@ impl TypeId {
 
 	pub const IMPORT_META: Self = Self(25);
 
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
 	pub const SYMBOL_ITERATOR: Self = Self(26);
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
 	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(27);
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
 	pub const SYMBOL_HAS_INSTANCE: Self = Self(28);
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
 	pub const SYMBOL_TO_PRIMITIVE: Self = Self(29);
 
 	// TSC intrinsics
@@ -115,17 +116,18 @@ impl TypeId {
 
 	// Ezno intrinsics
 
-	/// Used in [Self::LESS_THAN], [Self::LESS_THAN] and [Self::MULTIPLE_OF]
+	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
 	pub const NUMBER_GENERIC: Self = Self(36);
 	pub const LESS_THAN: Self = Self(37);
 	pub const GREATER_THAN: Self = Self(38);
 	pub const MULTIPLE_OF: Self = Self(39);
 
-	/// Above +1 (because [TypeId] starts at zero). Used to assert that the above is all correct
+	/// Above +1 (because [`TypeId`] starts at zero). Used to assert that the above is all correct
 	pub(crate) const INTERNAL_TYPE_COUNT: usize = 40;
 }
 
 impl TypeId {
+	#[must_use]
 	pub fn tsc_string_intrinsic(self) -> bool {
 		matches!(
 			self,
@@ -136,6 +138,7 @@ impl TypeId {
 		)
 	}
 
+	#[must_use]
 	pub fn is_intrinsic(self) -> bool {
 		self.tsc_string_intrinsic()
 			|| self.ezno_number_intrinsic()
@@ -145,6 +148,7 @@ impl TypeId {
 			)
 	}
 
+	#[must_use]
 	pub fn ezno_number_intrinsic(self) -> bool {
 		matches!(self, Self::LESS_THAN | Self::GREATER_THAN | Self::MULTIPLE_OF)
 	}
@@ -283,7 +287,7 @@ pub enum ObjectNature {
 }
 
 impl Type {
-	/// These can be referenced by `<...>``
+	/// These can be referenced by `<...>`
 	pub(crate) fn get_parameters(&self) -> Option<Vec<TypeId>> {
 		if let Type::Class { parameters, .. }
 		| Type::Interface { parameters, .. }
@@ -296,6 +300,7 @@ impl Type {
 	}
 
 	/// TODO return is poly
+	#[must_use]
 	pub fn is_dependent(&self) -> bool {
 		#[allow(clippy::match_same_arms)]
 		match self {
@@ -315,14 +320,17 @@ impl Type {
 		}
 	}
 
+	#[must_use]
 	pub fn is_operator(&self) -> bool {
 		matches!(self, Self::And(..) | Self::Or(..))
 	}
 
+	#[must_use]
 	pub fn is_nominal(&self) -> bool {
 		matches!(self, Self::Class { .. } | Self::Interface { nominal: true, .. })
 	}
 
+	#[must_use]
 	pub fn is_constant(&self) -> bool {
 		matches!(
 			self,
@@ -372,7 +380,7 @@ pub enum Constructor {
 		on: TypeId,
 		under: PropertyKey<'static>,
 		result: TypeId,
-		bind_this: bool,
+		mode: AccessMode,
 	},
 	/// For await a poly type
 	Awaited {
@@ -555,19 +563,19 @@ impl<'a> GenericChainLink<'a> {
 		}
 	}
 
-	/// For building up [SubstitutionArguments] from a generic chain
+	/// For building up [`SubstitutionArguments`] from a generic chain
 	pub(crate) fn extend_arguments(&self, arguments: &mut SubstitutionArguments<'static>) {
 		match self {
 			GenericChainLink::Link { from: _, parent_link, value } => {
 				match value {
 					GenericArguments::ExplicitRestrictions(n) => {
-						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)))
+						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
 					}
 					GenericArguments::Closure(n) => arguments.closures.extend(n.iter().copied()),
 					GenericArguments::LookUp { .. } => todo!(),
 				}
 				if let Some(parent_link) = parent_link {
-					parent_link.extend_arguments(arguments)
+					parent_link.extend_arguments(arguments);
 				}
 			}
 			GenericChainLink::FunctionRoot {
@@ -579,10 +587,10 @@ impl<'a> GenericChainLink<'a> {
 				if let Some(value) = parent_link {
 					match value {
 						GenericArguments::ExplicitRestrictions(n) => {
-							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)))
+							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
 						}
 						GenericArguments::Closure(n) => {
-							arguments.closures.extend(n.iter().copied())
+							arguments.closures.extend(n.iter().copied());
 						}
 						GenericArguments::LookUp { .. } => todo!(),
 					}
@@ -617,7 +625,7 @@ pub enum PropertyError {
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 	if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) = types.get_type_by_id(on) {
 		true
-	} else if let Type::Constructor(Constructor::Property { on, under, result: _, bind_this: _ }) =
+	} else if let Type::Constructor(Constructor::Property { on, under, result: _, mode: _ }) =
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
@@ -692,7 +700,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			}
 			Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),
-			Constructor::Property { on: _, under: _, result, bind_this: _ } => {
+			Constructor::Property { on: _, under: _, result, mode: _ } => {
 				// crate::utilities::notify!("Here, result of a property get");
 				Some(result)
 			}
@@ -718,6 +726,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 }
 
 /// Returns the constraint or base of a constant for a type. Otherwise just return the type
+#[must_use]
 pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	if let Some(poly_base) = get_constraint(on, types) {
 		poly_base

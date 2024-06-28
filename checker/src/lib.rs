@@ -163,7 +163,7 @@ pub trait ASTImplementation: Sized {
 
 	/// This is for inference
 	///
-	/// Return [TypeId::ERROR_TYPE] if cannot find
+	/// Return [`TypeId::ERROR_TYPE`] if cannot find
 	fn expression_quick_lookup<'a>(
 		expression: &'a Self::Expression<'a>,
 		environment: &Environment,

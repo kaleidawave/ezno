@@ -92,9 +92,9 @@ where
 	let position = position.with_source(environment.get_source());
 
 	match environment.context_type.parent {
-		crate::GeneralContext::Syntax(syn) => {
+		crate::GeneralContext::Syntax(syn_parent) => {
 			merge_info(
-				syn,
+				syn_parent,
 				&mut environment.info,
 				condition,
 				truthy_info,
@@ -103,8 +103,16 @@ where
 				position,
 			);
 		}
-		crate::GeneralContext::Root(_root) => {
-			crate::utilities::notify!("Should not be merging into root");
+		crate::GeneralContext::Root(root_parent) => {
+			merge_info(
+				root_parent,
+				&mut environment.info,
+				condition,
+				truthy_info,
+				falsy_info,
+				&mut checking_data.types,
+				position,
+			);
 		}
 	}
 

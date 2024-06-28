@@ -440,6 +440,14 @@ pub fn get_properties_on_single_type(
 	}
 }
 
+#[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
+pub enum AccessMode {
+	Regular,
+	Optional,
+	/// For destructuring
+	DoNotBindThis,
+}
+
 /// Also evaluates getter and binds `this`
 ///
 /// *be aware this creates a new type every time, bc of this binding. could cache this bound
@@ -455,7 +463,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
-	bind_this: bool,
+	mode: AccessMode,
 ) -> Option<(PropertyKind, TypeId)> {
 	if on == TypeId::ERROR_TYPE
 		|| matches!(under, PropertyKey::Type(under) if *under == TypeId::ERROR_TYPE)
@@ -483,7 +491,7 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			behavior,
 			types,
 			position,
-			bind_this,
+			mode,
 		)
 	} else if let Some(constraint) = top_environment.possibly_mutated_objects.get(&on) {
 		evaluate_get_on_poly(
@@ -496,14 +504,14 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 			behavior,
 			types,
 			position,
-			bind_this,
+			mode,
 		)
 	} else {
 		// if environment.get_poly_base(under, types).is_some() {
 		// 	todo!()
 		// }
 		// TODO
-		get_from_an_object(on, publicity, under, top_environment, behavior, types, bind_this)
+		get_from_an_object(on, publicity, under, top_environment, behavior, types, mode)
 	}
 }
 
@@ -514,7 +522,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 	environment: &mut Environment,
 	behavior: &mut E,
 	types: &mut TypeStore,
-	bind_this: bool,
+	mode: AccessMode,
 ) -> Option<(PropertyKind, TypeId)> {
 	/// Generates closure arguments, values of this and more. Runs getters
 	fn resolve_property_on_logical<E: CallCheckingBehavior>(
@@ -524,7 +532,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		environment: &mut Environment,
 		types: &mut TypeStore,
 		behavior: &mut E,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Option<(PropertyKind, TypeId)> {
 		match logical {
 			Logical::Pure(property) => {
@@ -533,10 +541,11 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						let ty = types.get_type_by_id(value);
 						match ty {
 							Type::SpecialObject(SpecialObject::Function(func, _state)) => {
-								let this_value = if bind_this {
-									ThisValue::Passed(on)
-								} else {
+								let this_value = if let AccessMode::DoNotBindThis = mode {
+									// Not `ThisValue::Passed`, but not sure about this
 									ThisValue::UseParent
+								} else {
+									ThisValue::Passed(on)
 								};
 								let func = types.register_type(Type::SpecialObject(
 									SpecialObject::Function(*func, this_value),
@@ -607,7 +616,9 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						}
 					}
 					PropertyValue::Getter(getter) => {
-						use crate::types::calling::*;
+						use crate::types::calling::{
+							application_result_to_return_type, CalledWithNew, CallingInput,
+						};
 
 						let input = CallingInput {
 							called_with_new: CalledWithNew::None,
@@ -646,43 +657,45 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Setter(_) => todo!(),
 					PropertyValue::Deleted => None,
 					PropertyValue::ConditionallyExists { on, truthy } => {
-						if let PropertyValue::Value(value) = *truthy {
-							let value =
-								types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE);
-							Some((PropertyKind::Direct, value))
-						} else {
-							todo!()
-						}
-					}
-				}
-			}
-			Logical::Or { left, right, condition: based_on } => left
-				.map(|l| {
-					resolve_property_on_logical(
-						l,
-						based_on,
-						None,
-						environment,
-						types,
-						behavior,
-						bind_this,
-					)
-				})
-				.or_else(|_| {
-					right.map(|r| {
-						resolve_property_on_logical(
-							r,
-							based_on,
-							None,
+						let (kind, value) = resolve_property_on_logical(
+							Logical::Pure(*truthy),
+							on,
+							generics,
 							environment,
 							types,
 							behavior,
-							bind_this,
-						)
-					})
-				})
-				.ok()
-				.flatten(),
+							mode,
+						)?;
+						Some((kind, types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)))
+					}
+				}
+			}
+			Logical::Or { left, right, condition } => {
+				if let (Ok(lhs), Ok(rhs)) = (*left, *right) {
+					let (_, lhs) = resolve_property_on_logical(
+						lhs,
+						on,
+						generics,
+						environment,
+						types,
+						behavior,
+						mode,
+					)?;
+					let (_, rhs) = resolve_property_on_logical(
+						rhs,
+						on,
+						generics,
+						environment,
+						types,
+						behavior,
+						mode,
+					)?;
+					Some((PropertyKind::Direct, types.new_conditional_type(condition, lhs, rhs)))
+				} else {
+					crate::utilities::notify!("TODO emit some diagnostic about missing");
+					None
+				}
+			}
 			Logical::Implies { on: log_on, antecedent } => {
 				crate::utilities::notify!("TypeId::UNIMPLEMENTED_ERROR_TYPE here");
 				let generics = GenericChainLink::append(
@@ -698,7 +711,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					environment,
 					types,
 					behavior,
-					bind_this,
+					mode,
 				)
 			}
 			Logical::BasedOnKey { on: log_on, key } => {
@@ -719,7 +732,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					environment,
 					types,
 					behavior,
-					bind_this,
+					mode,
 				)
 			}
 		}
@@ -739,7 +752,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 
 	match result {
 		Ok(logical) => {
-			resolve_property_on_logical(logical, on, None, environment, types, behavior, bind_this)
+			resolve_property_on_logical(logical, on, None, environment, types, behavior, mode)
 		}
 		Err(err) => match err {
 			MissingOrToCalculate::Missing => None,
@@ -771,7 +784,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	behavior: &mut E,
 	types: &mut TypeStore,
 	position: SpanWithSource,
-	bind_this: bool,
+	mode: AccessMode,
 ) -> Option<(PropertyKind, TypeId)> {
 	/// Also returns the [`Type::Constructor`] -> [`Constructor::Property`]
 	fn resolve_logical_with_poly(
@@ -781,7 +794,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		generics: GenericChain,
 		environment: &mut Environment,
 		types: &mut TypeStore,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Option<TypeId> {
 		match fact {
 			Logical::Pure(og) => {
@@ -800,7 +813,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							{
 								let mut arguments = arguments.into_substitutable();
 								if let Some(parent_link) = parent_link {
-									parent_link.extend_arguments(&mut arguments)
+									parent_link.extend_arguments(&mut arguments);
 								}
 								crate::types::substitute(value, &arguments, environment, types)
 							} else {
@@ -814,7 +827,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 								on,
 								under: under.into_owned(),
 								result,
-								bind_this,
+								mode,
 							}))
 						}
 						// Don't need to set this here. It is picked up from `on` during lookup
@@ -827,7 +840,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							on,
 							under: under.into_owned(),
 							result: value,
-							bind_this,
+							mode,
 						})),
 						Type::Constant(_)
 						| Type::Object(ObjectNature::RealDeal)
@@ -844,34 +857,27 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 							on,
 							under: under.into_owned(),
 							result: getter.return_type,
-							bind_this: false,
+							mode,
 						}))
 					}
 					PropertyValue::Setter(_) => todo!(),
 					// Very important
 					PropertyValue::Deleted => return None,
 					PropertyValue::ConditionallyExists { on, truthy } => {
-						// TODO can only get if optional ?
-						if let PropertyValue::Value(value) = *truthy {
-							types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)
-						} else {
-							todo!()
-						}
+						let value = resolve_logical_with_poly(
+							Logical::Pure(*truthy),
+							on,
+							under.clone(),
+							generics,
+							environment,
+							types,
+							mode,
+						)?;
+						types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)
 					}
 				})
 			}
-			Logical::Or { condition: based_on, left, right } => {
-				// let left = resolve_logical_with_poly(
-				// 	*left,
-				// 	on,
-				// 	under.clone(),
-				// 	arguments,
-				// 	environment,
-				// 	types,
-				// );
-				// let right =
-				// 	resolve_logical_with_poly(*right, on, under, arguments, environment, types);
-
+			Logical::Or { condition, left, right } => {
 				// crate::utilities::notify!("lr = {:?}", (left, right));
 
 				// TODO lots of information (and inference) lost here
@@ -883,7 +889,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						generics,
 						environment,
 						types,
-						bind_this,
+						mode,
 					)?;
 					let rhs = resolve_logical_with_poly(
 						rhs,
@@ -892,9 +898,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						generics,
 						environment,
 						types,
-						bind_this,
+						mode,
 					)?;
-					Some(types.new_conditional_type(based_on, lhs, rhs))
+					Some(types.new_conditional_type(condition, lhs, rhs))
 				} else {
 					crate::utilities::notify!("TODO emit some diagnostic about missing");
 					None
@@ -916,7 +922,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					generics,
 					environment,
 					types,
-					bind_this,
+					mode,
 				)
 			}
 			Logical::BasedOnKey { on: log_on, key } => {
@@ -938,7 +944,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					generics,
 					environment,
 					types,
-					bind_this,
+					mode,
 				)
 			}
 		}
@@ -949,15 +955,8 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 	crate::utilities::notify!("unbound is is {:?}", fact);
 
-	let value = resolve_logical_with_poly(
-		fact,
-		on,
-		under.clone(),
-		None,
-		top_environment,
-		types,
-		bind_this,
-	)?;
+	let value =
+		resolve_logical_with_poly(fact, on, under.clone(), None, top_environment, types, mode)?;
 
 	behavior.get_latest_info(top_environment).events.push(Event::Getter {
 		on,
@@ -965,7 +964,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 		reflects_dependency: Some(value),
 		publicity,
 		position,
-		bind_this,
+		mode,
 	});
 
 	Some((PropertyKind::Direct, value))

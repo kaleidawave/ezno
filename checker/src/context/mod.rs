@@ -25,8 +25,8 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		generics::generic_type_arguments::GenericArguments, properties::KeyArgument, FunctionType,
-		PolyNature, Type, TypeId, TypeStore,
+		generics::generic_type_arguments::GenericArguments, properties::SliceArgument,
+		FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
@@ -1177,17 +1177,17 @@ pub enum Logical<T> {
 		left: Box<PossibleLogical<T>>,
 		right: Box<PossibleLogical<T>>,
 	},
-	/// Passes down [GenericArguments] found trying to get to source
+	/// Passes down [`GenericArguments`] found trying to get to source
 	Implies {
 		on: Box<Self>,
 		antecedent: GenericArguments,
 	},
 	/// WIP mainly for mapped type properties
-	/// TODO this is partially defined like [Self::Or] ???
+	/// TODO this is partially defined like [`Self::Or`] ???
 	/// - Can this work for arrays
 	BasedOnKey {
 		on: Box<Self>,
-		key: KeyArgument,
+		key: SliceArgument,
 	},
 }
 

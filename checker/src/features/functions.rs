@@ -736,7 +736,7 @@ where
 									on: TypeId::NEW_TARGET_ARG,
 									under: PropertyKey::String(Cow::Owned("value".to_owned())),
 									result: this_constraint,
-									bind_this: true,
+									mode: types::properties::AccessMode::Regular,
 								},
 							));
 
@@ -907,7 +907,7 @@ where
 
 		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
 		{
-			for (k, v) in info.prototypes.iter() {
+			for (k, v) in &info.prototypes {
 				base_environment.info.prototypes.insert(*k, *v);
 			}
 

@@ -218,25 +218,24 @@ impl PropertyValue {
 }
 
 /// TODO can their be multiple contributions
-pub type KeyArgument = (TypeId, (contributions::CovariantContribution, u8));
+pub type SliceArgument = (TypeId, (contributions::CovariantContribution, u8));
 
 /// Does lhs equal want
 /// Aka is `want_key in { [lhs_key]: ... }`
 ///
-/// This is very much like [type_is_subtype] but for keys
+/// This is very much like [`type_is_subtype`] but for keys
 pub(crate) fn key_matches(
 	(key, key_type_arguments): (&PropertyKey<'_>, GenericChain),
 	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
-) -> (bool, Option<KeyArgument>) {
+) -> (bool, Option<SliceArgument>) {
 	match (key, want) {
 		(PropertyKey::String(left), PropertyKey::String(right)) => (left == right, None),
 		(PropertyKey::String(s), PropertyKey::Type(want)) => {
 			if let Some(substituted_key) =
 				want_type_arguments.and_then(|args| args.get_single_argument(*want))
 			{
-				crate::utilities::notify!("Here");
 				return key_matches(
 					(key, key_type_arguments),
 					(&PropertyKey::Type(substituted_key), want_type_arguments),
@@ -344,7 +343,7 @@ pub(crate) fn has_property(
 	types: &mut TypeStore,
 ) -> TypeId {
 	let result =
-		properties::get_property_unbound((rhs, None), (publicity, key, None), information, &types);
+		properties::get_property_unbound((rhs, None), (publicity, key, None), information, types);
 
 	crate::utilities::notify!("Has got {:?} on {:?}", result, rhs);
 

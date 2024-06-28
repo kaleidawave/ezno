@@ -2,14 +2,13 @@
 #[test]
 fn type_mappings() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
-	use std::collections::HashSet;
 
 	let text = "const x: number = 2;
 function y() { return x }
 y()";
 
 	let definition_file = ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into();
-	let type_definition_files = HashSet::from_iter([definition_file]);
+	let type_definition_files = vec![definition_file];
 
 	// `store_expression_type_mappings` important
 	let options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };

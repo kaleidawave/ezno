@@ -32,7 +32,9 @@ use crate::{
 		calling::{CallingInput, UnsynthesisedArgument},
 		get_larger_type,
 		printing::{print_property_key, print_type},
-		properties::{get_properties_on_single_type, get_property_unbound, PropertyKey},
+		properties::{
+			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
+		},
 		Constructor,
 	},
 	Decidable, PropertyValue,
@@ -592,7 +594,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Err(_err) => Instance::RValue(TypeId::ERROR_TYPE),
 			}
 		}
-		Expression::PropertyAccess { parent, position, property, is_optional: _, .. } => {
+		Expression::PropertyAccess { parent, position, property, is_optional, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
 			let (property, publicity) = match property {
 				parser::PropertyReference::Standard { property, is_private } => (
@@ -605,13 +607,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 			};
 
+			let mode = if *is_optional { AccessMode::Optional } else { AccessMode::Regular };
+
 			let result = environment.get_property_handle_errors(
 				on,
 				publicity,
 				&property,
 				checking_data,
 				position.with_source(environment.get_source()),
-				true,
+				mode,
 			);
 
 			match result {
@@ -619,7 +623,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				Err(()) => return TypeId::ERROR_TYPE,
 			}
 		}
-		Expression::Index { indexee, indexer, position, .. } => {
+		Expression::Index { indexee, indexer, position, is_optional, .. } => {
 			let being_indexed =
 				synthesise_expression(indexee, environment, checking_data, TypeId::ANY_TYPE);
 			let indexer = synthesise_multiple_expression(
@@ -628,6 +632,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				checking_data,
 				TypeId::ANY_TYPE,
 			);
+			let mode = if *is_optional { AccessMode::Optional } else { AccessMode::Regular };
 
 			// TODO handle differently?
 			let result = environment.get_property_handle_errors(
@@ -636,7 +641,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				&PropertyKey::from_type(indexer, &checking_data.types),
 				checking_data,
 				position.with_source(environment.get_source()),
-				true,
+				mode,
 			);
 
 			match result {
@@ -865,7 +870,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::In { lhs, rhs } => {
 				let (publicity, key) = match lhs {
 					parser::expressions::InExpressionLHS::PrivateProperty(key) => {
-						(Publicity::Private, PropertyKey::String(Cow::Borrowed(&key)))
+						(Publicity::Private, PropertyKey::String(Cow::Borrowed(key)))
 					}
 					parser::expressions::InExpressionLHS::Expression(lhs) => {
 						let key = synthesise_expression(

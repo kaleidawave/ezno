@@ -200,6 +200,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 									reason: crate::subtyping::NonEqualityReason::Mismatch,
 								})
 							}
+							FunctionCallingError::DeleteConstraint { constraint: _, .. } => todo!(),
 							FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
 							| FunctionCallingError::NoLogicForIdentifier(..)
 							| FunctionCallingError::NotCallable { .. }
@@ -290,7 +291,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 		}
 		PropertyValue::Getter(_) => todo!(),
 		PropertyValue::Setter(setter) => {
-			use crate::types::calling::*;
+			use crate::types::calling::{CalledWithNew, CallingInput};
 
 			let arg = SynthesisedArgument {
 				position: setter_position,
@@ -326,6 +327,9 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				Err(res) => Err(res.errors),
 			}
 		}
-		PropertyValue::ConditionallyExists { .. } => todo!(),
+		PropertyValue::ConditionallyExists { .. } => {
+			crate::utilities::notify!("Here {:?} {:?}", og, new);
+			Ok(())
+		}
 	}
 }

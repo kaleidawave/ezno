@@ -10,7 +10,7 @@ use crate::{
 	context::{
 		environment::Label,
 		invocation::{CheckThings, InvocationContext},
-		CallCheckingBehavior, ClosedOverReferencesInScope,
+		CallCheckingBehavior, ClosedOverReferencesInScope, Syntax,
 	},
 	events::{
 		application::{ApplicationInput, CallingDiagnostics},
@@ -18,10 +18,15 @@ use crate::{
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
-		calling::add_diagnostics, properties::get_properties_on_single_type, substitute,
-		Constructor, ObjectNature, PolyNature, SpecialObject, SubstitutionArguments, TypeStore,
+		calling::{
+			add_diagnostics, application_result_to_return_type, CallingInput, CallingOutput,
+		},
+		properties::get_properties_on_single_type,
+		substitute, Constructor, ObjectNature, PolyNature, SpecialObject, SubstitutionArguments,
+		TypeStore,
 	},
-	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
+	CheckingData, Constant, Environment, GeneralContext, LocalInformation, Scope, Type, TypeId,
+	VariableId,
 };
 
 /// The type of iteration to synthesis
@@ -393,88 +398,16 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			// }
 		}
 		IterationBehavior::ForOf { lhs: _, rhs } => {
-			let rhs_position = A::expression_position(rhs);
+			let position = A::expression_position(rhs).with_source(environment.get_source());
 			let rhs = A::synthesise_expression(rhs, TypeId::ANY_TYPE, environment, checking_data);
 
-			// TODO could shortcut (and reduce overhead possibly) if simple `Array`
-			let _iterator = {
-				crate::utilities::notify!("Here");
-				let get_property = crate::types::properties::get_property(
-					rhs,
-					crate::types::properties::Publicity::Public,
-					&crate::types::properties::PropertyKey::Type(TypeId::SYMBOL_ITERATOR),
-					None,
-					environment,
-					&mut CheckThings { debug_types: checking_data.options.debug_types },
-					&mut checking_data.types,
-					position,
-					true,
-				);
-				let iterator_generator = if let Some((_, ty)) = get_property {
-					ty
-				} else {
-					todo!("error + run block any with error")
-				};
-
-				let input = crate::types::calling::CallingInput {
-					called_with_new: crate::types::calling::CalledWithNew::None,
-					call_site: rhs_position.with_source(environment.get_source()),
-					max_inline: checking_data.options.max_inline_count,
-				};
-				call_type_handle_errors(
-					iterator_generator,
-					None,
-					&[],
-					input,
-					environment,
-					checking_data,
-					// TODO type with next etc
-					TypeId::ANY_TYPE,
-				)
-			};
-
-			let next_function = crate::types::properties::get_property(
-				rhs,
-				crate::types::properties::Publicity::Public,
-				&crate::types::properties::PropertyKey::String(std::borrow::Cow::Borrowed("next")),
-				None,
-				environment,
-				&mut CheckThings { debug_types: checking_data.options.debug_types },
-				&mut checking_data.types,
-				position,
-				true,
-			);
-
-			if let Some((_, func)) = next_function {
-				if let Type::SpecialObject(SpecialObject::Function(function_id, _)) =
-					checking_data.types.get_type_by_id(func)
-				{
-					let func = checking_data.types.get_function_from_id(*function_id);
-
-					{
-						let i = crate::types::printing::print_type(
-							func.return_type,
-							&checking_data.types,
-							environment,
-							true,
-						);
-						crate::utilities::notify!("Function returns {}", i);
-					}
-
-				// TODO analyse return type
-				// set free variable constraint
-				// run iteration thingy below
-				// each turn run the .next + ()
-				// call return at the end
-				} else {
-					crate::utilities::notify!("Not a function!");
-				}
-			}
+			let _ = IteratorHelper::from_type(rhs, environment, checking_data, position);
+			todo!()
 		}
 	}
 }
 
-/// Technically the max_iterations should make this obsolete
+/// Technically the `max_iterations` should make this obsolete
 fn add_loop_described_break_event(
 	condition: TypeId,
 	position: SpanWithSource,
@@ -744,7 +677,7 @@ fn evaluate_unknown_iteration_for_loop(
 		// TODO
 		let max_inline = 10;
 
-		let res = apply_events(
+		apply_events(
 			events,
 			&ApplicationInput {
 				this_value: super::functions::ThisValue::UseParent,
@@ -756,20 +689,32 @@ fn evaluate_unknown_iteration_for_loop(
 			invocation_context,
 			types,
 			&mut calling_diagnostics,
-		);
-
-		res
+		)
 	});
 
 	// add event
 	{
+		let in_definition = top_environment.parents_iter().any(|env| {
+			matches!(
+				env,
+				GeneralContext::Syntax(crate::context::Context {
+					context_type: Syntax { scope: Scope::DefinitionModule { .. }, .. },
+					..
+				})
+			)
+		});
+
+		if !in_definition {
+			crate::utilities::notify!("adding iteration events: {:#?}", events);
+		}
+
 		let get_latest_info = invocation_context.get_latest_info(top_environment);
 		get_latest_info.events.push(Event::Iterate {
 			kind,
 			initial,
 			iterate_over: events.len() as u32,
 		});
-		crate::utilities::notify!("adding iteration events: {:#?}", events);
+
 		get_latest_info.events.extend(events.iter().cloned());
 		get_latest_info.events.push(Event::EndOfControlFlow(events.len() as u32));
 	}
@@ -981,16 +926,202 @@ fn calculate_result_of_loop(
 	Err(())
 }
 
+/// TODO enum
 pub struct IteratorHelper {
-	_inner: crate::types::calling::Callable,
+	inner: crate::types::calling::Callable,
 }
 
+#[allow(unused)]
 impl IteratorHelper {
-	pub fn from_type(_on: TypeId) -> Self {
-		todo!()
+	pub fn from_type<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		on: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, A>,
+		position: SpanWithSource,
+	) -> Result<Self, ()> {
+		let (iterator, _) = {
+			crate::utilities::notify!("Here");
+			let iterator = crate::types::properties::get_property(
+				on,
+				crate::types::properties::Publicity::Public,
+				&crate::types::properties::PropertyKey::Type(TypeId::SYMBOL_ITERATOR),
+				None,
+				environment,
+				&mut CheckThings { debug_types: checking_data.options.debug_types },
+				&mut checking_data.types,
+				position,
+				crate::types::properties::AccessMode::Regular,
+			);
+			let iterator_generator = if let Some((_, ty)) = iterator {
+				ty
+			} else {
+				todo!("error + run block any with error")
+			};
+
+			let input = crate::types::calling::CallingInput {
+				called_with_new: crate::types::calling::CalledWithNew::None,
+				call_site: position,
+				max_inline: checking_data.options.max_inline_count,
+			};
+
+			call_type_handle_errors(
+				iterator_generator,
+				None,
+				&[],
+				input,
+				environment,
+				checking_data,
+				// TODO type with next etc
+				TypeId::ANY_TYPE,
+			)
+		};
+
+		let next_function = crate::types::properties::get_property(
+			iterator,
+			crate::types::properties::Publicity::Public,
+			&crate::types::properties::PropertyKey::String(std::borrow::Cow::Borrowed("next")),
+			None,
+			environment,
+			&mut CheckThings { debug_types: checking_data.options.debug_types },
+			&mut checking_data.types,
+			position,
+			crate::types::properties::AccessMode::Regular,
+		);
+
+		if let Some((_, func)) = next_function {
+			if let Type::SpecialObject(SpecialObject::Function(function_id, _)) =
+				checking_data.types.get_type_by_id(func)
+			{
+				let func = checking_data.types.get_function_from_id(*function_id);
+
+				{
+					let i = crate::types::printing::print_type(
+						func.return_type,
+						&checking_data.types,
+						environment,
+						true,
+					);
+					crate::utilities::notify!("Function returns {}", i);
+				}
+
+				// TODO analyse return type
+				// set free variable constraint
+				// run iteration thingy below
+				// each turn run the .next + ()
+				// call return at the end
+				// TODO also pull out Fixed
+				let inner = crate::types::calling::Callable::Fixed(
+					*function_id,
+					super::functions::ThisValue::Passed(iterator),
+				);
+				Ok(Self { inner })
+			} else {
+				crate::utilities::notify!("Not a function!");
+				let inner = crate::types::calling::Callable::Type(func);
+				Ok(Self { inner })
+			}
+		} else {
+			todo!()
+		}
 	}
 
-	pub fn next(&self) -> Option<TypeId> {
-		todo!()
+	pub fn next<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		&self,
+		top_environment: &mut Environment,
+		checking_data: &mut CheckingData<T, A>,
+		position: SpanWithSource,
+	) -> Option<TypeId> {
+		let input = CallingInput {
+			called_with_new: crate::types::calling::CalledWithNew::None,
+			call_site: position,
+			max_inline: checking_data.options.max_inline_count,
+		};
+		let result = crate::types::calling::call_type(
+			self.inner,
+			Vec::new(),
+			input,
+			top_environment,
+			&mut CheckThings { debug_types: checking_data.options.debug_types },
+			&mut checking_data.types,
+		);
+
+		match result {
+			Ok(CallingOutput {
+				result,
+				called,
+				warnings,
+				info,
+				special,
+				result_was_const_computation,
+			}) => {
+				let result = application_result_to_return_type(
+					result,
+					top_environment,
+					&mut checking_data.types,
+				);
+
+				{
+					let i = crate::types::printing::print_type(
+						result,
+						&checking_data.types,
+						top_environment,
+						true,
+					);
+					crate::utilities::notify!("Iteration returned {}", i);
+				}
+
+				let done_key = crate::types::properties::PropertyKey::String(
+					std::borrow::Cow::Borrowed("done"),
+				);
+				let get_property = crate::types::properties::get_property(
+					result,
+					crate::types::properties::Publicity::Public,
+					&done_key,
+					None,
+					top_environment,
+					&mut CheckThings { debug_types: checking_data.options.debug_types },
+					&mut checking_data.types,
+					position,
+					crate::types::properties::AccessMode::Regular,
+				);
+				let done = match get_property {
+					Some((_, done)) => done,
+					None => {
+						todo!()
+					}
+				};
+
+				crate::utilities::notify!("done={:?}", done);
+
+				if done == TypeId::TRUE {
+					None
+				} else if done == TypeId::FALSE {
+					let value_key = crate::types::properties::PropertyKey::String(
+						std::borrow::Cow::Borrowed("value"),
+					);
+					let get_property = crate::types::properties::get_property(
+						result,
+						crate::types::properties::Publicity::Public,
+						&value_key,
+						None,
+						top_environment,
+						&mut CheckThings { debug_types: checking_data.options.debug_types },
+						&mut checking_data.types,
+						position,
+						crate::types::properties::AccessMode::Regular,
+					);
+					match get_property {
+						Some((_, value)) => Some(value),
+						None => {
+							todo!()
+						}
+					}
+				} else {
+					let value = checking_data.types.get_type_by_id(done);
+					todo!("{:?}", value)
+				}
+			}
+			Err(_) => todo!("iterator call error"),
+		}
 	}
 }

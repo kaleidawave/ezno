@@ -11,7 +11,7 @@ use crate::{
 			generic_type_arguments::GenericArguments,
 		},
 		printing::print_type,
-		properties::{get_property_unbound, key_matches, Publicity},
+		properties::{get_property_unbound, key_matches, Publicity, SliceArgument},
 		GenericChainLink, ObjectNature, TypeStore,
 	},
 	Constant, Environment, PropertyValue, TypeId,
@@ -677,7 +677,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					if let (Some(contributions), Some(current_contributing)) =
 						(state.contributions.as_mut(), current_contributing)
 					{
-						contributions.staging_contravariant.drop_range(current_contributing..)
+						contributions.staging_contravariant.drop_range(current_contributing..);
 					}
 					return result;
 				}
@@ -913,14 +913,14 @@ pub(crate) fn type_is_subtype_with_generics(
 				result_union: _,
 			} => todo!(),
 			Constructor::Image { on: _, with: _, result: _ } => todo!(),
-			Constructor::Property { on, under, result: _, bind_this: _ } => {
+			Constructor::Property { on, under, result: _, mode: _ } => {
 				// Ezno custom state
 				// TODO might be based of T
 				if let Type::Constructor(Constructor::Property {
 					on: r_on,
 					under: r_under,
 					result: _,
-					bind_this: _,
+					mode: _,
 				}) = right_ty
 				{
 					if on == r_on && under == r_under {
@@ -929,50 +929,95 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 
 				// TODO this only seems to work in simple cases. For mapped types
+				crate::utilities::notify!(
+					"base_structure_arguments={:?}, ty_structure_arguments={:?}, *on={:?}",
+					base_structure_arguments,
+					ty_structure_arguments,
+					on
+				);
+
 				if let Some(on) =
 					base_structure_arguments.and_then(|args| args.get_single_argument(*on))
 				{
-					crate::utilities::notify!("Here got on");
-					if let PropertyKey::Type(under) = under {
+					let new_under;
+					let under = if let PropertyKey::Type(under) = under {
 						crate::utilities::notify!(
 							"{:?} with {:?}",
 							under,
 							base_structure_arguments.as_ref()
 						);
-						if let Some(under) = base_structure_arguments
+						new_under = if let Some(under) = base_structure_arguments
 							.and_then(|args| args.get_single_argument(*under))
 						{
 							crate::utilities::notify!("Here 2");
-							let property = get_property_unbound(
-								(on, base_structure_arguments),
-								(
-									Publicity::Public,
-									&PropertyKey::Type(under),
-									ty_structure_arguments,
-								),
-								information,
-								types,
-							);
-							if let Ok(property) = property {
-								crate::utilities::notify!("Here 3");
-								match property {
-									Logical::Pure(PropertyValue::Value(property)) => {
-										crate::utilities::notify!("Here 4");
-										return type_is_subtype_with_generics(
-											(property, base_structure_arguments),
-											(ty, ty_structure_arguments),
-											state,
-											information,
-											types,
-										);
-									}
-									value => todo!("{:?}", value), // Logical::Or { based_on, left, right } => todo!(),
-									                               // Logical::Implies { on, antecedent } => todo!(),
-								}
+							PropertyKey::from_type(under, types)
+						} else {
+							PropertyKey::from_type(*under, types)
+						};
+						&new_under
+					} else {
+						under
+					};
+
+					crate::utilities::notify!(
+						"Here got under={:?}, on={:?}",
+						under,
+						types.get_type_by_id(on)
+					);
+					let property = get_property_unbound(
+						(on, base_structure_arguments),
+						(Publicity::Public, &under, ty_structure_arguments),
+						information,
+						types,
+					);
+					if let Ok(property) = property {
+						crate::utilities::notify!("Here 3");
+						match property {
+							Logical::Pure(PropertyValue::Value(property)) => {
+								crate::utilities::notify!("Here 4");
+								return type_is_subtype_with_generics(
+									(property, base_structure_arguments),
+									(ty, ty_structure_arguments),
+									state,
+									information,
+									types,
+								);
 							}
+							value => todo!("{:?}", value), // Logical::Or { based_on, left, right } => todo!(),
+							                               // Logical::Implies { on, antecedent } => todo!(),
 						}
 					}
 				}
+				// else if let Type::Interface { .. }
+				// | Type::Object(ObjectNature::AnonymousTypeAnnotation)
+				// | Type::AliasTo { .. } = types.get_type_by_id(*on)
+				// {
+				// 	let property = get_property_unbound(
+				// 		(*on, base_structure_arguments),
+				// 		(Publicity::Public, under, ty_structure_arguments),
+				// 		information,
+				// 		types,
+				// 	);
+				// 	if let Ok(property) = property {
+				// 		crate::utilities::notify!("Here");
+				// 		match property {
+				// 			Logical::Pure(PropertyValue::Value(property)) => {
+				// 				crate::utilities::notify!("Here");
+				// 				return type_is_subtype_with_generics(
+				// 					(property, base_structure_arguments),
+				// 					(ty, ty_structure_arguments),
+				// 					state,
+				// 					information,
+				// 					types,
+				// 				);
+				// 			}
+				// 			value => todo!("{:?}", value), // Logical::Or { based_on, left, right } => todo!(),
+				// 			                               // Logical::Implies { on, antecedent } => todo!(),
+				// 		}
+				// 	}
+				// }
+
+				crate::utilities::notify!("Here {:?}", types.get_type_by_id(*on));
 
 				crate::utilities::notify!("Mismatched property");
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
@@ -1478,6 +1523,11 @@ fn check_lhs_property_is_super_type_of_rhs(
 					types,
 				);
 
+				{
+					let lhs = types.get_type_by_id(*lhs_value);
+					crate::utilities::notify!("{:?}", lhs);
+				}
+
 				match property {
 					Ok(rhs_value) => {
 						let res = check_logical_property(
@@ -1720,7 +1770,7 @@ pub(crate) fn slice_matches_type(
 	slice: &str,
 	information: &impl InformationChain,
 	types: &TypeStore,
-) -> (bool, Option<(TypeId, (CovariantContribution, u8))>) {
+) -> (bool, Option<SliceArgument>) {
 	let key_type = types.get_type_by_id(base);
 
 	match key_type {

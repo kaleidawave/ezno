@@ -313,7 +313,7 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { on, under, result, bind_this, .. } => {
+			Constructor::Property { on, under, result, mode, .. } => {
 				let under = under.substitute(arguments, environment, types);
 
 				let on = substitute(on, arguments, environment, types);
@@ -349,7 +349,7 @@ pub(crate) fn substitute(
 							on,
 							under,
 							result: new_result,
-							bind_this,
+							mode,
 						}))
 					}
 				} else if let Type::Interface { .. }
@@ -555,9 +555,8 @@ pub(crate) fn convert_tsc_string_intrinsic(
 fn resolve_logical_during_substitution(value: Logical<PropertyValue>) -> TypeId {
 	match value {
 		Logical::Pure(v) => {
-			let id = v.as_get_type();
 			// substitute(id, arguments, environment, types)
-			id
+			v.as_get_type()
 		}
 		Logical::Or { .. } => todo!(),
 		Logical::Implies { .. } => todo!(),

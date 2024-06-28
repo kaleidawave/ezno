@@ -10,7 +10,10 @@ use super::expressions::synthesise_expression;
 use crate::{
 	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation},
-	features::variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+	features::{
+		iteration::IteratorHelper,
+		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		get_larger_type, printing,
@@ -315,38 +318,48 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array { members: _, spread: _, position } => {
-			checking_data.raise_unimplemented_error(
-				"destructuring array (needs iterator)",
-				position.with_source(environment.get_source()),
-			);
-			// for (idx, item) in items.iter().enumerate() {
-			// 	match item.get_ast_ref() {
-			// 		ArrayDestructuringField::Spread(_, _) => todo!(),
-			// 		ArrayDestructuringField::Name(variable_field, _) => {
-			// 			let idx = PropertyKey::from_usize(idx);
+		VariableField::Array { members, spread, position } => {
+			let position = position.with_source(environment.get_source());
+			let iterator =
+				IteratorHelper::from_type(value, environment, checking_data, position).unwrap();
 
-			// 			let value = environment.get_property(
-			// 				value,
-			// 				Publicity::Public,
-			// 				idx,
-			// 				&mut checking_data.types,
-			// 				None,
-			// 				*variable_field.get_position(),
-			// 				&checking_data.options,
-			// 			);
+			for member in members {
+				match member.get_ast_ref() {
+					ArrayDestructuringField::Name(inner, _, default) => {
+						let position = inner.get_position().with_source(environment.get_source());
+						let value = iterator.next(environment, checking_data, position);
+						let value = if let (None, Some(expression)) = (value, default) {
+							synthesise_expression(
+								expression,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							)
+						} else if let Some(value) = value {
+							value
+						} else {
+							todo!("error")
+						};
+						assign_initial_to_fields(
+							inner,
+							environment,
+							checking_data,
+							value,
+							exported,
+						);
+					}
+					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {
+						let _ = iterator.next(environment, checking_data, SpanWithSource::NULL);
+					}
+				}
+			}
 
-			// 			if let Some((_, value)) = value {
-			// 				assign_to_fields(
-			// 					variable_field,
-			// 					environment,
-			// 					checking_data,
-			// 					value,
-			// 					exported,
-			// 				);
-			// 			}
-			// 		ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
-			//   }
+			if let Some(spread) = spread {
+				checking_data.raise_unimplemented_error(
+					"Spread array item",
+					spread.1.with_source(environment.get_source()),
+				);
+			}
 		}
 		VariableField::Object { members, spread, .. } => {
 			for member in members {
@@ -372,7 +385,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							None,
 							position,
 							&checking_data.options,
-							false,
+							crate::types::properties::AccessMode::DoNotBindThis,
 						);
 						let value = match property {
 							Some((_, value)) => value,
@@ -385,29 +398,29 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
+									let property = match key_ty {
+										PropertyKey::String(s) => {
+											PropertyRepresentation::StringKey(s.to_string())
+										}
+										PropertyKey::Type(t) => {
+											PropertyRepresentation::Type(printing::print_type(
+												t,
+												&checking_data.types,
+												environment,
+												false,
+											))
+										}
+									};
+									let on = TypeStringRepresentation::from_type_id(
+										value,
+										environment,
+										&checking_data.types,
+										false,
+									);
 									checking_data.diagnostics_container.add_error(
 										TypeCheckError::PropertyDoesNotExist {
-											property: match key_ty {
-												PropertyKey::String(s) => {
-													PropertyRepresentation::StringKey(s.to_string())
-												}
-												PropertyKey::Type(t) => {
-													PropertyRepresentation::Type(
-														printing::print_type(
-															t,
-															&checking_data.types,
-															environment,
-															false,
-														),
-													)
-												}
-											},
-											on: TypeStringRepresentation::from_type_id(
-												value,
-												environment,
-												&checking_data.types,
-												false,
-											),
+											property,
+											on,
 											site: position,
 										},
 									);
@@ -444,12 +457,13 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							None,
 							position.with_source(environment.get_source()),
 							&checking_data.options,
-							false,
+							crate::types::properties::AccessMode::DoNotBindThis,
 						);
 
 						let value = match property_value {
 							Some((_, value)) => value,
 							None => {
+								// TODO this isn't checked if Some
 								if let Some(default_value) = default_value {
 									synthesise_expression(
 										default_value,
@@ -458,29 +472,29 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
+									let property = match key_ty {
+										PropertyKey::String(s) => {
+											PropertyRepresentation::StringKey(s.to_string())
+										}
+										PropertyKey::Type(t) => {
+											PropertyRepresentation::Type(printing::print_type(
+												t,
+												&checking_data.types,
+												environment,
+												false,
+											))
+										}
+									};
+									let on = TypeStringRepresentation::from_type_id(
+										value,
+										environment,
+										&checking_data.types,
+										false,
+									);
 									checking_data.diagnostics_container.add_error(
 										TypeCheckError::PropertyDoesNotExist {
-											property: match key_ty {
-												PropertyKey::String(s) => {
-													PropertyRepresentation::StringKey(s.to_string())
-												}
-												PropertyKey::Type(t) => {
-													PropertyRepresentation::Type(
-														printing::print_type(
-															t,
-															&checking_data.types,
-															environment,
-															false,
-														),
-													)
-												}
-											},
-											on: TypeStringRepresentation::from_type_id(
-												value,
-												environment,
-												&checking_data.types,
-												false,
-											),
+											property,
+											on,
 											site: position.with_source(environment.get_source()),
 										},
 									);

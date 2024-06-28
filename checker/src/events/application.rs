@@ -148,7 +148,7 @@ pub(crate) fn apply_events(
 					info.variable_current_value.insert(*variable, new_value);
 				}
 			}
-			Event::Getter { on, under, reflects_dependency, publicity, position, bind_this } => {
+			Event::Getter { on, under, reflects_dependency, publicity, position, mode } => {
 				// let was = on;
 				let on = substitute(*on, type_arguments, top_environment, types);
 
@@ -165,7 +165,7 @@ pub(crate) fn apply_events(
 					target,
 					types,
 					*position,
-					*bind_this,
+					*mode,
 				) else {
 					// TODO getters can fail here
 					panic!(
@@ -294,10 +294,9 @@ pub(crate) fn apply_events(
 				call_site,
 			} => {
 				let on = match on {
-					calling::Callable::Fixed(fixed) => {
-						// TODO specialise this?
-						// crate::utilities::notify!("Calling fixed here");
-						calling::Callable::Fixed(fixed.clone())
+					calling::Callable::Fixed(fixed, this_value) => {
+						crate::utilities::notify!("TODO specialise this?");
+						calling::Callable::Fixed(*fixed, *this_value)
 					}
 					calling::Callable::Type(on) => calling::Callable::Type(substitute(
 						*on,
@@ -620,6 +619,9 @@ pub(crate) fn apply_events(
 						types,
 					)
 				});
+
+				crate::utilities::notify!("Inner loop returned {:?}", result);
+
 				if result.is_some() {
 					return result;
 				}
@@ -757,8 +759,13 @@ pub(crate) fn apply_events(
 								type_arguments.arguments.insert(*into, result);
 							}
 						}
-						Err(_) => {
+						Err(err) => {
 							crate::utilities::notify!("Raise error here");
+							errors.errors.push(FunctionCallingError::DeleteConstraint {
+								constraint: err.constraint,
+								delete_position: *position,
+								call_site: input.call_site,
+							});
 
 							if let Some(into) = into {
 								type_arguments.arguments.insert(*into, TypeId::ERROR_TYPE);
@@ -768,55 +775,61 @@ pub(crate) fn apply_events(
 				}
 			},
 			Event::FinalEvent(final_event) => {
-				let application_result = match final_event {
-					FinalEvent::Break { carry, position } => ApplicationResult::Break {
-						// TODO is this correct?
-						carry: carry.saturating_sub(target.get_iteration_depth()),
-						position: *position,
-					},
-					FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
-						// TODO is this correct?
-						carry: carry.saturating_sub(target.get_iteration_depth()),
-						position: *position,
-					},
-					FinalEvent::Throw { thrown, position } => {
-						let substituted_thrown =
-							substitute(*thrown, type_arguments, top_environment, types);
-						if target.in_unconditional() {
-							let value = TypeStringRepresentation::from_type_id(
-								substituted_thrown,
-								// TODO is this okay?
-								top_environment,
-								types,
-								false,
-							);
-							let warning =
-								crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
-									value,
-									call_site: input.call_site,
-								};
-							errors.warnings.push(warning);
-						}
-						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
-					}
-					FinalEvent::Return { returned, position } => {
-						let substituted_returned =
-							substitute(*returned, type_arguments, top_environment, types);
-						ApplicationResult::Return {
-							returned: substituted_returned,
+				// I think this is okay
+				if !unknown_mode {
+					let application_result = match final_event {
+						FinalEvent::Break { carry, position } => ApplicationResult::Break {
+							// TODO is this correct?
+							carry: carry.saturating_sub(target.get_iteration_depth()),
 							position: *position,
+						},
+						FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
+							// TODO is this correct?
+							carry: carry.saturating_sub(target.get_iteration_depth()),
+							position: *position,
+						},
+						FinalEvent::Throw { thrown, position } => {
+							let substituted_thrown =
+								substitute(*thrown, type_arguments, top_environment, types);
+							if target.in_unconditional() {
+								let value = TypeStringRepresentation::from_type_id(
+									substituted_thrown,
+									// TODO is this okay?
+									top_environment,
+									types,
+									false,
+								);
+								let warning =
+									crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
+										value,
+										call_site: input.call_site,
+									};
+								errors.warnings.push(warning);
+							}
+							ApplicationResult::Throw {
+								thrown: substituted_thrown,
+								position: *position,
+							}
 						}
-					}
-				};
-				return Some(if let Some((on, trailing)) = trailing {
-					ApplicationResult::Or {
-						on,
-						truthy_result: Box::new(trailing),
-						otherwise_result: Box::new(application_result),
-					}
-				} else {
-					application_result
-				});
+						FinalEvent::Return { returned, position } => {
+							let substituted_returned =
+								substitute(*returned, type_arguments, top_environment, types);
+							ApplicationResult::Return {
+								returned: substituted_returned,
+								position: *position,
+							}
+						}
+					};
+					return Some(if let Some((on, trailing)) = trailing {
+						ApplicationResult::Or {
+							on,
+							truthy_result: Box::new(trailing),
+							otherwise_result: Box::new(application_result),
+						}
+					} else {
+						application_result
+					});
+				}
 			}
 		}
 		idx += 1;

@@ -81,7 +81,7 @@ impl ReturnState {
 				ReturnState::Rolling { .. } => todo!(),
 				new @ ReturnState::Finished(_) => {
 					crate::utilities::notify!("Warning overwriting conditional");
-					*self = new
+					*self = new;
 				}
 			},
 			ReturnState::Finished(_) => todo!(),
@@ -124,7 +124,7 @@ impl LocalInformation {
 		&self.events
 	}
 
-	/// Use features::delete_property
+	/// Use `features::delete_property`
 	pub(crate) fn delete_property(
 		&mut self,
 		on: TypeId,

@@ -122,9 +122,16 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					type_parameters,
 					parameters,
 					return_type,
-					is_optional: _,
+					is_optional,
 					position,
 				} => {
+					if *is_optional {
+						checking_data.raise_unimplemented_error(
+							"is_optional interface method",
+							position.with_source(environment.get_source()),
+						);
+					}
+
 					// Fix for performing const annotations. TODO want to do better
 					let behavior = if member
 						.decorators
@@ -175,7 +182,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				} => {
 					if *is_readonly {
 						checking_data.raise_unimplemented_error(
-							"readonly items",
+							"readonly interface property",
 							position.with_source(environment.get_source()),
 						);
 					}
@@ -198,18 +205,30 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 				}
 				InterfaceMember::Indexer {
-					name: _,
+					name,
 					indexer_type,
 					return_type,
-					is_readonly: _,
+					is_readonly,
 					position,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
+
+					if *is_readonly {
+						checking_data.raise_unimplemented_error(
+							"readonly interface index",
+							position.with_source(environment.get_source()),
+						);
+					}
+
+					// TODO WIP
+					crate::utilities::notify!("Here for {}", name);
+					let value = InterfaceValue::Optional(value);
+
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),
-						InterfaceValue::Value(value),
+						value,
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
@@ -239,8 +258,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameter,
 					matching_type,
 					as_type,
-					optionality: _,
-					is_readonly: _,
+					optionality,
+					is_readonly,
 					output_type,
 					position,
 				} => {
@@ -281,9 +300,41 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						(key, value)
 					};
 
+					let value = match optionality {
+						parser::types::interface::Optionality::Default => {
+							InterfaceValue::Value(value)
+						}
+						parser::types::interface::Optionality::Optional => {
+							InterfaceValue::Optional(value)
+						}
+						parser::types::interface::Optionality::Required => {
+							let position = position.with_source(environment.get_source());
+							checking_data
+								.raise_unimplemented_error("mapped type required", position);
+							InterfaceValue::Value(value)
+						}
+					};
+
+					match is_readonly {
+						parser::types::interface::MappedReadonlyKind::Negated => {
+							// Hmm this one is tricky
+							let position = position.with_source(environment.get_source());
+							checking_data.raise_unimplemented_error(
+								"mapped type negated readonly",
+								position,
+							);
+						}
+						parser::types::interface::MappedReadonlyKind::Always => {
+							let position = position.with_source(environment.get_source());
+							checking_data
+								.raise_unimplemented_error("mapped type readonly", position);
+						}
+						parser::types::interface::MappedReadonlyKind::False => {}
+					}
+
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),
-						InterfaceValue::Value(value),
+						value,
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),

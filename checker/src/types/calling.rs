@@ -25,8 +25,9 @@ use crate::{
 	},
 	types::{
 		functions::SynthesisedArgument, generics::substitution::SubstitutionArguments,
-		get_structure_arguments_based_on_object_constraint, substitute, FunctionEffect,
-		FunctionType, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
+		get_structure_arguments_based_on_object_constraint, properties::AccessMode, substitute,
+		FunctionEffect, FunctionType, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
+		Type,
 	},
 	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
@@ -260,9 +261,9 @@ pub fn application_result_to_return_type(
 	}
 }
 
-#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+#[derive(Debug, Copy, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Callable {
-	Fixed(FunctionId),
+	Fixed(FunctionId, ThisValue),
 	Type(TypeId),
 }
 
@@ -276,10 +277,8 @@ pub(crate) fn call_type<E: CallCheckingBehavior>(
 	types: &mut TypeStore,
 ) -> Result<CallingOutput, BadCallOutput> {
 	match on {
-		Callable::Fixed(on) => {
-			// TODO
-			let function_like =
-				FunctionLike { function: on, from: None, this_value: ThisValue::UseParent };
+		Callable::Fixed(on, this_value) => {
+			let function_like = FunctionLike { function: on, from: None, this_value };
 
 			call_logical(
 				Logical::Pure(function_like),
@@ -387,10 +386,14 @@ fn get_logical_callable_from_type(
 				Logical::Implies { on: Box::new(res), antecedent: generic.arguments.clone() }
 			})
 		}
-		Type::Constructor(Constructor::Property { on, under: _, result, bind_this }) => {
+		Type::Constructor(Constructor::Property { on, under: _, result, mode }) => {
 			crate::utilities::notify!("Passing {:?}", on);
 
-			let this_value = if *bind_this { ThisValue::Passed(*on) } else { ThisValue::UseParent };
+			let this_value = if let AccessMode::DoNotBindThis = mode {
+				ThisValue::UseParent
+			} else {
+				ThisValue::Passed(*on)
+			};
 			let result =
 				get_logical_callable_from_type(*result, Some(this_value), Some(ty), types)?;
 
@@ -480,7 +483,7 @@ fn call_logical<E: CallCheckingBehavior>(
 					if is_independent_function && E::CHECK_PARAMETERS {
 						let function_id = function.function;
 						let value = Event::CallsType {
-							on: Callable::Fixed(function.function),
+							on: Callable::Fixed(function.function, function.this_value),
 							with: arguments.clone().into_boxed_slice(),
 							timing: crate::events::CallingTiming::Synchronous,
 							called_with_new: input.called_with_new,
@@ -680,7 +683,7 @@ fn call_logical<E: CallCheckingBehavior>(
 
 					let on = match function.from {
 						Some(ty) => Callable::Type(ty),
-						None => Callable::Fixed(function.function),
+						None => Callable::Fixed(function.function, function.this_value),
 					};
 					behavior.get_latest_info(top_environment).events.push(Event::CallsType {
 						on,
@@ -836,14 +839,22 @@ pub enum FunctionCallingError {
 	NeedsToBeCalledWithNewKeyword(SpanWithSource),
 	TDZ {
 		error: TDZ,
-		/// Should be set
+		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
+	/// For #18
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
-		/// Should be set
+		/// Should be set by parent
+		call_site: SpanWithSource,
+	},
+	/// For #18
+	DeleteConstraint {
+		constraint: TypeStringRepresentation,
+		delete_position: SpanWithSource,
+		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
 	MismatchedThis {

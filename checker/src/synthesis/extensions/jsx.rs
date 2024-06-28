@@ -195,18 +195,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	let position = element.get_position().with_source(environment.get_source());
 	let jsx_function =
-		match environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
-			Ok(ty) => ty.1,
-			Err(_) => {
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::CouldNotFindVariable {
-						variable: JSX_NAME,
-						possibles: Vec::default(),
-						position,
-					},
-				);
-				TypeId::ERROR_TYPE
-			}
+		if let Ok(ty) = environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
+			ty.1
+		} else {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindVariable {
+				variable: JSX_NAME,
+				possibles: Vec::default(),
+				position,
+			});
+			TypeId::ERROR_TYPE
 		};
 
 	let tag_name_argument = SynthesisedArgument {
@@ -431,7 +428,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 						"spread JSX child",
 						pos.with_source(environment.get_source()),
 					);
-					return TypeId::UNDEFINED_TYPE;
+					TypeId::UNDEFINED_TYPE
 				}
 				parser::ast::FunctionArgument::Standard(expression) => {
 					crate::utilities::notify!("Cast JSX interpolated value?");
@@ -439,7 +436,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 				}
 				parser::ast::FunctionArgument::Comment { .. } => {
 					// TODO?
-					return TypeId::UNDEFINED_TYPE;
+					TypeId::UNDEFINED_TYPE
 				}
 			}
 			// function intoNode(data) {

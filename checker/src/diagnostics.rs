@@ -998,5 +998,12 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
+		FunctionCallingError::DeleteConstraint { constraint, delete_position, call_site: _ } => {
+			Diagnostic::Position {
+				reason: format!("Cannot delete from object constrained to {constraint}"),
+				position: delete_position,
+				kind,
+			}
+		}
 	}
 }

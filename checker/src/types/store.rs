@@ -399,7 +399,7 @@ impl TypeStore {
 				on: indexee,
 				under,
 				result: base,
-				bind_this: true,
+				mode: super::properties::AccessMode::Regular,
 			});
 			self.register_type(ty)
 		} else if let Ok(prop) = super::properties::get_property_unbound(

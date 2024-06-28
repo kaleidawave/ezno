@@ -11,7 +11,7 @@ pub(crate) fn is_debug_mode() -> bool {
 	}
 }
 
-pub(crate) fn set_debug_mode(value: bool) {
+pub(crate) fn _set_debug_mode(value: bool) {
 	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
 		let _ = *IS_DEBUG_MODE.lock().unwrap().insert(value);
 	}

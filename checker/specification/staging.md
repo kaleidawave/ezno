@@ -61,10 +61,12 @@ interface X { a: number, b: string, c: string }
 
 const x: Pick<X, "a"> = { a: 5 };
 
-"hi" satisfies Pick<X, "a">;
+declare let y: Pick<X, "b" | "c">;
+y.b satisfies string;
+y.a;
 ```
 
-- Expected number, found "hi"
+- No property 'a' on { ["b" | "c"]: X["b" | "c"] }
 
 #### Optional
 
@@ -266,7 +268,7 @@ x satisfies string;
 #### `delete` as an effect
 
 ```ts
-function dewete(param: { prop: string }) {
+function dewete(param: { prop?: string }) {
 	const { prop } = param;
 	delete param.prop;
 	return prop
@@ -274,8 +276,11 @@ function dewete(param: { prop: string }) {
 
 const obj = { prop: "hi" };
 dewete(obj);
+
 obj.prop;
 ```
+
+> This error *should* be from the last statement
 
 - No property 'prop' on {}
 
@@ -525,19 +530,66 @@ func("hi", "hello") satisfies number;
 > TODO should also check that it is readonly
 
 ```ts
-function x() {
-
-}
-
-class X {
-
-}
+function x() { }
+class X { }
 
 x.name satisfies "x"
 X.name satisfies "Y"
 ```
 
 - Expected "Y", found "X"
+
+#### Effects across functions
+
+```ts
+let value: number = 2;
+function a() { value = 8; }
+function b() { a() }
+
+let func = () => {};
+
+function c() { b() }
+function d(newCb: () => void, then: () => void) { func = newCb; then() }
+
+value satisfies 2;
+d(a, c);
+value satisfies boolean;
+```
+
+- Expected boolean, found 8
+
+#### Optional property access
+
+```ts
+interface X {
+    possibly?: string
+}
+
+declare let x: X;
+
+x?.possibly satisfies number;
+```
+
+- Expected string, found string | undefined
+
+#### Destructuring using iterator
+
+```ts
+const [a, b, c] = {
+	[Symbol.iterator]() {
+		return {
+			count: 0,
+			next(this: { count: number }) {
+				return { value: this.count++, done: false }
+			}
+		}
+	}
+}
+
+a satisfies 0; b satisfies string;
+```
+
+- Expected string, found 1
 
 ### Collections
 

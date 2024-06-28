@@ -424,33 +424,6 @@ declare const global: { a?: string };
 - Expected string, found boolean
 - Expected 2, found string | undefined
 
-#### Delete from required propertied
-
-```ts
-declare let global: { a?: string, b: string };
-
-// Fine
-delete global.a;
-// Bad
-delete global.b;
-```
-
-- Cannot delete property "b" off { a?: string, b: string }
-
-#### Optional property access
-
-```ts
-interface X {
-    possibly?: string
-}
-
-declare let x: X;
-
-x?.possibly satisfies number;
-```
-
-- Expected string, found string | undefined
-
 ### Runtime
 
 #### Free variable + anytime calls

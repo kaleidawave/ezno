@@ -40,7 +40,7 @@ declare function satisfies<T>(t: T): T
 declare function compile_type_to_object<T>(): any
 
 interface ImportEnv {
-    [key: string]: string | undefined;
+    [key: string]: string;
 }
 
 interface ImportMeta {
@@ -50,7 +50,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T;
 
     length: number;
 
@@ -69,13 +69,24 @@ declare class Array<T> {
         }
     }
 
-    // // TODO this argument
+    // TODO this argument
     // map<U>(cb: (t: T, i?: number) => U): Array<U> {
+    // map<U>(cb: (t: T) => U): Array<U> {
     //     const { length } = this, mapped: Array<U> = [];
     //     let i: number = 0;
     //     while (i < length) {
-    //         const value = this[i];
-    //         mapped.push(cb(value, i++))
+    //         const value = this?.[i];
+    //         const newValue = cb(value) //, i++);
+    //         mapped.push(newValue)
+    //     }
+    //     return mapped;
+    // }
+
+    // copy(): Array<T> {
+    //     const { length } = this, mapped: Array<T> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         mapped.push(this?.[i])
     //     }
     //     return mapped;
     // }
@@ -230,7 +241,7 @@ declare class Math {
 
 @Primitive("string")
 declare class String {
-    [index: number]: string | undefined;
+    [index: number]: string;
 
     @Constant
     toUpperCase(): string;

@@ -16,7 +16,7 @@ fn main() {
 	let mut types = TypeStore::default();
 
 	basics(&mut environment, &mut types);
-	contributions(&mut environment, &mut types)
+	contributions(&mut environment, &mut types);
 }
 
 fn basics(environment: &mut Environment, types: &mut TypeStore) {
@@ -29,22 +29,22 @@ fn basics(environment: &mut Environment, types: &mut TypeStore) {
 	{
 		let result = type_is_subtype_object(TypeId::NUMBER_TYPE, five, environment, types);
 
-		eprintln!("number :> 5 {result:?}")
+		eprintln!("number :> 5 {result:?}");
 	}
 	{
 		let result =
 			type_is_subtype_object(TypeId::NUMBER_TYPE, TypeId::STRING_TYPE, environment, types);
 
-		eprintln!("number :> string {result:?}")
+		eprintln!("number :> string {result:?}");
 	}
 	{
 		let result =
 			type_is_subtype_object(string_or_number, TypeId::STRING_TYPE, environment, types);
 
-		eprintln!("string | number :> string {result:?}")
+		eprintln!("string | number :> string {result:?}");
 	}
 
-	eprintln!("--------------\n")
+	eprintln!("--------------\n");
 }
 
 fn contributions(environment: &mut Environment, types: &mut TypeStore) {
@@ -96,7 +96,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 			others: SubTypingOptions::default(),
 			object_constraints: None,
 		};
-		let result = type_is_subtype(parameter, five_obj, &mut state, &environment, &types);
+		let result = type_is_subtype(parameter, five_obj, &mut state, environment, types);
 
 		let contributions = state.contributions.as_ref().unwrap();
 

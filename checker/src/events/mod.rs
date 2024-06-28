@@ -10,7 +10,7 @@ use crate::{
 	types::{
 		calling::{Callable, CalledWithNew},
 		functions::SynthesisedArgument,
-		properties::{PropertyKey, PropertyValue, Publicity},
+		properties::{AccessMode, PropertyKey, PropertyValue, Publicity},
 		TypeId,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
@@ -62,7 +62,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		publicity: Publicity,
 		position: SpanWithSource,
-		bind_this: bool,
+		mode: AccessMode,
 	},
 	/// All changes to the value of a property
 	Setter {
@@ -166,13 +166,13 @@ impl From<FinalEvent> for Event {
 	}
 }
 
-/// Some of these are [crate::features::objects::Proxy] traps
+/// Some of these are [`crate::features::objects::Proxy`] traps
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum MiscellaneousEvents {
-	/// Also for https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/has
+	/// Also for <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/has>
 	Has { on: TypeId, publicity: Publicity, under: PropertyKey<'static>, into: TypeId },
-	/// Very similar to [MiscellaneousEvents::Has] but deletes the properties
-	/// Also for https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/deleteProperty
+	/// Very similar to [`MiscellaneousEvents::Has`] but deletes the properties
+	/// Also for <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/deleteProperty>
 	Delete {
 		on: TypeId,
 		publicity: Publicity,

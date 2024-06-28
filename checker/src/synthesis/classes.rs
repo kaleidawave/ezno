@@ -533,22 +533,29 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 					property.position.with_source(environment.get_source()),
 				);
 			}
-			ClassMember::Indexer {
-				name: _,
-				indexer_type,
-				return_type,
-				is_readonly: _,
-				position,
-			} => {
-				crate::utilities::notify!("Warn if not declare");
+			ClassMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
 				// TODO think this is okay
 				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 				let value = synthesise_type_annotation(return_type, environment, checking_data);
+
+				if *is_readonly {
+					checking_data.raise_unimplemented_error(
+						"readonly class index",
+						position.with_source(environment.get_source()),
+					);
+				}
+
+				// TODO WIP
+				crate::utilities::notify!("Here for {}", name);
+				let value = PropertyValue::ConditionallyExists {
+					on: TypeId::BOOLEAN_TYPE,
+					truthy: Box::new(PropertyValue::Value(value)),
+				};
 				environment.info.register_property(
 					class_type,
 					Publicity::Public,
 					PropertyKey::Type(key),
-					PropertyValue::Value(value),
+					value,
 					false,
 					position.with_source(environment.get_source()),
 				);

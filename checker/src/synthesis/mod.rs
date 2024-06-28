@@ -284,25 +284,21 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		}
 		ParserPropertyKey::NumberLiteral(number, pos) => {
 			let result = f64::try_from(number.clone());
-			match result {
-				Ok(v) => {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if v.floor() == v {
-						PropertyKey::from_usize(v as usize)
-					} else {
-						// TODO
-						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-					}
+			if let Ok(v) = result {
+				// TODO is there a better way
+				#[allow(clippy::float_cmp)]
+				if v.floor() == v {
+					PropertyKey::from_usize(v as usize)
+				} else {
+					// TODO
+					PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
 				}
-				// TODO
-				Err(()) => {
-					checking_data.raise_unimplemented_error(
-						"big int as property key",
-						pos.with_source(environment.get_source()),
-					);
-					PropertyKey::Type(TypeId::ERROR_TYPE)
-				}
+			} else {
+				checking_data.raise_unimplemented_error(
+					"big int as property key",
+					pos.with_source(environment.get_source()),
+				);
+				PropertyKey::Type(TypeId::ERROR_TYPE)
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
@@ -362,7 +358,7 @@ pub mod definition_file {
 	};
 
 	pub fn build_definition_file(result: &crate::CheckOutput<super::EznoParser>, buf: &mut String) {
-		for (source_id, module) in result.modules.iter() {
+		for (source_id, module) in &result.modules {
 			for item in &module.content.items {
 				match item {
 					parser::StatementOrDeclaration::Declaration(parser::Declaration::Export(

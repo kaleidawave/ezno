@@ -24,7 +24,7 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		printing,
-		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
+		properties::{AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity},
 		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -272,7 +272,11 @@ impl<'a> Environment<'a> {
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
 						let reference_position = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 
 						let expression = expression.unwrap();
 						let expression_pos =
@@ -311,7 +315,11 @@ impl<'a> Environment<'a> {
 						// let value =
 						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
 						let span = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 
 						// TODO existing needs to be cast to number!!
 
@@ -354,7 +362,11 @@ impl<'a> Environment<'a> {
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 						let expression = expression.unwrap();
 						let new = evaluate_logical_operation_with_expression(
 							(existing, reference.get_position().without_source()),
@@ -506,7 +518,7 @@ impl<'a> Environment<'a> {
 						None,
 						position,
 						&checking_data.options,
-						false,
+						AccessMode::DoNotBindThis,
 					);
 
 					let rhs_value = if let Some((_, value)) = value {
@@ -578,7 +590,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		reference: Reference,
 		checking_data: &mut CheckingData<U, A>,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> TypeId {
 		match reference {
 			Reference::Variable(name, position) => {
@@ -591,7 +603,7 @@ impl<'a> Environment<'a> {
 					&with,
 					checking_data,
 					span,
-					bind_this,
+					mode,
 				);
 				match get_property_handle_errors {
 					Ok(i) => i.get_value(),
@@ -778,7 +790,7 @@ impl<'a> Environment<'a> {
 		with: Option<TypeId>,
 		position: SpanWithSource,
 		options: &TypeCheckOptions,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -789,7 +801,7 @@ impl<'a> Environment<'a> {
 			&mut CheckThings { debug_types: options.debug_types },
 			types,
 			position,
-			bind_this,
+			mode,
 		)
 	}
 
@@ -800,7 +812,7 @@ impl<'a> Environment<'a> {
 		key: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
 		site: SpanWithSource,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Result<Instance, ()> {
 		let get_property = self.get_property(
 			on,
@@ -810,7 +822,7 @@ impl<'a> Environment<'a> {
 			None,
 			site,
 			&checking_data.options,
-			bind_this,
+			mode,
 		);
 
 		if let Some((kind, result)) = get_property {
